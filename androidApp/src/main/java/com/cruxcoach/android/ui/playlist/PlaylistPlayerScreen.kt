@@ -78,6 +78,7 @@ import com.cruxcoach.android.R
 import com.cruxcoach.android.data.LedHoldColors
 import com.cruxcoach.android.data.PlaybackPhase
 import com.cruxcoach.android.data.PlaylistPlaybackState
+import com.cruxcoach.android.data.SessionVisibility
 import com.cruxcoach.android.ui.board.KilterBoardVisualization
 import com.cruxcoach.android.ui.board.MoonBoardVisualization
 import com.cruxcoach.android.ui.board.SessionQueueSheet
@@ -311,6 +312,35 @@ fun PlaylistPlayerScreen(
                             .fillMaxWidth()
                             .height(3.dp),
                     )
+                }
+                if (playback.isHost) {
+                    val isJoinable = playback.visibility == SessionVisibility.JOINABLE
+                    Surface(
+                        color = if (isJoinable) {
+                            OrangeAccent.copy(alpha = 0.12f)
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            stringResource(
+                                if (isJoinable) {
+                                    R.string.ble_session_visibility_status_joinable
+                                } else {
+                                    R.string.ble_session_visibility_status_local
+                                },
+                            ),
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (isJoinable) {
+                                OrangeAccent
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                        )
+                    }
                 }
             }
         },

@@ -98,6 +98,7 @@ data class NearbySessionEntry(
 /** State of the user's own session (host or participant). */
 data class OwnSessionState(
     val isHost: Boolean,
+    val visibility: SessionVisibility,
     val participantCount: Int,
     val queue: List<QueueItem>,
     val currentIndex: Int,

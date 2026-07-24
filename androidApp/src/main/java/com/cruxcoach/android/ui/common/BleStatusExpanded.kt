@@ -23,6 +23,7 @@ import com.cruxcoach.android.data.NearbySessionEntry
 import com.cruxcoach.android.data.OnBoardClimbEntry
 import com.cruxcoach.android.data.OnBoardSource
 import com.cruxcoach.android.data.OwnSessionState
+import com.cruxcoach.android.data.SessionVisibility
 import com.cruxcoach.android.ui.theme.OrangeAccent
 
 @Composable
@@ -46,12 +47,26 @@ internal fun BleStatusExpanded(
         shape = RoundedCornerShape(14.dp)
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
+            val isLocalSession = state.ownSession?.let { session ->
+                session.isHost && session.visibility == SessionVisibility.LOCAL_ONLY
+            } == true
             // Header
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.CellTower, null, tint = OrangeAccent, modifier = Modifier.size(20.dp))
+                Icon(
+                    if (isLocalSession) Icons.AutoMirrored.Filled.QueueMusic else Icons.Default.CellTower,
+                    null,
+                    tint = OrangeAccent,
+                    modifier = Modifier.size(20.dp),
+                )
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    stringResource(R.string.ble_sharing_title),
+                    stringResource(
+                        if (isLocalSession) {
+                            R.string.ble_session_visibility_local
+                        } else {
+                            R.string.ble_sharing_title
+                        },
+                    ),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = OrangeAccent,

@@ -98,6 +98,22 @@ class SessionQueueManagerTest {
         assertFalse(state.isActive)
     }
 
+    @Test
+    fun `visibility is per session and resets when the queue ends`() {
+        queueManager.startQueue("Local host")
+        assertEquals(SessionVisibility.LOCAL_ONLY, queueManager.state.value.visibility)
+
+        queueManager.endQueue()
+        queueManager.startQueue("Published host", SessionVisibility.JOINABLE)
+        assertEquals(SessionVisibility.JOINABLE, queueManager.state.value.visibility)
+
+        queueManager.endQueue()
+        assertEquals(SessionVisibility.LOCAL_ONLY, queueManager.state.value.visibility)
+
+        queueManager.setParticipantRole(0, "Remote host")
+        assertEquals(SessionVisibility.JOINABLE, queueManager.state.value.visibility)
+    }
+
     // ===== Participant count consistency =====
 
     @Test

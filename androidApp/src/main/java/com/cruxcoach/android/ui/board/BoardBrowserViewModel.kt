@@ -19,6 +19,8 @@ import com.cruxcoach.android.data.BoardSyncManager
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.SessionGattBridge
 import com.cruxcoach.android.data.SessionQueueManager
+import com.cruxcoach.android.data.SessionRole
+import com.cruxcoach.android.data.SessionVisibility
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.IntensityZone
@@ -1759,17 +1761,17 @@ class BoardBrowserViewModel @Inject constructor(
 
     // --- Queue sharing ---
 
-    /** Start BLE sharing for the current queue (only if climb sharing is enabled). */
-    fun startQueueSharing() {
-        if (bleShareManager.uiState.value.sharingEnabled) {
-            gattBridge.startSharing()
-        }
-    }
-
-    /** End the host queue. Relay, when enabled, remains independent. */
+    /** End or leave the queue. Relay, when enabled, remains independent. */
     fun endSharedSession(): com.cruxcoach.data.repository.Board_sessions? {
-        gattBridge.stopSharing()
-        sessionQueueManager.endQueue()
+        val queueState = sessionQueueManager.state.value
+        if (queueState.role == SessionRole.HOST) {
+            if (queueState.visibility == SessionVisibility.JOINABLE) {
+                gattBridge.stopSharing()
+            }
+            sessionQueueManager.endQueue()
+        } else if (queueState.role == SessionRole.PARTICIPANT) {
+            gattBridge.leaveSession()
+        }
         return endSession()
     }
 

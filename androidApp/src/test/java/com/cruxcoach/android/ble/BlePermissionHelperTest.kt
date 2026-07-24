@@ -74,6 +74,21 @@ class BlePermissionHelperTest {
     }
 
     @Test
+    fun session_hosting_requests_advertise_and_connect_but_never_scan_or_location() {
+        assertContentEquals(
+            emptyArray<String>(),
+            BlePermissionHelper.getSessionHostingPermissions(Build.VERSION_CODES.R),
+        )
+        assertContentEquals(
+            arrayOf(
+                Manifest.permission.BLUETOOTH_ADVERTISE,
+                Manifest.permission.BLUETOOTH_CONNECT,
+            ),
+            BlePermissionHelper.getSessionHostingPermissions(Build.VERSION_CODES.S),
+        )
+    }
+
+    @Test
     fun api31_plus_never_requires_location_even_for_a_scan_with_location_off() {
         for (api in apisFromS) {
             assertFalse(

@@ -24,6 +24,9 @@ import kotlinx.coroutines.withContext
 
 enum class SessionRole { NONE, HOST, PARTICIPANT }
 
+/** Whether the host publishes the current queue for nearby users. */
+enum class SessionVisibility { LOCAL_ONLY, JOINABLE }
+
 data class SessionParticipant(val deviceAddress: String, val displayName: String)
 
 data class SessionQueueState(
@@ -36,6 +39,7 @@ data class SessionQueueState(
     val currentIndex: Int = -1,
     val isConnecting: Boolean = false,
     val error: String? = null,
+    val visibility: SessionVisibility = SessionVisibility.LOCAL_ONLY,
     /** This participant's position in the join order (0-based). Used for host election. */
     val participantIndex: Int = -1,
     /** A compatible external board app last wrote the physical board through CruxRelay. */
@@ -148,14 +152,18 @@ class SessionQueueManager(
 
     // ===== Queue operations (work in all modes) =====
 
-    fun startQueue(hostName: String = "") {
+    fun startQueue(
+        hostName: String = "",
+        visibility: SessionVisibility = SessionVisibility.LOCAL_ONLY,
+    ) {
         if (_state.value.isActive) return
         val sessionId = (System.currentTimeMillis() % Int.MAX_VALUE).toInt()
         _state.update { SessionQueueState(
             role = SessionRole.HOST,
             sessionId = sessionId,
             hostName = hostName,
-            participantCount = 1  // host counts as 1
+            participantCount = 1,  // host counts as 1
+            visibility = visibility,
         ) }
         bleConnection.acquireKeepAlive(BoardConnectionOwner.SESSION)
         Log.d(TAG, "Queue started (sessionId=$sessionId, hostName=$hostName)")
@@ -187,10 +195,14 @@ class SessionQueueManager(
      * session-start nearby-climb auto-import — foreign climbs must not be
      * injected into a planned training session.
      */
-    fun loadPlaylist(hostName: String, items: List<QueueItem>) {
+    fun loadPlaylist(
+        hostName: String,
+        items: List<QueueItem>,
+        visibility: SessionVisibility = SessionVisibility.LOCAL_ONLY,
+    ) {
         if (items.isEmpty()) return
         if (!_state.value.isActive) {
-            startQueue(hostName)
+            startQueue(hostName, visibility)
         }
         isPlaylistQueue = true
         lastSentClimbKey = null
@@ -391,8 +403,15 @@ class SessionQueueManager(
             role = SessionRole.PARTICIPANT,
             sessionId = sessionId,
             hostName = hostName,
-            isConnecting = false
+            isConnecting = false,
+            visibility = SessionVisibility.JOINABLE,
         ) }
+    }
+
+    fun setVisibility(visibility: SessionVisibility) {
+        _state.update { state ->
+            if (state.role == SessionRole.HOST) state.copy(visibility = visibility) else state
+        }
     }
 
     /** Promote this participant to host, keeping all queue data intact. */

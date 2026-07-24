@@ -142,8 +142,12 @@ class PlaylistPlaybackCoordinatorTest {
     }
 
     @Test
-    fun `stop as host ends sharing and queue, stop as participant leaves`() {
-        queueManager.loadPlaylist("Playlist", listOf(QueueItem("a", 40)))
+    fun `stop as joinable host ends sharing and queue, stop as participant leaves`() {
+        queueManager.loadPlaylist(
+            "Playlist",
+            listOf(QueueItem("a", 40)),
+            SessionVisibility.JOINABLE,
+        )
         coordinator.stop()
         verify(exactly = 1) { gattBridge.stopSharing() }
         assertFalse(queueManager.state.value.isActive)
@@ -154,19 +158,43 @@ class PlaylistPlaybackCoordinatorTest {
     }
 
     @Test
-    fun `play wires the rest hook and starts the session`() {
-        every { bleShareManager.uiState } returns MutableStateFlow(
-            mockk(relaxed = true) { every { sharingEnabled } returns false }
-        )
+    fun `local-only play wires the rest hook without publishing`() {
         coordinator.play("Playlist", listOf(QueueItem("a", 40)))
 
         verify(exactly = 1) { boardSessionManager.startSession() }
         assertTrue(queueManager.isPlaylistQueue)
+        assertEquals(SessionVisibility.LOCAL_ONLY, queueManager.state.value.visibility)
         // Rest hook is wired to the session manager's rest timer.
         queueManager.onRestRequested?.invoke(45)
         verify(exactly = 1) { boardSessionManager.startRestTimer(45) }
-        // Sharing disabled → no advertising.
+        // This run is local-only, independent of the global climb-sharing setting.
         verify(exactly = 0) { gattBridge.startSharing() }
+    }
+
+    @Test
+    fun `joinable play publishes even when global climb sharing is disabled`() {
+        every { bleShareManager.uiState } returns MutableStateFlow(
+            mockk(relaxed = true) { every { sharingEnabled } returns false }
+        )
+
+        coordinator.play(
+            "Playlist",
+            listOf(QueueItem("a", 40)),
+            visibility = SessionVisibility.JOINABLE,
+        )
+
+        assertEquals(SessionVisibility.JOINABLE, queueManager.state.value.visibility)
+        verify(exactly = 1) { gattBridge.startSharing() }
+    }
+
+    @Test
+    fun `stopping a local-only host does not touch GATT sharing`() {
+        queueManager.loadPlaylist("Playlist", listOf(QueueItem("a", 40)))
+
+        coordinator.stop()
+
+        verify(exactly = 0) { gattBridge.stopSharing() }
+        assertFalse(queueManager.state.value.isActive)
     }
 
     @Test

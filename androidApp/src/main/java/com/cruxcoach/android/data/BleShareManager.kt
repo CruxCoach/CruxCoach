@@ -166,6 +166,7 @@ class BleShareManager @Inject constructor(
                 buildOwnSessionState(queueState, climbInfo, sessionState, gradeScale)
             }.distinctUntilChanged { old, new ->
                 old?.isHost == new?.isHost &&
+                old?.visibility == new?.visibility &&
                 old?.participantCount == new?.participantCount &&
                 old?.queue == new?.queue &&
                 old?.currentIndex == new?.currentIndex &&
@@ -225,6 +226,7 @@ class BleShareManager @Inject constructor(
         if (queueState.role == SessionRole.NONE && !queueState.isConnecting) return null
         return OwnSessionState(
             isHost = queueState.role == SessionRole.HOST,
+            visibility = queueState.visibility,
             participantCount = queueState.participantCount,
             queue = queueState.queue,
             currentIndex = queueState.currentIndex,

@@ -489,10 +489,22 @@ object AppModule {
         nearbyScanner: NearbyClimbScanner,
         bleConnection: BoardBleConnection,
         boardStateManager: BoardStateManager,
-        boardSessionManager: BoardSessionManager
+        boardSessionManager: BoardSessionManager,
+        sharingConfig: SharingConfig,
     ): SessionGattBridge {
         return PerfLogger.trace("DI: SessionGattBridge") {
-            SessionGattBridge(context, queueManager, gattServer, gattClient, advertiser, nearbyScanner, bleConnection, boardStateManager, boardSessionManager)
+            SessionGattBridge(
+                context,
+                queueManager,
+                gattServer,
+                gattClient,
+                advertiser,
+                nearbyScanner,
+                bleConnection,
+                boardStateManager,
+                boardSessionManager,
+                shouldAdvertiseIndividualClimbs = { sharingConfig.sharingEnabled.value },
+            )
         }
     }
 

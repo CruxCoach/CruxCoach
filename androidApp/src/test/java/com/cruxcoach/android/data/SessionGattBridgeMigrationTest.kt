@@ -44,6 +44,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -134,6 +135,9 @@ class SessionGattBridgeMigrationTest {
         every { mockGattServer.connectionEvents } returns serverConnectionEventsFlow
         every { mockGattServer.start() } returns true
         every { mockGattServer.getConnectedCount() } returns 0
+        every {
+            mockAdvertiser.advertiseSession(any(), any(), any(), any(), any())
+        } returns "started"
 
         every { mockNearbyScanner.nearbyClimbs } returns nearbyClimbsFlow
         every { mockNearbyScanner.nearbySessions } returns nearbySessionsFlow
@@ -519,5 +523,69 @@ class SessionGattBridgeMigrationTest {
             SessionRole.HOST,
             queueManager.state.value.role
         )
+    }
+
+    // ===== Session command authorization =====
+
+    @Test
+    fun `failed publication keeps the queue running but marks it local-only`() =
+        runTest(testDispatcher.scheduler) {
+            every {
+                mockAdvertiser.advertiseSession(any(), any(), any(), any(), any())
+            } returns "no permission"
+            queueManager.startQueue("Host", SessionVisibility.JOINABLE)
+
+            bridge.startSharing()
+
+            assertTrue(queueManager.state.value.isActive)
+            assertEquals(SessionVisibility.LOCAL_ONLY, queueManager.state.value.visibility)
+            assertEquals(
+                "Session konnte nicht veröffentlicht werden",
+                queueManager.state.value.error,
+            )
+            verify { mockGattServer.stop() }
+            verify { mockAdvertiser.suppressClimbAdvertising = false }
+        }
+
+    @Test
+    fun `host drops state-changing command before authorized join`() = runTest(testDispatcher.scheduler) {
+        queueManager.startQueue("Host")
+        bridge.startSharing()
+
+        serverCommandsFlow.emit(
+            GattCommand(
+                "AA:AA:AA:AA:AA:AA",
+                SessionQueueProtocol.encodeAdd("550e8400-e29b-41d4-a716-446655440000", 40),
+            ),
+        )
+
+        assertTrue(queueManager.state.value.queue.isEmpty())
+        verify { mockGattServer.cancelDevice("AA:AA:AA:AA:AA:AA") }
+    }
+
+    @Test
+    fun `open join admits subsequent queue command`() = runTest(testDispatcher.scheduler) {
+        queueManager.startQueue("Host")
+        bridge.startSharing()
+        val address = "CC:CC:CC:CC:CC:CC"
+
+        serverCommandsFlow.emit(
+            GattCommand(address, SessionQueueProtocol.encodeJoin("")),
+        )
+        // Retries are legal at the transport layer but must be idempotent in
+        // the host's participant state.
+        serverCommandsFlow.emit(
+            GattCommand(address, SessionQueueProtocol.encodeJoin("")),
+        )
+        serverCommandsFlow.emit(
+            GattCommand(
+                address,
+                SessionQueueProtocol.encodeAdd("550e8400-e29b-41d4-a716-446655440000", 40),
+            ),
+        )
+
+        assertEquals(1, queueManager.state.value.participants.size)
+        assertEquals("Teilnehmer 1", queueManager.state.value.participants.single().displayName)
+        assertEquals(1, queueManager.state.value.queue.size)
     }
 }

@@ -1255,6 +1255,15 @@
     <string name="ble_ready_to_resend">Zum erneuten Senden</string>
     <string name="ble_session_climb">Session-Climb</string>
     <string name="ble_session_label">SESSION</string>
+    <string name="ble_session_visibility_title">Session starten</string>
+    <string name="ble_session_visibility_message">Wähle die Sichtbarkeit für diese Session.</string>
+    <string name="ble_session_visibility_joinable">Joinbar</string>
+    <string name="ble_session_visibility_joinable_desc">CruxCoach-Nutzer in der Nähe sehen die Session und können ohne Code beitreten.</string>
+    <string name="ble_session_visibility_local">Nur lokal</string>
+    <string name="ble_session_visibility_local_desc">Session und Warteschlange bleiben auf diesem Gerät und werden nicht veröffentlicht.</string>
+    <string name="ble_session_visibility_permission_denied">Zum Veröffentlichen einer joinbaren Session ist die Bluetooth-Berechtigung erforderlich.</string>
+    <string name="ble_session_visibility_status_joinable">Joinbar · für Nutzer in der Nähe sichtbar</string>
+    <string name="ble_session_visibility_status_local">Nur lokal · Session wird nicht veröffentlicht</string>
     <string name="ble_sharing_title">BLE Sharing</string>
     <string name="ble_still_visible">Noch sichtbar</string>
     <string name="ble_unknown">Unbekannt</string>

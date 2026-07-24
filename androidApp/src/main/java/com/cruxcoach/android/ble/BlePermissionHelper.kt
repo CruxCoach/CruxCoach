@@ -46,13 +46,19 @@ object BlePermissionHelper {
         }
     }
 
-    fun getAdvertisingPermissions(): Array<String> {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+    fun getAdvertisingPermissions(apiLevel: Int = Build.VERSION.SDK_INT): Array<String> {
+        return if (apiLevel >= Build.VERSION_CODES.S) {
             arrayOf(Manifest.permission.BLUETOOTH_ADVERTISE)
         } else {
             emptyArray()
         }
     }
+
+    /** Minimum permissions for publishing a connectable GATT session.
+     * Hosting does not scan, so legacy location and BLUETOOTH_SCAN must not
+     * be requested here. */
+    fun getSessionHostingPermissions(apiLevel: Int = Build.VERSION.SDK_INT): Array<String> =
+        getAdvertisingPermissions(apiLevel) + getConnectionPermissions(apiLevel)
 
     fun hasAdvertisingPermission(context: Context): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {

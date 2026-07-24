@@ -20,6 +20,8 @@ import kotlinx.coroutines.launch
  *
  * - **Host mode**: Starts GATT server + session advertising, pushes delta events to clients.
  * - **Participant mode**: Connects GATT client, sends commands, applies incoming events.
+ * Published sessions are intentionally open to nearby compatible clients. A client must
+ * complete JOIN before queue commands are accepted, but JOIN is not authentication.
  *
  * Privacy: No personal data is transmitted. Participants are identified only by
  * auto-assigned labels ("Teilnehmer 1", "Teilnehmer 2"). Device addresses (randomized
@@ -36,6 +38,7 @@ class SessionGattBridge(
     private val bleConnection: BoardBleConnection,
     private val boardStateManager: BoardStateManager,
     private val boardSessionManager: BoardSessionManager,
+    private val shouldAdvertiseIndividualClimbs: () -> Boolean = { true },
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
 ) {
     companion object {
@@ -49,6 +52,7 @@ class SessionGattBridge(
     private var hostJob: Job? = null
     private var isSharing = false
     private var isRejoining = false
+    private val commandGate = SessionCommandGate()
     /** SessionId of the host we just left — used to ignore stale advertisements during migration. */
     private var lastHostSessionId: Int = 0
 
@@ -96,9 +100,13 @@ class SessionGattBridge(
             return
         }
 
+        queueManager.setVisibility(SessionVisibility.JOINABLE)
+        commandGate.clear()
+
         // Start GATT server
         if (!gattServer.start()) {
             Log.e(TAG, "startSharing(): GATT server failed to start")
+            queueManager.setVisibility(SessionVisibility.LOCAL_ONLY)
             queueManager.setError("GATT-Server konnte nicht gestartet werden")
             return
         }
@@ -184,6 +192,7 @@ class SessionGattBridge(
                         }
                         is GattConnectionEvent.Disconnected -> {
                             Log.d(TAG, "Client disconnected: ${event.deviceAddress}")
+                            commandGate.remove(event.deviceAddress)
                             queueManager.removeParticipant(event.deviceAddress)
                             // Restart advertising in case it stopped
                             if (isSharing) {
@@ -243,7 +252,24 @@ class SessionGattBridge(
         }
 
         // Start advertising session (replaces the DisconnectRequest advertising)
-        updateSessionAdvertising()
+        if (!updateSessionAdvertising()) {
+            Log.e(TAG, "Session publication failed; continuing as local-only")
+            hostJob?.cancel()
+            hostJob = null
+            gattServer.stop()
+            commandGate.clear()
+            queueManager.onQueueChanged = null
+            queueManager.onCurrentClimbChanged = null
+            queueManager.onParticipantsChanged = null
+            queueManager.onFirstQueueClimbSent = null
+            advertiser.stopSessionAdvertising()
+            advertiser.stopAdvertising()
+            advertiser.suppressClimbAdvertising = false
+            queueManager.setVisibility(SessionVisibility.LOCAL_ONLY)
+            queueManager.setError("Session konnte nicht veröffentlicht werden")
+            restartClimbAdvertisingIfConnected()
+            return
+        }
         isSharing = true
 
         // Stop the disconnect request after a brief pulse. The primary advertising set
@@ -264,6 +290,8 @@ class SessionGattBridge(
         Log.d(TAG, "stopSharing() called, isSharing=$isSharing, " +
             "connectedClients=${gattServer.getConnectedCount()}, " +
             "boardConnected=${bleConnection.connectionState.value}")
+        commandGate.clear()
+        queueManager.setVisibility(SessionVisibility.LOCAL_ONLY)
         // Capture last queue climb BEFORE endQueue() clears it (called by UI right after)
         val sessionState = queueManager.state.value
         val lastQueueClimb = sessionState.currentClimb
@@ -332,7 +360,9 @@ class SessionGattBridge(
             // LAST_CLIMB. A solo MoonBoard host stays physically connected,
             // so restore an active ClimbData advertisement instead of claiming
             // the sender has disconnected.
-            if (lastQueueClimb != null) {
+            if (!shouldAdvertiseIndividualClimbs()) {
+                advertiser.stopAdvertising()
+            } else if (lastQueueClimb != null) {
                 if (releaseBoard) {
                     boardStateManager.setLastClimb(
                         lastQueueClimb.climbUuid,
@@ -367,6 +397,10 @@ class SessionGattBridge(
     private fun recoverAfterBluetoothRestart() {
         val state = queueManager.state.value
         if (state.role != SessionRole.HOST) return
+        if (state.visibility != SessionVisibility.JOINABLE) {
+            Log.d(TAG, "BT recovered — local-only session stays unpublished")
+            return
+        }
 
         if (!isSharing) {
             // Session was started while BT was off — GATT server never initialized.
@@ -619,26 +653,41 @@ class SessionGattBridge(
     private fun handleClientCommand(deviceAddress: String, data: ByteArray) {
         val cmd = SessionQueueProtocol.decodeCommand(data)
         if (cmd == null) {
-            Log.w(TAG, "Failed to decode command from $deviceAddress (${data.size} bytes)")
+            Log.w(TAG, "Failed to decode session command (${data.size} bytes)")
+            if (!commandGate.hasJoined(deviceAddress)) rejectClient(deviceAddress)
             return
         }
-        Log.d(TAG, "Received command from $deviceAddress: $cmd")
+
+        if (cmd is SessionCommand.Join) {
+            if (commandGate.join(deviceAddress)) {
+                val count = queueManager.state.value.participants.size
+                val label = "Teilnehmer ${count + 1}"
+                Log.d(TAG, "Participant joined published session")
+                queueManager.addParticipant(deviceAddress, label)
+            } else {
+                Log.d(TAG, "Ignoring duplicate JOIN from current connection")
+            }
+            return
+        }
+
+        if (!commandGate.hasJoined(deviceAddress)) {
+            rejectClient(deviceAddress)
+            return
+        }
+
+        Log.d(TAG, "Received joined session command (${cmd.javaClass.simpleName})")
         when (cmd) {
             is SessionCommand.Add -> queueManager.addClimb(cmd.climbUuid, cmd.angle)
             is SessionCommand.Remove -> queueManager.removeClimb(cmd.index)
             is SessionCommand.SetCurrent -> queueManager.setCurrentClimb(cmd.index)
             is SessionCommand.Next -> queueManager.nextClimb()
             is SessionCommand.Prev -> queueManager.previousClimb()
-            is SessionCommand.Join -> {
-                val count = queueManager.state.value.participants.size
-                val label = "Teilnehmer ${count + 1}"
-                Log.d(TAG, "Participant joined: $label (device=$deviceAddress)")
-                queueManager.addParticipant(deviceAddress, label)
-            }
+            is SessionCommand.Join -> Unit // handled before authorization gate
             is SessionCommand.Leave -> {
                 Log.d(TAG, "Processing LEAVE from $deviceAddress, " +
                     "participants before: ${queueManager.state.value.participants.map { it.deviceAddress }}")
                 queueManager.removeParticipant(deviceAddress)
+                commandGate.remove(deviceAddress)
                 Log.d(TAG, "After removeParticipant: count=${queueManager.state.value.participantCount}, " +
                     "participants=${queueManager.state.value.participants.map { it.deviceAddress }}")
                 // Proactively disconnect from server side to ensure clean teardown
@@ -646,6 +695,11 @@ class SessionGattBridge(
             }
             is SessionCommand.Move -> queueManager.moveClimb(cmd.from, cmd.to)
         }
+    }
+
+    private fun rejectClient(deviceAddress: String) {
+        Log.w(TAG, "Rejected session command before JOIN")
+        gattServer.cancelDevice(deviceAddress)
     }
 
     // ===== Internal: Participant applies remote events =====
@@ -799,6 +853,11 @@ class SessionGattBridge(
             Log.d(TAG, "restartClimbAdvertising: skipped (migration in progress)")
             return
         }
+        if (!shouldAdvertiseIndividualClimbs()) {
+            Log.d(TAG, "restartClimbAdvertising: skipped (nearby climb sharing disabled)")
+            advertiser.stopAdvertising()
+            return
+        }
         if (!advertiser.isBoardConnected()) return
         val active = advertiser.getActiveClimb()
         if (active != null) {
@@ -814,7 +873,7 @@ class SessionGattBridge(
         }
     }
 
-    private fun updateSessionAdvertising() {
+    private fun updateSessionAdvertising(): Boolean {
         val s = queueManager.state.value
         val currentClimb = s.currentClimb?.takeUnless { s.externalBoardOverride }
         val result = advertiser.advertiseSession(
@@ -825,5 +884,6 @@ class SessionGattBridge(
         Log.d(TAG, "updateSessionAdvertising: sessionId=${s.sessionId}, " +
             "count=${s.participantCount}, hostName='${s.hostName}', " +
             "climb=${currentClimb?.climbUuid?.take(8)}, result=$result")
+        return result == "started" || result == "updated"
     }
 }

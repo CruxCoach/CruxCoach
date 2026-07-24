@@ -1208,6 +1208,15 @@
     <string name="ble_ready_to_resend">Ready to resend</string>
     <string name="ble_session_climb">Session climb</string>
     <string name="ble_session_label">SESSION</string>
+    <string name="ble_session_visibility_title">Start session</string>
+    <string name="ble_session_visibility_message">Choose the visibility for this session.</string>
+    <string name="ble_session_visibility_joinable">Joinable</string>
+    <string name="ble_session_visibility_joinable_desc">Nearby CruxCoach users can see the session and join without a code.</string>
+    <string name="ble_session_visibility_local">Local only</string>
+    <string name="ble_session_visibility_local_desc">The session and queue stay on this device and are not advertised.</string>
+    <string name="ble_session_visibility_permission_denied">Bluetooth permission is required to publish a joinable session.</string>
+    <string name="ble_session_visibility_status_joinable">Joinable · visible to nearby users</string>
+    <string name="ble_session_visibility_status_local">Local only · session is not published</string>
     <string name="ble_sharing_title">BLE Sharing</string>
     <string name="ble_still_visible">Still visible</string>
     <string name="ble_unknown">Unknown</string>

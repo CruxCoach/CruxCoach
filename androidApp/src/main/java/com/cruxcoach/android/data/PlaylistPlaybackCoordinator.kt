@@ -30,6 +30,7 @@ data class PlaylistPlaybackState(
     val hostName: String = "",
     val participantCount: Int = 0,
     val participants: List<SessionParticipant> = emptyList(),
+    val visibility: SessionVisibility = SessionVisibility.LOCAL_ONLY,
     val queue: List<QueueItem> = emptyList(),
     val currentIndex: Int = -1,
     val currentClimb: QueueItem? = null,
@@ -125,6 +126,7 @@ class PlaylistPlaybackCoordinator(
         hostName = queue.hostName,
         participantCount = queue.participantCount,
         participants = queue.participants,
+        visibility = queue.visibility,
         queue = queue.queue,
         currentIndex = queue.currentIndex,
         currentClimb = queue.currentClimb,
@@ -201,12 +203,13 @@ class PlaylistPlaybackCoordinator(
 
     /**
      * Start playing a playlist as HOST: session timer + queue bulk-load +
-     * rest hook + GATT advertising (behind the privacy toggle).
+     * rest hook + optional GATT publication chosen for this run.
      */
     fun play(
         hostName: String,
         items: List<QueueItem>,
         advance: ListPlaybackAdvance = ListPlaybackAdvance.MANUAL,
+        visibility: SessionVisibility = SessionVisibility.LOCAL_ONLY,
     ) {
         if (items.isEmpty()) return
         advanceMode = advance
@@ -214,8 +217,8 @@ class PlaylistPlaybackCoordinator(
         queueManager.onRestRequested = { seconds ->
             boardSessionManager.startRestTimer(seconds)
         }
-        queueManager.loadPlaylist(hostName, items)
-        if (bleShareManager.uiState.value.sharingEnabled) {
+        queueManager.loadPlaylist(hostName, items, visibility)
+        if (visibility == SessionVisibility.JOINABLE) {
             gattBridge.startSharing()
         }
     }
@@ -226,10 +229,13 @@ class PlaylistPlaybackCoordinator(
      * banner shows it, so an empty player with "unknown climb" right after
      * would contradict what the user just saw lit on the wall).
      */
-    fun startEmpty(hostName: String) {
+    fun startEmpty(
+        hostName: String,
+        visibility: SessionVisibility = SessionVisibility.LOCAL_ONLY,
+    ) {
         advanceMode = ListPlaybackAdvance.MANUAL
         boardSessionManager.startSession()
-        queueManager.startQueue(hostName)
+        queueManager.startQueue(hostName, visibility)
         queueManager.onRestRequested = { seconds ->
             boardSessionManager.startRestTimer(seconds)
         }
@@ -238,7 +244,7 @@ class PlaylistPlaybackCoordinator(
                 queueManager.addClimb(onBoard.climbUuid, onBoard.angle)
             }
         }
-        if (bleShareManager.uiState.value.sharingEnabled) {
+        if (visibility == SessionVisibility.JOINABLE) {
             gattBridge.startSharing()
         }
     }
@@ -259,9 +265,12 @@ class PlaylistPlaybackCoordinator(
      * session row (for the summary) or null when nothing was recorded.
      */
     fun stop(): com.cruxcoach.data.repository.Board_sessions? {
-        val lastClimb = queueManager.state.value.currentClimb
-        if (queueManager.state.value.role == SessionRole.HOST) {
-            gattBridge.stopSharing()
+        val queueState = queueManager.state.value
+        val lastClimb = queueState.currentClimb
+        if (queueState.role == SessionRole.HOST) {
+            if (queueState.visibility == SessionVisibility.JOINABLE) {
+                gattBridge.stopSharing()
+            }
             queueManager.endQueue()
         } else {
             gattBridge.leaveSession()

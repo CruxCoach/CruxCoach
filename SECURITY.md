@@ -66,7 +66,11 @@ The following are out of scope:
 ### Data in Transit
 - Nostr sync: NIP-17 encrypted direct messages
 - Board DB updates: content-addressed via SHA-256 (Blossom protocol)
-- BLE communication: unencrypted (inherent to the board hardware protocol)
+- Board-hardware BLE communication: unencrypted (inherent to the controller protocol)
+- Shared-session queue commands: unbonded BLE GATT. The host explicitly chooses
+  whether each session stays local or is published. Published sessions are open
+  to nearby compatible clients; `JOIN` establishes protocol state but is not
+  cryptographic authentication.
 
 ### Backup Exclusions
 - SQLCipher key material is excluded from Android cloud backup and device transfer
@@ -94,10 +98,11 @@ The following are out of scope:
   published, an event with that signature on a relay is permanent —
   relays do not delete on request.
 - **Ingest is verified.** Every incoming Kind-30078 community-climb event
-  is parsed via Quartz `Event.fromJson` (recomputes the canonical event
-  id) and rejected unless `verifySignature()` passes. Events whose d-tag
-  prefix or content `pubkey_prefix` field claims a different author than
-  the signed pubkey are dropped. A uuid already owned by author A
+  is parsed via Quartz `Event.fromJson` and rejected unless both
+  `verifySignature()` and `verifyId()` pass. The latter recomputes the
+  canonical event id and binds the signature to the event body. Events whose
+  d-tag prefix or content `pubkey_prefix` field claims a different author
+  than the signed pubkey are dropped. A uuid already owned by author A
   cannot be overwritten by an event from author B (first-author wins).
   Without these guards a relay (or MITM on a non-TLS connection) could
   spoof events under any pubkey or clobber legitimate climbs.
