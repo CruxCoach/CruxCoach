@@ -4,6 +4,8 @@ import android.util.Log
 import com.cruxcoach.android.nostr.model.DecryptedMessage
 import com.cruxcoach.android.nostr.model.MessageType
 import com.vitorpamplona.quartz.nip01Core.core.Event
+import com.vitorpamplona.quartz.nip01Core.crypto.verifyId
+import com.vitorpamplona.quartz.nip01Core.crypto.verifySignature
 import com.vitorpamplona.quartz.nip59Giftwrap.seals.SealedRumorEvent
 import com.vitorpamplona.quartz.nip59Giftwrap.wraps.GiftWrapEvent
 
@@ -36,16 +38,33 @@ class NostrEventDecryptor(
         // Seal. If we use seal.content as the message, we end up storing the
         // still-NIP-44-encrypted rumor JSON (starts with "Ag…" because NIP-44
         // v2 base64 payloads begin with version byte 0x02).
-        val seal = giftWrap.unwrapOrNull(nostrSigner.signer) ?: return null
-        val rumor = if (seal is SealedRumorEvent) {
-            seal.unsealOrNull(nostrSigner.signer) ?: run {
-                Log.w(TAG, "Failed to unseal rumor from seal ${seal.id}")
-                return null
-            }
-        } else {
-            // Some wraps (e.g. older formats) may already be rumors. Fall
-            // back to the unwrapped event so we don't regress those paths.
-            seal
+        val wrapSignatureValid = giftWrap.verifySignature()
+        val wrapIdValid = wrapSignatureValid && giftWrap.verifyId()
+        if (!NostrEventPolicy.hasValidBodyBinding(wrapSignatureValid, wrapIdValid)) {
+            Log.w(TAG, "Rejecting gift wrap with invalid signature/id")
+            return null
+        }
+        val unwrapped = giftWrap.unwrapOrNull(nostrSigner.signer) ?: return null
+        // NIP-17 always uses gift-wrap -> kind-13 seal -> unsigned rumor.
+        // A single-layer fallback would make the rumor's self-declared author
+        // forgeable and could let a remote sender impersonate the developer.
+        val seal = unwrapped as? SealedRumorEvent ?: run {
+            Log.w(TAG, "Rejecting NIP-17 gift wrap without a kind-13 seal")
+            return null
+        }
+        val sealSignatureValid = seal.verifySignature()
+        val sealIdValid = sealSignatureValid && seal.verifyId()
+        if (!NostrEventPolicy.hasValidBodyBinding(sealSignatureValid, sealIdValid)) {
+            Log.w(TAG, "Rejecting NIP-17 seal with invalid signature/id")
+            return null
+        }
+        val rumor = seal.unsealOrNull(nostrSigner.signer) ?: run {
+            Log.w(TAG, "Failed to unseal rumor from seal ${seal.id}")
+            return null
+        }
+        if (!NostrEventPolicy.hasBoundDmSender(seal.pubKey, rumor.pubKey)) {
+            Log.w(TAG, "Rejecting NIP-17 rumor whose author differs from the seal")
+            return null
         }
 
         val type = extractMessageType(rumor.tags)

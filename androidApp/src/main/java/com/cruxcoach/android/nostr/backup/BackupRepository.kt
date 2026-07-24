@@ -1,6 +1,7 @@
 package com.cruxcoach.android.nostr.backup
 
 import android.util.Log
+import com.cruxcoach.android.nostr.NostrEventPolicy
 import com.cruxcoach.android.nostr.NostrRelayPool
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.android.nostr.SignerMode
@@ -13,6 +14,7 @@ import com.cruxcoach.data.repository.PersonalBoardRepository
 import com.cruxcoach.data.repository.PlanRepository
 import com.cruxcoach.data.repository.UserRepository
 import com.cruxcoach.data.repository.WorkoutRepository
+import com.vitorpamplona.quartz.nip01Core.crypto.verifyId
 import com.vitorpamplona.quartz.nip01Core.crypto.verifySignature
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.filterNot
@@ -821,8 +823,12 @@ class BackupRepository @Inject constructor(
                     put("authors", buildJsonArray { add(JsonPrimitive(pubkey)) })
                     put("#d", buildJsonArray { add(JsonPrimitive(keyDTag)) })
                 }
-                queryAllValid(filter.toString(), timeoutMs)
-                    .firstOrNull { it.tagValue("d") == keyDTag }
+                BackupEventSelection.newestByDTag(
+                    events = queryAllValid(filter.toString(), timeoutMs),
+                    expectedPubkey = pubkey,
+                    expectedKind = KIND_REPLACEABLE_PARAMETERIZED,
+                    dTag = keyDTag,
+                )
             }
             SignerMode.AMBER -> {
                 // Same cached-#d narrowing as fetchByQueryAllAmber: the
@@ -839,7 +845,12 @@ class BackupRepository @Inject constructor(
                         put("#d", buildJsonArray { add(JsonPrimitive(cachedKeyDTag)) })
                     }
                 }
-                queryAllValid(filter.toString(), timeoutMs).firstOrNull { ev ->
+                BackupEventSelection.newestCandidates(
+                    events = queryAllValid(filter.toString(), timeoutMs),
+                    expectedPubkey = pubkey,
+                    expectedKind = KIND_REPLACEABLE_PARAMETERIZED,
+                    limit = MAX_AMBER_DECRYPT_ATTEMPTS,
+                ).firstOrNull { ev ->
                     val decrypted = runCatching { nip44DecryptToSelf(ev.content) }.getOrNull()
                     decrypted != null && decrypted.looksLikeHexBytes(expectedBytes = 32)
                 }
@@ -877,7 +888,12 @@ class BackupRepository @Inject constructor(
             put("authors", buildJsonArray { add(JsonPrimitive(pubkey)) })
             put("limit", JsonPrimitive(1))
         }
-        val event = queryFirstValid(filter.toString(), timeoutMs = 5_000L)
+        val event = queryFirstValid(
+            filter = filter.toString(),
+            timeoutMs = 5_000L,
+            expectedPubkey = pubkey,
+            expectedKind = KIND_BLOSSOM_SERVER_LIST,
+        )
         val userServers = event?.extractServerTags().orEmpty()
         // Additive union: user servers first (upload priority), then defaults not listed.
         val merged = LinkedHashSet<String>()
@@ -907,10 +923,12 @@ class BackupRepository @Inject constructor(
         // in a multi-relay pool) could otherwise force restore onto a
         // prior backup by serving an older-but-still-signed event
         // before the current one — a classic replaceable-event rollback.
-        val pointer = events.filter { it.tagValue("d") == backupDTag }
-            .maxByOrNull { it.createdAt } ?: return null
-        val keyEv = events.filter { it.tagValue("d") == keyDTag }
-            .maxByOrNull { it.createdAt } ?: return null
+        val pointer = BackupEventSelection.newestByDTag(
+            events, pubkey, KIND_REPLACEABLE_PARAMETERIZED, backupDTag,
+        ) ?: return null
+        val keyEv = BackupEventSelection.newestByDTag(
+            events, pubkey, KIND_REPLACEABLE_PARAMETERIZED, keyDTag,
+        ) ?: return null
         return pointer to keyEv
     }
 
@@ -978,7 +996,12 @@ class BackupRepository @Inject constructor(
         // the user reaches the real pointer/key. Eight attempts is
         // enough headroom for legitimate duplicates while refusing the
         // flood pattern.
-        val sorted = events.sortedByDescending { it.createdAt }.take(MAX_AMBER_DECRYPT_ATTEMPTS)
+        val sorted = BackupEventSelection.newestCandidates(
+            events = events,
+            expectedPubkey = pubkey,
+            expectedKind = KIND_REPLACEABLE_PARAMETERIZED,
+            limit = MAX_AMBER_DECRYPT_ATTEMPTS,
+        )
         var pointer: MinimalEvent? = null
         var keyEv: MinimalEvent? = null
         for (ev in sorted) {
@@ -1007,9 +1030,19 @@ class BackupRepository @Inject constructor(
      * returns the one with the highest `created_at`. Returns null on
      * timeout / no result.
      */
-    private suspend fun queryFirstValid(filter: String, timeoutMs: Long): MinimalEvent? {
+    private suspend fun queryFirstValid(
+        filter: String,
+        timeoutMs: Long,
+        expectedPubkey: String,
+        expectedKind: Int,
+    ): MinimalEvent? {
         val all = queryAllValid(filter, timeoutMs)
-        return all.maxByOrNull { it.createdAt }
+        return BackupEventSelection.newestCandidates(
+            events = all,
+            expectedPubkey = expectedPubkey,
+            expectedKind = expectedKind,
+            limit = 1,
+        ).firstOrNull()
     }
 
     private suspend fun queryAllValid(filter: String, timeoutMs: Long): List<MinimalEvent> {
@@ -1268,7 +1301,9 @@ data class MinimalEvent(
          */
         fun fromJson(json: String): MinimalEvent? = try {
             val event = com.vitorpamplona.quartz.nip01Core.core.Event.fromJson(json)
-            if (!event.verifySignature()) {
+            val signatureValid = event.verifySignature()
+            val idValid = signatureValid && event.verifyId()
+            if (!NostrEventPolicy.hasValidBodyBinding(signatureValid, idValid)) {
                 null
             } else {
                 MinimalEvent(
@@ -1284,5 +1319,38 @@ data class MinimalEvent(
         } catch (_: Exception) {
             null
         }
+    }
+}
+
+/**
+ * Fail-closed selection for events returned by untrusted relays. Relay filters
+ * are only a bandwidth hint; author and kind are checked again before an event
+ * can win a newest-event race or consume Amber's bounded decrypt budget.
+ */
+internal object BackupEventSelection {
+    fun newestByDTag(
+        events: List<MinimalEvent>,
+        expectedPubkey: String,
+        expectedKind: Int,
+        dTag: String,
+    ): MinimalEvent? = newestCandidates(
+        events = events,
+        expectedPubkey = expectedPubkey,
+        expectedKind = expectedKind,
+        limit = Int.MAX_VALUE,
+    ).firstOrNull { it.tagValue("d") == dTag }
+
+    fun newestCandidates(
+        events: List<MinimalEvent>,
+        expectedPubkey: String,
+        expectedKind: Int,
+        limit: Int,
+    ): List<MinimalEvent> {
+        if (limit <= 0) return emptyList()
+        return events.asSequence()
+            .filter { it.pubkey == expectedPubkey && it.kind == expectedKind }
+            .sortedByDescending { it.createdAt }
+            .take(limit)
+            .toList()
     }
 }
