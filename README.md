@@ -18,13 +18,19 @@ Browse climbs, control your Kilter Board or MoonBoard via Bluetooth, log ascents
   <a href="#building-from-source">
     <img src="https://img.shields.io/badge/Source-build_yourself-374151?style=for-the-badge&logo=gnu&logoColor=white" alt="Build from source">
   </a>
+  &nbsp;
+  <a href="https://cruxcoach.org/">
+    <img src="https://img.shields.io/badge/Website-cruxcoach.org-e07a4f?style=for-the-badge&logo=firefoxbrowser&logoColor=white" alt="cruxcoach.org">
+  </a>
 </p>
 
 <p align="center">
   <em>
     <a href="https://zapstore.dev/apps/com.cruxcoach.android">Zapstore</a> auto-updates, Nostr-native, verifiable builds &middot;
     <a href="https://codeberg.org/CruxCoach/CruxCoach/releases/latest">APK release</a> ships with a <code>.apk.sha256</code> sidecar &middot;
-    <a href="#building-from-source">Source build</a> reproducible from <code>main</code>
+    <a href="#building-from-source">Source build</a> reproducible from <code>main</code><br>
+    Project site: <a href="https://cruxcoach.org/">cruxcoach.org</a> &middot;
+    <a href="https://cruxcoach.org/boards/">board locations map</a>
   </em>
 </p>
 
@@ -189,6 +195,23 @@ CruxCoach is not affiliated with Kilter, LLC or Aurora Climbing. See [LEGAL.md](
   > Forks: this address routes to the upstream maintainer. Replace it via
   > `local.properties` before publishing your build — see
   > [CONTRIBUTING.md → Customizing for forks](CONTRIBUTING.md#customizing-for-forks).
+
+---
+
+## Project site
+
+[**cruxcoach.org**](https://cruxcoach.org/) — screenshots, the privacy architecture in
+full, and the FAQ people actually ask before installing.
+
+- [Board locations map](https://cruxcoach.org/boards/) — 2,800+ Kilter, MoonBoard,
+  Tension and other venues worldwide, searchable by gym, city or country
+  ([plain text directory](https://cruxcoach.org/boards/list.html) for non-JS clients)
+- [Coming from the Kilter app?](https://cruxcoach.org/kilter-board-app-alternative.html) —
+  migration and alternative guide
+- [MoonBoard app](https://cruxcoach.org/moonboard-app.html) ·
+  [Tension Board app](https://cruxcoach.org/tension-board-app.html)
+- [Privacy notice](https://cruxcoach.org/privacy.html) — what the site and the app do
+  and do not send
 
 ---
 
