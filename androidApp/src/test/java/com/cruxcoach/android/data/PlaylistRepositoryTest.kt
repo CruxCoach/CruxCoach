@@ -99,6 +99,23 @@ class PlaylistRepositoryTest {
     }
 
     @Test
+    fun `exact reorder retains row ids and rejects stale snapshots`() {
+        val id = repo.createClimbList("p")
+        val a = repo.addPlaybackClimb(id, "a", 40L)
+        val rest = repo.addPlaybackRest(id, 60L)
+        val b = repo.addPlaybackClimb(id, "b", 40L)
+
+        assertTrue(repo.reorderPlaybackSteps(id, listOf(b, a, rest)))
+        assertEquals(listOf(b, a, rest), repo.getPlaybackSteps(id).map { it.id })
+        assertEquals(listOf(0L, 1L, 2L), repo.getPlaybackSteps(id).map { it.position })
+
+        val appended = repo.addPlaybackClimb(id, "c", 40L)
+        assertEquals(false, repo.reorderPlaybackSteps(id, listOf(a, rest, b)))
+        assertEquals(listOf(b, a, rest, appended), repo.getPlaybackSteps(id).map { it.id })
+        assertEquals(false, repo.reorderPlaybackSteps(id, listOf(b, b, rest, appended)))
+    }
+
+    @Test
     fun `replacePlaybackSteps swaps only the plan and preserves membership`() {
         val id = repo.createClimbList("gen")
         repo.addClimbToList(id, "saved-only")
@@ -138,6 +155,22 @@ class PlaylistRepositoryTest {
     }
 
     @Test
+    fun `bulk rest edits and removals affect all selected rows`() {
+        val id = repo.createClimbList("p")
+        repo.addPlaybackClimb(id, "a", 40L)
+        val firstRest = repo.addPlaybackRest(id, 30L)
+        repo.addPlaybackClimb(id, "a", 40L)
+        val secondRest = repo.addPlaybackRest(id, 60L)
+        repo.addPlaybackClimb(id, "a", 40L)
+
+        repo.updatePlaybackRestSeconds(listOf(firstRest, secondRest), 90L)
+        assertEquals(listOf(90L, 90L), repo.getPlaybackSteps(id).mapNotNull { it.restSeconds })
+
+        repo.removePlaybackSteps(listOf(firstRest, secondRest))
+        assertEquals(listOf("a", "a", "a"), repo.getPlaybackSteps(id).map { it.climbUuid })
+    }
+
+    @Test
     fun `rest entries do not count into climb_count or plain uuid queries`() {
         val id = repo.createClimbList("p")
         repo.addPlaybackClimb(id, "a", 40L)
@@ -153,6 +186,83 @@ class PlaylistRepositoryTest {
         repo.addClimbToList(listId, "climb-x")
         repo.addClimbToList(listId, "climb-x")
         assertEquals(1L, repo.countClimbListEntries(listId), "double add must stay deduped")
+    }
+
+    @Test
+    fun `adding a member does not create a plan for an ordinary list`() {
+        val listId = repo.createClimbList("Merkliste")
+
+        repo.addClimbToListAndExtendPlayback(listId, "climb-x", angle = 40L)
+
+        assertEquals(1L, repo.countClimbListEntries(listId))
+        assertEquals(emptyList(), repo.getPlaybackSteps(listId))
+        assertEquals(false, repo.getClimbListById(listId)?.hasPlaybackPlan)
+    }
+
+    @Test
+    fun `new list member extends an existing plan with average recent rest`() {
+        val listId = repo.createClimbList("Training")
+        repo.addPlaybackClimb(listId, "a", 40L)
+        repo.addPlaybackRest(listId, 60L)
+        repo.addPlaybackClimb(listId, "b", 40L)
+        repo.addPlaybackRest(listId, 120L)
+        repo.addPlaybackClimb(listId, "c", 40L)
+        repo.addPlaybackRest(listId, 180L)
+        repo.addPlaybackClimb(listId, "d", 40L)
+
+        repo.addClimbToListAndExtendPlayback(listId, "new", angle = 25L)
+
+        val steps = repo.getPlaybackSteps(listId)
+        assertEquals(listOf("a", null, "b", null, "c", null, "d", null, "new"), steps.map { it.climbUuid })
+        assertEquals(120L, steps[steps.lastIndex - 1].restSeconds)
+        assertEquals(25L, steps.last().angle)
+    }
+
+    @Test
+    fun `automatic append uses configured rest then three minute fallback`() {
+        val configuredList = repo.createClimbList("Configured")
+        repo.updatePlaybackSettings(
+            configuredList,
+            ListPlaybackOrder.LIST,
+            ListPlaybackAdvance.MANUAL,
+            90L,
+        )
+        repo.addPlaybackClimb(configuredList, "a", 35L)
+
+        repo.addClimbToListAndExtendPlayback(configuredList, "b", angle = null)
+
+        val configuredSteps = repo.getPlaybackSteps(configuredList)
+        assertEquals(90L, configuredSteps[1].restSeconds)
+        assertEquals(35L, configuredSteps[2].angle, "missing angle should inherit the plan's latest angle")
+
+        val defaultList = repo.createClimbList("Default")
+        repo.addPlaybackClimb(defaultList, "a", 40L)
+        repo.addClimbToListAndExtendPlayback(defaultList, "b", angle = 40L)
+        assertEquals(180L, repo.getPlaybackSteps(defaultList)[1].restSeconds)
+    }
+
+    @Test
+    fun `existing list member intentionally absent from plan is not restored`() {
+        val listId = repo.createClimbList("Selective")
+        repo.addClimbToList(listId, "excluded")
+        repo.addPlaybackClimb(listId, "kept", 40L)
+
+        repo.addClimbToListAndExtendPlayback(listId, "excluded", angle = 40L)
+
+        assertEquals(listOf("kept"), repo.getPlaybackSteps(listId).map { it.climbUuid })
+    }
+
+    @Test
+    fun `automatic append reuses an existing trailing rest`() {
+        val listId = repo.createClimbList("Trailing rest")
+        repo.addPlaybackClimb(listId, "a", 40L)
+        repo.addPlaybackRest(listId, 75L)
+
+        repo.addClimbToListAndExtendPlayback(listId, "b", angle = 40L)
+
+        val steps = repo.getPlaybackSteps(listId)
+        assertEquals(listOf("a", null, "b"), steps.map { it.climbUuid })
+        assertEquals(75L, steps[1].restSeconds)
     }
 
     @Test
@@ -211,6 +321,24 @@ class PlaylistRepositoryTest {
         assertTrue(repo.isClimbFavorited("climb-f"))
         assertEquals(false, repo.toggleFavorite("climb-f"))
         assertEquals(false, repo.isClimbFavorited("climb-f"))
+    }
+
+    @Test
+    fun `favorites plan follows genuinely new favorite membership`() {
+        val favoritesId = repo.ensureFavoritesListExists()
+        repo.addPlaybackClimb(favoritesId, "seed", 40L)
+
+        assertTrue(repo.toggleFavorite("new-favorite"))
+        assertEquals(
+            listOf("seed", "new-favorite"),
+            repo.getPlaybackSteps(favoritesId).mapNotNull { it.climbUuid },
+        )
+
+        assertEquals(false, repo.toggleFavorite("new-favorite"))
+        assertEquals(
+            listOf("seed"),
+            repo.getPlaybackSteps(favoritesId).mapNotNull { it.climbUuid },
+        )
     }
 
     // ── 10.sqm migration walk ───────────────────────────────────

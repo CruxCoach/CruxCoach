@@ -71,7 +71,11 @@ class AddToListViewModel @Inject constructor(
                 if (currentlyIn) {
                     personalBoardRepo.removeClimbFromList(listId, climbUuid)
                 } else {
-                    personalBoardRepo.addClimbToList(listId, climbUuid)
+                    personalBoardRepo.addClimbToListAndExtendPlayback(
+                        listId = listId,
+                        climbUuid = climbUuid,
+                        angle = angle.toLong(),
+                    )
                 }
             }
             _state.update {
@@ -96,7 +100,11 @@ class AddToListViewModel @Inject constructor(
         viewModelScope.safeLaunch(TAG) {
             val newId = withContext(Dispatchers.IO) {
                 val id = personalBoardRepo.createClimbList(name)
-                personalBoardRepo.addClimbToList(id, climbUuid)
+                personalBoardRepo.addClimbToListAndExtendPlayback(
+                    listId = id,
+                    climbUuid = climbUuid,
+                    angle = angle.toLong(),
+                )
                 id
             }
             val lists = withContext(Dispatchers.IO) {

@@ -16,9 +16,11 @@ class GroupAttemptsTest {
     @Test
     fun `collapses attempt runs and keeps between-problem rests`() {
         // Limit structure: A r180 A r180 A | r300 | B r180 B
+        val firstAttemptRest = rest(180)
+        val secondAttemptRest = rest(180)
         val rows = groupAttempts(
             listOf(
-                climb("a"), rest(180), climb("a"), rest(180), climb("a"),
+                climb("a"), firstAttemptRest, climb("a"), secondAttemptRest, climb("a"),
                 rest(300),
                 climb("b"), rest(180), climb("b"),
             )
@@ -27,6 +29,10 @@ class GroupAttemptsTest {
         val first = rows[0] as PlaylistRow.Climb
         assertEquals(3, first.attemptCount)
         assertEquals(180L, first.attemptRestSeconds)
+        assertEquals(
+            listOf(firstAttemptRest.entryId, secondAttemptRest.entryId),
+            first.attemptRestEntryIds,
+        )
         assertEquals(300L, (rows[1] as PlaylistRow.Rest).entry.restSeconds)
         assertEquals(2, (rows[2] as PlaylistRow.Climb).attemptCount)
     }
@@ -62,6 +68,44 @@ class GroupAttemptsTest {
         assertEquals(3, rows.size)
         assertEquals(2, (rows[0] as PlaylistRow.Climb).attemptCount)
         assertEquals(30L, (rows[0] as PlaylistRow.Climb).attemptRestSeconds)
+        assertEquals(60L, (rows[1] as PlaylistRow.Rest).entry.restSeconds)
+        assertEquals(1, (rows[2] as PlaylistRow.Climb).attemptCount)
+    }
+
+    @Test
+    fun `timed and immediate attempts do not collapse into one misleading rest group`() {
+        val timedAfterImmediate = groupAttempts(
+            listOf(climb("a"), climb("a"), rest(60), climb("a"))
+        )
+
+        assertEquals(3, timedAfterImmediate.size)
+        assertEquals(2, (timedAfterImmediate[0] as PlaylistRow.Climb).attemptCount)
+        assertEquals(null, (timedAfterImmediate[0] as PlaylistRow.Climb).attemptRestSeconds)
+        assertEquals(60L, (timedAfterImmediate[1] as PlaylistRow.Rest).entry.restSeconds)
+        assertEquals(1, (timedAfterImmediate[2] as PlaylistRow.Climb).attemptCount)
+
+        val immediateAfterTimed = groupAttempts(
+            listOf(climb("b"), rest(90), climb("b"), climb("b"))
+        )
+
+        assertEquals(2, immediateAfterTimed.size)
+        assertEquals(2, (immediateAfterTimed[0] as PlaylistRow.Climb).attemptCount)
+        assertEquals(90L, (immediateAfterTimed[0] as PlaylistRow.Climb).attemptRestSeconds)
+        assertEquals(1, (immediateAfterTimed[1] as PlaylistRow.Climb).attemptCount)
+    }
+
+    @Test
+    fun `same climb at different angles remains separate`() {
+        val rows = groupAttempts(
+            listOf(
+                climb("a").copy(angle = 20L),
+                rest(60),
+                climb("a").copy(angle = 40L),
+            )
+        )
+
+        assertEquals(3, rows.size)
+        assertEquals(1, (rows[0] as PlaylistRow.Climb).attemptCount)
         assertEquals(60L, (rows[1] as PlaylistRow.Rest).entry.restSeconds)
         assertEquals(1, (rows[2] as PlaylistRow.Climb).attemptCount)
     }

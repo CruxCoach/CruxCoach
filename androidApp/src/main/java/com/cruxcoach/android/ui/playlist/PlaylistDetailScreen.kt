@@ -1,6 +1,9 @@
 package com.cruxcoach.android.ui.playlist
 
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -12,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -20,10 +24,9 @@ import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.HourglassBottom
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Reorder
@@ -50,14 +53,22 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -65,6 +76,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.common.BleStatusArea
 import com.cruxcoach.android.ui.common.RestTimerBannerSlot
+import com.cruxcoach.android.ui.common.SessionVisibilityDialog
 import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
 import com.cruxcoach.android.ui.navigation.ClimbNavigationSource
 import com.cruxcoach.android.ui.theme.DarkBackground
@@ -89,12 +101,37 @@ fun PlaylistDetailScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     var menuExpanded by remember { mutableStateOf(false) }
     var showAddRestDialog by rememberSaveable { mutableStateOf(false) }
+    var addRestAfterEntryId by rememberSaveable { mutableStateOf<Long?>(null) }
     var showResetConfirm by rememberSaveable { mutableStateOf(false) }
     var showClearConfirm by rememberSaveable { mutableStateOf(false) }
+    var showSessionVisibilityDialog by rememberSaveable { mutableStateOf(false) }
+    var draggedEntryId by remember { mutableStateOf<Long?>(null) }
+    var dragStartIndex by remember { mutableIntStateOf(-1) }
+    var dragCurrentIndex by remember { mutableIntStateOf(-1) }
+    var dragAccumulator by remember { mutableFloatStateOf(0f) }
+    var dragScrollJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    val playlistListState = rememberLazyListState()
+    val latestEntries by rememberUpdatedState(state.entries)
+    val dragStepPx = with(LocalDensity.current) { 64.dp.toPx() }
     val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
     val snackbarHostState = remember { androidx.compose.material3.SnackbarHostState() }
-    val shareScope = androidx.compose.runtime.rememberCoroutineScope()
+    val screenScope = androidx.compose.runtime.rememberCoroutineScope()
     val linkCopiedMessage = stringResource(R.string.board_detail_link_copied)
+    val queueTitle = stringResource(R.string.board_queue_title)
+
+    fun finishEntryDrag() {
+        val fromIndex = dragStartIndex
+        val toIndex = dragCurrentIndex
+        draggedEntryId = null
+        dragStartIndex = -1
+        dragCurrentIndex = -1
+        dragAccumulator = 0f
+        dragScrollJob?.cancel()
+        dragScrollJob = null
+        if (fromIndex >= 0 && toIndex >= 0 && fromIndex != toIndex) {
+            viewModel.commitPreviewedOrder()
+        }
+    }
 
     // Session + rest-timer notifications (Android 13+) — same fire-and-
     // forget pattern as the browser's session start.
@@ -113,6 +150,29 @@ fun PlaylistDetailScreen(
         }
     }
 
+    // The ViewModel survives navigation to a climb. Refresh on return so a
+    // newly added list member (and its automatically appended plan steps) is
+    // visible without reopening the playlist.
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) viewModel.refresh()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    if (showSessionVisibilityDialog) {
+        SessionVisibilityDialog(
+            onDismiss = { showSessionVisibilityDialog = false },
+            onSelect = { visibility ->
+                showSessionVisibilityDialog = false
+                requestNotificationPermissionIfNeeded()
+                viewModel.play(queueTitle, visibility, onPlayed)
+            },
+        )
+    }
+
     if (state.showRenameDialog) {
         RenameDialog(
             value = state.renameValue,
@@ -122,23 +182,33 @@ fun PlaylistDetailScreen(
         )
     }
 
-    state.editRestEntryId?.let { entryId ->
-        val current = state.entries.firstOrNull { it.entryId == entryId }?.restSeconds ?: 60L
+    state.editRestEntryIds.takeIf { it.isNotEmpty() }?.let { entryIds ->
+        val current = state.entries
+            .firstOrNull { it.entryId == entryIds.first() }
+            ?.restSeconds ?: 60L
         RestDurationDialog(
+            title = stringResource(R.string.playlist_rest_edit_title),
             initialSeconds = current,
-            onConfirm = { viewModel.updateRestSeconds(entryId, it) },
+            affectedCount = entryIds.size,
+            onConfirm = viewModel::updateSelectedRestSeconds,
+            onDelete = viewModel::removeSelectedRests,
             onDismiss = viewModel::dismissEditRest,
         )
     }
 
     if (showAddRestDialog) {
         RestDurationDialog(
+            title = stringResource(R.string.playlist_add_rest),
             initialSeconds = 180L,
             onConfirm = {
-                viewModel.addRest(it)
+                viewModel.addRest(it, addRestAfterEntryId)
                 showAddRestDialog = false
+                addRestAfterEntryId = null
             },
-            onDismiss = { showAddRestDialog = false },
+            onDismiss = {
+                showAddRestDialog = false
+                addRestAfterEntryId = null
+            },
         )
     }
 
@@ -228,19 +298,11 @@ fun PlaylistDetailScreen(
                                 leadingIcon = { Icon(Icons.Default.Timer, contentDescription = null) },
                                 onClick = {
                                     menuExpanded = false
+                                    addRestAfterEntryId = null
                                     showAddRestDialog = true
                                 },
+                                enabled = state.entries.any { !it.isRest },
                                 modifier = Modifier.testTag("playlist_add_rest"),
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.list_plan_append_missing)) },
-                                leadingIcon = {
-                                    Icon(Icons.AutoMirrored.Filled.PlaylistPlay, contentDescription = null)
-                                },
-                                onClick = {
-                                    menuExpanded = false
-                                    viewModel.appendMissingFromList()
-                                },
                             )
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.list_plan_reset_action)) },
@@ -289,7 +351,7 @@ fun PlaylistDetailScreen(
                                         clipboardManager.setText(
                                             androidx.compose.ui.text.AnnotatedString(link)
                                         )
-                                        shareScope.launch {
+                                        screenScope.launch {
                                             snackbarHostState.showSnackbar(linkCopiedMessage)
                                         }
                                     }
@@ -306,13 +368,9 @@ fun PlaylistDetailScreen(
         },
         floatingActionButton = {
             val playable = state.entries.any { !it.isRest && it.climb != null }
-            val hostName = stringResource(R.string.board_queue_title)
             if (playable) {
                 ExtendedFloatingActionButton(
-                    onClick = {
-                        requestNotificationPermissionIfNeeded()
-                        viewModel.play(hostName, onPlayed)
-                    },
+                    onClick = { showSessionVisibilityDialog = true },
                     containerColor = OrangeAccent,
                     icon = {
                         Icon(Icons.Default.PlayArrow, contentDescription = null, tint = DarkBackground)
@@ -359,6 +417,7 @@ fun PlaylistDetailScreen(
                 )
             }
             LazyColumn(
+                state = playlistListState,
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 88.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
@@ -388,12 +447,87 @@ fun PlaylistDetailScreen(
                 if (state.editMode) {
                     // Edit mode: every row individually (precise reorder/remove).
                     itemsIndexed(state.entries, key = { _, e -> e.entryId }) { index, entry ->
+                        val dragHandleModifier = Modifier
+                            .testTag("playlist_drag_${entry.entryId}")
+                            .pointerInput(entry.entryId) {
+                                detectDragGestures(
+                                    onDragStart = {
+                                        val currentIndex = latestEntries
+                                            .indexOfFirst { it.entryId == entry.entryId }
+                                        if (currentIndex >= 0) {
+                                            draggedEntryId = entry.entryId
+                                            dragStartIndex = currentIndex
+                                            dragCurrentIndex = currentIndex
+                                            dragAccumulator = 0f
+                                        }
+                                    },
+                                    onDrag = { change, dragAmount ->
+                                        change.consume()
+                                        if (draggedEntryId == entry.entryId) {
+                                            dragAccumulator += dragAmount.y
+                                            val swapThreshold = dragStepPx * 0.55f
+                                            while (
+                                                dragAccumulator > swapThreshold &&
+                                                dragCurrentIndex < latestEntries.lastIndex
+                                            ) {
+                                                viewModel.previewMoveEntry(
+                                                    dragCurrentIndex,
+                                                    dragCurrentIndex + 1,
+                                                )
+                                                dragCurrentIndex++
+                                                dragAccumulator -= dragStepPx
+                                            }
+                                            while (
+                                                dragAccumulator < -swapThreshold &&
+                                                dragCurrentIndex > 0
+                                            ) {
+                                                viewModel.previewMoveEntry(
+                                                    dragCurrentIndex,
+                                                    dragCurrentIndex - 1,
+                                                )
+                                                dragCurrentIndex--
+                                                dragAccumulator += dragStepPx
+                                            }
+
+                                            // Keep long playlists moving when
+                                            // the dragged row reaches either
+                                            // visible edge.
+                                            val visibleItems = playlistListState
+                                                .layoutInfo.visibleItemsInfo
+                                            val firstVisible = visibleItems.firstOrNull()?.index
+                                            val lastVisible = visibleItems.lastOrNull()?.index
+                                            val shouldScrollUp =
+                                                dragAmount.y < 0f && firstVisible != null &&
+                                                    dragCurrentIndex <= firstVisible + 1
+                                            val shouldScrollDown =
+                                                dragAmount.y > 0f && lastVisible != null &&
+                                                    dragCurrentIndex >= lastVisible - 1
+                                            val shouldScroll = shouldScrollUp || shouldScrollDown
+                                            if (shouldScroll) {
+                                                dragScrollJob?.cancel()
+                                                dragScrollJob = screenScope.launch {
+                                                    playlistListState.scrollBy(dragAmount.y)
+                                                }
+                                            } else {
+                                                dragScrollJob?.cancel()
+                                                dragScrollJob = null
+                                            }
+                                        }
+                                    },
+                                    onDragEnd = ::finishEntryDrag,
+                                    onDragCancel = ::finishEntryDrag,
+                                )
+                            }
                         if (entry.isRest) {
                             RestRow(
                                 seconds = entry.restSeconds ?: 0L,
                                 editMode = true,
+                                isDragging = draggedEntryId == entry.entryId,
+                                dragHandleModifier = dragHandleModifier,
+                                rowModifier = Modifier.animateItem(),
                                 onClick = { viewModel.showEditRest(entry.entryId) },
                                 onRemove = { viewModel.removeEntry(entry.entryId) },
+                                onDuplicate = { viewModel.duplicateRest(entry.entryId) },
                                 onMoveUp = if (index > 0) {
                                     { viewModel.moveEntry(index, index - 1) }
                                 } else null,
@@ -407,11 +541,26 @@ fun PlaylistDetailScreen(
                                 entry = entry,
                                 gradeScale = state.gradeScale,
                                 editMode = true,
+                                isDragging = draggedEntryId == entry.entryId,
+                                dragHandleModifier = dragHandleModifier,
+                                rowModifier = Modifier.animateItem(),
                                 attemptCount = 1,
                                 attemptRestSeconds = null,
+                                onEditAttemptRests = null,
                                 onClick = {},
                                 onRemove = { viewModel.removeEntry(entry.entryId) },
                                 onDuplicate = { viewModel.duplicateClimb(entry.entryId) },
+                                // The following rest row is already directly
+                                // editable; only offer insertion when this
+                                // climb does not have one yet.
+                                onAddRestAfter = if (
+                                    state.entries.getOrNull(index + 1)?.isRest != true
+                                ) {
+                                    {
+                                        addRestAfterEntryId = entry.entryId
+                                        showAddRestDialog = true
+                                    }
+                                } else null,
                                 onMoveUp = if (index > 0) {
                                     { viewModel.moveEntry(index, index - 1) }
                                 } else null,
@@ -432,8 +581,12 @@ fun PlaylistDetailScreen(
                             is PlaylistRow.Rest -> RestRow(
                                 seconds = row.entry.restSeconds ?: 0L,
                                 editMode = false,
+                                isDragging = false,
+                                dragHandleModifier = Modifier,
+                                rowModifier = Modifier,
                                 onClick = { viewModel.showEditRest(row.entry.entryId) },
                                 onRemove = {},
+                                onDuplicate = null,
                                 onMoveUp = null,
                                 onMoveDown = null,
                                 testTag = "playlist_rest_${row.entry.entryId}",
@@ -442,8 +595,16 @@ fun PlaylistDetailScreen(
                                 entry = row.entry,
                                 gradeScale = state.gradeScale,
                                 editMode = false,
+                                isDragging = false,
+                                dragHandleModifier = Modifier,
+                                rowModifier = Modifier,
                                 attemptCount = row.attemptCount,
                                 attemptRestSeconds = row.attemptRestSeconds,
+                                onEditAttemptRests = row.attemptRestEntryIds
+                                    .takeIf { it.isNotEmpty() }
+                                    ?.let { restIds ->
+                                        { viewModel.showEditRests(restIds) }
+                                    },
                                 onClick = {
                                     val uuid = row.entry.climbUuid ?: return@ClimbRow
                                     if (row.entry.climb == null) return@ClimbRow
@@ -457,6 +618,7 @@ fun PlaylistDetailScreen(
                                 },
                                 onRemove = {},
                                 onDuplicate = null,
+                                onAddRestAfter = null,
                                 onMoveUp = null,
                                 onMoveDown = null,
                             )
@@ -477,6 +639,8 @@ internal sealed interface PlaylistRow {
         val attemptCount: Int,
         /** Rest between the collapsed attempts (null when single). */
         val attemptRestSeconds: Long?,
+        /** Uniform rest rows represented by this collapsed attempt card. */
+        val attemptRestEntryIds: List<Long>,
     ) : PlaylistRow {
         override val key get() = "c${entry.entryId}"
     }
@@ -504,31 +668,56 @@ internal fun groupAttempts(entries: List<PlaylistUiEntry>): List<PlaylistRow> {
         // Extend the run: (rest? climb-with-same-uuid)* — attempts.
         var count = 1
         var attemptRest: Long? = null
+        var separatorInitialized = false
+        val attemptRestEntryIds = mutableListOf<Long>()
         var j = i + 1
         while (j < entries.size) {
             val next = entries[j]
             val afterRest = entries.getOrNull(j + 1)
             when {
-                !next.isRest && next.climbUuid == e.climbUuid -> {
+                !next.isRest && next.isSameAttemptTargetAs(e) -> {
+                    // No-rest and timed-rest separators are different plans.
+                    // Keep the latter visible instead of folding both into a
+                    // misleading single pause value.
+                    if (separatorInitialized && attemptRest != null) break
+                    separatorInitialized = true
+                    attemptRest = null
                     count++; j++
                 }
                 next.isRest && afterRest != null && !afterRest.isRest &&
-                    afterRest.climbUuid == e.climbUuid -> {
-                    val restSeconds = next.restSeconds
+                    afterRest.isSameAttemptTargetAs(e) -> {
+                    val restSeconds = next.restSeconds ?: 0L
                     // A collapsed row may state one inter-attempt rest value.
                     // Keep different rest durations visible as separate rows
                     // instead of displaying the final value for every attempt.
-                    if (attemptRest != null && attemptRest != restSeconds) break
+                    if (separatorInitialized && attemptRest != restSeconds) break
+                    separatorInitialized = true
                     attemptRest = restSeconds
+                    attemptRestEntryIds += next.entryId
                     count++; j += 2
                 }
                 else -> break
             }
         }
-        rows.add(PlaylistRow.Climb(e, count, if (count > 1) attemptRest else null))
+        rows.add(
+            PlaylistRow.Climb(
+                entry = e,
+                attemptCount = count,
+                attemptRestSeconds = if (count > 1) attemptRest else null,
+                attemptRestEntryIds = if (count > 1) attemptRestEntryIds else emptyList(),
+            )
+        )
         i = j
     }
     return rows
+}
+
+private fun PlaylistUiEntry.isSameAttemptTargetAs(other: PlaylistUiEntry): Boolean {
+    val thisUuid = climbUuid ?: return false
+    val otherUuid = other.climbUuid ?: return false
+    return PlaylistDetailViewModel.normUuidKey(thisUuid) ==
+        PlaylistDetailViewModel.normUuidKey(otherUuid) &&
+        (angle ?: 40L) == (other.angle ?: 40L)
 }
 
 @Composable
@@ -536,22 +725,31 @@ private fun ClimbRow(
     entry: PlaylistUiEntry,
     gradeScale: com.cruxcoach.android.data.GradeScale,
     editMode: Boolean,
+    isDragging: Boolean,
+    dragHandleModifier: Modifier,
+    rowModifier: Modifier,
     attemptCount: Int,
     attemptRestSeconds: Long?,
+    onEditAttemptRests: (() -> Unit)?,
     onClick: () -> Unit,
     onRemove: () -> Unit,
     onDuplicate: (() -> Unit)?,
+    onAddRestAfter: (() -> Unit)?,
     onMoveUp: (() -> Unit)?,
     onMoveDown: (() -> Unit)?,
 ) {
     val climb = entry.climb
     Card(
         onClick = onClick,
-        modifier = Modifier
+        modifier = rowModifier
             .fillMaxWidth()
             .testTag("playlist_climb_${entry.entryId}"),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+            containerColor = if (isDragging) {
+                OrangeAccent.copy(alpha = 0.16f)
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+            },
         ),
         shape = RoundedCornerShape(12.dp),
     ) {
@@ -559,6 +757,15 @@ private fun ClimbRow(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            if (editMode) {
+                PlaylistDragHandle(
+                    modifier = dragHandleModifier,
+                    isDragging = isDragging,
+                    onMoveUp = onMoveUp,
+                    onMoveDown = onMoveDown,
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+            }
             if (climb == null) {
                 Icon(
                     Icons.AutoMirrored.Filled.HelpOutline,
@@ -603,8 +810,28 @@ private fun ClimbRow(
                     )
                 }
             }
+            if (onEditAttemptRests != null) {
+                IconButton(
+                    onClick = onEditAttemptRests,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .testTag("playlist_edit_attempt_rests_${entry.entryId}"),
+                ) {
+                    Icon(
+                        Icons.Default.Edit,
+                        contentDescription = stringResource(R.string.playlist_rest_edit_title),
+                        tint = InfoBlue,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
             if (editMode) {
-                ReorderControls(onMoveUp, onMoveDown, onRemove, onDuplicate)
+                ReorderControls(
+                    onRemove = onRemove,
+                    onDuplicate = onDuplicate,
+                    duplicateContentDescription = stringResource(R.string.list_plan_duplicate_step),
+                    onAddRestAfter = onAddRestAfter,
+                )
             }
         }
     }
@@ -614,19 +841,27 @@ private fun ClimbRow(
 private fun RestRow(
     seconds: Long,
     editMode: Boolean,
+    isDragging: Boolean,
+    dragHandleModifier: Modifier,
+    rowModifier: Modifier,
     onClick: () -> Unit,
     onRemove: () -> Unit,
+    onDuplicate: (() -> Unit)?,
     onMoveUp: (() -> Unit)?,
     onMoveDown: (() -> Unit)?,
     testTag: String,
 ) {
     Card(
         onClick = onClick,
-        modifier = Modifier
+        modifier = rowModifier
             .fillMaxWidth()
             .testTag(testTag),
         colors = CardDefaults.cardColors(
-            containerColor = InfoBlue.copy(alpha = 0.10f),
+            containerColor = if (isDragging) {
+                OrangeAccent.copy(alpha = 0.16f)
+            } else {
+                InfoBlue.copy(alpha = 0.10f)
+            },
         ),
         shape = RoundedCornerShape(12.dp),
     ) {
@@ -634,6 +869,15 @@ private fun RestRow(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            if (editMode) {
+                PlaylistDragHandle(
+                    modifier = dragHandleModifier,
+                    isDragging = isDragging,
+                    onMoveUp = onMoveUp,
+                    onMoveDown = onMoveDown,
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+            }
             Icon(
                 Icons.Default.HourglassBottom,
                 contentDescription = null,
@@ -648,34 +892,93 @@ private fun RestRow(
                 modifier = Modifier.weight(1f),
             )
             if (editMode) {
-                ReorderControls(onMoveUp, onMoveDown, onRemove, onDuplicate = null)
+                ReorderControls(
+                    onRemove = onRemove,
+                    onDuplicate = onDuplicate,
+                    duplicateContentDescription = stringResource(R.string.playlist_duplicate_rest),
+                    onAddRestAfter = null,
+                )
+            } else {
+                Icon(
+                    Icons.Default.Edit,
+                    contentDescription = stringResource(R.string.playlist_rest_edit_title),
+                    tint = InfoBlue,
+                    modifier = Modifier.size(18.dp),
+                )
             }
         }
     }
 }
 
 @Composable
-private fun ReorderControls(
+private fun PlaylistDragHandle(
+    modifier: Modifier,
+    isDragging: Boolean,
     onMoveUp: (() -> Unit)?,
     onMoveDown: (() -> Unit)?,
+) {
+    val moveUpLabel = stringResource(R.string.playlist_move_up)
+    val moveDownLabel = stringResource(R.string.playlist_move_down)
+    val reorderActions = buildList {
+        onMoveUp?.let { moveUp ->
+            add(CustomAccessibilityAction(moveUpLabel) {
+                moveUp()
+                true
+            })
+        }
+        onMoveDown?.let { moveDown ->
+            add(CustomAccessibilityAction(moveDownLabel) {
+                moveDown()
+                true
+            })
+        }
+    }
+    Box(
+        modifier = Modifier
+            .size(36.dp)
+            .then(modifier)
+            .semantics(mergeDescendants = true) { customActions = reorderActions },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            Icons.Default.DragHandle,
+            contentDescription = stringResource(R.string.cd_reorder),
+            tint = if (isDragging) {
+                OrangeAccent
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+            modifier = Modifier.size(22.dp),
+        )
+    }
+}
+
+@Composable
+private fun ReorderControls(
     onRemove: () -> Unit,
     onDuplicate: (() -> Unit)?,
+    duplicateContentDescription: String,
+    onAddRestAfter: (() -> Unit)?,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         if (onDuplicate != null) {
             IconButton(onClick = onDuplicate, modifier = Modifier.size(32.dp)) {
                 Icon(
                     Icons.Default.ContentCopy,
-                    contentDescription = stringResource(R.string.list_plan_duplicate_step),
+                    contentDescription = duplicateContentDescription,
                     modifier = Modifier.size(18.dp),
                 )
             }
         }
-        IconButton(onClick = onMoveUp ?: {}, enabled = onMoveUp != null, modifier = Modifier.size(32.dp)) {
-            Icon(Icons.Default.KeyboardArrowUp, contentDescription = stringResource(R.string.playlist_move_up))
-        }
-        IconButton(onClick = onMoveDown ?: {}, enabled = onMoveDown != null, modifier = Modifier.size(32.dp)) {
-            Icon(Icons.Default.KeyboardArrowDown, contentDescription = stringResource(R.string.playlist_move_down))
+        if (onAddRestAfter != null) {
+            IconButton(onClick = onAddRestAfter, modifier = Modifier.size(32.dp)) {
+                Icon(
+                    Icons.Default.HourglassBottom,
+                    contentDescription = stringResource(R.string.playlist_add_rest_after),
+                    tint = InfoBlue,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
         }
         IconButton(onClick = onRemove, modifier = Modifier.size(32.dp)) {
             Icon(
@@ -720,55 +1023,3 @@ private fun RenameDialog(
         },
     )
 }
-
-/** Rest duration editor: common presets + free numeric input (seconds). */
-@Composable
-private fun RestDurationDialog(
-    initialSeconds: Long,
-    onConfirm: (Long) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    var text by rememberSaveable { mutableStateOf(initialSeconds.toString()) }
-    val seconds = text.toLongOrNull()
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.playlist_rest_duration), fontWeight = FontWeight.Bold) },
-        text = {
-            Column {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(60L, 180L, 300L).forEach { preset ->
-                        TextButton(onClick = { text = preset.toString() }) {
-                            Text(formatRest(preset))
-                        }
-                    }
-                }
-                OutlinedTextField(
-                    value = text,
-                    onValueChange = { new -> text = new.filter { it.isDigit() }.take(4) },
-                    singleLine = true,
-                    label = { Text(stringResource(R.string.playlist_rest_seconds_label)) },
-                    isError = seconds != null && seconds !in 10L..3600L,
-                    supportingText = { Text(stringResource(R.string.playlist_rest_range)) },
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("playlist_rest_seconds_field"),
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = { seconds?.let(onConfirm) },
-                enabled = seconds != null && seconds in 10L..3600L,
-                colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
-                shape = RoundedCornerShape(12.dp),
-            ) { Text(stringResource(R.string.action_save), fontWeight = FontWeight.Bold) }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
-        },
-    )
-}
-
-private fun formatRest(seconds: Long): String =
-    if (seconds >= 60 && seconds % 60 == 0L) "${seconds / 60} min" else "$seconds s"

@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.data.GradeScale
+import com.cruxcoach.android.data.SessionVisibility
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.util.safeLaunch
 import com.cruxcoach.data.repository.BoardRepository
@@ -12,6 +13,8 @@ import com.cruxcoach.data.repository.ListPlaybackAdvance
 import com.cruxcoach.data.repository.ListPlaybackOrder
 import com.cruxcoach.data.repository.NewListPlaybackStep
 import com.cruxcoach.data.repository.PersonalBoardRepository
+import com.cruxcoach.data.repository.inferAutoPlaybackRestSeconds
+import com.cruxcoach.data.repository.playbackStepsWithAutoRests
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
@@ -47,10 +50,31 @@ data class PlaylistDetailState(
     val editMode: Boolean = false,
     val showRenameDialog: Boolean = false,
     val renameValue: String = "",
-    /** Entry id whose rest duration is being edited. */
-    val editRestEntryId: Long? = null,
+    /** Rest rows edited together (one row, or uniform rests between attempts). */
+    val editRestEntryIds: List<Long> = emptyList(),
     val playbackBoardError: Boolean = false,
 )
+
+/** Pure plan edit used by targeted pause insertion and its regression tests. */
+internal fun playbackStepsWithRestInsertedAfter(
+    entries: List<PlaylistUiEntry>,
+    afterEntryId: Long,
+    seconds: Long,
+): List<NewListPlaybackStep>? {
+    val afterIndex = entries.indexOfFirst { it.entryId == afterEntryId }
+    if (afterIndex < 0) return null
+    return entries.map { entry ->
+        NewListPlaybackStep(entry.climbUuid, entry.angle, entry.restSeconds)
+    }.toMutableList().apply {
+        add(
+            afterIndex + 1,
+            NewListPlaybackStep(
+                climbUuid = null,
+                restSeconds = seconds.coerceIn(10L, 3600L),
+            ),
+        )
+    }
+}
 
 @HiltViewModel
 class PlaylistDetailViewModel @Inject constructor(
@@ -111,14 +135,39 @@ class PlaylistDetailViewModel @Inject constructor(
     fun toggleEditMode() = _state.update { it.copy(editMode = !it.editMode) }
 
     fun moveEntry(fromIndex: Int, toIndex: Int) {
-        val entries = _state.value.entries
-        if (fromIndex !in entries.indices || toIndex !in entries.indices) return
-        // Optimistic in-memory move so the row animates immediately.
-        val reordered = entries.toMutableList().apply { add(toIndex, removeAt(fromIndex)) }
-        _state.update { it.copy(entries = reordered) }
+        if (!moveEntryInState(fromIndex, toIndex)) return
         viewModelScope.safeLaunch(TAG) {
             withContext(Dispatchers.IO) { personalBoardRepo.movePlaybackStep(listId, fromIndex, toIndex) }
         }
+    }
+
+    /** Reorder only the rendered plan while a drag gesture is in progress. */
+    fun previewMoveEntry(fromIndex: Int, toIndex: Int) {
+        moveEntryInState(fromIndex, toIndex)
+    }
+
+    /** Persist the complete preview order after a drag, retaining row IDs. */
+    fun commitPreviewedOrder() {
+        val orderedIds = _state.value.entries.map { it.entryId }
+        if (orderedIds.isEmpty()) return
+        viewModelScope.safeLaunch(TAG) {
+            withContext(Dispatchers.IO) {
+                personalBoardRepo.reorderPlaybackSteps(listId, orderedIds)
+            }
+            // A stale snapshot is rejected by the repository. Either way,
+            // reconcile with the authoritative stored plan after the gesture.
+            refresh()
+        }
+    }
+
+    private fun moveEntryInState(fromIndex: Int, toIndex: Int): Boolean {
+        val entries = _state.value.entries
+        if (fromIndex !in entries.indices || toIndex !in entries.indices || fromIndex == toIndex) {
+            return false
+        }
+        val reordered = entries.toMutableList().apply { add(toIndex, removeAt(fromIndex)) }
+        _state.update { it.copy(entries = reordered) }
+        return true
     }
 
     fun removeEntry(entryId: Long) {
@@ -148,39 +197,20 @@ class PlaylistDetailViewModel @Inject constructor(
         viewModelScope.safeLaunch(TAG) {
             val snapshot = withContext(Dispatchers.IO) { userPreferences.getBoardFilterSnapshot() }
             val steps = withContext(Dispatchers.IO) {
-                personalBoardRepo.getClimbListEntryUuids(listId, Int.MAX_VALUE, 0).map { (uuid, _) ->
-                    NewListPlaybackStep(uuid, angle = snapshot.angle.toLong())
-                }
+                val current = personalBoardRepo.getPlaybackSteps(listId)
+                val climbUuids = personalBoardRepo
+                    .getClimbListEntryUuids(listId, Int.MAX_VALUE, 0)
+                    .map { it.first }
+                playbackStepsWithAutoRests(
+                    climbUuids = climbUuids,
+                    angle = snapshot.angle.toLong(),
+                    restSeconds = inferAutoPlaybackRestSeconds(
+                        previousRestSeconds = current.map { it.restSeconds },
+                        configuredFallbackSeconds = _state.value.playbackRestSeconds,
+                    ),
+                )
             }
             withContext(Dispatchers.IO) { personalBoardRepo.replacePlaybackSteps(listId, steps) }
-            refresh()
-        }
-    }
-
-    /** Append list members not represented in the plan yet without changing
-     *  custom order, repetitions or rests. */
-    fun appendMissingFromList() {
-        viewModelScope.safeLaunch(TAG) {
-            val snapshot = withContext(Dispatchers.IO) { userPreferences.getBoardFilterSnapshot() }
-            withContext(Dispatchers.IO) {
-                val current = personalBoardRepo.getPlaybackSteps(listId)
-                val represented = current.mapNotNull { it.climbUuid }
-                    .map(::normUuidKey)
-                    .toSet()
-                val missing = personalBoardRepo.getClimbListEntryUuids(listId, Int.MAX_VALUE, 0)
-                    .map { it.first }
-                    .filter { normUuidKey(it) !in represented }
-                if (missing.isNotEmpty()) {
-                    personalBoardRepo.replacePlaybackSteps(
-                        listId,
-                        current.map { row ->
-                            NewListPlaybackStep(row.climbUuid, row.angle, row.restSeconds)
-                        } + missing.map { uuid ->
-                            NewListPlaybackStep(uuid, angle = snapshot.angle.toLong())
-                        },
-                    )
-                }
-            }
             refresh()
         }
     }
@@ -192,23 +222,104 @@ class PlaylistDetailViewModel @Inject constructor(
         }
     }
 
-    fun addRest(seconds: Long) {
+    fun addRest(seconds: Long, afterEntryId: Long? = null) {
+        val entries = _state.value.entries
+        // A leading rest is ignored by playback because no climb can own it.
+        if (entries.none { !it.isRest }) return
+        val duration = seconds.coerceIn(10L, 3600L)
+        val replacement = afterEntryId?.let { entryId ->
+            playbackStepsWithRestInsertedAfter(entries, entryId, duration)
+        }
+        if (afterEntryId != null && replacement == null) return
         viewModelScope.safeLaunch(TAG) {
-            withContext(Dispatchers.IO) { personalBoardRepo.addPlaybackRest(listId, seconds) }
+            withContext(Dispatchers.IO) {
+                if (replacement == null) {
+                    personalBoardRepo.addPlaybackRest(listId, duration)
+                } else {
+                    personalBoardRepo.replacePlaybackSteps(listId, replacement)
+                }
+            }
             refresh()
         }
     }
 
-    fun showEditRest(entryId: Long) = _state.update { it.copy(editRestEntryId = entryId) }
-    fun dismissEditRest() = _state.update { it.copy(editRestEntryId = null) }
-
-    fun updateRestSeconds(entryId: Long, seconds: Long) {
+    fun duplicateRest(entryId: Long) {
+        val entries = _state.value.entries
+        val rest = entries.firstOrNull { it.entryId == entryId && it.isRest } ?: return
+        val replacement = playbackStepsWithRestInsertedAfter(
+            entries,
+            entryId,
+            rest.restSeconds ?: 60L,
+        ) ?: return
         viewModelScope.safeLaunch(TAG) {
             withContext(Dispatchers.IO) {
-                personalBoardRepo.updatePlaybackRestSeconds(entryId, seconds.coerceIn(10L, 3600L))
+                personalBoardRepo.replacePlaybackSteps(listId, replacement)
             }
-            _state.update { it.copy(editRestEntryId = null) }
             refresh()
+        }
+    }
+
+    fun showEditRest(entryId: Long) = showEditRests(listOf(entryId))
+
+    fun showEditRests(entryIds: List<Long>) {
+        val restIds = entryIds.distinct().filter { entryId ->
+            _state.value.entries.any { it.entryId == entryId && it.isRest }
+        }
+        if (restIds.isNotEmpty()) {
+            _state.update { it.copy(editRestEntryIds = restIds) }
+        }
+    }
+
+    fun dismissEditRest() = _state.update { it.copy(editRestEntryIds = emptyList()) }
+
+    fun updateSelectedRestSeconds(seconds: Long) {
+        val entryIds = _state.value.editRestEntryIds
+        if (entryIds.isEmpty()) return
+        val idSet = entryIds.toSet()
+        val duration = seconds.coerceIn(10L, 3600L)
+        _state.update { state ->
+            state.copy(
+                entries = state.entries.map { entry ->
+                    if (entry.entryId in idSet && entry.isRest) {
+                        entry.copy(restSeconds = duration)
+                    } else {
+                        entry
+                    }
+                },
+                editRestEntryIds = emptyList(),
+            )
+        }
+        viewModelScope.safeLaunch(TAG) {
+            try {
+                withContext(Dispatchers.IO) {
+                    personalBoardRepo.updatePlaybackRestSeconds(entryIds, duration)
+                }
+            } finally {
+                // Also restore the optimistic UI if the database write fails.
+                refresh()
+            }
+        }
+    }
+
+    fun removeSelectedRests() {
+        val entryIds = _state.value.editRestEntryIds
+        if (entryIds.isEmpty()) return
+        val idSet = entryIds.toSet()
+        _state.update { state ->
+            state.copy(
+                entries = state.entries.filterNot { it.entryId in idSet && it.isRest },
+                editRestEntryIds = emptyList(),
+            )
+        }
+        viewModelScope.safeLaunch(TAG) {
+            try {
+                withContext(Dispatchers.IO) {
+                    personalBoardRepo.removePlaybackSteps(entryIds)
+                }
+            } finally {
+                // Also restore the optimistic UI if the database write fails.
+                refresh()
+            }
         }
     }
 
@@ -241,7 +352,7 @@ class PlaylistDetailViewModel @Inject constructor(
      * Play: playlist → session queue → board.
      *
      * Mirrors the browser's session-start path (BoardSessionManager timer +
-     * queue as HOST + GATT sharing when the privacy toggle allows), but
+     * queue as HOST + optional GATT sharing chosen for this run), but
      * bulk-loads the playlist instead of starting empty. Rest rows collapse
      * onto their preceding climb as [QueueItem.restAfterSeconds] (summing
      * consecutive rests) — they never enter the shared BLE queue; advancing
@@ -250,7 +361,11 @@ class PlaylistDetailViewModel @Inject constructor(
      * Unresolvable climbs (catalogue not downloaded) are skipped — the
      * screen already surfaces the count.
      */
-    fun play(hostName: String, onStarted: () -> Unit) {
+    fun play(
+        hostName: String,
+        visibility: SessionVisibility,
+        onStarted: () -> Unit,
+    ) {
         val boardCount = _state.value.entries
             .mapNotNull { it.climb }
             .map { it.boardBrand to it.layoutId }
@@ -289,7 +404,12 @@ class PlaylistDetailViewModel @Inject constructor(
             }
         }
         if (items.isEmpty()) return
-        playback.play(hostName, items, _state.value.playbackAdvance)
+        playback.play(
+            hostName,
+            items,
+            _state.value.playbackAdvance,
+            visibility,
+        )
         _state.update { it.copy(playbackBoardError = false) }
         onStarted()
     }

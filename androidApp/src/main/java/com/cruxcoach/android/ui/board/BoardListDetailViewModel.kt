@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.IntensityZoneManager
+import com.cruxcoach.android.data.SessionVisibility
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.IntensityZones
@@ -13,8 +14,9 @@ import com.cruxcoach.data.repository.ClimbWithStats
 import com.cruxcoach.data.repository.Climb_list_entries
 import com.cruxcoach.data.repository.ListPlaybackAdvance
 import com.cruxcoach.data.repository.ListPlaybackOrder
-import com.cruxcoach.data.repository.NewListPlaybackStep
 import com.cruxcoach.data.repository.PersonalBoardRepository
+import com.cruxcoach.data.repository.inferAutoPlaybackRestSeconds
+import com.cruxcoach.data.repository.playbackStepsWithAutoRests
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -306,10 +308,19 @@ class BoardListDetailViewModel @Inject constructor(
             return
         }
         viewModelScope.safeLaunch(TAG) {
+            val snapshot = _state.value
             val seed = withContext(Dispatchers.IO) {
-                personalBoardRepo.getClimbListEntryUuids(listId, Int.MAX_VALUE, 0).map { (uuid, _) ->
-                    NewListPlaybackStep(uuid, angle = _state.value.angle.toLong())
-                }
+                val climbUuids = personalBoardRepo
+                    .getClimbListEntryUuids(listId, Int.MAX_VALUE, 0)
+                    .map { it.first }
+                playbackStepsWithAutoRests(
+                    climbUuids = climbUuids,
+                    angle = snapshot.angle.toLong(),
+                    restSeconds = inferAutoPlaybackRestSeconds(
+                        previousRestSeconds = emptyList(),
+                        configuredFallbackSeconds = snapshot.playbackRestSeconds,
+                    ),
+                )
             }
             withContext(Dispatchers.IO) {
                 personalBoardRepo.replacePlaybackSteps(listId, seed)
@@ -321,7 +332,11 @@ class BoardListDetailViewModel @Inject constructor(
 
     /** Compile the selected list mode into the existing session queue. A
      *  session may target exactly one concrete board configuration. */
-    fun startPlayback(hostName: String, onStarted: () -> Unit) {
+    fun startPlayback(
+        hostName: String,
+        visibility: SessionVisibility,
+        onStarted: () -> Unit,
+    ) {
         val snapshot = _state.value
         if (snapshot.isStartingPlayback) return
         _state.update { it.copy(isStartingPlayback = true, playbackStartError = null) }
@@ -349,7 +364,12 @@ class BoardListDetailViewModel @Inject constructor(
                         restSeconds = snapshot.playbackRestSeconds,
                     )
                 }
-                playback.play(hostName, prepared.items, snapshot.playbackAdvance)
+                playback.play(
+                    hostName,
+                    prepared.items,
+                    snapshot.playbackAdvance,
+                    visibility,
+                )
                 _state.update { it.copy(showPlaybackOptions = false) }
                 onStarted()
             } finally {

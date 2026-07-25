@@ -105,6 +105,9 @@ class FakePersonalBoardRepository : PersonalBoardRepository {
     override fun renameClimbList(id: Long, name: String) {}
     override fun deleteClimbList(id: Long) {}
     override fun addClimbToList(listId: Long, climbUuid: String) {}
+    override fun addClimbToListAndExtendPlayback(listId: Long, climbUuid: String, angle: Long?) {
+        addClimbToList(listId, climbUuid)
+    }
     override fun removeClimbFromList(listId: Long, climbUuid: String) {}
     override fun getClimbListEntryUuids(listId: Long, limit: Int, offset: Int): List<Pair<String, String>> = emptyList()
     override fun countClimbListEntries(listId: Long): Long = 0L
@@ -165,11 +168,19 @@ class FakePersonalBoardRepository : PersonalBoardRepository {
         playbackSteps.values.forEach { it.removeAll { e -> e.id == stepId } }
     }
 
+    override fun removePlaybackSteps(stepIds: Collection<Long>) {
+        stepIds.toSet().forEach(::removePlaybackStep)
+    }
+
     override fun updatePlaybackRestSeconds(stepId: Long, restSeconds: Long) {
         playbackSteps.values.forEach { entries ->
             val i = entries.indexOfFirst { it.id == stepId }
             if (i >= 0) entries[i] = entries[i].copy(restSeconds = restSeconds)
         }
+    }
+
+    override fun updatePlaybackRestSeconds(stepIds: Collection<Long>, restSeconds: Long) {
+        stepIds.toSet().forEach { updatePlaybackRestSeconds(it, restSeconds) }
     }
 
     override fun movePlaybackStep(listId: Long, fromIndex: Int, toIndex: Int) {
@@ -178,6 +189,24 @@ class FakePersonalBoardRepository : PersonalBoardRepository {
         val moved = entries.removeAt(fromIndex)
         entries.add(toIndex, moved)
         for (i in entries.indices) entries[i] = entries[i].copy(position = i.toLong())
+    }
+
+    override fun reorderPlaybackSteps(listId: Long, orderedStepIds: List<Long>): Boolean {
+        val entries = playbackSteps[listId] ?: return orderedStepIds.isEmpty()
+        if (
+            orderedStepIds.toSet().size != orderedStepIds.size ||
+            orderedStepIds.toSet() != entries.map { it.id }.toSet()
+        ) {
+            return false
+        }
+        val byId = entries.associateBy { it.id }
+        entries.clear()
+        entries.addAll(
+            orderedStepIds.mapIndexed { index, id ->
+                requireNotNull(byId[id]).copy(position = index.toLong())
+            }
+        )
+        return true
     }
 
     override fun replacePlaybackSteps(listId: Long, steps: List<NewListPlaybackStep>) {

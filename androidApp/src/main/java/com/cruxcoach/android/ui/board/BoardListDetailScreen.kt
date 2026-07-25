@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -29,6 +30,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.cruxcoach.android.ui.common.RestTimerBannerSlot
+import com.cruxcoach.android.ui.common.SessionVisibilityDialog
 import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
 import com.cruxcoach.android.ui.common.BleStatusArea
 import androidx.compose.ui.res.stringResource
@@ -53,6 +55,7 @@ fun BoardListDetailScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var menuExpanded by remember { mutableStateOf(false) }
+    var showSessionVisibilityDialog by rememberSaveable { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
     val queueTitle = stringResource(R.string.board_queue_title)
     val notificationPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
@@ -82,8 +85,19 @@ fun BoardListDetailScreen(
                 viewModel.preparePlaybackPlan { onNavigateToPlaybackPlan(state.listId) }
             },
             onStart = {
+                viewModel.dismissPlaybackOptions()
+                showSessionVisibilityDialog = true
+            },
+        )
+    }
+
+    if (showSessionVisibilityDialog) {
+        SessionVisibilityDialog(
+            onDismiss = { showSessionVisibilityDialog = false },
+            onSelect = { visibility ->
+                showSessionVisibilityDialog = false
                 requestNotificationPermissionIfNeeded()
-                viewModel.startPlayback(queueTitle, onPlayed)
+                viewModel.startPlayback(queueTitle, visibility, onPlayed)
             },
         )
     }

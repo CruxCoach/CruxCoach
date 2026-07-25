@@ -119,6 +119,13 @@ interface PersonalBoardRepository {
     fun renameClimbList(id: Long, name: String)
     fun deleteClimbList(id: Long)
     fun addClimbToList(listId: Long, climbUuid: String)
+    /**
+     * Add a genuinely new list member and, when the list already has an
+     * explicit playback plan, append it there with an inferred rest. Existing
+     * members are not re-added to the plan: they may have been removed from
+     * the playback sequence intentionally.
+     */
+    fun addClimbToListAndExtendPlayback(listId: Long, climbUuid: String, angle: Long?)
     fun removeClimbFromList(listId: Long, climbUuid: String)
     /** Returns (climbUuid, addedAt) pairs for two-phase lookup. */
     fun getClimbListEntryUuids(listId: Long, limit: Int = 50, offset: Int = 0): List<Pair<String, String>>
@@ -182,8 +189,17 @@ interface PersonalBoardRepository {
     fun addPlaybackRest(listId: Long, restSeconds: Long): Long
     fun getPlaybackSteps(listId: Long): List<ListPlaybackStepRow>
     fun removePlaybackStep(stepId: Long)
+    /** Applies a multi-row removal atomically. */
+    fun removePlaybackSteps(stepIds: Collection<Long>)
     fun updatePlaybackRestSeconds(stepId: Long, restSeconds: Long)
+    /** Applies one duration to multiple rest rows atomically. */
+    fun updatePlaybackRestSeconds(stepIds: Collection<Long>, restSeconds: Long)
     fun movePlaybackStep(listId: Long, fromIndex: Int, toIndex: Int)
+    /**
+     * Persist an exact drag-preview order while retaining row IDs. Returns
+     * false without changing the plan when the supplied IDs are stale.
+     */
+    fun reorderPlaybackSteps(listId: Long, orderedStepIds: List<Long>): Boolean
     /** Replaces only the ordered plan. Referenced climbs are added to normal
      *  membership, while existing list members not used by the plan remain. */
     fun replacePlaybackSteps(listId: Long, steps: List<NewListPlaybackStep>)
