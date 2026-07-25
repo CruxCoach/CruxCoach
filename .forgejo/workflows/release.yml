@@ -3,6 +3,18 @@ name: Release
 on:
   push:
     branches: [main, dev]
+    # A release is an APK build, a tag and a Zapstore publish. Commits that
+    # cannot change the artefact must not start one — a README fix used to
+    # be enough to fire the whole pipeline, which is why documentation ends
+    # up bundled into release branches instead of landing on its own.
+    # Note the semantics: this skips a push only when *every* changed file
+    # matches, so a real release commit still triggers even though it also
+    # touches the changelog.
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
 
 jobs:
   release:
