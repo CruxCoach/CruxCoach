@@ -290,12 +290,29 @@ fun BleConnectionSheet(
                     RememberedBoardContent(
                         board = rememberedBoard,
                         onReconnect = {
-                            val connectionPermissions =
-                                BlePermissionHelper.getConnectionPermissions()
-                            if (state.hasConnectionPermission || connectionPermissions.isEmpty()) {
+                            // Ask for the scan permission alongside connect only
+                            // while this board's capacity is still unverified,
+                            // and only where scanning does not imply location
+                            // (API 31+). Routine reconnects to a classified
+                            // board request nothing extra.
+                            val capacityKnown =
+                                rememberedBoard.advertisesWhileConnected != null
+                            val probeWanted =
+                                BlePermissionHelper.wantsCapacityProbe(capacityKnown)
+                            val needed = BlePermissionHelper.getReconnectPermissions(
+                                capacityKnown = capacityKnown,
+                            )
+                            // hasPermissions covers scan+connect, so it is the
+                            // right gate only when the probe is actually wanted.
+                            val granted = if (probeWanted) {
+                                state.hasPermissions
+                            } else {
+                                state.hasConnectionPermission || needed.isEmpty()
+                            }
+                            if (granted) {
                                 viewModel.reconnectRememberedBoard()
                             } else {
-                                connectionPermissionLauncher.launch(connectionPermissions)
+                                connectionPermissionLauncher.launch(needed)
                             }
                         },
                         onSearchOtherBoards = {

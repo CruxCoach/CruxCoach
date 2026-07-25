@@ -334,11 +334,20 @@ class BleConnectionViewModel @Inject constructor(
                     nearbyClimbScanner.stopScan(preserveEntries = true)
                     try {
                         when (bleScanner.probeAdvertisingWhileConnected(board.address)) {
-                            ConnectedAdvertisingProbeResult.CONNECTABLE_ADVERTISEMENT_OBSERVED ->
+                            ConnectedAdvertisingProbeResult.CONNECTABLE_ADVERTISEMENT_OBSERVED -> {
                                 bleConnection.recordAdvertisingWhileConnected(
                                     address = board.address,
                                     observed = true,
                                 )
+                                // Persist the positive result so later
+                                // reconnects report a verified capacity
+                                // without needing to scan again. Only
+                                // positives are stored — see
+                                // PreferenceKeys.lastUsedBoardAdvertisesWhileConnected.
+                                userPreferences.setRememberedBoardAdvertisesWhileConnected(
+                                    board.boardBrand
+                                )
+                            }
                             ConnectedAdvertisingProbeResult.NOT_OBSERVED ->
                                 bleConnection.recordAdvertisingWhileConnected(
                                     address = board.address,
@@ -531,6 +540,11 @@ class BleConnectionViewModel @Inject constructor(
                 address = remembered.address,
                 rssi = 0,
                 boardBrand = remembered.boardBrand,
+                // Seed the capacity from the stored observation. Without this
+                // a reconnect starts unclassified and, having no scan
+                // permission, can never classify itself — the connection
+                // showed "capacity not verified" for a board proven long ago.
+                advertisesWhileConnected = remembered.advertisesWhileConnected,
             )
         )
     }

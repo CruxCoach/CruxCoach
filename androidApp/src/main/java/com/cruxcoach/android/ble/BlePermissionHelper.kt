@@ -60,6 +60,49 @@ object BlePermissionHelper {
         }
     }
 
+    fun hasScanPermission(context: Context): Boolean {
+        return getScanPermissions().all {
+            ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+        }
+    }
+
+    /**
+     * Permissions to request when reconnecting to an already-known controller.
+     *
+     * Reconnect itself needs no scan — Android connects by address. The post-
+     * connect advertising probe does, and it is the only way to establish
+     * whether a controller accepts more than one client.
+     *
+     * From API 31 the scan permission is part of "Nearby devices" and carries
+     * no location implication, so asking for it alongside the connect
+     * permission is cheap and gets the capacity verified on first contact.
+     * Below API 31 scanning drags in location, which a reconnect must not
+     * force — there the capacity simply stays unverified.
+     *
+     * [capacityKnown] suppresses the scan request entirely once the capacity
+     * was verified before, so routine reconnects ask for nothing extra.
+     */
+    fun getReconnectPermissions(
+        capacityKnown: Boolean,
+        apiLevel: Int = Build.VERSION.SDK_INT,
+    ): Array<String> =
+        if (wantsCapacityProbe(capacityKnown, apiLevel)) getRequiredPermissions(apiLevel)
+        else getConnectionPermissions(apiLevel)
+
+    /**
+     * Whether a reconnect should also acquire scan rights to run the
+     * post-connect capacity probe.
+     *
+     * Only when the capacity is still unknown, and only from API 31 where the
+     * scan permission is part of "Nearby devices" and implies no location
+     * access. Below that, scanning would force a location grant on a flow
+     * that does not need one — the capacity stays unverified instead.
+     */
+    fun wantsCapacityProbe(
+        capacityKnown: Boolean,
+        apiLevel: Int = Build.VERSION.SDK_INT,
+    ): Boolean = !capacityKnown && apiLevel >= Build.VERSION_CODES.S
+
     fun getAdvertisingPermissions(apiLevel: Int = Build.VERSION.SDK_INT): Array<String> {
         return if (apiLevel >= Build.VERSION_CODES.S) {
             arrayOf(Manifest.permission.BLUETOOTH_ADVERTISE)

@@ -236,7 +236,11 @@ class BoardBleScanner(private val context: Context) {
         address: String,
         timeoutMs: Long = CONNECTED_ADVERTISING_PROBE_MS,
     ): ConnectedAdvertisingProbeResult {
-        if (!BlePermissionHelper.hasPermissions(context)) {
+        // Scan permission only. The probe observes advertisements; requiring
+        // the connect permission as well made it bail on every reconnect,
+        // which is exactly the flow that runs without scan rights on legacy
+        // Android — the capacity then stayed unverified forever.
+        if (!BlePermissionHelper.hasScanPermission(context)) {
             return ConnectedAdvertisingProbeResult.INCONCLUSIVE
         }
         val s = scanner ?: return ConnectedAdvertisingProbeResult.INCONCLUSIVE

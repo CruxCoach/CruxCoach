@@ -2235,5 +2235,5 @@
     <string name="board_ble_connection_via_relay">Über CruxCoach Relay verbunden</string>
     <string name="board_ble_connection_multi">Mehrere Geräte können verbunden bleiben</string>
     <string name="board_ble_connection_single">Älterer Controller · eine Direktverbindung</string>
-    <string name="board_ble_connection_unknown">Verbindungskapazität nicht verifiziert</string>
+    <string name="board_ble_connection_unknown">Verbindungskapazität unbekannt</string>
 </resources>

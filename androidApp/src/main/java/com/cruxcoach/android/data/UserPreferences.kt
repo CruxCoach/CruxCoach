@@ -269,6 +269,12 @@ data class RememberedBoardController(
     val apiLevel: Int,
     val address: String,
     val boardBrand: BoardBrand,
+    /**
+     * True once this controller was observed advertising while connected.
+     * Null means "never established" — not "single client". Lets a reconnect
+     * report a verified connection capacity without running a scan.
+     */
+    val advertisesWhileConnected: Boolean? = null,
 )
 
 /** Shared preference keys — device-level settings, same across all Nostr identities. */
@@ -314,6 +320,20 @@ object PreferenceKeys {
         stringPreferencesKey("last_used_board_serial_${brand.wireValue}")
     fun lastUsedBoardApiLevel(brand: BoardBrand) =
         intPreferencesKey("last_used_board_api_level_${brand.wireValue}")
+
+    /**
+     * Set once a controller has been *observed* to keep advertising while
+     * connected, i.e. proven to accept more than one client.
+     *
+     * Only ever written as true and never cleared: the observation requires a
+     * BLE scan, so a reconnect (which deliberately runs without scan
+     * permission on legacy Android) could otherwise never classify a board it
+     * has already classified a hundred times. A negative observation stays
+     * transient by design — absence of an advertisement can be a missed
+     * window, while its presence is proof.
+     */
+    fun lastUsedBoardAdvertisesWhileConnected(brand: BoardBrand) =
+        booleanPreferencesKey("last_used_board_multi_client_${brand.wireValue}")
     val BOARD_ANGLE = intPreferencesKey("board_angle")
     val BOARD_MIN_GRADE = intPreferencesKey("board_min_grade")
     val BOARD_MAX_GRADE = intPreferencesKey("board_max_grade")
@@ -909,6 +929,8 @@ class UserPreferences(
                         apiLevel = apiLevel,
                         address = address,
                         boardBrand = brand,
+                        advertisesWhileConnected =
+                            prefs[PreferenceKeys.lastUsedBoardAdvertisesWhileConnected(brand)],
                     )
                 }
                 .toMap()
@@ -921,6 +943,26 @@ class UserPreferences(
             prefs[PreferenceKeys.lastUsedBoardDisplayName(brand)] = controller.displayName
             prefs[PreferenceKeys.lastUsedBoardSerial(brand)] = controller.serial
             prefs[PreferenceKeys.lastUsedBoardApiLevel(brand)] = controller.apiLevel
+            // Deliberately never writes false or removes the key: this record is
+            // rewritten on every successful connect, and a connect without scan
+            // permission carries no observation. Clobbering here would discard a
+            // capacity that was verified in an earlier, scan-capable session.
+            if (controller.advertisesWhileConnected == true) {
+                prefs[PreferenceKeys.lastUsedBoardAdvertisesWhileConnected(brand)] = true
+            }
+        }
+    }
+
+    /**
+     * Records a positive controller-capacity observation for [brand].
+     *
+     * Separate from [setRememberedBoardController] because the observation
+     * arrives seconds after the connect that stored the record, from the
+     * post-connect advertising probe.
+     */
+    suspend fun setRememberedBoardAdvertisesWhileConnected(brand: BoardBrand) {
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.lastUsedBoardAdvertisesWhileConnected(brand)] = true
         }
     }
 

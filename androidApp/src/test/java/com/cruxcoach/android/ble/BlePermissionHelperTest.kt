@@ -190,3 +190,72 @@ class BluetoothEnableGateTest {
         )
     }
 }
+
+/**
+ * Decision table for the reconnect permission set.
+ *
+ * Background: reconnecting to a known controller connects by address and
+ * needs no scan. But the post-connect advertising probe — the only way to
+ * establish whether a controller accepts several clients — does. Requiring
+ * scan rights unconditionally would force a location grant on legacy Android
+ * for a flow that does not need one; never requiring them left the capacity
+ * permanently "unknown" on every reconnect.
+ */
+class ReconnectPermissionsTest {
+
+    @Test
+    fun `unverified capacity on api 31+ also asks for scan`() {
+        assertTrue(
+            BlePermissionHelper.wantsCapacityProbe(
+                capacityKnown = false,
+                apiLevel = Build.VERSION_CODES.S,
+            )
+        )
+        val perms = BlePermissionHelper.getReconnectPermissions(
+            capacityKnown = false,
+            apiLevel = Build.VERSION_CODES.S,
+        )
+        assertTrue(perms.contains(Manifest.permission.BLUETOOTH_SCAN))
+        assertTrue(perms.contains(Manifest.permission.BLUETOOTH_CONNECT))
+    }
+
+    @Test
+    fun `verified capacity asks for nothing beyond connect`() {
+        assertFalse(
+            BlePermissionHelper.wantsCapacityProbe(
+                capacityKnown = true,
+                apiLevel = Build.VERSION_CODES.S,
+            )
+        )
+        assertContentEquals(
+            arrayOf(Manifest.permission.BLUETOOTH_CONNECT),
+            BlePermissionHelper.getReconnectPermissions(
+                capacityKnown = true,
+                apiLevel = Build.VERSION_CODES.S,
+            )
+        )
+    }
+
+    /** The whole point of the split: connecting must never drag in location. */
+    @Test
+    fun `legacy android never asks for scan on reconnect`() {
+        for (api in listOf(Build.VERSION_CODES.M, Build.VERSION_CODES.Q, Build.VERSION_CODES.R)) {
+            assertFalse(
+                BlePermissionHelper.wantsCapacityProbe(capacityKnown = false, apiLevel = api),
+                "API $api must not request a scan for a reconnect",
+            )
+            val perms = BlePermissionHelper.getReconnectPermissions(
+                capacityKnown = false,
+                apiLevel = api,
+            )
+            assertFalse(
+                perms.contains(Manifest.permission.ACCESS_FINE_LOCATION),
+                "API $api reconnect must not require location",
+            )
+            assertFalse(
+                perms.contains(Manifest.permission.ACCESS_COARSE_LOCATION),
+                "API $api reconnect must not require location",
+            )
+        }
+    }
+}
