@@ -56,6 +56,7 @@ import com.cruxcoach.android.R
 import dagger.hilt.android.qualifiers.ApplicationContext
 import android.content.Context
 import com.cruxcoach.android.util.PerfLogger
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 
 enum class RoutePlaybackMode { MANUAL, AUTO }
@@ -317,6 +318,7 @@ class BoardClimbDetailViewModel @Inject constructor(
     private var mirrorPlacementMap: Map<Int, Int> = emptyMap()
     private var originalAllFrames: List<List<BoardHold>> = emptyList()
     private var cachedPlacementMap: Map<Int, BoardPlacement>? = null
+    private val supportedAnglesCache = ConcurrentHashMap<Pair<Int, String>, Set<Int>>()
 
     // --- Delegated controllers ---
 
@@ -790,11 +792,22 @@ class BoardClimbDetailViewModel @Inject constructor(
         // imported climbs are angle-agnostic, so there's no single setter angle.
         val setterAngle = if (climb.origin == "cruxcoach") statted.firstOrNull()?.angle else null
         val supported: Set<Int> = when {
-            brand.usesAuroraProtocol ->
+            brand.usesAuroraProtocol -> {
                 // Pass the climb's own brand: layout ids collide across brands
                 // (layout 1 = Kilter Original AND Grasshopper/So iLL/Touchstone),
                 // so an unscoped lookup would union other brands' angle ranges.
-                boardRepository.getSupportedAnglesForLayout(climb.layoutId.toInt(), climb.boardBrand).toSet()
+                val cacheKey = climb.layoutId.toInt() to climb.boardBrand
+                supportedAnglesCache[cacheKey] ?: PerfLogger.trace("loadClimb.supportedAngles") {
+                    boardRepository
+                        .getSupportedAnglesForLayout(climb.layoutId.toInt(), climb.boardBrand)
+                        .toSet()
+                }.also { loaded ->
+                    // Do not retain an empty result: the first detail can race a
+                    // just-started catalogue import, and the completed import
+                    // must be allowed to populate the picker later.
+                    if (loaded.isNotEmpty()) supportedAnglesCache.putIfAbsent(cacheKey, loaded)
+                }
+            }
             brand == BoardBrand.MOONBOARD ->
                 MoonBoardVariant.fromLayoutId(climb.layoutId)?.angles?.toSet() ?: emptySet()
             else -> emptySet()

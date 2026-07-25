@@ -946,11 +946,29 @@ ORDER BY cs.angle;
 -- Decoy Dots), so an unscoped DISTINCT would union another brand's angle
 -- range into the picker.
 getSupportedAnglesForLayout:
-SELECT DISTINCT cs.angle
-FROM climb_stats cs
-INNER JOIN climbs c ON c.uuid = cs.climb_uuid
-WHERE cs.layout_id = ? AND c.board_brand = ?
-ORDER BY cs.angle;
+WITH layout_angles AS (
+    -- Read the tiny angle domain as a streaming DISTINCT from the
+    -- (layout_id, angle, ...) index. Joining every stats row to climbs first
+    -- made this query walk the complete Kilter catalogue on every detail open.
+    SELECT DISTINCT angle
+    FROM climb_stats
+    WHERE layout_id = :layoutId
+)
+SELECT la.angle
+FROM layout_angles la
+WHERE EXISTS (
+    -- Brand-check once per possible angle and stop at the first matching
+    -- climb. Layout ids overlap between board families, so the brand guard
+    -- remains mandatory even though the expensive full join is gone.
+    SELECT 1
+    FROM climbs c
+    INNER JOIN climb_stats cs ON cs.climb_uuid = c.uuid
+    WHERE c.board_brand = :boardBrand
+      AND cs.layout_id = :layoutId
+      AND cs.angle = la.angle
+    LIMIT 1
+)
+ORDER BY la.angle;
 
 -- Fast count: stats-only, no JOIN. Accurate when all climbs are is_listed=1
 -- and filter doesn't need frames_count check (boulder default: frames_count=1).
