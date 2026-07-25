@@ -376,6 +376,8 @@
     <string name="settings_ble_auto_disconnect_title">Board-Verbindung freigeben</string>
     <string name="settings_ble_auto_disconnect_desc_retained">Gilt nur für exklusive Controller, deren Beleuchtung nach dem Trennen erhalten bleibt. Multi-Connect- und unbekannte Controller bleiben verbunden.</string>
     <string name="settings_ble_auto_disconnect_moonboard">Nicht für MoonBoard verwendet: Die Beleuchtung benötigt eine aktive Verbindung.</string>
+    <string name="settings_ble_auto_disconnect_enable">Automatisch trennen</string>
+    <string name="settings_ble_auto_disconnect_off_hint">Die Verbindung bleibt bestehen, bis du sie selbst trennst.</string>
     <string name="settings_duration_minutes_label">Minuten</string>
     <string name="settings_duration_seconds_label">Sekunden</string>
     <string name="settings_ble_keep_screen_on">Bildschirm anlassen</string>

@@ -6,6 +6,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -291,24 +295,75 @@ internal fun BleAutoDisconnectSection(
     )
 
     Spacer(modifier = Modifier.height(8.dp))
+
+    // Off is a state of its own, not a duration of zero. It was reachable by
+    // stepping the duration down to 0:00, which reads as "disconnect
+    // immediately" rather than "never" — the opposite of what it does.
+    val autoDisconnectEnabled = bleAutoDisconnectSeconds > 0
+    // Remember what the user had set so toggling off and on again does not
+    // silently reset their duration to a default.
+    var lastEnabledSeconds by rememberSaveable {
+        mutableIntStateOf(
+            if (bleAutoDisconnectSeconds > 0) bleAutoDisconnectSeconds
+            else DEFAULT_AUTO_DISCONNECT_SECONDS
+        )
+    }
+    if (bleAutoDisconnectSeconds > 0 && bleAutoDisconnectSeconds != lastEnabledSeconds) {
+        lastEnabledSeconds = bleAutoDisconnectSeconds
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth().testTag("ble_auto_disconnect_toggle"),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                stringResource(R.string.settings_ble_auto_disconnect_enable),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            if (!autoDisconnectEnabled) {
+                Text(
+                    stringResource(R.string.settings_ble_auto_disconnect_off_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        Switch(
+            checked = autoDisconnectEnabled,
+            onCheckedChange = { on ->
+                onAutoDisconnectChange(if (on) lastEnabledSeconds else 0)
+            },
+            colors = SwitchDefaults.colors(checkedTrackColor = OrangeAccent),
+        )
+    }
+
     // Single source of truth for the duration: shared DurationStepper.
     // The stepper renders its own current value (Min / Sec ± buttons), so
     // a separate "Or set exactly:" label and a "Duration: …" line above
     // it would only repeat what's already visible. Keep the title + desc
     // (settings_ble_auto_disconnect_*) as the user-facing label and let
-    // the stepper own the value display. `0 = off` reachable via
-    // minSeconds = 0; max 60 min matches the longest old preset × 2 —
-    // any larger value is almost certainly a typo.
-    DurationStepper(
-        seconds = bleAutoDisconnectSeconds,
-        onChange = onAutoDisconnectChange,
-        minSeconds = 0,
-        maxSeconds = 3600,
-        minuteLabel = stringResource(R.string.settings_duration_minutes_label),
-        secondLabel = stringResource(R.string.settings_duration_seconds_label),
-    )
-
+    // the stepper own the value display. minSeconds is 1 now: zero is the
+    // switch's job, and leaving it reachable here would let the stepper
+    // silently contradict the switch. Max 60 min matches the longest old
+    // preset × 2 — any larger value is almost certainly a typo.
+    if (autoDisconnectEnabled) {
+        Spacer(modifier = Modifier.height(8.dp))
+        DurationStepper(
+            seconds = bleAutoDisconnectSeconds,
+            onChange = onAutoDisconnectChange,
+            minSeconds = 1,
+            maxSeconds = 3600,
+            minuteLabel = stringResource(R.string.settings_duration_minutes_label),
+            secondLabel = stringResource(R.string.settings_duration_seconds_label),
+        )
+    }
 }
+
+/** Restored when the auto-disconnect switch is turned back on with no prior
+ *  duration to return to. Mirrors SettingsUiState's own default. */
+private const val DEFAULT_AUTO_DISCONNECT_SECONDS = 60
 
 @Composable
 internal fun AssessmentSection(
