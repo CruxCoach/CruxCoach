@@ -87,23 +87,26 @@ fun BleStatusArea(
         if (currentClimbUuid == null) true
         else it.climbUuid != currentClimbUuid && it.source != OnBoardSource.LOCAL_ACTIVE
     }
-    val hasContent = effectiveOnBoard != null || state.boardOccupiedCount > 0 ||
-        state.nearbySessions.isNotEmpty() || state.ownSession != null
-
     // FEAT-044 §12: persistent in-app sharing status with one-tap stop —
-    // visible on every screen while the board is shared, independent of the
-    // regular BLE chip content.
+    // visible on every screen while the board is shared.
     val relayManager = LocalCruxRelayManager.current
     val relayState by relayManager.state.collectAsStateWithLifecycle()
-    if (relayState.enabled) {
-        RelayStatusChip(
-            clientCount = relayState.clientCount,
-            onStop = { relayManager.setEnabled(false) }
-        )
-    } else {
-        // Terminal relay errors (BOARD_LOST, a failed start) land AFTER the
-        // sharing sheet's error surface is gone — show them here so the stop
-        // is never silent (§12); dismissible, on every screen.
+
+    // Sharing counts as content in its own right. It used to render as a
+    // separate card above this area, which meant the host saw the sharing
+    // state and the board state as two disconnected strips — and with nothing
+    // else going on, the area below returned early and the climb currently on
+    // the board never appeared at all. The relay line now rides along inside
+    // the regular chip instead.
+    val hasContent = effectiveOnBoard != null || state.boardOccupiedCount > 0 ||
+        state.nearbySessions.isNotEmpty() || state.ownSession != null ||
+        relayState.enabled
+
+    // Terminal relay errors (BOARD_LOST, a failed start) land AFTER the
+    // sharing sheet's error surface is gone — show them here so the stop
+    // is never silent (§12); dismissible, on every screen. Independent of
+    // hasContent: an error means sharing already stopped.
+    if (!relayState.enabled) {
         relayState.error?.let { error ->
             RelayErrorRow(
                 text = relayErrorText(error, relayState.errorDetail),
@@ -128,6 +131,9 @@ fun BleStatusArea(
         )
     }
 
+    val relayClientCount = relayState.clientCount.takeIf { relayState.enabled }
+    val stopRelay: () -> Unit = { relayManager.setEnabled(false) }
+
     if (expanded) {
         BleStatusExpanded(
             state = state,
@@ -139,13 +145,20 @@ fun BleStatusArea(
             onAddToQueue = onAddToQueue,
             onOpenQueueSheet = { showQueueSheet = true }
         )
+        // The expanded view owns its card; keep the sharing line adjacent so
+        // the stop stays reachable without collapsing first.
+        if (relayClientCount != null) {
+            RelaySharingLine(clientCount = relayClientCount, onStop = stopRelay)
+        }
     } else {
         BleStatusChip(
             state = state,
             effectiveOnBoard = effectiveOnBoard,
             onExpand = { Log.d(TAG, "EXPAND"); expanded = true },
             onAddToQueue = onAddToQueue,
-            onRandomToQueue = onRandomToQueue
+            onRandomToQueue = onRandomToQueue,
+            relayClientCount = relayClientCount,
+            onStopRelay = stopRelay
         )
     }
 }

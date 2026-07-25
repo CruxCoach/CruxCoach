@@ -50,7 +50,10 @@ internal fun BleStatusChip(
     effectiveOnBoard: OnBoardClimbEntry?,
     onExpand: () -> Unit,
     onAddToQueue: (() -> Unit)?,
-    onRandomToQueue: (() -> Unit)? = null
+    onRandomToQueue: (() -> Unit)? = null,
+    /** Client count while the board is shared, or null when it is not. */
+    relayClientCount: Int? = null,
+    onStopRelay: (() -> Unit)? = null,
 ) {
     val session = state.ownSession
 
@@ -63,6 +66,11 @@ internal fun BleStatusChip(
             onAddToQueue = onAddToQueue,
             onRandomToQueue = onRandomToQueue
         )
+        // The mini-player owns its own card, so the sharing line trails it
+        // rather than sitting inside — still one block, not a detached strip.
+        if (relayClientCount != null && onStopRelay != null) {
+            RelaySharingLine(clientCount = relayClientCount, onStop = onStopRelay)
+        }
         return
     }
 
@@ -85,6 +93,7 @@ internal fun BleStatusChip(
         ),
         shape = RoundedCornerShape(14.dp)
     ) {
+      Column {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -123,6 +132,10 @@ internal fun BleStatusChip(
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+        if (relayClientCount != null && onStopRelay != null) {
+            RelaySharingLine(clientCount = relayClientCount, onStop = onStopRelay)
+        }
+      }
     }
 }
 
@@ -389,31 +402,31 @@ internal fun formatSessionTime(totalSeconds: Int): String {
 }
 
 /**
- * FEAT-044 §12: persistent "board is shared" status with a one-tap stop.
- * Rendered by [BleStatusArea] on every screen while CruxRelay is active;
- * stopping affects only relay transport; queue and board ownership stay intact.
+ * FEAT-044 §12: "board is shared" status with a one-tap stop.
+ *
+ * Rides inside the regular BLE status block rather than as a card of its own.
+ * As a separate strip it read as unrelated to the board state directly above
+ * it, and on a screen with nothing else to show the block below it collapsed
+ * entirely — the host then saw sharing but not the climb on the board.
+ *
+ * Stopping affects only relay transport; queue and board ownership stay intact.
  */
 @Composable
-internal fun RelayStatusChip(
+internal fun RelaySharingLine(
     clientCount: Int,
     onStop: () -> Unit
 ) {
-    Card(
+    HorizontalDivider(
+        color = SuccessGreen.copy(alpha = 0.25f),
+        modifier = Modifier.padding(horizontal = 12.dp),
+    )
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp)
-            .testTag("relay_status_chip"),
-        colors = CardDefaults.cardColors(
-            containerColor = SuccessGreen.copy(alpha = 0.10f)
-        ),
-        shape = RoundedCornerShape(14.dp)
+            .testTag("relay_status_chip")
+            .padding(start = 12.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 12.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
             Icon(
                 Icons.Default.CellTower,
                 contentDescription = null,
@@ -430,13 +443,12 @@ internal fun RelayStatusChip(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
-            TextButton(onClick = onStop, modifier = Modifier.testTag("relay_chip_stop")) {
-                Text(
-                    stringResource(R.string.relay_chip_stop),
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold
-                )
-            }
+        TextButton(onClick = onStop, modifier = Modifier.testTag("relay_chip_stop")) {
+            Text(
+                stringResource(R.string.relay_chip_stop),
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold
+            )
         }
     }
 }
