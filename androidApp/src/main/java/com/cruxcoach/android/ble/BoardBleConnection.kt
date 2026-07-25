@@ -128,14 +128,18 @@ class BoardBleConnection(private val context: Context) {
     private val keepAliveLock = Any()
 
     fun acquireKeepAlive(owner: String) {
-        synchronized(keepAliveLock) { keepAliveOwners.add(owner) }
+        val owners = synchronized(keepAliveLock) {
+            keepAliveOwners.add(owner); keepAliveOwners.toList()
+        }
+        Log.d(TAG, "keepAlive acquired by $owner — holders=$owners")
     }
 
     fun releaseKeepAlive(owner: String) {
-        val nowIdle = synchronized(keepAliveLock) {
-            keepAliveOwners.remove(owner); keepAliveOwners.isEmpty()
+        val owners = synchronized(keepAliveLock) {
+            keepAliveOwners.remove(owner); keepAliveOwners.toList()
         }
-        if (nowIdle) resetIdleTimer() // last owner let go → allow idle-disconnect again
+        Log.d(TAG, "keepAlive released by $owner — holders=$owners")
+        if (owners.isEmpty()) resetIdleTimer() // last owner let go → allow idle-disconnect again
     }
 
     /** True when disconnecting for [owner] would interrupt another feature. */
@@ -202,15 +206,24 @@ class BoardBleConnection(private val context: Context) {
         // a replacement for the old Quick-Send macro) could fire mid-
         // send on long climbs.
         val profile = BoardControllerProfiles.forBoard(currentBoard)
-        if (BoardProjectionPolicy.shouldArmIdleDisconnect(
-                seconds = seconds,
-                connectionState = _connectionState.value,
-                explicitlySuppressed = isKeepAliveHeld(),
-                connectionCapacity = profile.connectionCapacity,
-                projectionSurvivesDisconnect =
-                    profile.projectionLifetime == BoardProjectionLifetime.RETAINED_AFTER_DISCONNECT,
-            )
-        ) {
+        val suppressed = isKeepAliveHeld()
+        val arm = BoardProjectionPolicy.shouldArmIdleDisconnect(
+            seconds = seconds,
+            connectionState = _connectionState.value,
+            explicitlySuppressed = suppressed,
+            connectionCapacity = profile.connectionCapacity,
+            projectionSurvivesDisconnect =
+                profile.projectionLifetime == BoardProjectionLifetime.RETAINED_AFTER_DISCONNECT,
+        )
+        // All five inputs, because a wrong auto-disconnect is otherwise
+        // indistinguishable from a link the board dropped on its own.
+        Log.d(
+            TAG,
+            "idleTimer arm=$arm seconds=$seconds state=${_connectionState.value} " +
+                "suppressed=$suppressed capacity=${profile.connectionCapacity} " +
+                "projectionSurvives=${profile.projectionLifetime}"
+        )
+        if (arm) {
             disconnectJob = scope.launch {
                 delay(seconds * 1_000L)
                 disconnect()

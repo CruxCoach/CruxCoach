@@ -88,7 +88,9 @@ class RelayGattServer(private val context: Context) {
                         connectedDevices.add(address)
                         reassemblers[address] = RelayFrameReassembler()
                     }
-                    Log.d(TAG, "Client connected: $address")
+                    // Count + members: the chip shows this number, and a stale
+                    // entry is the difference between "one client" and "two".
+                    Log.d(TAG, "Client connected: $address — devices=$connectedDevices")
                     _connectionEvents.tryEmit(GattConnectionEvent.Connected(address))
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
@@ -96,7 +98,7 @@ class RelayGattServer(private val context: Context) {
                         connectedDevices.remove(address)
                         reassemblers.remove(address)?.reset()
                     }
-                    Log.d(TAG, "Client disconnected: $address")
+                    Log.d(TAG, "Client disconnected: $address — devices=$connectedDevices")
                     _connectionEvents.tryEmit(GattConnectionEvent.Disconnected(address))
                 }
             }
