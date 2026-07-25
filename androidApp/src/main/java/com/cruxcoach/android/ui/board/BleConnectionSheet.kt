@@ -434,8 +434,14 @@ private fun RememberedBoardContent(
     onReconnect: () -> Unit,
     onSearchOtherBoards: () -> Unit,
 ) {
+    // The card carries the board's identity, so tapping it is the gesture
+    // people try first — the button below stays as the explicit affordance
+    // rather than the only way in.
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        onClick = onReconnect,
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("ble_remembered_board_card"),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
         ),
