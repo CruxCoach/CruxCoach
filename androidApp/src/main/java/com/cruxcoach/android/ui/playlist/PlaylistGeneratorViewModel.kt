@@ -1,10 +1,12 @@
 package com.cruxcoach.android.ui.playlist
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.util.GradeDisplayHelper
+import com.cruxcoach.android.util.PerfLogger
 import com.cruxcoach.android.util.safeLaunch
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.ClimbSortField
@@ -28,6 +30,7 @@ import com.cruxcoach.domain.playlist.estimatedMinutes
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlin.random.Random
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -119,7 +122,10 @@ class PlaylistGeneratorViewModel @Inject constructor(
      * beats a one-off try), then recency.
      */
     private fun loadProfile(angle: Int): LogbookProfile {
-        val all = personalBoardRepo.getUserAscentsAll()
+        // One light combined snapshot replaces three full-table reads. In
+        // particular, getUserAscentsAll() includes every climb_frames blob,
+        // even though profile generation only needs logbook metadata.
+        val all = personalBoardRepo.getUserLogbookAllLight()
         val allSends = all.filter { it.isSend }
 
         val exact = allSends.filter { it.angle.toInt() == angle }
@@ -144,8 +150,9 @@ class PlaylistGeneratorViewModel @Inject constructor(
         val sends = pool.mapNotNull { it.difficultyAverage }
         val flashes = pool.filter { it.uuid in flashUuids }.mapNotNull { it.difficultyAverage }
 
-        val sentUuids = personalBoardRepo.getUserSentClimbUuids()
-        val openProjects = personalBoardRepo.getRawBidsForUser()
+        val sentUuids = allSends.asSequence().map { it.climbUuid }.toSet()
+        val openProjects = all.asSequence()
+            .filter { !it.isSend }
             .filter { it.climbUuid !in sentUuids }
             .groupBy { it.climbUuid }
             .map { (uuid, tries) ->
@@ -227,82 +234,107 @@ class PlaylistGeneratorViewModel @Inject constructor(
         if (_state.value.isGenerating) return
         _state.update { it.copy(isGenerating = true, error = false) }
         viewModelScope.safeLaunch(TAG) {
-            val result = withContext(Dispatchers.IO) {
-                val ignored = personalBoardRepo.getIgnoredClimbUuids()
-                val sent = personalBoardRepo.getUserSentClimbUuids()
-                val attempted = personalBoardRepo.getUserAttemptedClimbUuids()
-                // Fresh-stimulus bias: anything logged in the last ~2 weeks
-                // ranks behind untouched material of equal quality.
-                val recentCutoff = java.time.LocalDate.now()
-                    .minusDays(RECENT_REPEAT_DAYS)
-                    .toString()
-                val recentUuids = personalBoardRepo.getUserAscentsAll()
-                    .asSequence()
-                    .filter { it.climbedAt.take(10) >= recentCutoff }
-                    .map { it.climbUuid }
-                    .toSet()
+            try {
+                val result = PerfLogger.traceSuspend("playlist.generate total") {
+                    withContext(Dispatchers.IO) {
+                        val ignored = PerfLogger.traceQuery("playlist.ignored") {
+                            personalBoardRepo.getIgnoredClimbUuids()
+                        }
+                        val logbook = PerfLogger.traceQuery("playlist.logbookSnapshot") {
+                            personalBoardRepo.getUserLogbookAllLight()
+                        }
+                        val sent = logbook.asSequence()
+                            .filter { it.isSend }
+                            .map { it.climbUuid }
+                            .toSet()
+                        val attempted = logbook.asSequence()
+                            .filter { !it.isSend && it.climbUuid !in sent }
+                            .map { it.climbUuid }
+                            .toSet()
+                        // Fresh-stimulus bias: anything logged in the last ~2 weeks
+                        // ranks behind untouched material of equal quality.
+                        val recentCutoff = java.time.LocalDate.now()
+                            .minusDays(RECENT_REPEAT_DAYS)
+                            .toString()
+                        val recentUuids = logbook.asSequence()
+                            .filter { it.climbedAt.take(10) >= recentCutoff }
+                            .map { it.climbUuid }
+                            .toSet()
 
-                val source = CandidateSource { minDiff, maxDiff ->
-                    boardRepository.searchClimbsSorted(
-                        angle = params.angle,
-                        layoutId = params.layoutId,
-                        boardBrand = params.boardBrand,
-                        minDifficulty = minDiff,
-                        maxDifficulty = maxDiff,
-                        minAscensionists = MIN_ASCENSIONISTS,
-                        sortField = ClimbSortField.QUALITY,
-                        sortDirection = SortDirection.DESC,
-                        limit = CANDIDATE_POOL_SIZE,
-                        climbType = ClimbTypeFilter.BOULDER,
-                        selProductSizeId = params.productSizeId,
-                    ).filter { it.uuid !in ignored }.mapNotNull { climb ->
-                        climb.difficultyAverage?.let { diff ->
-                            PlaylistCandidate(
-                                climbUuid = climb.uuid,
-                                difficulty = diff,
-                                quality = climb.qualityAverage,
-                                ascensionistCount = climb.ascensionistCount,
-                                sent = climb.uuid in sent,
-                                attempted = climb.uuid in attempted,
-                                recentlyTried = climb.uuid in recentUuids,
+                        val source = CandidateSource { minDiff, maxDiff ->
+                            PerfLogger.traceQuery("playlist.candidateBand") {
+                                boardRepository.searchClimbsSorted(
+                                    angle = params.angle,
+                                    layoutId = params.layoutId,
+                                    boardBrand = params.boardBrand,
+                                    minDifficulty = minDiff,
+                                    maxDifficulty = maxDiff,
+                                    minAscensionists = MIN_ASCENSIONISTS,
+                                    sortField = ClimbSortField.QUALITY,
+                                    sortDirection = SortDirection.DESC,
+                                    limit = CANDIDATE_POOL_SIZE,
+                                    climbType = ClimbTypeFilter.BOULDER,
+                                    selProductSizeId = params.productSizeId,
+                                ).filter { it.uuid !in ignored }.mapNotNull { climb ->
+                                    climb.difficultyAverage?.let { diff ->
+                                        PlaylistCandidate(
+                                            climbUuid = climb.uuid,
+                                            difficulty = diff,
+                                            quality = climb.qualityAverage,
+                                            ascensionistCount = climb.ascensionistCount,
+                                            sent = climb.uuid in sent,
+                                            attempted = climb.uuid in attempted,
+                                            recentlyTried = climb.uuid in recentUuids,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        val filled = PerfLogger.trace("playlist.fill") {
+                            PlaylistFiller.fill(
+                                plan = plan,
+                                source = source,
+                                openProjects = profile.openProjectUuids,
+                                selection = params.selection,
+                                random = Random(System.currentTimeMillis()),
                             )
                         }
+                        if (filled.entries.none { it is GeneratedEntry.Climb }) return@withContext null
+
+                        val listId = personalBoardRepo.createClimbList(name, params.toJson())
+                        personalBoardRepo.replacePlaybackSteps(
+                            listId,
+                            filled.entries.map { entry ->
+                                when (entry) {
+                                    is GeneratedEntry.Climb -> NewListPlaybackStep(
+                                        climbUuid = entry.climbUuid,
+                                        angle = params.angle.toLong(),
+                                    )
+                                    is GeneratedEntry.Rest -> NewListPlaybackStep(
+                                        climbUuid = null,
+                                        restSeconds = entry.seconds.toLong(),
+                                    )
+                                }
+                            },
+                        )
+                        listId to filled.droppedClimbs
                     }
                 }
-
-                val filled = PlaylistFiller.fill(
-                    plan = plan,
-                    source = source,
-                    openProjects = profile.openProjectUuids,
-                    selection = params.selection,
-                    random = Random(System.currentTimeMillis()),
-                )
-                if (filled.entries.none { it is GeneratedEntry.Climb }) return@withContext null
-
-                val listId = personalBoardRepo.createClimbList(name, params.toJson())
-                personalBoardRepo.replacePlaybackSteps(
-                    listId,
-                    filled.entries.map { entry ->
-                        when (entry) {
-                            is GeneratedEntry.Climb -> NewListPlaybackStep(
-                                climbUuid = entry.climbUuid,
-                                angle = params.angle.toLong(),
-                            )
-                            is GeneratedEntry.Rest -> NewListPlaybackStep(
-                                climbUuid = null,
-                                restSeconds = entry.seconds.toLong(),
-                            )
-                        }
-                    },
-                )
-                listId to filled.droppedClimbs
-            }
-            if (result == null) {
-                _state.update { it.copy(isGenerating = false, error = true) }
-            } else {
-                _state.update {
-                    it.copy(isGenerating = false, createdListId = result.first, droppedClimbs = result.second)
+                if (result == null) {
+                    _state.update { it.copy(isGenerating = false, error = true) }
+                } else {
+                    _state.update {
+                        it.copy(isGenerating = false, createdListId = result.first, droppedClimbs = result.second)
+                    }
                 }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "Playlist generation failed", e)
+                // safeLaunch contains the process-level failure, but the UI
+                // must also leave its spinner and offer a retry.
+                _state.update { it.copy(isGenerating = false, error = true) }
             }
         }
     }

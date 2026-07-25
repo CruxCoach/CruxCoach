@@ -76,6 +76,17 @@ object PlaylistFiller {
         val used = mutableSetOf<String>()
         val byRepeatKey = mutableMapOf<Int, GeneratedEntry.Climb>()
         val entries = mutableListOf<GeneratedEntry>()
+        // A plan contains many identical bands (for example every volume
+        // problem in one tier). The Android source is a sorted catalogue SQL
+        // query, so asking it again for every slot dominated generation time.
+        // Keep one immutable catalogue snapshot per requested band for this
+        // fill run; filtering already removes climbs selected by earlier slots.
+        val candidateCache = mutableMapOf<Pair<Double, Double>, List<PlaylistCandidate>>()
+        val cachedSource = CandidateSource { minDifficulty, maxDifficulty ->
+            candidateCache.getOrPut(minDifficulty to maxDifficulty) {
+                source.candidates(minDifficulty, maxDifficulty)
+            }
+        }
         var dropped = 0
         var widened = 0
 
@@ -93,7 +104,7 @@ object PlaylistFiller {
                     val preferProjects = slot.section == PlanSection.PEAK &&
                         plan.effectiveType == GeneratorType.PROJECTING
                     val (pick, didWiden) =
-                        pickClimb(slot, source, used, preferProjects, openProjects, selection, random)
+                        pickClimb(slot, cachedSource, used, preferProjects, openProjects, selection, random)
                     if (didWiden) widened++
                     if (pick == null) {
                         dropped++

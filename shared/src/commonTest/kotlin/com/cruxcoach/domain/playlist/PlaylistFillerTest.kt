@@ -41,6 +41,29 @@ class PlaylistFillerTest {
     }
 
     @Test
+    fun `queries an identical candidate band only once per fill`() {
+        val pool = (1..10).map { candidate("c$it", 15.0) }
+        var sourceCalls = 0
+        val source = CandidateSource { min, max ->
+            sourceCalls++
+            pool.filter { it.difficulty in min..max }
+        }
+
+        val result = PlaylistFiller.fill(
+            plan(
+                climbSlot(14.0, 16.0),
+                climbSlot(14.0, 16.0),
+                climbSlot(14.0, 16.0),
+            ),
+            source,
+            random = Random(1),
+        )
+
+        assertEquals(3, result.entries.filterIsInstance<GeneratedEntry.Climb>().size)
+        assertEquals(1, sourceCalls)
+    }
+
+    @Test
     fun `repeat keys reuse the same climb across sets`() {
         val pool = (1..10).map { candidate("c$it", 15.0) }
         // Two "sets" of two problems, keys 0/1 repeated.
