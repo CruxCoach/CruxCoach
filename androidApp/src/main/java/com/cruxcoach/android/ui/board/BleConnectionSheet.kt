@@ -183,6 +183,33 @@ fun BleConnectionSheet(
         ActivityResultContracts.StartActivityForResult()
     ) { /* result is observed via the state flow above */ }
 
+    // Fires the enable dialog, acquiring its prerequisite first if needed.
+    // Kept separate from connectionPermissionLauncher, whose success path
+    // reconnects a remembered board — here the only goal is the enable dialog.
+    val enableBluetoothPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        if (permissions.values.all { it }) {
+            runCatching {
+                bluetoothEnableLauncher.launch(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE))
+            }
+        }
+    }
+    val requestBluetoothEnable: () -> Unit = {
+        if (BlePermissionHelper.canRequestBluetoothEnable(state.hasConnectionPermission)) {
+            // runCatching as a backstop: OEM ROMs have been known to refuse
+            // this activity even with the permission held, and a refused
+            // system dialog must not take the whole app down.
+            runCatching {
+                bluetoothEnableLauncher.launch(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE))
+            }
+        } else {
+            enableBluetoothPermissionLauncher.launch(
+                BlePermissionHelper.getConnectionPermissions()
+            )
+        }
+    }
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         modifier = Modifier.testTag("ble_connection_sheet")
@@ -241,17 +268,15 @@ fun BleConnectionSheet(
                 // Bluetooth is needed by both reconnect and discovery. Auto-fire
                 // the platform enable dialog, with an explicit retry button.
                 !state.isBluetoothEnabled -> {
-                    LaunchedEffect(Unit) {
-                        bluetoothEnableLauncher.launch(
-                            Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
-                        )
+                    // Keyed on the permission, not Unit: when the user grants
+                    // BLUETOOTH_CONNECT the effect re-runs and now gets as far
+                    // as the enable dialog. A denial leaves the key unchanged,
+                    // so this cannot spin.
+                    LaunchedEffect(state.hasConnectionPermission) {
+                        requestBluetoothEnable()
                     }
                     BluetoothDisabledContent(
-                        onRequestEnable = {
-                            bluetoothEnableLauncher.launch(
-                                Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
-                            )
-                        }
+                        onRequestEnable = requestBluetoothEnable
                     )
                 }
 

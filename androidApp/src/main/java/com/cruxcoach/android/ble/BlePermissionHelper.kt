@@ -31,6 +31,20 @@ object BlePermissionHelper {
             emptyArray()
         }
 
+    /**
+     * True when `BluetoothAdapter.ACTION_REQUEST_ENABLE` may be launched.
+     *
+     * Asking the platform to turn Bluetooth on is itself a BLUETOOTH_CONNECT
+     * protected operation from API 31 on: without the permission the system
+     * refuses the activity start with a SecurityException, which crashes the
+     * app rather than returning a result. Below API 31 the intent needs no
+     * runtime permission at all.
+     */
+    fun canRequestBluetoothEnable(
+        hasConnectionPermission: Boolean,
+        apiLevel: Int = Build.VERSION.SDK_INT,
+    ): Boolean = hasConnectionPermission || getConnectionPermissions(apiLevel).isEmpty()
+
     fun getRequiredPermissions(apiLevel: Int = Build.VERSION.SDK_INT): Array<String> =
         getScanPermissions(apiLevel) + getConnectionPermissions(apiLevel)
 

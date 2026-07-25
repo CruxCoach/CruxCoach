@@ -141,3 +141,52 @@ class BlePermissionHelperTest {
         }
     }
 }
+
+/**
+ * Guard for [BlePermissionHelper.canRequestBluetoothEnable].
+ *
+ * Regression cover for a crash on the BLE sheet: with Bluetooth off and no
+ * permissions yet, the sheet fired ACTION_REQUEST_ENABLE straight away. From
+ * API 31 that intent is itself BLUETOOTH_CONNECT-protected, so the platform
+ * answered with a SecurityException and the app died on the spot — reproduced
+ * on Android 15 (API 35).
+ */
+class BluetoothEnableGateTest {
+
+    @Test
+    fun `api 31 and above needs the connect permission first`() {
+        assertFalse(
+            BlePermissionHelper.canRequestBluetoothEnable(
+                hasConnectionPermission = false,
+                apiLevel = Build.VERSION_CODES.S,
+            )
+        )
+        assertTrue(
+            BlePermissionHelper.canRequestBluetoothEnable(
+                hasConnectionPermission = true,
+                apiLevel = Build.VERSION_CODES.S,
+            )
+        )
+    }
+
+    @Test
+    fun `below api 31 the intent needs no runtime permission`() {
+        assertTrue(
+            BlePermissionHelper.canRequestBluetoothEnable(
+                hasConnectionPermission = false,
+                apiLevel = Build.VERSION_CODES.R,
+            )
+        )
+    }
+
+    @Test
+    fun `current android release still requires the permission`() {
+        assertFalse(
+            BlePermissionHelper.canRequestBluetoothEnable(
+                hasConnectionPermission = false,
+                apiLevel = 35,
+            ),
+            "API 35 is where this crashed in the field",
+        )
+    }
+}
