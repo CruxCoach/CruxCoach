@@ -21,6 +21,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
+import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.BluetoothConnected
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
@@ -74,6 +76,9 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
+import com.cruxcoach.android.ble.ConnectionState
+import com.cruxcoach.android.ui.board.BleConnectionSheet
+import com.cruxcoach.android.ui.board.BleConnectionViewModel
 import com.cruxcoach.android.ui.common.BleStatusArea
 import com.cruxcoach.android.ui.common.RestTimerBannerSlot
 import com.cruxcoach.android.ui.common.SessionVisibilityDialog
@@ -83,6 +88,7 @@ import com.cruxcoach.android.ui.theme.DarkBackground
 import com.cruxcoach.android.ui.theme.ErrorRed
 import com.cruxcoach.android.ui.theme.InfoBlue
 import com.cruxcoach.android.ui.theme.OrangeAccent
+import com.cruxcoach.android.ui.theme.SuccessGreen
 import com.cruxcoach.android.util.GradeDisplayHelper
 import kotlinx.coroutines.launch
 
@@ -105,6 +111,16 @@ fun PlaylistDetailScreen(
     var showResetConfirm by rememberSaveable { mutableStateOf(false) }
     var showClearConfirm by rememberSaveable { mutableStateOf(false) }
     var showSessionVisibilityDialog by rememberSaveable { mutableStateOf(false) }
+    var showBleSheet by rememberSaveable { mutableStateOf(false) }
+
+    // A plan can be started without a board attached, and BleStatusArea below
+    // only surfaces once there is actual BLE activity — so with nothing
+    // connected this screen offered no way to connect at all.
+    val bleConnectionViewModel: BleConnectionViewModel = hiltViewModel()
+    val bleConnectionState by bleConnectionViewModel.state.collectAsStateWithLifecycle()
+    val isBleConnected =
+        bleConnectionState.connectionState == ConnectionState.CONNECTED ||
+            bleConnectionState.connectionState == ConnectionState.SENDING
     var draggedEntryId by remember { mutableStateOf<Long?>(null) }
     var dragStartIndex by remember { mutableIntStateOf(-1) }
     var dragCurrentIndex by remember { mutableIntStateOf(-1) }
@@ -170,6 +186,17 @@ fun PlaylistDetailScreen(
                 requestNotificationPermissionIfNeeded()
                 viewModel.play(queueTitle, visibility, onPlayed)
             },
+        )
+    }
+
+    if (showBleSheet) {
+        // autoStartScan only fires when no controller is remembered — a known
+        // board is never silently replaced by a scan, so this cannot pull a
+        // location prompt on someone who just wants to reconnect.
+        BleConnectionSheet(
+            onDismiss = { showBleSheet = false },
+            onNavigateToClimb = onNavigateToClimb,
+            autoStartScan = true,
         )
     }
 
@@ -268,6 +295,18 @@ fun PlaylistDetailScreen(
                         }
                     },
                     actions = {
+                        IconButton(
+                            onClick = { showBleSheet = true },
+                            modifier = Modifier.testTag("playlist_ble_button"),
+                        ) {
+                            Icon(
+                                if (isBleConnected) Icons.Default.BluetoothConnected
+                                else Icons.Default.Bluetooth,
+                                contentDescription = stringResource(R.string.cd_bluetooth),
+                                tint = if (isBleConnected) SuccessGreen
+                                       else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                         IconButton(
                             onClick = { viewModel.toggleEditMode() },
                             modifier = Modifier.testTag("playlist_edit_toggle"),
