@@ -239,11 +239,28 @@ object AppModule {
         // need their own, more lenient profile. readTimeout still bounds
         // per-byte progress; callTimeout is intentionally omitted so a
         // slow-but-progressing mirror is not killed by a wall-clock cap.
+        //
+        // Identifiable User-Agent, same reasoning as the kilter client:
+        // mirror operators can tell our traffic apart and reach us instead
+        // of blocking us blind. This is not hypothetical — blossom.primal.net
+        // rejected default library UAs in July 2026 (403 / CF 1010), which
+        // cost us a mirror for three weeks; the sync script works around it
+        // with its own UA string.
+        val ua = "${com.cruxcoach.android.BuildConfig.USER_AGENT_PRODUCT}/" +
+            "${com.cruxcoach.android.BuildConfig.VERSION_NAME} " +
+            "(https://${com.cruxcoach.android.BuildConfig.APP_LINK_HOST})"
         return PerfLogger.trace("DI: BlossomOkHttpClient") {
             OkHttpClient.Builder()
                 .connectTimeout(15, TimeUnit.SECONDS)
                 .readTimeout(30, TimeUnit.SECONDS)
                 .writeTimeout(15, TimeUnit.SECONDS)
+                .addInterceptor { chain ->
+                    chain.proceed(
+                        chain.request().newBuilder()
+                            .header("User-Agent", ua)
+                            .build()
+                    )
+                }
                 .build()
         }
     }
