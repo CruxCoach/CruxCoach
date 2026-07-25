@@ -13,6 +13,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -77,27 +79,9 @@ class BlossomSyncManager(
      * updating relay and defeat every fresh publish.
      */
     suspend fun fetchManifest(): BlossomManifest = withContext(Dispatchers.IO) {
-        val relayUrls = NostrConfig.MANIFEST_RELAYS
-
-        val manifests = coroutineScope {
-            relayUrls.map { relayUrl ->
-                async {
-                    try {
-                        fetchManifestFromRelay(relayUrl)?.also {
-                            Log.d(TAG, "Manifest from $relayUrl: createdAt=${it.createdAt} chunks=${it.chunks.size}")
-                        }
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Manifest fetch from $relayUrl failed", e)
-                        null
-                    }
-                }
-            }.awaitAll()
-        }.filterNotNull()
-
-        manifests.maxByOrNull { it.createdAt }
-            ?.also { Log.d(TAG, "Selected manifest: createdAt=${it.createdAt} chunks=${it.chunks.size}") }
-            ?: throw BlossomSyncException("Failed to fetch manifest from any relay")
+        fetchManifestWithRetry(manifestDTag) { relayUrl -> fetchManifestFromRelay(relayUrl) }
     }
+
 
     private suspend fun fetchManifestFromRelay(relayUrl: String): BlossomManifest? {
         return withTimeout(RELAY_TIMEOUT_MS) {
@@ -377,6 +361,116 @@ class BlossomSyncManager(
     }
 
     companion object {
+
+        /** One relay's answer to a manifest query: a hit, a miss, or a failure. */
+        private data class RelayOutcome(
+            val relayUrl: String,
+            val manifest: BlossomManifest?,
+            val error: Throwable?,
+        )
+
+        /**
+         * Queries the relay set with bounded retries and returns the freshest
+         * manifest found.
+         *
+         * A single pass was not enough in practice. A fresh install syncs seven
+         * catalogues back to back, each doing its own manifest query, and a
+         * catalogue whose one query happened to land in a bad window failed for
+         * the whole run while its siblings succeeded — the "some boards fail on
+         * first download" report. Two things make that window likelier than it
+         * looks: public relays return transient 503s and connect timeouts (both
+         * observed on relay.damus.io and nostr-pub.wellorder.net), and a publish
+         * that only reached 2 of 3 relays leaves the third legitimately empty, so
+         * a single failure among the remaining two is already enough.
+         *
+         * The chunk-download path has retried across mirrors since day one
+         * ([DOWNLOAD_PASSES]); this closes the same gap on the metadata path.
+         *
+         * Split out from [fetchManifest] and parameterised so the retry behaviour
+         * is unit-testable without a live relay.
+         */
+        internal suspend fun fetchManifestWithRetry(
+            dTag: String,
+            relayUrls: List<String> = NostrConfig.MANIFEST_RELAYS,
+            passes: Int = MANIFEST_FETCH_PASSES,
+            fetchOne: suspend (String) -> BlossomManifest?,
+        ): BlossomManifest {
+            var lastError: Throwable? = null
+
+            for (pass in 0 until passes) {
+                val outcomes = coroutineScope {
+                    relayUrls.map { relayUrl ->
+                        async {
+                            try {
+                                RelayOutcome(relayUrl, fetchOne(relayUrl), null)
+                            } catch (e: TimeoutCancellationException) {
+                                // withTimeout's own signal — this relay was slow,
+                                // not the whole sync being cancelled.
+                                RelayOutcome(relayUrl, null, e)
+                            } catch (e: CancellationException) {
+                                // Real cancellation (user left the screen) must
+                                // propagate; swallowing it would keep the sync
+                                // running after its scope is gone.
+                                throw e
+                            } catch (e: Exception) {
+                                RelayOutcome(relayUrl, null, e)
+                            }
+                        }
+                    }.awaitAll()
+                }
+
+                // Log hit / miss / error separately: a relay that answers with no
+                // event is a replication gap, one that throws is an availability
+                // problem. Collapsing both into "failed" made field reports
+                // impossible to tell apart.
+                for (outcome in outcomes) {
+                    when {
+                        outcome.error != null -> {
+                            lastError = outcome.error
+                            Log.w(
+                                TAG,
+                                "[$dTag] relay ${outcome.relayUrl} failed " +
+                                    "(pass ${pass + 1}/$passes): ${outcome.error.message}"
+                            )
+                        }
+                        outcome.manifest == null ->
+                            Log.d(TAG, "[$dTag] relay ${outcome.relayUrl} has no manifest event")
+                        else ->
+                            Log.d(
+                                TAG,
+                                "[$dTag] relay ${outcome.relayUrl}: " +
+                                    "createdAt=${outcome.manifest.createdAt} chunks=${outcome.manifest.chunks.size}"
+                            )
+                    }
+                }
+
+                val newest = outcomes.mapNotNull { it.manifest }.maxByOrNull { it.createdAt }
+                if (newest != null) {
+                    Log.d(
+                        TAG,
+                        "[$dTag] selected manifest: createdAt=${newest.createdAt} " +
+                            "chunks=${newest.chunks.size} (pass ${pass + 1}/$passes)"
+                    )
+                    return newest
+                }
+
+                if (pass < passes - 1) {
+                    // Escalating linear backoff with jitter. Jitter matters here
+                    // beyond the usual reason: the catalogues sync one after
+                    // another, so without it every board would retry on the same
+                    // cadence and hit the same rate-limit window together.
+                    val backoffMs = MANIFEST_BACKOFF_BASE_MS * (pass + 1) +
+                        Random.nextLong(MANIFEST_BACKOFF_JITTER_MS)
+                    delay(backoffMs)
+                }
+            }
+
+            throw BlossomSyncException(
+                "Failed to fetch manifest '$dTag' from any of " +
+                    "${relayUrls.size} relay(s) after $passes pass(es)",
+                lastError
+            )
+        }
         private const val TAG = "BlossomSyncManager"
         private const val RELAY_TIMEOUT_MS = 15_000L
         // Slack above the manifest-declared chunk size for HTTP/zstd framing
@@ -397,6 +491,16 @@ class BlossomSyncManager(
         private const val PROGRESS_THROTTLE_MS = 200L
         // Number of full passes through the mirror list before giving up.
         private const val DOWNLOAD_PASSES = 2
+
+        /**
+         * Full passes over the relay set before a manifest fetch is declared
+         * failed. Three attempts cost at most ~2s of added backoff on a run
+         * that is going to fail anyway, and rescue the far more common case
+         * where one pass was simply unlucky.
+         */
+        internal const val MANIFEST_FETCH_PASSES = 3
+        private const val MANIFEST_BACKOFF_BASE_MS = 500L
+        private const val MANIFEST_BACKOFF_JITTER_MS = 500L
         // Backoff between retry passes. Linear + jitter is sufficient for
         // the typical "transient 5xx clears within a second" failure mode.
         private const val DOWNLOAD_BACKOFF_BASE_MS = 750L
