@@ -1290,24 +1290,83 @@ SELECT COUNT(*) FROM climb_stats;
 countNomatchClimbs:
 SELECT COUNT(*) FROM climbs WHERE is_nomatch = 1;
 
--- Bulk delete: public board data (re-downloadable via sync)
-deleteAllClimbs:
-DELETE FROM climbs;
-
-deleteAllClimbStats:
-DELETE FROM climb_stats;
+-- Bulk delete: public board data (re-downloadable via sync).
+-- There is deliberately NO blanket `DELETE FROM climbs` here: every
+-- deletion path must keep locally-authored / community climbs
+-- (source='local'/'nostr') — those are NOT re-downloadable. Catalogue
+-- rows are exactly source='kilter': the column default every importer
+-- leaves in place, for the MoonBoard / Aurora-family snapshots too.
 
 -- Targeted bulk delete used by [BoardSyncManager.handlePostMigrationResync]
--- to wipe ONLY the cron-blob-derived catalog rows (source='kilter')
--- before a force-resync. Cruxcoach-authored climbs (source='local' /
--- 'nostr', origin='cruxcoach') stay untouched. Run stats first since
--- there's no FK cascade in SQLite without explicit constraints.
+-- and the all-boards "Delete board data" path: wipes ONLY the
+-- cron-blob-derived catalog rows (source='kilter'). Cruxcoach-authored
+-- climbs (source='local' / 'nostr', origin='cruxcoach') stay untouched.
+-- Run stats first since there's no FK cascade in SQLite without
+-- explicit constraints.
 deleteKilterSourceClimbStats:
 DELETE FROM climb_stats
 WHERE climb_uuid IN (SELECT uuid FROM climbs WHERE source = 'kilter');
 
 deleteKilterSourceClimbs:
 DELETE FROM climbs WHERE source = 'kilter';
+
+-- Per-brand variants (Settings → "Delete board data" multiselect):
+-- the same source='kilter' protection, scoped to one board family.
+-- climb_stats and beta_links carry no brand column → resolve through
+-- the climbs about to be deleted, so both MUST run before
+-- deleteCatalogueClimbsForBrand empties the subselect.
+deleteCatalogueClimbStatsForBrand:
+DELETE FROM climb_stats
+WHERE climb_uuid IN (
+    SELECT uuid FROM climbs WHERE board_brand = :boardBrand AND source = 'kilter'
+);
+
+deleteCatalogueBetaLinksForBrand:
+DELETE FROM beta_links
+WHERE climb_uuid IN (
+    SELECT uuid FROM climbs WHERE board_brand = :boardBrand AND source = 'kilter'
+);
+
+deleteCatalogueClimbsForBrand:
+DELETE FROM climbs WHERE board_brand = :boardBrand AND source = 'kilter';
+
+deletePlacementsForBrand:
+DELETE FROM placements WHERE board_brand = :boardBrand;
+
+deleteProductSizesForBrand:
+DELETE FROM product_sizes WHERE board_brand = :boardBrand;
+
+deleteBoardImagesForBrand:
+DELETE FROM board_images WHERE board_brand = :boardBrand;
+
+deleteLedsForBrand:
+DELETE FROM leds WHERE board_brand = :boardBrand;
+
+deleteHolesForBrand:
+DELETE FROM holes WHERE board_brand = :boardBrand;
+
+deleteHoldPositionsForBrand:
+DELETE FROM board_hold_positions WHERE board_brand = :boardBrand;
+
+-- sync_states is Kilter-owned except the in-app updater's version
+-- marker: the chunk pipeline copies the blob's shared_syncs rows in
+-- here (arbitrary table names, unknowable at compile time) and the
+-- import/backfill markers (metadata_v7, move_count_backfill_v2, the
+-- *_force_resync flags) all describe the Kilter catalogue. MoonBoard +
+-- Aurora-family syncs keep their freshness in SharedPreferences
+-- instead, so a deletion that does not include Kilter must not touch
+-- this table at all — and a Kilter-scoped one resets everything but
+-- the updater's key.
+deleteKilterOwnedSyncStates:
+DELETE FROM sync_states WHERE table_name != 'apk_version_code';
+
+-- Resolve climb uuids → board family, for scoping data that lives in
+-- the encrypted SecureDB (climb-list entries) where no cross-DB JOIN
+-- can reach `climbs`. Exact-match on the canonical stored uuid — the
+-- same resolution the list screens use, so deletion coverage equals
+-- display coverage.
+getClimbBrandsForUuids:
+SELECT uuid, board_brand FROM climbs WHERE uuid IN :uuids;
 
 deleteAllPlacements:
 DELETE FROM placements;

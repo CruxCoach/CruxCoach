@@ -93,7 +93,7 @@ class BoardSyncManager(
     private val _boardDataDeletion = MutableStateFlow(BoardDataDeletionState())
     /** Progress of the board-catalogue deletion (Settings → "Delete board
      *  data"). App-scoped here so the Settings UI can observe a run that
-     *  outlives its own ViewModel — see [deleteAllBoardData]. */
+     *  outlives its own ViewModel — see [deleteBoardData]. */
     val boardDataDeletion: StateFlow<BoardDataDeletionState> = _boardDataDeletion.asStateFlow()
 
     init {
@@ -1072,16 +1072,23 @@ class BoardSyncManager(
     }
 
     /**
-     * Delete the whole board catalogue (every brand) in the application-level
-     * [scope]. SettingsViewModel used to run this in viewModelScope: the
-     * delete takes ~20s on a full multi-board catalogue, so leaving the
-     * Settings screen — or killing the app — cancelled the coroutine and
-     * SQLite silently rolled the transaction back, leaving the user with a
-     * "deleted" confirmation flow but an intact catalogue. Progress is
-     * observable via [boardDataDeletion]; start / end / duration are logged
-     * so a field report can be diagnosed from logcat.
+     * Delete the board catalogue of the selected [brands] in the
+     * application-level [scope]. SettingsViewModel used to run this in
+     * viewModelScope: the delete takes ~20s on a full multi-board
+     * catalogue, so leaving the Settings screen — or killing the app —
+     * cancelled the coroutine and SQLite silently rolled the transaction
+     * back, leaving the user with a "deleted" confirmation flow but an
+     * intact catalogue. Progress is observable via [boardDataDeletion];
+     * start / end / duration / selected brands are logged so a field
+     * report can be diagnosed from logcat.
+     *
+     * Selecting every interactive board routes through the historical
+     * [BoardRepository.deleteAllBoardData] full wipe (which now shares
+     * the same local/nostr-climb protection); any subset takes the
+     * per-brand scoped path.
      */
-    fun deleteAllBoardData() {
+    fun deleteBoardData(brands: Set<BoardBrand>) {
+        if (brands.isEmpty()) return
         // Atomic check-and-claim, mirrors claimSyncSlot: only the caller
         // that flips running from false to true starts the delete.
         var claimed = false
@@ -1097,51 +1104,71 @@ class BoardSyncManager(
         if (!claimed) return
         scope.launch {
             val startMs = System.currentTimeMillis()
-            Log.i(TAG, "destructive: deleteAllBoardData() started")
+            val brandNames = brands.map { it.wireValue }.sorted().joinToString(",")
+            val allBoards = brands.containsAll(BoardBrand.entries.filter { it.isInteractive })
+            Log.i(TAG, "destructive: deleteBoardData(brands=[$brandNames], allBoards=$allBoards) started")
             try {
-                boardRepository.deleteAllBoardData()
-                resetAfterDataDeletion()
-                Log.i(TAG, "destructive: deleteAllBoardData() done in ${System.currentTimeMillis() - startMs}ms")
+                if (allBoards) {
+                    boardRepository.deleteAllBoardData()
+                    resetAfterDataDeletion()
+                } else {
+                    boardRepository.deleteBoardDataForBrands(brands.map { it.wireValue }.toSet())
+                    resetSyncStateForBrands(brands)
+                }
+                Log.i(TAG, "destructive: deleteBoardData(brands=[$brandNames]) done in ${System.currentTimeMillis() - startMs}ms")
                 _boardDataDeletion.update { it.copy(running = false, completions = it.completions + 1) }
             } catch (e: Exception) {
-                Log.e(TAG, "destructive: deleteAllBoardData() failed after ${System.currentTimeMillis() - startMs}ms", e)
+                Log.e(TAG, "destructive: deleteBoardData(brands=[$brandNames]) failed after ${System.currentTimeMillis() - startMs}ms", e)
                 _boardDataDeletion.update { it.copy(running = false) }
             }
         }
     }
 
     fun resetAfterDataDeletion() {
-        _state.update { it.copy(
-            alreadyImported = false,
-            syncComplete = false,
-            lastSyncTimestamp = null
-        ) }
-        // Also wipe the per-chunk SHA-256 cache. Without this the next
-        // sync's `getChangedChunks` matches every chunk against its
-        // pre-deletion hash, returns an empty diff list, and the import
-        // pipeline never runs — leaving the user with an empty board DB
-        // and a no-op "Sync abgeschlossen" message. Mirror of
-        // `handlePostMigrationResync` which already does this.
-        blossomSyncManager.clearStoredHashes()
-        // deleteAllBoardData() wipes EVERY brand's catalogue, but the
-        // injected manager above only covers Kilter's "blossom_sync"
-        // prefs. Each other interactive board keeps its chunk hashes in
-        // its own prefs file (MoonBoard + "blossom_sync_<wire>" per
-        // Aurora board — see AuroraCatalogueSync). Left intact, every
-        // later sync for those boards short-circuits to AlreadyCurrent
-        // over an empty DB and the catalogue can never be reloaded
-        // in-app.
-        appContext.getSharedPreferences(
-            BlossomSyncManager.MOONBOARD_PREFS_NAME, Context.MODE_PRIVATE
-        ).edit().clear().apply()
-        BoardBrand.entries
+        resetSyncStateForBrands(BoardBrand.entries.filter { it.isInteractive }.toSet())
+    }
+
+    /**
+     * Per-board freshness reset after a catalogue deletion: each selected
+     * board's chunk-hash store must go with its data. Without this the
+     * next sync's `getChangedChunks` matches every chunk against its
+     * pre-deletion hash, returns an empty diff list, and the import
+     * pipeline never runs — leaving the user with an empty board DB and a
+     * no-op "Sync abgeschlossen" message (mirror of
+     * `handlePostMigrationResync`, which clears the Kilter hashes for the
+     * same reason). Kilter's store is the injected [blossomSyncManager]
+     * ("blossom_sync" prefs); every other interactive board keeps its
+     * hashes in its own "blossom_sync_<wire>" prefs file (see
+     * MoonBoardCatalogueSync / AuroraCatalogueSync). UNSELECTED boards'
+     * stores stay intact so their incremental sync state survives.
+     *
+     * The Kilter-centric global flags (alreadyImported / syncComplete /
+     * lastSyncTimestamp) gate the main Blossom sync, so they reset only
+     * when Kilter itself is among [brands] — a MoonBoard-only deletion
+     * must not advertise the Kilter catalogue as missing.
+     */
+    private fun resetSyncStateForBrands(brands: Set<BoardBrand>) {
+        if (BoardBrand.KILTER in brands) {
+            _state.update { it.copy(
+                alreadyImported = false,
+                syncComplete = false,
+                lastSyncTimestamp = null
+            ) }
+            blossomSyncManager.clearStoredHashes()
+            scope.launch { userPreferences.setLastSyncTimestamp(null) }
+        }
+        if (BoardBrand.MOONBOARD in brands) {
+            appContext.getSharedPreferences(
+                BlossomSyncManager.MOONBOARD_PREFS_NAME, Context.MODE_PRIVATE
+            ).edit().clear().apply()
+        }
+        brands
             .filter { it.usesAuroraProtocol && it != BoardBrand.KILTER }
             .forEach { board ->
                 appContext.getSharedPreferences(
                     "blossom_sync_${board.wireValue}", Context.MODE_PRIVATE
                 ).edit().clear().apply()
             }
-        scope.launch { userPreferences.setLastSyncTimestamp(null) }
     }
 
     fun clearError() {

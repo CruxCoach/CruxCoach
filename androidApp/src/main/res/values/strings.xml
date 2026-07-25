@@ -420,14 +420,16 @@
     <string name="settings_data_import">Import data</string>
     <string name="settings_data_import_desc">Import backup or Waistline data</string>
     <string name="settings_data_delete_board">Delete board data</string>
-    <string name="settings_data_delete_board_desc">Removes all downloaded Kilter Board climbs, stats, and layout data. Can be re-synced anytime.</string>
+    <string name="settings_data_delete_board_desc">Removes downloaded climbs, stats, and layout data — for all boards or just the ones you pick. Can be re-synced anytime. Your own and community climbs are kept.</string>
     <string name="settings_data_delete_board_dialog_title">Delete board data?</string>
-    <string name="settings_data_delete_board_dialog_message">All downloaded climbs, stats, and layout data will be deleted. You can re-download them anytime via board sync.</string>
+    <string name="settings_data_delete_board_dialog_message">Downloaded climbs, stats, and layout data of the selected boards will be deleted. You can re-download them anytime via board sync. Your own and community climbs are kept.</string>
     <string name="settings_data_delete_board_progress">Deleting board data…</string>
+    <string name="settings_data_delete_select_all">All boards</string>
     <string name="settings_data_delete_user">Delete personal logbook data</string>
-    <string name="settings_data_delete_user_desc">Permanently removes all ascents, projects, board sessions and lists.</string>
+    <string name="settings_data_delete_user_desc">Permanently removes ascents, projects, sessions, and list entries — for all boards or just the ones you pick.</string>
     <string name="settings_data_delete_user_dialog_title">Delete logbook data?</string>
-    <string name="settings_data_delete_user_dialog_message">All your ascents, projects, board sessions and lists will be permanently deleted. This action cannot be undone.</string>
+    <string name="settings_data_delete_user_dialog_message">Your ascents, projects, and list entries for the selected boards will be permanently deleted. This action cannot be undone.</string>
+    <string name="settings_data_delete_user_sessions_note">Board sessions and the lists themselves are only removed when all boards are selected.</string>
     <string name="settings_data_delete_user_confirm">Delete permanently</string>
 
     <!-- Settings: App Sharing -->

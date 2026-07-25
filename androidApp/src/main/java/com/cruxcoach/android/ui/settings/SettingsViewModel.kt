@@ -124,6 +124,10 @@ data class SettingsState(
     val productSizes: List<com.cruxcoach.data.repository.BoardSize> = emptyList(),
     val showDeleteBoardDataDialog: Boolean = false,
     val showDeleteUserDataDialog: Boolean = false,
+    /** Boards ticked in whichever delete-multiselect dialog is open (the
+     *  two dialogs are mutually exclusive, so they share one selection).
+     *  Re-seeded to all interactive boards every time a dialog opens. */
+    val deleteDialogSelection: Set<BoardBrand> = emptySet(),
     /** True while the app-scoped board-data deletion runs (~20s on a full
      *  multi-board catalogue) — disables the delete button and shows a
      *  blocking progress row instead of a silent wait. */
@@ -714,32 +718,85 @@ class SettingsViewModel @Inject constructor(
 
     // ── Data management ──────────────────────────────────────────
 
-    fun showDeleteBoardDataDialog() { _state.update { it.copy(showDeleteBoardDataDialog = true) } }
-    fun showDeleteUserDataDialog() { _state.update { it.copy(showDeleteUserDataDialog = true) } }
+    /** The seven interactive boards, in declaration order — the rows of
+     *  the two delete-multiselect dialogs. Map-only families (Aurora,
+     *  12climb) ship no catalogue or logbook data to delete. */
+    private val deletableBrands: List<BoardBrand>
+        get() = BoardBrand.entries.filter { it.isInteractive }
+
+    fun showDeleteBoardDataDialog() {
+        _state.update { it.copy(showDeleteBoardDataDialog = true, deleteDialogSelection = deletableBrands.toSet()) }
+    }
+    fun showDeleteUserDataDialog() {
+        _state.update { it.copy(showDeleteUserDataDialog = true, deleteDialogSelection = deletableBrands.toSet()) }
+    }
     fun dismissDeleteDialog() { _state.update { it.copy(showDeleteBoardDataDialog = false, showDeleteUserDataDialog = false) } }
     fun dismissDeleteSuccess() { _state.update { it.copy(deleteSuccess = null) } }
 
+    /** Check/uncheck one board row in whichever delete dialog is open. */
+    fun toggleDeleteDialogBrand(brand: BoardBrand) {
+        _state.update {
+            val selection = it.deleteDialogSelection
+            it.copy(deleteDialogSelection = if (brand in selection) selection - brand else selection + brand)
+        }
+    }
+
+    /** "All boards" affordance: full selection — or none, when already full. */
+    fun toggleDeleteDialogSelectAll() {
+        _state.update {
+            val all = deletableBrands.toSet()
+            it.copy(deleteDialogSelection = if (it.deleteDialogSelection == all) emptySet() else all)
+        }
+    }
+
     fun deleteBoardData() {
+        val brands = _state.value.deleteDialogSelection
+        if (brands.isEmpty()) return
         _state.update { it.copy(showDeleteBoardDataDialog = false) }
         // Delegated to the app-scoped BoardSyncManager: the multi-table
         // delete takes ~20s, and running it in viewModelScope meant leaving
         // the Settings screen (or killing the app) cancelled the coroutine
         // and SQLite silently rolled the transaction back. The init
         // collector mirrors progress + success back into this screen.
-        syncManager.deleteAllBoardData()
+        // (Audit logging incl. the selected brands happens there too.)
+        syncManager.deleteBoardData(brands)
     }
 
     fun deleteUserBoardData() {
+        val brands = _state.value.deleteDialogSelection
+        if (brands.isEmpty()) return
         _state.update { it.copy(showDeleteUserDataDialog = false) }
         viewModelScope.launch {
-            // Audit-trail: log the destructive action with a timestamp so a
-            // user reporting "my logbook is empty" can be triaged via logcat
-            // without DB forensics.
-            Log.i(TAG, "destructive: deleteAllUserBoardData() requested at ${System.currentTimeMillis() / 1000}")
+            // Audit-trail: log the destructive action + selected boards so
+            // a user reporting "my logbook is empty" can be triaged via
+            // logcat without DB forensics.
+            val brandNames = brands.map { it.wireValue }.sorted().joinToString(",")
+            val allBoards = brands.containsAll(deletableBrands)
+            Log.i(
+                TAG,
+                "destructive: deleteUserBoardData(brands=[$brandNames], allBoards=$allBoards) " +
+                    "requested at ${System.currentTimeMillis() / 1000}"
+            )
             withContext(Dispatchers.IO) {
-                personalBoardRepo.deleteAllUserBoardData()
+                if (allBoards) {
+                    // Full selection keeps the historical behaviour: lists,
+                    // brand-less board sessions and unresolvable list
+                    // entries go too.
+                    personalBoardRepo.deleteAllUserBoardData()
+                } else {
+                    val wire = brands.map { it.wireValue }.toSet()
+                    // List entries carry no brand column — resolve each
+                    // referenced climb's board family via the board DB
+                    // (separate file, no JOIN). Unresolvable uuids (climb
+                    // not in the catalogue anymore) stay put: we cannot
+                    // prove they belong to a selected board.
+                    val entryUuids = personalBoardRepo.getAllListEntryClimbUuids()
+                    val entryBrands = boardRepository.getClimbBrandsForUuids(entryUuids)
+                    val doomedEntries = entryUuids.filter { entryBrands[it] in wire }
+                    personalBoardRepo.deleteUserBoardDataForBrands(wire, doomedEntries)
+                }
             }
-            Log.i(TAG, "destructive: deleteAllUserBoardData() done")
+            Log.i(TAG, "destructive: deleteUserBoardData(brands=[$brandNames]) done")
             _state.update { it.copy(deleteSuccess = context.getString(R.string.settings_delete_logbook_success)) }
         }
     }

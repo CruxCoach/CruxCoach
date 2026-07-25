@@ -239,6 +239,8 @@ class FakeBoardRepository : BoardRepository {
     override fun getAllStatKeys(): Map<Pair<String, Long>, Long?> = emptyMap()
     override fun runInTransaction(block: () -> Unit) { block() }
     override fun deleteAllBoardData() { storedClimbs.clear(); syncStates.clear() }
+    override fun deleteBoardDataForBrands(brands: Set<String>) {}
+    override fun getClimbBrandsForUuids(uuids: Collection<String>): Map<String, String> = emptyMap()
 
     // -- CommunityClimbQueries (FEAT-003) --
 

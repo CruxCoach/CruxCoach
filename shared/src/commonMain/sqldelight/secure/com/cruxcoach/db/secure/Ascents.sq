@@ -175,6 +175,10 @@ WHERE climb_uuid = ? AND angle = ?;
 deleteAllAscents:
 DELETE FROM ascents;
 
+-- Per-board variant (Settings → "Delete logbook data" multiselect).
+deleteAscentsForBrand:
+DELETE FROM ascents WHERE board_brand = ?;
+
 getAllAscentClimbKeys:
 SELECT DISTINCT climb_uuid, angle FROM ascents;
 

@@ -246,5 +246,18 @@ interface PersonalBoardRepository {
     // ── Bulk operations ─────────────────────────────────────────
 
     fun deleteAllUserBoardData()
+    /** Every DISTINCT climb uuid referenced by any climb list — the input
+     *  to the cross-DB brand resolution for the per-board logbook
+     *  deletion (list entries carry no brand column; their climbs' brands
+     *  live in the separate board DB). */
+    fun getAllListEntryClimbUuids(): Set<String>
+    /** Per-board logbook wipe (Settings → "Delete logbook data"
+     *  multiselect): ascents + bids of the [brands] wire values, plus the
+     *  list entries in [listEntryClimbUuids] (resolved by the caller
+     *  against the board DB — no cross-DB JOIN exists). List rows
+     *  themselves and board sessions survive: sessions are brand-less
+     *  aggregates only the all-boards path ([deleteAllUserBoardData])
+     *  removes. One transaction. */
+    fun deleteUserBoardDataForBrands(brands: Set<String>, listEntryClimbUuids: Collection<String>)
     fun runInTransaction(block: () -> Unit)
 }

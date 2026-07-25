@@ -602,7 +602,21 @@ interface BoardWriteOperations {
     fun getAllClimbUuids(): Set<String>
     fun getAllStatKeys(): Map<Pair<String, Long>, Long?>
     fun runInTransaction(block: () -> Unit)
+    /** Wipe the catalogue of EVERY board family in one transaction.
+     *  Locally-authored / community climbs (source='local'/'nostr') and
+     *  their stats survive — they are not re-downloadable. */
     fun deleteAllBoardData()
+    /** Per-board catalogue wipe (Settings → "Delete board data"
+     *  multiselect): only the [brands] wire values' catalogue rows +
+     *  geometry go; the same local/nostr protection as
+     *  [deleteAllBoardData]. Kilter's sync_states keys reset only when
+     *  Kilter itself is selected. One transaction. */
+    fun deleteBoardDataForBrands(brands: Set<String>)
+    /** Resolve climb uuids → `board_brand` wire value (exact-match on the
+     *  canonical stored uuid; unknown uuids are simply absent from the
+     *  result). Backs the per-board deletion of SecureDB climb-list
+     *  entries, which carry no brand column of their own. */
+    fun getClimbBrandsForUuids(uuids: Collection<String>): Map<String, String>
 }
 
 data class RawAscent(
