@@ -13,7 +13,11 @@ import kotlin.test.assertTrue
  */
 class ClimbWithStatsMatchStateTest {
 
-    private fun climb(origin: String, isNomatch: Boolean = false) = ClimbWithStats(
+    private fun climb(
+        origin: String,
+        isNomatch: Boolean = false,
+        boardBrand: String = "kilter",
+    ) = ClimbWithStats(
         uuid = "u",
         layoutId = 1L,
         setterUsername = "setter",
@@ -25,6 +29,7 @@ class ClimbWithStatsMatchStateTest {
         ascensionistCount = null,
         isNomatch = isNomatch,
         origin = origin,
+        boardBrand = boardBrand,
     )
 
     @Test
@@ -50,5 +55,13 @@ class ClimbWithStatsMatchStateTest {
     @Test
     fun unknownOriginIsTreatedAsUnknownMatchState() {
         assertFalse(climb(origin = "some-future-origin").isMatchStateKnown)
+    }
+
+    @Test
+    fun `moonboard problems never claim a known match state`() {
+        // No-match is an Aurora rule; a MoonBoard problem has none. Every
+        // MoonBoard row still carries origin='kilter' as its native-catalogue
+        // marker, so provenance alone would wrongly say "known".
+        assertFalse(climb(origin = "kilter", boardBrand = "moonboard").isMatchStateKnown)
     }
 }

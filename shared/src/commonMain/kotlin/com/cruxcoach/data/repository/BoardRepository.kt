@@ -114,6 +114,12 @@ data class ClimbWithStats(
      * Showing a green "Matching" badge there would be an invention, so the UI
      * hides the badge entirely instead.
      *
+     * MoonBoard is excluded outright: the whole no-match concept is Aurora's,
+     * a MoonBoard problem has no such rule, and every MoonBoard row carries
+     * origin='kilter' as its "native catalogue" marker — so without this the
+     * provenance check alone would claim the state is known for all ~278k of
+     * them and paint a green badge on a rule that does not exist.
+     *
      * NOTE: this is provenance-level, not per-climb. A `kilter` climb the
      * catalogue backfill could not resolve (2026-07-26: 1,073 rows, 0.5 % of
      * the catalogue) still reads as known and defaults to "matching allowed".
@@ -121,7 +127,8 @@ data class ClimbWithStats(
      * not done here, because adding one is a wire-format change for every
      * installed app version.
      */
-    val isMatchStateKnown: Boolean get() = origin == "kilter"
+    val isMatchStateKnown: Boolean get() =
+        origin == "kilter" && BoardBrand.fromWire(boardBrand) != BoardBrand.MOONBOARD
 
     /** Move count: uses pre-computed DB value, falls back to live parse from frames. */
     val moveCount: Int by lazy {
