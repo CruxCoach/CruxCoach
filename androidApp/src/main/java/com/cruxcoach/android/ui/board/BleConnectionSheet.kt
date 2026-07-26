@@ -133,22 +133,37 @@ fun BleConnectionSheet(
     // same tap first reaches for the remembered controller directly, because
     // scanning there would mean asking for location access before we even know
     // whether the board is present.
+    //
+    // Strictly once per attempt, though: the effect also re-runs when the
+    // connection state changes, and without this a user tapping Disconnect
+    // would be auto-connected straight back to the single board in range.
+    // A failed direct reconnect is the one case that earns a second start,
+    // which is why it re-keys the flag rather than being checked inside.
+    var autoStarted by remember(state.activeBoardBrand, state.directReconnectFailed) {
+        mutableStateOf(false)
+    }
     LaunchedEffect(
         state.rememberedBoardControllersLoaded,
         rememberedBoard?.address,
         connectFlow,
         state.connectionState,
         state.directReconnectFailed,
+        autoStarted,
     ) {
+        if (autoStarted) return@LaunchedEffect
         if (!state.rememberedBoardControllersLoaded) return@LaunchedEffect
         if (state.connectionState != ConnectionState.DISCONNECTED) return@LaunchedEffect
         when {
             connectFlow == BoardConnectFlow.DIRECT_THEN_DISCOVER &&
-                !discoveryRequested && !state.directReconnectFailed ->
+                !discoveryRequested && !state.directReconnectFailed -> {
+                autoStarted = true
                 viewModel.tryRememberedControllerFirst()
+            }
 
-            connectFlow == BoardConnectFlow.DISCOVER || state.directReconnectFailed ->
+            connectFlow == BoardConnectFlow.DISCOVER || state.directReconnectFailed -> {
+                autoStarted = true
                 pendingScanStart = PendingScanStart.AUTO_CONNECT
+            }
         }
     }
 

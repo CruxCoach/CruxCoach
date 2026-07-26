@@ -100,6 +100,8 @@ class CruxRelayManager(
     private var running = false
     private var forwardJob: Job? = null
     private var eventJob: Job? = null
+    /** Climb identification for the most recent relayed write; see forwardJob. */
+    private var identifyJob: Job? = null
 
     init {
         // Crash-safe: a previous run may have died with the adapter name still
@@ -210,7 +212,18 @@ class CruxRelayManager(
                     advertiser.clearActiveClimb()
                     // Hand the raw climb along: it is the only thing that can
                     // still name what an official app just put on the wall.
-                    projectionCoordinator.onExternalBoardWrite(inbound.climb)
+                    //
+                    // Off the forwarding path, though. Identification reads the
+                    // catalogue and waits for the one-time index build, and
+                    // forwarding the NEXT climb to the board must not queue up
+                    // behind that — lighting the wall is the promise here,
+                    // naming the climb is a nicety. Cancelling the previous
+                    // attempt also keeps the banner on the newest write when
+                    // two arrive back to back.
+                    identifyJob?.cancel()
+                    identifyJob = scope.launch {
+                        projectionCoordinator.onExternalBoardWrite(inbound.climb)
+                    }
                 } else {
                     Log.w(TAG, "sendRawChunks failed for a relayed climb")
                 }
@@ -286,6 +299,7 @@ class CruxRelayManager(
         running = false
         forwardJob?.cancel(); forwardJob = null
         eventJob?.cancel(); eventJob = null
+        identifyJob?.cancel(); identifyJob = null
         bleConnection.releaseKeepAlive(BoardConnectionOwner.RELAY)
 
         advertiser.stopRelayAdvertising()
