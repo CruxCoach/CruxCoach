@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.board
 
+import android.util.Log
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -159,7 +160,6 @@ fun BoardClimbDetailScreen(
     if (showBleSheet) {
         BleConnectionSheet(
             onDismiss = { showBleSheet = false },
-            autoStartScan = true,
         )
     }
 
@@ -813,7 +813,11 @@ fun BoardClimbDetailScreen(
                 val pageState = if (isActivePage) {
                     state
                 } else {
-                    pageCache[pageUuid] ?: ClimbDetailState(isLoading = true)
+                    // Same rollback as in switchClimb: a cached page carries a
+                    // frozen copy of the connection and send mode, which is
+                    // visible on the half-swiped neighbour.
+                    pageCache[pageUuid]?.withLiveDeviceState(state)
+                        ?: ClimbDetailState(isLoading = true)
                 }
 
                 ClimbDetailPageContent(
@@ -1145,6 +1149,20 @@ private fun ClimbDetailPageContent(
                         connectedViaRelay = state.ble.connectedViaRelay,
                         hostedRelayClientCount = state.ble.hostedRelayClientCount,
                     )
+                    // The action button vanishing after a swipe is only
+                    // diagnosable from the inputs — the decision itself says
+                    // nothing about WHY it came out NONE.
+                    LaunchedEffect(deliveryDecision, state.playback.countdownSeconds) {
+                        Log.d(
+                            "CruxBLE/Delivery",
+                            "target=${deliveryDecision.target} show=${deliveryDecision.showAction} " +
+                                "auto=${deliveryDecision.dispatchAutomatically} mode=${state.boardSendMode} " +
+                                "role=$sessionRole connecting=$sessionConnecting conn=${state.ble.connectionState} " +
+                                "holds=${state.holds.size} brand=${climb.brand} " +
+                                "relay=${state.ble.connectedViaRelay}/${state.ble.hostedRelayClientCount} " +
+                                "countdown=${state.playback.countdownSeconds}"
+                        )
+                    }
                     if (deliveryDecision.showAction && state.playback.countdownSeconds == 0) {
                         FilledTonalIconButton(
                             onClick = viewModel::deliverClimb,

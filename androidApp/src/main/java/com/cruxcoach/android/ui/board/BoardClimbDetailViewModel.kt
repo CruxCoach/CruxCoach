@@ -149,6 +149,30 @@ data class LogbookOnlyState(
     val ascents: List<AscentWithClimb>,
 )
 
+/**
+ * Overlays everything that belongs to the DEVICE, not the climb, onto a cached
+ * page.
+ *
+ * [BoardClimbDetailViewModel.preloadClimb] snapshots the WHOLE state, so a
+ * cached page also carries the send mode, the board connection and the palette
+ * as they were at preload time. Restoring it verbatim rolled those back — a
+ * page preloaded before the send mode resolved came back as AUTOMATIC and the
+ * explicit-send button stayed gone until the preference changed again (its
+ * collector only emits on change).
+ */
+internal fun ClimbDetailState.withLiveDeviceState(live: ClimbDetailState): ClimbDetailState =
+    copy(
+        boardSendMode = live.boardSendMode,
+        ble = live.ble,
+        nearby = live.nearby,
+        gradeScale = live.gradeScale,
+        ledColors = live.ledColors,
+        restTimerTotalSeconds = live.restTimerTotalSeconds,
+        restTimerAutoStart = live.restTimerAutoStart,
+        zones = live.zones,
+        currentUserPubkey = live.currentUserPubkey,
+    )
+
 data class ClimbDetailState(
     val isLoading: Boolean = true,
     val climb: ClimbWithStats? = null,
@@ -734,7 +758,7 @@ class BoardClimbDetailViewModel @Inject constructor(
         // Use cached page state if available to avoid loading flash during pager swipe
         val cached = _pageCache.value[uuid]
         if (cached != null) {
-            _state.update { current -> cached.copy(
+            _state.update { current -> cached.withLiveDeviceState(current).copy(
                 ascent = AscentFormState(),
                 listDialog = ListDialogState(),
                 ble = current.ble.copy(
@@ -744,7 +768,6 @@ class BoardClimbDetailViewModel @Inject constructor(
                     error = null,
                     warning = null,
                 ),
-                nearby = current.nearby
             ) }
         } else {
             _state.update { it.copy(

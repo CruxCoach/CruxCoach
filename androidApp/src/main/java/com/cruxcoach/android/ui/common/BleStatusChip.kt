@@ -94,6 +94,11 @@ internal fun BleStatusChip(
         shape = RoundedCornerShape(14.dp)
     ) {
       Column {
+        // Sharing alone is enough to show this block, but it has nothing to
+        // say in the summary line — rendering the row anyway left a bare
+        // icon + chevron above the sharing line.
+        val summary = buildChipSummary(effectiveOnBoard, state)
+        if (summary.isNotBlank()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -110,7 +115,6 @@ internal fun BleStatusChip(
             )
             Spacer(Modifier.width(8.dp))
 
-            val summary = buildChipSummary(effectiveOnBoard, state)
             Text(
                 summary,
                 style = MaterialTheme.typography.bodySmall,
@@ -132,8 +136,13 @@ internal fun BleStatusChip(
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+        }
         if (relayClientCount != null && onStopRelay != null) {
-            RelaySharingLine(clientCount = relayClientCount, onStop = onStopRelay)
+            RelaySharingLine(
+                clientCount = relayClientCount,
+                onStop = onStopRelay,
+                showDivider = summary.isNotBlank(),
+            )
         }
       }
     }
@@ -414,12 +423,16 @@ internal fun formatSessionTime(totalSeconds: Int): String {
 @Composable
 internal fun RelaySharingLine(
     clientCount: Int,
-    onStop: () -> Unit
+    onStop: () -> Unit,
+    /** Off when this line is the only content of its block. */
+    showDivider: Boolean = true,
 ) {
-    HorizontalDivider(
-        color = SuccessGreen.copy(alpha = 0.25f),
-        modifier = Modifier.padding(horizontal = 12.dp),
-    )
+    if (showDivider) {
+        HorizontalDivider(
+            color = SuccessGreen.copy(alpha = 0.25f),
+            modifier = Modifier.padding(horizontal = 12.dp),
+        )
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()

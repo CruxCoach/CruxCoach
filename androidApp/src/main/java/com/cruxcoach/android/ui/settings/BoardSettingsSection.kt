@@ -294,8 +294,6 @@ internal fun BleAutoDisconnectSection(
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
 
-    Spacer(modifier = Modifier.height(8.dp))
-
     // Off is a state of its own, not a duration of zero. It was reachable by
     // stepping the duration down to 0:00, which reads as "disconnect
     // immediately" rather than "never" — the opposite of what it does.
@@ -312,6 +310,10 @@ internal fun BleAutoDisconnectSection(
         lastEnabledSeconds = bleAutoDisconnectSeconds
     }
 
+    // Switch and stepper belong together — the enclosing settings Column
+    // spaces its children 16.dp apart, which pushed them into two islands
+    // with a lot of dead air around the toggle. Own Column, own spacing.
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
     Row(
         modifier = Modifier.fillMaxWidth().testTag("ble_auto_disconnect_toggle"),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -349,7 +351,6 @@ internal fun BleAutoDisconnectSection(
     // silently contradict the switch. Max 60 min matches the longest old
     // preset × 2 — any larger value is almost certainly a typo.
     if (autoDisconnectEnabled) {
-        Spacer(modifier = Modifier.height(8.dp))
         DurationStepper(
             seconds = bleAutoDisconnectSeconds,
             onChange = onAutoDisconnectChange,
@@ -358,6 +359,7 @@ internal fun BleAutoDisconnectSection(
             minuteLabel = stringResource(R.string.settings_duration_minutes_label),
             secondLabel = stringResource(R.string.settings_duration_seconds_label),
         )
+    }
     }
 }
 
