@@ -7,9 +7,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.BoardBleScanner
+import com.cruxcoach.android.ble.BoardCapacityProbe
 import com.cruxcoach.android.ble.BlePermissionHelper
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
-import com.cruxcoach.android.ble.ConnectedAdvertisingProbeResult
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ble.DiscoveredBoard
 import com.cruxcoach.android.ble.BoardConnectFlowPolicy
@@ -106,6 +106,7 @@ class BleConnectionViewModel @Inject constructor(
     private val nearbyPresenceManager: NearbyPresenceManager,
     private val sessionGattBridge: SessionGattBridge,
     private val boardSessionManager: BoardSessionManager,
+    private val capacityProbe: BoardCapacityProbe,
 ) : ViewModel() {
 
     companion object {
@@ -131,7 +132,6 @@ class BleConnectionViewModel @Inject constructor(
     private val _state = MutableStateFlow(BleConnectionState())
     val state: StateFlow<BleConnectionState> = _state.asStateFlow()
     private var pendingBoard: DiscoveredBoard? = null
-    private var capacityProbeJob: Job? = null
 
     init {
         viewModelScope.safeLaunch(TAG) {
@@ -184,8 +184,6 @@ class BleConnectionViewModel @Inject constructor(
                         )
                     }
                 } else if (connState == ConnectionState.DISCONNECTED) {
-                    capacityProbeJob?.cancel()
-                    capacityProbeJob = null
                     pendingBoard = null
                     climbAdvertiser.onBoardDisconnected(_state.value.climbSharingEnabled)
                 }
@@ -332,59 +330,11 @@ class BleConnectionViewModel @Inject constructor(
             }
         }
 
-        // Wire scanner stop/restart callbacks for GATT connect (radio contention fix).
-        // preserveEntries=true / clearExisting=false prevents banner flash during connect.
-        bleConnection.onStopScannersForConnect = {
-            bleScanner.stopScan()
-            nearbyClimbScanner.stopScan(preserveEntries = true)
-        }
-        bleConnection.onRestartScannersAfterConnect = {
-            capacityProbeJob?.cancel()
-            val board = bleConnection.connectedBoard
-            // Runs after every connect that has not established the capacity
-            // yet — connecting fast and knowing what we are connected to are
-            // separate concerns, and this is the only moment the evidence
-            // exists. It can only raise a controller to "accepts several
-            // clients", never lower it.
-            if (bleConnection.connectionState.value == ConnectionState.CONNECTED &&
-                board != null && !board.isCruxRelay &&
-                BlePermissionHelper.wantsCapacityProbe(
-                    capacityKnown = board.advertisesWhileConnected == true,
-                    hasScanPermission = BlePermissionHelper.hasScanPermission(application),
-                    locationEnabled = BlePermissionHelper.isLocationServicesEnabled(application),
-                )
-            ) {
-                capacityProbeJob = viewModelScope.safeLaunch(TAG) {
-                    // Avoid competing scan registrations on legacy Android
-                    // stacks. Board writes are already available while this
-                    // short, address-filtered observation runs.
-                    nearbyClimbScanner.stopScan(preserveEntries = true)
-                    try {
-                        when (bleScanner.probeAdvertisingWhileConnected(board.address)) {
-                            ConnectedAdvertisingProbeResult.CONNECTABLE_ADVERTISEMENT_OBSERVED -> {
-                                bleConnection.recordAdvertisingWhileConnected(board.address)
-                                // Persist the positive result so later
-                                // reconnects know the capacity without
-                                // scanning again. Only positives are stored —
-                                // see PreferenceKeys.lastUsedBoardAdvertisesWhileConnected.
-                                userPreferences.setRememberedBoardAdvertisesWhileConnected(
-                                    board.boardBrand
-                                )
-                            }
-                            // Says nothing about the board — it stays exclusive,
-                            // which it already was before the probe ran.
-                            ConnectedAdvertisingProbeResult.NOT_OBSERVED,
-                            ConnectedAdvertisingProbeResult.INCONCLUSIVE ->
-                                Log.d(TAG, "No advertisement while connected — controller stays exclusive")
-                        }
-                    } finally {
-                        nearbyClimbScanner.startScan(clearExisting = false)
-                    }
-                }
-            } else {
-                nearbyClimbScanner.startScan(clearExisting = false)
-            }
-        }
+        // Scanner handover around a connect and the capacity observation that
+        // follows it live in a singleton, not here: this ViewModel is scoped
+        // per nav entry, and the instance that installed the callback last
+        // takes them down with it when its screen goes away.
+        capacityProbe.install()
 
         checkState()
     }
@@ -494,16 +444,11 @@ class BleConnectionViewModel @Inject constructor(
                 return@safeLaunch
             }
             val candidates = preferActiveBrand(boards)
-            val target = BoardConnectFlowPolicy.autoConnectTarget(
-                candidates = candidates,
-                rememberedAddress = s.rememberedBoardControllers[s.activeBoardBrand]?.address,
-                addressOf = DiscoveredBoard::address,
-            )
+            val target = BoardConnectFlowPolicy.autoConnectTarget(candidates)
             if (target != null) {
                 Log.i(
                     "BleConnectionVM",
-                    "auto-connect: ${target.boardBrand} board ${target.address} " +
-                        "out of ${candidates.size} candidate(s), connecting"
+                    "auto-connect: single ${target.boardBrand} board ${target.address}, connecting"
                 )
                 connectToBoard(target)
             } else {
@@ -555,7 +500,25 @@ class BleConnectionViewModel @Inject constructor(
         if (bleConnection.connectionState.value != ConnectionState.DISCONNECTED) return
         pendingBoard = board
         bleScanner.stopScan()
-        bleConnection.connect(board, maxAttempts)
+        bleConnection.connect(board.withKnownCapacity(), maxAttempts)
+    }
+
+    /**
+     * Carries an established "accepts several clients" over to a board that
+     * came from a scan.
+     *
+     * A scan result knows nothing about capacity, so connecting through the
+     * picker used to throw away what an earlier connection had already proven
+     * and left the board looking exclusive again until the next observation
+     * happened to succeed. The remembered controller holds the answer; match
+     * it by address, since the same brand may cover several walls.
+     */
+    private fun DiscoveredBoard.withKnownCapacity(): DiscoveredBoard {
+        if (advertisesWhileConnected != null || isCruxRelay) return this
+        val remembered = _state.value.rememberedBoardControllers[boardBrand] ?: return this
+        if (!remembered.address.equals(address, ignoreCase = true)) return this
+        val known = remembered.advertisesWhileConnected ?: return this
+        return copy(advertisesWhileConnected = known)
     }
 
     /**

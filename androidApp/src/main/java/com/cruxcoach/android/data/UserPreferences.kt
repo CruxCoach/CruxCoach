@@ -860,6 +860,11 @@ class UserPreferences(
         }
     }
 
+    /**
+     * Default AUTOMATIC: on a board only you can hold, opening a climb and
+     * having it appear on the wall is the whole point, and nobody else is
+     * affected by it.
+     */
     val singleConnectionBoardSendMode: Flow<BoardSendMode> = dataStore.data.map { prefs ->
         BoardSendMode.fromWire(
             prefs[PreferenceKeys.SINGLE_CONNECTION_BOARD_SEND_MODE]
@@ -873,11 +878,16 @@ class UserPreferences(
         }
     }
 
+    /**
+     * Default EXPLICIT: several people can be on this board at once, so every
+     * send takes the wall away from whoever is on it. Swiping through a list
+     * must not do that — the tap is the point at which the climber says they
+     * actually want the wall.
+     */
     val multiConnectionBoardSendMode: Flow<BoardSendMode> = dataStore.data.map { prefs ->
-        BoardSendMode.fromWire(
-            prefs[PreferenceKeys.MULTI_CONNECTION_BOARD_SEND_MODE]
-                ?: prefs[PreferenceKeys.BOARD_SEND_MODE]
-        )
+        prefs[PreferenceKeys.MULTI_CONNECTION_BOARD_SEND_MODE]?.let(BoardSendMode::fromWire)
+            ?: prefs[PreferenceKeys.BOARD_SEND_MODE]?.let(BoardSendMode::fromWire)
+            ?: BoardSendMode.EXPLICIT
     }
 
     suspend fun setMultiConnectionBoardSendMode(mode: BoardSendMode) {

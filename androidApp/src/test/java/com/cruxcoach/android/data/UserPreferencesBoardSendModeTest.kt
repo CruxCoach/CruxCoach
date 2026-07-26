@@ -14,15 +14,16 @@ import kotlin.test.assertEquals
 
 class UserPreferencesBoardSendModeTest {
     @Test
-    fun `capacity-specific send modes default to automatic and persist independently`() = runTest {
+    fun `capacity-specific send modes carry their own defaults and persist independently`() = runTest {
         val preferences = createTestUserPreferences(backgroundScope)
 
         assertEquals(
             BoardSendMode.AUTOMATIC,
             preferences.singleConnectionBoardSendMode.first(),
         )
+        // Not the same default: a shared board is not swiped onto by accident.
         assertEquals(
-            BoardSendMode.AUTOMATIC,
+            BoardSendMode.EXPLICIT,
             preferences.multiConnectionBoardSendMode.first(),
         )
 
@@ -33,15 +34,19 @@ class UserPreferencesBoardSendModeTest {
             preferences.singleConnectionBoardSendMode.first(),
         )
         assertEquals(
-            BoardSendMode.AUTOMATIC,
+            BoardSendMode.EXPLICIT,
             preferences.multiConnectionBoardSendMode.first(),
         )
 
-        preferences.setMultiConnectionBoardSendMode(BoardSendMode.EXPLICIT)
+        preferences.setMultiConnectionBoardSendMode(BoardSendMode.AUTOMATIC)
 
         assertEquals(
-            BoardSendMode.EXPLICIT,
+            BoardSendMode.AUTOMATIC,
             preferences.multiConnectionBoardSendMode.first(),
+        )
+        assertEquals(
+            BoardSendMode.EXPLICIT,
+            preferences.singleConnectionBoardSendMode.first(),
         )
     }
 

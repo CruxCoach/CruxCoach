@@ -117,9 +117,12 @@ class BoardDeliveryPolicyTest {
         assertTrue(decision.showAction)
     }
 
+    /** A relay endpoint IS a multi-connection board, so the climber's
+     *  multi-connection preference already governs — the policy must not
+     *  overrule it a second time. */
     @Test
-    fun `automatic mode becomes explicit while connected through a relay`() {
-        val decision = BoardDeliveryPolicy.resolve(
+    fun `a relay guest gets the send mode their preference resolved to`() {
+        val automatic = BoardDeliveryPolicy.resolve(
             sendMode = BoardSendMode.AUTOMATIC,
             sessionRole = SessionRole.NONE,
             boardConnected = true,
@@ -127,9 +130,20 @@ class BoardDeliveryPolicyTest {
             connectedViaRelay = true,
         )
 
-        assertEquals(BoardDeliveryTarget.DIRECT_BOARD, decision.target)
-        assertFalse(decision.dispatchAutomatically)
-        assertTrue(decision.showAction)
+        assertEquals(BoardDeliveryTarget.DIRECT_BOARD, automatic.target)
+        assertTrue(automatic.dispatchAutomatically)
+        assertFalse(automatic.showAction)
+
+        val explicit = BoardDeliveryPolicy.resolve(
+            sendMode = BoardSendMode.EXPLICIT,
+            sessionRole = SessionRole.NONE,
+            boardConnected = true,
+            hasDirectPayload = true,
+            connectedViaRelay = true,
+        )
+
+        assertFalse(explicit.dispatchAutomatically)
+        assertTrue(explicit.showAction)
     }
 
     @Test

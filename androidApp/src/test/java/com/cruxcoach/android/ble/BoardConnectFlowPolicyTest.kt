@@ -49,43 +49,21 @@ class BoardConnectFlowPolicyTest {
     fun a_single_board_needs_no_picking() {
         val only = Board("AA:BB")
 
-        assertSame(
-            only,
-            BoardConnectFlowPolicy.autoConnectTarget(listOf(only), null, Board::address),
-        )
+        assertSame(only, BoardConnectFlowPolicy.autoConnectTarget(listOf(only)))
     }
 
     @Test
-    fun the_remembered_board_wins_among_several() {
+    fun several_boards_stay_a_manual_choice() {
+        // Not even the remembered one gets grabbed: standing in front of two
+        // walls, "the one you used last" is a hint, not an instruction. The
+        // list badges it and waits for the tap.
         val boards = listOf(Board("AA:BB"), Board("CC:DD"), Board("EE:FF"))
 
-        assertEquals(
-            Board("CC:DD"),
-            BoardConnectFlowPolicy.autoConnectTarget(boards, "cc:dd", Board::address),
-        )
-    }
-
-    @Test
-    fun several_boards_and_no_remembered_match_stay_a_manual_choice() {
-        val boards = listOf(Board("AA:BB"), Board("CC:DD"))
-
-        assertNull(BoardConnectFlowPolicy.autoConnectTarget(boards, null, Board::address))
-        assertNull(BoardConnectFlowPolicy.autoConnectTarget(boards, "99:99", Board::address))
+        assertNull(BoardConnectFlowPolicy.autoConnectTarget(boards))
     }
 
     @Test
     fun nothing_in_range_connects_to_nothing() {
-        assertNull(
-            BoardConnectFlowPolicy.autoConnectTarget(emptyList(), "AA:BB", Board::address)
-        )
-    }
-
-    @Test
-    fun a_duplicated_remembered_address_is_not_an_answer() {
-        // Two endpoints claiming the same address is nonsense the flow must
-        // not resolve by guessing — ask the user.
-        val boards = listOf(Board("AA:BB"), Board("aa:bb"))
-
-        assertNull(BoardConnectFlowPolicy.autoConnectTarget(boards, "AA:BB", Board::address))
+        assertNull(BoardConnectFlowPolicy.autoConnectTarget(emptyList<Board>()))
     }
 }

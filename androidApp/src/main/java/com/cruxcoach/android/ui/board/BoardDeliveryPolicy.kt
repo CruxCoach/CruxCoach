@@ -80,11 +80,21 @@ internal object BoardDeliveryPolicy {
             )
         }
 
-        val sharedTransport = connectedViaRelay || hostedRelayClientCount > 0
+        // A relay endpoint IS a multi-connection board — that is what a relay
+        // makes it — so [BoardControllerProfiles] already classifies it as one
+        // and [sendMode] arrives as the climber's multi-connection preference.
+        // Overriding it here as well took the choice away from them twice; the
+        // default for that preference (EXPLICIT) is where the "don't grab a
+        // shared wall by swiping" rule belongs.
+        //
+        // Hosting is the other side and keeps its guard: the host's own send
+        // competes with clients they invited onto the board, and they cannot
+        // see what those clients are doing.
+        val hostingForOthers = hostedRelayClientCount > 0
         return BoardDeliveryDecision(
             target = BoardDeliveryTarget.DIRECT_BOARD,
-            dispatchAutomatically = sendMode == BoardSendMode.AUTOMATIC && !sharedTransport,
-            showAction = sendMode == BoardSendMode.EXPLICIT || sharedTransport,
+            dispatchAutomatically = sendMode == BoardSendMode.AUTOMATIC && !hostingForOthers,
+            showAction = sendMode == BoardSendMode.EXPLICIT || hostingForOthers,
         )
     }
 }

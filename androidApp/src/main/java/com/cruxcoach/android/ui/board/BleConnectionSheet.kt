@@ -134,11 +134,13 @@ fun BleConnectionSheet(
     // scanning there would mean asking for location access before we even know
     // whether the board is present.
     //
-    // Strictly once per attempt, though: the effect also re-runs when the
-    // connection state changes, and without this a user tapping Disconnect
-    // would be auto-connected straight back to the single board in range.
-    // A failed direct reconnect is the one case that earns a second start,
-    // which is why it re-keys the flag rather than being checked inside.
+    // Only for a sheet that OPENED disconnected, and only once. The effect
+    // re-runs on every connection-state change, so without both guards
+    // tapping Disconnect would be answered by an immediate scan and a
+    // reconnect to the very board just released — the one thing the user
+    // unambiguously did not ask for. A failed direct reconnect is the single
+    // case that earns a second start, which is why it re-keys the flag.
+    val openedDisconnected = remember { state.connectionState == ConnectionState.DISCONNECTED }
     var autoStarted by remember(state.activeBoardBrand, state.directReconnectFailed) {
         mutableStateOf(false)
     }
@@ -150,7 +152,7 @@ fun BleConnectionSheet(
         state.directReconnectFailed,
         autoStarted,
     ) {
-        if (autoStarted) return@LaunchedEffect
+        if (autoStarted || !openedDisconnected) return@LaunchedEffect
         if (!state.rememberedBoardControllersLoaded) return@LaunchedEffect
         if (state.connectionState != ConnectionState.DISCONNECTED) return@LaunchedEffect
         when {

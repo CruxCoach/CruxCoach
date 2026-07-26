@@ -102,7 +102,9 @@ data class SettingsState(
     val ledColors: LedHoldColors = LedHoldColors(),
     val bleAutoDisconnectSeconds: Int = 60,
     val singleConnectionBoardSendMode: BoardSendMode = BoardSendMode.AUTOMATIC,
-    val multiConnectionBoardSendMode: BoardSendMode = BoardSendMode.AUTOMATIC,
+    /** Mirrors UserPreferences.multiConnectionBoardSendMode's default — a
+     *  shared board is not swiped onto by accident. */
+    val multiConnectionBoardSendMode: BoardSendMode = BoardSendMode.EXPLICIT,
     val isSaving: Boolean = false,
     val saveSuccess: Boolean = false,
     val error: String? = null,
