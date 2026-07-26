@@ -12,6 +12,7 @@ import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.ConnectedAdvertisingProbeResult
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ble.DiscoveredBoard
+import com.cruxcoach.android.ble.BoardConnectFlowPolicy
 import com.cruxcoach.android.ble.BoardConnectionCapacity
 import com.cruxcoach.android.ble.BoardConnectionOwner
 import com.cruxcoach.android.ble.BoardControllerProfiles
@@ -26,6 +27,7 @@ import com.cruxcoach.android.data.SessionRole
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.domain.board.BoardBrand
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -75,6 +77,17 @@ data class BleConnectionState(
      * user explicitly opened the sheet to inspect the list (false).
      */
     val isAutoConnectScan: Boolean = false,
+    /**
+     * A speculative direct connect to the remembered controller is running.
+     * Only ever on Android ≤ 11, where scanning would cost a location grant —
+     * see [BoardConnectFlowPolicy].
+     */
+    val directReconnectInFlight: Boolean = false,
+    /**
+     * That attempt came back empty-handed, so the board is not where it was.
+     * Discovery — and, on those versions, its location prompt — is justified now.
+     */
+    val directReconnectFailed: Boolean = false,
     /** Localized reason (string-res id) why the last connect attempt was torn
      *  down at service discovery (e.g. unsupported RedBear-UART MoonBoard
      *  LED-kit generation). Null = none. */
@@ -109,6 +122,10 @@ class BleConnectionViewModel @Inject constructor(
          *  is still ramping its first packet. Faster than the prior
          *  blind 2 s sleep, safe against slow sibling adv. */
         private const val SIBLING_WINDOW_MS = 1_000L
+        /** Retries for a user-picked board — see BoardBleConnection.connect. */
+        private const val DEFAULT_CONNECT_ATTEMPTS = 3
+        /** One connect attempt (10 s) plus the stack's pre-connect delays. */
+        private const val DIRECT_RECONNECT_TIMEOUT_MS = 14_000L
     }
 
     private val _state = MutableStateFlow(BleConnectionState())
@@ -324,8 +341,18 @@ class BleConnectionViewModel @Inject constructor(
         bleConnection.onRestartScannersAfterConnect = {
             capacityProbeJob?.cancel()
             val board = bleConnection.connectedBoard
+            // Runs after every connect that has not established the capacity
+            // yet — connecting fast and knowing what we are connected to are
+            // separate concerns, and this is the only moment the evidence
+            // exists. It can only raise a controller to "accepts several
+            // clients", never lower it.
             if (bleConnection.connectionState.value == ConnectionState.CONNECTED &&
-                board != null && !board.isCruxRelay
+                board != null && !board.isCruxRelay &&
+                BlePermissionHelper.wantsCapacityProbe(
+                    capacityKnown = board.advertisesWhileConnected == true,
+                    hasScanPermission = BlePermissionHelper.hasScanPermission(application),
+                    locationEnabled = BlePermissionHelper.isLocationServicesEnabled(application),
+                )
             ) {
                 capacityProbeJob = viewModelScope.safeLaunch(TAG) {
                     // Avoid competing scan registrations on legacy Android
@@ -335,26 +362,20 @@ class BleConnectionViewModel @Inject constructor(
                     try {
                         when (bleScanner.probeAdvertisingWhileConnected(board.address)) {
                             ConnectedAdvertisingProbeResult.CONNECTABLE_ADVERTISEMENT_OBSERVED -> {
-                                bleConnection.recordAdvertisingWhileConnected(
-                                    address = board.address,
-                                    observed = true,
-                                )
+                                bleConnection.recordAdvertisingWhileConnected(board.address)
                                 // Persist the positive result so later
-                                // reconnects report a verified capacity
-                                // without needing to scan again. Only
-                                // positives are stored — see
-                                // PreferenceKeys.lastUsedBoardAdvertisesWhileConnected.
+                                // reconnects know the capacity without
+                                // scanning again. Only positives are stored —
+                                // see PreferenceKeys.lastUsedBoardAdvertisesWhileConnected.
                                 userPreferences.setRememberedBoardAdvertisesWhileConnected(
                                     board.boardBrand
                                 )
                             }
-                            ConnectedAdvertisingProbeResult.NOT_OBSERVED ->
-                                bleConnection.recordAdvertisingWhileConnected(
-                                    address = board.address,
-                                    observed = false,
-                                )
+                            // Says nothing about the board — it stays exclusive,
+                            // which it already was before the probe ran.
+                            ConnectedAdvertisingProbeResult.NOT_OBSERVED,
                             ConnectedAdvertisingProbeResult.INCONCLUSIVE ->
-                                Log.w(TAG, "Controller-capacity probe was inconclusive")
+                                Log.d(TAG, "No advertisement while connected — controller stays exclusive")
                         }
                     } finally {
                         nearbyClimbScanner.startScan(clearExisting = false)
@@ -473,9 +494,18 @@ class BleConnectionViewModel @Inject constructor(
                 return@safeLaunch
             }
             val candidates = preferActiveBrand(boards)
-            if (candidates.size == 1) {
-                Log.i("BleConnectionVM", "auto-connect: single ${candidates.first().boardBrand} board, connecting")
-                connectToBoard(candidates.first())
+            val target = BoardConnectFlowPolicy.autoConnectTarget(
+                candidates = candidates,
+                rememberedAddress = s.rememberedBoardControllers[s.activeBoardBrand]?.address,
+                addressOf = DiscoveredBoard::address,
+            )
+            if (target != null) {
+                Log.i(
+                    "BleConnectionVM",
+                    "auto-connect: ${target.boardBrand} board ${target.address} " +
+                        "out of ${candidates.size} candidate(s), connecting"
+                )
+                connectToBoard(target)
             } else {
                 Log.i("BleConnectionVM", "auto-connect: ${candidates.size} candidate boards (${boards.size} discovered), leaving manual pick")
             }
@@ -501,6 +531,13 @@ class BleConnectionViewModel @Inject constructor(
         ) {
             stopScan()
         }
+        // A failed direct attempt is about this moment, not about the board:
+        // the next time the sheet opens the climber may well be standing in
+        // front of the wall, so try it again rather than going straight to a
+        // location prompt.
+        directReconnectJob?.cancel()
+        directReconnectJob = null
+        _state.update { it.copy(directReconnectInFlight = false, directReconnectFailed = false) }
     }
 
     /** Joins the exact session selected by the user; multiple nearby hosts stay unambiguous. */
@@ -514,11 +551,61 @@ class BleConnectionViewModel @Inject constructor(
         }
     }
 
-    fun connectToBoard(board: DiscoveredBoard) {
+    fun connectToBoard(board: DiscoveredBoard, maxAttempts: Int = DEFAULT_CONNECT_ATTEMPTS) {
         if (bleConnection.connectionState.value != ConnectionState.DISCONNECTED) return
         pendingBoard = board
         bleScanner.stopScan()
-        bleConnection.connect(board)
+        bleConnection.connect(board, maxAttempts)
+    }
+
+    /**
+     * Android ≤ 11 entry point: reach for the remembered controller before
+     * anyone is asked for location access.
+     *
+     * A direct GATT connect needs no scan, so this costs the user nothing. If
+     * the board answers, the whole location question never comes up; if it does
+     * not, [BleConnectionState.directReconnectFailed] hands the sheet over to
+     * discovery, which is the point at which asking for location is honest.
+     *
+     * One attempt only — three would take ~32 s to conclude "not here", and the
+     * user is waiting for exactly that answer.
+     */
+    fun tryRememberedControllerFirst() {
+        val s = _state.value
+        if (s.directReconnectInFlight || s.connectionState != ConnectionState.DISCONNECTED) return
+        val remembered = s.rememberedBoardControllers[s.activeBoardBrand] ?: run {
+            _state.update { it.copy(directReconnectFailed = true) }
+            return
+        }
+        directReconnectJob?.cancel()
+        _state.update { it.copy(directReconnectInFlight = true, directReconnectFailed = false) }
+        directReconnectJob = viewModelScope.safeLaunch(TAG) {
+            try {
+                connectToBoard(remembered.toDiscoveredBoard(), maxAttempts = 1)
+                val outcome = withTimeoutOrNull(DIRECT_RECONNECT_TIMEOUT_MS) {
+                    bleConnection.connectionState.first { it != ConnectionState.CONNECTING }
+                }
+                val connected = outcome == ConnectionState.CONNECTED ||
+                    outcome == ConnectionState.SENDING
+                Log.i(TAG, "direct reconnect to ${remembered.address}: connected=$connected")
+                _state.update {
+                    it.copy(directReconnectInFlight = false, directReconnectFailed = !connected)
+                }
+            } catch (e: CancellationException) {
+                _state.update { it.copy(directReconnectInFlight = false) }
+                throw e
+            }
+        }
+    }
+
+    /** Give up on the remembered controller and go to discovery. */
+    fun abandonDirectReconnect() {
+        directReconnectJob?.cancel()
+        directReconnectJob = null
+        if (bleConnection.connectionState.value == ConnectionState.CONNECTING) {
+            bleConnection.disconnect()
+        }
+        _state.update { it.copy(directReconnectInFlight = false, directReconnectFailed = true) }
     }
 
     /**
@@ -532,22 +619,21 @@ class BleConnectionViewModel @Inject constructor(
         val remembered = _state.value
             .rememberedBoardControllers[_state.value.activeBoardBrand]
             ?: return
-        connectToBoard(
-            DiscoveredBoard(
-                displayName = remembered.displayName,
-                serial = remembered.serial,
-                apiLevel = remembered.apiLevel,
-                address = remembered.address,
-                rssi = 0,
-                boardBrand = remembered.boardBrand,
-                // Seed the capacity from the stored observation. Without this
-                // a reconnect starts unclassified and, having no scan
-                // permission, can never classify itself — the connection
-                // showed "capacity not verified" for a board proven long ago.
-                advertisesWhileConnected = remembered.advertisesWhileConnected,
-            )
-        )
+        connectToBoard(remembered.toDiscoveredBoard())
     }
+
+    private fun RememberedBoardController.toDiscoveredBoard() = DiscoveredBoard(
+        displayName = displayName,
+        serial = serial,
+        apiLevel = apiLevel,
+        address = address,
+        rssi = 0,
+        boardBrand = boardBrand,
+        // Carry the stored positive observation over: a controller proven to
+        // take several clients must not fall back to "exclusive" just because
+        // this connection came from a reconnect rather than a scan.
+        advertisesWhileConnected = advertisesWhileConnected,
+    )
 
     /**
      * Whether the currently-connected board is a MoonBoard (FEAT-027).
@@ -567,6 +653,7 @@ class BleConnectionViewModel @Inject constructor(
     private var disconnectTimeoutJob: Job? = null
     private var autoConnectJob: Job? = null
     private var autoConnectScanJob: Job? = null
+    private var directReconnectJob: Job? = null
     private var disconnectCooldownUntil = 0L
     /** Set after accepting a remote disconnect — suppresses the dialog until next connect. */
     private var suppressDisconnectDialog = false

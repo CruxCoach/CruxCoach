@@ -237,7 +237,6 @@ fun BoardBrowserScreen(
                 viewModel.climbNavState.source = com.cruxcoach.android.ui.navigation.ClimbNavigationSource.BROWSER
                 onNavigateToClimb(uuid, angle)
             },
-            autoStartScan = true,
         )
     }
 

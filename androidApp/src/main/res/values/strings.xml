@@ -2233,6 +2233,6 @@
     <string name="board_ble_via_cruxcoach">via CruxCoach</string>
     <string name="board_ble_connection_via_relay">Connected via CruxCoach Relay</string>
     <string name="board_ble_connection_multi">Multiple devices can stay connected</string>
-    <string name="board_ble_connection_single">Legacy controller · one direct connection</string>
-    <string name="board_ble_connection_unknown">Connection capacity unknown</string>
+    <string name="board_ble_connection_single">One device at a time</string>
+    <string name="board_ble_search_instead">Search for boards instead</string>
 </resources>

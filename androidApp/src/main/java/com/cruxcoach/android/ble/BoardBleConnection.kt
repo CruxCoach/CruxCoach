@@ -117,6 +117,8 @@ class BoardBleConnection(private val context: Context) {
     val connectedBoardDescriptor: StateFlow<DiscoveredBoard?> =
         _connectedBoardDescriptor.asStateFlow()
     private var connectAttempt = 0
+    /** Retry budget of the in-flight connect; see [connect]. */
+    private var attemptBudget = MAX_CONNECT_ATTEMPTS
 
     var autoDisconnectSeconds: Int = 0
     // FEAT-044 coexistence: several features (a shared session, the CruxRelay)
@@ -132,6 +134,11 @@ class BoardBleConnection(private val context: Context) {
             keepAliveOwners.add(owner); keepAliveOwners.toList()
         }
         Log.d(TAG, "keepAlive acquired by $owner — holders=$owners")
+        // A timer armed BEFORE the acquire keeps running otherwise: sharing
+        // started 3 s before a 60 s idle timer expired dropped the board out
+        // from under the relay. Suppression has to cancel what is pending,
+        // not just skip the next arming.
+        resetIdleTimer()
     }
 
     fun releaseKeepAlive(owner: String) {
@@ -150,21 +157,27 @@ class BoardBleConnection(private val context: Context) {
         synchronized(keepAliveLock) { keepAliveOwners.isNotEmpty() }
 
     /**
-     * Applies the short post-connect advertising probe to this connection only.
-     * A negative observation is intentionally discarded at disconnect rather
-     * than becoming a permanent claim about the controller firmware.
+     * Records that this controller was seen advertising connectably WHILE we
+     * hold GATT — proof it can take another central.
+     *
+     * Positive only, by design. A peripheral is reachable exactly while it
+     * advertises, so seeing the advertisement settles the question; NOT seeing
+     * it settles nothing, because Android routinely withholds advertisements
+     * from a peer it is already connected to. The absence therefore leaves the
+     * controller at its conservative default (exclusive) instead of claiming a
+     * verified fact about the firmware.
      */
-    fun recordAdvertisingWhileConnected(address: String, observed: Boolean) {
+    fun recordAdvertisingWhileConnected(address: String) {
         if (_connectionState.value != ConnectionState.CONNECTED &&
             _connectionState.value != ConnectionState.SENDING
         ) return
         val board = currentBoard?.takeIf { it.address.equals(address, ignoreCase = true) } ?: return
-        val updated = board.copy(advertisesWhileConnected = observed)
+        if (board.advertisesWhileConnected == true) return
+        val updated = board.copy(advertisesWhileConnected = true)
         currentBoard = updated
         _connectedBoardDescriptor.value = updated
-        Log.i(TAG, "Controller advertising while connected: $observed")
-        // UNKNOWN controllers do not arm idle release. Re-evaluate now that
-        // this connection has an operational capacity classification.
+        Log.i(TAG, "Controller advertises while connected — accepts more clients")
+        // Capacity just changed; idle release does not apply to a shared board.
         resetIdleTimer()
     }
 
@@ -437,10 +450,19 @@ class BoardBleConnection(private val context: Context) {
      * - Stop scanners before connect (shared radio contention on single-radio controllers)
      * - Always TRANSPORT_LE, never TRANSPORT_AUTO
      */
+    /**
+     * @param maxAttempts how often a radio-level failure may be retried
+     *   quietly. The default absorbs the transient status-133 failures legacy
+     *   stacks produce. A speculative connect — "is the remembered board even
+     *   here?" — passes 1 instead: three attempts take ~32 s, and a flow that
+     *   falls back to asking for a permission cannot make the user wait that
+     *   long to find out the board is absent.
+     */
     @SuppressLint("MissingPermission")
-    fun connect(board: DiscoveredBoard) {
+    fun connect(board: DiscoveredBoard, maxAttempts: Int = MAX_CONNECT_ATTEMPTS) {
         if (_connectionState.value != ConnectionState.DISCONNECTED) return
 
+        attemptBudget = maxAttempts.coerceIn(1, MAX_CONNECT_ATTEMPTS)
         userDisconnecting = false
         gattClosed = false
         _connectionState.value = ConnectionState.CONNECTING
@@ -488,7 +510,7 @@ class BoardBleConnection(private val context: Context) {
     private fun canRetryConnect(): Boolean =
         _connectionState.value == ConnectionState.CONNECTING &&
             !userDisconnecting &&
-            connectAttempt < MAX_CONNECT_ATTEMPTS &&
+            connectAttempt < attemptBudget &&
             currentBoard != null
 
     /** Route a failed radio-level attempt: quiet retry while attempts remain,
@@ -512,7 +534,7 @@ class BoardBleConnection(private val context: Context) {
     @SuppressLint("MissingPermission")
     private fun scheduleRetry(trigger: String) {
         connectAttempt += 1
-        Log.i(TAG, "Connect attempt failed ($trigger) — retrying quietly (attempt $connectAttempt/$MAX_CONNECT_ATTEMPTS)")
+        Log.i(TAG, "Connect attempt failed ($trigger) — retrying quietly (attempt $connectAttempt/$attemptBudget)")
         connectionTimeoutJob?.cancel()
         connectionTimeoutJob = null
         gatt?.let { g ->
@@ -559,7 +581,7 @@ class BoardBleConnection(private val context: Context) {
         // If called from a coroutine dispatcher without a Looper, callbacks are silently dropped.
         // The Handler overload (API 26+) forces callbacks onto the Main Looper.
         // Log.i so this start-of-connect marker survives R8's Log.d-stripping rule.
-        Log.i(TAG, "connectGatt() for ${board.address} (SDK=${Build.VERSION.SDK_INT}, attempt=$connectAttempt/$MAX_CONNECT_ATTEMPTS)")
+        Log.i(TAG, "connectGatt() for ${board.address} (SDK=${Build.VERSION.SDK_INT}, attempt=$connectAttempt/$attemptBudget)")
         val newGatt = device.connectGatt(
             context,
             false,

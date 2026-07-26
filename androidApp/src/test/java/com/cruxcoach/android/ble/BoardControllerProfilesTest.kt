@@ -8,12 +8,16 @@ import org.junit.Test
 
 class BoardControllerProfilesTest {
     @Test
-    fun `Aurora protocol level alone does not imply connection capacity`() {
+    fun `an unobserved Aurora controller counts as exclusive`() {
+        // What real boards do, and what their own apps assume: one climber at
+        // a time, handed back by disconnecting. Nothing about the advertised
+        // protocol level says otherwise, and no observation is needed to
+        // arrive at the conservative answer.
         val profile = BoardControllerProfiles.resolve(BoardBrand.KILTER)
 
-        assertEquals(BoardConnectionCapacity.UNKNOWN, profile.connectionCapacity)
+        assertEquals(BoardConnectionCapacity.SINGLE, profile.connectionCapacity)
         assertEquals(BoardProjectionLifetime.RETAINED_AFTER_DISCONNECT, profile.projectionLifetime)
-        assertFalse(profile.relaySupported)
+        assertTrue(profile.relaySupported)
     }
 
     @Test

@@ -190,13 +190,9 @@ fun PlaylistDetailScreen(
     }
 
     if (showBleSheet) {
-        // autoStartScan only fires when no controller is remembered — a known
-        // board is never silently replaced by a scan, so this cannot pull a
-        // location prompt on someone who just wants to reconnect.
         BleConnectionSheet(
             onDismiss = { showBleSheet = false },
             onNavigateToClimb = onNavigateToClimb,
-            autoStartScan = true,
         )
     }
 

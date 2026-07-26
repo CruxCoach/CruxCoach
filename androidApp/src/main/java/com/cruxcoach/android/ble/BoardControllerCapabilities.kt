@@ -2,7 +2,13 @@ package com.cruxcoach.android.ble
 
 import com.cruxcoach.domain.board.BoardBrand
 
-/** Operational connection capacity inferred for the current controller session. */
+/**
+ * Operational connection capacity inferred for the current controller session.
+ *
+ * [UNKNOWN] is no longer produced by [BoardControllerProfiles] — an
+ * unclassified controller is treated as [SINGLE], which is what real hardware
+ * does. It remains for call sites that reason about "no board at all".
+ */
 internal enum class BoardConnectionCapacity {
     SINGLE,
     MULTIPLE,
@@ -30,16 +36,23 @@ internal data class BoardControllerProfile(
 /**
  * One capability registry for connection, queue and relay UX.
  *
- * Neither the board family nor Aurora's advertised API level says how many
- * centrals the firmware accepts. CruxCoach therefore observes whether the exact
- * controller keeps sending connectable advertisements after GATT is ready:
- * visible means another direct client can at least attempt to connect; not
- * observed means the controller is treated as operationally exclusive for this
- * connection. The negative observation is deliberately not persisted because
- * Android or radio conditions can hide advertisements.
+ * **Every physical controller counts as exclusive until proven otherwise.**
+ * That is not a guess about firmware, it is how the boards behave and how their
+ * own apps treat them: the Kilter app tries each of a wall's endpoints in turn
+ * and, when none accepts, can only say "both signals are busy or out of range"
+ * — it cannot tell an occupied controller from an absent one either. It ships
+ * an inactivity auto-disconnect for the same reason: the board has to be handed
+ * back before the next climber can use it.
  *
- * Unknown controllers are treated conservatively until that short probe has
- * completed. CruxRelay itself is known to be a multi-client endpoint.
+ * The one usable signal is POSITIVE: seeing a connectable advertisement from
+ * the controller while we already hold GATT proves it can still accept another
+ * central (a peripheral can only be connected to while it advertises). Missing
+ * that observation proves nothing — Android suppresses advertisements from an
+ * already-connected peer often enough that a negative says more about the phone
+ * than about the board. So the probe may only ever upgrade SINGLE → MULTIPLE,
+ * never the other way round, and only a positive result is persisted.
+ *
+ * CruxRelay is our own endpoint, so its multi-client capacity is known outright.
  */
 internal object BoardControllerProfiles {
     fun forBoard(board: DiscoveredBoard?): BoardControllerProfile = resolve(
@@ -61,10 +74,12 @@ internal object BoardControllerProfiles {
             )
         }
 
-        val capacity = when (advertisesWhileConnected) {
-            true -> BoardConnectionCapacity.MULTIPLE
-            false -> BoardConnectionCapacity.SINGLE
-            null -> BoardConnectionCapacity.UNKNOWN
+        // Only the positive observation carries information; "not seen" and
+        // "not probed yet" are the same conservative answer.
+        val capacity = if (advertisesWhileConnected == true) {
+            BoardConnectionCapacity.MULTIPLE
+        } else {
+            BoardConnectionCapacity.SINGLE
         }
         return BoardControllerProfile(
             connectionCapacity = capacity,

@@ -36,6 +36,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.cruxcoach.android.ble.BlePermissionHelper
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ble.DiscoveredBoard
+import com.cruxcoach.android.ble.BoardConnectFlow
+import com.cruxcoach.android.ble.BoardConnectFlowPolicy
 import com.cruxcoach.android.ble.BoardConnectionCapacity
 import com.cruxcoach.android.ble.BoardControllerProfiles
 import com.cruxcoach.android.ble.NearbySession
@@ -57,7 +59,6 @@ private enum class PendingScanStart {
 fun BleConnectionSheet(
     onDismiss: () -> Unit,
     onNavigateToClimb: ((uuid: String, angle: Int) -> Unit)? = null,
-    autoStartScan: Boolean = false,
     viewModel: BleConnectionViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -67,12 +68,15 @@ fun BleConnectionSheet(
         mutableStateOf<PendingScanStart?>(null)
     }
 
-    // A known physical controller gives the user an explicit direct-reconnect
-    // path. Discovery (and its legacy location requirements) only becomes the
-    // active flow after "search other boards" is chosen, or when no complete
-    // remembered descriptor exists yet.
+    // Where scanning is free (Android 12+, BLUETOOTH_SCAN/neverForLocation)
+    // discovery is simply the flow: every board in range gets listed and an
+    // unambiguous one connects itself. Where scanning means location access,
+    // the remembered controller is tried first and discovery takes over only
+    // once that failed — or the user asked for it.
+    val connectFlow = BoardConnectFlowPolicy.initialFlow(rememberedBoard != null)
     val discoveryFlowActive = state.rememberedBoardControllersLoaded &&
-        (discoveryRequested || rememberedBoard == null)
+        (discoveryRequested || connectFlow == BoardConnectFlow.DISCOVER ||
+            state.directReconnectFailed)
 
     // BleConnectionViewModel is scoped per nav-backstack entry, so the board
     // browser and the detail screen hold separate instances — a permission
@@ -123,16 +127,28 @@ fun BleConnectionSheet(
         }
     }
 
-    // Preserve the previous quick-connect behaviour only for first use, when
-    // there is no remembered controller to offer. A remembered controller is
-    // never silently replaced by a scan.
+    // Opening the sheet means "get me on a board". On Android 12+ that starts
+    // a scan every time — the list of what is actually in range is the honest
+    // answer, and a single board in it needs no picking. On older versions the
+    // same tap first reaches for the remembered controller directly, because
+    // scanning there would mean asking for location access before we even know
+    // whether the board is present.
     LaunchedEffect(
-        autoStartScan,
         state.rememberedBoardControllersLoaded,
         rememberedBoard?.address,
+        connectFlow,
+        state.connectionState,
+        state.directReconnectFailed,
     ) {
-        if (autoStartScan && state.rememberedBoardControllersLoaded && rememberedBoard == null) {
-            pendingScanStart = PendingScanStart.AUTO_CONNECT
+        if (!state.rememberedBoardControllersLoaded) return@LaunchedEffect
+        if (state.connectionState != ConnectionState.DISCONNECTED) return@LaunchedEffect
+        when {
+            connectFlow == BoardConnectFlow.DIRECT_THEN_DISCOVER &&
+                !discoveryRequested && !state.directReconnectFailed ->
+                viewModel.tryRememberedControllerFirst()
+
+            connectFlow == BoardConnectFlow.DISCOVER || state.directReconnectFailed ->
+                pendingScanStart = PendingScanStart.AUTO_CONNECT
         }
     }
 
@@ -256,7 +272,16 @@ fun BleConnectionSheet(
                 // Connecting is also a direct-GATT state and must not disappear
                 // behind a permission or location prompt.
                 state.connectionState == ConnectionState.CONNECTING -> {
-                    ConnectingContent(boardName = state.connectedBoardName)
+                    ConnectingContent(
+                        boardName = state.connectedBoardName,
+                        onSearchInstead = if (state.directReconnectInFlight) {
+                            {
+                                viewModel.abandonDirectReconnect()
+                                discoveryRequested = true
+                                pendingScanStart = PendingScanStart.AUTO_CONNECT
+                            }
+                        } else null,
+                    )
                 }
 
                 // Session participant: board is controlled by host,
@@ -286,31 +311,18 @@ fun BleConnectionSheet(
 
                 // Default for a known controller: let the user choose direct
                 // reuse or a fresh scan before asking for either permission set.
+                // Legacy fallback surface: the direct attempt is what normally
+                // runs here (see the effect above), so this shows when it has
+                // not started yet or the user came back to it. A reconnect asks
+                // for nothing but the connect permission — and on these
+                // versions not even that.
                 !discoveryFlowActive && rememberedBoard != null -> {
                     RememberedBoardContent(
                         board = rememberedBoard,
                         onReconnect = {
-                            // Ask for the scan permission alongside connect only
-                            // while this board's capacity is still unverified,
-                            // and only where scanning does not imply location
-                            // (API 31+). Routine reconnects to a classified
-                            // board request nothing extra.
-                            val capacityKnown =
-                                rememberedBoard.advertisesWhileConnected != null
-                            val probeWanted =
-                                BlePermissionHelper.wantsCapacityProbe(capacityKnown)
-                            val needed = BlePermissionHelper.getReconnectPermissions(
-                                capacityKnown = capacityKnown,
-                            )
-                            // hasPermissions covers scan+connect, so it is the
-                            // right gate only when the probe is actually wanted.
-                            val granted = if (probeWanted) {
-                                state.hasPermissions
-                            } else {
-                                state.hasConnectionPermission || needed.isEmpty()
-                            }
-                            if (granted) {
-                                viewModel.reconnectRememberedBoard()
+                            val needed = BlePermissionHelper.getReconnectPermissions()
+                            if (state.hasConnectionPermission || needed.isEmpty()) {
+                                viewModel.tryRememberedControllerFirst()
                             } else {
                                 connectionPermissionLauncher.launch(needed)
                             }
@@ -688,15 +700,14 @@ private fun ConnectedContent(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            // Two answers, never a third: a controller is exclusive unless it
+            // was caught advertising while connected (BoardControllerProfiles).
             val connectionMode = when {
                 board?.isCruxRelay == true -> R.string.board_ble_connection_via_relay
                 BoardControllerProfiles.forBoard(board).connectionCapacity ==
                     BoardConnectionCapacity.MULTIPLE ->
                     R.string.board_ble_connection_multi
-                BoardControllerProfiles.forBoard(board).connectionCapacity ==
-                    BoardConnectionCapacity.SINGLE ->
-                    R.string.board_ble_connection_single
-                else -> R.string.board_ble_connection_unknown
+                else -> R.string.board_ble_connection_single
             }
             Text(
                 stringResource(connectionMode),
@@ -736,21 +747,36 @@ private fun ConnectedContent(
 }
 
 @Composable
-private fun ConnectingContent(boardName: String?) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        CircularProgressIndicator(
-            modifier = Modifier.size(32.dp),
-            color = OrangeAccent,
-            strokeWidth = 3.dp
-        )
-        Text(
-            if (boardName != null) stringResource(R.string.board_ble_connecting_to, boardName) else stringResource(R.string.board_ble_connecting),
-            style = MaterialTheme.typography.bodyLarge,
-            fontWeight = FontWeight.Bold
-        )
+private fun ConnectingContent(
+    boardName: String?,
+    /** Present while this is the speculative attempt at the remembered board —
+     *  it may well not be here, so the way out must be visible immediately. */
+    onSearchInstead: (() -> Unit)? = null,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(32.dp),
+                color = OrangeAccent,
+                strokeWidth = 3.dp
+            )
+            Text(
+                if (boardName != null) stringResource(R.string.board_ble_connecting_to, boardName) else stringResource(R.string.board_ble_connecting),
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Bold
+            )
+        }
+        if (onSearchInstead != null) {
+            TextButton(
+                onClick = onSearchInstead,
+                modifier = Modifier.testTag("ble_search_instead"),
+            ) {
+                Text(stringResource(R.string.board_ble_search_instead), color = OrangeAccent)
+            }
+        }
     }
 }
 

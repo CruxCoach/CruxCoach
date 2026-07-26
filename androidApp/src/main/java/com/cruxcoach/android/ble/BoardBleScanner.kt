@@ -11,6 +11,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.os.Build
 import android.util.Log
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.relay.RelayBoardName
@@ -64,7 +65,12 @@ class BoardBleScanner(private val context: Context) {
         private const val TAG = "BoardBleScanner"
         private const val MAX_REGISTRATION_RETRIES = 3
         private const val REGISTRATION_RETRY_DELAY_MS = 1000L
-        private const val CONNECTED_ADVERTISING_PROBE_MS = 3_000L
+        private const val CONNECTED_ADVERTISING_PROBE_MS = 4_000L
+        /** Retried, not lengthened: a controller puts advertising back up a
+         *  moment after the connection completes, and the first window starts
+         *  while the stack is still finishing service discovery. */
+        private const val CONNECTED_ADVERTISING_PROBE_WINDOWS = 3
+        private const val CONNECTED_ADVERTISING_PROBE_GAP_MS = 1_500L
     }
 
     private val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
@@ -225,16 +231,36 @@ class BoardBleScanner(private val context: Context) {
     }
 
     /**
-     * Looks only for the currently connected controller's address. A
-     * connectable advertisement is positive evidence that the firmware has a
-     * slot available for another central. A timeout is useful as an
-     * operational fallback, but is not persisted because Android may suppress
-     * packets or the radio may simply miss the advertising window.
+     * Watches for the connected controller's own advertisement.
+     *
+     * A peripheral can only be connected to while it advertises connectably, so
+     * seeing that advertisement while WE hold the link is proof the controller
+     * has a slot left for someone else. This is the only capacity evidence a
+     * single phone can gather — a second `connectGatt` from this app would
+     * share the same ACL link and prove nothing.
+     *
+     * The observation has to be made as permissively as the radio allows,
+     * because every restriction here turns into a false "exclusive":
+     *  - **no [ScanFilter]**. An address filter is offloaded to the controller,
+     *    and offloaded filters are exactly what the main scan already avoids
+     *    ("BlueZ peripherals don't always advertise in a way Android's
+     *    ScanFilter recognizes"). The address is matched in software instead.
+     *  - **[ScanSettings.Builder.setLegacy] `false`**. The default reports
+     *    LEGACY advertisements ONLY. A controller that re-enables advertising
+     *    after a connection may well do it on an extended advertising set — the
+     *    BoardSimulator does — and a legacy-only scan cannot see one at all.
+     *  - **several short windows**. The first one starts right after service
+     *    discovery, when the stack is still busy, and BlueZ takes a moment to
+     *    put advertising back up after a connection completes.
+     *
+     * Anything not observed stays "not observed": it never downgrades a
+     * controller, it only fails to upgrade one.
      */
     @SuppressLint("MissingPermission")
     internal suspend fun probeAdvertisingWhileConnected(
         address: String,
-        timeoutMs: Long = CONNECTED_ADVERTISING_PROBE_MS,
+        windowMs: Long = CONNECTED_ADVERTISING_PROBE_MS,
+        windows: Int = CONNECTED_ADVERTISING_PROBE_WINDOWS,
     ): ConnectedAdvertisingProbeResult {
         // Scan permission only. The probe observes advertisements; requiring
         // the connect permission as well made it bail on every reconnect,
@@ -249,41 +275,66 @@ class BoardBleScanner(private val context: Context) {
         // make the probe self-contained and avoid two callbacks competing for
         // the same Android BLE scan client.
         stopScan()
-        val result = CompletableDeferred<ConnectedAdvertisingProbeResult>()
-        val callback = object : ScanCallback() {
-            override fun onScanResult(callbackType: Int, scanResult: ScanResult) {
-                if (scanResult.device.address.equals(address, ignoreCase = true) &&
-                    scanResult.isConnectable
-                ) {
-                    result.complete(
-                        ConnectedAdvertisingProbeResult.CONNECTABLE_ADVERTISEMENT_OBSERVED
-                    )
+
+        var lastFailure: Int? = null
+        repeat(windows) { attempt ->
+            val result = CompletableDeferred<ConnectedAdvertisingProbeResult>()
+            val seen = ConcurrentHashMap.newKeySet<String>()
+            val callback = object : ScanCallback() {
+                override fun onScanResult(callbackType: Int, scanResult: ScanResult) {
+                    seen.add(scanResult.device.address)
+                    if (scanResult.device.address.equals(address, ignoreCase = true) &&
+                        scanResult.isConnectable
+                    ) {
+                        result.complete(
+                            ConnectedAdvertisingProbeResult.CONNECTABLE_ADVERTISEMENT_OBSERVED
+                        )
+                    }
+                }
+
+                override fun onScanFailed(errorCode: Int) {
+                    Log.w(TAG, "Connected-advertising probe failed: code=$errorCode")
+                    lastFailure = errorCode
+                    result.complete(ConnectedAdvertisingProbeResult.INCONCLUSIVE)
                 }
             }
+            val settings = ScanSettings.Builder()
+                .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+                .setMatchMode(ScanSettings.MATCH_MODE_AGGRESSIVE)
+                .setNumOfMatches(ScanSettings.MATCH_NUM_MAX_ADVERTISEMENT)
+                .apply { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) setLegacy(false) }
+                .build()
 
-            override fun onScanFailed(errorCode: Int) {
-                Log.w(TAG, "Connected-advertising probe failed: code=$errorCode")
-                result.complete(ConnectedAdvertisingProbeResult.INCONCLUSIVE)
+            val outcome = try {
+                s.startScan(null, settings, callback)
+                withTimeoutOrNull(windowMs) { result.await() }
+            } catch (e: SecurityException) {
+                Log.w(TAG, "Connected-advertising probe lacks permission", e)
+                return ConnectedAdvertisingProbeResult.INCONCLUSIVE
+            } catch (e: Exception) {
+                Log.w(TAG, "Connected-advertising probe could not start", e)
+                return ConnectedAdvertisingProbeResult.INCONCLUSIVE
+            } finally {
+                runCatching { s.stopScan(callback) }
+                    .onFailure { Log.w(TAG, "Could not stop connected-advertising probe", it) }
             }
+            // Which devices the window DID see separates "the board is silent"
+            // from "this phone reports nothing while connected" — the two
+            // failure modes look identical from the result alone.
+            Log.d(
+                TAG,
+                "capacity probe window ${attempt + 1}/$windows for $address: " +
+                    "${outcome ?: "no advertisement"} — saw ${seen.size} device(s) $seen"
+            )
+            if (outcome == ConnectedAdvertisingProbeResult.CONNECTABLE_ADVERTISEMENT_OBSERVED) {
+                return outcome
+            }
+            if (attempt < windows - 1) delay(CONNECTED_ADVERTISING_PROBE_GAP_MS)
         }
-        val settings = ScanSettings.Builder()
-            .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
-            .build()
-        val filters = listOf(ScanFilter.Builder().setDeviceAddress(address).build())
-
-        return try {
-            s.startScan(filters, settings, callback)
-            withTimeoutOrNull(timeoutMs) { result.await() }
-                ?: ConnectedAdvertisingProbeResult.NOT_OBSERVED
-        } catch (e: SecurityException) {
-            Log.w(TAG, "Connected-advertising probe lacks permission", e)
+        return if (lastFailure != null) {
             ConnectedAdvertisingProbeResult.INCONCLUSIVE
-        } catch (e: Exception) {
-            Log.w(TAG, "Connected-advertising probe could not start", e)
-            ConnectedAdvertisingProbeResult.INCONCLUSIVE
-        } finally {
-            runCatching { s.stopScan(callback) }
-                .onFailure { Log.w(TAG, "Could not stop connected-advertising probe", it) }
+        } else {
+            ConnectedAdvertisingProbeResult.NOT_OBSERVED
         }
     }
 

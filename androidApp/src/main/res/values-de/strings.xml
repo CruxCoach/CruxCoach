@@ -2236,6 +2236,6 @@
     <string name="board_ble_via_cruxcoach">via CruxCoach</string>
     <string name="board_ble_connection_via_relay">Über CruxCoach Relay verbunden</string>
     <string name="board_ble_connection_multi">Mehrere Geräte können verbunden bleiben</string>
-    <string name="board_ble_connection_single">Älterer Controller · eine Direktverbindung</string>
-    <string name="board_ble_connection_unknown">Verbindungskapazität unbekannt</string>
+    <string name="board_ble_connection_single">Ein Gerät gleichzeitig</string>
+    <string name="board_ble_search_instead">Stattdessen nach Boards suchen</string>
 </resources>

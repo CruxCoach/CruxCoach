@@ -69,39 +69,33 @@ object BlePermissionHelper {
     /**
      * Permissions to request when reconnecting to an already-known controller.
      *
-     * Reconnect itself needs no scan — Android connects by address. The post-
-     * connect advertising probe does, and it is the only way to establish
-     * whether a controller accepts more than one client.
-     *
-     * From API 31 the scan permission is part of "Nearby devices" and carries
-     * no location implication, so asking for it alongside the connect
-     * permission is cheap and gets the capacity verified on first contact.
-     * Below API 31 scanning drags in location, which a reconnect must not
-     * force — there the capacity simply stays unverified.
-     *
-     * [capacityKnown] suppresses the scan request entirely once the capacity
-     * was verified before, so routine reconnects ask for nothing extra.
+     * Just the connect permission. A reconnect goes straight to the address and
+     * never scans, and the controller's capacity no longer depends on scanning
+     * either — an unprobed controller is treated as exclusive, which is what it
+     * almost certainly is (see [BoardControllerProfiles]).
      */
-    fun getReconnectPermissions(
-        capacityKnown: Boolean,
-        apiLevel: Int = Build.VERSION.SDK_INT,
-    ): Array<String> =
-        if (wantsCapacityProbe(capacityKnown, apiLevel)) getRequiredPermissions(apiLevel)
-        else getConnectionPermissions(apiLevel)
+    fun getReconnectPermissions(apiLevel: Int = Build.VERSION.SDK_INT): Array<String> =
+        getConnectionPermissions(apiLevel)
 
     /**
-     * Whether a reconnect should also acquire scan rights to run the
-     * post-connect capacity probe.
+     * Whether the post-connect capacity probe can run on this connection.
      *
-     * Only when the capacity is still unknown, and only from API 31 where the
-     * scan permission is part of "Nearby devices" and implies no location
-     * access. Below that, scanning would force a location grant on a flow
-     * that does not need one — the capacity stays unverified instead.
+     * It runs after EVERY connect whose capacity is not established yet — that
+     * is the only moment the evidence exists. The two conditions are purely
+     * about whether scanning would work at all: the permission has to be in
+     * hand already (the probe never justifies asking for one), and on API 23-30
+     * the system location switch has to be on, because the platform withholds
+     * scan results otherwise. Neither is an API-level policy — where scanning
+     * is possible, the probe runs.
      */
     fun wantsCapacityProbe(
         capacityKnown: Boolean,
+        hasScanPermission: Boolean,
+        locationEnabled: Boolean = true,
         apiLevel: Int = Build.VERSION.SDK_INT,
-    ): Boolean = !capacityKnown && apiLevel >= Build.VERSION_CODES.S
+    ): Boolean = !capacityKnown &&
+        hasScanPermission &&
+        !isLocationRequired(apiLevel, flowNeedsScan = true, locationEnabled = locationEnabled)
 
     fun getAdvertisingPermissions(apiLevel: Int = Build.VERSION.SDK_INT): Array<String> {
         return if (apiLevel >= Build.VERSION_CODES.S) {
