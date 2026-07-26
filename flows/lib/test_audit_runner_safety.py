@@ -37,8 +37,8 @@ class RunnerSafetyAuditTest(unittest.TestCase):
 
     def test_rejects_permissive_device_lock_check(self) -> None:
         text = RUNNER.read_text(encoding="utf-8").replace(
-            '[[ "$line" =~ ^[[:space:]]*deviceLocked=0[[:space:]]*$ ]] || return 1',
-            '[[ "$line" != *deviceLocked=1* ]] || return 1',
+            '[[ "$value" =~ ^deviceLocked=0$ ]] || return 1',
+            '[[ "$value" != *deviceLocked=1* ]] || return 1',
         )
         result = audit_text(text)
         self.assertFalse(result["valid"])

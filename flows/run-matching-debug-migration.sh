@@ -169,15 +169,18 @@ adb_target_transfer() {
 }
 
 capture_exact_device_unlocked() {
-    local output_file="$1" error_file="$2" line
-    local -a lock_lines=()
+    local output_file="$1" error_file="$2" value
+    local -a lock_values=()
     if ! adb_target shell dumpsys trust > "$output_file" 2> "$error_file"; then
         return 1
     fi
-    mapfile -t lock_lines < <(grep -E 'deviceLocked=' "$output_file" || true)
-    ((${#lock_lines[@]} > 0)) || return 1
-    for line in "${lock_lines[@]}"; do
-        [[ "$line" =~ ^[[:space:]]*deviceLocked=0[[:space:]]*$ ]] || return 1
+    # deviceLocked is reported inline in the per-user line; extract per
+    # occurrence. Every reported value must be exactly 0, and a missing or
+    # unparsable field yields no occurrence and fails closed.
+    mapfile -t lock_values < <(grep -oE 'deviceLocked=[^,[:space:]]+' "$output_file" || true)
+    ((${#lock_values[@]} > 0)) || return 1
+    for value in "${lock_values[@]}"; do
+        [[ "$value" =~ ^deviceLocked=0$ ]] || return 1
     done
 }
 

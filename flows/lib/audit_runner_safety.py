@@ -11,7 +11,7 @@ from pathlib import Path
 def audit_text(text: str) -> dict[str, object]:
     errors: list[str] = []
     required = (
-        '[[ "$line" =~ ^[[:space:]]*deviceLocked=0[[:space:]]*$ ]] || return 1',
+        '[[ "$value" =~ ^deviceLocked=0$ ]] || return 1',
         'record_evidence_capture "$capture_ledger" device-unlocked-before PASS exact-deviceLocked=0',
         'if adb_target shell dumpsys activity exit-info "$PACKAGE_NAME"',
         'record_evidence_capture "$capture_ledger" exit-info-before-nonempty PASS nonempty',

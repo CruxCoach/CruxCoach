@@ -11,7 +11,7 @@ from pathlib import Path
 def audit_text(text: str) -> dict[str, object]:
     errors: list[str] = []
     required = (
-        '[[ "$line" =~ ^[[:space:]]*deviceLocked=0[[:space:]]*$ ]] || return 1',
+        '[[ "$value" =~ ^deviceLocked=0$ ]] || return 1',
         '"$wrapper_dir/host/device-lock-before.txt"',
         '"$wrapper_dir/host/boot-count-before.txt"',
         '"$wrapper_dir/host/exit-info-before.txt"',
