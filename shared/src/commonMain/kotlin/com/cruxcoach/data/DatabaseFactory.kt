@@ -20,13 +20,30 @@ private val framesAdapter = object : ColumnAdapter<String, ByteArray> {
     override fun encode(value: String): ByteArray = FramesBinaryCodec.encode(value)
 }
 
-fun createBoardDatabase(driverFactory: BoardDriverFactory): BoardDatabase {
+/**
+ * The board database together with the driver that backs it.
+ *
+ * The generated [BoardDatabase] does not expose its driver, and the FEAT-044
+ * relay climb lookup needs to issue one raw statement (its expression index,
+ * created lazily rather than in a migration — building it over the full
+ * catalogue takes ~12 s, which is not something to put in front of a cold app
+ * start for a feature most sessions never use).
+ */
+class BoardDatabaseHandle(val database: BoardDatabase, val driver: SqlDriver)
+
+fun createBoardDatabaseHandle(driverFactory: BoardDriverFactory): BoardDatabaseHandle {
     val driver = driverFactory.createDriver()
-    return BoardDatabase(
+    return BoardDatabaseHandle(
+        database = BoardDatabase(
+            driver = driver,
+            climbsAdapter = Climbs.Adapter(framesAdapter = framesAdapter)
+        ),
         driver = driver,
-        climbsAdapter = Climbs.Adapter(framesAdapter = framesAdapter)
     )
 }
+
+fun createBoardDatabase(driverFactory: BoardDriverFactory): BoardDatabase =
+    createBoardDatabaseHandle(driverFactory).database
 
 fun createSecureDatabase(driverFactory: SecureDriverFactory, dbName: String = "cruxcoach_secure.db"): SecureDatabase {
     val driver = driverFactory.createDriver(dbName)

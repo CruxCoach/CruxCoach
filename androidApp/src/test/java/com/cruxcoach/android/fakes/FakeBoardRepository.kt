@@ -335,6 +335,15 @@ class FakeBoardRepository : BoardRepository {
     override fun getHoldSetIdsForLayout(layoutId: Int, boardBrand: String): List<Long> = emptyList()
     override fun getHoldSetIdsForLayoutSize(layoutId: Int, productSizeId: Int, boardBrand: String): List<Long> = emptyList()
     override fun getPlacementLedMap(productSizeId: Int, boardBrand: String): Map<Int, Int> = emptyMap()
+    override fun findClimbCandidatesByFrames(
+        boardBrand: String,
+        layoutId: Int,
+        minLength: Int,
+        maxLength: Int,
+        anchor1: String?,
+        anchor2: String?,
+    ): List<com.cruxcoach.data.repository.RelayClimbCandidate> = emptyList()
+    override fun ensureRelayLookupIndex(): Boolean = false
     override fun getRoleColorMapForBrand(boardBrand: String): Map<Int, Int> = emptyMap()
     override fun getMirrorPlacementMap(productSizeId: Int, boardBrand: String): Map<Int, Int> = emptyMap()
     override fun countLeds(): Long = 0L

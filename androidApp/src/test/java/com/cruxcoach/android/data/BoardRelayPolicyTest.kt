@@ -16,8 +16,15 @@ class BoardRelayPolicyTest {
             BoardRelayAvailability.MULTI_CONNECT_NOT_NEEDED,
             BoardRelayPolicy.availability(board(advertisesWhileConnected = true)),
         )
+    }
+
+    /** An unprobed controller is exclusive, and exclusive is what the relay
+     *  exists for — offering it must not wait for an observation that may
+     *  never arrive. */
+    @Test
+    fun `relay is offered before any advertising observation`() {
         assertEquals(
-            BoardRelayAvailability.CAPACITY_UNKNOWN,
+            BoardRelayAvailability.AVAILABLE,
             BoardRelayPolicy.availability(board()),
         )
     }

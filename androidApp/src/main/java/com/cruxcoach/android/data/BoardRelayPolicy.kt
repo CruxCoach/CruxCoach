@@ -9,7 +9,6 @@ internal enum class BoardRelayAvailability {
     NO_BOARD,
     UNSUPPORTED_PROTOCOL,
     MULTI_CONNECT_NOT_NEEDED,
-    CAPACITY_UNKNOWN,
     RELAY_ENDPOINT,
 }
 
@@ -21,10 +20,13 @@ internal object BoardRelayPolicy {
         board == null -> BoardRelayAvailability.NO_BOARD
         board.isCruxRelay -> BoardRelayAvailability.RELAY_ENDPOINT
         !board.boardBrand.usesAuroraProtocol -> BoardRelayAvailability.UNSUPPORTED_PROTOCOL
+        // An Aurora controller is exclusive unless it was caught advertising
+        // while connected, and an exclusive board is exactly what the relay is
+        // for — so "not established" and "single" are the same answer here.
         else -> when (BoardControllerProfiles.forBoard(board).connectionCapacity) {
-            BoardConnectionCapacity.SINGLE -> BoardRelayAvailability.AVAILABLE
             BoardConnectionCapacity.MULTIPLE -> BoardRelayAvailability.MULTI_CONNECT_NOT_NEEDED
-            BoardConnectionCapacity.UNKNOWN -> BoardRelayAvailability.CAPACITY_UNKNOWN
+            BoardConnectionCapacity.SINGLE,
+            BoardConnectionCapacity.UNKNOWN -> BoardRelayAvailability.AVAILABLE
         }
     }
 }

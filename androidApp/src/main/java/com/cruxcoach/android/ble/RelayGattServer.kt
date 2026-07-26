@@ -73,10 +73,29 @@ class RelayGattServer(private val context: Context) {
     private val connectedDevices = mutableSetOf<String>()
     private val reassemblers = HashMap<String, RelayFrameReassembler>()
 
+    /**
+     * Address of the phone's own board link, when there is one.
+     *
+     * Android reports every device already connected to the local adapter to a
+     * freshly opened GATT server — including the board WE are the client of.
+     * It arrives as a "client connected" before [start] has even returned, and
+     * it never disconnects while the board link is up, so the chip read
+     * "2 verbunden" with a single real client and settled at 1 with none.
+     * The board is a peer of this relay, never a client of it.
+     */
+    var boardAddressProvider: () -> String? = { null }
+
+    private fun isOwnBoard(address: String): Boolean =
+        boardAddressProvider()?.equals(address, ignoreCase = true) == true
+
     private val gattCallback = object : BluetoothGattServerCallback() {
         @SuppressLint("MissingPermission")
         override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
             val address = device.address
+            if (isOwnBoard(address)) {
+                Log.d(TAG, "Ignoring own board link on the relay server: $address (newState=$newState)")
+                return
+            }
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
                     synchronized(lock) {

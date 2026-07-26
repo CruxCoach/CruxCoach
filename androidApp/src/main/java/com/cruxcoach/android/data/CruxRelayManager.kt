@@ -140,7 +140,6 @@ class CruxRelayManager(
                 BoardRelayAvailability.AVAILABLE -> startRelay()
                 BoardRelayAvailability.UNSUPPORTED_PROTOCOL,
                 BoardRelayAvailability.MULTI_CONNECT_NOT_NEEDED,
-                BoardRelayAvailability.CAPACITY_UNKNOWN,
                 BoardRelayAvailability.RELAY_ENDPOINT,
                 ->
                     rejectEnable(RelayError.UNSUPPORTED_BOARD)
@@ -189,11 +188,18 @@ class CruxRelayManager(
         // 2) Keep the real board link parked while this independent transport
         // is enabled. Relay never creates or tears down a shared queue.
         bleConnection.acquireKeepAlive(BoardConnectionOwner.RELAY)
+        // Our own board link would otherwise register as the first relay
+        // client the moment the server opens (see RelayGattServer).
+        relayServer.boardAddressProvider = { bleConnection.connectedBoard?.address }
         if (!relayServer.start()) {
             Log.e(TAG, "relay server failed to start")
             abortStart(RelayError.SERVER_START_FAILED, null)
             return
         }
+
+        // Identifying a relayed climb needs a one-time index build; start it
+        // now so the first official-app write does not wait for it.
+        scope.launch { projectionCoordinator.prepareForExternalWrites() }
 
         // Subscribe before advertising: MutableSharedFlow does not replay a
         // write that arrives while there is no collector.
@@ -202,7 +208,9 @@ class CruxRelayManager(
                 val ok = bleConnection.sendRawChunks(inbound.climb.chunks)
                 if (ok) {
                     advertiser.clearActiveClimb()
-                    projectionCoordinator.onExternalBoardWrite()
+                    // Hand the raw climb along: it is the only thing that can
+                    // still name what an official app just put on the wall.
+                    projectionCoordinator.onExternalBoardWrite(inbound.climb)
                 } else {
                     Log.w(TAG, "sendRawChunks failed for a relayed climb")
                 }

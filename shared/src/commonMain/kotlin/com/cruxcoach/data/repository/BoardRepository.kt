@@ -244,6 +244,14 @@ data class BoardHole(
     val mirroredHoleId: Long?
 )
 
+/** A climb the relay lookup still has to confirm hold-by-hold.
+ *  Ordered most-plausible first (listed, most ascents). */
+data class RelayClimbCandidate(
+    val uuid: String,
+    val frames: String,
+    val popularity: Long = 0,
+)
+
 data class LedGridPoint(
     val placementId: Long,
     val x: Long,
@@ -560,6 +568,21 @@ interface BoardLayoutQueries {
      *  only heuristics. */
     fun getProductSizeForClimbRender(uuid: String, boardBrand: String = "kilter"): Int?
     fun getPlacementLedMap(productSizeId: Int, boardBrand: String = "kilter"): Map<Int, Int>
+    /** FEAT-044: climbs whose frame string could hold the relayed hold set.
+     *  Narrowed by frame-string length and up to two `%p<id>r%` anchors; the
+     *  caller does the exact comparison. */
+    fun findClimbCandidatesByFrames(
+        boardBrand: String,
+        layoutId: Int,
+        minLength: Int,
+        maxLength: Int,
+        anchor1: String?,
+        anchor2: String?,
+    ): List<RelayClimbCandidate>
+    /** FEAT-044: creates the expression index the candidate query needs, if it
+     *  does not exist yet (~12 s over the full catalogue, once). Returns false
+     *  when the index could not be created — the query still works, slowly. */
+    fun ensureRelayLookupIndex(): Boolean
     /** FEAT-031: per-board role-id → board colour byte, derived from the
      *  synced placement_roles.led_color. Empty when the board's catalogue
      *  hasn't shipped placement_roles yet — callers then fall back to the

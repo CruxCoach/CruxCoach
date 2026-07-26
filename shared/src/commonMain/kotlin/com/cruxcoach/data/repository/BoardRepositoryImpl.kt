@@ -5,7 +5,9 @@ import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.SupportedBoard
 
 class BoardRepositoryImpl(
-    private val database: BoardDatabase
+    private val database: BoardDatabase,
+    /** Only needed for [ensureRelayLookupIndex]; absent in tests. */
+    private val driver: app.cash.sqldelight.db.SqlDriver? = null,
 ) : BoardRepository {
 
     private val q = database.boardQueries
@@ -495,6 +497,34 @@ class BoardRepositoryImpl(
     override fun getPlacementLedMap(productSizeId: Int, boardBrand: String): Map<Int, Int> {
         return q.getPlacementLedMap(productSizeId.toLong(), boardBrand).executeAsList().associate {
             it.placement_id.toInt() to it.led_position.toInt()
+        }
+    }
+
+    override fun findClimbCandidatesByFrames(
+        boardBrand: String,
+        layoutId: Int,
+        minLength: Int,
+        maxLength: Int,
+        anchor1: String?,
+        anchor2: String?,
+    ): List<RelayClimbCandidate> = q.selectClimbCandidatesByFrameLength(
+        boardBrand = boardBrand,
+        layoutId = layoutId.toLong(),
+        minLength = minLength.toLong(),
+        maxLength = maxLength.toLong(),
+        anchor1 = anchor1,
+        anchor2 = anchor2,
+    ).executeAsList().map {
+        RelayClimbCandidate(uuid = it.uuid, frames = it.frames, popularity = it.popularity)
+    }
+
+    override fun ensureRelayLookupIndex(): Boolean {
+        val d = driver ?: return false
+        return try {
+            d.execute(null, RELAY_LOOKUP_INDEX_SQL, 0).value
+            true
+        } catch (e: Exception) {
+            false
         }
     }
 
@@ -988,6 +1018,12 @@ class BoardRepositoryImpl(
     private companion object {
         private val EMPTY_INT_ARRAY = IntArray(0)
         private val EMPTY_PAIR: Pair<IntArray, IntArray> = EMPTY_INT_ARRAY to EMPTY_INT_ARRAY
+
+        /** FEAT-044: without this, the relay climb lookup scans every climb
+         *  (~5 s at 660k rows); with it, the length predicate is an index seek. */
+        const val RELAY_LOOKUP_INDEX_SQL =
+            "CREATE INDEX IF NOT EXISTS idx_climbs_relay_lookup " +
+                "ON climbs(board_brand, layout_id, length(frames))"
     }
 
     /** `board_brand` wire value inferred from a layout — the FALLBACK used only

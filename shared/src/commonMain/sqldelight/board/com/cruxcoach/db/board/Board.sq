@@ -855,6 +855,35 @@ FROM climbs c
 LEFT JOIN climb_stats cs ON c.uuid = cs.climb_uuid AND cs.angle = ?
 WHERE c.uuid = ?;
 
+-- FEAT-044: identify a climb an official Aurora app lit through CruxRelay.
+-- Its BLE packets carry LED positions only, so the climb is recovered by
+-- matching the decoded hold set against stored frames. Candidates are cut down
+-- by frame-string length (derivable from the decoded holds) plus up to two
+-- placement anchors; the exact set comparison happens in Kotlin, since the
+-- frame order is not guaranteed. Without idx_climbs_relay_lookup this scans
+-- the whole catalogue (~5 s at 660k rows), which is why the caller creates
+-- that index before the first lookup.
+-- Duplicates are common in the catalogue (one hold set, five names), and the
+-- wire data cannot tell them apart — so hand back the listed and most-climbed
+-- one first, which is what the sender was most likely looking at.
+selectClimbCandidatesByFrameLength:
+SELECT c.uuid, c.frames,
+       COALESCE((SELECT MAX(cs.ascensionist_count) FROM climb_stats cs
+                 WHERE cs.climb_uuid = c.uuid), 0) AS popularity
+FROM climbs c
+WHERE c.board_brand = :boardBrand
+  AND c.layout_id = :layoutId
+  -- Two comparisons, not BETWEEN: SQLDelight types the second BETWEEN
+  -- operand as a Boolean.
+  AND length(c.frames) >= :minLength
+  AND length(c.frames) <= :maxLength
+  AND c.frames_count = 1
+  AND c.is_deleted = 0
+  AND (:anchor1 IS NULL OR c.frames LIKE :anchor1)
+  AND (:anchor2 IS NULL OR c.frames LIKE :anchor2)
+ORDER BY c.is_listed DESC, popularity DESC
+LIMIT 500;
+
 -- Defensive fallback for getClimbByUuid: the board DB mixes uuid formats
 -- (legacy rows are nodash-UPPERCASE, ~640 new-world rows are dashed-lowercase).
 -- A Kilter logbook-imported uuid may not match any stored row by exact case/

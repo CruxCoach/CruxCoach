@@ -38,6 +38,7 @@ import com.cruxcoach.android.data.BleShareManager
 import com.cruxcoach.android.data.BoardSessionManager
 import com.cruxcoach.android.data.BoardStateManager
 import com.cruxcoach.android.data.BoardProjectionCoordinator
+import com.cruxcoach.android.data.RelayClimbIdentifier
 import com.cruxcoach.android.data.CruxRelayManager
 import com.cruxcoach.android.data.ClimbNameResolver
 import com.cruxcoach.android.data.RestTimerAlarmScheduler
@@ -64,7 +65,8 @@ import com.cruxcoach.data.BoardDriverFactory
 import com.cruxcoach.data.SecureDriverFactory
 import com.cruxcoach.data.SecureDatabaseTransactionRunner
 import com.cruxcoach.data.TransactionRunner
-import com.cruxcoach.data.createBoardDatabase
+import com.cruxcoach.data.BoardDatabaseHandle
+import com.cruxcoach.data.createBoardDatabaseHandle
 import com.cruxcoach.data.createSecureDatabase
 import com.cruxcoach.data.repository.*
 import com.cruxcoach.db.board.BoardDatabase
@@ -109,13 +111,17 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideBoardDatabase(
+    fun provideBoardDatabaseHandle(
         @ApplicationContext context: Context
-    ): BoardDatabase {
+    ): BoardDatabaseHandle {
         return PerfLogger.trace("DI: BoardDatabase") {
-            createBoardDatabase(BoardDriverFactory(context))
+            createBoardDatabaseHandle(BoardDriverFactory(context))
         }
     }
+
+    @Provides
+    @Singleton
+    fun provideBoardDatabase(handle: BoardDatabaseHandle): BoardDatabase = handle.database
 
     // --- Repositories ---
 
@@ -157,8 +163,10 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideBoardRepository(database: BoardDatabase): BoardRepository {
-        return BoardRepositoryImpl(database)
+    fun provideBoardRepository(handle: BoardDatabaseHandle): BoardRepository {
+        // The driver comes along for the FEAT-044 relay lookup index, which is
+        // raw SQL the generated database cannot express.
+        return BoardRepositoryImpl(handle.database, handle.driver)
     }
 
     @Provides
@@ -481,8 +489,9 @@ object AppModule {
     fun provideBoardProjectionCoordinator(
         sessionQueueManager: SessionQueueManager,
         boardStateManager: BoardStateManager,
+        climbIdentifier: RelayClimbIdentifier,
     ): BoardProjectionCoordinator =
-        BoardProjectionCoordinator(sessionQueueManager, boardStateManager)
+        BoardProjectionCoordinator(sessionQueueManager, boardStateManager, climbIdentifier)
 
     @Provides
     @Singleton
