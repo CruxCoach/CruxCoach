@@ -1015,7 +1015,7 @@
     <string name="kilter_import_part_projects">%d projects</string>
     <string name="kilter_import_part_own">%d own climbs</string>
     <string name="kilter_import_part_catalogue">%d climbs backfilled</string>
-    <string name="kilter_import_part_circuits">%d lists</string>
+    <string name="kilter_import_part_circuits">%d playlists</string>
     <string name="kilter_import_summary_with_dupes" formatted="false">%1$s (%2$d already present)</string>
     <string name="kilter_sync_success">Sync complete: %1$d downloaded, %2$d uploaded</string>
     <string name="kilter_sync_error">Sync failed: %s</string>
@@ -2020,9 +2020,9 @@
 
     <!-- FEAT-005 Aurora-JSON migration -->
     <string name="onboarding_aurora_card_title">Coming from the old Kilter app?</string>
-    <string name="onboarding_aurora_card_subtitle">Bring your Aurora ascents, attempts and circuits across via the JSON export Aurora sends after a data request.</string>
+    <string name="onboarding_aurora_card_subtitle">Bring your Aurora ascents, attempts and playlists across via the JSON export Aurora sends after a data request.</string>
     <string name="whatsnew_aurora_import_title">Aurora data — import it now</string>
-    <string name="whatsnew_aurora_import_body">0.1.4 ingests the email JSON Aurora sends after a data-export request. Your historical ascents, attempts and circuits land in CruxCoach\'s logbook with one tap.</string>
+    <string name="whatsnew_aurora_import_body">0.1.4 ingests the email JSON Aurora sends after a data-export request. Your historical ascents, attempts and playlists land in CruxCoach\'s logbook with one tap.</string>
     <string name="whatsnew_aurora_import_hint">Have the JSON file already? Tap "Import now". Otherwise the importer stays in Settings → Migrate from Aurora — request the export first, come back later.</string>
     <string name="whatsnew_aurora_import_action_now">Import now</string>
     <string name="whatsnew_aurora_import_action_later">Later</string>
@@ -2035,7 +2035,7 @@
     <string name="whatsnew_moonboard_action_later">Later</string>
     <!-- 0.2.1 highlights (consolidated; carries the 0.2.0 board recap as hint) -->
     <string name="whatsnew_021_title">New in 0.2.1</string>
-    <string name="whatsnew_021_body">• Zone search — in the hold search, drag a frame on the board photo and find every climb that lives entirely inside it.\n\n• Kilter circuits arrive as lists — logging in with your Kilter account now also imports your circuits.\n\n• Share any climb — every climb gets a link that opens straight in CruxCoach.\n\n• Lists across boards — saved lists now show all your climbs, each with its board badge and a board filter.</string>
+    <string name="whatsnew_021_body">• Zone search — in the hold search, drag a frame on the board photo and find every climb that lives entirely inside it.\n\n• Kilter playlists arrive as lists — logging in with your Kilter account now also imports your playlists.\n\n• Share any climb — every climb gets a link that opens straight in CruxCoach.\n\n• Lists across boards — saved lists now show all your climbs, each with its board badge and a board filter.</string>
     <string name="whatsnew_021_hint">Easy to miss in 0.2.0: MoonBoard and the Aurora boards (Tension, Grasshopper and more), a worldwide board map and a find-your-gym picker — all in Settings.</string>
     <string name="whatsnew_021_action_go">Got it</string>
     <string name="whatsnew_021_action_boards">See boards</string>
@@ -2064,7 +2064,7 @@
     <string name="whatsnew_gym_picker_action_later">Later</string>
 
     <string name="settings_aurora_migration_title">Migrate from Aurora / old Kilter app</string>
-    <string name="settings_aurora_migration_desc">Bring your ascents, attempts and circuits across from the email export Aurora sends after a data request.</string>
+    <string name="settings_aurora_migration_desc">Bring your ascents, attempts and playlists across from the email export Aurora sends after a data request.</string>
     <string name="aurora_migration_title">Aurora migration</string>
     <string name="aurora_migration_what_happened_title">What happened to Aurora?</string>
     <string name="aurora_migration_what_happened_body">Aurora Climbing took its API offline in early 2026 and the official Kilter app moved to a new backend. Aurora still honours one-time data-export requests by email — the file they send is what this importer reads.</string>
@@ -2084,14 +2084,14 @@
     <string name="aurora_migration_progress_climbs" formatted="false">Importing your climbs (%1$d / %2$d)…</string>
     <string name="aurora_migration_progress_ascents" formatted="false">Importing ascents (%1$d / %2$d)…</string>
     <string name="aurora_migration_progress_bids" formatted="false">Importing attempts (%1$d / %2$d)…</string>
-    <string name="aurora_migration_progress_circuits" formatted="false">Importing circuits (%1$d / %2$d)…</string>
+    <string name="aurora_migration_progress_circuits" formatted="false">Importing playlists (%1$d / %2$d)…</string>
     <string name="aurora_migration_progress_finalising">Wrapping up…</string>
     <string name="aurora_migration_result_success">Import complete</string>
     <string name="aurora_migration_result_failed">Import failed</string>
     <string name="aurora_migration_result_parse_error" formatted="false">Couldn\'t read this file: %1$s</string>
     <string name="aurora_migration_count_ascents">Ascents</string>
     <string name="aurora_migration_count_bids">Attempts</string>
-    <string name="aurora_migration_count_circuits">Circuits</string>
+    <string name="aurora_migration_count_circuits">Playlists</string>
     <string name="aurora_migration_count_climbs">Your climbs</string>
     <string name="aurora_migration_count_summary" formatted="false">%1$s: %2$d imported · %3$d already present · %4$d skipped</string>
     <string name="aurora_migration_unresolved_title" formatted="false">%1$d climb names couldn\'t be matched against your local catalog</string>

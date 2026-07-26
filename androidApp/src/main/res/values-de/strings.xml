@@ -1059,7 +1059,7 @@
     <string name="kilter_import_part_projects">%d Projekte</string>
     <string name="kilter_import_part_own">%d eigene Climbs</string>
     <string name="kilter_import_part_catalogue">%d Climbs nachgeladen</string>
-    <string name="kilter_import_part_circuits">%d Listen</string>
+    <string name="kilter_import_part_circuits">%d Playlists</string>
     <string name="kilter_import_summary_with_dupes" formatted="false">%1$s (%2$d bereits vorhanden)</string>
     <string name="kilter_sync_success">Sync abgeschlossen: %1$d heruntergeladen, %2$d hochgeladen</string>
     <string name="kilter_sync_error">Sync fehlgeschlagen: %s</string>
@@ -2023,9 +2023,9 @@
 
     <!-- FEAT-005 Aurora-JSON migration -->
     <string name="onboarding_aurora_card_title">Aus der alten Kilter-App?</string>
-    <string name="onboarding_aurora_card_subtitle">Begehungen, Versuche und Circuits aus dem Aurora-JSON-Export übernehmen.</string>
+    <string name="onboarding_aurora_card_subtitle">Begehungen, Versuche und Playlists aus dem Aurora-JSON-Export übernehmen.</string>
     <string name="whatsnew_aurora_import_title">Aurora-Daten — jetzt importieren</string>
-    <string name="whatsnew_aurora_import_body">0.1.4 importiert die JSON-Datei, die Aurora auf Datenexport-Anfrage zusendet. Deine alten Begehungen, Versuche und Circuits landen mit einem Tipp im CruxCoach-Logbuch.</string>
+    <string name="whatsnew_aurora_import_body">0.1.4 importiert die JSON-Datei, die Aurora auf Datenexport-Anfrage zusendet. Deine alten Begehungen, Versuche und Playlists landen mit einem Tipp im CruxCoach-Logbuch.</string>
     <string name="whatsnew_aurora_import_hint">Datei schon zur Hand? Auf „Jetzt importieren" tippen. Sonst bleibt der Importer in Einstellungen → Migration aus Aurora — Export anfragen, später wiederkommen.</string>
     <string name="whatsnew_aurora_import_action_now">Jetzt importieren</string>
     <string name="whatsnew_aurora_import_action_later">Später</string>
@@ -2038,7 +2038,7 @@
     <string name="whatsnew_moonboard_action_later">Später</string>
     <!-- 0.2.1-Highlights (konsolidiert; 0.2.0-Board-Recap als Hint) -->
     <string name="whatsnew_021_title">Neu in 0.2.1</string>
-    <string name="whatsnew_021_body">• Bereichssuche — zieh in der Hold-Suche einen Rahmen aufs Board-Foto und finde alle Climbs, die komplett darin liegen.\n\n• Kilter-Circuits werden Listen — der Login mit deinem Kilter-Account importiert jetzt auch deine Circuits.\n\n• Jeden Climb teilen — jeder Climb bekommt einen Link, der direkt in CruxCoach öffnet.\n\n• Listen über alle Boards — gespeicherte Listen zeigen jetzt alle deine Climbs, mit Board-Badge und Board-Filter.</string>
+    <string name="whatsnew_021_body">• Bereichssuche — zieh in der Hold-Suche einen Rahmen aufs Board-Foto und finde alle Climbs, die komplett darin liegen.\n\n• Kilter-Playlists werden Listen — der Login mit deinem Kilter-Account importiert jetzt auch deine Playlists.\n\n• Jeden Climb teilen — jeder Climb bekommt einen Link, der direkt in CruxCoach öffnet.\n\n• Listen über alle Boards — gespeicherte Listen zeigen jetzt alle deine Climbs, mit Board-Badge und Board-Filter.</string>
     <string name="whatsnew_021_hint">In 0.2.0 leicht zu übersehen: MoonBoard und die Aurora-Boards (Tension, Grasshopper u.&#160;a.), eine weltweite Board-Karte und ein „Finde deine Halle"-Picker — alles in den Einstellungen.</string>
     <string name="whatsnew_021_action_go">Alles klar</string>
     <string name="whatsnew_021_action_boards">Boards ansehen</string>
@@ -2067,7 +2067,7 @@
     <string name="whatsnew_gym_picker_action_later">Später</string>
 
     <string name="settings_aurora_migration_title">Migration aus Aurora / alter Kilter-App</string>
-    <string name="settings_aurora_migration_desc">Begehungen, Versuche und Circuits aus dem E-Mail-Export übernehmen, den Aurora auf Anfrage zusendet.</string>
+    <string name="settings_aurora_migration_desc">Begehungen, Versuche und Playlists aus dem E-Mail-Export übernehmen, den Aurora auf Anfrage zusendet.</string>
     <string name="aurora_migration_title">Aurora-Migration</string>
     <string name="aurora_migration_what_happened_title">Was ist mit Aurora passiert?</string>
     <string name="aurora_migration_what_happened_body">Aurora Climbing hat Anfang 2026 die API abgeschaltet, und die offizielle Kilter-App ist auf ein neues Backend umgezogen. Aurora bedient einmalige Datenexport-Anfragen per E-Mail — die Datei, die sie zurückschicken, liest dieser Importer.</string>
@@ -2087,14 +2087,14 @@
     <string name="aurora_migration_progress_climbs" formatted="false">Importiere deine Climbs (%1$d / %2$d)…</string>
     <string name="aurora_migration_progress_ascents" formatted="false">Importiere Begehungen (%1$d / %2$d)…</string>
     <string name="aurora_migration_progress_bids" formatted="false">Importiere Versuche (%1$d / %2$d)…</string>
-    <string name="aurora_migration_progress_circuits" formatted="false">Importiere Circuits (%1$d / %2$d)…</string>
+    <string name="aurora_migration_progress_circuits" formatted="false">Importiere Playlists (%1$d / %2$d)…</string>
     <string name="aurora_migration_progress_finalising">Abschluss…</string>
     <string name="aurora_migration_result_success">Import abgeschlossen</string>
     <string name="aurora_migration_result_failed">Import fehlgeschlagen</string>
     <string name="aurora_migration_result_parse_error" formatted="false">Datei konnte nicht gelesen werden: %1$s</string>
     <string name="aurora_migration_count_ascents">Begehungen</string>
     <string name="aurora_migration_count_bids">Versuche</string>
-    <string name="aurora_migration_count_circuits">Circuits</string>
+    <string name="aurora_migration_count_circuits">Playlists</string>
     <string name="aurora_migration_count_climbs">Eigene Climbs</string>
     <string name="aurora_migration_count_summary" formatted="false">%1$s: %2$d importiert · %3$d schon vorhanden · %4$d übersprungen</string>
     <string name="aurora_migration_unresolved_title" formatted="false">%1$d Climb-Namen konnten lokal nicht zugeordnet werden</string>
