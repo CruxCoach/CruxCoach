@@ -1,0 +1,24 @@
+appId: com.cruxcoach.android
+name: subflow-pick-missing-catalog-backup
+---
+# The runner stages and checksum-verifies this exact synthetic fixture.
+- tapOn:
+    id: "import_pick_file"
+- extendedWaitUntil:
+    visible: "cruxcoach-e2e-missing-catalogue.json"
+    timeout: 15000
+- tapOn: "cruxcoach-e2e-missing-catalogue.json"
+- extendedWaitUntil:
+    visible:
+      id: "import_preview"
+    timeout: 15000
+- assertNotVisible:
+    id: "import_pubkey_mismatch_dialog"
+- assertVisible:
+    id: "import_category_climb_lists_checkbox"
+    checked: true
+- assertVisible:
+    id: "import_category_climb_lists_count"
+    text: "1 Listen"
+- assertNotVisible:
+    text: ".*(out of range|invalid backup|not finite|ungültig|fehlgeschlagen|failed).*"

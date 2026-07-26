@@ -1,0 +1,58 @@
+appId: com.cruxcoach.android
+name: kilter-data-info-settings
+tags:
+  - release-gate
+---
+- runFlow: subflows/launch-browser.yaml
+- tapOn:
+    id: "board_settings_button"
+- scrollUntilVisible:
+    element:
+      id: "settings_section_kilter"
+    direction: DOWN
+- tapOn:
+    id: "settings_section_kilter"
+- assertVisible:
+    id: "settings_kilter_climb_publish_switch"
+    checked: false
+    enabled: false
+- tapOn:
+    id: "settings_kilter_connect"
+- assertVisible:
+    id: "settings_kilter_login_sheet"
+- tapOn:
+    id: "kilter_data_info_button"
+- assertVisible:
+    id: "kilter_data_info_dialog"
+- scrollUntilVisible:
+    element:
+      text: "Einmalig importieren"
+    direction: DOWN
+- scrollUntilVisible:
+    element:
+      text: "Dauerhaft synchronisieren"
+    direction: DOWN
+- scrollUntilVisible:
+    element:
+      text: "Zu Kilter hochladen"
+    direction: DOWN
+- scrollUntilVisible:
+    element:
+      text: "Eigene Climbs auf Kilter veröffentlichen"
+    direction: DOWN
+- scrollUntilVisible:
+    element:
+      text: "standardmäßig aus"
+    direction: DOWN
+- scrollUntilVisible:
+    element:
+      text: "DEINEN eigenen Kilter-Account"
+    direction: DOWN
+- tapOn:
+    id: "kilter_data_info_close"
+- pressKey: Back
+- assertVisible:
+    id: "settings_section_kilter"
+- pressKey: Back
+- assertVisible:
+    id: "board_filter_toggle"

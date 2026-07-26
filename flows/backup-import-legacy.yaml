@@ -1,0 +1,121 @@
+appId: com.cruxcoach.android
+name: backup-import-legacy
+tags:
+  - release-gate
+  - extended
+  - mutates-state
+---
+# Public-safe, deterministic derivative of a genuine 0.1.4 export. This one
+# flow covers preview, cross-account consent, the 4/5-star write regression,
+# persisted logbook/list state, idempotent re-import, and precise cleanup.
+
+# Setup cleanup makes a previous interrupted run unable to invert the result.
+- runFlow: subflows/cleanup-legacy-logbook.yaml
+
+# First import: exact historical preview and write result.
+- runFlow: subflows/open-data-import.yaml
+- runFlow: subflows/pick-legacy-backup.yaml
+- tapOn:
+    id: "import_confirm"
+- extendedWaitUntil:
+    visible:
+      id: "import_pick_file"
+    timeout: 30000
+- assertVisible:
+    text: ".*(Imported|Importiert):.*3 .*Sends.*1 .*Versuche|.*(Imported|Importiert):.*3 .*sends.*1 .*bids.*"
+- assertNotVisible:
+    text: ".*(out of range|invalid backup|not finite|ungültig|fehlgeschlagen|failed).*"
+- tapOn:
+    id: "data_import_back"
+- pressKey: Back
+- assertVisible:
+    id: "board_filter_toggle"
+
+# Independent persisted-state proof: fixture UUIDs bind each rating and angle
+# to the intended row instead of accepting unrelated text elsewhere onscreen.
+- tapOn:
+    id: "board_logbook_icon"
+- extendedWaitUntil:
+    visible:
+      id: "logbook_ascent_card_e2200140-0001-4001-8001-000000000001"
+    timeout: 15000
+- assertVisible: "E2E Legacy 0.1.4 Five Star"
+- assertVisible:
+    id: "logbook_ascent_quality_e2200140-0001-4001-8001-000000000001"
+    text: "5★"
+- assertVisible:
+    id: "logbook_ascent_angle_e2200140-0001-4001-8001-000000000001"
+    text: "40°"
+- assertVisible: "E2E Legacy 0.1.4 Four Star"
+- assertVisible:
+    id: "logbook_ascent_quality_e2200140-0002-4002-8002-000000000002"
+    text: "4★"
+- assertVisible: "E2E Legacy 0.1.4 Unrated"
+- assertVisible: "E2E Legacy 0.1.4 Attempt"
+- assertVisible:
+    text: "(3 Versuche|3 attempts)"
+- pressKey: Back
+- tapOn:
+    id: "board_lists_button"
+- scrollUntilVisible:
+    element:
+      text: "e2e_legacy_014_alpha"
+    direction: DOWN
+- assertVisible: "e2e_legacy_014_alpha"
+- assertVisible: "e2e_legacy_014_beta"
+- pressKey: Back
+
+# Re-import the identical bytes. Structured Logcat expectations prove that no
+# log rows were inserted, exactly four primary-key duplicates were skipped,
+# and the two lists were merged rather than duplicated.
+- runFlow: subflows/open-data-import.yaml
+- runFlow: subflows/pick-legacy-backup.yaml
+- tapOn:
+    id: "import_confirm"
+- extendedWaitUntil:
+    visible:
+      id: "import_pick_file"
+    timeout: 30000
+- assertVisible:
+    text: ".*2 (lists|Listen).*4 (duplicates skipped|Duplikate übersprungen).*"
+- tapOn:
+    id: "data_import_back"
+- pressKey: Back
+- assertVisible:
+    id: "board_filter_toggle"
+
+# Teardown removes only the four fixture UUIDs and two clearly named custom
+# lists. The runner separately removes the exact staged Downloads file.
+- runFlow: subflows/cleanup-legacy-logbook.yaml
+- tapOn:
+    id: "board_lists_button"
+- scrollUntilVisible:
+    element:
+      id: "board_list_delete_e2e_legacy_014_alpha"
+    direction: DOWN
+- tapOn:
+    id: "board_list_delete_e2e_legacy_014_alpha"
+- assertVisible:
+    id: "board_list_delete_dialog"
+- tapOn:
+    id: "board_list_delete_confirm"
+- extendedWaitUntil:
+    notVisible: "e2e_legacy_014_alpha"
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      id: "board_list_delete_e2e_legacy_014_beta"
+    direction: DOWN
+- tapOn:
+    id: "board_list_delete_e2e_legacy_014_beta"
+- assertVisible:
+    id: "board_list_delete_dialog"
+- tapOn:
+    id: "board_list_delete_confirm"
+- extendedWaitUntil:
+    notVisible: "e2e_legacy_014_beta"
+    timeout: 10000
+- pressKey: Back
+- assertVisible:
+    id: "board_filter_toggle"
+

@@ -1,0 +1,7 @@
+# The runner accepts the irreversible Nostr roots only in this exact order,
+# once, with an explicit environment acknowledgement. This fresh onboarding
+# clears all prior app data before CruxCoach lazily generates its own identity.
+release-fresh-onboarding
+nostr-dm-delivery
+nostr-dm-force-stop
+

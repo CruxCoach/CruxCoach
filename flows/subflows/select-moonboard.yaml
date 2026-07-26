@@ -1,0 +1,34 @@
+appId: com.cruxcoach.android
+name: subflow-select-moonboard
+---
+# Caller must be on a populated browser and provide MOONBOARD_VARIANT using the
+# exact product label (for example, "MoonBoard 2016"). Selection itself pins
+# the browse angle to the deterministic 40-degree catalogue.
+- assertVisible:
+    id: "board_filter_toggle"
+- tapOn:
+    id: "board_filter_toggle"
+- tapOn:
+    id: "board_filter_board_link"
+- tapOn:
+    id: "board_picker_brand"
+- tapOn: "MoonBoard"
+- scrollUntilVisible:
+    element:
+      text: "${MOONBOARD_VARIANT}"
+    direction: DOWN
+- tapOn: "${MOONBOARD_VARIANT}"
+- tapOn:
+    id: "board_picker_confirm"
+- extendedWaitUntil:
+    visible: "${MOONBOARD_VARIANT}"
+    timeout: 15000
+- assertVisible:
+    id: "board_angle_40"
+    checked: true
+- pressKey: Back
+- extendedWaitUntil:
+    visible:
+      id: "board_climb_card"
+    timeout: 30000
+

@@ -1,0 +1,35 @@
+appId: com.cruxcoach.android
+name: subflow-pick-legacy-backup
+---
+# The structured runner stages and checksum-verifies this exact public fixture.
+- tapOn:
+    id: "import_pick_file"
+- extendedWaitUntil:
+    visible: "cruxcoach-e2e-legacy-014.json"
+    timeout: 15000
+- tapOn: "cruxcoach-e2e-legacy-014.json"
+- extendedWaitUntil:
+    visible:
+      id: "import_pubkey_mismatch_dialog"
+    timeout: 15000
+- tapOn:
+    id: "import_pubkey_mismatch_confirm"
+- assertVisible:
+    id: "import_pubkey_override_banner"
+- assertVisible:
+    id: "import_preview"
+- assertVisible:
+    id: "import_category_board_logbook_checkbox"
+    checked: true
+- assertVisible:
+    id: "import_category_board_logbook_count"
+    text: "3 Sends, 1 Versuche"
+- assertVisible:
+    id: "import_category_climb_lists_checkbox"
+    checked: true
+- assertVisible:
+    id: "import_category_climb_lists_count"
+    text: "2 Listen"
+- assertNotVisible:
+    text: ".*(out of range|invalid backup|not finite|ungültig|fehlgeschlagen|failed).*"
+

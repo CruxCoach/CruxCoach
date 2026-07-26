@@ -1,0 +1,23 @@
+appId: com.cruxcoach.android
+name: subflow-launch-browser
+---
+# Every root gets a deterministic process start and browser route. A warm
+# foreground launch can inherit a nested navigation destination and does not
+# emit the startup evidence required by smoke.expects.
+- launchApp:
+    stopApp: true
+- runFlow:
+    when:
+      visible: "Zulassen"
+    commands:
+      - tapOn: "Zulassen"
+- waitForAnimationToEnd:
+    timeout: 5000
+- assertVisible:
+    id: "board_filter_toggle"
+- assertVisible:
+    id: "board_active_configuration"
+- extendedWaitUntil:
+    visible:
+      id: "board_climb_card"
+    timeout: 30000

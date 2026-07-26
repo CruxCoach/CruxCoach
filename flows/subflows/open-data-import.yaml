@@ -1,0 +1,21 @@
+appId: com.cruxcoach.android
+name: subflow-open-data-import
+---
+- runFlow: launch-browser.yaml
+- tapOn:
+    id: "board_settings_button"
+- scrollUntilVisible:
+    element:
+      id: "settings_section_data"
+    direction: DOWN
+- tapOn:
+    id: "settings_section_data"
+- scrollUntilVisible:
+    element:
+      id: "settings_data_import"
+    direction: DOWN
+- tapOn:
+    id: "settings_data_import"
+- assertVisible:
+    id: "import_pick_file"
+

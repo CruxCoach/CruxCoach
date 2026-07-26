@@ -1,22 +1,36 @@
 appId: com.cruxcoach.android
 name: browser-search
 tags:
+  - release-gate
   - smoke
 ---
-# Verify the search bar actually filters the list (not just visually
-# accepts text). Strategy: type a guaranteed-no-match query and
-# confirm no climb-cards remain. The double-tap is required because
-# the bottom-nav search icon's first tap merely surfaces the EditText,
-# the second tap focuses it for inputText.
-- launchApp:
-    stopApp: false
-- waitForAnimationToEnd:
-    timeout: 5000
+# Verify the real filter pipeline against the stable no-results state, then
+# restore both query and search-overlay state on a normal pass.
+- runFlow: subflows/reset-browser-filters.yaml
+- tapOn:
+    id: "board_search_fab"
+- tapOn:
+    id: "board_search_field"
+- inputText: "E2E-NO-MATCH-${E2E_RUN_ID}"
+- extendedWaitUntil:
+    visible:
+      id: "board_empty_clear_filters"
+    timeout: 15000
 - assertVisible:
-    text: "[0-9]+ Züge"
-- tapOn: "Name oder Setter suchen…"
-- tapOn: "Name oder Setter suchen…"
-- inputText: "zzznomatch"
-# Search debounce is ~300 ms; assertion's implicit poll covers it.
+    id: "board_empty_state"
 - assertNotVisible:
-    text: "[0-9]+ Züge"
+    id: "board_climb_card"
+- tapOn:
+    id: "board_search_field"
+- eraseText: 100
+- hideKeyboard
+- extendedWaitUntil:
+    visible:
+      id: "board_climb_card"
+    timeout: 15000
+- assertNotVisible:
+    id: "board_empty_state"
+- tapOn:
+    id: "board_search_fab"
+- assertNotVisible:
+    id: "board_search_field"

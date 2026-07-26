@@ -1,0 +1,320 @@
+appId: com.cruxcoach.android
+name: backup-json-roundtrip
+tags:
+  - release-gate
+  - extended
+  - destructive
+  - network
+  - mutates-state
+---
+# Current v3 JSON backup, exercised through the real Android document provider.
+# The runner pre-cleans and later audits/removes only the exact E2E filename.
+# Two genuine clearState onboarding passes make this export -> wipe -> import,
+# while dynamic catalogue names avoid asserting a hard-coded remote entity.
+
+# Controlled source account and catalogue.
+- runFlow: release-fresh-onboarding.yaml
+
+# First distinct climb: 45 degrees, five-star send, favorite membership.
+- tapOn:
+    id: "board_climb_card"
+    index: 0
+- extendedWaitUntil:
+    visible:
+      id: "boarddetail_name"
+    timeout: 15000
+- copyTextFrom:
+    id: "boarddetail_name"
+- evalScript: ${output.backupFirstName = maestro.copiedText}
+- tapOn:
+    id: "boarddetail_angle"
+- tapOn:
+    id: "boarddetail_angle_45"
+- assertVisible:
+    id: "boarddetail_angle"
+    text: "45°"
+- tapOn:
+    id: "boarddetail_log_button"
+- tapOn:
+    id: "ascent_type_send"
+- tapOn:
+    id: "ascent_quality_5"
+- tapOn:
+    id: "ascent_comment"
+- inputText: "E2E-BACKUP-45-ÄÖ-😀"
+- hideKeyboard
+- tapOn:
+    id: "ascent_save"
+- assertNotVisible:
+    id: "ascent_dialog"
+- tapOn:
+    id: "boarddetail_favorite_button"
+- assertVisible: "Von Favoriten entfernen"
+- pressKey: Back
+
+# Second distinct climb: one three-attempt bid and one four-star send at 50
+# degrees, then the Ignored sentinel list. The host audit binds all three rows
+# and both list memberships by climbUuid, independent of visible list text.
+- tapOn:
+    id: "board_climb_card"
+    index: 1
+- extendedWaitUntil:
+    visible:
+      id: "boarddetail_name"
+    timeout: 15000
+- copyTextFrom:
+    id: "boarddetail_name"
+- evalScript: ${output.backupSecondName = maestro.copiedText}
+- tapOn:
+    id: "boarddetail_angle"
+- tapOn:
+    id: "boarddetail_angle_50"
+- assertVisible:
+    id: "boarddetail_angle"
+    text: "50°"
+- tapOn:
+    id: "boarddetail_log_button"
+- tapOn:
+    id: "ascent_type_attempt"
+- tapOn:
+    id: "ascent_attempts_up"
+- tapOn:
+    id: "ascent_attempts_up"
+- tapOn:
+    id: "ascent_comment"
+- inputText: "E2E-BACKUP-ATTEMPT-50"
+- hideKeyboard
+- tapOn:
+    id: "ascent_save"
+- tapOn:
+    id: "boarddetail_log_button"
+- tapOn:
+    id: "ascent_type_send"
+- tapOn:
+    id: "ascent_quality_4"
+- tapOn:
+    id: "ascent_comment"
+- inputText: "E2E-BACKUP-50-café-über-90°"
+- hideKeyboard
+- tapOn:
+    id: "ascent_save"
+- tapOn:
+    id: "boarddetail_more_button"
+- tapOn:
+    id: "boarddetail_ignore_toggle"
+- tapOn:
+    id: "boarddetail_more_button"
+- assertVisible: "Nicht mehr ignorieren"
+- pressKey: Back
+
+# Process-death proof before export: the controlled rows must be durable, not
+# merely ViewModel state. Scroll reaches the oldest card on the compact Nokia.
+- stopApp
+- launchApp
+- waitForAnimationToEnd:
+    timeout: 5000
+- tapOn:
+    id: "board_logbook_icon"
+- extendedWaitUntil:
+    visible: "E2E-BACKUP-50-café-über-90°"
+    timeout: 15000
+- assertVisible: "E2E-BACKUP-ATTEMPT-50"
+- assertVisible: "4★"
+- assertVisible: "50°"
+- scrollUntilVisible:
+    element:
+      text: "E2E-BACKUP-45-ÄÖ-😀"
+    direction: DOWN
+- assertVisible: "5★"
+- assertVisible: "45°"
+- pressKey: Back
+
+# Export all three user-visible backup categories. CreateDocument is a genuine
+# system UI boundary; use an exact filename that cannot collide with user data.
+- tapOn:
+    id: "board_settings_button"
+- scrollUntilVisible:
+    element:
+      id: "settings_section_data"
+    direction: DOWN
+- tapOn:
+    id: "settings_section_data"
+- scrollUntilVisible:
+    element:
+      id: "settings_data_export"
+    direction: DOWN
+- tapOn:
+    id: "settings_data_export"
+- assertVisible:
+    id: "export_category_board_logbook_checkbox"
+    checked: true
+- assertVisible:
+    id: "export_category_climb_lists_checkbox"
+    checked: true
+- assertVisible:
+    id: "export_category_own_climbs_checkbox"
+    checked: true
+- tapOn:
+    id: "full_export_button"
+- extendedWaitUntil:
+    visible: "cruxcoach_backup.json"
+    timeout: 15000
+- tapOn: "cruxcoach_backup.json"
+- eraseText: 100
+- inputText: "cruxcoach-e2e-roundtrip.json"
+- hideKeyboard
+- tapOn:
+    text: "(Speichern|Save|SPEICHERN|SAVE)"
+- extendedWaitUntil:
+    visible:
+      id: "full_export_button"
+    timeout: 30000
+- assertVisible:
+    text: ".*3 .*(exportiert|exported).*"
+- assertNotVisible:
+    text: ".*(fehlgeschlagen|failed|cannot open|konnte nicht).*"
+
+# New app identity and empty secure database; shared Downloads survives.
+- runFlow: release-fresh-onboarding.yaml
+- runFlow: subflows/open-data-import.yaml
+- tapOn:
+    id: "import_pick_file"
+- extendedWaitUntil:
+    visible: "cruxcoach-e2e-roundtrip.json"
+    timeout: 15000
+- tapOn: "cruxcoach-e2e-roundtrip.json"
+- extendedWaitUntil:
+    visible:
+      id: "import_pubkey_mismatch_dialog"
+    timeout: 15000
+- tapOn:
+    id: "import_pubkey_mismatch_confirm"
+- assertVisible:
+    id: "import_pubkey_override_banner"
+- assertVisible:
+    id: "import_category_board_logbook_checkbox"
+    checked: true
+- assertVisible:
+    id: "import_category_board_logbook_count"
+    text: "2 Sends, 1 Versuche"
+- assertVisible:
+    id: "import_category_climb_lists_checkbox"
+    checked: true
+- assertVisible:
+    id: "import_category_climb_lists_count"
+    text: "2 Listen"
+- assertNotVisible:
+    id: "import_category_own_climbs_checkbox"
+- tapOn:
+    id: "import_confirm"
+- extendedWaitUntil:
+    visible:
+      id: "import_pick_file"
+    timeout: 30000
+- assertVisible:
+    text: ".*(Importiert|Imported):.*2 .*Sends.*1 .*Versuche.*2 .*Listen|.*(Importiert|Imported):.*2 .*sends.*1 .*bids.*2 .*lists.*"
+- assertNotVisible:
+    text: ".*(out of range|invalid backup|not finite|ungültig|fehlgeschlagen|failed).*"
+- tapOn:
+    id: "data_import_back"
+- pressKey: Back
+- assertVisible:
+    id: "board_filter_toggle"
+
+# Independent post-import process death. Visible rows cover text, angle,
+# quality, sends and attempts; the JSON auditor supplies row-level binding.
+- stopApp
+- launchApp
+- waitForAnimationToEnd:
+    timeout: 5000
+- tapOn:
+    id: "board_logbook_icon"
+- extendedWaitUntil:
+    visible: "E2E-BACKUP-50-café-über-90°"
+    timeout: 15000
+- assertVisible: "E2E-BACKUP-ATTEMPT-50"
+- assertVisible: ${output.backupSecondName}
+- assertVisible: "4★"
+- assertVisible: "50°"
+- scrollUntilVisible:
+    element:
+      text: "E2E-BACKUP-45-ÄÖ-😀"
+    direction: DOWN
+- assertVisible: ${output.backupFirstName}
+- assertVisible: "5★"
+- assertVisible: "45°"
+- pressKey: Back
+
+# Favorites and Ignored must restore as different built-ins, never folded into
+# one list. Remove only each controlled membership after proving it.
+- tapOn:
+    id: "board_lists_button"
+- tapOn: "Favoriten"
+- extendedWaitUntil:
+    visible: ${output.backupFirstName}
+    timeout: 15000
+- assertVisible:
+    id: "list_total_count"
+    text: "1 Climbs"
+- assertNotVisible: ${output.backupSecondName}
+- tapOn: ${output.backupFirstName}
+- extendedWaitUntil:
+    visible:
+      id: "boarddetail_name"
+    timeout: 15000
+- assertVisible: "Von Favoriten entfernen"
+- tapOn:
+    id: "boarddetail_favorite_button"
+- assertVisible: "Zu Favoriten hinzufügen"
+- pressKey: Back
+- extendedWaitUntil:
+    visible: "Liste ist leer"
+    timeout: 10000
+- pressKey: Back
+- tapOn: "Ignoriert"
+- extendedWaitUntil:
+    visible: ${output.backupSecondName}
+    timeout: 15000
+- assertVisible:
+    id: "list_total_count"
+    text: "1 Climbs"
+- assertNotVisible: ${output.backupFirstName}
+- tapOn: ${output.backupSecondName}
+- extendedWaitUntil:
+    visible:
+      id: "boarddetail_name"
+    timeout: 15000
+- tapOn:
+    id: "boarddetail_more_button"
+- assertVisible: "Nicht mehr ignorieren"
+- tapOn:
+    id: "boarddetail_ignore_toggle"
+- pressKey: Back
+- extendedWaitUntil:
+    visible: "Liste ist leer"
+    timeout: 10000
+- pressKey: Back
+- pressKey: Back
+- assertVisible:
+    id: "board_filter_toggle"
+
+# Fresh target contained no other user log rows, so select-all is precise here.
+- tapOn:
+    id: "board_logbook_icon"
+- tapOn:
+    id: "logbook_select_all"
+- tapOn:
+    id: "logbook_delete_selected"
+- assertVisible:
+    id: "logbook_delete_dialog"
+- tapOn:
+    id: "logbook_delete_confirm"
+- extendedWaitUntil:
+    notVisible: "E2E-BACKUP-50-café-über-90°"
+    timeout: 10000
+- assertNotVisible: "E2E-BACKUP-ATTEMPT-50"
+- assertNotVisible: "E2E-BACKUP-45-ÄÖ-😀"
+- pressKey: Back
+- assertVisible:
+    id: "board_filter_toggle"
+

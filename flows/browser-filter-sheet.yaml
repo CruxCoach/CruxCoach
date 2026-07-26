@@ -1,25 +1,57 @@
 appId: com.cruxcoach.android
 name: browser-filter-sheet
 tags:
+  - release-gate
   - smoke
 ---
-# Smoke-render check for the filter screen: navigates from Browser →
-# Filter, asserts all major sections are present, returns. The actual
-# filter LOGIC (e.g. myClimbsOnly persistence, status-filter
-# application) is covered by JVM tests in BrowserOriginFilterTest +
-# upcoming UserPreferences round-trip tests. This flow's value is
-# strictly UI-side: catches "filter screen fails to compose",
-# "section header string drift", "back-nav broken".
-- launchApp:
-    stopApp: false
-- waitForAnimationToEnd:
-    timeout: 5000
-- tapOn: "Filter"
-- assertVisible: "Sortierung"
-- assertVisible: "Status"
-- assertVisible: "Quelle"
-- assertVisible: "Eigene Climbs"
-- assertVisible: "Nur Benchmarks"
+# Render/navigation smoke for the complete scrollable filter screen. Dedicated
+# roots exercise filter mutations; this root verifies stable UI anchors from
+# the top through the bottom without changing persisted filter state.
+- runFlow: subflows/launch-browser.yaml
+- tapOn:
+    id: "board_filter_toggle"
+- assertVisible:
+    id: "board_filter_reset"
+- assertVisible:
+    id: "board_filter_info"
+- assertVisible:
+    id: "board_filter_result_count"
+- assertVisible:
+    id: "board_filter_board_link"
+- scrollUntilVisible:
+    element:
+      id: "board_grade_slider"
+    direction: DOWN
+- scrollUntilVisible:
+    element:
+      id: "board_filter_ungraded_only"
+    direction: DOWN
+- scrollUntilVisible:
+    element:
+      id: "board_type_boulder"
+    direction: DOWN
+- scrollUntilVisible:
+    element:
+      id: "board_status_all"
+    direction: DOWN
+- scrollUntilVisible:
+    element:
+      id: "board_benchmark_only"
+    direction: DOWN
+- assertVisible:
+    id: "board_my_climbs_only"
+- scrollUntilVisible:
+    element:
+      id: "board_origin_all"
+    direction: DOWN
+- scrollUntilVisible:
+    element:
+      id: "board_sort_direction"
+    direction: DOWN
+- assertVisible:
+    id: "board_sort_row"
 - pressKey: Back
-- assertVisible: "Filter"
-- assertVisible: "Neuen Climb erstellen"
+- assertVisible:
+    id: "board_filter_toggle"
+- assertVisible:
+    id: "board_create_fab"

@@ -1,0 +1,54 @@
+appId: com.cruxcoach.android
+name: subflow-cleanup-legacy-logbook
+---
+- runFlow: open-logbook.yaml
+# The fixture timestamps are deliberately in the future, so any residue from
+# an interrupted earlier run is in the first viewport. Select only fixture IDs;
+# never use Select All, which could remove unrelated test-phone logbook data.
+- runFlow:
+    when:
+      visible:
+        id: "logbook_ascent_select_e2200140-000[1-4]-.*"
+    commands:
+      - runFlow:
+          when:
+            visible:
+              id: "logbook_ascent_select_e2200140-0001-4001-8001-000000000001"
+          commands:
+            - tapOn:
+                id: "logbook_ascent_select_e2200140-0001-4001-8001-000000000001"
+      - runFlow:
+          when:
+            visible:
+              id: "logbook_ascent_select_e2200140-0002-4002-8002-000000000002"
+          commands:
+            - tapOn:
+                id: "logbook_ascent_select_e2200140-0002-4002-8002-000000000002"
+      - runFlow:
+          when:
+            visible:
+              id: "logbook_ascent_select_e2200140-0003-4003-8003-000000000003"
+          commands:
+            - tapOn:
+                id: "logbook_ascent_select_e2200140-0003-4003-8003-000000000003"
+      - runFlow:
+          when:
+            visible:
+              id: "logbook_ascent_select_e2200140-0004-4004-8004-000000000004"
+          commands:
+            - tapOn:
+                id: "logbook_ascent_select_e2200140-0004-4004-8004-000000000004"
+      - tapOn:
+          id: "logbook_delete_selected"
+      - assertVisible:
+          id: "logbook_delete_dialog"
+      - tapOn:
+          id: "logbook_delete_confirm"
+      - extendedWaitUntil:
+          notVisible:
+            id: "logbook_ascent_select_e2200140-000[1-4]-.*"
+          timeout: 10000
+- pressKey: Back
+- assertVisible:
+    id: "board_filter_toggle"
+

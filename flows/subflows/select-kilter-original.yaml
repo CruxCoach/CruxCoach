@@ -1,0 +1,28 @@
+appId: com.cruxcoach.android
+name: subflow-select-kilter-original
+---
+# First route through MoonBoard to seed 40 degrees, then return to Kilter. The
+# Kilter picker deliberately preserves the user's angle, so this makes the
+# shared release baseline deterministic without reaching into app storage.
+- runFlow:
+    file: select-moonboard.yaml
+    env:
+      MOONBOARD_VARIANT: "MoonBoard 2016"
+- tapOn:
+    id: "board_filter_toggle"
+- tapOn:
+    id: "board_filter_board_link"
+- tapOn:
+    id: "board_picker_brand"
+- tapOn: "Kilter Original"
+- tapOn:
+    id: "board_picker_confirm"
+- extendedWaitUntil:
+    visible: "Winkel: 40°"
+    timeout: 15000
+- pressKey: Back
+- extendedWaitUntil:
+    visible:
+      id: "board_climb_card"
+    timeout: 30000
+

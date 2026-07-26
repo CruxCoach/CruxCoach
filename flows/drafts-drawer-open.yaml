@@ -1,22 +1,24 @@
 appId: com.cruxcoach.android
 name: drafts-drawer-open
 tags:
+  - release-gate
   - smoke
 ---
 # Open the drafts drawer from the editor's overflow menu and verify
 # the drawer header is rendered.
-- launchApp:
-    stopApp: false
-- waitForAnimationToEnd:
-    timeout: 5000
-- tapOn: "Neuen Climb erstellen"
+- runFlow: subflows/launch-browser.yaml
+- tapOn:
+    id: "board_create_fab"
 - assertVisible: "Neuer Climb"
-- tapOn: "Weitere Optionen"
-- tapOn: "Entwürfe öffnen"
+- tapOn:
+    id: "climb_creator_more"
+- tapOn:
+    id: "climb_creator_open_drafts"
 # DraftsDrawer header (climb_creator_drafts_title), regardless of
 # whether the user has any drafts.
 - assertVisible: "Meine Entwürfe"
 - pressKey: Back
 - assertVisible: "Neuer Climb"
 - pressKey: Back
-- assertVisible: "Filter"
+- assertVisible:
+    id: "board_filter_toggle"

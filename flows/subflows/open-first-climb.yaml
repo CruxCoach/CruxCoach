@@ -1,0 +1,19 @@
+appId: com.cruxcoach.android
+name: subflow-open-first-climb
+---
+- runFlow: reset-browser-filters.yaml
+- tapOn:
+    id: "board_climb_card"
+    index: 0
+- extendedWaitUntil:
+    visible:
+      id: "boarddetail_name"
+    timeout: 15000
+- assertVisible:
+    id: "boarddetail_back_button"
+- assertVisible:
+    id: "boarddetail_visualization"
+- assertVisible:
+    id: "boarddetail_log_button"
+- assertNotVisible: "Climb konnte nicht geladen werden"
+

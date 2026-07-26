@@ -1,14 +1,16 @@
 appId: com.cruxcoach.android
 name: lists-navigate
 tags:
+  - release-gate
   - smoke
 ---
-- launchApp:
-    stopApp: false
-- waitForAnimationToEnd:
-    timeout: 5000
-- tapOn: "Meine Listen"
+- runFlow: subflows/launch-browser.yaml
+- tapOn:
+    id: "board_lists_button"
 # Lists landing — "Favoriten" is the built-in list, always present.
 - assertVisible: "Favoriten"
+- assertVisible:
+    id: "board_lists_fab"
 - pressKey: Back
-- assertVisible: "Filter"
+- assertVisible:
+    id: "board_filter_toggle"

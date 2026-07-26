@@ -1,0 +1,37 @@
+appId: com.cruxcoach.android
+name: nostr-dm-force-stop
+tags:
+  - extended
+  - irreversible-external
+  - live-external
+  - network
+  - mutates-state
+---
+# Suite-only continuation of nostr-dm-delivery: it uses the same fresh identity
+# generated internally by the disposable app and creates exactly one more DM.
+- assertVisible:
+    id: "dev_chat_screen"
+- tapOn:
+    id: "dev_chat_input"
+- inputText: "[E2E-TEST] force-stop ${E2E_RUN_ID}"
+- hideKeyboard
+- tapOn:
+    id: "dev_chat_send"
+- extendedWaitUntil:
+    visible:
+      id: "dev_chat_message_queued"
+    timeout: 2000
+# Force-stop while the message is known to be durable but before the app-scoped
+# randomized delivery starts. This root is never retried by the host harness.
+- stopApp
+- runFlow: subflows/open-dev-chat.yaml
+- assertVisible: "\\[E2E-TEST\\] force-stop ${E2E_RUN_ID}"
+- tapOn:
+    id: "dev_chat_refresh"
+- extendedWaitUntil:
+    notVisible:
+      id: "dev_chat_message_queued"
+    timeout: 30000
+- assertVisible: "\\[E2E-TEST\\] force-stop ${E2E_RUN_ID}"
+- assertVisible:
+    id: "dev_chat_message_not_queued"

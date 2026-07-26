@@ -1,16 +1,15 @@
 appId: com.cruxcoach.android
 name: map-navigate
 tags:
+  - release-gate
   - smoke
 ---
-- launchApp:
-    stopApp: false
-- waitForAnimationToEnd:
-    timeout: 5000
-# Tap the BoardBrowser → Map icon. testTag is what we assert against
-# because the icon-only IconButton has no visible label and its
-# contentDescription string can co-occur (substring) with other DE
-# UI text on this screen.
+- runFlow: subflows/launch-browser.yaml
+# The map action lives in the browser's expandable search/action row.
+- tapOn:
+    id: "board_search_fab"
+- assertVisible:
+    id: "board_map_button"
 - tapOn:
     id: "board_map_button"
 - waitForAnimationToEnd:
@@ -24,4 +23,14 @@ tags:
 - pressKey: Back
 # We should be back on the BoardBrowser; "Filter" is the browser's
 # filter-chips header, the same anchor the settings-navigate flow uses.
-- assertVisible: "Filter"
+- assertVisible:
+    id: "board_filter_toggle"
+- runFlow:
+    when:
+      visible:
+        id: "board_search_field"
+    commands:
+      - tapOn:
+          id: "board_search_fab"
+- assertNotVisible:
+    id: "board_search_field"

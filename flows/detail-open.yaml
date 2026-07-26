@@ -1,6 +1,7 @@
 appId: com.cruxcoach.android
 name: detail-open
 tags:
+  - release-gate
   - smoke
 ---
 # Tap a climb card and verify navigation lands on the climb-detail
@@ -10,17 +11,14 @@ tags:
 # Behavioural verification: see detail-open.expects file with PERF
 # NAV markers — the strongest signal that the right composable was
 # entered, not a similar-looking sibling.
-- launchApp:
-    stopApp: false
-- waitForAnimationToEnd:
-    timeout: 5000
-- tapOn:
-    text: "[0-9]+ Züge"
-    index: 0
+- runFlow: subflows/open-first-climb.yaml
 # Detail-screen unique landmarks: back-arrow ("Zurück") and BLE icon
 # content-desc "Board verbinden" (browser uses "Bluetooth" for the
 # same icon, so the co-occurrence pins us on detail).
-- assertVisible: "Zurück"
-- assertVisible: "Board verbinden"
+- assertVisible:
+    id: "boarddetail_back_button"
+- assertVisible:
+    id: "boarddetail_ble_connect_button"
 - pressKey: Back
-- assertVisible: "Filter"
+- assertVisible:
+    id: "board_filter_toggle"

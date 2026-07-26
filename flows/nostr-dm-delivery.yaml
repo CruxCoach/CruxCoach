@@ -1,0 +1,49 @@
+appId: com.cruxcoach.android
+name: nostr-dm-delivery
+tags:
+  - extended
+  - irreversible-external
+  - live-external
+  - network
+  - mutates-state
+---
+# This root is executable only through flows/suites/nostr-live.txt. Its clean
+# onboarding predecessor removes every prior app identity; entering this screen
+# then lazily creates a brand-new local identity inside CruxCoach. No imported
+# identity, credential input, host identity value, or secret material is used.
+- runFlow: subflows/open-dev-chat.yaml
+- tapOn:
+    id: "dev_chat_input"
+- inputText: "[E2E-TEST] left-screen ${E2E_RUN_ID}"
+- hideKeyboard
+- tapOn:
+    id: "dev_chat_send"
+# Observe local persistence before leaving, but stay inside the sender's
+# randomized minimum delivery delay so Back genuinely tests app-scoped work.
+- extendedWaitUntil:
+    visible:
+      id: "dev_chat_message_queued"
+    timeout: 2000
+- pressKey: Back
+- assertVisible:
+    id: "settings_section_dev_contact"
+# Collapse, remain outside Chat for longer than the sender's 10-second maximum
+# randomized delay, then expand. tapOn.repeat's delay is a real command delay,
+# not an animation timeout that may return early.
+- tapOn:
+    id: "settings_section_dev_contact"
+    repeat: 2
+    delay: 20000
+- scrollUntilVisible:
+    element:
+      id: "devcontact_messages"
+    direction: DOWN
+- tapOn:
+    id: "devcontact_messages"
+- extendedWaitUntil:
+    notVisible:
+      id: "dev_chat_message_queued"
+    timeout: 5000
+- assertVisible: "\\[E2E-TEST\\] left-screen ${E2E_RUN_ID}"
+- assertVisible:
+    id: "dev_chat_message_not_queued"
