@@ -9,10 +9,13 @@ import com.cruxcoach.android.data.blossom.BlossomSyncException
 import com.cruxcoach.android.data.blossom.BlossomSyncManager
 import com.cruxcoach.android.notification.BoardSyncWorker
 import com.cruxcoach.android.util.isNetworkAvailable
+import com.cruxcoach.android.util.isNetworkPermissionGranted
 import com.cruxcoach.android.util.isWifiConnected
 import com.cruxcoach.android.util.safeLaunch
 import com.cruxcoach.util.DateTimeUtil
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -53,6 +56,10 @@ class BoardSyncManager(
 ) {
     private companion object {
         const val TAG = "BoardSyncManager"
+        /** How long a requested sync may take to actually start before the
+         *  user is told the system is holding it back. Long enough for a cold
+         *  WorkManager handover, short enough to still read as feedback. */
+        const val SYNC_START_GRACE_MS = 8_000L
         /** Max concurrent chunk downloads. On mobile links 4 streams
          *  hit the bandwidth-delay-product without each stream
          *  perpetually competing for TCP slow-start window; the 3
@@ -80,6 +87,7 @@ class BoardSyncManager(
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var deferralWatchdog: Job? = null
 
     private val _state = MutableStateFlow(BoardSyncState())
     val state: StateFlow<BoardSyncState> = _state.asStateFlow()
@@ -454,6 +462,18 @@ class BoardSyncManager(
         Log.d(TAG, "startApiSync() called, isSyncing=${_state.value.isSyncing}, bypassWifi=$bypassWifi")
         if (_state.value.isSyncing) return
 
+        // Before connectivity: a revoked INTERNET permission (GrapheneOS makes
+        // it revocable) leaves every connectivity check green while our own
+        // sockets are refused, so the sync would start and fail on every
+        // download with nothing to point at.
+        if (!isNetworkPermissionGranted(appContext)) {
+            Log.w(TAG, "startApiSync: no INTERNET permission for this app")
+            _state.update {
+                it.copy(errorMessage = appContext.getString(R.string.board_sync_no_network_permission))
+            }
+            return
+        }
+
         checkNetwork()
         Log.d(TAG, "network=${_state.value.networkAvailable}, wifi=${_state.value.wifiConnected}")
         if (!_state.value.networkAvailable) {
@@ -474,6 +494,30 @@ class BoardSyncManager(
         // Execute under a foreground-service worker so the sync
         // survives the app being backgrounded mid-download.
         BoardSyncWorker.enqueueExpedited(appContext)
+        watchForSilentDeferral()
+    }
+
+    /**
+     * Says something when the system keeps a requested sync waiting.
+     *
+     * Handing work to WorkManager can end in nothing happening at all — Doze,
+     * an aggressive battery-optimisation setting, an exhausted expedited quota
+     * — and the app has no callback for "the platform has not run this yet".
+     * A tap that produces no sync, no progress and no error reads as a dead
+     * button, which is exactly how this surfaced in the field. If the worker
+     * has not taken over within a few seconds, say so.
+     */
+    private fun watchForSilentDeferral() {
+        deferralWatchdog?.cancel()
+        deferralWatchdog = scope.launch {
+            delay(SYNC_START_GRACE_MS)
+            if (!_state.value.isSyncing && _state.value.errorMessage == null) {
+                Log.w(TAG, "sync did not start within ${SYNC_START_GRACE_MS}ms — deferred by the system")
+                _state.update {
+                    it.copy(errorMessage = appContext.getString(R.string.board_sync_deferred))
+                }
+            }
+        }
     }
 
     /**
