@@ -1028,7 +1028,12 @@ private fun ClimbDetailPageContent(
                                         )
                                     }
                                 }
-                                MatchBadge(isNomatch = climb.isNomatch)
+                                // No badge when the match state isn't ours to
+                                // know (community + BoardSesh climbs) — see
+                                // ClimbWithStats.isMatchStateKnown.
+                                if (climb.isMatchStateKnown) {
+                                    MatchBadge(isNomatch = climb.isNomatch)
+                                }
                                 if (climb.benchmarkDifficulty > 0.0) {
                                     BenchmarkBadge()
                                 }

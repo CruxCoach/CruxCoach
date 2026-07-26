@@ -98,6 +98,31 @@ data class ClimbWithStats(
     /** True when this climb is a multi-frame route (not a boulder). */
     val isRoute: Boolean get() = framesCount > 1
 
+    /**
+     * Whether [isNomatch] carries a real answer for this climb.
+     *
+     * "Matching allowed" is a Kilter-side setter decision, and the blob column
+     * is NOT NULL DEFAULT 0 — so "we never learned it" and "matching is
+     * allowed" are the same stored value. We only ever learn it for climbs
+     * that came through Kilter's catalogue; for the other origins the stored 0
+     * is a placeholder, not a fact:
+     *   * `cruxcoach` — the editor writes is_nomatch=0 on every local draft
+     *     and the publisher sends allowMatch=true unconditionally, so the
+     *     setter was never asked,
+     *   * `boardsesh` — BoardSesh-only user climbs never reach Kilter and
+     *     their feed carries no such field.
+     * Showing a green "Matching" badge there would be an invention, so the UI
+     * hides the badge entirely instead.
+     *
+     * NOTE: this is provenance-level, not per-climb. A `kilter` climb the
+     * catalogue backfill could not resolve (2026-07-26: 1,073 rows, 0.5 % of
+     * the catalogue) still reads as known and defaults to "matching allowed".
+     * Making that case explicit needs a dedicated blob column — deliberately
+     * not done here, because adding one is a wire-format change for every
+     * installed app version.
+     */
+    val isMatchStateKnown: Boolean get() = origin == "kilter"
+
     /** Move count: uses pre-computed DB value, falls back to live parse from frames. */
     val moveCount: Int by lazy {
         if (storedMoveCount > 0) storedMoveCount.toInt()

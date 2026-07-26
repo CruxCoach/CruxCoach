@@ -246,7 +246,13 @@ internal fun NoBoardDataCard(onSyncClick: () -> Unit) {
     }
 }
 
-/** Compact match/no-match icon for climb cards. */
+/**
+ * Compact match/no-match icon for climb cards.
+ *
+ * Gate any call site on `ClimbWithStats.isMatchStateKnown` — for community and
+ * BoardSesh climbs the stored flag is a placeholder, and a green "Matching"
+ * icon there would be invented information.
+ */
 @Composable
 internal fun MatchIndicator(isNomatch: Boolean) {
     val color = if (isNomatch) ErrorRed else SuccessGreen
