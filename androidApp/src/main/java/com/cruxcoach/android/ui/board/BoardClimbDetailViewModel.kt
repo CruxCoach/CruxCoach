@@ -462,12 +462,14 @@ class BoardClimbDetailViewModel @Inject constructor(
                     userPreferences.singleConnectionBoardSendMode,
                     userPreferences.multiConnectionBoardSendMode,
                     bleConnection.connectedBoardDescriptor,
-                ) { singleMode, multiMode, board ->
+                    cruxRelayManager.state,
+                ) { singleMode, multiMode, board, relayState ->
                     val capacity = BoardControllerProfiles.forBoard(board).connectionCapacity
                     BoardSendModePolicy.resolve(
                         connectionCapacity = capacity,
                         singleConnectionMode = singleMode,
                         multiConnectionMode = multiMode,
+                        hostingForOthers = relayState.clientCount > 0,
                     ) to capacity
                 }.distinctUntilChanged().collect { (mode, capacity) ->
                     val shouldAutoSend = BoardSendModePolicy
@@ -1198,7 +1200,6 @@ class BoardClimbDetailViewModel @Inject constructor(
                 frames = climb.frames,
             ),
             connectedViaRelay = climbState.ble.connectedViaRelay,
-            hostedRelayClientCount = climbState.ble.hostedRelayClientCount,
         )
         when (decision.target) {
             BoardDeliveryTarget.DIRECT_BOARD -> sendController.sendToBoard()
@@ -1283,6 +1284,7 @@ class BoardClimbDetailViewModel @Inject constructor(
                         .connectionCapacity,
                     singleConnectionMode = singleMode,
                     multiConnectionMode = multiMode,
+                    hostingForOthers = _state.value.ble.hostedRelayClientCount > 0,
                 )
             }.first()
         } catch (e: CancellationException) {
@@ -1303,7 +1305,6 @@ class BoardClimbDetailViewModel @Inject constructor(
                 frames = climbState.climb?.frames,
             ),
             connectedViaRelay = climbState.ble.connectedViaRelay,
-            hostedRelayClientCount = climbState.ble.hostedRelayClientCount,
         )
         if (decision.dispatchAutomatically) {
             sendController.sendToBoard()

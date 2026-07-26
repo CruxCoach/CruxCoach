@@ -105,4 +105,32 @@ class BoardSendModePolicyTest {
             ),
         )
     }
+
+    @Test
+    fun `hosting for others uses the multi preference, not the board capacity`() {
+        // The relayed board is usually SINGLE — that is why it needs a relay —
+        // but the situation is multi-user, so the multi preference applies.
+        assertEquals(
+            BoardSendMode.EXPLICIT,
+            BoardSendModePolicy.resolve(
+                connectionCapacity = BoardConnectionCapacity.SINGLE,
+                singleConnectionMode = BoardSendMode.AUTOMATIC,
+                multiConnectionMode = BoardSendMode.EXPLICIT,
+                hostingForOthers = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `a host who chose automatic for shared boards keeps automatic`() {
+        assertEquals(
+            BoardSendMode.AUTOMATIC,
+            BoardSendModePolicy.resolve(
+                connectionCapacity = BoardConnectionCapacity.SINGLE,
+                singleConnectionMode = BoardSendMode.EXPLICIT,
+                multiConnectionMode = BoardSendMode.AUTOMATIC,
+                hostingForOthers = true,
+            ),
+        )
+    }
 }

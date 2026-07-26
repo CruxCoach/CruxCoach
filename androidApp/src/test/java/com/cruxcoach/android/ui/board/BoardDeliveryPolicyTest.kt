@@ -147,17 +147,19 @@ class BoardDeliveryPolicyTest {
     }
 
     @Test
-    fun `automatic mode becomes explicit while hosting relay guests`() {
+    fun `hosting does not override the resolved send mode`() {
+        // Hosting is expressed upstream: BoardSendModePolicy resolves it to the
+        // climber's multi-connection preference. Re-applying a guard here would
+        // mean someone who deliberately chose AUTOMATIC still gets a button.
         val decision = BoardDeliveryPolicy.resolve(
             sendMode = BoardSendMode.AUTOMATIC,
             sessionRole = SessionRole.NONE,
             boardConnected = true,
             hasDirectPayload = true,
-            hostedRelayClientCount = 2,
         )
 
-        assertFalse(decision.dispatchAutomatically)
-        assertTrue(decision.showAction)
+        assertTrue(decision.dispatchAutomatically)
+        assertFalse(decision.showAction)
     }
 
     @Test

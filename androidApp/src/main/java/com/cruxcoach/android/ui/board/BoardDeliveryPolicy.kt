@@ -51,7 +51,6 @@ internal object BoardDeliveryPolicy {
         boardConnected: Boolean,
         hasDirectPayload: Boolean,
         connectedViaRelay: Boolean = false,
-        hostedRelayClientCount: Int = 0,
     ): BoardDeliveryDecision {
         // Joining has already handed ownership to the shared-session flow, but
         // the participant GATT command channel is not ready yet. Hide both
@@ -80,21 +79,20 @@ internal object BoardDeliveryPolicy {
             )
         }
 
-        // A relay endpoint IS a multi-connection board — that is what a relay
-        // makes it — so [BoardControllerProfiles] already classifies it as one
-        // and [sendMode] arrives as the climber's multi-connection preference.
-        // Overriding it here as well took the choice away from them twice; the
-        // default for that preference (EXPLICIT) is where the "don't grab a
-        // shared wall by swiping" rule belongs.
+        // Both sides of a relay are multi-connection situations and both are
+        // already expressed in [sendMode]: a relay endpoint is classified as
+        // MULTIPLE by [BoardControllerProfiles], and hosting resolves to the
+        // multi-connection preference in [BoardSendModePolicy]. So the
+        // preference decides here, full stop.
         //
-        // Hosting is the other side and keeps its guard: the host's own send
-        // competes with clients they invited onto the board, and they cannot
-        // see what those clients are doing.
-        val hostingForOthers = hostedRelayClientCount > 0
+        // No second override. The "don't grab a shared wall by swiping" rule
+        // lives in that preference's default (EXPLICIT); re-applying it here
+        // meant a climber who deliberately switched to AUTOMATIC still got a
+        // button, which is not a default any more — it is ignoring them.
         return BoardDeliveryDecision(
             target = BoardDeliveryTarget.DIRECT_BOARD,
-            dispatchAutomatically = sendMode == BoardSendMode.AUTOMATIC && !hostingForOthers,
-            showAction = sendMode == BoardSendMode.EXPLICIT || hostingForOthers,
+            dispatchAutomatically = sendMode == BoardSendMode.AUTOMATIC,
+            showAction = sendMode == BoardSendMode.EXPLICIT,
         )
     }
 }

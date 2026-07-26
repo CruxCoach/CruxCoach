@@ -1152,7 +1152,6 @@ private fun ClimbDetailPageContent(
                             frames = climb.frames,
                         ),
                         connectedViaRelay = state.ble.connectedViaRelay,
-                        hostedRelayClientCount = state.ble.hostedRelayClientCount,
                     )
                     // The action button vanishing after a swipe is only
                     // diagnosable from the inputs — the decision itself says
