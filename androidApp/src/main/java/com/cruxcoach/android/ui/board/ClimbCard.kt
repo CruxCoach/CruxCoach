@@ -2,7 +2,6 @@ package com.cruxcoach.android.ui.board
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -125,53 +124,36 @@ internal fun ClimbCard(
                         }
                     }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    // Setter line: prefer the Kind-0/setter_username already
-                    // resolved into the row; else fall back to a short
-                    // `npub:<…>` stub for cruxcoach/local rows so own drafts
-                    // and own published climbs always show *something* even
-                    // when the local Kind-0 profile hasn't been published
-                    // yet (cache miss → setter_username column is NULL).
-                    // Mirrors BoardClimbDetailViewModel.seedSetterProfile.
-                    val setterDisplay = climb.setterUsername?.takeIf { it.isNotBlank() }
-                        ?: if (climb.origin == "cruxcoach" || climb.source == "local") {
-                            climb.createdByPubkey?.takeIf { it.isNotBlank() }
-                                ?.let { "npub:${it.take(16)}" }
-                        } else null
-                    setterDisplay?.let { setter ->
-                        // Click behaviour mirrors BoardClimbDetailScreen:
-                        // only cruxcoach-origin rows with a known pubkey
-                        // navigate to the setter's profile. Native Kilter
-                        // rows render as plain unclickable text — no search-
-                        // bar trigger, no link affordance.
-                        val setterPubkey = climb.createdByPubkey?.takeIf { it.isNotBlank() }
-                        val isClickable = climb.origin == "cruxcoach"
-                            && setterPubkey != null
-                            && onNavigateToSetter != null
-                        Text(
-                            stringResource(R.string.board_climb_by_setter, setter),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (isClickable) OrangeAccent
-                                    else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = if (isClickable) {
-                                Modifier.clickable { onNavigateToSetter!!(setterPubkey!!) }
-                            } else Modifier
-                        )
-                    }
-                    if (climb.isRoute) {
-                        Text(
-                            stringResource(R.string.board_climb_frames, climb.framesCount),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    } else {
-                        Text(
-                            stringResource(R.string.board_climb_moves, moveCount),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
+                // Setter line: prefer the Kind-0/setter_username already
+                // resolved into the row; else fall back to a short
+                // `npub:<…>` stub for cruxcoach/local rows so own drafts
+                // and own published climbs always show *something* even
+                // when the local Kind-0 profile hasn't been published
+                // yet (cache miss → setter_username column is NULL).
+                // Mirrors BoardClimbDetailViewModel.seedSetterProfile.
+                val setterDisplay = climb.setterUsername?.takeIf { it.isNotBlank() }
+                    ?: if (climb.origin == "cruxcoach" || climb.source == "local") {
+                        climb.createdByPubkey?.takeIf { it.isNotBlank() }
+                            ?.let { "npub:${it.take(16)}" }
+                    } else null
+                // Click behaviour mirrors BoardClimbDetailScreen: only
+                // cruxcoach-origin rows with a known pubkey navigate to the
+                // setter's profile. Native Kilter rows render as plain
+                // unclickable text — no search-bar trigger, no link
+                // affordance.
+                val setterPubkey = climb.createdByPubkey?.takeIf { it.isNotBlank() }
+                val navigateToSetter = onNavigateToSetter
+                val onSetterClick: (() -> Unit)? =
+                    if (climb.origin == "cruxcoach" && setterPubkey != null && navigateToSetter != null) {
+                        { navigateToSetter(setterPubkey) }
+                    } else null
+                ClimbMetaLine(
+                    setter = setterDisplay,
+                    isRoute = climb.isRoute,
+                    framesCount = climb.framesCount,
+                    moveCount = moveCount,
+                    onSetterClick = onSetterClick,
+                )
             }
 
             Column(horizontalAlignment = Alignment.End) {

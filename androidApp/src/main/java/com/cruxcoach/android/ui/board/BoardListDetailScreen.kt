@@ -635,33 +635,17 @@ private fun ListEntryCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Per-entry board type, analogous to the logbook badge.
-                    BoardBrandBadge(BoardBrand.fromWire(climb.boardBrand), climb.layoutId)
-                    climb.setterUsername?.let {
-                        Text(
-                            stringResource(R.string.board_climb_by_setter, it),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    if (climb.isRoute) {
-                        Text(
-                            stringResource(R.string.board_climb_frames, climb.framesCount),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    } else {
-                        Text(
-                            stringResource(R.string.board_climb_moves, moveCount),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
+                ClimbMetaLine(
+                    setter = climb.setterUsername,
+                    isRoute = climb.isRoute,
+                    framesCount = climb.framesCount,
+                    moveCount = moveCount,
+                    spacing = 8.dp,
+                    leading = {
+                        // Per-entry board type, analogous to the logbook badge.
+                        BoardBrandBadge(BoardBrand.fromWire(climb.boardBrand), climb.layoutId)
+                    },
+                )
             }
 
             Column(horizontalAlignment = Alignment.End) {
