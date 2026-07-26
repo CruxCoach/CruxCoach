@@ -1034,6 +1034,7 @@ private fun ClimbDetailPageContent(
                                 if (climb.isMatchStateKnown) {
                                     MatchBadge(isNomatch = climb.isNomatch)
                                 }
+                                climb.method?.let { MethodBadge(it) }
                                 if (climb.benchmarkDifficulty > 0.0) {
                                     BenchmarkBadge()
                                 }
@@ -1440,6 +1441,32 @@ private fun StatItem(label: String, value: String) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/**
+ * MoonBoard problem method. NULL — the overwhelming majority — means "feet
+ * follow hands" and gets no badge: a marker on the normal case is noise.
+ */
+@Composable
+private fun MethodBadge(method: String) {
+    val label = when (method) {
+        "method_footless" -> R.string.board_detail_method_footless
+        "method_footless_kickboard" -> R.string.board_detail_method_footless_kickboard
+        "method_no_kickboard" -> R.string.board_detail_method_no_kickboard
+        else -> return  // unknown token from a newer catalogue: say nothing
+    }
+    Surface(
+        color = OrangeAccent.copy(alpha = 0.12f),
+        shape = RoundedCornerShape(6.dp)
+    ) {
+        Text(
+            stringResource(label),
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            color = OrangeAccent,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+        )
     }
 }
 

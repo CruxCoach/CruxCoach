@@ -27,6 +27,11 @@ CREATE TABLE climbs (
     created_at TEXT,
     description TEXT NOT NULL DEFAULT '',
     is_nomatch INTEGER NOT NULL DEFAULT 0,
+    -- MoonBoard problem method: 'method_footless',
+    -- 'method_footless_kickboard', 'method_no_kickboard'. NULL is the default
+    -- ("feet follow hands") and keeps the column sparse — 4.2% of MoonBoard
+    -- problems carry one. Aurora boards never do.
+    method TEXT,
     frames_pace INTEGER NOT NULL DEFAULT 0,
     hsm INTEGER NOT NULL DEFAULT 0,
     frames BLOB AS kotlin.String NOT NULL,
@@ -254,7 +259,7 @@ SELECT
     c.uuid, c.name, c.setter_username, c.frames_count, cs.layout_id,
     c.board_brand,
     COALESCE(c.description, '') AS description,
-    c.is_nomatch, c.frames_pace, c.hsm, c.move_count,
+    c.is_nomatch, c.method, c.frames_pace, c.hsm, c.move_count,
     c.source, c.created_by_pubkey, c.sync_status, c.origin, c.kilter_status,
     c.nostr_event_id,
     c.created_at,

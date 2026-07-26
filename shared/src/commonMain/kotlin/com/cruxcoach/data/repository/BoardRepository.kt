@@ -49,6 +49,10 @@ data class ClimbWithStats(
     val ascensionistCount: Long?,
     val description: String = "",
     val isNomatch: Boolean = false,
+    /** MoonBoard problem method: 'method_footless',
+     *  'method_footless_kickboard', 'method_no_kickboard'. NULL = feet follow
+     *  hands, the default that needs no marker. Aurora climbs never carry one. */
+    val method: String? = null,
     val framesPace: Long = 0,
     val hsm: Long = 0,
     val benchmarkDifficulty: Double = 0.0,

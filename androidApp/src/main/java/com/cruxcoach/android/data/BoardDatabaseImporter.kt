@@ -366,6 +366,7 @@ class BoardDatabaseImporter(
         // backfill is skipped — the Kilter chunk path ([importClimbs]) does
         // the same via its own `hasMoveCount` check.
         var snapshotHasMoveCount = false
+        var snapshotHasMethod = false
         withDeferredIndexes(
             onRebuild = { onProgress?.invoke(ImportStep.Finalizing) }
         ) {
@@ -386,12 +387,17 @@ class BoardDatabaseImporter(
                     while (c.moveToNext()) {
                         when (c.getString(1)) {
                             "move_count" -> snapshotHasMoveCount = true
+                            "method" -> snapshotHasMethod = true
                             "origin" -> snapshotHasOrigin = true
                             "created_by_pubkey" -> snapshotHasPubkey = true
                         }
                     }
                 }
                 val moveCountExpr = if (snapshotHasMoveCount) "COALESCE(move_count, 0)" else "0"
+                // MoonBoard problem method. Blobs built before 2026-07-26 have
+                // no such column, and NULL there means what it means in a fresh
+                // blob: "feet follow hands". Aurora blobs never carry one.
+                val methodExpr = if (snapshotHasMethod) "method" else "NULL"
                 val baseOriginExpr = if (snapshotHasOrigin) "COALESCE(origin, 'kilter')" else "'kilter'"
                 val pubkeyExpr = if (snapshotHasPubkey) "created_by_pubkey" else "NULL"
                 // A snapshot row carrying a setter pubkey is CruxCoach-authored
@@ -409,7 +415,7 @@ class BoardDatabaseImporter(
                 onProgress?.invoke(ImportStep.ImportClimbs(0, 0, climbTotal))
                 mergeSnapshotClimbs(
                     targetDb, "mb", "moonboard",
-                    moveCountExpr, originExpr, pubkeyExpr
+                    moveCountExpr, originExpr, pubkeyExpr, methodExpr
                 )
                 onProgress?.invoke(ImportStep.ImportClimbs(climbTotal, climbTotal, climbTotal))
 
@@ -473,6 +479,7 @@ class BoardDatabaseImporter(
         // Snapshots built by build_board_db.py carry is_nomatch; move_count is
         // computed post-import (the bundle has no move_count column).
         var snapshotHasMoveCount = false
+        var snapshotHasMethod = false
         val brand = arrayOf<Any?>(boardBrand)
         withDeferredIndexes(
             onRebuild = { onProgress?.invoke(ImportStep.Finalizing) }
@@ -493,12 +500,17 @@ class BoardDatabaseImporter(
                     while (c.moveToNext()) {
                         when (c.getString(1)) {
                             "move_count" -> snapshotHasMoveCount = true
+                            "method" -> snapshotHasMethod = true
                             "origin" -> snapshotHasOrigin = true
                             "created_by_pubkey" -> snapshotHasPubkey = true
                         }
                     }
                 }
                 val moveCountExpr = if (snapshotHasMoveCount) "COALESCE(move_count, 0)" else "0"
+                // MoonBoard problem method. Blobs built before 2026-07-26 have
+                // no such column, and NULL there means what it means in a fresh
+                // blob: "feet follow hands". Aurora blobs never carry one.
+                val methodExpr = if (snapshotHasMethod) "method" else "NULL"
                 val baseOriginExpr = if (snapshotHasOrigin) "COALESCE(origin, 'kilter')" else "'kilter'"
                 val pubkeyExpr = if (snapshotHasPubkey) "created_by_pubkey" else "NULL"
                 // A snapshot row carrying a setter pubkey is CruxCoach-authored
@@ -517,7 +529,7 @@ class BoardDatabaseImporter(
                 onProgress?.invoke(ImportStep.ImportClimbs(0, 0, climbTotal))
                 mergeSnapshotClimbs(
                     targetDb, "ab", boardBrand,
-                    moveCountExpr, originExpr, pubkeyExpr
+                    moveCountExpr, originExpr, pubkeyExpr, methodExpr
                 )
                 onProgress?.invoke(ImportStep.ImportClimbs(climbTotal, climbTotal, climbTotal))
 
@@ -650,6 +662,7 @@ class BoardDatabaseImporter(
         moveCountExpr: String,
         originExpr: String,
         pubkeyExpr: String,
+        methodExpr: String = "NULL",
     ) {
         // Stage with uuid pre-lowercased + PK-indexed so every pass below
         // is an O(log n) lookup, same rationale as the Kilter chunk_norm.
@@ -663,7 +676,8 @@ class BoardDatabaseImporter(
                 edge_bottom INTEGER, edge_top INTEGER,
                 created_at INTEGER, description TEXT,
                 is_nomatch INTEGER, frames_pace INTEGER, hsm INTEGER,
-                move_count INTEGER, origin TEXT, created_by_pubkey TEXT
+                move_count INTEGER, origin TEXT, created_by_pubkey TEXT,
+                method TEXT
             ) WITHOUT ROWID
             """.trimIndent()
         )
@@ -678,7 +692,7 @@ class BoardDatabaseImporter(
                        edge_bottom, edge_top, created_at,
                        COALESCE(description, ''), COALESCE(is_nomatch, 0),
                        COALESCE(frames_pace, 0), COALESCE(hsm, 0), $moveCountExpr,
-                       $originExpr, $pubkeyExpr
+                       $originExpr, $pubkeyExpr, $methodExpr
                 FROM $alias.climbs
                 """.trimIndent()
             )
@@ -689,12 +703,12 @@ class BoardDatabaseImporter(
                     frames_count, is_listed, edge_left, edge_right,
                     edge_bottom, edge_top, created_at,
                     description, is_nomatch, frames_pace, hsm, move_count,
-                    board_brand, origin, created_by_pubkey)
+                    board_brand, origin, created_by_pubkey, method)
                 SELECT uuid, layout_id, setter_username, name, frames,
                        frames_count, is_listed, edge_left, edge_right,
                        edge_bottom, edge_top, created_at,
                        description, is_nomatch, frames_pace, hsm, move_count,
-                       ?, origin, created_by_pubkey
+                       ?, origin, created_by_pubkey, method
                 FROM snapshot_norm
                 WHERE is_listed = 1
                 """.trimIndent(),
@@ -706,11 +720,11 @@ class BoardDatabaseImporter(
                     (layout_id, setter_username, name, frames,
                      frames_count, is_listed, edge_left, edge_right,
                      edge_bottom, edge_top, created_at, description,
-                     is_nomatch, frames_pace, hsm, move_count)
+                     is_nomatch, frames_pace, hsm, move_count, method)
                     = (SELECT layout_id, setter_username, name, frames,
                               frames_count, is_listed, edge_left, edge_right,
                               edge_bottom, edge_top, created_at, description,
-                              is_nomatch, frames_pace, hsm, move_count
+                              is_nomatch, frames_pace, hsm, move_count, method
                        FROM snapshot_norm
                        WHERE snapshot_norm.uuid = main.climbs.uuid)
                 WHERE origin = 'kilter'

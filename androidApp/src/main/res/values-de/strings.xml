@@ -1283,6 +1283,9 @@
     <string name="board_detail_frames">Frames</string>
     <string name="board_detail_matching">Matchen erlaubt</string>
     <string name="board_detail_no_matching">Kein Matchen</string>
+    <string name="board_detail_method_footless">Footless</string>
+    <string name="board_detail_method_footless_kickboard">Footless + Kickboard</string>
+    <string name="board_detail_method_no_kickboard">Ohne Kickboard</string>
     <string name="board_heatmap_finish">Top-Holds</string>
     <string name="board_heatmap_foot">Fuß-Holds</string>
     <string name="board_heatmap_global">Alle Climbs</string>
