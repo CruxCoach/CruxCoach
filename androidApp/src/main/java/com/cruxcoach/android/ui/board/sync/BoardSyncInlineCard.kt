@@ -60,6 +60,8 @@ fun BoardSyncInlineCard(
     val syncBugReportTitle = stringResource(R.string.error_bug_report_sync_title)
 
     LaunchedEffect(Unit) { viewModel.checkNetwork() }
+    // Automatic syncing failing has no other way to reach the user.
+    LaunchedEffect(state.lastSyncTimestamp) { viewModel.refreshAutoSyncHealth() }
     // Recompute per-board catalogue sizes on first show, after each sync
     // completes, and after a board-data deletion (alreadyImported flips
     // false), so the status list never shows pre-deletion counts.
@@ -215,6 +217,7 @@ fun BoardSyncInlineCard(
             !state.networkAvailable -> NetworkWarningBanner()
             !state.wifiConnected -> NoWifiWarningBanner()
         }
+        state.autoSyncOverdueDays?.let { days -> AutoSyncOverdueBanner(days) }
         DatabaseImportSection(
             state = state,
             boardCounts = boardCounts,
@@ -582,6 +585,40 @@ private fun BoardStatusRow(
  * English-locale users. SHORT-style formatting gives `25.04.26, 14:32`
  * for `de`, `4/25/26, 2:32 PM` for `en-US`, etc.
  */
+/**
+ * Automatic syncing has not produced anything for several cycles.
+ *
+ * The background worker cannot report to anyone — it fails, retries, and the
+ * app looks unchanged. Without this the catalogue can go a month out of date
+ * with "daily" configured and nothing on screen ever says so.
+ */
+@Composable
+private fun AutoSyncOverdueBanner(days: Int) {
+    Surface(
+        color = WarningYellow.copy(alpha = 0.12f),
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth().testTag("board_sync_overdue"),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Default.Warning,
+                contentDescription = null,
+                tint = WarningYellow,
+                modifier = Modifier.size(20.dp),
+            )
+            Spacer(Modifier.width(10.dp))
+            Text(
+                stringResource(R.string.board_sync_overdue, days),
+                style = MaterialTheme.typography.bodySmall,
+                color = WarningYellow,
+            )
+        }
+    }
+}
+
 private fun formatTimestamp(iso: String): String {
     return try {
         java.time.Instant.parse(iso)

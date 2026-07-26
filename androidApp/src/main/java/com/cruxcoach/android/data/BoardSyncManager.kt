@@ -60,6 +60,9 @@ class BoardSyncManager(
          *  user is told the system is holding it back. Long enough for a cold
          *  WorkManager handover, short enough to still read as feedback. */
         const val SYNC_START_GRACE_MS = 8_000L
+        /** Missed automatic cycles before the card says so. One skipped run is
+         *  ordinary (no unmetered network, battery low); three is a fault. */
+        const val MISSED_CYCLES_BEFORE_WARNING = 3
         /** Max concurrent chunk downloads. On mobile links 4 streams
          *  hit the bandwidth-delay-product without each stream
          *  perpetually competing for TCP slow-start window; the 3
@@ -113,6 +116,44 @@ class BoardSyncManager(
                 syncComplete = imported,
                 lastSyncTimestamp = lastSync
             ) }
+        }
+    }
+
+    /**
+     * Notices when automatic syncing has quietly stopped happening.
+     *
+     * A background sync has nowhere to report to: the periodic worker runs,
+     * every download fails (no network permission, a dead mirror, a captive
+     * portal), it returns retry, and the app looks exactly as it does when
+     * everything is fine. That is how a catalogue went a month without an
+     * update while "daily" was configured and nobody was told.
+     *
+     * So the age of the last SUCCESSFUL sync is checked against the interval
+     * the user chose. Three missed cycles is the threshold — one skipped run
+     * is normal (no unmetered network, low battery), three in a row is not.
+     */
+    fun refreshAutoSyncHealth() {
+        scope.safeLaunch(TAG) {
+            val interval = userPreferences.syncInterval.first()
+            if (interval == SyncInterval.MANUAL) {
+                _state.update { it.copy(autoSyncOverdueDays = null) }
+                return@safeLaunch
+            }
+            val last = userPreferences.lastSyncTimestamp.first()
+            val lastMillis = last?.let {
+                runCatching { java.time.Instant.parse(it).toEpochMilli() }.getOrNull()
+            }
+            // Never synced at all is a different story — the card already
+            // shows the first-run download prompt for that.
+            if (lastMillis == null) {
+                _state.update { it.copy(autoSyncOverdueDays = null) }
+                return@safeLaunch
+            }
+            val ageDays = ((System.currentTimeMillis() - lastMillis) / 86_400_000L).toInt()
+            val cycleDays = if (interval == SyncInterval.WEEKLY) 7 else 1
+            val overdue = ageDays >= cycleDays * MISSED_CYCLES_BEFORE_WARNING
+            if (overdue) Log.w(TAG, "auto-sync overdue: last success ${ageDays}d ago, interval=$interval")
+            _state.update { it.copy(autoSyncOverdueDays = if (overdue) ageDays else null) }
         }
     }
 
@@ -509,9 +550,16 @@ class BoardSyncManager(
      */
     private fun watchForSilentDeferral() {
         deferralWatchdog?.cancel()
+        // A delta sync can be done inside the grace period, and "finished"
+        // looks exactly like "never started" from isSyncing alone — so the
+        // completion stamp is what tells them apart.
+        val completedBefore = _state.value.lastSyncCompletedAtMillis
         deferralWatchdog = scope.launch {
             delay(SYNC_START_GRACE_MS)
-            if (!_state.value.isSyncing && _state.value.errorMessage == null) {
+            if (!_state.value.isSyncing &&
+                _state.value.lastSyncCompletedAtMillis == completedBefore &&
+                _state.value.errorMessage == null
+            ) {
                 Log.w(TAG, "sync did not start within ${SYNC_START_GRACE_MS}ms — deferred by the system")
                 _state.update {
                     it.copy(errorMessage = appContext.getString(R.string.board_sync_deferred))
@@ -1317,6 +1365,13 @@ data class BoardSyncState(
      * fixed window across screens (not per-screen restart).
      */
     val lastSyncCompletedAtMillis: Long? = null,
+    /**
+     * Days since the last successful sync, but only once automatic syncing
+     * has plainly stopped working (see
+     * [BoardSyncManager.refreshAutoSyncHealth]). Null while it is doing its
+     * job — this exists to break the silence, not to nag.
+     */
+    val autoSyncOverdueDays: Int? = null,
     /**
      * FEAT-031: per-Aurora-board catalogue-sync progress + non-fatal errors,
      * keyed by board family (Tension / Grasshopper / Decoy / So iLL /

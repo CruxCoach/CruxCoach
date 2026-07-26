@@ -966,6 +966,7 @@
     <string name="board_sync_db_synced">Database synced</string>
     <string name="board_sync_last_sync">Last sync: %s</string>
     <string name="board_sync_no_network_permission">CruxCoach has no network permission — grant it in the system settings under Permissions › Network.</string>
+    <string name="board_sync_overdue">No automatic update for %1$d days — tap "Re-download" to sync now.</string>
     <string name="board_sync_deferred">Android is holding the sync back — check battery optimisation for CruxCoach, then try again.</string>
     <string name="board_sync_redownload">Re-download</string>
     <string name="board_sync_status_not_loaded">not loaded</string>
