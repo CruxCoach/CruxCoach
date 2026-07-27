@@ -325,12 +325,20 @@ object PreferenceKeys {
      * Set once a controller has been *observed* to keep advertising while
      * connected, i.e. proven to accept more than one client.
      *
-     * Only ever written as true and never cleared: the observation requires a
-     * BLE scan, so a reconnect (which deliberately runs without scan
-     * permission on legacy Android) could otherwise never classify a board it
-     * has already classified a hundred times. A negative observation stays
-     * transient by design — absence of an advertisement can be a missed
-     * window, while its presence is proof.
+     * Absent while nothing has been observed, true once a controller was seen
+     * advertising, false once a completed scan saw none.
+     *
+     * It used to be write-once-true, on the reasoning that absence of an
+     * advertisement can be a missed window while its presence is proof. That
+     * holds for a scan that could not run — but the probe already distinguishes
+     * NOT_OBSERVED ("scanned, saw nothing") from INCONCLUSIVE ("could not
+     * measure"), and only the second is silence. Treating both as silence made
+     * "accepts several clients" permanent: a controller that was swapped, or a
+     * simulator switched back to single-client, could never be corrected, and
+     * the app went on offering multi-client behaviour that the board no longer
+     * had.
+     *
+     * A reconnect without scan permission still writes nothing.
      */
     fun lastUsedBoardAdvertisesWhileConnected(brand: BoardBrand) =
         booleanPreferencesKey("last_used_board_multi_client_${brand.wireValue}")
@@ -970,9 +978,28 @@ class UserPreferences(
      * arrives seconds after the connect that stored the record, from the
      * post-connect advertising probe.
      */
-    suspend fun setRememberedBoardAdvertisesWhileConnected(brand: BoardBrand) {
+    suspend fun setRememberedBoardAdvertisesWhileConnected(
+        brand: BoardBrand,
+        observed: Boolean = true,
+    ) {
         dataStore.edit { prefs ->
-            prefs[PreferenceKeys.lastUsedBoardAdvertisesWhileConnected(brand)] = true
+            prefs[PreferenceKeys.lastUsedBoardAdvertisesWhileConnected(brand)] = observed
+        }
+    }
+
+    /**
+     * Forget what was observed about every controller's capacity.
+     *
+     * The probe then measures afresh on the next connect. Needed because the
+     * stored verdict outlives the hardware it describes — a swapped gym
+     * controller, or a board simulator moved between modes, otherwise keeps the
+     * old answer for good.
+     */
+    suspend fun clearBoardCapacityObservations() {
+        dataStore.edit { prefs ->
+            BoardBrand.entries.forEach {
+                prefs.remove(PreferenceKeys.lastUsedBoardAdvertisesWhileConnected(it))
+            }
         }
     }
 

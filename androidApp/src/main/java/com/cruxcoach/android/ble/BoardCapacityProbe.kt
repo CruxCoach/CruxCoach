@@ -59,7 +59,10 @@ class BoardCapacityProbe @Inject constructor(
         val wanted = bleConnection.connectionState.value == ConnectionState.CONNECTED &&
             board != null && !board.isCruxRelay &&
             BlePermissionHelper.wantsCapacityProbe(
-                capacityKnown = board.advertisesWhileConnected == true,
+                // Was `advertisesWhileConnected == true`, which stopped the
+                // probe running as soon as a positive existed — so a positive
+                // could never be revisited.
+                capacityKnown = false,
                 hasScanPermission = BlePermissionHelper.hasScanPermission(context),
                 locationEnabled = BlePermissionHelper.isLocationServicesEnabled(context),
             )
@@ -81,11 +84,20 @@ class BoardCapacityProbe @Inject constructor(
                         // PreferenceKeys.lastUsedBoardAdvertisesWhileConnected.
                         userPreferences.setRememberedBoardAdvertisesWhileConnected(board.boardBrand)
                     }
-                    // Says nothing about the board — it stays exclusive, which
-                    // it already was before the probe ran.
-                    ConnectedAdvertisingProbeResult.NOT_OBSERVED,
+                    // A completed scan that saw nothing is evidence, and the
+                    // only thing that can correct a stale "accepts several".
+                    ConnectedAdvertisingProbeResult.NOT_OBSERVED -> {
+                        userPreferences.setRememberedBoardAdvertisesWhileConnected(
+                            board.boardBrand,
+                            observed = false,
+                        )
+                        Log.d(TAG, "Scanned, no advertisement — controller is exclusive")
+                    }
+                    // The scan could not settle it. Silence, not a negative:
+                    // overwriting a verified capacity on this would be the old
+                    // bug with the sign flipped.
                     ConnectedAdvertisingProbeResult.INCONCLUSIVE ->
-                        Log.d(TAG, "No advertisement while connected — controller stays exclusive")
+                        Log.d(TAG, "Probe inconclusive — stored capacity untouched")
                 }
             } finally {
                 nearbyClimbScanner.startScan(clearExisting = false)
