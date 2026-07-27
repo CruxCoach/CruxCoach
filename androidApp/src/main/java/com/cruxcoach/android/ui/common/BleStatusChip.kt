@@ -207,61 +207,52 @@ internal fun SessionChipContent(
                     Spacer(Modifier.width(10.dp))
                 }
 
-                // Board climb (preferred) or queue info
-                if (session.externalBoardOverride) {
-                    Icon(Icons.Default.SignalCellularAlt, null, tint = WarningYellow, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(5.dp))
+                // The playlist keeps this line. It used to lose it to whatever
+                // was on the wall, in a row that otherwise carries only session
+                // things — timer, participant count, next button — so an
+                // unrelated climb read as "this is what you are playing". What
+                // the wall shows is a statement about the wall; it belongs in
+                // the line below, and only when the two disagree.
+                Icon(Icons.AutoMirrored.Filled.QueueMusic, null, tint = OrangeAccent, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(5.dp))
+                if (session.queue.isEmpty()) {
+                    Text(stringResource(R.string.common_empty), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.weight(1f))
+                } else {
                     Text(
-                        stringResource(R.string.ble_external_board_override),
+                        "${session.currentIndex + 1}/${session.queue.size}",
                         style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = WarningYellow,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
+                        fontWeight = FontWeight.Bold,
+                        color = OrangeAccent
                     )
-                } else if (effectiveOnBoard != null) {
-                    // Board was externally overwritten — show what's actually on the board
-                    Icon(Icons.Default.SignalCellularAlt, null, tint = WarningYellow, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(5.dp))
                     Text(
                         buildString {
-                            append("\"${effectiveOnBoard.name ?: stringResource(R.string.ble_unknown)}\"")
-                            if (effectiveOnBoard.grade != null) append(" ${effectiveOnBoard.grade}")
-                            append(" ${effectiveOnBoard.angle}°")
+                            append(session.currentClimbName ?: "")
+                            if (session.currentClimbGrade != null) append(" ${session.currentClimbGrade}")
                         },
                         style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = WarningYellow,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
                     )
-                } else {
-                    Icon(Icons.AutoMirrored.Filled.QueueMusic, null, tint = OrangeAccent, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(5.dp))
-                    if (session.queue.isEmpty()) {
-                        Text(stringResource(R.string.common_empty), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Spacer(Modifier.weight(1f))
-                    } else {
-                        Text(
-                            "${session.currentIndex + 1}/${session.queue.size}",
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.Bold,
-                            color = OrangeAccent
-                        )
-                        Spacer(Modifier.width(5.dp))
-                        Text(
-                            buildString {
-                                append(session.currentClimbName ?: "")
-                                if (session.currentClimbGrade != null) append(" ${session.currentClimbGrade}")
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
-                        )
+                    // Re-sending the queue's climb used to live in the conflict
+                    // line, so it was reachable only once something had already
+                    // gone wrong — though wanting the wall to show your climb
+                    // again is an ordinary wish.
+                    if (playbackState.isHost) {
+                        IconButton(
+                            onClick = { playback.resendCurrentClimb() },
+                            modifier = Modifier.size(28.dp).testTag("ble_queue_resend")
+                        ) {
+                            Icon(
+                                Icons.Default.Lightbulb,
+                                stringResource(R.string.ble_queue_resend),
+                                tint = OrangeAccent,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     }
                 }
 
@@ -310,47 +301,45 @@ internal fun SessionChipContent(
             }
         }
 
-        // Second line: queue info when board shows external climb
-        if ((effectiveOnBoard != null || session.externalBoardOverride) && session.queue.isNotEmpty()) {
+        // Second line: the wall, and only when it disagrees with the queue.
+        // These two were the other way round — the queue was banished here and
+        // appeared only during a conflict, while the wall took the line above.
+        // Compared by UUID, never by name: names resolve asynchronously, so a
+        // name comparison would report a mismatch for a moment on every advance.
+        val boardDiffers = effectiveOnBoard != null &&
+            effectiveOnBoard.climbUuid.isNotBlank() &&
+            effectiveOnBoard.climbUuid != session.queue.getOrNull(session.currentIndex)?.climbUuid
+        if (session.externalBoardOverride || boardDiffers) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = OrangeAccent.copy(alpha = 0.08f)),
+                colors = CardDefaults.cardColors(containerColor = WarningYellow.copy(alpha = 0.10f)),
                 shape = RoundedCornerShape(0.dp)
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    Icon(Icons.Default.SignalCellularAlt, null, tint = WarningYellow, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
                     Text(
-                        buildString {
-                            append("Queue ${session.currentIndex + 1}/${session.queue.size}: ")
-                            append(session.currentClimbName ?: stringResource(R.string.ble_unknown))
-                            if (session.currentClimbGrade != null) append(" ${session.currentClimbGrade}")
+                        if (session.externalBoardOverride || effectiveOnBoard == null) {
+                            stringResource(R.string.ble_external_board_override)
+                        } else {
+                            stringResource(
+                                R.string.ble_board_shows_instead,
+                                buildString {
+                                    append(effectiveOnBoard.name ?: stringResource(R.string.ble_unknown))
+                                    if (effectiveOnBoard.grade != null) append(" ${effectiveOnBoard.grade}")
+                                    append(" ${effectiveOnBoard.angle}°")
+                                },
+                            )
                         },
                         style = MaterialTheme.typography.bodySmall,
-                        color = OrangeAccent,
+                        color = WarningYellow,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
                     )
-                    // Someone else lit the wall — force re-send of OUR queue
-                    // climb (the dedup key would otherwise skip the resend).
-                    // Host-only: participants don't own the board link.
-                    if (playbackState.isHost) {
-                        IconButton(
-                            onClick = { playback.resendCurrentClimb() },
-                            modifier = Modifier
-                                .size(28.dp)
-                                .testTag("ble_queue_resend")
-                        ) {
-                            Icon(
-                                Icons.Default.Lightbulb,
-                                stringResource(R.string.ble_queue_resend),
-                                tint = OrangeAccent,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    }
                 }
             }
         }
