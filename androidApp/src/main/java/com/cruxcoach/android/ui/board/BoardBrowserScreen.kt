@@ -64,7 +64,6 @@ import com.cruxcoach.util.GradeConverter
 import com.cruxcoach.data.repository.ClimbSortField
 import com.cruxcoach.data.repository.ClimbTypeFilter
 import com.cruxcoach.data.repository.SortDirection
-import androidx.compose.foundation.Image
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
@@ -326,10 +325,15 @@ fun BoardBrowserScreen(
                     enabled = false,
                     modifier = Modifier.testTag("board_browser_home"),
                 ) {
-                    Image(
-                        painter = painterResource(R.mipmap.ic_launcher_round),
+                    // A vector, deliberately. R.mipmap.ic_launcher_round is an
+                    // <adaptive-icon>, which Compose cannot load at all — it
+                    // threw "Only VectorDrawables and rasterized asset types
+                    // are supported" and took the whole browser down on open.
+                    Icon(
+                        painter = painterResource(R.drawable.ic_launcher_monochrome),
                         contentDescription = stringResource(R.string.board_browser_title),
-                        modifier = Modifier.size(30.dp),
+                        tint = OrangeAccent,
+                        modifier = Modifier.size(28.dp),
                     )
                 }
             },
