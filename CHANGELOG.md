@@ -6,23 +6,123 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [0.2.2] - Unreleased
 
+Training playlists you can actually play — climb by climb, with rests,
+one-tap logging and a summary at the end — either from a list of your own
+or generated from your logbook. Underneath, the board connection got a lot
+more attentive: it works out what your controller can do, reconnects to
+your last board with a single tap, and with CruxRelay your phone can stand
+in for the board so everyone in the session sends to the same wall. Plus
+MoonBoard problems that say how they're meant to be climbed, deleting the
+data of a single board, and a second download source for app updates.
+
+### Added
+- **Training playlists** — a playlist is a session you can play. One climb
+  at a time on a full-screen player, sent to the wall as it comes up, a
+  rest countdown that already shows what's next, *Sent it* / *Attempt*
+  logging without leaving the screen, and a closing summary with total,
+  active and rest time. You can add a climb to a running session from
+  anywhere in the app, connect to your board straight from the plan
+  screen, and share a playlist by link the way you share a climb.
+- **Let CruxCoach build the session** — choose a training type (pyramid,
+  power endurance, volume, max strength, or working your open projects), a
+  duration, an angle, and where you are in your session (not warmed up,
+  warmed up, end of training). The generator picks the climbs and the
+  rests. Grades come from your own logbook — the grade you repeat reliably
+  and the one you flash — not from a fixed table, and at the end of a
+  session it deliberately backs off from max-effort climbing. It shows you
+  what it based the plan on, and says so when your logbook is still too
+  thin to judge.
+- **Play any list you've saved** — Favourites and your own lists included:
+  in list order or shuffled, with a rest between climbs, continuing either
+  manually, after a send, or after every logged attempt. A list can also
+  keep a training plan of its own — the same climbs, but with your order,
+  your repeats and your rest times — without changing the list itself.
+- **CruxRelay — everyone in the session can send to the board** — most
+  board controllers only talk to one app at a time, so one phone owns the
+  wall and everyone else watches. Switch sharing on and your phone stands
+  in for the board: other CruxCoach users join your session and send from
+  their own phones, and the official board apps can send through you too.
+  CruxCoach even names the climb that lands on the wall when the sending
+  app doesn't say what it is. Sharing runs only while you have it on, it
+  shows a notification the whole time, and your phone's Bluetooth name is
+  put back when you stop.
+- **Tap your last board to reconnect** — the board you used last is
+  remembered and offered as a card in the connect sheet. Tapping it
+  connects straight away instead of scanning the room again.
+- **Decide when a climb goes to the wall** — *Immediately* when you open a
+  climb, or *Tap to send*. CruxCoach now finds out on connecting whether
+  your controller takes one app or several, tells you which it found, and
+  keeps a separate setting for each case — so a board you share with
+  others doesn't have to behave like the one at home.
+- **Auto-disconnect can be switched off** — the board connection stays
+  open until you disconnect it yourself.
+- **Delete the data of one board instead of all of them** — both *delete
+  board data* and *delete logbook data* now let you pick which boards they
+  apply to. Your own climbs and community climbs are always kept.
+- **MoonBoard: how a problem is meant to be climbed** — problems now carry
+  *Footless*, *Footless + kickboard* or *No kickboard* where the setter
+  said so, and any other instruction the setter wrote appears as its own
+  line.
+- **Keep a session to yourself** — when you start one you choose whether
+  nearby CruxCoach users can see and join it, or whether it stays on your
+  phone.
+- **A second source for app updates, and less to confirm** — if the usual
+  download server is unreachable, CruxCoach fetches the identical, verified
+  APK from Zapstore instead. You can also choose what happens when an
+  update is found: just notify (unchanged default), download it
+  automatically, or install it automatically. Automatic installation is off
+  unless you turn it on.
+- **CruxCoach speaks up when board updates stop arriving** — a background
+  catalogue sync that quietly fails looked exactly like a successful one.
+  After three missed cycles the sync card now says so, with a tap to sync
+  right away.
+
 ### Changed
-- **Consistent "draft" badge** (FEAT-024) — the browser's *Entwurf* badge and
-  the climb detail screen now derive a climb's published/draft state from the
-  same single signal (whether it has a live Nostr publication), so the two
-  screens can never disagree.
-- **Faster first browse of a newly-added board** (FEAT-037) — after importing
-  a single Aurora/MoonBoard board's catalogue on its own, CruxCoach refreshes
-  the SQLite query-planner statistics for it (the full board sync already did
-  this), so the first browse of that board no longer runs slow.
+- **Playlists are called playlists** — Kilter and Aurora call them that in
+  their own apps, while CruxCoach still said "circuits" during import.
+  Every visible label now says playlist.
+- **A calmer climb browser** — the bar above the list echoing your active
+  board, layout, size and angle is gone. It repeated what settings already
+  shows and cost a row of screen on every scroll.
+- **The draft badge agrees with itself** — a climb you have published
+  counts as published in the browser *and* in its detail screen; the two
+  could disagree before.
+- **The first browse of a newly added board is quick** — importing a single
+  board on its own used to leave that board's first browse noticeably slow.
 
 ### Fixed
-- **Deleted community climbs stay deleted on catalogue-only devices**
-  (FEAT-041) — a device that only syncs the daily catalogue (never the live
-  delete event) now also tombstones a delisted community climb, so it can't
-  reappear via a stray relay rebroadcast. Devices on the live feed were
-  already covered; the climb was already hidden either way — this hardens
-  against re-listing.
+- **No "matching allowed" badge where nobody was ever asked** — that is a
+  Kilter setting. On MoonBoard problems and on community climbs CruxCoach
+  was showing an answer to a question the setter never got, so the badge
+  now appears only where the answer is real.
+- **Some boards failed on the very first download** — a fresh install pulls
+  seven catalogues one after another, and each got a single attempt at
+  finding its files. One unlucky moment lost a whole board while its
+  siblings came through. Each catalogue now retries before giving up.
+- **Hold and zone filters reset when you switch boards** — a filter drawn on
+  one board stayed active on the next, where those holds mean nothing: an
+  empty list under a filter banner that looked correct.
+- **"Immediately" is honoured in a shared session too** — hosting a shared
+  board forced the manual send button even when you had chosen to send
+  immediately.
+- **Turning Bluetooth on from the connect sheet no longer closes the app** —
+  tapping the Bluetooth icon with Bluetooth off, before CruxCoach had ever
+  asked for permission, crashed it outright.
+- **A re-download you asked for is never dropped in silence** — if Android
+  is holding the sync back or CruxCoach is missing network permission, it
+  now tells you which, instead of appearing to do nothing.
+- **Swiping between climbs no longer rolls back the send button** — a climb
+  page prepared in the background could come back with the send settings it
+  had at the time, hiding the send button until you touched the setting
+  again.
+- **The angle picker opens instantly** — opening a climb walked the entire
+  catalogue just to find out which angles that board offers.
+- **The session summary counts flashes and grades like the rest of the
+  app** — a first-try repeat of an old project was counted as a flash there
+  but nowhere else, and Font grades could land in the neighbouring bucket.
+- **Deleted community climbs stay deleted** — a phone that only picks up the
+  daily catalogue, never the live take-down, now also remembers that a climb
+  was delisted, so a stray relay can't put it back in your browser.
 
 ## [0.2.1] - 2026-07-11
 
