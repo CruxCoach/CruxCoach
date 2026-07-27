@@ -1226,6 +1226,10 @@
     <string name="ble_session_visibility_status_local">Local only · session is not published</string>
     <string name="ble_sharing_title">BLE Sharing</string>
     <!-- Shown under the queue line only while the wall disagrees with it. -->
+    <!-- Session errors: shown only when sharing cannot start. -->
+    <string name="ble_error_gatt_server">Could not start the sharing server</string>
+    <string name="ble_error_publish_failed">Could not publish the session</string>
+    <string name="ble_error_connect_failed">Connection failed</string>
     <string name="ble_board_shows_instead">On the board: %1$s</string>
     <!-- Session name a participant takes on when it is promoted to host after the
          previous host disappeared. -->
@@ -1591,6 +1595,9 @@
     <string name="settings_board_model_not_configured">Not configured</string>
     <string name="settings_board_send_mode_title">Send to board</string>
     <string name="settings_board_send_mode_desc">Choose separately how climbs are sent for controllers that allow one or several connected apps. Active relay clients and queues always use an explicit action.</string>
+    <string name="settings_board_capacity_recheck">Re-detect board capabilities</string>
+    <string name="settings_board_capacity_recheck_desc">CruxCoach remembers whether a controller accepts one app or several. Use this after a board has been swapped or reconfigured — it is measured again on the next connection.</string>
+    <string name="settings_board_capacity_recheck_done">Will be measured again on the next connection</string>
     <string name="settings_board_send_mode_single">Single connection</string>
     <string name="settings_board_send_mode_multi">Multiple connections</string>
     <string name="settings_board_send_mode_automatic">Immediately</string>

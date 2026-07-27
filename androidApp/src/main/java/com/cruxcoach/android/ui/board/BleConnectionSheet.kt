@@ -237,8 +237,13 @@ fun BleConnectionSheet(
                 bluetoothEnableLauncher.launch(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE))
             }
         } else {
+            // The full set, not just the connect permission this dialog needs.
+            // Asking narrowly here bought nothing: the scan that follows the
+            // moment Bluetooth comes on asks for the rest, so the user answered
+            // two permission dialogs a few seconds apart. Android puts them in
+            // one dialog when they are requested together.
             enableBluetoothPermissionLauncher.launch(
-                BlePermissionHelper.getConnectionPermissions()
+                BlePermissionHelper.getRequiredPermissions()
             )
         }
     }

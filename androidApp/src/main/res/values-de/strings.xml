@@ -1272,6 +1272,9 @@
     <string name="ble_session_visibility_status_joinable">Joinbar · für Nutzer in der Nähe sichtbar</string>
     <string name="ble_session_visibility_status_local">Nur lokal · Session wird nicht veröffentlicht</string>
     <string name="ble_sharing_title">BLE Sharing</string>
+    <string name="ble_error_gatt_server">Freigabe-Server konnte nicht gestartet werden</string>
+    <string name="ble_error_publish_failed">Session konnte nicht veröffentlicht werden</string>
+    <string name="ble_error_connect_failed">Verbindung fehlgeschlagen</string>
     <string name="ble_board_shows_instead">Am Board hängt: %1$s</string>
     <string name="ble_session_name_promoted">Warteschlange</string>
     <string name="ble_still_visible">Noch sichtbar</string>
@@ -1635,6 +1638,9 @@
     <string name="settings_board_model_not_configured">Nicht konfiguriert</string>
     <string name="settings_board_send_mode_title">Ans Board senden</string>
     <string name="settings_board_send_mode_desc">Lege getrennt fest, wie Boulder bei Controllern mit einer oder mehreren möglichen App-Verbindungen gesendet werden. Bei aktiver Relay-Nutzung und in Queues bleibt Senden explizit.</string>
+    <string name="settings_board_capacity_recheck">Board-Fähigkeiten neu ermitteln</string>
+    <string name="settings_board_capacity_recheck_desc">CruxCoach merkt sich, ob ein Controller eine App oder mehrere zulässt. Nutze das, wenn ein Board getauscht oder umgestellt wurde — beim nächsten Verbinden wird neu gemessen.</string>
+    <string name="settings_board_capacity_recheck_done">Wird beim nächsten Verbinden neu gemessen</string>
     <string name="settings_board_send_mode_single">Nur eine Verbindung</string>
     <string name="settings_board_send_mode_multi">Mehrere Verbindungen</string>
     <string name="settings_board_send_mode_automatic">Sofort</string>

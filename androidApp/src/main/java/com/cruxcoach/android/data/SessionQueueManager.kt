@@ -40,6 +40,19 @@ data class SessionQueueState(
     val isConnecting: Boolean = false,
     val error: String? = null,
     val visibility: SessionVisibility = SessionVisibility.LOCAL_ONLY,
+    /**
+     * What the user asked for, as opposed to [visibility], which is what is
+     * currently in force.
+     *
+     * They part company when sharing cannot start — Bluetooth off, permission
+     * missing, GATT server refused. Until now the wish was simply overwritten
+     * with LOCAL_ONLY, and that quietly disabled the recovery path, which
+     * begins `if (visibility != JOINABLE) return`. So a session started as
+     * joinable while Bluetooth was off stayed local for ever, including after
+     * the user turned Bluetooth on. Keeping the wish separate lets the recovery
+     * ask what was wanted rather than what was achieved.
+     */
+    val visibilityRequested: SessionVisibility = SessionVisibility.LOCAL_ONLY,
     /** This participant's position in the join order (0-based). Used for host election. */
     val participantIndex: Int = -1,
     /** A compatible external board app last wrote the physical board through CruxRelay. */
@@ -164,6 +177,7 @@ class SessionQueueManager(
             hostName = hostName,
             participantCount = 1,  // host counts as 1
             visibility = visibility,
+            visibilityRequested = visibility,
         ) }
         bleConnection.acquireKeepAlive(BoardConnectionOwner.SESSION)
         Log.d(TAG, "Queue started (sessionId=$sessionId, hostName=$hostName)")
@@ -408,9 +422,21 @@ class SessionQueueManager(
         ) }
     }
 
+    /** The state in force. Does not touch [SessionQueueState.visibilityRequested]. */
     fun setVisibility(visibility: SessionVisibility) {
         _state.update { state ->
             if (state.role == SessionRole.HOST) state.copy(visibility = visibility) else state
+        }
+    }
+
+    /** What the user asked for — set when they choose, never by a failure. */
+    fun setVisibilityRequested(visibility: SessionVisibility) {
+        _state.update { state ->
+            if (state.role == SessionRole.HOST) {
+                state.copy(visibility = visibility, visibilityRequested = visibility)
+            } else {
+                state
+            }
         }
     }
 

@@ -101,14 +101,14 @@ class SessionGattBridge(
             return
         }
 
-        queueManager.setVisibility(SessionVisibility.JOINABLE)
+        queueManager.setVisibilityRequested(SessionVisibility.JOINABLE)
         commandGate.clear()
 
         // Start GATT server
         if (!gattServer.start()) {
             Log.e(TAG, "startSharing(): GATT server failed to start")
             queueManager.setVisibility(SessionVisibility.LOCAL_ONLY)
-            queueManager.setError("GATT-Server konnte nicht gestartet werden")
+            queueManager.setError(context.getString(R.string.ble_error_gatt_server))
             return
         }
 
@@ -267,7 +267,7 @@ class SessionGattBridge(
             advertiser.stopAdvertising()
             advertiser.suppressClimbAdvertising = false
             queueManager.setVisibility(SessionVisibility.LOCAL_ONLY)
-            queueManager.setError("Session konnte nicht veröffentlicht werden")
+            queueManager.setError(context.getString(R.string.ble_error_publish_failed))
             restartClimbAdvertisingIfConnected()
             return
         }
@@ -398,7 +398,11 @@ class SessionGattBridge(
     private fun recoverAfterBluetoothRestart() {
         val state = queueManager.state.value
         if (state.role != SessionRole.HOST) return
-        if (state.visibility != SessionVisibility.JOINABLE) {
+        // Asked of the wish, not the state: a failed startSharing() sets the
+        // state to LOCAL_ONLY, and reading that here is what made the failure
+        // permanent — this early return fired on the very sessions that were
+        // waiting for Bluetooth to come back.
+        if (state.visibilityRequested != SessionVisibility.JOINABLE) {
             Log.d(TAG, "BT recovered — local-only session stays unpublished")
             return
         }
@@ -494,7 +498,7 @@ class SessionGattBridge(
                                 migrationJob = null  // reset so attemptHostMigration() can start fresh
                                 attemptHostMigration()
                             } else if (qState.isConnecting) {
-                                queueManager.setError("Verbindung fehlgeschlagen")
+                                queueManager.setError(context.getString(R.string.ble_error_connect_failed))
                                 advertiser.suppressClimbAdvertising = false
                                 restartClimbAdvertisingIfConnected()
                                 boardSessionManager.endSession()
