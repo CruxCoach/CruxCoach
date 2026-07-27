@@ -7,9 +7,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -38,12 +40,29 @@ class BoardStateManager @Inject constructor(
         val projectionSurvivesDisconnect: Boolean = true,
     )
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var staleJob: Job? = null
 
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val _lastClimb = MutableStateFlow<LastBoardClimb?>(null)
-    /** The last climb, or null if it's older than [STALE_THRESHOLD_MS]. */
-    val lastClimb: StateFlow<LastBoardClimb?> = _lastClimb.asStateFlow()
+
+    /**
+     * The last climb, or null if it's older than [STALE_THRESHOLD_MS].
+     *
+     * The age is checked on read, not only by [scheduleStaleCleanup]. The timer
+     * alone made this doc comment a claim rather than a guarantee: it lives in a
+     * Main-dispatcher scope, so any path that set the value without scheduling —
+     * or that cancelled the job and did not reschedule — left a climb on display
+     * for ever. That is how the board banner came to sit on a climb from a
+     * previous session while the queue banner right below it showed the real one.
+     *
+     * Reading the clock here costs nothing and cannot be forgotten by a caller.
+     */
+    val lastClimb: StateFlow<LastBoardClimb?> =
+        _lastClimb.map { it?.takeIf { climb -> !climb.isStale() } }
+            .stateIn(scope, SharingStarted.Eagerly, null)
+
+    private fun LastBoardClimb.isStale(): Boolean =
+        System.currentTimeMillis() - timestamp > STALE_THRESHOLD_MS
 
     /**
      * Sets the last board climb with name resolution from DB.
