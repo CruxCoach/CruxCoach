@@ -64,6 +64,8 @@ import com.cruxcoach.util.GradeConverter
 import com.cruxcoach.data.repository.ClimbSortField
 import com.cruxcoach.data.repository.ClimbTypeFilter
 import com.cruxcoach.data.repository.SortDirection
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.util.PerfLogger
@@ -313,7 +315,24 @@ fun BoardBrowserScreen(
     Box(modifier = Modifier.fillMaxSize()) {
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(
-            title = { Text(stringResource(R.string.board_browser_title)) },
+            // The title wrapped to two lines on a narrow screen and pushed the
+            // whole row of actions down with it. The logo says the same thing
+            // in a quarter of the width, and it is the natural place to hang a
+            // drawer off later.
+            title = {},
+            navigationIcon = {
+                IconButton(
+                    onClick = { /* reserved: opens the navigation drawer */ },
+                    enabled = false,
+                    modifier = Modifier.testTag("board_browser_home"),
+                ) {
+                    Image(
+                        painter = painterResource(R.mipmap.ic_launcher_round),
+                        contentDescription = stringResource(R.string.board_browser_title),
+                        modifier = Modifier.size(30.dp),
+                    )
+                }
+            },
             actions = {
                 IconButton(
                     onClick = { showBleSheet = true },
