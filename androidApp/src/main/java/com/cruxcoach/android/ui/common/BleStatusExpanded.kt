@@ -18,12 +18,12 @@ import com.cruxcoach.android.R
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.cruxcoach.android.data.BoardMismatch
 import com.cruxcoach.android.data.BleShareUiState
 import com.cruxcoach.android.data.NearbySessionEntry
 import com.cruxcoach.android.data.OnBoardClimbEntry
 import com.cruxcoach.android.data.OnBoardSource
 import com.cruxcoach.android.data.OwnSessionState
-import com.cruxcoach.android.data.SessionVisibility
 import com.cruxcoach.android.ui.theme.OrangeAccent
 
 @Composable
@@ -47,8 +47,14 @@ internal fun BleStatusExpanded(
         shape = RoundedCornerShape(14.dp)
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
+            // What this picks is the *playlist* presentation versus the generic
+            // sharing one — so it has to ask whether a queue is running, not
+            // whether anyone may join. Keyed on visibility, a playlist started as
+            // joinable was never shown as a playlist, and a participant promoted
+            // to host inherited JOINABLE and so lost the playlist look mid-session
+            // for no reason the user could see.
             val isLocalSession = state.ownSession?.let { session ->
-                session.isHost && session.visibility == SessionVisibility.LOCAL_ONLY
+                session.isHost && session.queue.isNotEmpty()
             } == true
             // Header
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -84,6 +90,7 @@ internal fun BleStatusExpanded(
             if (session != null) {
                 SessionQueueSection(
                     session = session,
+                    boardShowsInstead = state.boardShowsInstead,
                     onAddToQueue = onAddToQueue,
                     onOpenQueueSheet = onOpenQueueSheet
                 )
@@ -133,6 +140,7 @@ internal fun BleStatusExpanded(
 @Composable
 private fun SessionQueueSection(
     session: OwnSessionState,
+    boardShowsInstead: BoardMismatch?,
     onAddToQueue: (() -> Unit)?,
     onOpenQueueSheet: (() -> Unit)? = null
 ) {
@@ -169,6 +177,24 @@ private fun SessionQueueSection(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+            // Only when the wall disagrees with the queue. While they match, the
+            // line above already says what is on the board, and saying it twice
+            // is how the two banners came to show different names.
+            if (boardShowsInstead != null) {
+                Text(
+                    stringResource(
+                        R.string.ble_board_shows_instead,
+                        listOfNotNull(
+                            boardShowsInstead.name ?: stringResource(R.string.ble_unknown),
+                            boardShowsInstead.grade,
+                        ).joinToString(" "),
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         Icon(Icons.Default.ChevronRight, stringResource(R.string.cd_open), modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }

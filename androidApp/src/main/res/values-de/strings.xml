@@ -1272,6 +1272,8 @@
     <string name="ble_session_visibility_status_joinable">Joinbar · für Nutzer in der Nähe sichtbar</string>
     <string name="ble_session_visibility_status_local">Nur lokal · Session wird nicht veröffentlicht</string>
     <string name="ble_sharing_title">BLE Sharing</string>
+    <string name="ble_board_shows_instead">Am Board hängt: %1$s</string>
+    <string name="ble_session_name_promoted">Warteschlange</string>
     <string name="ble_still_visible">Noch sichtbar</string>
     <string name="ble_unknown">Unbekannt</string>
     <string name="ble_unknown_climb">Unbekannter Climb</string>

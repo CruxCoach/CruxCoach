@@ -1225,6 +1225,11 @@
     <string name="ble_session_visibility_status_joinable">Joinable · visible to nearby users</string>
     <string name="ble_session_visibility_status_local">Local only · session is not published</string>
     <string name="ble_sharing_title">BLE Sharing</string>
+    <!-- Shown under the queue line only while the wall disagrees with it. -->
+    <string name="ble_board_shows_instead">On the board: %1$s</string>
+    <!-- Session name a participant takes on when it is promoted to host after the
+         previous host disappeared. -->
+    <string name="ble_session_name_promoted">Queue</string>
     <string name="ble_still_visible">Still visible</string>
     <string name="ble_unknown">Unknown</string>
     <string name="ble_unknown_climb">Unknown climb</string>

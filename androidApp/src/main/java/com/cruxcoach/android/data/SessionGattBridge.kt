@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.util.Log
+import com.cruxcoach.android.R
 import com.cruxcoach.android.ble.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -807,7 +808,11 @@ class SessionGattBridge(
 
             // No new session detected — promote self
             Log.d(TAG, "Migration: no new host found after ${waitMs}ms, promoting self to host")
-            queueManager.promoteToHost("Warteschlange")
+            queueManager.promoteToHost(
+                // Was a German literal here, so an English-locale user who happened
+                // to outlive the host ended up in a session called "Warteschlange".
+                context.getString(R.string.ble_session_name_promoted)
+            )
             Log.d(TAG, "Migration: promoteToHost complete, role=${queueManager.state.value.role}, " +
                 "queue=${queueManager.state.value.queue.size}, calling startSharing()")
             startSharing()
