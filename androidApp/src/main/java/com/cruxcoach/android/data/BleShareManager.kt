@@ -125,6 +125,7 @@ class BleShareManager @Inject constructor(
                 old.onBoardClimb?.name == new.onBoardClimb?.name &&
                 old.onBoardClimb?.grade == new.onBoardClimb?.grade &&
                 old.onBoardClimb?.isStillProjected == new.onBoardClimb?.isStillProjected &&
+                old.boardShowsInstead == new.boardShowsInstead &&
                 old.boardOccupiedCount == new.boardOccupiedCount &&
                 old.nearbySessions.size == new.nearbySessions.size &&
                 old.nearbySessions.zip(new.nearbySessions).all { (a, b) ->
@@ -143,6 +144,7 @@ class BleShareManager @Inject constructor(
                 _uiState.update { current ->
                     current.copy(
                         onBoardClimb = newState.onBoardClimb,
+                        boardShowsInstead = newState.boardShowsInstead,
                         boardOccupiedCount = newState.boardOccupiedCount,
                         nearbySessions = newState.nearbySessions,
                         sharingEnabled = newState.sharingEnabled,
@@ -336,11 +338,18 @@ class BleShareManager @Inject constructor(
             (rawOnBoard.source == OnBoardSource.SESSION_REMOTE && queueState.role == SessionRole.NONE) ||
             (rawOnBoard.source == OnBoardSource.REMOTE_LAST && overwriteSessionUuid != null)
         )
-        val onBoardClimb = if (rawOnBoard != null && sessionClimbUuid != null &&
+        val suppressed = rawOnBoard != null && sessionClimbUuid != null &&
             queueState.role != SessionRole.NONE &&
             !isNonSuppressible &&
             !queueState.isConnecting
-        ) null else rawOnBoard
+        val onBoardClimb = if (suppressed) null else rawOnBoard
+        // Suppressing it hid the one case worth showing: the wall disagreeing
+        // with the queue. Compared by UUID, never by name — the name resolves
+        // asynchronously in another collector, so comparing names would report a
+        // mismatch for a moment on every single advance.
+        val boardShowsInstead = rawOnBoard
+            ?.takeIf { suppressed && it.climbUuid != sessionClimbUuid }
+            ?.let { BoardMismatch(climbUuid = it.climbUuid, name = it.name, grade = it.grade) }
 
         // Count connected-only entries (board occupied without climb)
         val boardOccupiedCount = nearbyClimbs.count { it.connectedOnly }
@@ -364,6 +373,7 @@ class BleShareManager @Inject constructor(
 
         return BleShareUiState(
             onBoardClimb = onBoardClimb,
+            boardShowsInstead = boardShowsInstead,
             boardOccupiedCount = boardOccupiedCount,
             nearbySessions = nearbySessionEntries,
             sharingEnabled = sharingEnabled,

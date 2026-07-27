@@ -11,6 +11,18 @@ data class BleShareUiState(
     /** Current physical projection or the most recent climb available for resend. */
     val onBoardClimb: OnBoardClimbEntry? = null,
 
+    /**
+     * What the wall shows, when that is *not* the climb the queue expects.
+     *
+     * Null while the two agree, which is almost always — and then the queue line
+     * already says what is on the board, so repeating it in a second banner is
+     * noise, and was where the two names drifted apart. Only a disagreement is
+     * worth its own words: someone overwrote the board, a send was lost, a host
+     * changed. Kept beside [onBoardClimb] rather than replacing it so the queue
+     * line can say it in one added line instead of the screen growing a card.
+     */
+    val boardShowsInstead: BoardMismatch? = null,
+
     /** Number of users connected to the board without an active climb. */
     val boardOccupiedCount: Int = 0,
 
@@ -107,4 +119,11 @@ data class OwnSessionState(
     val externalBoardOverride: Boolean = false,
     val isPaused: Boolean,
     val elapsedSeconds: Int
+)
+
+/** The climb actually projected on the wall while the queue expects another. */
+data class BoardMismatch(
+    val climbUuid: String,
+    val name: String?,
+    val grade: String?,
 )
