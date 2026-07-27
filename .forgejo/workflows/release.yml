@@ -308,3 +308,49 @@ jobs:
           done
           echo "::error::Zapstore CDN did not serve the verified release APK"
           exit 1
+
+      # Until now a release reached the website only at the next nightly cron:
+      # for up to a day cruxcoach.org advertised the previous version, and the
+      # download selector served an APK nobody had been told about. The runner
+      # is on the same host as the download server and already holds the exact
+      # release bytes, so both halves belong here, at the moment they are true.
+      #
+      # Neither half is allowed to fail the release. The release itself is
+      # already published and immutable at this point; the nightly refresh runs
+      # the same script and repairs whatever did not work. A warning is the
+      # right volume — loud enough to notice, not loud enough to undo a release.
+      - name: Publish the release to the download server and the website
+        if: steps.version.outputs.branch == 'main'
+        run: |
+          set -uo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          APK="androidApp/build/outputs/apk/release/androidApp-release.apk"
+          APK_DIR="${CRUXCOACH_APK_LOCAL_DIR:-$HOME/cruxcoach-dlstats/apk}"
+          PAGES_DIR="${CRUXCOACH_PAGES_DIR:-$HOME/cruxcoach-pages}"
+
+          # These bytes were signature-verified and published a few steps ago,
+          # so the selector's copy is a file copy — no download, no digest race
+          # against a CDN that may still be propagating. Staged next to the
+          # target and moved into place, so a concurrent read never catches a
+          # half-written APK.
+          if mkdir -p "$APK_DIR"; then
+            TMP="$APK_DIR/.CruxCoach-v${VERSION}.apk.tmp"
+            if cp "$APK" "$TMP" && chmod 0644 "$TMP" \
+               && mv -f "$TMP" "$APK_DIR/CruxCoach-v${VERSION}.apk"; then
+              echo "Local APK copy installed: $APK_DIR/CruxCoach-v${VERSION}.apk"
+            else
+              rm -f "$TMP"
+              echo "::warning::Could not install the local APK copy — the selector falls back to Codeberg"
+            fi
+          fi
+
+          # Download links, JSON-LD, llms.txt, sitemap and the selector
+          # manifest. The same script the nightly refresh runs, deliberately:
+          # one publishing path, exercised on every release rather than only
+          # in the dark.
+          if [ -x "$PAGES_DIR/tools/publish-release.sh" ]; then
+            (cd "$PAGES_DIR" && ./tools/publish-release.sh) \
+              || echo "::warning::Website publish failed — the nightly refresh will retry"
+          else
+            echo "::warning::$PAGES_DIR/tools/publish-release.sh is missing — website not updated"
+          fi
