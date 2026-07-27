@@ -8,6 +8,8 @@ import com.cruxcoach.data.repository.ClimbWithStats
 import com.cruxcoach.domain.board.BoardBrand
 import io.mockk.coEvery
 import io.mockk.coVerify
+import kotlinx.coroutines.flow.flowOf
+import com.cruxcoach.android.data.BoardSendMode
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -43,7 +45,13 @@ class SessionQueueManagerTest {
     private val bleConnection = mockk<BoardBleConnection>(relaxed = true)
     private val boardRepository = mockk<BoardRepository>(relaxed = true)
     private val climbNameResolver = mockk<ClimbNameResolver>(relaxed = true)
-    private val userPreferences = mockk<UserPreferences>(relaxed = true)
+    // These two decide whether an advance sends at all. A relaxed mock gives
+    // back nothing usable, and the resolution then falls back — which would
+    // make these tests pass without exercising the path they are about.
+    private val userPreferences = mockk<UserPreferences>(relaxed = true).also {
+        every { it.singleConnectionBoardSendMode } returns flowOf(BoardSendMode.AUTOMATIC)
+        every { it.multiConnectionBoardSendMode } returns flowOf(BoardSendMode.AUTOMATIC)
+    }
 
     @Before
     fun setup() {

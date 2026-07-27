@@ -427,9 +427,11 @@ object AppModule {
         boardSessionManager: BoardSessionManager,
         sessionGattBridge: SessionGattBridge,
         bleShareManager: BleShareManager,
+        bleConnection: BoardBleConnection,
     ): PlaylistPlaybackCoordinator {
         return PlaylistPlaybackCoordinator(
             sessionQueueManager, boardSessionManager, sessionGattBridge, bleShareManager,
+            bleConnection,
         )
     }
 

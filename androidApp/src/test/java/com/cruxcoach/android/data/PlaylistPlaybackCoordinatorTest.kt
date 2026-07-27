@@ -61,7 +61,8 @@ class PlaylistPlaybackCoordinatorTest {
             bleConnection, boardRepository, climbNameResolver, userPreferences, scope,
         )
         coordinator = PlaylistPlaybackCoordinator(
-            queueManager, boardSessionManager, gattBridge, bleShareManager, scope,
+            queueManager, boardSessionManager, gattBridge, bleShareManager,
+            bleConnection, scope,
         )
     }
 
@@ -245,7 +246,8 @@ class PlaylistPlaybackCoordinatorTest {
         // (isActive=false) bounced it straight back out after Play.
         queueManager.loadPlaylist("Playlist", listOf(QueueItem("a", 40)))
         val fresh = PlaylistPlaybackCoordinator(
-            queueManager, boardSessionManager, gattBridge, bleShareManager, scope,
+            queueManager, boardSessionManager, gattBridge, bleShareManager,
+            bleConnection, scope,
         )
         assertTrue(fresh.state.value.isActive)
         assertEquals(1, fresh.state.value.queue.size)

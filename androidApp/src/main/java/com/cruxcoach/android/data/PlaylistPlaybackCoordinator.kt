@@ -1,5 +1,7 @@
 package com.cruxcoach.android.data
 
+import com.cruxcoach.android.ble.BoardBleConnection
+import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ble.QueueItem
 import com.cruxcoach.data.repository.ListPlaybackAdvance
 import kotlinx.coroutines.CoroutineScope
@@ -33,6 +35,16 @@ data class PlaylistPlaybackState(
     val visibility: SessionVisibility = SessionVisibility.LOCAL_ONLY,
     /** What was asked for; differs from [visibility] while sharing cannot start. */
     val visibilityRequested: SessionVisibility = SessionVisibility.LOCAL_ONLY,
+    /** The current climb is waiting for an explicit send — see the send mode. */
+    val awaitingExplicitSend: Boolean = false,
+    /**
+     * A board is connected right now.
+     *
+     * The send controls read this: without a connection there is nothing to
+     * send to, and a lamp that stays lit after a disconnect invites a tap that
+     * the send path silently discards.
+     */
+    val boardConnected: Boolean = false,
     val queue: List<QueueItem> = emptyList(),
     val currentIndex: Int = -1,
     val currentClimb: QueueItem? = null,
@@ -100,6 +112,7 @@ class PlaylistPlaybackCoordinator(
     private val boardSessionManager: BoardSessionManager,
     private val gattBridge: SessionGattBridge,
     private val bleShareManager: BleShareManager,
+    private val bleConnection: BoardBleConnection,
     scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
 ) {
 
@@ -110,8 +123,9 @@ class PlaylistPlaybackCoordinator(
         queueManager.currentClimbInfo,
         boardSessionManager.state,
         boardSessionManager.restTimer,
-    ) { queue, climbInfo, session, rest ->
-        buildState(queue, climbInfo, session, rest)
+        bleConnection.connectionState,
+    ) { queue, climbInfo, session, rest, connection ->
+        buildState(queue, climbInfo, session, rest, connection)
     }.stateIn(
         scope,
         SharingStarted.Eagerly,
@@ -124,6 +138,7 @@ class PlaylistPlaybackCoordinator(
             queueManager.currentClimbInfo.value,
             boardSessionManager.state.value,
             boardSessionManager.restTimer.value,
+            bleConnection.connectionState.value,
         ),
     )
 
@@ -132,6 +147,7 @@ class PlaylistPlaybackCoordinator(
         climbInfo: ClimbDisplayInfo?,
         session: BoardSessionState,
         rest: RestTimerState,
+        connection: ConnectionState = ConnectionState.DISCONNECTED,
     ): PlaylistPlaybackState = PlaylistPlaybackState(
         isActive = queue.isActive,
         isConnecting = queue.isConnecting,
@@ -141,6 +157,8 @@ class PlaylistPlaybackCoordinator(
         participants = queue.participants,
         visibility = queue.visibility,
         visibilityRequested = queue.visibilityRequested,
+        awaitingExplicitSend = queue.awaitingExplicitSend,
+        boardConnected = connection == ConnectionState.CONNECTED,
         queue = queue.queue,
         currentIndex = queue.currentIndex,
         currentClimb = queue.currentClimb,

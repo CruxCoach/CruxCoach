@@ -3,6 +3,10 @@ package com.cruxcoach.android.data
 import android.util.Log
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.BoardConnectionOwner
+import com.cruxcoach.android.ui.board.BoardSendModePolicy
+import com.cruxcoach.android.ui.board.QueueDeliveryPolicy
+import com.cruxcoach.android.ble.BoardControllerProfiles
+import com.cruxcoach.android.data.BoardSendMode
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ble.QueueItem
 import com.cruxcoach.android.ble.SessionQueueProtocol
@@ -53,6 +57,15 @@ data class SessionQueueState(
      * ask what was wanted rather than what was achieved.
      */
     val visibilityRequested: SessionVisibility = SessionVisibility.LOCAL_ONLY,
+    /**
+     * The current climb is not on the wall and will not go there on its own.
+     *
+     * Set only under the explicit send mode, where advancing deliberately does
+     * not light the wall — someone may be climbing the projected problem while
+     * you flip through the queue. The player turns its resend lamp into the
+     * send button while this is true.
+     */
+    val awaitingExplicitSend: Boolean = false,
     /** This participant's position in the join order (0-based). Used for host election. */
     val participantIndex: Int = -1,
     /** A compatible external board app last wrote the physical board through CruxRelay. */
@@ -529,23 +542,54 @@ class SessionQueueManager(
      *  our dedup would otherwise skip the identical key). */
     fun resendCurrentClimb() {
         lastSentClimbKey = null
-        sendCurrentClimbToBoard()
+        sendCurrentClimbToBoard(explicitRequest = true)
     }
 
-    fun sendCurrentClimbToBoard() {
+    /**
+     * @param explicitRequest true when the user asked for it — the lamp, or the
+     *   first send of a freshly loaded queue. Advancing does not count: under
+     *   the explicit send mode the wall stays as it is until asked.
+     */
+    fun sendCurrentClimbToBoard(explicitRequest: Boolean = false) {
         scope.launch {
             sendMutex.withLock {
                 // Read state inside the lock so queued navigation events resolve
                 // to the latest selection and collapse to one physical write.
                 val queueState = _state.value
-                // Participants only mutate the host queue via GATT. The host is
-                // the sole writer to the physical board.
-                if (queueState.role != SessionRole.HOST) {
-                    Log.d(TAG, "sendCurrentClimbToBoard: skipped - role=${queueState.role}")
-                    return@withLock
-                }
                 val item = queueState.currentClimb ?: return@withLock
-                if (bleConnection.connectionState.value != ConnectionState.CONNECTED) return@withLock
+
+                // Participants only mutate the host queue via GATT; the host is
+                // the sole writer to the physical board. Both that and the
+                // connection are settled by the policy before the send mode is
+                // even read — see QueueDeliveryPolicy for why the order matters.
+                //
+                // The mode itself: advancing through a queue used to light the
+                // wall regardless, while the settings text claimed the opposite
+                // ("queues always use an explicit action") and this class did
+                // not so much as mention BoardSendMode. Under EXPLICIT the wall
+                // now stays put and the player offers the lamp — someone may be
+                // on the projected problem while the next one is lined up, and
+                // nothing here can see that: a climber is not a BLE client.
+                when (
+                    QueueDeliveryPolicy.decide(
+                        isHost = queueState.role == SessionRole.HOST,
+                        boardConnected =
+                            bleConnection.connectionState.value == ConnectionState.CONNECTED,
+                        sendMode = resolveSendMode(),
+                        explicitRequest = explicitRequest,
+                    )
+                ) {
+                    QueueDeliveryPolicy.Decision.NONE -> {
+                        Log.d(TAG, "sendCurrentClimbToBoard: skipped - role=${queueState.role}")
+                        return@withLock
+                    }
+                    QueueDeliveryPolicy.Decision.AWAIT_EXPLICIT -> {
+                        _state.update { it.copy(awaitingExplicitSend = true) }
+                        Log.d(TAG, "sendCurrentClimbToBoard: waiting for an explicit send")
+                        return@withLock
+                    }
+                    QueueDeliveryPolicy.Decision.SEND -> Unit
+                }
 
             // Dedup: don't re-send the same climb (multiple callers can trigger this)
             val key = "${item.climbUuid}:${item.angle}"
@@ -612,8 +656,34 @@ class SessionQueueManager(
         }
     }
 
+    /**
+     * The mode in force for the controller we are connected to, resolved the
+     * same way the climb detail screen resolves it.
+     */
+    private suspend fun resolveSendMode(): BoardSendMode = runCatching {
+        resolveSendModeOrThrow()
+    }.getOrElse {
+        // A mode we cannot read is not evidence that the user wants to press a
+        // button. Sending is what the queue is for, and a preference lookup
+        // that fails must not leave the wall dark with nothing on screen to
+        // explain it.
+        Log.w(TAG, "Could not resolve send mode — sending", it)
+        BoardSendMode.AUTOMATIC
+    }
+
+    private suspend fun resolveSendModeOrThrow(): BoardSendMode = BoardSendModePolicy.resolve(
+        connectionCapacity = BoardControllerProfiles
+            .forBoard(bleConnection.connectedBoard).connectionCapacity,
+        singleConnectionMode = userPreferences.singleConnectionBoardSendMode.first(),
+        multiConnectionMode = userPreferences.multiConnectionBoardSendMode.first(),
+        // A queue with other people in it is a shared wall, whatever the
+        // controller underneath can do.
+        hostingForOthers = _state.value.participantCount > 1,
+    )
+
     private fun markCurrentClimbProjected(key: String) {
         lastSentClimbKey = key
+        _state.update { it.copy(awaitingExplicitSend = false) }
         val hadExternalOverride = _state.value.externalBoardOverride
         if (hadExternalOverride) {
             _state.update { it.copy(externalBoardOverride = false) }

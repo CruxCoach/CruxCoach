@@ -39,6 +39,7 @@ import com.cruxcoach.android.data.BleShareUiState
 import com.cruxcoach.android.data.OnBoardClimbEntry
 import com.cruxcoach.android.data.OnBoardSource
 import com.cruxcoach.android.data.OwnSessionState
+import com.cruxcoach.android.ui.board.QueueDeliveryPolicy
 import com.cruxcoach.android.ui.theme.ErrorRed
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.SuccessGreen
@@ -241,7 +242,7 @@ internal fun SessionChipContent(
                     // line, so it was reachable only once something had already
                     // gone wrong — though wanting the wall to show your climb
                     // again is an ordinary wish.
-                    if (playbackState.isHost) {
+                    if (QueueDeliveryPolicy.canSend(playbackState.isHost, playbackState.boardConnected)) {
                         IconButton(
                             onClick = { playback.resendCurrentClimb() },
                             modifier = Modifier.size(28.dp).testTag("ble_queue_resend")

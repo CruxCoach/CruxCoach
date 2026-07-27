@@ -77,6 +77,7 @@ import com.cruxcoach.android.data.LedHoldColors
 import com.cruxcoach.android.data.PlaybackPhase
 import com.cruxcoach.android.data.PlaylistPlaybackState
 import com.cruxcoach.android.data.SessionVisibility
+import com.cruxcoach.android.ui.board.QueueDeliveryPolicy
 import com.cruxcoach.android.ui.board.KilterBoardVisualization
 import com.cruxcoach.android.ui.board.MoonBoardVisualization
 import com.cruxcoach.android.ui.board.SessionQueueSheet
@@ -587,24 +588,39 @@ private fun ClimbingContent(
                         // existed for it — and it sat two taps away from the
                         // board it acts on. Same corner as the explicit-send
                         // mode uses, so the gesture means one thing everywhere.
-                        if (playback.isHost) {
+                        if (QueueDeliveryPolicy.canSend(playback.isHost, playback.boardConnected)) {
+                            // Two jobs, one control. Normally it repeats a send
+                            // that someone overwrote — quiet, easily ignored.
+                            // Under the explicit send mode it *is* the send, and
+                            // then it has to be impossible to miss: the wall is
+                            // waiting and nothing else on screen says so.
+                            val pending = playback.awaitingExplicitSend
                             IconButton(
                                 onClick = { onResend() },
                                 modifier = Modifier
                                     .align(Alignment.TopEnd)
                                     .padding(6.dp)
-                                    .size(40.dp)
+                                    .size(if (pending) 52.dp else 40.dp)
                                     .testTag("player_resend"),
                             ) {
                                 Surface(
                                     shape = CircleShape,
-                                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                                    color = if (pending) {
+                                        OrangeAccent
+                                    } else {
+                                        MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)
+                                    },
                                 ) {
                                     Icon(
                                         Icons.Default.Lightbulb,
-                                        stringResource(R.string.ble_queue_resend),
-                                        tint = OrangeAccent,
-                                        modifier = Modifier.padding(7.dp).size(22.dp),
+                                        stringResource(
+                                            if (pending) R.string.playlist_send_to_board
+                                            else R.string.ble_queue_resend,
+                                        ),
+                                        tint = if (pending) DarkBackground else OrangeAccent,
+                                        modifier = Modifier
+                                            .padding(if (pending) 9.dp else 7.dp)
+                                            .size(if (pending) 28.dp else 22.dp),
                                     )
                                 }
                             }

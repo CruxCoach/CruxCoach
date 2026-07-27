@@ -1230,6 +1230,7 @@
     <string name="ble_error_gatt_server">Could not start the sharing server</string>
     <string name="ble_error_publish_failed">Could not publish the session</string>
     <string name="ble_error_connect_failed">Connection failed</string>
+    <string name="playlist_send_to_board">Send to board</string>
     <string name="ble_sharing_blocked">Bluetooth is off — nobody can join yet</string>
     <string name="ble_sharing_blocked_action">Turn on</string>
     <string name="playlist_connect_board_title">Connect to a board?</string>
@@ -1600,7 +1601,7 @@
     <string name="settings_board_model_change">Change</string>
     <string name="settings_board_model_not_configured">Not configured</string>
     <string name="settings_board_send_mode_title">Send to board</string>
-    <string name="settings_board_send_mode_desc">Choose separately how climbs are sent for controllers that allow one or several connected apps. Active relay clients and queues always use an explicit action.</string>
+    <string name="settings_board_send_mode_desc">Choose separately how climbs are sent for controllers that allow one or several connected apps. This applies to playlists too: on "Immediately" each climb goes to the wall as you reach it, on "Tap to send" the wall stays as it is until you tap the lamp. Relay clients always use an explicit action.</string>
     <string name="settings_board_capacity_recheck">Re-detect board capabilities</string>
     <string name="settings_board_capacity_recheck_desc">CruxCoach remembers whether a controller accepts one app or several. Use this after a board has been swapped or reconfigured — it is measured again on the next connection.</string>
     <string name="settings_board_capacity_recheck_done">Will be measured again on the next connection</string>
