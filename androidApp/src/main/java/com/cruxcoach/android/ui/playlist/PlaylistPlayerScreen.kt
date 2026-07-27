@@ -52,6 +52,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -85,6 +86,7 @@ import com.cruxcoach.android.ui.navigation.ClimbNavigationSource
 import com.cruxcoach.android.ui.theme.DarkBackground
 import com.cruxcoach.android.ui.theme.InfoBlue
 import com.cruxcoach.android.ui.theme.OrangeAccent
+import com.cruxcoach.android.ui.theme.WarningYellow
 import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.data.repository.brand
 import com.cruxcoach.domain.board.BoardBrand
@@ -106,6 +108,8 @@ fun PlaylistPlayerScreen(
     onNavigateToClimb: (String, Int) -> Unit,
     /** "+"-Button: zum Browser, wo Long-Press Climbs hinzufügt. */
     onNavigateToBrowser: () -> Unit = {},
+    /** Opens the system's Bluetooth-enable dialog via the connect sheet's flow. */
+    onEnableBluetooth: () -> Unit = {},
     viewModel: PlaylistPlayerViewModel = hiltViewModel(),
 ) {
     val playback by viewModel.playbackState.collectAsStateWithLifecycle()
@@ -293,7 +297,32 @@ fun PlaylistPlayerScreen(
                             .height(3.dp),
                     )
                 }
-                if (playback.isHost) {
+                // Asked to share and unable to: the session repairs itself once
+                // Bluetooth returns, but until then nobody can join and nothing
+                // would say why.
+                if (playback.sharingBlocked) {
+                    Surface(
+                        color = WarningYellow.copy(alpha = 0.15f),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                stringResource(R.string.ble_sharing_blocked),
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = WarningYellow,
+                                modifier = Modifier.weight(1f),
+                            )
+                            TextButton(onClick = onEnableBluetooth) {
+                                Text(stringResource(R.string.ble_sharing_blocked_action))
+                            }
+                        }
+                    }
+                }
+                if (playback.isHost && !playback.sharingBlocked) {
                     val isJoinable = playback.visibility == SessionVisibility.JOINABLE
                     Surface(
                         color = if (isJoinable) {

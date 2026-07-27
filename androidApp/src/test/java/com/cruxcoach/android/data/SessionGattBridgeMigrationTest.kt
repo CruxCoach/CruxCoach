@@ -2,6 +2,7 @@ package com.cruxcoach.android.data
 
 import android.bluetooth.BluetoothDevice
 import android.content.Context
+import com.cruxcoach.android.R
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.ConnectionState
@@ -76,7 +77,12 @@ class SessionGattBridgeMigrationTest {
     private lateinit var queueManager: SessionQueueManager
 
     // Mocked dependencies
-    private val mockContext = mockk<Context>(relaxed = true)
+    // Returns the resource id rather than a string, so these tests keep naming
+    // *which* error is expected without pinning a German wording that moved
+    // into strings.xml.
+    private val mockContext = mockk<Context>(relaxed = true).also {
+        every { it.getString(any()) } answers { "res:${firstArg<Int>()}" }
+    }
     private val mockGattServer = mockk<SessionGattServer>(relaxed = true)
     private val mockGattClient = mockk<SessionGattClient>(relaxed = true)
     private val mockAdvertiser = mockk<ClimbBleAdvertiser>(relaxed = true)
@@ -237,7 +243,7 @@ class SessionGattBridgeMigrationTest {
             bridge.joinSession(hostDevice)
             clientStateFlow.value = SessionClientState.DISCONNECTED
 
-            assertEquals("Verbindung fehlgeschlagen", queueManager.state.value.error)
+            assertEquals("res:${R.string.ble_error_connect_failed}", queueManager.state.value.error)
             verify { mockAdvertiser.suppressClimbAdvertising = false }
             verify(exactly = 1) { mockBoardSessionManager.endSession() }
         }
@@ -540,7 +546,7 @@ class SessionGattBridgeMigrationTest {
             assertTrue(queueManager.state.value.isActive)
             assertEquals(SessionVisibility.LOCAL_ONLY, queueManager.state.value.visibility)
             assertEquals(
-                "Session konnte nicht veröffentlicht werden",
+                "res:${R.string.ble_error_publish_failed}",
                 queueManager.state.value.error,
             )
             verify { mockGattServer.stop() }

@@ -31,6 +31,8 @@ data class PlaylistPlaybackState(
     val participantCount: Int = 0,
     val participants: List<SessionParticipant> = emptyList(),
     val visibility: SessionVisibility = SessionVisibility.LOCAL_ONLY,
+    /** What was asked for; differs from [visibility] while sharing cannot start. */
+    val visibilityRequested: SessionVisibility = SessionVisibility.LOCAL_ONLY,
     val queue: List<QueueItem> = emptyList(),
     val currentIndex: Int = -1,
     val currentClimb: QueueItem? = null,
@@ -44,6 +46,17 @@ data class PlaylistPlaybackState(
     val bidCount: Int = 0,
 ) {
     val isHost: Boolean get() = role == SessionRole.HOST
+
+    /**
+     * Sharing was asked for and is not in force — Bluetooth off, permission
+     * missing, GATT server refused. Worth saying out loud: the session recovers
+     * by itself once Bluetooth returns, but until then nobody can join and
+     * nothing on screen explains why.
+     */
+    val sharingBlocked: Boolean
+        get() = isHost &&
+            visibilityRequested == SessionVisibility.JOINABLE &&
+            visibility != SessionVisibility.JOINABLE
     val isParticipant: Boolean get() = role == SessionRole.PARTICIPANT
     val isResting: Boolean get() = phase is PlaybackPhase.Resting
 
@@ -127,6 +140,7 @@ class PlaylistPlaybackCoordinator(
         participantCount = queue.participantCount,
         participants = queue.participants,
         visibility = queue.visibility,
+        visibilityRequested = queue.visibilityRequested,
         queue = queue.queue,
         currentIndex = queue.currentIndex,
         currentClimb = queue.currentClimb,

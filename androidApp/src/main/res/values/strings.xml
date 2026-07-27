@@ -1230,6 +1230,12 @@
     <string name="ble_error_gatt_server">Could not start the sharing server</string>
     <string name="ble_error_publish_failed">Could not publish the session</string>
     <string name="ble_error_connect_failed">Connection failed</string>
+    <string name="ble_sharing_blocked">Bluetooth is off — nobody can join yet</string>
+    <string name="ble_sharing_blocked_action">Turn on</string>
+    <string name="playlist_connect_board_title">Connect to a board?</string>
+    <string name="playlist_connect_board_body">Without a board connection the climbs are not sent to the wall.</string>
+    <string name="playlist_connect_board_confirm">Connect board</string>
+    <string name="playlist_connect_board_skip">Play without board</string>
     <string name="ble_board_shows_instead">On the board: %1$s</string>
     <!-- Session name a participant takes on when it is promoted to host after the
          previous host disappeared. -->

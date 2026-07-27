@@ -1275,6 +1275,12 @@
     <string name="ble_error_gatt_server">Freigabe-Server konnte nicht gestartet werden</string>
     <string name="ble_error_publish_failed">Session konnte nicht veröffentlicht werden</string>
     <string name="ble_error_connect_failed">Verbindung fehlgeschlagen</string>
+    <string name="ble_sharing_blocked">Bluetooth ist aus — noch kann niemand beitreten</string>
+    <string name="ble_sharing_blocked_action">Einschalten</string>
+    <string name="playlist_connect_board_title">Mit Board verbinden?</string>
+    <string name="playlist_connect_board_body">Ohne Board-Verbindung werden die Climbs nicht an die Wand geschickt.</string>
+    <string name="playlist_connect_board_confirm">Board verbinden</string>
+    <string name="playlist_connect_board_skip">Ohne Board abspielen</string>
     <string name="ble_board_shows_instead">Am Board hängt: %1$s</string>
     <string name="ble_session_name_promoted">Warteschlange</string>
     <string name="ble_still_visible">Noch sichtbar</string>
