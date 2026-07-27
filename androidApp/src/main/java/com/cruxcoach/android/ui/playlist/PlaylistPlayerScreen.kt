@@ -33,7 +33,6 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.StopCircle
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.PlayArrow
@@ -42,8 +41,6 @@ import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
@@ -113,7 +110,6 @@ fun PlaylistPlayerScreen(
 ) {
     val playback by viewModel.playbackState.collectAsStateWithLifecycle()
     val state by viewModel.state.collectAsStateWithLifecycle()
-    var menuExpanded by remember { mutableStateOf(false) }
     var showQueueSheet by remember { mutableStateOf(false) }
     val snackbarHostState = remember { androidx.compose.material3.SnackbarHostState() }
     val loggedSendMsg = stringResource(R.string.playlist_logged_send)
@@ -279,22 +275,6 @@ fun PlaylistPlayerScreen(
                                 modifier = Modifier.size(26.dp),
                             )
                         }
-                        if (playback.isHost) {
-                            IconButton(onClick = { menuExpanded = true }, modifier = Modifier.testTag("player_menu")) {
-                                Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.action_more_options))
-                            }
-                            DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.ble_queue_resend)) },
-                                    leadingIcon = { Icon(Icons.Default.Lightbulb, contentDescription = null) },
-                                    onClick = {
-                                        menuExpanded = false
-                                        viewModel.playback.resendCurrentClimb()
-                                    },
-                                    modifier = Modifier.testTag("player_resend"),
-                                )
-                            }
-                        }
                     },
                 )
                 // Spotify-style position track: how far through the playlist.
@@ -425,6 +405,7 @@ fun PlaylistPlayerScreen(
                             onNavigateToClimb(uuid, angle)
                         },
                         onQuickLog = { viewModel.quickLog(it) },
+                        onResend = { viewModel.playback.resendCurrentClimb() },
                     )
                 }
             }
@@ -443,6 +424,7 @@ private fun ClimbingContent(
     onSwipePrevious: () -> Unit,
     onClimbTapped: (String, Int) -> Unit,
     onQuickLog: (Boolean) -> Unit,
+    onResend: () -> Unit,
 ) {
     val render = state.render
     val density = LocalDensity.current
@@ -570,6 +552,33 @@ private fun ClimbingContent(
                                             else LedHoldColors.standardFor(render.climb.brand),
                                 modifier = Modifier.fillMaxWidth(),
                             )
+                        }
+                        // Light the wall with this climb again. It was the only
+                        // entry in an overflow menu, which meant the whole menu
+                        // existed for it — and it sat two taps away from the
+                        // board it acts on. Same corner as the explicit-send
+                        // mode uses, so the gesture means one thing everywhere.
+                        if (playback.isHost) {
+                            IconButton(
+                                onClick = { onResend() },
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(6.dp)
+                                    .size(40.dp)
+                                    .testTag("player_resend"),
+                            ) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                                ) {
+                                    Icon(
+                                        Icons.Default.Lightbulb,
+                                        stringResource(R.string.ble_queue_resend),
+                                        tint = OrangeAccent,
+                                        modifier = Modifier.padding(7.dp).size(22.dp),
+                                    )
+                                }
+                            }
                         }
                     }
                 }
