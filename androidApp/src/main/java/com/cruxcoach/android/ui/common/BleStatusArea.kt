@@ -143,13 +143,10 @@ fun BleStatusArea(
             onJoinSession = handleJoinSession,
             onRequestDisconnect = { bleShareManager.requestDisconnect() },
             onAddToQueue = onAddToQueue,
-            onOpenQueueSheet = { showQueueSheet = true }
+            onOpenQueueSheet = { showQueueSheet = true },
+            relayClientCount = relayClientCount,
+            onStopRelay = stopRelay,
         )
-        // The expanded view owns its card; keep the sharing line adjacent so
-        // the stop stays reachable without collapsing first.
-        if (relayClientCount != null) {
-            RelaySharingLine(clientCount = relayClientCount, onStop = stopRelay)
-        }
     } else {
         BleStatusChip(
             state = state,

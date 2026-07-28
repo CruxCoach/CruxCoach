@@ -442,7 +442,10 @@ internal fun RelaySharingLine(
                 style = MaterialTheme.typography.bodySmall,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
+                // Two lines: inside a card the German text plus the stop button
+                // never fit on one, and it was cut mid-word ("1 verbund…") —
+                // hiding the very number the line exists to report.
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )

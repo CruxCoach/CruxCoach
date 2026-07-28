@@ -35,7 +35,10 @@ internal fun BleStatusExpanded(
     onJoinSession: ((NearbySessionEntry) -> Unit)?,
     onRequestDisconnect: (() -> Unit)?,
     onAddToQueue: (() -> Unit)?,
-    onOpenQueueSheet: (() -> Unit)? = null
+    onOpenQueueSheet: (() -> Unit)? = null,
+    /** Non-null while this phone is relaying for other apps. */
+    relayClientCount: Int? = null,
+    onStopRelay: (() -> Unit)? = null,
 ) {
     Card(
         modifier = Modifier
@@ -127,6 +130,14 @@ internal fun BleStatusExpanded(
                     onRequest = onRequestDisconnect
                 )
             }
+        }
+
+        // Inside the card, as it already is when the chip is collapsed. It used
+        // to be rendered next to this view instead, so the same line sat on the
+        // card in one state and floated on the page background in the other —
+        // one strip that belonged to neither container.
+        if (relayClientCount != null && onStopRelay != null) {
+            RelaySharingLine(clientCount = relayClientCount, onStop = onStopRelay)
         }
     }
 }
