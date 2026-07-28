@@ -298,6 +298,24 @@ class SessionQueueManager(
         sendCurrentClimbToBoard()
     }
 
+    /**
+     * Drop entries [fromInclusive] until [toExclusive].
+     *
+     * Used when a send makes the remaining scheduled tries of that problem
+     * pointless. Only ever removes entries AFTER the current one, so the
+     * current index does not move and the board keeps showing what it shows.
+     */
+    fun removeRange(fromInclusive: Int, toExclusive: Int) {
+        if (toExclusive <= fromInclusive) return
+        _state.update { s ->
+            val from = fromInclusive.coerceIn(0, s.queue.size)
+            val to = toExclusive.coerceIn(from, s.queue.size)
+            if (from <= s.currentIndex) return@update s
+            s.copy(queue = s.queue.toMutableList().apply { subList(from, to).clear() })
+        }
+        onQueueChanged?.invoke()
+    }
+
     fun setCurrentClimb(index: Int) {
         lastSentClimbKey = null // reset dedup so the new climb gets sent
         _state.update { s ->

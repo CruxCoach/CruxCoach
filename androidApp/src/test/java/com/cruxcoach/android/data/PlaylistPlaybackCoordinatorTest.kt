@@ -150,7 +150,11 @@ class PlaylistPlaybackCoordinatorTest {
             SessionVisibility.JOINABLE,
         )
         coordinator.stop()
-        verify(exactly = 1) { gattBridge.stopSharing() }
+        // Handing over is the default; ending it for the whole group is the
+        // climber's explicit second choice.
+        verify(exactly = 1) {
+            gattBridge.stopSharing(allowBoardRelease = true, endForEveryone = false)
+        }
         assertFalse(queueManager.state.value.isActive)
 
         queueManager.setParticipantRole(1, "Host")
@@ -231,13 +235,33 @@ class PlaylistPlaybackCoordinatorTest {
     }
 
     @Test
-    fun `skipRest cancels the timer and resumes a paused session`() {
+    fun `skipRest cancels the timer, which is what restarts the clock`() {
         every { boardSessionManager.state } returns MutableStateFlow(
-            BoardSessionState(isActive = true, isPaused = true)
+            BoardSessionState(
+                isActive = true, isPaused = true, pauseReason = PauseReason.PLANNED_REST,
+            )
         )
         coordinator.skipRest()
+        // The resume belongs to cancelRestTimer, so no caller can end a rest
+        // and leave the clock stopped — or restart the clock and leave the
+        // countdown running, which booked rest time as training time.
         verify(exactly = 1) { boardSessionManager.cancelRestTimer() }
-        verify(exactly = 1) { boardSessionManager.resumeSession() }
+        verify(exactly = 0) { boardSessionManager.resumeSession(any()) }
+    }
+
+    @Test
+    fun `togglePause does nothing during a planned rest`() {
+        every { boardSessionManager.state } returns MutableStateFlow(
+            BoardSessionState(
+                isActive = true, isPaused = true, pauseReason = PauseReason.PLANNED_REST,
+            )
+        )
+        coordinator.togglePause()
+        // Pressing play mid-rest used to restart the session clock while the
+        // countdown kept running, so the remainder of the rest was recorded
+        // as training.
+        verify(exactly = 0) { boardSessionManager.resumeSession(any()) }
+        verify(exactly = 0) { boardSessionManager.cancelRestTimer() }
     }
 
     @Test
@@ -287,9 +311,10 @@ class PlaylistPlaybackCoordinatorTest {
         coordinator.previous()
 
         assertEquals(0, queueManager.state.value.currentIndex)
+        // cancelRestTimer restarts the clock itself; previous() must not
+        // reach past it.
         verify(exactly = 1) { boardSessionManager.cancelRestTimer() }
-        // Same semantics as skipRest: the session clock must NOT stay paused.
-        verify(exactly = 1) { boardSessionManager.resumeSession() }
+        verify(exactly = 0) { boardSessionManager.resumeSession(any()) }
     }
 
     @Test

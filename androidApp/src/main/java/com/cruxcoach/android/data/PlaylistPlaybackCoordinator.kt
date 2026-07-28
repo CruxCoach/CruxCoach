@@ -209,15 +209,24 @@ class PlaylistPlaybackCoordinator(
         if (state.value.isParticipant) gattBridge.sendSetCurrent(index) else queueManager.setCurrentClimb(index)
     }
 
+    /**
+     * Stop or restart the training clock by hand — the climber stepping away,
+     * not the playlist resting.
+     *
+     * Deliberately does nothing during a planned rest. It used to resume the
+     * clock there without touching the countdown, which booked the rest of the
+     * rest as training time; [skipRest] is the way out of that state.
+     */
     fun togglePause() {
-        if (boardSessionManager.state.value.isPaused) boardSessionManager.resumeSession()
-        else boardSessionManager.pauseSession()
+        val session = boardSessionManager.state.value
+        if (session.pauseReason == PauseReason.PLANNED_REST) return
+        if (session.isPaused) boardSessionManager.resumeSession(PauseReason.MANUAL)
+        else boardSessionManager.pauseSession(PauseReason.MANUAL)
     }
 
-    /** End the rest block early and resume the session clock. */
+    /** End the rest block early and restart the clock. */
     fun skipRest() {
         boardSessionManager.cancelRestTimer()
-        if (boardSessionManager.state.value.isPaused) boardSessionManager.resumeSession()
     }
 
     /** Host-only: force re-send when someone else re-lit the wall. */
@@ -225,12 +234,37 @@ class PlaylistPlaybackCoordinator(
 
     /** Applies the list's interaction rule after a successful quick-log write. */
     fun onClimbLogged(isSend: Boolean) {
+        // A send ends the work on that problem. The hard-bouldering and 4x4
+        // shapes schedule several tries of the SAME climb back to back, and
+        // without this a climber who topped it first go was walked through the
+        // remaining tries of a problem they had already done — the generator's
+        // attempt count treated as a quota rather than a budget.
+        if (isSend) skipRemainingAttemptsOfCurrentClimb()
         val shouldAdvance = when (advanceMode) {
             ListPlaybackAdvance.MANUAL -> false
             ListPlaybackAdvance.AFTER_SEND -> isSend
             ListPlaybackAdvance.AFTER_LOG -> true
         }
         if (shouldAdvance && state.value.isActive && state.value.hasNext) next()
+    }
+
+    /**
+     * Drop the queued repeats of the climb just sent.
+     *
+     * Repeated attempts are consecutive entries carrying the same climb, which
+     * is how the filler writes a set out. Only a participant's own view is
+     * touched when they are not the host — the queue belongs to the host.
+     */
+    private fun skipRemainingAttemptsOfCurrentClimb() {
+        val s = state.value
+        if (!s.isActive || s.isParticipant) return
+        val current = s.currentClimb ?: return
+        val queue = s.queue
+        var next = s.currentIndex + 1
+        while (next < queue.size && queue[next].climbUuid == current.climbUuid) next++
+        val repeats = next - s.currentIndex - 1
+        if (repeats <= 0) return
+        queueManager.removeRange(s.currentIndex + 1, next)
     }
 
     /**
@@ -295,13 +329,16 @@ class PlaylistPlaybackCoordinator(
      * Stop playback — the end-vs-leave split that used to be duplicated
      * across BleStatusExpanded and the browser. Returns the finished
      * session row (for the summary) or null when nothing was recorded.
+     *
+     * @param endForEveryone host only: end the playlist for the whole group
+     *   instead of handing it to the first participant.
      */
-    fun stop(): com.cruxcoach.data.repository.Board_sessions? {
+    fun stop(endForEveryone: Boolean = false): com.cruxcoach.data.repository.Board_sessions? {
         val queueState = queueManager.state.value
         val lastClimb = queueState.currentClimb
         if (queueState.role == SessionRole.HOST) {
             if (queueState.visibility == SessionVisibility.JOINABLE) {
-                gattBridge.stopSharing()
+                gattBridge.stopSharing(allowBoardRelease = true, endForEveryone = endForEveryone)
             }
             queueManager.endQueue()
         } else {

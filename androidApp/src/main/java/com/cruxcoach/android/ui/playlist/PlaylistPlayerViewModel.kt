@@ -165,9 +165,9 @@ class PlaylistPlayerViewModel @Inject constructor(
     fun dismissStopConfirm() = _state.update { it.copy(showStopConfirm = false) }
 
     /** Stop playback and stage the summary sheet. */
-    fun stop() {
+    fun stop(endForEveryone: Boolean = false) {
         _state.update { it.copy(showStopConfirm = false) }
-        val finished = playback.stop() ?: return
+        val finished = playback.stop(endForEveryone) ?: return
         _state.update { it.copy(finishedSession = finished) }
         viewModelScope.safeLaunch(TAG) {
             val gradeScale = userPreferences.gradeScale.first()

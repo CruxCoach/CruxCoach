@@ -95,6 +95,9 @@ import com.cruxcoach.domain.board.MoonBoardVariant
 import android.bluetooth.BluetoothManager
 import androidx.compose.ui.platform.LocalContext
 import com.cruxcoach.android.ble.BlePermissionHelper
+import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.foundation.layout.PaddingValues
 
 /**
  * The playlist player — the one place a running playlist lives. Board
@@ -171,31 +174,82 @@ fun PlaylistPlayerScreen(
     }
 
     if (state.showStopConfirm) {
+        // Three different things happened behind one red stop icon. A host with
+        // participants does not end anything: stopSharing() sends the sentinel
+        // that starts host migration, so the group climbs on and the person who
+        // just pressed "End session" was never told. Say which of the three it
+        // is, and stop promising termination when a handover is what follows.
+        val othersStay = playback.isHost && playback.participantCount > 1
+        val remaining = (playback.participantCount - 1).coerceAtLeast(1)
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { viewModel.dismissStopConfirm() },
             title = {
                 Text(
-                    stringResource(R.string.board_session_end_title),
+                    stringResource(
+                        when {
+                            !playback.isHost -> R.string.playlist_stop_leave_title
+                            othersStay -> R.string.playlist_stop_handover_title
+                            else -> R.string.playlist_stop_end_title
+                        }
+                    ),
                     fontWeight = FontWeight.Bold,
+                )
+            },
+            text = {
+                Text(
+                    when {
+                        !playback.isHost -> stringResource(R.string.playlist_stop_leave_body)
+                        othersStay -> pluralStringResource(
+                            R.plurals.playlist_stop_handover_body, remaining, remaining,
+                        )
+                        else -> stringResource(R.string.playlist_stop_end_body)
+                    }
                 )
             },
             confirmButton = {
                 androidx.compose.material3.Button(
                     onClick = { viewModel.stop() },
                     colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error,
+                        // Only a real ending is destructive. Leaving and handing
+                        // over are not, and red made them look like one.
+                        containerColor = if (playback.isHost && !othersStay) {
+                            MaterialTheme.colorScheme.error
+                        } else MaterialTheme.colorScheme.primary,
                     ),
                     modifier = Modifier.testTag("player_stop_confirm"),
                 ) {
                     Text(
-                        if (playback.isHost) stringResource(R.string.ble_end_session)
-                        else stringResource(R.string.ble_leave_session),
+                        stringResource(
+                            when {
+                                !playback.isHost -> R.string.playlist_stop_leave_confirm
+                                othersStay -> R.string.playlist_stop_handover_confirm
+                                else -> R.string.playlist_stop_end_confirm
+                            }
+                        )
                     )
                 }
             },
             dismissButton = {
-                androidx.compose.material3.TextButton(onClick = { viewModel.dismissStopConfirm() }) {
-                    Text(stringResource(R.string.action_cancel))
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    // Handing over is the default; ending it for the whole
+                    // group is the deliberate second choice, not the silent
+                    // one it used to be.
+                    if (othersStay) {
+                        androidx.compose.material3.TextButton(
+                            onClick = { viewModel.stop(endForEveryone = true) },
+                            modifier = Modifier.testTag("player_stop_end_for_all"),
+                        ) {
+                            Text(
+                                stringResource(R.string.playlist_stop_end_for_all),
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    }
+                    androidx.compose.material3.TextButton(
+                        onClick = { viewModel.dismissStopConfirm() },
+                    ) {
+                        Text(stringResource(R.string.action_cancel))
+                    }
                 }
             },
         )
@@ -230,16 +284,41 @@ fun PlaylistPlayerScreen(
                                 fontWeight = FontWeight.Bold,
                             )
                             if (playback.queue.isNotEmpty()) {
-                                Text(
-                                    stringResource(
-                                        R.string.playlist_player_progress,
-                                        playback.currentIndex + 1,
-                                        playback.queue.size,
-                                        formatElapsed(playback.elapsedSeconds),
-                                    ),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        stringResource(
+                                            R.string.playlist_player_progress,
+                                            playback.currentIndex + 1,
+                                            playback.queue.size,
+                                            formatElapsed(playback.elapsedSeconds),
+                                        ),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    // Pausing the clock belongs to the clock. As a
+                                    // transport button it read as "pause the
+                                    // playlist", which it never did — board, climb
+                                    // and navigation all carried on regardless.
+                                    // Hidden during a planned rest: the clock is
+                                    // already stopped and only the rest may start
+                                    // it again.
+                                    if (!playback.isResting) {
+                                        TextButton(
+                                            onClick = { viewModel.playback.togglePause() },
+                                            contentPadding = PaddingValues(horizontal = 8.dp),
+                                            modifier = Modifier.testTag("player_clock_pause"),
+                                        ) {
+                                            Text(
+                                                stringResource(
+                                                    if (playback.isPaused) {
+                                                        R.string.playlist_resume_training_clock
+                                                    } else R.string.playlist_pause_training_clock
+                                                ),
+                                                style = MaterialTheme.typography.labelSmall,
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                     },
@@ -274,14 +353,20 @@ fun PlaylistPlayerScreen(
                             onClick = { viewModel.requestStop() },
                             modifier = Modifier.testTag("player_stop"),
                         ) {
+                            // A stop sign for the one case that really stops.
+                            val reallyEnds = playback.isHost && playback.participantCount <= 1
                             Icon(
-                                Icons.Default.StopCircle,
-                                contentDescription = if (playback.isHost) {
-                                    stringResource(R.string.ble_end_session)
-                                } else {
-                                    stringResource(R.string.ble_leave_session)
-                                },
-                                tint = MaterialTheme.colorScheme.error,
+                                if (reallyEnds) Icons.Default.StopCircle
+                                else Icons.AutoMirrored.Filled.Logout,
+                                contentDescription = stringResource(
+                                    when {
+                                        !playback.isHost -> R.string.playlist_stop_leave_title
+                                        reallyEnds -> R.string.playlist_stop_end_title
+                                        else -> R.string.playlist_stop_handover_title
+                                    }
+                                ),
+                                tint = if (reallyEnds) MaterialTheme.colorScheme.error
+                                       else MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(26.dp),
                             )
                         }
@@ -306,6 +391,20 @@ fun PlaylistPlayerScreen(
                 // Asked to share and unable to: the session repairs itself once
                 // Bluetooth returns, but until then nobody can join and nothing
                 // would say why.
+                if (playback.isPaused && !playback.isResting) {
+                    Surface(
+                        color = WarningYellow.copy(alpha = 0.15f),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            stringResource(R.string.playlist_paused_banner),
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = WarningYellow,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                        )
+                    }
+                }
                 if (playback.sharingBlocked) {
                     // sharingBlocked is true for three different reasons and
                     // carries none of them, so the banner used to name the
@@ -396,6 +495,7 @@ fun PlaylistPlayerScreen(
                 onPrevious = { viewModel.playback.previous() },
                 onNext = { viewModel.playback.next() },
                 onTogglePause = { viewModel.playback.togglePause() },
+                onSkipRest = { viewModel.playback.skipRest() },
                 onOpenQueue = { showQueueSheet = true },
                 onAddClimbs = onNavigateToBrowser,
             )
@@ -828,7 +928,10 @@ private fun PlayerControls(
     playback: PlaylistPlaybackState,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
+    /** Manual clock pause — offered on the timer, not as a transport button. */
     onTogglePause: () -> Unit,
+    /** End a planned rest early: cancels the countdown AND restarts the clock. */
+    onSkipRest: () -> Unit,
     onOpenQueue: () -> Unit,
     onAddClimbs: () -> Unit,
 ) {
@@ -867,29 +970,27 @@ private fun PlayerControls(
                 modifier = Modifier.size(36.dp),
             )
         }
+        // The centre used to hold play/pause, which made this look like a media
+        // player. A playlist does not run on its own: it waits for the climber
+        // and advances when they say so. So the centre is the advance — except
+        // during a planned rest, where the one thing to do is end the rest, and
+        // that button must cancel the countdown rather than just restart the
+        // clock. Manual pausing is a clock function and now lives on the timer.
         FilledIconButton(
-            onClick = withHaptic(onTogglePause),
+            onClick = withHaptic(if (playback.isResting) onSkipRest else onNext),
             shape = CircleShape,
+            enabled = playback.isResting || playback.hasNext,
             colors = IconButtonDefaults.filledIconButtonColors(containerColor = OrangeAccent),
-            modifier = Modifier.size(64.dp).testTag("player_pause"),
+            modifier = Modifier.size(64.dp).testTag("player_next_primary"),
         ) {
             Icon(
-                if (playback.isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
-                contentDescription = if (playback.isPaused) stringResource(R.string.cd_resume)
-                                     else stringResource(R.string.cd_pause),
+                if (playback.isResting) Icons.Default.PlayArrow else Icons.Default.SkipNext,
+                contentDescription = stringResource(
+                    if (playback.isResting) R.string.playlist_rest_continue
+                    else R.string.cd_next
+                ),
                 tint = DarkBackground,
                 modifier = Modifier.size(32.dp),
-            )
-        }
-        IconButton(
-            onClick = withHaptic(onNext),
-            enabled = playback.hasNext,
-            modifier = Modifier.size(56.dp).testTag("player_next"),
-        ) {
-            Icon(
-                Icons.Default.SkipNext,
-                contentDescription = stringResource(R.string.cd_next),
-                modifier = Modifier.size(36.dp),
             )
         }
         // Add climbs: to the browser, where long-press adds to the
