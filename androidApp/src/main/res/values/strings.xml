@@ -2198,7 +2198,7 @@
     <string name="playlist_type_volume">Volume</string>
     <string name="playlist_type_volume_desc">Many problems around your flash grade — mileage and movement quality.</string>
     <string name="playlist_type_limit">Hard bouldering</string>
-    <string name="playlist_type_limit_desc">Few whole problems at or just above your max, several tries each, full rests between. Not classic limit bouldering, which works a handful of moves at the absolute limit.</string>
+    <string name="playlist_type_limit_desc">Few whole problems at or just above your max, several tries each, full rests between. Not classic limit bouldering — that works a handful of moves at the absolute limit, which a whole board problem cannot be cut down to. Build that yourself under Manual.</string>
     <string name="playlist_type_projecting">Projecting</string>
     <string name="playlist_type_projecting_desc">Work your open projects — climbs you have tried but not yet sent.</string>
     <string name="playlist_position_cold">Not warmed up</string>
@@ -2318,7 +2318,6 @@
     <string name="playlist_pause_training_clock">Pause training time</string>
     <string name="playlist_resume_training_clock">Resume</string>
     <string name="playlist_paused_banner">Training time paused — the board stays as it is</string>
-    <string name="playlist_rest_continue">Climb on now</string>
     <string name="playlist_generator_pyramid_shape">Pyramid shape</string>
     <string name="playlist_pyramid_ascending">Build-up</string>
     <string name="playlist_pyramid_up_and_down">Up and down</string>
@@ -2327,6 +2326,7 @@
     <string name="playlist_generator_size_limit">Problems: %1$d</string>
     <string name="playlist_generator_size_projects">Projects: %1$d</string>
     <string name="playlist_generator_size_sets">Sets: %1$d</string>
+    <string name="playlist_generator_problems_per_set">Problems per set: %1$d</string>
     <string name="playlist_generator_size_tiers">Tiers: %1$d</string>
     <string name="playlist_generator_estimated">about %1$d min</string>
     <!-- Manual generator: nothing derived, everything stated -->

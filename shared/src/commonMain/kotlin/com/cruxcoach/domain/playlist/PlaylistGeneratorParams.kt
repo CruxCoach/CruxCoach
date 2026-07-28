@@ -16,7 +16,18 @@ enum class GeneratorType {
     /** Many problems around flash level — density over intensity. */
     VOLUME,
 
-    /** Limit bouldering: few problems at/above max, long rests. */
+    /**
+     * Few whole problems at or just above the working max, several tries
+     * each, full rests between — what the UI calls "hard bouldering".
+     *
+     * Deliberately NOT classic limit bouldering, and named accordingly. That
+     * protocol works a handful of moves at the absolute limit and stops when
+     * power drops; a board problem is an indivisible unit, so nothing here can
+     * offer three moves rather than a whole climb, and a mode that claimed to
+     * would be making the same promise this rename removed. A climber who
+     * wants that shape can build it in [MANUAL]: one or two problems above
+     * their max, few tries, long rests.
+     */
     LIMIT,
 
     /** Work open projects (attempted but unsent) near max. */
@@ -132,6 +143,11 @@ data class PlaylistGeneratorParams(
     val manualMaxDifficulty: Double = 0.0,
     /** Manual mode: tries per problem — 1 is a straight lap list. */
     val manualRepeats: Int = 1,
+    /**
+     * Interval mode: problems inside one set. Four is the 4x4; null keeps it
+     * for playlists saved before this was a control.
+     */
+    val problemsPerSet: Int? = null,
     /** Manual mode: seconds between problems, and between tries of one. */
     val manualRestSeconds: Int = TrainingRanges.MANUAL_DEFAULT_REST,
     val manualRepeatRestSeconds: Int = TrainingRanges.MANUAL_DEFAULT_REPEAT_REST,

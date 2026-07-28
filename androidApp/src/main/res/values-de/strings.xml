@@ -2197,7 +2197,7 @@
     <string name="playlist_type_volume">Volume</string>
     <string name="playlist_type_volume_desc">Viele Probleme um deinen Flash-Grad — Mileage und Bewegungsqualität.</string>
     <string name="playlist_type_limit">Hartes Bouldern</string>
-    <string name="playlist_type_limit_desc">Wenige ganze Boulder an oder knapp über deinem Max, je mehrere Versuche, volle Pausen dazwischen. Kein klassisches Limit-Bouldern — das arbeitet an wenigen Zügen am absoluten Limit.</string>
+    <string name="playlist_type_limit_desc">Wenige ganze Boulder an oder knapp über deinem Max, je mehrere Versuche, volle Pausen dazwischen. Kein klassisches Limit-Bouldern — das arbeitet an wenigen Zügen am absoluten Limit, und ein ganzer Boulder lässt sich darauf nicht kürzen. Unter „Manuell" baust du dir das selbst.</string>
     <string name="playlist_type_projecting">Projekte</string>
     <string name="playlist_type_projecting_desc">Arbeite an deinen offenen Projekten — Climbs, die du versucht, aber noch nicht geschafft hast.</string>
     <string name="playlist_position_cold">Nicht aufgewärmt</string>
@@ -2317,7 +2317,6 @@
     <string name="playlist_pause_training_clock">Trainingszeit pausieren</string>
     <string name="playlist_resume_training_clock">Fortsetzen</string>
     <string name="playlist_paused_banner">Training pausiert — das Board bleibt, wie es ist</string>
-    <string name="playlist_rest_continue">Jetzt weiterklettern</string>
     <string name="playlist_generator_pyramid_shape">Form der Pyramide</string>
     <string name="playlist_pyramid_ascending">Aufbau</string>
     <string name="playlist_pyramid_up_and_down">Auf und ab</string>
@@ -2326,6 +2325,7 @@
     <string name="playlist_generator_size_limit">Boulder: %1$d</string>
     <string name="playlist_generator_size_projects">Projekte: %1$d</string>
     <string name="playlist_generator_size_sets">Sätze: %1$d</string>
+    <string name="playlist_generator_problems_per_set">Boulder je Satz: %1$d</string>
     <string name="playlist_generator_size_tiers">Stufen: %1$d</string>
     <string name="playlist_generator_estimated">etwa %1$d min</string>
     <!-- Manueller Generator: nichts abgeleitet, alles angegeben -->
