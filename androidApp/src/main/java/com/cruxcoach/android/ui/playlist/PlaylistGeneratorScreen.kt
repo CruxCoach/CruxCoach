@@ -66,7 +66,6 @@ import androidx.compose.ui.res.pluralStringResource
 import com.cruxcoach.domain.playlist.structureRange
 import kotlin.math.roundToInt
 import androidx.compose.material3.RangeSlider
-import com.cruxcoach.domain.board.KilterGradeMapper
 
 /**
  * Generator wizard: session type, duration, session position, angle — with
@@ -249,8 +248,16 @@ fun PlaylistGeneratorScreen(
                 SectionTitle(
                     stringResource(
                         R.string.playlist_manual_grade_range,
-                        KilterGradeMapper.formatGrade(state.manualMinDifficulty),
-                        KilterGradeMapper.formatGrade(state.manualMaxDifficulty),
+                        // The scale the climber reads everywhere else. The
+                        // mapper's own formatGrade appends the raw difficulty
+                        // ("V6 (22,0)") — a developer's view, and V-scale at
+                        // that, in an app that shows Font grades by default.
+                        GradeDisplayHelper.formatDifficulty(
+                            state.manualMinDifficulty, state.gradeScale,
+                        ),
+                        GradeDisplayHelper.formatDifficulty(
+                            state.manualMaxDifficulty, state.gradeScale,
+                        ),
                     )
                 )
                 RangeSlider(
