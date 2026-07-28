@@ -1152,6 +1152,24 @@ class BoardDatabaseImporter(
             }
             val hasMoveCount = "move_count" in srcCols
             val moveCountExpr = if (hasMoveCount) "COALESCE(move_count, 0)" else "0"
+            // MoonBoard problem method (25.sqm) — a PUBLIC climbing rule
+            // ('method_footless' & friends), not provenance, so it crosses
+            // every boundary including the unverified peer share: without it
+            // a shared footless problem reads as ordinary feet-follow-hands.
+            // Sources predating 25.sqm (Kilter APK dumps, pre-2026-07-26
+            // blobs, older senders) have no such column → NULL, which is
+            // exactly the schema default. LocalShareSchema's
+            // CLIMBS_PEER_SHARE_CONTRACT carries the full per-column trust
+            // classification and the test that enforces it.
+            val hasMethod = "method" in srcCols
+            val methodExpr = if (hasMethod) "method" else "NULL"
+            // Catalogue-refresh (existing-row) half of the same decision.
+            // `method` may only join the refresh tuple when the source really
+            // carries the column — mirroring [mergeSnapshotClimbs], which
+            // refreshes it for the MoonBoard/Aurora snapshots. Unguarded, a
+            // pre-25.sqm source (whose [methodExpr] is the literal NULL)
+            // would silently clear a method an earlier snapshot had set.
+            val methodRefresh = if (hasMethod) ", method" else ""
             // origin column landed in Blossom chunks at a known schema-roll
             // boundary; older chunks without it fall back to the schema
             // default 'kilter' on the target side. Note: the UPDATE pass
@@ -1296,7 +1314,7 @@ class BoardDatabaseImporter(
                     created_at INTEGER, description TEXT,
                     is_nomatch INTEGER, frames_pace INTEGER, hsm INTEGER,
                     move_count INTEGER, origin TEXT, created_by_pubkey TEXT,
-                    board_brand TEXT
+                    board_brand TEXT, method TEXT
                 ) WITHOUT ROWID
             """)
             val minRowid = queryLong(targetDb, "SELECT MIN(rowid) FROM src.$srcTable")
@@ -1327,7 +1345,8 @@ class BoardDatabaseImporter(
                                $moveCountExpr,
                                $originExpr,
                                $pubkeyExpr,
-                               $brandExpr
+                               $brandExpr,
+                               $methodExpr
                         FROM src.$srcTable
                         WHERE rowid BETWEEN $batchStart AND $batchEnd
                           $draftFilter
@@ -1341,12 +1360,12 @@ class BoardDatabaseImporter(
                             frames_count, is_listed, edge_left, edge_right,
                             edge_bottom, edge_top, created_at,
                             description, is_nomatch, frames_pace, hsm, move_count,
-                            origin, created_by_pubkey, board_brand)
+                            origin, created_by_pubkey, board_brand, method)
                         SELECT uuid, layout_id, setter_username, name, frames,
                                frames_count, is_listed, edge_left, edge_right,
                                edge_bottom, edge_top, created_at,
                                description, is_nomatch, frames_pace, hsm, move_count,
-                               origin, created_by_pubkey, board_brand
+                               origin, created_by_pubkey, board_brand, method
                         FROM chunk_norm
                         WHERE is_listed = 1
                     """)
@@ -1366,17 +1385,20 @@ class BoardDatabaseImporter(
                     // Climbs authored via CruxCoach (origin='cruxcoach')
                     // have Nostr as their source of truth and are
                     // protected from blob refresh entirely.
+                    //
+                    // `method` joins the refresh tuple ONLY when the source
+                    // actually carries the column — see [methodRefresh].
                     if (updateExistingClimbs) {
                         targetDb.execSQL("""
                             UPDATE climbs SET
                                 (layout_id, setter_username, name, frames,
                                  frames_count, is_listed, edge_left, edge_right,
                                  edge_bottom, edge_top, created_at, description,
-                                 is_nomatch, frames_pace, hsm, move_count)
+                                 is_nomatch, frames_pace, hsm, move_count$methodRefresh)
                                 = (SELECT layout_id, setter_username, name, frames,
                                           frames_count, is_listed, edge_left, edge_right,
                                           edge_bottom, edge_top, created_at, description,
-                                          is_nomatch, frames_pace, hsm, move_count
+                                          is_nomatch, frames_pace, hsm, move_count$methodRefresh
                                    FROM chunk_norm
                                    WHERE chunk_norm.uuid = main.climbs.uuid)
                             WHERE origin = 'kilter'
