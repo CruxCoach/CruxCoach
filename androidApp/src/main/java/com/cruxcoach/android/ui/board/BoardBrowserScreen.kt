@@ -64,6 +64,11 @@ import com.cruxcoach.util.GradeConverter
 import com.cruxcoach.data.repository.ClimbSortField
 import com.cruxcoach.data.repository.ClimbTypeFilter
 import com.cruxcoach.data.repository.SortDirection
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
@@ -320,20 +325,32 @@ fun BoardBrowserScreen(
             // drawer off later.
             title = {},
             navigationIcon = {
-                IconButton(
-                    onClick = { /* reserved: opens the navigation drawer */ },
-                    enabled = false,
-                    modifier = Modifier.testTag("board_browser_home"),
+                // The same two layers the splash screen uses (see ic_splash.xml):
+                // a black disc, then the launcher foreground on top. The logo's
+                // centre is transparent, so without the disc the X would sit on
+                // whatever is behind and the ring would read as a broken shape.
+                //
+                // Not R.mipmap.ic_launcher_round — that is an <adaptive-icon>,
+                // which Compose cannot load at all and which took the whole
+                // browser down on open. Not the monochrome vector either: that
+                // is the flat themed-icon variant and loses the gradient.
+                //
+                // Placed in a plain Box rather than an IconButton so it can sit
+                // close to the edge and fill the bar; a drawer click target can
+                // be added here later without moving it.
+                Box(
+                    modifier = Modifier
+                        .padding(start = 10.dp)
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black)
+                        .testTag("board_browser_home"),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    // A vector, deliberately. R.mipmap.ic_launcher_round is an
-                    // <adaptive-icon>, which Compose cannot load at all — it
-                    // threw "Only VectorDrawables and rasterized asset types
-                    // are supported" and took the whole browser down on open.
-                    Icon(
-                        painter = painterResource(R.drawable.ic_launcher_monochrome),
+                    Image(
+                        painter = painterResource(R.mipmap.ic_launcher_foreground),
                         contentDescription = stringResource(R.string.board_browser_title),
-                        tint = OrangeAccent,
-                        modifier = Modifier.size(28.dp),
+                        modifier = Modifier.fillMaxSize(),
                     )
                 }
             },
