@@ -54,8 +54,9 @@ class BoardCapacityProbe @Inject constructor(
         probeJob?.cancel()
         val board = bleConnection.connectedBoard
         // Runs after every connect that has not established the capacity yet —
-        // this is the only moment the evidence exists. It can only raise a
-        // controller to "accepts several clients", never lower it.
+        // this is the only moment the evidence exists. A completed scan settles
+        // it in both directions: an advertisement raises the controller to
+        // "accepts several clients", a clean scan that saw nothing lowers it.
         val wanted = bleConnection.connectionState.value == ConnectionState.CONNECTED &&
             board != null && !board.isCruxRelay &&
             BlePermissionHelper.wantsCapacityProbe(
@@ -78,10 +79,10 @@ class BoardCapacityProbe @Inject constructor(
                 when (bleScanner.probeAdvertisingWhileConnected(board.address)) {
                     ConnectedAdvertisingProbeResult.CONNECTABLE_ADVERTISEMENT_OBSERVED -> {
                         bleConnection.recordAdvertisingWhileConnected(board.address)
-                        // Persist the positive so later connections know the
-                        // capacity without observing again. Only positives are
-                        // stored — see
-                        // PreferenceKeys.lastUsedBoardAdvertisesWhileConnected.
+                        // Persist it so later connections know the capacity
+                        // without observing again. Negatives are stored too —
+                        // see PreferenceKeys.lastUsedBoardAdvertisesWhileConnected
+                        // and the NOT_OBSERVED branch below.
                         userPreferences.setRememberedBoardAdvertisesWhileConnected(board.boardBrand)
                     }
                     // A completed scan that saw nothing is evidence, and the

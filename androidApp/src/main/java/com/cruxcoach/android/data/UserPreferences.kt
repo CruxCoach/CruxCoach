@@ -972,7 +972,12 @@ class UserPreferences(
     }
 
     /**
-     * Records a positive controller-capacity observation for [brand].
+     * Records a controller-capacity observation for [brand] — positive by
+     * default, negative when the probe completed a scan and saw nothing.
+     *
+     * Both directions are stored. Writing only the positive made "accepts
+     * several clients" permanent, so a controller switched back to
+     * single-client was misjudged for ever; see the key's own doc.
      *
      * Separate from [setRememberedBoardController] because the observation
      * arrives seconds after the connect that stored the record, from the

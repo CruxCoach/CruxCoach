@@ -47,10 +47,12 @@ internal data class BoardControllerProfile(
  * The one usable signal is POSITIVE: seeing a connectable advertisement from
  * the controller while we already hold GATT proves it can still accept another
  * central (a peripheral can only be connected to while it advertises). Missing
- * that observation proves nothing — Android suppresses advertisements from an
- * already-connected peer often enough that a negative says more about the phone
- * than about the board. So the probe may only ever upgrade SINGLE → MULTIPLE,
- * never the other way round, and only a positive result is persisted.
+ * that observation proves nothing on its own — Android suppresses
+ * advertisements from an already-connected peer often enough that a bare
+ * negative says more about the phone than about the board. A *completed* scan
+ * that saw nothing is different, and it is the only thing that can correct a
+ * stale "accepts several": the probe distinguishes the two and persists both,
+ * so a controller swapped for an exclusive one is not misjudged for ever.
  *
  * CruxRelay is our own endpoint, so its multi-client capacity is known outright.
  */

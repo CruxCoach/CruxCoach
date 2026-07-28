@@ -253,8 +253,10 @@ class BoardBleScanner(private val context: Context) {
      *    discovery, when the stack is still busy, and BlueZ takes a moment to
      *    put advertising back up after a connection completes.
      *
-     * Anything not observed stays "not observed": it never downgrades a
-     * controller, it only fails to upgrade one.
+     * A scan that could not complete stays inconclusive and changes nothing.
+     * A scan that ran to the end and saw no advertisement is evidence in its
+     * own right, and the caller does downgrade on it — that is the only way a
+     * controller swapped for an exclusive one gets corrected.
      */
     @SuppressLint("MissingPermission")
     internal suspend fun probeAdvertisingWhileConnected(
