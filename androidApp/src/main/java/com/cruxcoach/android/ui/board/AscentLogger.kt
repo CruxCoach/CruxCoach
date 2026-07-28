@@ -57,7 +57,14 @@ internal class AscentLogger(
 
     fun save() {
         val s = state.value
-        val climb = s.climb ?: return
+        // Close on the way out. The bare `return` left the dialog standing and
+        // every further tap did the same nothing, which reads as a hang rather
+        // than as "not possible here". The button that opens this is gated on
+        // the same condition; this is the second line of defence.
+        val climb = s.climb ?: run {
+            dismissDialog()
+            return
+        }
         val form = s.ascent
         val editUuid = form.editingUuid
         val climbUuid = currentClimbUuid()

@@ -171,6 +171,31 @@ class BoardClimbDetailLogbookFallbackTest {
     }
 
     @Test
+    fun missingClimb_saveAscent_closesTheDialogInsteadOfHanging() = runTest {
+        coEvery { personalBoardRepo.getUserHistoryForClimb(missingUuid) } returns
+            listOf(ascent(missingUuid))
+
+        val vm = buildViewModel()
+
+        vm.state.test {
+            var s = awaitItem()
+            while (s.isLoading) s = awaitItem()
+            assertNull("precondition: this is the logbook-only state", s.climb)
+
+            vm.showAscentDialog()
+            s = awaitItem()
+            assertEquals(true, s.ascent.showDialog)
+
+            // Saving cannot work without the catalogue row. It must not leave
+            // the dialog standing — that is what made it read as a hang.
+            vm.saveAscent()
+            s = awaitItem()
+            assertEquals(false, s.ascent.showDialog)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
     fun missingClimb_withNoHistory_keepsRawErrorState() = runTest {
         coEvery { personalBoardRepo.getUserHistoryForClimb(missingUuid) } returns emptyList()
 

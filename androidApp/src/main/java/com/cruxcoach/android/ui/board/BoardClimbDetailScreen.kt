@@ -463,14 +463,23 @@ fun BoardClimbDetailScreen(
                                 tint = if (bleConnected) SuccessGreen else MaterialTheme.colorScheme.onSurface
                             )
                         }
+                        // Logging needs the catalogue row: AscentLogger.save()
+                        // returns on a null climb. Left enabled, the dialog
+                        // opened, took the form and then ate "Save" without
+                        // closing — an app that looks frozen. Same gate as
+                        // Remix below; the body already says why the climb is
+                        // only half here.
+                        val canLogAscent = state.climb != null
                         IconButton(
                             onClick = { viewModel.showAscentDialog() },
+                            enabled = canLogAscent,
                             modifier = Modifier.testTag("boarddetail_log_button")
                         ) {
                             Icon(
                                 Icons.Default.Check,
                                 contentDescription = stringResource(R.string.cd_log_ascent),
-                                tint = OrangeAccent
+                                tint = if (canLogAscent) OrangeAccent
+                                       else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
                             )
                         }
                         // Owner gate for Edit/Delete inside the overflow.
