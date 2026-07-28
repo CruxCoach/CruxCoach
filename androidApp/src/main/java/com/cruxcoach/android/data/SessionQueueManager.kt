@@ -316,6 +316,26 @@ class SessionQueueManager(
         onQueueChanged?.invoke()
     }
 
+    /**
+     * Replace the rest that follows [index].
+     *
+     * Used when dropping the remaining attempts of a problem that was sent
+     * early: what is left standing is the short attempt rest, but the gap it
+     * now spans is the one before a different problem.
+     */
+    fun setRestAfter(index: Int, seconds: Int) {
+        _state.update { s ->
+            if (index !in s.queue.indices) return@update s
+            if (s.queue[index].restAfterSeconds == seconds) return@update s
+            s.copy(
+                queue = s.queue.toMutableList().apply {
+                    this[index] = this[index].copy(restAfterSeconds = seconds)
+                }
+            )
+        }
+        onQueueChanged?.invoke()
+    }
+
     fun setCurrentClimb(index: Int) {
         lastSentClimbKey = null // reset dedup so the new climb gets sent
         _state.update { s ->

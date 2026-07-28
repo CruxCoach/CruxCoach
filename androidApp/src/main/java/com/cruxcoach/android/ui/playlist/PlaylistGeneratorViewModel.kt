@@ -47,8 +47,20 @@ data class PlaylistGeneratorState(
     val selection: CandidateSelection = CandidateSelection.NEW,
     /** Pyramid only: build-up, or up and back down. */
     val pyramidShape: PyramidShape = PyramidShape.ASCENDING,
-    /** What the slider sets: problems, projects, sets or tiers. */
-    val structureSize: Int = 0,
+    /** Manual only — 0 means "seed me from the profile on first load". */
+    val manualMinDifficulty: Double = 0.0,
+    val manualMaxDifficulty: Double = 0.0,
+    val manualRepeats: Int = 1,
+    val manualRestSeconds: Int = TrainingRanges.MANUAL_DEFAULT_REST,
+    val manualRepeatRestSeconds: Int = TrainingRanges.MANUAL_DEFAULT_REPEAT_REST,
+    /**
+     * What the slider sets: problems, projects, sets or tiers.
+     *
+     * Seeded from the type's own range — zero is not a session anywhere, and
+     * as an initial value it showed "0 tiers" on screen while the planner,
+     * seeing no size at all, quietly planned four.
+     */
+    val structureSize: Int = GeneratorType.PYRAMID.structureRange().first,
     val position: SessionPosition = SessionPosition.START_COLD,
     val angle: Int = 40,
     /** MoonBoard walls are fixed-angle — hide the angle stepper. */
@@ -88,11 +100,12 @@ class PlaylistGeneratorViewModel @Inject constructor(
         viewModelScope.safeLaunch(TAG) {
             val snapshot = withContext(Dispatchers.IO) { userPreferences.getBoardFilterSnapshot() }
             val productSizeId = userPreferences.boardProductSizeId.first()
-            profile = withContext(Dispatchers.IO) { loadProfile(snapshot.angle) }
+            profile = withContext(Dispatchers.IO) { loadProfile(snapshot.angle, snapshot.boardBrand, snapshot.layoutId) }
             _state.update {
                 it.copy(
                     angle = snapshot.angle,
                     angleAdjustable = snapshot.boardBrand != "moonboard",
+                    structureSize = it.type.structureRange().midpoint(),
                     boardBrand = snapshot.boardBrand,
                     layoutId = snapshot.layoutId,
                     productSizeId = productSizeId,
@@ -128,11 +141,18 @@ class PlaylistGeneratorViewModel @Inject constructor(
      * match, then accumulated attempts (the project you keep returning to
      * beats a one-off try), then recency.
      */
-    private fun loadProfile(angle: Int): LogbookProfile {
+    private fun loadProfile(angle: Int, boardBrand: String, layoutId: Int): LogbookProfile {
         // One light combined snapshot replaces three full-table reads. In
         // particular, getUserAscentsAll() includes every climb_frames blob,
         // even though profile generation only needs logbook metadata.
-        val all = personalBoardRepo.getUserLogbookAllLight()
+        val everything = personalBoardRepo.getUserLogbookAllLight()
+        // Same board first. A grade is not a grade across board families —
+        // holds, angle behaviour and community grading all differ — so a
+        // MoonBoard 40° send said nothing useful about a Kilter 40° session
+        // and was quietly averaged into the anchor anyway.
+        val all = everything.filter {
+            it.boardBrand == boardBrand && (layoutId == 0 || it.layoutId?.toInt() == layoutId)
+        }
         val allSends = all.filter { it.isSend }
 
         val exact = allSends.filter { it.angle.toInt() == angle }
@@ -156,18 +176,27 @@ class PlaylistGeneratorViewModel @Inject constructor(
         // First-contact check runs on the FULL history (a prior attempt
         // outside the pool still disqualifies a flash inside it).
         val flashUuids = com.cruxcoach.android.ui.board.BoardStatsComputer.trueFlashUuids(all)
-        val sends = anglePool.mapNotNull { row ->
-            row.difficultyAverage?.let {
-                LoggedSend(row.climbUuid, it, row.climbedAt)
-            }
+        fun List<com.cruxcoach.data.repository.AscentWithClimb>.toSends() = mapNotNull { row ->
+            row.difficultyAverage?.let { LoggedSend(row.climbUuid, it, row.climbedAt) }
         }
-        val flashes = sends.filter { it.climbUuid in flashUuids }
+        val sends = anglePool.toSends()
+        // trueFlashUuids keys on the ASCENT row's uuid, not the climb's — it
+        // identifies the first recorded attempt on a climb, and only that row
+        // is the flash. Matching it against climbUuid found nothing, so the
+        // flash list came out empty and both flash-anchored types silently
+        // fell back to deriving one from the max.
+        val flashes = anglePool.filter { it.uuid in flashUuids }.toSends()
 
         val sentUuids = allSends.asSequence().map { it.climbUuid }.toSet()
         val openProjects = all.asSequence()
             .filter { !it.isSend }
             .filter { it.climbUuid !in sentUuids }
             .groupBy { it.climbUuid }
+            // A project is something you went back to. One bail on a climb
+            // far above your level is not intent, and projects are allowed
+            // past the safety ceiling precisely because you chose them —
+            // so the choice has to be evident.
+            .filter { (_, tries) -> tries.sumOf { it.bidCount } >= MIN_PROJECT_ATTEMPTS }
             .map { (uuid, tries) ->
                 Triple(
                     uuid,
@@ -191,7 +220,14 @@ class PlaylistGeneratorViewModel @Inject constructor(
             // four 4x4 sets and four volume problems are not the same session.
             // Re-seat on the new type's midpoint rather than carry a number
             // that meant something different a moment ago.
-            it.copy(type = type, structureSize = type.structureRange().midpoint())
+            val seeded = if (type == GeneratorType.MANUAL && it.manualMinDifficulty == 0.0) {
+                val anchor = profile.effectiveRepeatableMax
+                it.copy(
+                    manualMinDifficulty = anchor - TrainingRanges.MANUAL_SEED_HALF_BAND,
+                    manualMaxDifficulty = anchor + TrainingRanges.MANUAL_SEED_HALF_BAND,
+                )
+            } else it
+            seeded.copy(type = type, structureSize = type.structureRange().midpoint())
         }
         refreshPlan()
     }
@@ -204,6 +240,35 @@ class PlaylistGeneratorViewModel @Inject constructor(
                     TrainingRanges.MAX_DURATION_MINUTES,
                 )
             )
+        }
+        refreshPlan()
+    }
+
+    fun setManualRange(low: Double, high: Double) {
+        _state.update {
+            it.copy(
+                manualMinDifficulty = low.coerceIn(
+                    TrainingRanges.MIN_DIFFICULTY, TrainingRanges.MAX_DIFFICULTY,
+                ),
+                manualMaxDifficulty = high.coerceIn(low, TrainingRanges.MAX_DIFFICULTY),
+            )
+        }
+        refreshPlan()
+    }
+
+    fun setManualRepeats(repeats: Int) {
+        _state.update { it.copy(manualRepeats = repeats.coerceIn(TrainingRanges.MANUAL_REPEATS)) }
+        refreshPlan()
+    }
+
+    fun setManualRest(seconds: Int) {
+        _state.update { it.copy(manualRestSeconds = seconds.coerceIn(TrainingRanges.MANUAL_REST_SECONDS)) }
+        refreshPlan()
+    }
+
+    fun setManualRepeatRest(seconds: Int) {
+        _state.update {
+            it.copy(manualRepeatRestSeconds = seconds.coerceIn(TrainingRanges.MANUAL_REST_SECONDS))
         }
         refreshPlan()
     }
@@ -233,7 +298,7 @@ class PlaylistGeneratorViewModel @Inject constructor(
         _state.update { it.copy(angle = angle.coerceIn(0, 70)) }
         viewModelScope.safeLaunch(TAG) {
             // Angle changes the per-angle profile too.
-            profile = withContext(Dispatchers.IO) { loadProfile(_state.value.angle) }
+            profile = withContext(Dispatchers.IO) { loadProfile(_state.value.angle, _state.value.boardBrand, _state.value.layoutId) }
             refreshPlan()
         }
     }
@@ -250,7 +315,12 @@ class PlaylistGeneratorViewModel @Inject constructor(
             layoutId = s.layoutId,
             productSizeId = s.productSizeId,
             pyramidShape = s.pyramidShape,
-            structureSize = s.structureSize.takeIf { it > 0 },
+            structureSize = s.structureSize,
+            manualMinDifficulty = s.manualMinDifficulty,
+            manualMaxDifficulty = s.manualMaxDifficulty,
+            manualRepeats = s.manualRepeats,
+            manualRestSeconds = s.manualRestSeconds,
+            manualRepeatRestSeconds = s.manualRepeatRestSeconds,
         )
     }
 
@@ -328,6 +398,24 @@ class PlaylistGeneratorViewModel @Inject constructor(
                                 plan = plan,
                                 source = source,
                                 openProjects = profile.openProjectUuids,
+                                // Resolved by uuid: the band query returns the
+                                // best 120 by quality, so a project that is
+                                // neither popular nor inside the projecting
+                                // window never turned up in it.
+                                projectCandidates = boardRepository.getClimbsByUuids(
+                                    profile.openProjectUuids, params.angle,
+                                ).mapNotNull { climb ->
+                                    climb.difficultyAverage?.let { diff ->
+                                        PlaylistCandidate(
+                                            climbUuid = climb.uuid,
+                                            difficulty = diff,
+                                            quality = climb.qualityAverage,
+                                            ascensionistCount = climb.ascensionistCount,
+                                            sent = false,
+                                            attempted = true,
+                                        )
+                                    }
+                                },
                                 selection = params.selection,
                                 random = Random(System.currentTimeMillis()),
                             )
@@ -400,6 +488,9 @@ class PlaylistGeneratorViewModel @Inject constructor(
          *  keeps minAsc low. */
         private const val MIN_ASCENSIONISTS = 3
         private const val CANDIDATE_POOL_SIZE = 120
+
+        /** Bids across all sessions before a climb counts as a project. */
+        private const val MIN_PROJECT_ATTEMPTS = 3L
     }
 }
 

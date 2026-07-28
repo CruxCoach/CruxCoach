@@ -265,6 +265,11 @@ class PlaylistPlaybackCoordinator(
         val repeats = next - s.currentIndex - 1
         if (repeats <= 0) return
         queueManager.removeRange(s.currentIndex + 1, next)
+        // The rest that now follows is the one that separated two attempts on
+        // the same problem — too short for what it has become, which is the
+        // gap before a different problem. Carry over the rest the dropped
+        // block ended on.
+        queueManager.setRestAfter(s.currentIndex, queue[next - 1].restAfterSeconds)
     }
 
     /**

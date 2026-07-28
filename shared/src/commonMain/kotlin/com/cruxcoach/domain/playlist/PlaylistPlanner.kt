@@ -56,6 +56,17 @@ data class PlaylistPlan(
      * so the widening has something to stop at.
      */
     val hardCeiling: Double = TrainingRanges.MAX_DIFFICULTY,
+    /**
+     * How far the filler may stray from a slot's band, in points.
+     *
+     * A global ceiling is not enough on its own: it stops a session going
+     * *above* the climber, not a 4x4 band drifting from V7–V8 down to V4
+     * because the catalogue was thin. Below the intended band the stimulus is
+     * simply gone, and nothing was there to say so. Types whose whole point is
+     * a narrow intensity window allow less drift than types that just want
+     * mileage.
+     */
+    val maxWidening: Double = TrainingRanges.WIDEN_MAX_DEFAULT,
 )
 
 /**
@@ -126,6 +137,7 @@ object PlaylistPlanner {
             GeneratorType.PROJECTING -> planProjecting(mainMinutes, anchor, peak, size)
             GeneratorType.POWER_ENDURANCE -> planPowerEndurance(mainMinutes, flashDiff, size)
             GeneratorType.PYRAMID -> planPyramid(mainMinutes, anchor, params.pyramidShape, size)
+            GeneratorType.MANUAL -> planManual(params, anchor, size)
         }
 
         return PlaylistPlan(
@@ -137,6 +149,7 @@ object PlaylistPlanner {
                 TrainingRanges.MAX_DIFFICULTY,
                 profile.effectiveMax + TrainingRanges.CEILING_ABOVE_MAX_STEPS,
             ),
+            maxWidening = TrainingRanges.maxWideningFor(effectiveType),
         )
     }
 
@@ -206,6 +219,10 @@ object PlaylistPlanner {
         val count = size
             ?: ((minutes * 60 - breakCost) / TrainingRanges.VOLUME_CYCLE_SECONDS)
                 .coerceIn(TrainingRanges.VOLUME_COUNT)
+        // Whether the block is long enough to want a break is a question about
+        // the block, not about a duration the climber may no longer be setting:
+        // keyed on minutes, eight warmed-up problems got the ten-minute break
+        // and thirty cold ones could miss it.
         val high = clamp(flashDiff, maxDiff)
         val low = clampLow(high - TrainingRanges.VOLUME_BAND_BELOW_FLASH)
         val mid = (low + high) / 2
@@ -215,7 +232,8 @@ object PlaylistPlanner {
                 // Quality rest between every problem — volume without rests
                 // degrades into accidental power-endurance and sloppy movement.
                 // The mid-block break replaces (not stacks on) the short rest.
-                val midBreak = minutes >= 60 && i == count / 2
+                val midBreak = count >= TrainingRanges.VOLUME_MID_BREAK_MIN_PROBLEMS &&
+                    i == count / 2
                 slots.add(
                     PlanSlot.RestSlot(
                         if (midBreak) TrainingRanges.REST_VOLUME_MID_BREAK
@@ -314,6 +332,53 @@ object PlaylistPlanner {
         return (problems * perProblem + between) / 60
     }
 
+    /**
+     * Manual: exactly what was asked for.
+     *
+     * No profile, no protocol, no clamp to the safety ceiling — the climber
+     * named a grade range, and overriding it would make the controls a
+     * suggestion box. The scale's own bounds still apply, and the filler is
+     * told not to widen, so a range the board cannot fill comes back short
+     * and visibly rather than silently substituted.
+     */
+    private fun planManual(
+        params: PlaylistGeneratorParams,
+        anchor: Double,
+        size: Int?,
+    ): List<PlanSlot> {
+        val seedLow = anchor - TrainingRanges.MANUAL_SEED_HALF_BAND
+        val seedHigh = anchor + TrainingRanges.MANUAL_SEED_HALF_BAND
+        val low = (params.manualMinDifficulty.takeIf { it > 0.0 } ?: seedLow)
+            .coerceIn(TrainingRanges.MIN_DIFFICULTY, TrainingRanges.MAX_DIFFICULTY)
+        val high = (params.manualMaxDifficulty.takeIf { it > 0.0 } ?: seedHigh)
+            .coerceIn(low, TrainingRanges.MAX_DIFFICULTY)
+        val count = (size ?: TrainingRanges.MANUAL_COUNT.first)
+            .coerceIn(TrainingRanges.MANUAL_COUNT)
+        val repeats = params.manualRepeats.coerceIn(TrainingRanges.MANUAL_REPEATS)
+
+        val slots = mutableListOf<PlanSlot>()
+        for (p in 0 until count) {
+            if (p > 0 && params.manualRestSeconds > 0) {
+                slots.add(PlanSlot.RestSlot(params.manualRestSeconds, PlanSection.MAIN))
+            }
+            for (attempt in 0 until repeats) {
+                if (attempt > 0 && params.manualRepeatRestSeconds > 0) {
+                    slots.add(PlanSlot.RestSlot(params.manualRepeatRestSeconds, PlanSection.MAIN))
+                }
+                slots.add(
+                    PlanSlot.ClimbSlot(
+                        minDifficulty = low,
+                        maxDifficulty = high,
+                        section = PlanSection.MAIN,
+                        // Repeats mean the same problem, as everywhere else.
+                        repeatKey = p.takeIf { repeats > 1 },
+                    )
+                )
+            }
+        }
+        return slots
+    }
+
     private fun workBlocks(
         problems: Int,
         attemptsPerProblem: Int,
@@ -403,7 +468,7 @@ object PlaylistPlanner {
             }
             repeat(tier.count) {
                 if (slots.isNotEmpty()) slots.add(PlanSlot.RestSlot(rest, tier.section))
-                slots.add(climbSlot(tier.diff, tier.section))
+                slots.add(pyramidSlot(tier.diff, tier.section))
             }
         }
         return slots
@@ -445,15 +510,30 @@ object PlaylistPlanner {
                 size ?: pyramidTiers(mainMinutes), anchor,
             )
             GeneratorType.LIMIT, GeneratorType.PROJECTING -> anchor
+            // The bottom of what the climber asked for.
+            GeneratorType.MANUAL -> anchor
         }
 
-    private fun climbSlot(center: Double, section: PlanSection, repeatKey: Int? = null) =
-        PlanSlot.ClimbSlot(
-            minDifficulty = clampLow(center - TrainingRanges.SLOT_TOLERANCE),
-            maxDifficulty = center + TrainingRanges.SLOT_TOLERANCE,
-            section = section,
-            repeatKey = repeatKey,
-        )
+    private fun climbSlot(
+        center: Double,
+        section: PlanSection,
+        repeatKey: Int? = null,
+        tolerance: Double = TrainingRanges.SLOT_TOLERANCE,
+    ) = PlanSlot.ClimbSlot(
+        minDifficulty = clampLow(center - tolerance),
+        maxDifficulty = center + tolerance,
+        section = section,
+        repeatKey = repeatKey,
+    )
+
+    /**
+     * Pyramid tiers sit one Font step apart, so the usual ±1 tolerance lets
+     * neighbouring tiers draw the same difficulty — a pyramid that comes out
+     * flat, or with its base harder than the step above it. Half a step keeps
+     * the tiers distinguishable, which is the entire shape.
+     */
+    private fun pyramidSlot(center: Double, section: PlanSection) =
+        climbSlot(center, section, tolerance = TrainingRanges.PYRAMID_SLOT_TOLERANCE)
 
     private fun clampLow(diff: Double): Double = max(diff, TrainingRanges.MIN_DIFFICULTY)
 
@@ -499,6 +579,7 @@ fun PlaylistPlan.estimatedMinutes(): Int {
             GeneratorType.LIMIT -> 1.0
             GeneratorType.PROJECTING -> 1.5
             GeneratorType.PYRAMID -> 1.5
+            GeneratorType.MANUAL -> 1.0
         }
     }
     return ceil(climbMinutes + restSeconds / 60.0).toInt()

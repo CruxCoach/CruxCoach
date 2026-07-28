@@ -63,13 +63,22 @@ data class GenerationResult(
 object PlaylistFiller {
 
     private const val WIDEN_STEP = 1.0
-    private const val WIDEN_MAX = 4.0
     private const val PICK_POOL = 5
 
     fun fill(
         plan: PlaylistPlan,
         source: CandidateSource,
         openProjects: List<String> = emptyList(),
+        /**
+         * The open projects, already resolved to climbs.
+         *
+         * Looked up by uuid rather than found in a grade band: the candidate
+         * query returns the best 120 by quality within the band it is asked
+         * for, so a project that is neither popular nor inside the projecting
+         * window simply never appeared — and the mode quietly served fresh
+         * climbs instead of the projects it promises.
+         */
+        projectCandidates: List<PlaylistCandidate> = emptyList(),
         selection: CandidateSelection = CandidateSelection.NEW,
         random: Random = Random.Default,
     ): GenerationResult {
@@ -105,7 +114,7 @@ object PlaylistFiller {
                         plan.effectiveType == GeneratorType.PROJECTING
                     val (pick, didWiden) = pickClimb(
                         slot, cachedSource, used, preferProjects, openProjects, selection,
-                        random, plan.hardCeiling,
+                        random, plan.hardCeiling, plan.maxWidening, projectCandidates,
                     )
                     if (didWiden) widened++
                     if (pick == null) {
@@ -140,6 +149,8 @@ object PlaylistFiller {
         selection: CandidateSelection,
         random: Random,
         hardCeiling: Double,
+        maxWidening: Double,
+        projectCandidates: List<PlaylistCandidate>,
     ): Pair<PlaylistCandidate?, Boolean> {
         // Open projects first, and outside the band. A project is by definition
         // at or above the climber's limit, while the projecting band is a
@@ -147,11 +158,8 @@ object PlaylistFiller {
         // window never entered the candidate pool and the mode quietly served
         // fresh climbs instead of the projects it promises. The ceiling does
         // not apply either: the climber picked these themselves.
-        if (preferProjects && openProjects.isNotEmpty()) {
-            val projectSet = openProjects.toSet()
-            val engaged = source
-                .candidates(slot.minDifficulty, TrainingRanges.MAX_DIFFICULTY)
-                .filter { it.climbUuid in projectSet && it.climbUuid !in used }
+        if (preferProjects && projectCandidates.isNotEmpty()) {
+            val engaged = projectCandidates.filter { it.climbUuid !in used }
             if (engaged.isNotEmpty()) {
                 val ordered = engaged.sortedBy {
                     openProjects.indexOf(it.climbUuid).let { i -> if (i < 0) Int.MAX_VALUE else i }
@@ -160,7 +168,7 @@ object PlaylistFiller {
             }
         }
         var widening = 0.0
-        while (widening <= WIDEN_MAX) {
+        while (widening <= maxWidening) {
             // Downwards is free — an easier climb than planned costs intensity,
             // not safety. Upwards stops at the plan's ceiling: widening used to
             // be symmetric, so a slot that found nothing could be served a climb

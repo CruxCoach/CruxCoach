@@ -136,6 +136,10 @@ object TrainingRanges {
      *  a V-grade keeps "a V5 slot" honest while accepting 6b vs 6b+). */
     const val SLOT_TOLERANCE = 1.0
 
+    /** Tighter, for tiers that are only one step apart — see
+     *  PlaylistPlanner.pyramidSlot. */
+    const val PYRAMID_SLOT_TOLERANCE = 0.5
+
     /** END_OF_SESSION fatigue shift: everything two Font steps easier. */
     const val END_OF_SESSION_SHIFT = 2 * DIFF_PER_FONT_STEP
 
@@ -154,6 +158,9 @@ object TrainingRanges {
 
     /** Volume mid-session break (Lattice: ~10 min after half the block). */
     const val REST_VOLUME_MID_BREAK = 600
+
+    /** From this many problems on, the block is long enough to want it. */
+    const val VOLUME_MID_BREAK_MIN_PROBLEMS = 20
 
     /** Limit: max attempts need near-FULL ATP-CP recovery — 4 min between
      *  attempts (3 min is the floor, 5 the ceiling), 5 min when moving to
@@ -226,6 +233,40 @@ object TrainingRanges {
     /** Three tiers or four — below that it is not a pyramid, above it the
      *  base gets wider than a session can carry. */
     val PYRAMID_TIERS = 3..4
+
+    // ── How far the filler may stray from a band ─────────────────
+
+    /** Default drift for types that want mileage more than a precise grade. */
+    const val WIDEN_MAX_DEFAULT = 4 * DIFF_PER_FONT_STEP
+
+    /** Interval work lives or dies on the window: two Font steps at most, or
+     *  the laps stop being the thing that was prescribed. */
+    const val WIDEN_MAX_INTERVAL = 2 * DIFF_PER_FONT_STEP
+
+    /** Max-effort work is defined by being at the limit; drifting down turns
+     *  it into ordinary hard bouldering without saying so. */
+    const val WIDEN_MAX_MAX_EFFORT = 1 * DIFF_PER_FONT_STEP
+
+    fun maxWideningFor(type: GeneratorType): Double = when (type) {
+        GeneratorType.POWER_ENDURANCE, GeneratorType.PYRAMID -> WIDEN_MAX_INTERVAL
+        GeneratorType.LIMIT, GeneratorType.PROJECTING -> WIDEN_MAX_MAX_EFFORT
+        GeneratorType.VOLUME -> WIDEN_MAX_DEFAULT
+        // None at all: a range the climber typed is an instruction, not a hint.
+        GeneratorType.MANUAL -> 0.0
+    }
+
+    // ── Manual mode ──────────────────────────────────────────────
+
+    val MANUAL_COUNT = 1..40
+    val MANUAL_REPEATS = 1..8
+    val MANUAL_REST_SECONDS = 0..600
+    const val MANUAL_REST_STEP = 15
+    const val MANUAL_DEFAULT_REST = 120
+    const val MANUAL_DEFAULT_REPEAT_REST = 60
+
+    /** Half the band a fresh manual session starts on, either side of the
+     *  climber's work anchor — a sane place to begin adjusting from. */
+    const val MANUAL_SEED_HALF_BAND = 2 * DIFF_PER_FONT_STEP
     const val PE_PROBLEMS_PER_SET = 4
 
     /** Limit bouldering: attempts per problem, as EXPLICIT playlist
