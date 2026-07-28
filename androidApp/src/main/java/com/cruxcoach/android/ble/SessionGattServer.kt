@@ -82,10 +82,30 @@ class SessionGattServer(private val context: Context) {
     var queueStateProvider: (() -> ByteArray)? = null
     var participantListProvider: (() -> ByteArray)? = null
 
+    /**
+     * Address of the phone's own board link, when there is one.
+     *
+     * Android reports every device already connected to the local adapter to a
+     * freshly opened GATT server — including the board WE are the client of —
+     * and it never disconnects while that link is up. Counted as a participant
+     * it makes [getConnectedCount] permanently positive, which silently
+     * disarmed the liveness half of the successor check before releasing a
+     * board. [RelayGattServer] has carried this filter since da988da2; the
+     * session server was not brought along.
+     */
+    var boardAddressProvider: () -> String? = { null }
+
+    private fun isOwnBoard(address: String): Boolean =
+        boardAddressProvider()?.equals(address, ignoreCase = true) == true
+
     private val gattCallback = object : BluetoothGattServerCallback() {
         @SuppressLint("MissingPermission")
         override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
             val address = device.address
+            if (isOwnBoard(address)) {
+                Log.d(TAG, "Ignoring own board link on the session server: $address")
+                return
+            }
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
                     synchronized(lock) {

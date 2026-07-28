@@ -116,9 +116,12 @@ class SessionQueueProtocolTest {
             QueueItem("770e8400-e29b-41d4-a716-446655440002", 55)
         )
         val encoded = SessionQueueProtocol.encodeQueueState(1, items)
-        val (index, decoded) = SessionQueueProtocol.decodeQueueState(encoded)!!
+        val page = SessionQueueProtocol.decodeQueueState(encoded)!!
+        val index = page.currentIndex
+        val decoded = page.items
 
         assertEquals(1, index)
+        assertEquals(1, page.pageCount)
         assertEquals(3, decoded.size)
         // Protocol normalizes UUIDs to uppercase, no hyphens
         assertEquals("550E8400E29B41D4A716446655440000", decoded[0].climbUuid)
@@ -132,9 +135,9 @@ class SessionQueueProtocolTest {
     @Test
     fun `encodeQueueState empty queue roundtrip`() {
         val encoded = SessionQueueProtocol.encodeQueueState(0, emptyList())
-        val (index, decoded) = SessionQueueProtocol.decodeQueueState(encoded)!!
-        assertEquals(0, index)
-        assertTrue(decoded.isEmpty())
+        val page = SessionQueueProtocol.decodeQueueState(encoded)!!
+        assertEquals(0, page.currentIndex)
+        assertTrue(page.items.isEmpty())
     }
 
     // ===== Session info roundtrip =====

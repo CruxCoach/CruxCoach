@@ -340,7 +340,7 @@ class PlaylistGeneratorViewModel @Inject constructor(
     }
 
     fun consumeCreatedList() {
-        _state.update { it.copy(createdListId = null) }
+        _state.update { it.copy(createdListId = null, droppedClimbs = 0) }
     }
 
     companion object {

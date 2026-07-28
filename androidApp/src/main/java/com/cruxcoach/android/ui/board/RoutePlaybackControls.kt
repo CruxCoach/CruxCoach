@@ -96,6 +96,14 @@ internal fun RoutePlaybackControls(
                 }
             }
 
+            if (!pb.canReachBoard) {
+                Text(
+                    stringResource(R.string.route_playback_board_busy),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
             // Transport controls
             Row(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -117,10 +125,15 @@ internal fun RoutePlaybackControls(
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cd_previous_frame), modifier = Modifier.size(24.dp))
                 }
 
+                // The only transport button that carried no gate, and the one
+                // whose action needs the board most: playback pushes a frame
+                // per tick, and while a playlist owns the wall every one of
+                // them was dropped. The animation ran, the wall did not.
                 FilledIconButton(
                     onClick = {
                         if (pb.isPlaying) viewModel.stopPlayback() else viewModel.startPlayback()
                     },
+                    enabled = pb.canReachBoard || pb.isPlaying,
                     modifier = Modifier.size(48.dp),
                     colors = IconButtonDefaults.filledIconButtonColors(containerColor = OrangeAccent)
                 ) {

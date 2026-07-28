@@ -1169,8 +1169,6 @@
     <string name="updater_mode_notify_desc">Shows an update notice. Download and installation start only after you confirm.</string>
     <string name="updater_mode_download_desc">Downloads and verifies the update automatically. You decide when to install it.</string>
     <string name="updater_mode_install_desc">Downloads, verifies, and installs automatically when Android permits it. Android may still require confirmation.</string>
-    <string name="updater_settings_auto_wifi">Auto-download (Wi-Fi)</string>
-    <string name="updater_settings_auto_wifi_desc">Downloads updates in the background once Wi-Fi is available. Install still requires one tap.</string>
     <string name="updater_settings_auto_mobile">Also download over mobile data</string>
     <string name="updater_settings_auto_mobile_desc">Only enable if you have an unlimited data plan.</string>
     <string name="updater_settings_anonymous_metrics">Anonymous verified-update count</string>
@@ -1183,6 +1181,8 @@
     <string name="updater_settings_pending_title">Version %1$s available</string>
     <string name="updater_settings_pending_size">about %1$s</string>
     <string name="updater_settings_pending_release_notes">Release notes</string>
+    <string name="updater_settings_release_notes_more">Show more</string>
+    <string name="updater_settings_release_notes_less">Show less</string>
     <string name="updater_settings_installing">Waiting for Android to finish installation…</string>
     <string name="updater_download_confirm_title">Download update %1$s?</string>
     <string name="updater_download_confirm_body">Download is about %1$s. You can then install the update.</string>
@@ -1233,6 +1233,9 @@
     <string name="playlist_send_to_board">Send to board</string>
     <string name="ble_sharing_blocked">Bluetooth is off — nobody can join yet</string>
     <string name="ble_sharing_blocked_action">Turn on</string>
+    <string name="ble_sharing_blocked_permission">Sharing needs Bluetooth permission — nobody can join yet</string>
+    <string name="ble_sharing_blocked_permission_action">Grant</string>
+    <string name="ble_sharing_blocked_other">Sharing could not start — nobody can join yet</string>
     <string name="playlist_connect_board_title">Connect to a board?</string>
     <string name="playlist_connect_board_body">Without a board connection the climbs are not sent to the wall.</string>
     <string name="playlist_connect_board_confirm">Connect board</string>
@@ -1425,6 +1428,7 @@
     <string name="cd_open">Open</string>
     <string name="cd_pause">Pause</string>
     <string name="cd_play">Play</string>
+    <string name="route_playback_board_busy">A playlist is on the board — playback stays on screen.</string>
     <string name="cd_preview_off">Preview off</string>
     <string name="cd_preview_on">Preview on</string>
     <string name="cd_previous">Previous</string>
@@ -2131,6 +2135,13 @@
     <string name="history_delete_title">Delete entries</string>
     <string name="cd_navigate_back">Back</string>
     <string name="cd_clear_selection">Clear selection</string>
+    <string name="playlist_generator_dropped_title">Fewer climbs than planned</string>
+    <plurals name="playlist_generator_dropped_body">
+        <item quantity="one">One slot stayed empty — the board has no climb in that grade range. The playlist is one climb shorter than the preview.</item>
+        <item quantity="other">%1$d slots stayed empty — the board has no climbs in those grade ranges. The playlist is that much shorter than the preview.</item>
+    </plurals>
+    <string name="playlist_generator_dropped_confirm">Got it</string>
+
     <plurals name="ble_nearby_playlists">
         <item quantity="one">%1$d playlist</item>
         <item quantity="other">%1$d playlists</item>
@@ -2258,6 +2269,7 @@
     <string name="relay_error_name">Couldn\'t set the sharing name.</string>
     <string name="relay_error_board_lost">Board connection lost — sharing stopped.</string>
     <string name="relay_error_unsupported_board">This board does not support compatible app sharing.</string>
+    <string name="relay_error_forward_failed">A shared climb did not reach the board. Sharing is still on — ask them to send it again.</string>
     <string name="relay_chip_stop">Stop</string>
     <string name="relay_host_title">Shared CruxCoach session</string>
     <string name="relay_host_join_subtitle">%1$d in session · Tap to join</string>
@@ -2266,4 +2278,25 @@
     <string name="board_ble_connection_multi">Multiple devices can stay connected</string>
     <string name="board_ble_connection_single">One device at a time</string>
     <string name="board_ble_search_instead">Search for boards instead</string>
+    <!-- Body stats: labels live here, not in the shared model -->
+    <string name="bodystat_label_weight">Weight</string>
+    <string name="bodystat_label_neck">Neck</string>
+    <string name="bodystat_label_waist">Waist</string>
+    <string name="bodystat_label_hips">Hips</string>
+    <string name="bodystat_label_body_fat">Body fat</string>
+    <string name="bodystat_label_arm_span">Arm span</string>
+    <string name="bodystat_label_forearm_circumference">Forearm circumference</string>
+    <string name="bodystat_label_max_hang_20mm">Max hang 20 mm</string>
+    <string name="bodystat_label_finger_span">Finger span</string>
+    <string name="bodystat_label_shoulder_mobility">Shoulder mobility</string>
+    <string name="bodystat_label_hip_flexion">Hip flexion</string>
+    <string name="bodystat_category_body_composition">Body composition</string>
+    <string name="bodystat_category_climbing_specific">Climbing-specific</string>
+    <string name="bodystat_category_mobility">Mobility</string>
+    <string name="bodystat_range_1m">1M</string>
+    <string name="bodystat_range_3m">3M</string>
+    <string name="bodystat_range_6m">6M</string>
+    <string name="bodystat_range_1y">1Y</string>
+    <string name="bodystat_range_all">All</string>
+    <string name="bodystat_placeholder">e.g. %1$s</string>
 </resources>

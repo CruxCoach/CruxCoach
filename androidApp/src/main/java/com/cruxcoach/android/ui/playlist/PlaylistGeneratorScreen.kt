@@ -61,6 +61,7 @@ import com.cruxcoach.domain.playlist.PlanSlot
 import com.cruxcoach.domain.playlist.CandidateSelection
 import com.cruxcoach.domain.playlist.SessionPosition
 import com.cruxcoach.domain.playlist.TrainingRanges
+import androidx.compose.ui.res.pluralStringResource
 
 /**
  * Generator wizard: session type, duration, session position, angle — with
@@ -77,12 +78,45 @@ fun PlaylistGeneratorScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showNameDialog by rememberSaveable { mutableStateOf(false) }
 
-    // Successful generate -> jump into the fresh list.
-    LaunchedEffect(state.createdListId) {
-        state.createdListId?.let { id ->
+    // Successful generate -> jump into the fresh list, unless the filler had
+    // to leave slots empty. That count was recorded and never shown: the list
+    // simply came out shorter than the preview the user had just approved,
+    // with nothing on screen accounting for the difference. Only a total
+    // failure was reported. Say it before navigating — after the jump the
+    // state is gone, both fields are written in the same frame.
+    LaunchedEffect(state.createdListId, state.droppedClimbs) {
+        val id = state.createdListId
+        if (id != null && state.droppedClimbs == 0) {
             viewModel.consumeCreatedList()
             onNavigateToPlaylist(id)
         }
+    }
+
+    val pendingListId = state.createdListId
+    if (pendingListId != null && state.droppedClimbs > 0) {
+        AlertDialog(
+            // No dismiss-by-tapping-away: this is the one moment the count
+            // exists, and it is the reason the list disagrees with the preview.
+            onDismissRequest = {},
+            title = { Text(stringResource(R.string.playlist_generator_dropped_title)) },
+            text = {
+                Text(
+                    pluralStringResource(
+                        R.plurals.playlist_generator_dropped_body,
+                        state.droppedClimbs,
+                        state.droppedClimbs,
+                    )
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.consumeCreatedList()
+                    onNavigateToPlaylist(pendingListId)
+                }) {
+                    Text(stringResource(R.string.playlist_generator_dropped_confirm))
+                }
+            },
+        )
     }
 
     if (showNameDialog) {

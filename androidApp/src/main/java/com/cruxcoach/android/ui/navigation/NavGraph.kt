@@ -669,6 +669,9 @@ fun CruxCoachNavHost(
                     val btEnableLauncher = rememberLauncherForActivityResult(
                         ActivityResultContracts.StartActivityForResult()
                     ) { /* the coordinator picks the adapter change up by itself */ }
+                    val sharingPermissionLauncher = rememberLauncherForActivityResult(
+                        ActivityResultContracts.RequestMultiplePermissions()
+                    ) { /* likewise: sharing retries once the grant lands */ }
                     com.cruxcoach.android.ui.playlist.PlaylistPlayerScreen(
                         onNavigateBack = { navController.popBackStack() },
                         onNavigateToClimb = { climbUuid, angle ->
@@ -682,6 +685,12 @@ fun CruxCoachNavHost(
                         },
                         onEnableBluetooth = {
                             btEnableLauncher.launch(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE))
+                        },
+                        onRequestSharingPermission = {
+                            sharingPermissionLauncher.launch(
+                                com.cruxcoach.android.ble.BlePermissionHelper
+                                    .getSessionHostingPermissions()
+                            )
                         },
                     )
                 }

@@ -314,6 +314,8 @@ class BoardBrowserViewModel @Inject constructor(
     private val sessionQueueManager: SessionQueueManager,
     private val bleShareManager: BleShareManager,
     private val nostrSigner: NostrSigner,
+    private val playbackCoordinator:
+        com.cruxcoach.android.data.PlaylistPlaybackCoordinator,
     val climbNavState: com.cruxcoach.android.ui.navigation.ClimbNavigationState
 ) : ViewModel() {
 
@@ -1761,18 +1763,20 @@ class BoardBrowserViewModel @Inject constructor(
 
     // --- Queue sharing ---
 
-    /** End or leave the queue. Relay, when enabled, remains independent. */
+    /**
+     * End or leave the queue. Relay, when enabled, remains independent.
+     *
+     * Goes through the coordinator, which is where the end-vs-leave split
+     * lives. This used to be a second copy of it, and the two had drifted:
+     * the copy neither carried the current climb over into "last on board"
+     * — leaving that banner on the previous climb until the GATT sentinel
+     * caught up — nor reset the auto-advance mode, so the next playlist
+     * inherited the last one's setting.
+     */
     fun endSharedSession(): com.cruxcoach.data.repository.Board_sessions? {
-        val queueState = sessionQueueManager.state.value
-        if (queueState.role == SessionRole.HOST) {
-            if (queueState.visibility == SessionVisibility.JOINABLE) {
-                gattBridge.stopSharing()
-            }
-            sessionQueueManager.endQueue()
-        } else if (queueState.role == SessionRole.PARTICIPANT) {
-            gattBridge.leaveSession()
-        }
-        return endSession()
+        val session = playbackCoordinator.stop()
+        buildSessionSummary(session)
+        return session
     }
 
     fun sendPrev() = gattBridge.sendPrev()
@@ -1793,6 +1797,12 @@ class BoardBrowserViewModel @Inject constructor(
 
     fun endSession(): com.cruxcoach.data.repository.Board_sessions? {
         val session = sessionManager.endSession()
+        buildSessionSummary(session)
+        return session
+    }
+
+    /** Shared by both end paths; the summary is the browser's own concern. */
+    private fun buildSessionSummary(session: com.cruxcoach.data.repository.Board_sessions?) {
         if (session != null) {
             viewModelScope.safeLaunch(TAG) {
                 val gradeScale = userPreferences.gradeScale.first()
@@ -1809,7 +1819,6 @@ class BoardBrowserViewModel @Inject constructor(
                 _lastSessionSummary.value = summary
             }
         }
-        return session
     }
 
     private val _lastSessionSummary = MutableStateFlow<EnhancedSessionSummary?>(null)

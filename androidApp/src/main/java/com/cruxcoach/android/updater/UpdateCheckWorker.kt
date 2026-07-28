@@ -23,9 +23,11 @@ import java.util.concurrent.TimeUnit
  *
  * Explicitly `setRequiresDeviceIdle(false)` + `setRequiresCharging(false)`
  * because idle-constrained jobs on OEM-killer devices (Xiaomi/Huawei/Oppo)
- * are often deferred for days. First-run expedited (`OneTimeWorkRequest`)
- * is scheduled separately so a fresh install knows within minutes
- * whether it's already stale.
+ * are often deferred for days. A separate first-run one-time request lets a
+ * fresh install find out within minutes whether it is already stale. That one
+ * is deliberately not expedited — an expedited worker with no foreground
+ * notification crashed on the old API, and a first check is not
+ * latency-critical; the reasoning sits at the enqueue site.
  */
 @HiltWorker
 class UpdateCheckWorker @AssistedInject constructor(

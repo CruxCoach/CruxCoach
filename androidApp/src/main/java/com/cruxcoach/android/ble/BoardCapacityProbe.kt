@@ -88,6 +88,13 @@ class BoardCapacityProbe @Inject constructor(
                     // A completed scan that saw nothing is evidence, and the
                     // only thing that can correct a stale "accepts several".
                     ConnectedAdvertisingProbeResult.NOT_OBSERVED -> {
+                        // Same pair as the positive branch: the live descriptor
+                        // decides everything for the rest of this connection,
+                        // the store only seeds the next one.
+                        bleConnection.recordAdvertisingWhileConnected(
+                            board.address,
+                            advertises = false,
+                        )
                         userPreferences.setRememberedBoardAdvertisesWhileConnected(
                             board.boardBrand,
                             observed = false,

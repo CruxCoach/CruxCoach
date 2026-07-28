@@ -15,6 +15,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.cruxcoach.android.ble.QueueItem
 
 /**
  * Bridges [SessionQueueManager] with BLE GATT for shared sessions.
@@ -104,6 +105,12 @@ class SessionGattBridge(
         queueManager.setVisibilityRequested(SessionVisibility.JOINABLE)
         commandGate.clear()
 
+        // Before start(): Android hands a freshly opened server every device
+        // already on the adapter, and our own board arrives before start()
+        // even returns. Set after the fact it would be counted once as a
+        // participant. Same wiring CruxRelayManager does for the relay server.
+        gattServer.boardAddressProvider = { bleConnection.connectedBoard?.address }
+
         // Start GATT server
         if (!gattServer.start()) {
             Log.e(TAG, "startSharing(): GATT server failed to start")
@@ -120,10 +127,12 @@ class SessionGattBridge(
 
         // Wire queue change listeners to push delta events
         queueManager.onQueueChanged = {
-            gattServer.notifyAll(
-                SessionGattUuids.QUEUE_STATE,
-                queueManager.encodeQueueState()
-            )
+            // Every page: a generated session can run to 38 entries and one
+            // frame carries 29. The old single notification was silently
+            // truncated past that and the participant dropped it whole.
+            queueManager.encodeQueueStatePages().forEach { page ->
+                gattServer.notifyAll(SessionGattUuids.QUEUE_STATE, page)
+            }
             // Update session advertisement scan response (e.g. first climb added)
             if (isSharing) {
                 updateSessionAdvertising()
@@ -555,13 +564,31 @@ class SessionGattBridge(
                 }
             }
 
-            // Listen for full queue state (initial sync + updates)
+            // Listen for full queue state (initial sync + updates).
+            // Reassembled from pages — applied only once every page of a set
+            // has arrived, so a half-received queue never replaces a whole one.
             launch {
+                val pages = mutableMapOf<Int, List<QueueItem>>()
+                var expectedPageCount = -1
+                var pendingIndex = 0
                 gattClient.queueStateUpdates.collect { data ->
                     val parsed = SessionQueueProtocol.decodeQueueState(data) ?: return@collect
-                    val (currentIndex, items) = parsed
-                    Log.d(TAG, "Received queue state: ${items.size} items, currentIndex=$currentIndex")
-                    queueManager.applyRemoteState(currentIndex, items)
+                    if (parsed.pageCount != expectedPageCount) {
+                        // A new set supersedes whatever was half-collected.
+                        pages.clear()
+                        expectedPageCount = parsed.pageCount
+                    }
+                    pendingIndex = parsed.currentIndex
+                    pages[parsed.page] = parsed.items
+                    if (pages.size < expectedPageCount) {
+                        Log.d(TAG, "Queue state page ${parsed.page + 1}/$expectedPageCount")
+                        return@collect
+                    }
+                    val items = (0 until expectedPageCount).flatMap { pages[it].orEmpty() }
+                    pages.clear()
+                    expectedPageCount = -1
+                    Log.d(TAG, "Received queue state: ${items.size} items, currentIndex=$pendingIndex")
+                    queueManager.applyRemoteState(pendingIndex, items)
                 }
             }
 

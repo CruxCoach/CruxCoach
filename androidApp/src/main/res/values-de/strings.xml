@@ -1216,8 +1216,6 @@
     <string name="updater_mode_notify_desc">Zeigt einen Update-Hinweis. Download und Installation starten erst nach deiner Bestätigung.</string>
     <string name="updater_mode_download_desc">Lädt und prüft das Update automatisch. Du entscheidest, wann es installiert wird.</string>
     <string name="updater_mode_install_desc">Lädt, prüft und installiert automatisch, soweit Android es zulässt. Android kann trotzdem eine Bestätigung verlangen.</string>
-    <string name="updater_settings_auto_wifi">Automatisch herunterladen (WLAN)</string>
-    <string name="updater_settings_auto_wifi_desc">Lädt Updates im Hintergrund, sobald WLAN verfügbar ist. Installation erfordert weiterhin einen Tap.</string>
     <string name="updater_settings_auto_mobile">Auch über mobile Daten laden</string>
     <string name="updater_settings_auto_mobile_desc">Nur aktivieren, wenn du einen unbegrenzten Datentarif hast.</string>
     <string name="updater_settings_anonymous_metrics">Anonymer Zähler verifizierter Updates</string>
@@ -1230,6 +1228,8 @@
     <string name="updater_settings_pending_title">Version %1$s verfügbar</string>
     <string name="updater_settings_pending_size">ca. %1$s</string>
     <string name="updater_settings_pending_release_notes">Release-Notes</string>
+    <string name="updater_settings_release_notes_more">Mehr anzeigen</string>
+    <string name="updater_settings_release_notes_less">Weniger anzeigen</string>
     <string name="updater_settings_installing">Android schließt die Installation ab…</string>
     <string name="updater_download_confirm_title">Update %1$s herunterladen?</string>
     <string name="updater_download_confirm_body">Download ist ca. %1$s groß. Anschließend kannst du das Update installieren.</string>
@@ -1278,6 +1278,9 @@
     <string name="playlist_send_to_board">Ans Board senden</string>
     <string name="ble_sharing_blocked">Bluetooth ist aus — noch kann niemand beitreten</string>
     <string name="ble_sharing_blocked_action">Einschalten</string>
+    <string name="ble_sharing_blocked_permission">Teilen braucht die Bluetooth-Berechtigung — noch kann niemand beitreten</string>
+    <string name="ble_sharing_blocked_permission_action">Erlauben</string>
+    <string name="ble_sharing_blocked_other">Teilen konnte nicht starten — noch kann niemand beitreten</string>
     <string name="playlist_connect_board_title">Mit Board verbinden?</string>
     <string name="playlist_connect_board_body">Ohne Board-Verbindung werden die Climbs nicht an die Wand geschickt.</string>
     <string name="playlist_connect_board_confirm">Board verbinden</string>
@@ -1468,6 +1471,7 @@
     <string name="cd_open">Öffnen</string>
     <string name="cd_pause">Pausieren</string>
     <string name="cd_play">Abspielen</string>
+    <string name="route_playback_board_busy">Eine Playlist liegt auf dem Board — die Wiedergabe bleibt auf dem Bildschirm.</string>
     <string name="cd_preview_off">Vorschau aus</string>
     <string name="cd_preview_on">Vorschau an</string>
     <string name="cd_previous">Zurück</string>
@@ -2130,6 +2134,13 @@
     <string name="history_delete_title">Einträge löschen</string>
     <string name="cd_navigate_back">Zurück</string>
     <string name="cd_clear_selection">Auswahl löschen</string>
+    <string name="playlist_generator_dropped_title">Weniger Boulder als geplant</string>
+    <plurals name="playlist_generator_dropped_body">
+        <item quantity="one">Ein Platz blieb leer — auf dem Board gibt es keinen Boulder in diesem Gradbereich. Die Playlist ist einen Boulder kürzer als die Vorschau.</item>
+        <item quantity="other">%1$d Plätze blieben leer — auf dem Board gibt es keine Boulder in diesen Gradbereichen. Die Playlist ist entsprechend kürzer als die Vorschau.</item>
+    </plurals>
+    <string name="playlist_generator_dropped_confirm">Verstanden</string>
+
     <plurals name="ble_nearby_playlists">
         <item quantity="one">%1$d Playlist</item>
         <item quantity="other">%1$d Playlists</item>
@@ -2257,6 +2268,7 @@
     <string name="relay_error_name">Freigabe-Name konnte nicht gesetzt werden.</string>
     <string name="relay_error_board_lost">Board-Verbindung verloren — Teilen beendet.</string>
     <string name="relay_error_unsupported_board">Dieses Board unterstützt die Freigabe für kompatible Board-Apps nicht.</string>
+    <string name="relay_error_forward_failed">Ein geteilter Boulder hat das Board nicht erreicht. Die Freigabe läuft weiter — bitte noch einmal senden lassen.</string>
     <string name="relay_chip_stop">Beenden</string>
     <string name="relay_host_title">Geteilte CruxCoach-Session</string>
     <string name="relay_host_join_subtitle">%1$d in der Session · Antippen zum Beitreten</string>
@@ -2265,4 +2277,25 @@
     <string name="board_ble_connection_multi">Mehrere Geräte können verbunden bleiben</string>
     <string name="board_ble_connection_single">Ein Gerät gleichzeitig</string>
     <string name="board_ble_search_instead">Stattdessen nach Boards suchen</string>
+    <!-- Body stats: labels live here, not in the shared model -->
+    <string name="bodystat_label_weight">Gewicht</string>
+    <string name="bodystat_label_neck">Halsumfang</string>
+    <string name="bodystat_label_waist">Taillenumfang</string>
+    <string name="bodystat_label_hips">Hüftumfang</string>
+    <string name="bodystat_label_body_fat">Körperfett</string>
+    <string name="bodystat_label_arm_span">Spannweite</string>
+    <string name="bodystat_label_forearm_circumference">Unterarmumfang</string>
+    <string name="bodystat_label_max_hang_20mm">Max Hang 20 mm</string>
+    <string name="bodystat_label_finger_span">Fingerspanne</string>
+    <string name="bodystat_label_shoulder_mobility">Schulterbeweglichkeit</string>
+    <string name="bodystat_label_hip_flexion">Hüftbeugung</string>
+    <string name="bodystat_category_body_composition">Körperzusammensetzung</string>
+    <string name="bodystat_category_climbing_specific">Kletter-spezifisch</string>
+    <string name="bodystat_category_mobility">Beweglichkeit</string>
+    <string name="bodystat_range_1m">1M</string>
+    <string name="bodystat_range_3m">3M</string>
+    <string name="bodystat_range_6m">6M</string>
+    <string name="bodystat_range_1y">1J</string>
+    <string name="bodystat_range_all">Alle</string>
+    <string name="bodystat_placeholder">z. B. %1$s</string>
 </resources>

@@ -157,27 +157,36 @@ class BoardBleConnection(private val context: Context) {
         synchronized(keepAliveLock) { keepAliveOwners.isNotEmpty() }
 
     /**
-     * Records that this controller was seen advertising connectably WHILE we
-     * hold GATT — proof it can take another central.
+     * Records what a completed advertising probe saw while we hold GATT.
      *
-     * Positive only, by design. A peripheral is reachable exactly while it
-     * advertises, so seeing the advertisement settles the question; NOT seeing
-     * it settles nothing, because Android routinely withholds advertisements
-     * from a peer it is already connected to. The absence therefore leaves the
-     * controller at its conservative default (exclusive) instead of claiming a
-     * verified fact about the firmware.
+     * [advertises] true means the controller was seen advertising connectably
+     * — a peripheral is reachable exactly while it advertises, so that settles
+     * it. False is only ever passed for a scan that ran to the end and saw
+     * nothing, which is the one thing that can correct a stale "accepts
+     * several"; an inconclusive scan does not call this at all.
+     *
+     * Both directions land on the live descriptor, not just in storage. The
+     * downgrade used to be written to preferences only, so for the rest of
+     * that connection the app still treated a controller it had just proven
+     * exclusive as shared: the "share this board" control stayed hidden,
+     * idle release stayed suppressed, and the correction took effect only on
+     * the next connect.
      */
-    fun recordAdvertisingWhileConnected(address: String) {
+    fun recordAdvertisingWhileConnected(address: String, advertises: Boolean = true) {
         if (_connectionState.value != ConnectionState.CONNECTED &&
             _connectionState.value != ConnectionState.SENDING
         ) return
         val board = currentBoard?.takeIf { it.address.equals(address, ignoreCase = true) } ?: return
-        if (board.advertisesWhileConnected == true) return
-        val updated = board.copy(advertisesWhileConnected = true)
+        if (board.advertisesWhileConnected == advertises) return
+        val updated = board.copy(advertisesWhileConnected = advertises)
         currentBoard = updated
         _connectedBoardDescriptor.value = updated
-        Log.i(TAG, "Controller advertises while connected — accepts more clients")
-        // Capacity just changed; idle release does not apply to a shared board.
+        Log.i(
+            TAG,
+            if (advertises) "Controller advertises while connected — accepts more clients"
+            else "Controller did not advertise on a completed scan — exclusive",
+        )
+        // Capacity just changed; idle release only applies to an exclusive board.
         resetIdleTimer()
     }
 

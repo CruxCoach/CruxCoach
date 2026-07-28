@@ -14,8 +14,16 @@ import java.util.UUID
  *   EVT_ADDED, EVT_REMOVED, EVT_CURRENT, EVT_CLEARED, EVT_PARTICIPANT_JOINED/LEFT
  *   Each event fits in a single BLE notification (max 19 bytes).
  *
- * **Full State** (read via QUEUE_STATE characteristic, supports GATT Long Read for large queues):
- *   [1B currentIndex][1B itemCount][per item: 1B angle + 16B uuid]
+ * **Full State** (read via QUEUE_STATE characteristic, supports GATT Long Read):
+ *   [1B currentIndex][1B page][1B pageCount][1B itemsInPage][per item: 1B angle + 16B uuid]
+ *
+ *   Paged, because one attribute cannot carry a whole playlist. GATT caps an
+ *   attribute value at 512 bytes and a notification at ATT_MTU-3 (509 here),
+ *   which is 29 items — while the generator builds sessions of up to 38. The
+ *   frame used to be a flat list with a single count byte, so anything larger
+ *   arrived truncated, failed the length check on the participant's side and
+ *   was dropped without a word: the joiner saw the host, the participant count
+ *   and an empty queue.
  */
 object SessionQueueProtocol {
 
@@ -184,12 +192,34 @@ object SessionQueueProtocol {
 
     // ===== Full queue state (for GATT Read / initial sync) =====
 
-    fun encodeQueueState(currentIndex: Int, items: List<QueueItem>): ByteArray {
-        val buf = ByteArray(2 + items.size * 17)
+    /** Items per page — sized for a notification (ATT_MTU-3 = 509 here). */
+    const val QUEUE_STATE_PAGE_SIZE = 29
+
+    private const val QUEUE_STATE_HEADER = 4
+    private const val QUEUE_STATE_ITEM = 17
+
+    /** One page of a queue. [page] is 0-based, [pageCount] is at least 1. */
+    data class QueueStatePage(
+        val currentIndex: Int,
+        val page: Int,
+        val pageCount: Int,
+        val items: List<QueueItem>,
+    )
+
+    /** How many pages [itemCount] items need. An empty queue still sends one. */
+    fun queueStatePageCount(itemCount: Int): Int =
+        if (itemCount == 0) 1 else (itemCount + QUEUE_STATE_PAGE_SIZE - 1) / QUEUE_STATE_PAGE_SIZE
+
+    fun encodeQueueState(currentIndex: Int, items: List<QueueItem>, page: Int = 0): ByteArray {
+        val pageCount = queueStatePageCount(items.size)
+        val slice = items.drop(page * QUEUE_STATE_PAGE_SIZE).take(QUEUE_STATE_PAGE_SIZE)
+        val buf = ByteArray(QUEUE_STATE_HEADER + slice.size * QUEUE_STATE_ITEM)
         buf[0] = currentIndex.toByte()
-        buf[1] = items.size.toByte()
-        items.forEachIndexed { i, item ->
-            val offset = 2 + i * 17
+        buf[1] = page.toByte()
+        buf[2] = pageCount.toByte()
+        buf[3] = slice.size.toByte()
+        slice.forEachIndexed { i, item ->
+            val offset = QUEUE_STATE_HEADER + i * QUEUE_STATE_ITEM
             buf[offset] = item.angle.coerceIn(0, 70).toByte()
             val uuid = UUID.fromString(normalizeUuid(item.climbUuid))
             putUuid(buf, offset + 1, uuid)
@@ -197,18 +227,21 @@ object SessionQueueProtocol {
         return buf
     }
 
-    fun decodeQueueState(data: ByteArray): Pair<Int, List<QueueItem>>? {
-        if (data.size < 2) return null
+    fun decodeQueueState(data: ByteArray): QueueStatePage? {
+        if (data.size < QUEUE_STATE_HEADER) return null
         val currentIndex = data[0].toInt() and 0xFF
-        val count = data[1].toInt() and 0xFF
-        if (data.size < 2 + count * 17) return null
+        val page = data[1].toInt() and 0xFF
+        val pageCount = data[2].toInt() and 0xFF
+        val count = data[3].toInt() and 0xFF
+        if (pageCount == 0 || page >= pageCount) return null
+        if (data.size < QUEUE_STATE_HEADER + count * QUEUE_STATE_ITEM) return null
         val items = (0 until count).map { i ->
-            val offset = 2 + i * 17
+            val offset = QUEUE_STATE_HEADER + i * QUEUE_STATE_ITEM
             val angle = data[offset].toInt() and 0xFF
             val uuid = getUuid(data, offset + 1)
             QueueItem(uuid.toString().replace("-", "").uppercase(), angle)
         }
-        return currentIndex to items
+        return QueueStatePage(currentIndex, page, pageCount, items)
     }
 
     // ===== Session info (for GATT Read) =====

@@ -544,8 +544,25 @@ class BleShareManagerTest {
     // ===== Session climb updates (FEAT-035 core scenario) =====
 
     @Test
+    fun `a stranger's session climb is not shown to a session member`() = runTest {
+        // Own queue empty, so stages 3 and 4 pass. Before the session-id check
+        // the first foreign advertisement won stage 5 and was labelled
+        // "session climb" beside the member's own queue banner.
+        queueStateFlow.value =
+            SessionQueueState(role = SessionRole.PARTICIPANT, sessionId = 12345)
+        nearbySessionsFlow.value = listOf(session(sessionId = 999, currentClimbUuid = UUID_C))
+        advanceUntilIdle()
+
+        assertNull(manager.uiState.value.onBoardClimb?.climbUuid)
+    }
+
+    @Test
     fun `session climb updates when host navigates queue`() = runTest {
-        queueStateFlow.value = SessionQueueState(role = SessionRole.PARTICIPANT)
+        // A real participant carries the host's session id (setParticipantRole);
+        // stage 5 now insists on it, so a stranger's advertisement cannot pose
+        // as this session's climb.
+        queueStateFlow.value =
+            SessionQueueState(role = SessionRole.PARTICIPANT, sessionId = 12345)
         nearbySessionsFlow.value = listOf(session(currentClimbUuid = UUID_A))
         advanceUntilIdle()
         assertEquals(UUID_A, manager.uiState.value.onBoardClimb?.climbUuid)

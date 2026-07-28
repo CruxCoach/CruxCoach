@@ -236,7 +236,11 @@ class SessionQueueManager(
         _state.update { it.copy(queue = items, currentIndex = 0) }
         onQueueChanged?.invoke()
         onCurrentClimbChanged?.invoke()
-        sendCurrentClimbToBoard()
+        // Starting a playlist *is* the explicit action — the second case the
+        // parameter's own doc names, and until now the one with no caller.
+        // Without it, EXPLICIT mode left the wall dark after "Play" and asked
+        // for the lamp on top of the tap that started the thing.
+        sendCurrentClimbToBoard(explicitRequest = true)
         Log.d(TAG, "loadPlaylist: ${items.size} items, host=$hostName")
     }
 
@@ -714,9 +718,19 @@ class SessionQueueManager(
 
     // ===== Protocol helpers for SessionGattBridge =====
 
+    /** Page 0 — what a plain characteristic read gets; its header says how
+     *  many pages follow over notifications. */
     fun encodeQueueState(): ByteArray {
         val s = _state.value
         return SessionQueueProtocol.encodeQueueState(s.currentIndex, s.queue)
+    }
+
+    /** Every page, in order. A queue past 29 items does not fit one frame. */
+    fun encodeQueueStatePages(): List<ByteArray> {
+        val s = _state.value
+        return (0 until SessionQueueProtocol.queueStatePageCount(s.queue.size)).map { page ->
+            SessionQueueProtocol.encodeQueueState(s.currentIndex, s.queue, page)
+        }
     }
 
     fun encodeSessionInfo(): ByteArray {
@@ -740,6 +754,8 @@ class SessionQueueManager(
         }
         val item = state.currentClimb
         return if (item != null) {
+            // Only byte 0 (the index) is read on the other side; the single
+            // item rides along on the queue-state layout.
             SessionQueueProtocol.encodeQueueState(state.currentIndex, listOf(item))
         } else {
             byteArrayOf(NO_CURRENT_CLIMB_INDEX.toByte(), 0)

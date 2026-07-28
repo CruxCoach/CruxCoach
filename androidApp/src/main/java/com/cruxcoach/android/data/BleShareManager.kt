@@ -539,8 +539,23 @@ class BleShareManager @Inject constructor(
             )
         }
 
-        // 5. Session remote climb for NON-PARTICIPANT — session advertisement
-        val sessionClimb = sessions.firstOrNull { it.currentClimbUuid != null }
+        // 5. Session remote climb — from the session advertisement.
+        //
+        // Reached by a non-participant (nothing else to show) and by a session
+        // member whose own queue has no current climb yet, which is how a
+        // participant sees what the host put on the wall before the queue
+        // arrives over GATT.
+        //
+        // Which session matters, though. This took the first advertisement
+        // carrying any climb, so a member with an empty queue could be shown a
+        // *stranger's* climb as "session climb", right beside their own queue
+        // banner. The suppression at the top cannot catch that: it keys off the
+        // same currentClimb that was null. Once we are in a session, only that
+        // session may speak here.
+        val sessionClimb = sessions.firstOrNull {
+            it.currentClimbUuid != null &&
+                (queueState.role == SessionRole.NONE || it.sessionId == queueState.sessionId)
+        }
         if (sessionClimb != null) {
             val info = climbInfos[sessionClimb.currentClimbUuid]
             return OnBoardClimbEntry(

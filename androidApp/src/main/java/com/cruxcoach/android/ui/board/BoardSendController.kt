@@ -78,9 +78,7 @@ internal class BoardSendController(
     fun sendToBoard() {
         // When a session queue is active, the queue controls what's on the board.
         // Individual climb sends from detail views are suppressed.
-        if (sessionQueueManager.state.value.isActive ||
-            sessionQueueManager.state.value.isConnecting
-        ) {
+        if (isBoardOwnedBySession()) {
             Log.d(TAG, "sendToBoard: suppressed (session queue active)")
             return
         }
@@ -350,6 +348,21 @@ internal class BoardSendController(
     /** Whether the BLE board is currently connected. */
     fun isConnected(): Boolean =
         bleConnection.connectionState.value == ConnectionState.CONNECTED
+
+    /**
+     * Whether a send from this screen would actually reach the wall.
+     *
+     * [sendToBoard] drops a request while a session queue owns the board, and
+     * a caller that only checked [isConnected] got a silent no-op: route
+     * playback ran its whole animation, frame counter and all, while every
+     * frame was discarded. Surfaces that offer a send ask this, not the
+     * connection alone.
+     */
+    fun canSendToBoard(): Boolean = isConnected() && !isBoardOwnedBySession()
+
+    private fun isBoardOwnedBySession(): Boolean =
+        sessionQueueManager.state.value.isActive ||
+            sessionQueueManager.state.value.isConnecting
 
     private companion object {
         const val TAG = "BoardSendController"

@@ -84,7 +84,12 @@ data class PlaybackState(
     val isLooping: Boolean = false,
     val speedSec: Float = 5f,
     val showPreview: Boolean = false,
-    val countdownSeconds: Int = 0
+    val countdownSeconds: Int = 0,
+    /**
+     * False while something else owns the wall — today a running playlist.
+     * Playback would still animate on screen and reach nothing.
+     */
+    val canReachBoard: Boolean = true,
 )
 
 /** BLE send-to-board state. */
@@ -367,8 +372,10 @@ class BoardClimbDetailViewModel @Inject constructor(
         onFrameChanged = {
             // Frame navigation/playback is already an explicit user command.
             // Once started, every frame must reach the board regardless of the
-            // saved climb-selection send mode.
-            if (sendController.isConnected()) sendController.sendToBoard()
+            // saved climb-selection send mode — but only when a send can get
+            // there at all. Asking isConnected() alone let the animation run
+            // through while a session queue swallowed every single frame.
+            if (sendController.canSendToBoard()) sendController.sendToBoard()
         }
     )
 
@@ -492,6 +499,27 @@ class BoardClimbDetailViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "capacity-specific board send mode collect terminated", e)
+            }
+        }
+        // Keep the playback controls honest about whether a frame can land.
+        // Both inputs matter: the link can drop, and a playlist can take the
+        // wall over while this screen is open.
+        viewModelScope.launch {
+            try {
+                kotlinx.coroutines.flow.combine(
+                    bleConnection.connectionState,
+                    sessionQueueManager.state,
+                ) { _, _ -> sendController.canSendToBoard() }
+                    .distinctUntilChanged()
+                    .collect { canReach ->
+                        _state.update {
+                            it.copy(playback = it.playback.copy(canReachBoard = canReach))
+                        }
+                    }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "canReachBoard collect terminated", e)
             }
         }
         viewModelScope.launch {

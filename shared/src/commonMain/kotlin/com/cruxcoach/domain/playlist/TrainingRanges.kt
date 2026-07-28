@@ -74,11 +74,12 @@ object TrainingRanges {
     const val PE_BAND_LOW_BELOW_MAX = 3 * DIFF_PER_V_GRADE
     const val PE_BAND_HIGH_BELOW_MAX = 2 * DIFF_PER_V_GRADE
 
-    /** Pyramid: Font-step tiers (6c → 6c+ → 7a → 7a+), base 3 steps below
-     *  the apex — the classic Font pyramid; V-grade tiers jump twice as
-     *  far and skip the half grades boards actually carry. */
+    /** Pyramid: Font-step tiers (6c → 6c+ → 7a → 7a+) — the classic Font
+     *  pyramid; V-grade tiers jump twice as far and skip the half grades
+     *  boards actually carry. How far the base sits below the apex follows
+     *  from the tier count, which the session length decides, so it is not a
+     *  constant: see PlaylistPlanner.pyramidBase. */
     const val PYRAMID_STEP = 1 * DIFF_PER_FONT_STEP
-    const val PYRAMID_BASE_BELOW_APEX = 3 * DIFF_PER_FONT_STEP
 
     /** Pyramid apex sits 2 Font steps (1 V) below max: a session pyramid
      *  only works when every tier actually gets TOPPED — an apex at the

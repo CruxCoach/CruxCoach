@@ -47,6 +47,12 @@ import com.cruxcoach.android.R
 import com.cruxcoach.android.updater.PipelineStage
 import com.cruxcoach.android.updater.UpdateAutomationMode
 import com.cruxcoach.android.updater.UpdateNotificationReliabilityHelper
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.text.style.TextOverflow
 
 /**
  * Settings section for the in-app updater (§6.15). Layout matches the
@@ -256,6 +262,7 @@ internal fun UpdaterSettingsSection(
                     sizeBytes = info.apkSizeBytes,
                     stage = state.pipelineStage,
                     downloadProgress = downloadProgress,
+                    releaseNotesMarkdown = info.releaseNotesMarkdown,
                     onDownload = { downloadConfirmFor = info },
                     onInstall = viewModel::installPending,
                 )
@@ -357,6 +364,7 @@ private fun PendingUpdateRow(
     sizeBytes: Long,
     stage: PipelineStage,
     downloadProgress: Int?,
+    releaseNotesMarkdown: String?,
     onDownload: () -> Unit,
     onInstall: () -> Unit,
 ) {
@@ -374,6 +382,43 @@ private fun PendingUpdateRow(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            // Fetched from the release since 0.2.2, carried through the
+            // DataStore, and read by nobody — so "download update?" offered a
+            // size and nothing about what changes, and AUTO_INSTALL asked
+            // nothing at all. Collapsed by default: changelogs run long, and
+            // an update row should not push the rest of the screen away.
+            if (!releaseNotesMarkdown.isNullOrBlank()) {
+                var expanded by rememberSaveable(version) { mutableStateOf(false) }
+                Text(
+                    text = stringResource(R.string.updater_settings_pending_release_notes),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = releaseNotesMarkdown.trim(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = if (expanded) Int.MAX_VALUE else COLLAPSED_NOTES_LINES,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = if (expanded) {
+                        Modifier.heightIn(max = EXPANDED_NOTES_MAX_HEIGHT).verticalScroll(
+                            rememberScrollState()
+                        )
+                    } else Modifier,
+                )
+                TextButton(
+                    onClick = { expanded = !expanded },
+                    contentPadding = PaddingValues(0.dp),
+                ) {
+                    Text(
+                        stringResource(
+                            if (expanded) R.string.updater_settings_release_notes_less
+                            else R.string.updater_settings_release_notes_more
+                        ),
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                }
+            }
             when (stage) {
                 PipelineStage.READY_TO_INSTALL -> {
                     OutlinedButton(onClick = onInstall) {
@@ -443,3 +488,7 @@ private fun humanSize(bytes: Long): String {
     val mb = bytes.toDouble() / (1024.0 * 1024.0)
     return "%.1f MB".format(mb)
 }
+
+/** Enough to see what kind of release it is without taking over the screen. */
+private const val COLLAPSED_NOTES_LINES = 4
+private val EXPANDED_NOTES_MAX_HEIGHT = 220.dp

@@ -231,6 +231,29 @@ class PlaylistPlannerTest {
     }
 
     @Test
+    fun `short pyramid warm-up reaches one V below its three-tier base`() {
+        val plan = PlaylistPlanner.plan(
+            params(GeneratorType.PYRAMID, duration = 45, position = SessionPosition.START_COLD),
+            profile,
+        )
+        val warmUp = plan.climbs().filter { it.section == PlanSection.WARM_UP }
+        assertTrue(warmUp.isNotEmpty())
+        // A 45-minute pyramid loses its ladder minutes from the main budget
+        // and builds THREE tiers, so the base is anchor−2−2 = 18, not the
+        // anchor−5 = 17 a four-tier pyramid would give. The ladder has to
+        // stop 1 V below the base it will actually meet.
+        val base = plan.climbs()
+            .filter { it.section != PlanSection.WARM_UP }
+            .minOf { (it.minDifficulty + it.maxDifficulty) / 2 }
+        val topCenter = warmUp.maxOf { (it.minDifficulty + it.maxDifficulty) / 2 }
+        assertEquals(
+            TrainingRanges.DIFF_PER_V_GRADE,
+            base - topCenter,
+            "ladder ended ${base - topCenter} below the first working problem",
+        )
+    }
+
+    @Test
     fun `easy-session warm-up starts below the working grade not below max`() {
         val plan = PlaylistPlanner.plan(
             params(GeneratorType.VOLUME, duration = 60, position = SessionPosition.START_COLD),

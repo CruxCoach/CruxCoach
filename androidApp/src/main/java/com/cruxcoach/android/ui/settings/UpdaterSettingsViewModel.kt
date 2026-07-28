@@ -94,9 +94,6 @@ class UpdaterSettingsViewModel @Inject constructor(
         repository.setAutomationMode(mode)
     }
 
-    fun setAutoDownloadOnWifi(enabled: Boolean) = viewModelScope.launch {
-        repository.setAutoDownloadOnWifi(enabled)
-    }
 
     fun setAutoDownloadOnMobile(enabled: Boolean) = viewModelScope.launch {
         repository.setAutoDownloadOnMobile(enabled)

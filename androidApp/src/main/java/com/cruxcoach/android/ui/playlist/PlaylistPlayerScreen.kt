@@ -92,6 +92,9 @@ import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.data.repository.brand
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.MoonBoardVariant
+import android.bluetooth.BluetoothManager
+import androidx.compose.ui.platform.LocalContext
+import com.cruxcoach.android.ble.BlePermissionHelper
 
 /**
  * The playlist player — the one place a running playlist lives. Board
@@ -111,6 +114,8 @@ fun PlaylistPlayerScreen(
     onNavigateToBrowser: () -> Unit = {},
     /** Opens the system's Bluetooth-enable dialog via the connect sheet's flow. */
     onEnableBluetooth: () -> Unit = {},
+    /** Asks for BLUETOOTH_ADVERTISE when that is what blocks sharing. */
+    onRequestSharingPermission: () -> Unit = {},
     viewModel: PlaylistPlayerViewModel = hiltViewModel(),
 ) {
     val playback by viewModel.playbackState.collectAsStateWithLifecycle()
@@ -302,6 +307,21 @@ fun PlaylistPlayerScreen(
                 // Bluetooth returns, but until then nobody can join and nothing
                 // would say why.
                 if (playback.sharingBlocked) {
+                    // sharingBlocked is true for three different reasons and
+                    // carries none of them, so the banner used to name the
+                    // most common one and be wrong for the other two: a
+                    // climber who had refused the advertise permission read
+                    // "Bluetooth is off" with Bluetooth on. Ask the platform
+                    // here instead — it is the same question, answered where
+                    // the answer exists.
+                    val context = LocalContext.current
+                    val bluetoothOff = remember(playback.sharingBlocked) {
+                        val adapter = context.getSystemService(BluetoothManager::class.java)?.adapter
+                        adapter != null && !adapter.isEnabled
+                    }
+                    val advertisePermissionMissing = remember(playback.sharingBlocked) {
+                        !BlePermissionHelper.hasAdvertisingPermission(context)
+                    }
                     Surface(
                         color = WarningYellow.copy(alpha = 0.15f),
                         modifier = Modifier.fillMaxWidth(),
@@ -311,14 +331,30 @@ fun PlaylistPlayerScreen(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
-                                stringResource(R.string.ble_sharing_blocked),
+                                stringResource(
+                                    when {
+                                        bluetoothOff -> R.string.ble_sharing_blocked
+                                        advertisePermissionMissing ->
+                                            R.string.ble_sharing_blocked_permission
+                                        else -> R.string.ble_sharing_blocked_other
+                                    }
+                                ),
                                 style = MaterialTheme.typography.bodySmall,
                                 fontWeight = FontWeight.SemiBold,
                                 color = WarningYellow,
                                 modifier = Modifier.weight(1f),
                             )
-                            TextButton(onClick = onEnableBluetooth) {
-                                Text(stringResource(R.string.ble_sharing_blocked_action))
+                            // Only offer an action that leads somewhere. The
+                            // third case — the GATT server itself refused —
+                            // has nothing for the user to do but retry.
+                            if (bluetoothOff) {
+                                TextButton(onClick = onEnableBluetooth) {
+                                    Text(stringResource(R.string.ble_sharing_blocked_action))
+                                }
+                            } else if (advertisePermissionMissing) {
+                                TextButton(onClick = onRequestSharingPermission) {
+                                    Text(stringResource(R.string.ble_sharing_blocked_permission_action))
+                                }
                             }
                         }
                     }

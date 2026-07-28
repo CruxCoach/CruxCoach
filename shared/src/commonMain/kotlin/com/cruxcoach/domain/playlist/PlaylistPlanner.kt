@@ -83,9 +83,20 @@ object PlaylistPlanner {
         // Warm-up ladder only when starting cold; its ACTUAL minutes come
         // off the main-set budget (a 2-problem easy-session warm-up must
         // not eat a flat 18-minute block).
-        val warmUp = if (params.position == SessionPosition.START_COLD) {
-            buildWarmUpLadder(anchor, firstWorkGrade(effectiveType, anchor, flashDiff))
-        } else emptyList()
+        // Circular by nature: the pyramid's base tier depends on the main-set
+        // budget, the budget depends on how long the ladder is, and the ladder
+        // length depends on the base. Settled in two passes — the first buys a
+        // ladder cost, the second the grade that cost actually implies.
+        fun ladderFor(mainMinutes: Int) =
+            if (params.position == SessionPosition.START_COLD) {
+                buildWarmUpLadder(
+                    anchor,
+                    firstWorkGrade(effectiveType, anchor, flashDiff, mainMinutes),
+                )
+            } else emptyList()
+
+        val provisional = ladderFor(duration)
+        val warmUp = ladderFor(max(duration - warmUpMinutes(provisional), 10))
         val mainMinutes = max(duration - warmUpMinutes(warmUp), 10)
 
         val main = when (effectiveType) {
@@ -287,8 +298,8 @@ object PlaylistPlanner {
     private fun planPyramid(minutes: Int, anchor: Double): List<PlanSlot> {
         // Apex 1 V below the REPEATABLE max: every tier should top.
         val apex = clampLow(anchor - TrainingRanges.PYRAMID_APEX_BELOW_MAX)
-        val tiers = if (minutes < 45) 3 else 4
-        val base = clampLow(apex - (tiers - 1) * TrainingRanges.PYRAMID_STEP)
+        val tiers = pyramidTiers(minutes)
+        val base = pyramidBase(minutes, anchor)
         val withDescent = minutes >= 90
 
         data class Tier(val diff: Double, val count: Int, val section: PlanSection)
@@ -327,13 +338,35 @@ object PlaylistPlanner {
 
     // ── Helpers ─────────────────────────────────────────────────
 
-    private fun firstWorkGrade(type: GeneratorType, anchor: Double, flashDiff: Double): Double =
+    /** Short sessions climb three tiers, longer ones four. */
+    private fun pyramidTiers(minutes: Int): Int = if (minutes < 45) 3 else 4
+
+    /** The lowest tier of the pyramid — where the first working problem sits. */
+    private fun pyramidBase(minutes: Int, anchor: Double): Double {
+        val apex = clampLow(anchor - TrainingRanges.PYRAMID_APEX_BELOW_MAX)
+        return clampLow(apex - (pyramidTiers(minutes) - 1) * TrainingRanges.PYRAMID_STEP)
+    }
+
+    /**
+     * The grade the warm-up ladder has to reach up to.
+     *
+     * Every branch derives this from the same constants its plan* function
+     * uses — except the pyramid, which used to rebuild the shape from a
+     * constant `planPyramid` does not consult. That copy assumed four tiers,
+     * so any pyramid short enough to build three ended the ladder 1.5 V below
+     * the first working problem instead of 1 V: exactly the intensity jump
+     * the ladder exists to remove.
+     */
+    private fun firstWorkGrade(
+        type: GeneratorType,
+        anchor: Double,
+        flashDiff: Double,
+        mainMinutes: Int,
+    ): Double =
         when (type) {
             GeneratorType.VOLUME -> clampLow(flashDiff - TrainingRanges.VOLUME_BAND_BELOW_FLASH)
             GeneratorType.POWER_ENDURANCE -> clampLow(anchor - TrainingRanges.PE_BAND_LOW_BELOW_MAX)
-            GeneratorType.PYRAMID -> clampLow(
-                anchor - TrainingRanges.PYRAMID_APEX_BELOW_MAX - TrainingRanges.PYRAMID_BASE_BELOW_APEX
-            )
+            GeneratorType.PYRAMID -> pyramidBase(mainMinutes, anchor)
             GeneratorType.LIMIT, GeneratorType.PROJECTING -> anchor
         }
 

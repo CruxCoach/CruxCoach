@@ -37,6 +37,14 @@ enum class RelayError {
     NAME_SET_FAILED,
     BOARD_LOST,
     UNSUPPORTED_BOARD,
+
+    /**
+     * A relayed climb was accepted from the guest and then refused by the
+     * board, with the link still up. Reported but not fatal: the guest's app
+     * has already been told the write succeeded, so without this the wall
+     * simply stayed dark on both sides of a relay that looked healthy.
+     */
+    FORWARD_FAILED,
 }
 
 data class CruxRelayState(
@@ -226,6 +234,13 @@ class CruxRelayManager(
                     }
                 } else {
                     Log.w(TAG, "sendRawChunks failed for a relayed climb")
+                    // Say so. The guest's app got its write acknowledged by our
+                    // GATT server and reports success; if we stay quiet too,
+                    // both sides believe a climb is on a wall that is dark.
+                    // Sharing stays on — a single refused frame is usually
+                    // transient, and BOARD_LOST already covers a link that
+                    // really went away.
+                    _state.update { it.copy(error = RelayError.FORWARD_FAILED) }
                 }
             }
         }

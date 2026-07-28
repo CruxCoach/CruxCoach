@@ -26,6 +26,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 import javax.inject.Named
 import javax.inject.Singleton
+import com.cruxcoach.android.BuildConfig
 
 /**
  * Public entry point for the updater (§4). Everything the UI, the
@@ -600,7 +601,6 @@ class UpdaterRepository @Inject constructor(
                             UpdaterState(
                                 autoCheckEnabled = it.autoCheckEnabled,
                                 automationMode = it.automationMode,
-                                autoDownloadOnWifi = it.autoDownloadOnWifi,
                                 autoDownloadOnMobile = it.autoDownloadOnMobile,
                                 anonymousUpdateMetricsEnabled = it.anonymousUpdateMetricsEnabled,
                                 lastAnonymousMetricsAttemptVersion =
@@ -746,6 +746,39 @@ class UpdaterRepository @Inject constructor(
         }
     }
 
+    /**
+     * Rescue a pipeline stuck in [PipelineStage.INSTALLING].
+     *
+     * It is the only intermediate stage with no way back: every exit runs off
+     * a PackageInstaller callback, and that callback can go missing — the
+     * success path itself documents the OS reaping the freshly-replaced
+     * process before the coroutine runs, and a reboot before the user answers
+     * the consent dialog drops the session entirely. Stuck there, the checker
+     * bails out at its own INSTALLING guard, so nothing ever moved again and
+     * the UI said "waiting for Android" for good.
+     *
+     * The version we are running answers it: if it already matches the pending
+     * update the install did land and the missing callback was only the
+     * bookkeeping; otherwise the APK is still on disk and we go back to
+     * READY_TO_INSTALL.
+     */
+    fun recoverInterruptedInstall() {
+        scope.launch {
+            val prefs = preferences.snapshot()
+            if (prefs.pipelineStage != PipelineStage.INSTALLING) return@launch
+            val info = prefs.pendingUpdate()
+            automaticInstallInFlight.set(false)
+            if (info == null || info.versionName == BuildConfig.VERSION_NAME) {
+                Log.i(TAG, "Interrupted install actually succeeded — clearing pipeline")
+                info?.let { downloader.clearCacheFor(it.versionName) }
+                onInstallOutcome(InstallOutcome.Success)
+            } else {
+                Log.i(TAG, "Interrupted install did not land — back to READY_TO_INSTALL")
+                preferences.update { it.copy(pipelineStage = PipelineStage.READY_TO_INSTALL) }
+            }
+        }
+    }
+
     fun resumeAutomaticInstallIfReady() {
         scope.launch {
             val prefs = preferences.snapshot()
@@ -776,8 +809,6 @@ class UpdaterRepository @Inject constructor(
         }
     }
 
-    suspend fun setAutoDownloadOnWifi(enabled: Boolean) =
-        preferences.update { it.copy(autoDownloadOnWifi = enabled) }
 
     suspend fun setAnonymousUpdateMetricsEnabled(enabled: Boolean) =
         anonymousUpdateMetricsMutex.withLock {

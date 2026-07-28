@@ -7,11 +7,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -46,23 +44,22 @@ class BoardStateManager @Inject constructor(
     private val _lastClimb = MutableStateFlow<LastBoardClimb?>(null)
 
     /**
-     * The last climb, or null if it's older than [STALE_THRESHOLD_MS].
+     * The last climb on the physical board, cleared once it goes stale.
      *
-     * The age is checked on read, not only by [scheduleStaleCleanup]. The timer
-     * alone made this doc comment a claim rather than a guarantee: it lives in a
-     * Main-dispatcher scope, so any path that set the value without scheduling —
-     * or that cancelled the job and did not reschedule — left a climb on display
-     * for ever. That is how the board banner came to sit on a climb from a
-     * previous session while the queue banner right below it showed the real one.
+     * The clearing is done by [scheduleStaleCleanup], and only by it. An
+     * earlier attempt to make that a guarantee rather than a promise filtered
+     * the flow on the age as well — but a `map` runs when a value is emitted,
+     * `stateIn` does not re-evaluate it per read, and every emitted value
+     * carries a just-taken timestamp. The predicate could therefore never be
+     * true, and the filter read as a safety net while catching nothing.
      *
-     * Reading the clock here costs nothing and cannot be forgotten by a caller.
+     * What actually holds the guarantee: both setters call
+     * [scheduleStaleCleanup] before returning, [clearLastClimb] cancels the
+     * job *and* nulls the value, and [restore] refuses a persisted climb that
+     * is already too old. A new mutation path has to keep that up — there is
+     * no read-time backstop underneath it.
      */
-    val lastClimb: StateFlow<LastBoardClimb?> =
-        _lastClimb.map { it?.takeIf { climb -> !climb.isStale() } }
-            .stateIn(scope, SharingStarted.Eagerly, null)
-
-    private fun LastBoardClimb.isStale(): Boolean =
-        System.currentTimeMillis() - timestamp > STALE_THRESHOLD_MS
+    val lastClimb: StateFlow<LastBoardClimb?> = _lastClimb.asStateFlow()
 
     /**
      * Sets the last board climb with name resolution from DB.

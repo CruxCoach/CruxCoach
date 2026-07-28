@@ -63,7 +63,6 @@ class UpdaterPreferences(private val store: DataStore<Preferences>) {
         automationMode = this[Keys.AUTOMATION_MODE]
             ?.let { runCatching { UpdateAutomationMode.valueOf(it) }.getOrNull() }
             ?: UpdateAutomationMode.NOTIFY,
-        autoDownloadOnWifi = this[Keys.AUTO_DOWNLOAD_ON_WIFI] ?: true,
         autoDownloadOnMobile = this[Keys.AUTO_DOWNLOAD_ON_MOBILE] ?: false,
         anonymousUpdateMetricsEnabled = this[Keys.ANONYMOUS_UPDATE_METRICS_ENABLED] ?: true,
         lastAnonymousMetricsAttemptVersion = this[Keys.LAST_ANONYMOUS_METRICS_ATTEMPT_VERSION],
@@ -94,7 +93,6 @@ class UpdaterPreferences(private val store: DataStore<Preferences>) {
         set(Keys.PIPELINE_STAGE, s.pipelineStage.name)
         set(Keys.AUTO_CHECK_ENABLED, s.autoCheckEnabled)
         set(Keys.AUTOMATION_MODE, s.automationMode.name)
-        set(Keys.AUTO_DOWNLOAD_ON_WIFI, s.autoDownloadOnWifi)
         set(Keys.AUTO_DOWNLOAD_ON_MOBILE, s.autoDownloadOnMobile)
         set(Keys.ANONYMOUS_UPDATE_METRICS_ENABLED, s.anonymousUpdateMetricsEnabled)
         s.lastAnonymousMetricsAttemptVersion?.let {
@@ -126,7 +124,6 @@ class UpdaterPreferences(private val store: DataStore<Preferences>) {
         val PIPELINE_STAGE = stringPreferencesKey("updater_pipeline_stage")
         val AUTO_CHECK_ENABLED = booleanPreferencesKey("updater_auto_check_enabled")
         val AUTOMATION_MODE = stringPreferencesKey("updater_automation_mode")
-        val AUTO_DOWNLOAD_ON_WIFI = booleanPreferencesKey("updater_auto_download_on_wifi")
         val AUTO_DOWNLOAD_ON_MOBILE = booleanPreferencesKey("updater_auto_download_on_mobile")
         val ANONYMOUS_UPDATE_METRICS_ENABLED =
             booleanPreferencesKey("updater_anonymous_metrics_enabled")
@@ -163,7 +160,6 @@ data class UpdaterState(
     val pipelineStage: PipelineStage = PipelineStage.NONE,
     val autoCheckEnabled: Boolean = true,
     val automationMode: UpdateAutomationMode = UpdateAutomationMode.NOTIFY,
-    val autoDownloadOnWifi: Boolean = true,
     val autoDownloadOnMobile: Boolean = false,
     /** User-visible opt-out. No request is attempted while false. */
     val anonymousUpdateMetricsEnabled: Boolean = true,
