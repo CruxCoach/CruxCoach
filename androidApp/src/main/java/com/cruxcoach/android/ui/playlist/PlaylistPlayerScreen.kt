@@ -495,7 +495,6 @@ fun PlaylistPlayerScreen(
                 onPrevious = { viewModel.playback.previous() },
                 onNext = { viewModel.playback.next() },
                 onTogglePause = { viewModel.playback.togglePause() },
-                onSkipRest = { viewModel.playback.skipRest() },
                 onOpenQueue = { showQueueSheet = true },
                 onAddClimbs = onNavigateToBrowser,
             )
@@ -930,8 +929,6 @@ private fun PlayerControls(
     onNext: () -> Unit,
     /** Manual clock pause — offered on the timer, not as a transport button. */
     onTogglePause: () -> Unit,
-    /** End a planned rest early: cancels the countdown AND restarts the clock. */
-    onSkipRest: () -> Unit,
     onOpenQueue: () -> Unit,
     onAddClimbs: () -> Unit,
 ) {
@@ -959,38 +956,37 @@ private fun PlayerControls(
                 modifier = Modifier.size(28.dp),
             )
         }
+        // Back and forward, the same size, always both. The centre used to
+        // hold play/pause, and putting "next" there kept the media-player
+        // silhouette: one big primary action with a small sibling. Moving
+        // through a playlist has no primary direction — going back for another
+        // go is as ordinary as moving on.
+        //
+        // No special case during a rest either. Both already mean the right
+        // thing there: next ends the rest and leaves you on the upcoming
+        // climb, previous ends it and steps back — and the rest screen carries
+        // its own "skip the rest" button besides. Replacing the pair with one
+        // button there only took away the way back.
         IconButton(
             onClick = withHaptic(onPrevious),
             enabled = playback.hasPrevious,
-            modifier = Modifier.size(56.dp).testTag("player_prev"),
+            modifier = Modifier.size(64.dp).testTag("player_prev"),
         ) {
             Icon(
                 Icons.Default.SkipPrevious,
                 contentDescription = stringResource(R.string.cd_previous),
-                modifier = Modifier.size(36.dp),
+                modifier = Modifier.size(40.dp),
             )
         }
-        // The centre used to hold play/pause, which made this look like a media
-        // player. A playlist does not run on its own: it waits for the climber
-        // and advances when they say so. So the centre is the advance — except
-        // during a planned rest, where the one thing to do is end the rest, and
-        // that button must cancel the countdown rather than just restart the
-        // clock. Manual pausing is a clock function and now lives on the timer.
-        FilledIconButton(
-            onClick = withHaptic(if (playback.isResting) onSkipRest else onNext),
-            shape = CircleShape,
-            enabled = playback.isResting || playback.hasNext,
-            colors = IconButtonDefaults.filledIconButtonColors(containerColor = OrangeAccent),
-            modifier = Modifier.size(64.dp).testTag("player_next_primary"),
+        IconButton(
+            onClick = withHaptic(onNext),
+            enabled = playback.hasNext,
+            modifier = Modifier.size(64.dp).testTag("player_next"),
         ) {
             Icon(
-                if (playback.isResting) Icons.Default.PlayArrow else Icons.Default.SkipNext,
-                contentDescription = stringResource(
-                    if (playback.isResting) R.string.playlist_rest_continue
-                    else R.string.cd_next
-                ),
-                tint = DarkBackground,
-                modifier = Modifier.size(32.dp),
+                Icons.Default.SkipNext,
+                contentDescription = stringResource(R.string.cd_next),
+                modifier = Modifier.size(40.dp),
             )
         }
         // Add climbs: to the browser, where long-press adds to the
