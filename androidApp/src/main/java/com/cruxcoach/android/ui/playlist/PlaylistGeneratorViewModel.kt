@@ -51,6 +51,8 @@ data class PlaylistGeneratorState(
     val manualMinDifficulty: Double = 0.0,
     val manualMaxDifficulty: Double = 0.0,
     val manualRepeats: Int = 1,
+    /** Interval mode: problems inside one set. */
+    val problemsPerSet: Int = TrainingRanges.PE_PROBLEMS_PER_SET,
     val manualRestSeconds: Int = TrainingRanges.MANUAL_DEFAULT_REST,
     val manualRepeatRestSeconds: Int = TrainingRanges.MANUAL_DEFAULT_REPEAT_REST,
     /**
@@ -273,6 +275,13 @@ class PlaylistGeneratorViewModel @Inject constructor(
         refreshPlan()
     }
 
+    fun setProblemsPerSet(count: Int) {
+        _state.update {
+            it.copy(problemsPerSet = count.coerceIn(TrainingRanges.PE_PROBLEMS_PER_SET_RANGE))
+        }
+        refreshPlan()
+    }
+
     fun setManualRepeats(repeats: Int) {
         _state.update { it.copy(manualRepeats = repeats.coerceIn(TrainingRanges.MANUAL_REPEATS)) }
         refreshPlan()
@@ -336,6 +345,7 @@ class PlaylistGeneratorViewModel @Inject constructor(
             manualMinDifficulty = s.manualMinDifficulty,
             manualMaxDifficulty = s.manualMaxDifficulty,
             manualRepeats = s.manualRepeats,
+            problemsPerSet = s.problemsPerSet,
             manualRestSeconds = s.manualRestSeconds,
             manualRepeatRestSeconds = s.manualRepeatRestSeconds,
         )

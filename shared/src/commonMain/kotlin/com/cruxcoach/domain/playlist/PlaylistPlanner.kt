@@ -135,7 +135,11 @@ object PlaylistPlanner {
             GeneratorType.VOLUME -> planVolume(mainMinutes, flashDiff, peak, size)
             GeneratorType.LIMIT -> planLimit(mainMinutes, anchor, peak, size)
             GeneratorType.PROJECTING -> planProjecting(mainMinutes, anchor, peak, size)
-            GeneratorType.POWER_ENDURANCE -> planPowerEndurance(mainMinutes, flashDiff, size)
+            GeneratorType.POWER_ENDURANCE -> planPowerEndurance(
+                mainMinutes, flashDiff, size,
+                params.problemsPerSet?.coerceIn(TrainingRanges.PE_PROBLEMS_PER_SET_RANGE)
+                    ?: TrainingRanges.PE_PROBLEMS_PER_SET,
+            )
             GeneratorType.PYRAMID -> planPyramid(mainMinutes, anchor, params.pyramidShape, size)
             GeneratorType.MANUAL -> planManual(params, anchor, size)
         }
@@ -404,6 +408,7 @@ object PlaylistPlanner {
         minutes: Int,
         flashAnchor: Double,
         size: Int?,
+        problemsPerSet: Int,
     ): List<PlanSlot> {
         val sets = size
             ?: (minutes / TrainingRanges.PE_SET_MINUTES).coerceIn(TrainingRanges.PE_SETS)
@@ -411,7 +416,7 @@ object PlaylistPlanner {
         val high = clampLow(flashAnchor - TrainingRanges.PE_BAND_HIGH_BELOW_FLASH)
         val slots = mutableListOf<PlanSlot>()
         for (set in 0 until sets) {
-            for (problem in 0 until TrainingRanges.PE_PROBLEMS_PER_SET) {
+            for (problem in 0 until problemsPerSet) {
                 if (problem > 0) {
                     slots.add(PlanSlot.RestSlot(TrainingRanges.REST_PE_BETWEEN_LAPS, PlanSection.MAIN))
                 }
@@ -434,7 +439,10 @@ object PlaylistPlanner {
     ): List<PlanSlot> {
         // Apex 1 V below the REPEATABLE max: every tier should top.
         val apex = clampLow(anchor - TrainingRanges.PYRAMID_APEX_BELOW_MAX)
-        val tiers = size ?: pyramidTiers(minutes)
+        // However many were asked for, but never more than there is room for:
+        // below the bottom of the scale the tiers clamp onto each other and
+        // the pyramid comes out with two identical steps.
+        val tiers = (size ?: pyramidTiers(minutes)).coerceAtMost(maxPyramidTiers(apex))
         val base = pyramidBaseFor(tiers, anchor)
         // The climber's choice, not a side effect of the duration. Anything
         // under 90 minutes used to be a half pyramid called a whole one.
@@ -476,8 +484,14 @@ object PlaylistPlanner {
 
     // ── Helpers ─────────────────────────────────────────────────
 
-    /** Short sessions climb three tiers, longer ones four. */
+    /** Short sessions climb three tiers, longer ones four. Only used for
+     *  playlists saved before the tier count became a control. */
     private fun pyramidTiers(minutes: Int): Int = if (minutes < 45) 3 else 4
+
+    /** How many distinct tiers fit between the apex and the floor. */
+    private fun maxPyramidTiers(apex: Double): Int =
+        (((apex - TrainingRanges.MIN_DIFFICULTY) / TrainingRanges.PYRAMID_STEP).toInt() + 1)
+            .coerceIn(TrainingRanges.PYRAMID_TIERS)
 
     /** The lowest tier of the pyramid — where the first working problem sits. */
     private fun pyramidBaseFor(tiers: Int, anchor: Double): Double {

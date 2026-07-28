@@ -204,19 +204,42 @@ fun PlaylistGeneratorScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Slider(
-                value = state.structureSize.toFloat(),
-                onValueChange = { viewModel.setStructureSize(it.roundToInt()) },
-                valueRange = range.first.toFloat()..range.last.toFloat(),
-                // One stop per valid value, so the thumb cannot land between
-                // two sessions that do not exist.
-                steps = (range.last - range.first - 1).coerceAtLeast(0),
-                colors = androidx.compose.material3.SliderDefaults.colors(
-                    thumbColor = OrangeAccent,
-                    activeTrackColor = OrangeAccent,
-                ),
-                modifier = Modifier.testTag("playlist_gen_size"),
-            )
+            // A slider needs somewhere to slide. Half these ranges hold three
+            // or four values — dragging a thumb between four stops is a worse
+            // way to pick one of four things than four buttons are, and it
+            // hides how few choices there really are.
+            if (range.last - range.first + 1 <= SIZE_CHIP_LIMIT) {
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    range.forEach { value ->
+                        FilterChip(
+                            selected = state.structureSize == value,
+                            onClick = { viewModel.setStructureSize(value) },
+                            label = { Text("$value") },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = OrangeAccent.copy(alpha = 0.25f),
+                            ),
+                            modifier = Modifier.testTag("playlist_gen_size_$value"),
+                        )
+                    }
+                }
+            } else {
+                Slider(
+                    value = state.structureSize.toFloat(),
+                    onValueChange = { viewModel.setStructureSize(it.roundToInt()) },
+                    valueRange = range.first.toFloat()..range.last.toFloat(),
+                    // One stop per valid value, so the thumb cannot land
+                    // between two sessions that do not exist.
+                    steps = (range.last - range.first - 1).coerceAtLeast(0),
+                    colors = androidx.compose.material3.SliderDefaults.colors(
+                        thumbColor = OrangeAccent,
+                        activeTrackColor = OrangeAccent,
+                    ),
+                    modifier = Modifier.testTag("playlist_gen_size"),
+                )
+            }
 
             // ── Session position ────────────────────────────────
             SectionTitle(stringResource(R.string.playlist_generator_position))
@@ -236,6 +259,34 @@ fun PlaylistGeneratorScreen(
                         ),
                         modifier = Modifier.testTag("playlist_gen_pos_${pos.name.lowercase()}"),
                     )
+                }
+            }
+
+            // ── Interval shape ──────────────────────────────────
+            // The second axis of a 4x4. Offering only the set count made one
+            // half of the protocol adjustable and the other half fixed, which
+            // is not a distinction any climber would recognise.
+            if (state.type == GeneratorType.POWER_ENDURANCE) {
+                SectionTitle(
+                    stringResource(
+                        R.string.playlist_generator_problems_per_set, state.problemsPerSet,
+                    )
+                )
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    TrainingRanges.PE_PROBLEMS_PER_SET_RANGE.forEach { count ->
+                        FilterChip(
+                            selected = state.problemsPerSet == count,
+                            onClick = { viewModel.setProblemsPerSet(count) },
+                            label = { Text("$count") },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = OrangeAccent.copy(alpha = 0.25f),
+                            ),
+                            modifier = Modifier.testTag("playlist_gen_pps_$count"),
+                        )
+                    }
                 }
             }
 
@@ -693,3 +744,6 @@ private fun defaultPlaylistName(type: GeneratorType): String = stringResource(
         GeneratorType.PROJECTING -> R.string.playlist_default_name_projecting
     }
 )
+
+/** Up to this many choices, buttons beat a slider. */
+private const val SIZE_CHIP_LIMIT = 8

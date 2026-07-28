@@ -228,11 +228,29 @@ object TrainingRanges {
      *  estimatedMinutes uses, so the planner and the preview agree. */
     const val CLIMB_SECONDS = 60
     val PROJECT_COUNT = 1..3
-    val PE_SETS = 1..4
+    /**
+     * Sets in an interval block, and problems in each.
+     *
+     * "4x4" is one point in this space, not the shape of the space: it is
+     * four sets of four, and that is where the defaults sit. Offering only
+     * the set count and nailing the four problems down made one half of the
+     * protocol a control and the other half a law, which is not how anyone
+     * trains — six sets of three and three sets of six are both real
+     * sessions.
+     */
+    val PE_SETS = 1..8
+    val PE_PROBLEMS_PER_SET_RANGE = 2..6
 
-    /** Three tiers or four — below that it is not a pyramid, above it the
-     *  base gets wider than a session can carry. */
-    val PYRAMID_TIERS = 3..4
+    /**
+     * Tiers in a pyramid: 3 (6 climbs) through 6 (21).
+     *
+     * Two would not be a pyramid and seven puts the base six Font steps under
+     * the apex, which is a different session with the same name. How many
+     * actually fit also depends on the climber — see PlaylistPlanner, which
+     * caps them so the base cannot be pushed under the bottom of the scale
+     * and collapse two tiers onto the same grade.
+     */
+    val PYRAMID_TIERS = 3..6
 
     // ── How far the filler may stray from a band ─────────────────
 
@@ -267,6 +285,7 @@ object TrainingRanges {
     /** Half the band a fresh manual session starts on, either side of the
      *  climber's work anchor — a sane place to begin adjusting from. */
     const val MANUAL_SEED_HALF_BAND = 2 * DIFF_PER_FONT_STEP
+    /** The classic 4x4 default. */
     const val PE_PROBLEMS_PER_SET = 4
 
     /** Limit bouldering: attempts per problem, as EXPLICIT playlist
