@@ -544,12 +544,25 @@ class BleShareManagerTest {
     // ===== Session climb updates (FEAT-035 core scenario) =====
 
     @Test
-    fun `a stranger's session climb is not shown to a session member`() = runTest {
+    fun `a participant without a known session id still sees the host climb`() = runTest {
+        // Joining without a scan entry leaves the id at 0. Treating that as
+        // "no match" would hide the host's climb — worse than the bug it
+        // guards against, and the case that made an earlier version of this
+        // filter wrong in production while its test passed.
+        queueStateFlow.value = SessionQueueState(role = SessionRole.PARTICIPANT, sessionId = 0)
+        nearbySessionsFlow.value = listOf(session(sessionId = 777, currentClimbUuid = UUID_A))
+        advanceUntilIdle()
+
+        assertEquals(UUID_A, manager.uiState.value.onBoardClimb?.climbUuid)
+    }
+
+    @Test
+    fun `a stranger's session climb is not shown to a host`() = runTest {
         // Own queue empty, so stages 3 and 4 pass. Before the session-id check
         // the first foreign advertisement won stage 5 and was labelled
         // "session climb" beside the member's own queue banner.
         queueStateFlow.value =
-            SessionQueueState(role = SessionRole.PARTICIPANT, sessionId = 12345)
+            SessionQueueState(role = SessionRole.HOST, sessionId = 12345)
         nearbySessionsFlow.value = listOf(session(sessionId = 999, currentClimbUuid = UUID_C))
         advanceUntilIdle()
 
@@ -558,11 +571,7 @@ class BleShareManagerTest {
 
     @Test
     fun `session climb updates when host navigates queue`() = runTest {
-        // A real participant carries the host's session id (setParticipantRole);
-        // stage 5 now insists on it, so a stranger's advertisement cannot pose
-        // as this session's climb.
-        queueStateFlow.value =
-            SessionQueueState(role = SessionRole.PARTICIPANT, sessionId = 12345)
+        queueStateFlow.value = SessionQueueState(role = SessionRole.PARTICIPANT)
         nearbySessionsFlow.value = listOf(session(currentClimbUuid = UUID_A))
         advanceUntilIdle()
         assertEquals(UUID_A, manager.uiState.value.onBoardClimb?.climbUuid)

@@ -552,9 +552,19 @@ class BleShareManager @Inject constructor(
         // banner. The suppression at the top cannot catch that: it keys off the
         // same currentClimb that was null. Once we are in a session, only that
         // session may speak here.
+        // Session id 0 means "we have no identity to compare with". Participants
+        // are always 0 today — setParticipantRole is called with a literal 0,
+        // an invariant migration depends on and two tests pin — so the check
+        // only bites for a host. Stay permissive there rather than hide the
+        // host's climb, which is what this stage exists to show. Closing the
+        // participant half needs a session identity they do not currently
+        // have; that is a design change, not a fix.
+        val ownSessionId = queueState.sessionId.takeIf { it != 0 }
         val sessionClimb = sessions.firstOrNull {
             it.currentClimbUuid != null &&
-                (queueState.role == SessionRole.NONE || it.sessionId == queueState.sessionId)
+                (queueState.role == SessionRole.NONE ||
+                    ownSessionId == null ||
+                    it.sessionId == ownSessionId)
         }
         if (sessionClimb != null) {
             val info = climbInfos[sessionClimb.currentClimbUuid]
