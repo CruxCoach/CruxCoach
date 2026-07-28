@@ -15,6 +15,10 @@ import androidx.compose.material.icons.filled.DeveloperBoard
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material3.*
 import android.view.WindowManager
+import android.bluetooth.BluetoothAdapter
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.LocalActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -659,6 +663,12 @@ fun CruxCoachNavHost(
                     screenName = "PlaylistPlayer",
                     onNavigateBack = { navController.popBackStack() },
                 ) {
+                    // The player's "sharing blocked" banner offers to turn
+                    // Bluetooth on. Without this launcher the button fell back
+                    // to the parameter's empty default and swallowed every tap.
+                    val btEnableLauncher = rememberLauncherForActivityResult(
+                        ActivityResultContracts.StartActivityForResult()
+                    ) { /* the coordinator picks the adapter change up by itself */ }
                     com.cruxcoach.android.ui.playlist.PlaylistPlayerScreen(
                         onNavigateBack = { navController.popBackStack() },
                         onNavigateToClimb = { climbUuid, angle ->
@@ -669,6 +679,9 @@ fun CruxCoachNavHost(
                                 popUpTo(Routes.BOARD_BROWSER) { inclusive = false }
                                 launchSingleTop = true
                             }
+                        },
+                        onEnableBluetooth = {
+                            btEnableLauncher.launch(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE))
                         },
                     )
                 }
