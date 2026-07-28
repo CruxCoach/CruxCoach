@@ -341,7 +341,7 @@ fun BoardBrowserScreen(
                 Box(
                     modifier = Modifier
                         .padding(start = 10.dp)
-                        .size(40.dp)
+                        .size(36.dp)
                         .clip(CircleShape)
                         .background(Color.Black)
                         .testTag("board_browser_home"),
