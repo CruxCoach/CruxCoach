@@ -211,7 +211,18 @@ fun MigrationFlowContent(
     ) {
         Button(
             onClick = {
-                pickFileLauncher.launch(arrayOf("application/json", "text/plain"))
+                // octet-stream belongs here: Android's MIME table only learned
+                // the .json extension in API 29, so on 8 and 9 — both still
+                // supported — a storage provider falls back to octet-stream
+                // and the picker greyed out the very file this screen asks
+                // for. It works when a mail app happens to carry the type
+                // over from the message, which is why the happy path hid it.
+                // Nothing is lost by accepting it: the reader is size-capped
+                // and anything that is not an Aurora export comes back as a
+                // parse error in the banner below.
+                pickFileLauncher.launch(
+                    arrayOf("application/json", "text/plain", "application/octet-stream")
+                )
             },
             enabled = !state.isImporting,
             modifier = Modifier.fillMaxWidth(),

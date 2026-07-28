@@ -151,7 +151,11 @@ class PlaylistGeneratorViewModel @Inject constructor(
         // MoonBoard 40° send said nothing useful about a Kilter 40° session
         // and was quietly averaged into the anchor anyway.
         val all = everything.filter {
-            it.boardBrand == boardBrand && (layoutId == 0 || it.layoutId?.toInt() == layoutId)
+            // Brand must match. A row with no layout is not excluded: the
+            // Aurora migration writes none, and demanding equality dropped
+            // every migrated ascent out of the profile.
+            it.boardBrand == boardBrand &&
+                (layoutId == 0 || it.layoutId?.toInt()?.equals(layoutId) != false)
         }
         val allSends = all.filter { it.isSend }
 
@@ -176,8 +180,21 @@ class PlaylistGeneratorViewModel @Inject constructor(
         // First-contact check runs on the FULL history (a prior attempt
         // outside the pool still disqualifies a flash inside it).
         val flashUuids = com.cruxcoach.android.ui.board.BoardStatsComputer.trueFlashUuids(all)
+        // The ascent row carries the community grade for climbs logged in the
+        // app, but the Aurora migration writes none — so a migrated logbook
+        // produced no profile at all, silently, and the generator planned off
+        // the default for people with years of history. Fill the gaps from the
+        // board catalogue.
+        val missing = all.filter { it.difficultyAverage == null }.map { it.climbUuid }.distinct()
+        val catalogueDifficulty: Map<String, Double> =
+            if (missing.isEmpty()) emptyMap()
+            else boardRepository.getClimbsByUuids(missing, angle)
+                .mapNotNull { c -> c.difficultyAverage?.let { c.uuid to it } }
+                .toMap()
+
         fun List<com.cruxcoach.data.repository.AscentWithClimb>.toSends() = mapNotNull { row ->
-            row.difficultyAverage?.let { LoggedSend(row.climbUuid, it, row.climbedAt) }
+            val diff = row.difficultyAverage ?: catalogueDifficulty[row.climbUuid]
+            diff?.let { LoggedSend(row.climbUuid, it, row.climbedAt) }
         }
         val sends = anglePool.toSends()
         // trueFlashUuids keys on the ASCENT row's uuid, not the climb's — it
