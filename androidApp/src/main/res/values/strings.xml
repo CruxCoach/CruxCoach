@@ -2189,7 +2189,8 @@
     <string name="playlist_generator_profile_empty">No logbook data yet — grades are based on a ~V5 default. Log some climbs for personal recommendations.</string>
     <string name="playlist_generator_downgraded">End of training: max-effort climbing is downgraded to volume — fatigued limit attempts risk injury.</string>
     <string name="playlist_generator_default_profile">Recommendations use default grades until your logbook has a few sends.</string>
-    <string name="playlist_generator_error">Not enough matching climbs on this board — try a different type, angle or duration.</string>
+    <string name="playlist_generator_error">Not enough matching climbs on this board — try a different type, angle, or fewer problems.</string>
+    <string name="playlist_generator_error_manual">No climbs on this board in that grade range — widen it, or try another angle.</string>
     <string name="playlist_type_pyramid">Pyramid</string>
     <string name="playlist_type_pyramid_desc">Climb a grade pyramid — broad base, single hard apex about one V-grade below your max, so every tier gets topped.</string>
     <string name="playlist_type_power_endurance">Power endurance</string>

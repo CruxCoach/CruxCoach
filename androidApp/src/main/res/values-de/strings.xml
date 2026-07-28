@@ -2188,7 +2188,8 @@
     <string name="playlist_generator_profile_empty">Noch keine Logbuch-Daten — die Grade basieren auf einem ~V5-Standard. Logge ein paar Climbs für persönliche Empfehlungen.</string>
     <string name="playlist_generator_downgraded">Trainingsende: Maximalkraft wird auf Volume heruntergestuft — ermüdete Limit-Versuche sind ein Verletzungsrisiko.</string>
     <string name="playlist_generator_default_profile">Die Empfehlungen nutzen Standard-Grade, bis dein Logbuch ein paar Sends enthält.</string>
-    <string name="playlist_generator_error">Nicht genug passende Climbs auf diesem Board — probiere einen anderen Typ, Winkel oder eine andere Dauer.</string>
+    <string name="playlist_generator_error">Nicht genug passende Climbs auf diesem Board — probiere einen anderen Typ, Winkel oder weniger Boulder.</string>
+    <string name="playlist_generator_error_manual">Auf diesem Board gibt es keine Climbs in diesem Gradbereich — mach ihn weiter, oder probiere einen anderen Winkel.</string>
     <string name="playlist_type_pyramid">Pyramide</string>
     <string name="playlist_type_pyramid_desc">Klettere eine Grad-Pyramide — breite Basis, eine harte Spitze etwa einen V-Grad unter deinem Max, damit jede Stufe auch getoppt wird.</string>
     <string name="playlist_type_power_endurance">Kraftausdauer</string>

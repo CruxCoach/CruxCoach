@@ -386,6 +386,16 @@ fun PlaylistGeneratorScreen(
                 }
             }
 
+            if (state.error) {
+                WarningNote(
+                    stringResource(
+                        if (state.type == GeneratorType.MANUAL) {
+                            R.string.playlist_generator_error_manual
+                        } else R.string.playlist_generator_error
+                    )
+                )
+            }
+
             // ── Preview ─────────────────────────────────────────
             state.plan?.let { plan ->
                 SectionTitle(stringResource(R.string.playlist_generator_preview))
@@ -427,9 +437,6 @@ fun PlaylistGeneratorScreen(
                         fontWeight = FontWeight.Bold,
                     )
                 }
-            }
-            if (state.error) {
-                WarningNote(stringResource(R.string.playlist_generator_error))
             }
         }
     }
