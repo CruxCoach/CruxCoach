@@ -2327,4 +2327,16 @@
     <string name="playlist_generator_size_sets">Sätze: %1$d</string>
     <string name="playlist_generator_size_tiers">Stufen: %1$d</string>
     <string name="playlist_generator_estimated">etwa %1$d min</string>
+    <!-- Manueller Generator: nichts abgeleitet, alles angegeben -->
+    <string name="playlist_type_manual">Manuell</string>
+    <string name="playlist_type_manual_desc">Gradbereich, Anzahl Boulder, Versuche je Boulder und Pausenlängen selbst festlegen. Nichts wird aus deinem Logbuch abgeleitet und nichts ersetzt — hat das Board nichts in deinem Bereich, wird die Liste kürzer und sagt es.</string>
+    <string name="playlist_default_name_manual">Eigene Einheit</string>
+    <string name="playlist_generator_size_manual">Boulder: %1$d</string>
+    <string name="playlist_manual_grade_range">Gradbereich: %1$s – %2$s</string>
+    <string name="playlist_manual_repeats">Versuche je Boulder: %1$d</string>
+    <string name="playlist_manual_rest">Pause zwischen Bouldern: %1$s</string>
+    <string name="playlist_manual_repeat_rest">Pause zwischen Versuchen: %1$s</string>
+    <string name="playlist_manual_rest_none">keine</string>
+    <string name="playlist_manual_rest_seconds">%1$d s</string>
+    <string name="playlist_manual_rest_minutes">%1$d:%2$02d min</string>
 </resources>

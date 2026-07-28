@@ -21,6 +21,18 @@ enum class GeneratorType {
 
     /** Work open projects (attempted but unsent) near max. */
     PROJECTING,
+
+    /**
+     * Nothing derived: the climber states the grade range, how many problems,
+     * how many tries each and how long the rests are.
+     *
+     * The other five read a profile and apply a protocol. This one does not —
+     * so the range is a constraint rather than a starting point, and the
+     * filler may not widen out of it. If the board has nothing in there, the
+     * session comes up short and says so, which is the honest answer to a
+     * question the climber asked precisely.
+     */
+    MANUAL,
 }
 
 /**
@@ -46,6 +58,7 @@ fun GeneratorType.structureRange(): IntRange = when (this) {
     GeneratorType.PROJECTING -> TrainingRanges.PROJECT_COUNT
     GeneratorType.POWER_ENDURANCE -> TrainingRanges.PE_SETS
     GeneratorType.PYRAMID -> TrainingRanges.PYRAMID_TIERS
+    GeneratorType.MANUAL -> TrainingRanges.MANUAL_COUNT
 }
 
 /** Where in the training session the playlist will be climbed — shifts
@@ -111,6 +124,17 @@ data class PlaylistGeneratorParams(
      * Null keeps the old division, for playlists saved before this existed.
      */
     val structureSize: Int? = null,
+    /**
+     * Manual mode: the grade band, in Aurora points. Zero means "not set" and
+     * the UI seeds it from the profile so the first screen is never empty.
+     */
+    val manualMinDifficulty: Double = 0.0,
+    val manualMaxDifficulty: Double = 0.0,
+    /** Manual mode: tries per problem — 1 is a straight lap list. */
+    val manualRepeats: Int = 1,
+    /** Manual mode: seconds between problems, and between tries of one. */
+    val manualRestSeconds: Int = TrainingRanges.MANUAL_DEFAULT_REST,
+    val manualRepeatRestSeconds: Int = TrainingRanges.MANUAL_DEFAULT_REPEAT_REST,
 ) {
     fun toJson(): String = json.encodeToString(serializer(), this)
 

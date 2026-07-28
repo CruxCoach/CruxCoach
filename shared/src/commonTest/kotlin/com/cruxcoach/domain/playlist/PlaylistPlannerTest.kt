@@ -150,6 +150,83 @@ class PlaylistPlannerTest {
         assertTrue(flash < profile.effectiveRepeatableMax, "flash must sit clear of the max")
     }
 
+    // ── Manual ──────────────────────────────────────────────────
+
+    @Test
+    fun `manual plans exactly what was asked for`() {
+        val plan = PlaylistPlanner.plan(
+            params(GeneratorType.MANUAL, position = SessionPosition.WARMED_UP).copy(
+                structureSize = 6,
+                manualMinDifficulty = 19.0,
+                manualMaxDifficulty = 21.0,
+                manualRepeats = 2,
+                manualRestSeconds = 180,
+                manualRepeatRestSeconds = 45,
+            ),
+            profile,
+        )
+        val climbs = plan.climbs()
+        assertEquals(12, climbs.size, "6 problems x 2 tries")
+        assertEquals(6, climbs.mapNotNull { it.repeatKey }.distinct().size)
+        assertTrue(climbs.all { it.minDifficulty == 19.0 && it.maxDifficulty == 21.0 })
+        assertEquals(5, plan.rests().count { it.seconds == 180 }, "between problems")
+        assertEquals(6, plan.rests().count { it.seconds == 45 }, "between tries")
+    }
+
+    @Test
+    fun `manual is not clamped to the profile ceiling`() {
+        // The climber named the range; the safety ceiling exists to stop the
+        // generator inventing something too hard, not to overrule a person.
+        val plan = PlaylistPlanner.plan(
+            params(GeneratorType.MANUAL, position = SessionPosition.WARMED_UP).copy(
+                structureSize = 3,
+                manualMinDifficulty = 30.0,
+                manualMaxDifficulty = 32.0,
+            ),
+            profile,
+        )
+        assertTrue(plan.climbs().all { it.maxDifficulty == 32.0 })
+    }
+
+    @Test
+    fun `manual forbids the filler any drift`() {
+        // A stated range is an instruction. Substituting quietly would make
+        // every control on that screen a suggestion box.
+        assertEquals(0.0, TrainingRanges.maxWideningFor(GeneratorType.MANUAL))
+    }
+
+    @Test
+    fun `manual seeds its band from the profile when unset`() {
+        val plan = PlaylistPlanner.plan(
+            params(GeneratorType.MANUAL, position = SessionPosition.WARMED_UP)
+                .copy(structureSize = 2),
+            profile,
+        )
+        val anchor = profile.effectiveRepeatableMax
+        assertTrue(
+            plan.climbs().all {
+                it.minDifficulty == anchor - TrainingRanges.MANUAL_SEED_HALF_BAND &&
+                    it.maxDifficulty == anchor + TrainingRanges.MANUAL_SEED_HALF_BAND
+            },
+            "band was ${plan.climbs().first().minDifficulty}..${plan.climbs().first().maxDifficulty}",
+        )
+    }
+
+    @Test
+    fun `a narrow band that the catalogue cannot fill is reported, not substituted`() {
+        // The pyramid tiers sit one step apart, so a tolerance of one point
+        // let neighbouring tiers draw the same climb — a flat pyramid.
+        val plan = PlaylistPlanner.plan(params(GeneratorType.PYRAMID), profile)
+        val tiers = plan.climbs()
+            .filter { it.section != PlanSection.WARM_UP }
+            .map { it.minDifficulty to it.maxDifficulty }
+            .distinct()
+        assertTrue(
+            tiers.zipWithNext().all { (a, b) -> a.second <= b.first || b.second <= a.first },
+            "tiers overlap: $tiers",
+        )
+    }
+
     @Test
     fun `a short session does not become a long one`() {
         // 20 minutes of cold hard bouldering used to plan ~70: the two-problem

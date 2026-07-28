@@ -65,6 +65,8 @@ import com.cruxcoach.domain.playlist.TrainingRanges
 import androidx.compose.ui.res.pluralStringResource
 import com.cruxcoach.domain.playlist.structureRange
 import kotlin.math.roundToInt
+import androidx.compose.material3.RangeSlider
+import com.cruxcoach.domain.board.KilterGradeMapper
 
 /**
  * Generator wizard: session type, duration, session position, angle — with
@@ -234,6 +236,78 @@ fun PlaylistGeneratorScreen(
                             selectedContainerColor = OrangeAccent.copy(alpha = 0.25f),
                         ),
                         modifier = Modifier.testTag("playlist_gen_pos_${pos.name.lowercase()}"),
+                    )
+                }
+            }
+
+            // ── Manual controls ─────────────────────────────────
+            // Only in manual mode, and only the things it actually changes:
+            // the band, how many tries each problem gets, and the two rests.
+            // Everything else on this screen (board, angle, warm-up) applies
+            // as it does elsewhere.
+            if (state.type == GeneratorType.MANUAL) {
+                SectionTitle(
+                    stringResource(
+                        R.string.playlist_manual_grade_range,
+                        KilterGradeMapper.formatGrade(state.manualMinDifficulty),
+                        KilterGradeMapper.formatGrade(state.manualMaxDifficulty),
+                    )
+                )
+                RangeSlider(
+                    value = state.manualMinDifficulty.toFloat()..state.manualMaxDifficulty.toFloat(),
+                    onValueChange = {
+                        viewModel.setManualRange(
+                            it.start.roundToInt().toDouble(),
+                            it.endInclusive.roundToInt().toDouble(),
+                        )
+                    },
+                    valueRange = TrainingRanges.MIN_DIFFICULTY.toFloat()..
+                        TrainingRanges.MAX_DIFFICULTY.toFloat(),
+                    colors = androidx.compose.material3.SliderDefaults.colors(
+                        thumbColor = OrangeAccent,
+                        activeTrackColor = OrangeAccent,
+                    ),
+                    modifier = Modifier.testTag("playlist_gen_manual_range"),
+                )
+
+                SectionTitle(
+                    stringResource(R.string.playlist_manual_repeats, state.manualRepeats)
+                )
+                Slider(
+                    value = state.manualRepeats.toFloat(),
+                    onValueChange = { viewModel.setManualRepeats(it.roundToInt()) },
+                    valueRange = TrainingRanges.MANUAL_REPEATS.first.toFloat()..
+                        TrainingRanges.MANUAL_REPEATS.last.toFloat(),
+                    steps = TrainingRanges.MANUAL_REPEATS.last -
+                        TrainingRanges.MANUAL_REPEATS.first - 1,
+                    colors = androidx.compose.material3.SliderDefaults.colors(
+                        thumbColor = OrangeAccent,
+                        activeTrackColor = OrangeAccent,
+                    ),
+                    modifier = Modifier.testTag("playlist_gen_manual_repeats"),
+                )
+
+                SectionTitle(
+                    stringResource(R.string.playlist_manual_rest, restLabel(state.manualRestSeconds))
+                )
+                RestSlider(
+                    seconds = state.manualRestSeconds,
+                    onChange = viewModel::setManualRest,
+                    tag = "playlist_gen_manual_rest",
+                )
+
+                // Only meaningful once a problem is climbed more than once.
+                if (state.manualRepeats > 1) {
+                    SectionTitle(
+                        stringResource(
+                            R.string.playlist_manual_repeat_rest,
+                            restLabel(state.manualRepeatRestSeconds),
+                        )
+                    )
+                    RestSlider(
+                        seconds = state.manualRepeatRestSeconds,
+                        onChange = viewModel::setManualRepeatRest,
+                        tag = "playlist_gen_manual_repeat_rest",
                     )
                 }
             }
@@ -513,6 +587,7 @@ private fun NamePlaylistDialog(
 private fun typeLabel(type: GeneratorType): String = stringResource(
     when (type) {
         GeneratorType.PYRAMID -> R.string.playlist_type_pyramid
+        GeneratorType.MANUAL -> R.string.playlist_type_manual
         GeneratorType.POWER_ENDURANCE -> R.string.playlist_type_power_endurance
         GeneratorType.VOLUME -> R.string.playlist_type_volume
         GeneratorType.LIMIT -> R.string.playlist_type_limit
@@ -524,6 +599,7 @@ private fun typeLabel(type: GeneratorType): String = stringResource(
 private fun typeDescription(type: GeneratorType): String = stringResource(
     when (type) {
         GeneratorType.PYRAMID -> R.string.playlist_type_pyramid_desc
+        GeneratorType.MANUAL -> R.string.playlist_type_manual_desc
         GeneratorType.POWER_ENDURANCE -> R.string.playlist_type_power_endurance_desc
         GeneratorType.VOLUME -> R.string.playlist_type_volume_desc
         GeneratorType.LIMIT -> R.string.playlist_type_limit_desc
@@ -531,12 +607,39 @@ private fun typeDescription(type: GeneratorType): String = stringResource(
     }
 )
 
+@Composable
+private fun RestSlider(seconds: Int, onChange: (Int) -> Unit, tag: String) {
+    Slider(
+        value = seconds.toFloat(),
+        onValueChange = {
+            // Quarter-minute steps: finer than that is not a rest anyone times.
+            val step = TrainingRanges.MANUAL_REST_STEP
+            onChange((it / step).roundToInt() * step)
+        },
+        valueRange = TrainingRanges.MANUAL_REST_SECONDS.first.toFloat()..
+            TrainingRanges.MANUAL_REST_SECONDS.last.toFloat(),
+        colors = androidx.compose.material3.SliderDefaults.colors(
+            thumbColor = OrangeAccent,
+            activeTrackColor = OrangeAccent,
+        ),
+        modifier = Modifier.testTag(tag),
+    )
+}
+
+@Composable
+private fun restLabel(seconds: Int): String = when {
+    seconds <= 0 -> stringResource(R.string.playlist_manual_rest_none)
+    seconds < 60 -> stringResource(R.string.playlist_manual_rest_seconds, seconds)
+    else -> stringResource(R.string.playlist_manual_rest_minutes, seconds / 60, seconds % 60)
+}
+
 private fun sizeLabelRes(type: GeneratorType): Int = when (type) {
     GeneratorType.VOLUME -> R.string.playlist_generator_size_volume
     GeneratorType.LIMIT -> R.string.playlist_generator_size_limit
     GeneratorType.PROJECTING -> R.string.playlist_generator_size_projects
     GeneratorType.POWER_ENDURANCE -> R.string.playlist_generator_size_sets
     GeneratorType.PYRAMID -> R.string.playlist_generator_size_tiers
+    GeneratorType.MANUAL -> R.string.playlist_generator_size_manual
 }
 
 @Composable
@@ -569,6 +672,7 @@ private fun positionLabel(position: SessionPosition): String = stringResource(
 private fun defaultPlaylistName(type: GeneratorType): String = stringResource(
     when (type) {
         GeneratorType.PYRAMID -> R.string.playlist_default_name_pyramid
+        GeneratorType.MANUAL -> R.string.playlist_default_name_manual
         GeneratorType.POWER_ENDURANCE -> R.string.playlist_default_name_power_endurance
         GeneratorType.VOLUME -> R.string.playlist_default_name_volume
         GeneratorType.LIMIT -> R.string.playlist_default_name_limit

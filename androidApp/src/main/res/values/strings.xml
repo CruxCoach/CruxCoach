@@ -2328,4 +2328,16 @@
     <string name="playlist_generator_size_sets">Sets: %1$d</string>
     <string name="playlist_generator_size_tiers">Tiers: %1$d</string>
     <string name="playlist_generator_estimated">about %1$d min</string>
+    <!-- Manual generator: nothing derived, everything stated -->
+    <string name="playlist_type_manual">Manual</string>
+    <string name="playlist_type_manual_desc">Set the grade range, how many problems, how many tries each and how long the rests are. Nothing is derived from your logbook and nothing is substituted — if the board has nothing in your range, the list comes up short and says so.</string>
+    <string name="playlist_default_name_manual">Custom session</string>
+    <string name="playlist_generator_size_manual">Problems: %1$d</string>
+    <string name="playlist_manual_grade_range">Grade range: %1$s – %2$s</string>
+    <string name="playlist_manual_repeats">Tries per problem: %1$d</string>
+    <string name="playlist_manual_rest">Rest between problems: %1$s</string>
+    <string name="playlist_manual_repeat_rest">Rest between tries: %1$s</string>
+    <string name="playlist_manual_rest_none">none</string>
+    <string name="playlist_manual_rest_seconds">%1$d s</string>
+    <string name="playlist_manual_rest_minutes">%1$d:%2$02d min</string>
 </resources>
