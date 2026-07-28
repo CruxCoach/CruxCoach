@@ -257,6 +257,26 @@ object SessionQueueProtocol {
         return buf
     }
 
+    /**
+     * The host is leaving. [migrate] true means the group carries on and the
+     * first participant takes over; false means the playlist is over for
+     * everyone.
+     *
+     * The migrating form is the historical two-byte sentinel (participant
+     * count 0). The final form appends a flag byte, which a client that
+     * predates it simply does not read — so an older participant falls back to
+     * migration, which is the safe way to be wrong.
+     */
+    fun encodeSessionEnded(migrate: Boolean): ByteArray =
+        if (migrate) byteArrayOf(0, 0)
+        else byteArrayOf(0, 0, SESSION_END_FINAL_FLAG)
+
+    /** Whether a session-ended sentinel means "over", not "hand over". */
+    fun isFinalSessionEnd(data: ByteArray): Boolean =
+        data.size >= 3 && data[0].toInt() == 0 && data[2] == SESSION_END_FINAL_FLAG
+
+    private const val SESSION_END_FINAL_FLAG: Byte = 1
+
     fun decodeSessionInfo(data: ByteArray): SessionInfo? {
         if (data.size < 2) return null
         val count = data[0].toInt() and 0xFF

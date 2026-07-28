@@ -344,22 +344,27 @@ class SessionGattBridgeMigrationTest {
         }
     }
 
-    // ===== Test 1: participant sessionId is always 0 =====
+    // ===== Test 1: a participant carries the host's session id =====
 
     /**
-     * Design invariant: [SessionQueueManager.setParticipantRole] is called with sessionId=0
-     * (hardcoded in [SessionGattBridge.joinSession]). Participant devices do not own the
-     * session ID — that belongs to the host. Migration must NOT use queueManager.state.sessionId
-     * as the stale-ad filter because it would always be 0, making the filter a no-op.
+     * [SessionGattBridge.joinSession] reads the host's advertised session id
+     * from the scan and hands it to [SessionQueueManager.setParticipantRole].
+     *
+     * It used to pass a literal 0, which left participants with no session
+     * identity: the on-board resolver could not tell this session's
+     * advertisement from a stranger's, and a member with an empty queue was
+     * shown someone else's climb as their own session's.
+     *
+     * Migration is unaffected — it filters stale ads on the bridge's own
+     * `lastHostSessionId`, captured at join time, not on this field.
      */
     @Test
-    fun `participant sessionId is always 0 and cannot serve as stale-session filter`() {
-        queueManager.setParticipantRole(0, "SomeHost")
+    fun `a participant carries the host session id`() {
+        queueManager.setParticipantRole(4711, "SomeHost")
 
         assertEquals(
-            "setParticipantRole passes sessionId=0, so qState.sessionId==0 for participants; " +
-                "migration must use nearbySessions to get the real host session ID",
-            0,
+            "the host's id must reach the queue state so the session can be identified",
+            4711,
             queueManager.state.value.sessionId
         )
     }

@@ -296,7 +296,13 @@ class SessionGattBridge(
         stopSharing(allowBoardRelease = true)
     }
 
-    fun stopSharing(allowBoardRelease: Boolean) {
+    /**
+     * @param endForEveryone true when the host wants the playlist over rather
+     *   than handed on. Without it the sentinel starts host migration and the
+     *   group keeps climbing — which is the right default, but it used to be
+     *   the only option and the UI called it "end session".
+     */
+    fun stopSharing(allowBoardRelease: Boolean, endForEveryone: Boolean = false) {
         Log.d(TAG, "stopSharing() called, isSharing=$isSharing, " +
             "connectedClients=${gattServer.getConnectedCount()}, " +
             "boardConnected=${bleConnection.connectionState.value}")
@@ -331,7 +337,7 @@ class SessionGattBridge(
         Log.d(TAG, "stopSharing(): sending session-ended sentinel (participantCount=0)")
         gattServer.notifyAll(
             SessionGattUuids.SESSION_INFO,
-            SessionQueueProtocol.encodeSessionInfo("", 0)
+            SessionQueueProtocol.encodeSessionEnded(migrate = !endForEveryone)
         )
         isSharing = false
         hostJob?.cancel()
@@ -449,9 +455,10 @@ class SessionGattBridge(
         Log.d(TAG, "joinSession() called, device=${device.address}, " +
             "isRejoining=$isRejoining, joinJob=${joinJob != null}, " +
             "clientState=${gattClient.connectionState.value}")
-        // Record the host's advertised session ID so migration can filter stale ads later.
-        // queueManager.state.sessionId is always 0 for participants (passed as 0 in setParticipantRole),
-        // so we must get the real ID from the BLE advertising scan data.
+        // Record the host's advertised session ID. Migration filters stale ads
+        // with it, and it is also what the participant carries as their own
+        // session identity from here on — the JOIN handshake never sends it
+        // back, so the scan is the only place it exists.
         nearbyScanner.nearbySessions.value
             .firstOrNull { it.device?.address == device.address }
             ?.let { session ->
@@ -487,7 +494,11 @@ class SessionGattBridge(
                             val joinSent = gattClient.sendCommand(SessionQueueProtocol.encodeJoin(""))
                             Log.d(TAG, "JOIN command sent: success=$joinSent")
                             gattClient.readInitialState()
-                            queueManager.setParticipantRole(0, "")
+                            // The host's id, not a literal 0. Without it a
+                            // participant had no session identity at all, and
+                            // the on-board resolver could not tell this
+                            // session's advertisement from a stranger's.
+                            queueManager.setParticipantRole(lastHostSessionId, "")
                             Log.d(TAG, "setParticipantRole complete, role=${queueManager.state.value.role}")
                         }
                         SessionClientState.DISCONNECTED -> {
@@ -539,6 +550,11 @@ class SessionGattBridge(
                 gattClient.sessionInfoUpdates.collect { data ->
                     val info = SessionQueueProtocol.decodeSessionInfo(data) ?: return@collect
                     if (info.participantCount == 0) {
+                        if (SessionQueueProtocol.isFinalSessionEnd(data)) {
+                            Log.d(TAG, "Host ended the playlist for everyone")
+                            handleSessionEndedForEveryone()
+                            return@collect
+                        }
                         Log.d(TAG, "Received session-ended signal from host")
                         handleSessionEndedByHost()
                         return@collect
@@ -861,6 +877,25 @@ class SessionGattBridge(
      * Instead of ending the queue, we attempt host migration so the first
      * participant takes over and the group continues climbing.
      */
+    /**
+     * The host ended the playlist outright — no migration, no successor.
+     *
+     * Same teardown as an empty-queue migration, minus the election: nobody is
+     * promoted because nobody is meant to continue.
+     */
+    private fun handleSessionEndedForEveryone() {
+        joinJob?.cancel()
+        joinJob = null
+        migrationJob?.cancel()
+        migrationJob = null
+        gattClient.disconnect()
+        queueManager.remoteAddClimb = null
+        advertiser.suppressClimbAdvertising = false
+        restartClimbAdvertisingIfConnected()
+        queueManager.endQueue()
+        boardSessionManager.endSession()
+    }
+
     private fun handleSessionEndedByHost() {
         val qState = queueManager.state.value
         Log.d(TAG, "handleSessionEndedByHost() called, role=${qState.role}, " +

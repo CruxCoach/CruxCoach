@@ -308,19 +308,19 @@ class SessionQueueManagerTest {
     // ===== Migration invariants =====
 
     /**
-     * Regression guard: the participant's local sessionId is always 0 because
-     * SessionGattBridge.joinSession() calls setParticipantRole(0, "").
+     * The participant's session id is the HOST's, read from the advertisement
+     * at join time. It used to be a hardcoded 0, which meant a participant had
+     * no way to recognise their own session.
      *
-     * If someone were to "fix" this by passing the real ID, migration code in
-     * SessionGattBridge would also need updating — the test documents the contract.
+     * Migration does not read this field — it keeps its own copy captured at
+     * join — so the two remain independent.
      */
     @Test
-    fun `setParticipantRole with id 0 yields sessionId 0 — migration must not use it as stale filter`() {
-        queueManager.setParticipantRole(0, "Host")
+    fun `setParticipantRole carries the host session id into the state`() {
+        queueManager.setParticipantRole(4711, "Host")
         assertEquals(
-            "Participant sessionId is 0 by design; SessionGattBridge reads the real host session " +
-                "ID from NearbyClimbScanner.nearbySessions instead",
-            0,
+            "the participant must be able to identify their own session",
+            4711,
             queueManager.state.value.sessionId
         )
     }
