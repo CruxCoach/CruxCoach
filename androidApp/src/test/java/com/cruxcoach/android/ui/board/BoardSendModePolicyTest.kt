@@ -59,8 +59,8 @@ class BoardSendModePolicyTest {
         assertEquals(
             true,
             BoardSendModePolicy.shouldAutoSendAfterCapacityResolution(
-                previousCapacity = BoardConnectionCapacity.UNKNOWN,
-                currentCapacity = BoardConnectionCapacity.SINGLE,
+                previousCapacity = BoardConnectionCapacity.SINGLE,
+                currentCapacity = BoardConnectionCapacity.MULTIPLE,
                 previousResolvedMode = BoardSendMode.EXPLICIT,
                 resolvedMode = BoardSendMode.AUTOMATIC,
             ),
@@ -85,7 +85,7 @@ class BoardSendModePolicyTest {
         assertEquals(
             false,
             BoardSendModePolicy.shouldAutoSendAfterCapacityResolution(
-                previousCapacity = BoardConnectionCapacity.UNKNOWN,
+                previousCapacity = BoardConnectionCapacity.SINGLE,
                 currentCapacity = BoardConnectionCapacity.MULTIPLE,
                 previousResolvedMode = BoardSendMode.EXPLICIT,
                 resolvedMode = BoardSendMode.EXPLICIT,
@@ -98,9 +98,22 @@ class BoardSendModePolicyTest {
         assertEquals(
             false,
             BoardSendModePolicy.shouldAutoSendAfterCapacityResolution(
-                previousCapacity = BoardConnectionCapacity.UNKNOWN,
+                previousCapacity = BoardConnectionCapacity.SINGLE,
                 currentCapacity = BoardConnectionCapacity.MULTIPLE,
                 previousResolvedMode = BoardSendMode.AUTOMATIC,
+                resolvedMode = BoardSendMode.AUTOMATIC,
+            ),
+        )
+    }
+
+    @Test
+    fun `a controller corrected down to single sends under the single preference`() {
+        assertEquals(
+            true,
+            BoardSendModePolicy.shouldAutoSendAfterCapacityResolution(
+                previousCapacity = BoardConnectionCapacity.MULTIPLE,
+                currentCapacity = BoardConnectionCapacity.SINGLE,
+                previousResolvedMode = BoardSendMode.EXPLICIT,
                 resolvedMode = BoardSendMode.AUTOMATIC,
             ),
         )

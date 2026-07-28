@@ -23,23 +23,39 @@ internal object BoardSendModePolicy {
         else -> when (connectionCapacity) {
             BoardConnectionCapacity.SINGLE -> singleConnectionMode
             BoardConnectionCapacity.MULTIPLE -> multiConnectionMode
+            // No production path builds UNKNOWN any more — an unclassified
+            // controller resolves to SINGLE, which is what real hardware is.
+            // The branch stays as the cautious answer should that change back:
+            // with two differing preferences it withholds the automatic send
+            // until the probe has said which one applies. Note that nothing
+            // reaches it today, so it is not the guard it reads like.
             BoardConnectionCapacity.UNKNOWN -> if (singleConnectionMode == multiConnectionMode) {
                 singleConnectionMode
             } else {
-                // Do not auto-send before the short capacity probe has selected
-                // which of two differing user preferences applies.
                 BoardSendMode.EXPLICIT
             }
         }
     }
 
+    /**
+     * The probe changed our mind about the controller, and that flipped the
+     * resolved preference to AUTOMATIC — so the climb the user has open should
+     * go to the wall now, without a second tap.
+     *
+     * This used to require [BoardConnectionCapacity.UNKNOWN] as the previous
+     * value. Once an unclassified controller began resolving to SINGLE straight
+     * away, no production path produced UNKNOWN any more and this could never
+     * fire again; the tests stayed green only because they called it with a
+     * value the app no longer builds. What actually matters is that the
+     * capacity changed and the mode followed it, which holds in both
+     * directions.
+     */
     fun shouldAutoSendAfterCapacityResolution(
         previousCapacity: BoardConnectionCapacity,
         currentCapacity: BoardConnectionCapacity,
         previousResolvedMode: BoardSendMode,
         resolvedMode: BoardSendMode,
-    ): Boolean = previousCapacity == BoardConnectionCapacity.UNKNOWN &&
-        currentCapacity != BoardConnectionCapacity.UNKNOWN &&
+    ): Boolean = previousCapacity != currentCapacity &&
         previousResolvedMode != BoardSendMode.AUTOMATIC &&
         resolvedMode == BoardSendMode.AUTOMATIC
 }
