@@ -36,7 +36,11 @@ class PlaylistPlannerTest {
     fun `volume plans flash-band problems scaled by duration`() {
         val plan = PlaylistPlanner.plan(params(GeneratorType.VOLUME, duration = 60), profile)
         val climbs = plan.climbs()
-        assertEquals(24, climbs.size, "60 min / 150 s cycle per problem")
+        // Twenty, not twenty-four: the ten-minute mid-block break is now
+        // subtracted before the hour is divided into 150-second cycles. It
+        // used not to be, so the session planned four problems it had already
+        // spent the time on — and Lattice's pacing is ~20 per hour anyway.
+        assertEquals(20, climbs.size, "60 min minus the mid-break, over 150 s cycles")
         // Every problem is separated by an explicit quality rest.
         assertEquals(
             climbs.size - 1,
@@ -77,6 +81,89 @@ class PlaylistPlannerTest {
     }
 
     @Test
+    fun `the chosen structure is what gets planned`() {
+        // The slider sets sets/problems/tiers directly. It used to set minutes,
+        // which the planner divided down — so most positions produced the same
+        // session and the number on screen was not the one that mattered.
+        (1..4).forEach { sets ->
+            val plan = PlaylistPlanner.plan(
+                params(GeneratorType.POWER_ENDURANCE).copy(structureSize = sets),
+                profile,
+            )
+            assertEquals(
+                sets * TrainingRanges.PE_PROBLEMS_PER_SET,
+                plan.climbs().count { it.section != PlanSection.WARM_UP },
+                "$sets sets",
+            )
+        }
+    }
+
+    @Test
+    fun `every slider position builds a different session`() {
+        // The failure this replaces: 40 through 150 minutes all gave four sets.
+        val sizes = TrainingRanges.PE_SETS.map { sets ->
+            PlaylistPlanner.plan(
+                params(GeneratorType.POWER_ENDURANCE).copy(structureSize = sets),
+                profile,
+            ).climbs().size
+        }
+        assertEquals(sizes.distinct().size, sizes.size, "sessions were $sizes")
+    }
+
+    @Test
+    fun `a playlist saved without a structure still plans from its duration`() {
+        // Params persisted before the slider changed meaning carry no size.
+        val plan = PlaylistPlanner.plan(params(GeneratorType.POWER_ENDURANCE, duration = 40), profile)
+        assertTrue(plan.climbs().isNotEmpty())
+    }
+
+    @Test
+    fun `the volume mid-block break is paid for out of the session`() {
+        // The break replaces a 90-second rest but costs ten minutes; the count
+        // was divided out of the full duration before that was known, so an
+        // hour-long session planned problems it had already given the time to.
+        val plan = PlaylistPlanner.plan(
+            params(GeneratorType.VOLUME, duration = 60, position = SessionPosition.WARMED_UP),
+            profile,
+        )
+        assertTrue(
+            plan.estimatedMinutes() <= 66,
+            "60-minute volume session estimated at ${plan.estimatedMinutes()} min",
+        )
+    }
+
+    @Test
+    fun `the 4x4 band hangs off the flash, not the working max`() {
+        // A climber whose flash sits far below their max used to get a band
+        // derived from the max via a fixed gap they do not have.
+        val distantFlash = profile.copy(flashDifficulty = 14.0)
+        val plan = PlaylistPlanner.plan(
+            params(GeneratorType.POWER_ENDURANCE, position = SessionPosition.WARMED_UP),
+            distantFlash,
+        )
+        val work = plan.climbs().filter { it.section != PlanSection.WARM_UP }
+        // Stated as the rule, not as a number: the band hangs off whatever the
+        // profile's robust flash resolves to, which is the point of the change.
+        val flash = distantFlash.effectiveRepeatableFlash
+        assertEquals(flash - TrainingRanges.PE_BAND_LOW_BELOW_FLASH, work.minOf { it.minDifficulty })
+        assertEquals(flash - TrainingRanges.PE_BAND_HIGH_BELOW_FLASH, work.maxOf { it.maxDifficulty })
+        assertTrue(flash < profile.effectiveRepeatableMax, "flash must sit clear of the max")
+    }
+
+    @Test
+    fun `a short session does not become a long one`() {
+        // 20 minutes of cold hard bouldering used to plan ~70: the two-problem
+        // floor plus five mandatory attempts plus a warm-up ladder, none of it
+        // fitting the budget the climber asked for.
+        val plan = PlaylistPlanner.plan(
+            params(GeneratorType.LIMIT, duration = 20, position = SessionPosition.START_COLD),
+            profile,
+        )
+        val estimate = plan.estimatedMinutes()
+        assertTrue(estimate <= 20 * 2.0, "20-minute session estimated at $estimate min")
+    }
+
+    @Test
     fun `estimated minutes track the requested duration`() {
         // The 75-min limit session must not preview as ~29 min (the bug
         // that hid attempt time inside an invisible per-problem block).
@@ -98,7 +185,47 @@ class PlaylistPlannerTest {
     @Test
     fun `limit never plans above max plus one V-grade`() {
         val plan = PlaylistPlanner.plan(params(GeneratorType.LIMIT), profile)
-        assertTrue(plan.climbs().all { it.maxDifficulty <= 22.0 + TrainingRanges.CEILING_ABOVE_MAX })
+        // One V-grade above 22 (V6) is V7 = 23 on the real table, not 22+2.
+        val ceiling = 22.0 + TrainingRanges.CEILING_ABOVE_MAX_STEPS
+        assertTrue(plan.climbs().all { it.maxDifficulty <= ceiling })
+        assertEquals(ceiling, plan.hardCeiling)
+    }
+
+    @Test
+    fun `a V-grade is not always two difficulty points`() {
+        // The reason the bands moved to table lookups: multiplying by two is
+        // right around V5 and doubles the distance at the top of the scale.
+        // Two difficulty points, but only one V-grade: V5 (20-21) -> V6 (22).
+        assertEquals(1, VGradeOffsets.distanceInGrades(20.0, 22.0))
+        // And one point can be a whole grade of its own near the top.
+        assertEquals(1, VGradeOffsets.distanceInGrades(22.0, 23.0))  // V6 -> V7
+        assertEquals(1, VGradeOffsets.distanceInGrades(26.0, 27.0))  // V9 -> V10
+        // Which is the whole point: the same two points move a different
+        // distance depending on where you stand.
+        assertEquals(2, VGradeOffsets.distanceInGrades(22.0, 25.0))  // V6 -> V8, three points
+    }
+
+    @Test
+    fun `power endurance sits three to two V-grades below max, on the real scale`() {
+        // A V10 climber (27) used to get 21..23 — V5 to V7 — from the linear
+        // maths, three grades easier than the band claims.
+        val strong = profile.copy(maxDifficulty = 27.0, flashDifficulty = 25.0)
+        val plan = PlaylistPlanner.plan(
+            params(GeneratorType.POWER_ENDURANCE, position = SessionPosition.WARMED_UP),
+            strong,
+        )
+        val work = plan.climbs().filter { it.section != PlanSection.WARM_UP }
+        val lowest = work.minOf { it.minDifficulty }
+        val highest = work.maxOf { it.maxDifficulty }
+        // Flash 25 demotes to 24 → band 22..23, which reads as V6..V7. The
+        // old V-grade arithmetic multiplied by two off the MAX and produced
+        // 21..23 — V5..V7, where a V10 climber never gets pumped.
+        assertEquals(22.0, lowest, "band floor")
+        assertEquals(23.0, highest, "band ceiling")
+        assertTrue(
+            VGradeOffsets.distanceInGrades(lowest, 27.0) <= 4,
+            "lowest reads as ${VGradeOffsets.distanceInGrades(lowest, 27.0)} grades below max",
+        )
     }
 
     @Test
@@ -122,8 +249,12 @@ class PlaylistPlannerTest {
         // Same 4 repeat keys every set → laps repeat their problems.
         assertEquals(setOf(0, 1, 2, 3), climbs.mapNotNull { it.repeatKey }.toSet())
         assertEquals(4, climbs.count { it.repeatKey == 0 })
-        // Band: max−3V … max−2V → [16, 18].
-        assertTrue(climbs.all { it.minDifficulty == 16.0 && it.maxDifficulty == 18.0 })
+        // Band: repeatable flash − 2 … − 1. Flash 18 demotes to 17 (one
+        // sparse flash may not set the band outright), so 15..16.
+        assertTrue(
+            climbs.all { it.minDifficulty == 15.0 && it.maxDifficulty == 16.0 },
+            "band was ${climbs.first().minDifficulty}..${climbs.first().maxDifficulty}",
+        )
         // Lap rests short, set rests long.
         assertEquals(3, plan.rests().count { it.seconds == TrainingRanges.REST_PE_BETWEEN_SETS })
         assertEquals(12, plan.rests().count { it.seconds == TrainingRanges.REST_PE_BETWEEN_LAPS })
@@ -208,12 +339,32 @@ class PlaylistPlannerTest {
     }
 
     @Test
-    fun `long pyramid session adds the descent`() {
-        val plan = PlaylistPlanner.plan(params(GeneratorType.PYRAMID, duration = 100), profile)
+    fun `the up-and-down pyramid descends again`() {
+        val plan = PlaylistPlanner.plan(
+            params(GeneratorType.PYRAMID, duration = 100)
+                .copy(pyramidShape = PyramidShape.UP_AND_DOWN),
+            profile,
+        )
         val sections = plan.climbs().map { it.section }
-        assertTrue(PlanSection.DESCENT in sections, "≥90 min pyramid descends again")
+        assertTrue(PlanSection.DESCENT in sections, "an up-and-down pyramid descends")
         // Descent mirrors the ascent minus apex: 2+3+4 = 9 extra climbs.
         assertEquals(19, plan.climbs().size)
+    }
+
+    @Test
+    fun `the build-up pyramid stops at the apex, whatever the duration`() {
+        // The descent used to appear by itself at 90 minutes, so anything
+        // shorter was half a pyramid presented as a whole one — and anything
+        // longer got a shape the climber never asked for.
+        listOf(30, 100, 150).forEach { duration ->
+            val plan = PlaylistPlanner.plan(
+                params(GeneratorType.PYRAMID, duration = duration), profile,
+            )
+            assertTrue(
+                plan.climbs().none { it.section == PlanSection.DESCENT },
+                "$duration min build-up must not descend",
+            )
+        }
     }
 
     @Test
@@ -239,15 +390,15 @@ class PlaylistPlannerTest {
         val warmUp = plan.climbs().filter { it.section == PlanSection.WARM_UP }
         assertTrue(warmUp.isNotEmpty())
         // A 45-minute pyramid loses its ladder minutes from the main budget
-        // and builds THREE tiers, so the base is anchor−2−2 = 18, not the
-        // anchor−5 = 17 a four-tier pyramid would give. The ladder has to
-        // stop 1 V below the base it will actually meet.
+        // and builds THREE tiers, so the base sits higher than a four-tier
+        // pyramid's would. The ladder has to stop just under the base it will
+        // actually meet, whichever that is.
         val base = plan.climbs()
             .filter { it.section != PlanSection.WARM_UP }
             .minOf { (it.minDifficulty + it.maxDifficulty) / 2 }
         val topCenter = warmUp.maxOf { (it.minDifficulty + it.maxDifficulty) / 2 }
         assertEquals(
-            TrainingRanges.DIFF_PER_V_GRADE,
+            TrainingRanges.WARMUP_END_BELOW_FIRST_WORK,
             base - topCenter,
             "ladder ended ${base - topCenter} below the first working problem",
         )
@@ -278,9 +429,12 @@ class PlaylistPlannerTest {
         val warmUps = plan.climbs().filter { it.section == PlanSection.WARM_UP }
         assertTrue(warmUps.isNotEmpty(), "cold start must warm up")
         assertTrue(warmUps.size <= TrainingRanges.WARMUP_MAX_PROBLEMS)
-        // Ladder starts 5 V below max (22 − 10 = 12) and stays below max.
+        // The ladder hangs off the FIRST WORK GRADE now, not the max — its
+        // job is to bridge that gap, and tying it to the max meant two rules
+        // that had to be reconciled with a min().
         assertTrue(warmUps.all { it.maxDifficulty < 22.0 })
-        assertEquals(12.0, (warmUps.first().minDifficulty + warmUps.first().maxDifficulty) / 2)
+        val start = (warmUps.first().minDifficulty + warmUps.first().maxDifficulty) / 2
+        assertEquals(22.0 - TrainingRanges.WARMUP_START_BELOW_FIRST_WORK, start)
         // Short rests between ladder problems + the long transition rest.
         val warmUpRests = plan.rests().filter { it.section == PlanSection.WARM_UP }
         assertEquals(
@@ -293,7 +447,10 @@ class PlaylistPlannerTest {
             warmUpRests.count { it.seconds == TrainingRanges.REST_AFTER_WARMUP },
             "one transition rest before the working set",
         )
-        // Warm-up minutes shrink the main set: 60 → ~42 main minutes = 2 problems.
+        // Five ladder problems cost ~16 min, leaving ~44 for the main set
+        // against a 21-min block: two problems. Tying the ladder to the first
+        // work grade instead of the max made it three tiers rather than five,
+        // which is where those minutes came back from.
         assertEquals(
             2,
             plan.climbs().filter { it.section == PlanSection.PEAK }

@@ -32,25 +32,41 @@ package com.cruxcoach.domain.playlist
  */
 object TrainingRanges {
 
-    /** One V-grade in difficulty points. */
-    const val DIFF_PER_V_GRADE = 2.0
-
-    /** One Font half-step (7a→7a+) in difficulty points — the finest
-     *  granularity the Aurora scale carries. Work bands are tuned on
-     *  THIS unit: V-grade offsets are too coarse (V8 spans 7b AND 7b+),
-     *  Font steps let each session type hit its exact intensity. */
+    /**
+     * The scale's own unit: one Font grade, one difficulty point.
+     *
+     * 10 = 4a, 22 = 7a, 34 = 9a. Everything in this file and in the planner is
+     * counted in these, and only these.
+     *
+     * The V-scale is a naming convention laid over the same numbers, and an
+     * uneven one — V0 covers three points, V5 two, V9 and up a single each.
+     * It used to appear here as a second unit (`DIFF_PER_V_GRADE = 2`), which
+     * is right around V5 and moves twice as far as it claims at the top: the
+     * band documented as "max − 3 V … max − 2 V" landed on V5–V7 for a V10
+     * climber. The offsets below were re-derived directly in points instead,
+     * so nothing converts and nothing can drift. They are calibrated for the
+     * V4–V8 range the source protocols were written around; [VGradeOffsets]
+     * exists only to name a difficulty for the user.
+     */
     const val DIFF_PER_FONT_STEP = 1.0
 
     /** Absolute scale bounds (V0 … V17). */
     const val MIN_DIFFICULTY = 10.0
     const val MAX_DIFFICULTY = 34.0
 
-    /** Fallback flash offset when the logbook has no flash data:
-     *  flash ≈ max − 2 V-grades. */
-    const val FLASH_FALLBACK_OFFSET = 2 * DIFF_PER_V_GRADE
+    /** Fallback flash offset when the logbook has no flash data. */
+    const val FLASH_FALLBACK_STEPS = 3 * DIFF_PER_FONT_STEP
 
-    /** Hard safety ceiling: never plan above max + 1 V-grade, any mode. */
-    const val CEILING_ABOVE_MAX = 1 * DIFF_PER_V_GRADE
+    /**
+     * Hard safety ceiling, in Font steps — never plan above max + 2 steps.
+     *
+     * Deliberately NOT expressed in V-grades. At the top of the scale one
+     * V-grade is a single Font step, so a V-grade ceiling would sink below
+     * [PROJECT_BAND_TOP_ABOVE_MAX] and clamp the projecting band the planner
+     * had just built. Two steps is the old effective value and the highest any
+     * mode plans; the filler may not widen past it.
+     */
+    const val CEILING_ABOVE_MAX_STEPS = 2 * DIFF_PER_FONT_STEP
 
     // ── Per-type grade bands (Font-step granular offsets) ───────
 
@@ -71,8 +87,18 @@ object TrainingRanges {
 
     /** Power endurance: max − 3 V … max − 2 V (fresh: 1-2 tries; lap 4:
      *  barely topping — the classic 4x4 window). */
-    const val PE_BAND_LOW_BELOW_MAX = 3 * DIFF_PER_V_GRADE
-    const val PE_BAND_HIGH_BELOW_MAX = 2 * DIFF_PER_V_GRADE
+    /**
+     * Anchored on the repeatable FLASH, not on the working max.
+     *
+     * A 4x4 only works if the fourth lap still tops out, and what a climber
+     * can do first try when fresh is the honest starting point for that —
+     * pumped, they need a little under it. Deriving from the max instead
+     * assumed a fixed max-to-flash gap that no climber actually has: a
+     * project-focused climber with a distant flash got a band far too hard,
+     * a mileage climber one too easy.
+     */
+    const val PE_BAND_LOW_BELOW_FLASH = 2 * DIFF_PER_FONT_STEP
+    const val PE_BAND_HIGH_BELOW_FLASH = 1 * DIFF_PER_FONT_STEP
 
     /** Pyramid: Font-step tiers (6c → 6c+ → 7a → 7a+) — the classic Font
      *  pyramid; V-grade tiers jump twice as far and skip the half grades
@@ -86,21 +112,32 @@ object TrainingRanges {
      *  all-time max is a limit session in disguise. */
     const val PYRAMID_APEX_BELOW_MAX = 2 * DIFF_PER_FONT_STEP
 
-    /** Warm-up ladder: start 5 V below max — but never closer than 3 V to
-     *  the first working grade (easy sessions warm up on easier terrain),
-     *  and climb up to 1 V below the working grade (no intensity jump
-     *  into the first work set). Tiers within taper distance of the work
-     *  grade get one problem instead of two (progressive activation). */
-    const val WARMUP_START_BELOW_MAX = 5 * DIFF_PER_V_GRADE
-    const val WARMUP_START_BELOW_FIRST_WORK = 3 * DIFF_PER_V_GRADE
-    const val WARMUP_TAPER_DISTANCE = 3 * DIFF_PER_V_GRADE
+    /**
+     * Warm-up ladder, defined entirely against the FIRST WORKING GRADE.
+     *
+     * Its job is to bridge the gap to the work set, so the max is none of its
+     * business: it used to start "5 V below max" and separately refuse to come
+     * within "3 V of the first work grade", two rules that had to be reconciled
+     * with a min(). One reference point removes the reconciliation, and each
+     * session type warms up where its own work begins — volume lower, hard
+     * bouldering higher — with no special case.
+     */
+    // Six, not seven: with a two-step ladder the start has to share parity
+    // with the end, or the top tier lands three below the work grade instead
+    // of two and the ladder stops short of what it promises.
+    const val WARMUP_START_BELOW_FIRST_WORK = 6 * DIFF_PER_FONT_STEP
+    const val WARMUP_END_BELOW_FIRST_WORK = 2 * DIFF_PER_FONT_STEP
+    const val WARMUP_STEP = 2 * DIFF_PER_FONT_STEP
+
+    /** Within this of the work grade, one problem per tier instead of two. */
+    const val WARMUP_TAPER_DISTANCE = 3 * DIFF_PER_FONT_STEP
 
     /** Per-tier tolerance when matching climbs to a planned grade (± half
      *  a V-grade keeps "a V5 slot" honest while accepting 6b vs 6b+). */
     const val SLOT_TOLERANCE = 1.0
 
-    /** END_OF_SESSION fatigue shift: everything 1 V-grade easier. */
-    const val END_OF_SESSION_SHIFT = 1 * DIFF_PER_V_GRADE
+    /** END_OF_SESSION fatigue shift: everything two Font steps easier. */
+    const val END_OF_SESSION_SHIFT = 2 * DIFF_PER_FONT_STEP
 
     // ── Rests (seconds) — explicit playlist entries ─────────────
 
@@ -149,6 +186,13 @@ object TrainingRanges {
      *  → ≈20 problems/hour of block time (Lattice pacing). */
     const val VOLUME_CYCLE_SECONDS = 150
 
+    /** What the mid-block break costs beyond the short rest it replaces.
+     *  The count used to be divided out of the full duration before this was
+     *  known, so an hour-long session planned 24 problems and then spent ten
+     *  minutes it had already given away. */
+    const val VOLUME_MID_BREAK_EXTRA_SECONDS =
+        REST_VOLUME_MID_BREAK - REST_VOLUME_BETWEEN_PROBLEMS
+
     /** Limit block per problem: 5 attempts ≈ 1 min each + 4×4 min rests. */
     const val LIMIT_SLOT_MINUTES = 21
 
@@ -165,9 +209,23 @@ object TrainingRanges {
     // ── Count clamps per type ────────────────────────────────────
 
     val VOLUME_COUNT = 8..30
-    val LIMIT_COUNT = 2..6
+    /** One hard problem with full rests is a legitimate short session; two
+     *  was a floor that made the shortest slider setting overshoot threefold. */
+    val LIMIT_COUNT = 1..6
+
+    /** Hörst's window is 3-5 tries. Below three it stops being the protocol,
+     *  so the problem count gives way before this does. */
+    const val MIN_ATTEMPTS_PER_LIMIT_PROBLEM = 3
+
+    /** Time on the wall for one attempt, seconds — the same figure
+     *  estimatedMinutes uses, so the planner and the preview agree. */
+    const val CLIMB_SECONDS = 60
     val PROJECT_COUNT = 1..3
     val PE_SETS = 1..4
+
+    /** Three tiers or four — below that it is not a pyramid, above it the
+     *  base gets wider than a session can carry. */
+    val PYRAMID_TIERS = 3..4
     const val PE_PROBLEMS_PER_SET = 4
 
     /** Limit bouldering: attempts per problem, as EXPLICIT playlist

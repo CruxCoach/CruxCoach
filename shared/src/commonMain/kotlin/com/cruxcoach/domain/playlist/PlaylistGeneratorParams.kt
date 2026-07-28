@@ -23,6 +23,31 @@ enum class GeneratorType {
     PROJECTING,
 }
 
+/**
+ * How far round the pyramid goes.
+ *
+ * The classic session pyramid climbs up to the apex and back down again; the
+ * generator only ever added the descent for sessions of 90 minutes or more, so
+ * everything shorter was half a pyramid presented as a whole one. Now the
+ * climber chooses, and duration only decides how many tiers fit.
+ */
+enum class PyramidShape {
+    /** Up to the apex and stop — a build-up, not a full pyramid. */
+    ASCENDING,
+
+    /** Up and back down, mirroring the ascent minus the apex. */
+    UP_AND_DOWN,
+}
+
+/** What a session type counts, and the range the UI offers. */
+fun GeneratorType.structureRange(): IntRange = when (this) {
+    GeneratorType.VOLUME -> TrainingRanges.VOLUME_COUNT
+    GeneratorType.LIMIT -> TrainingRanges.LIMIT_COUNT
+    GeneratorType.PROJECTING -> TrainingRanges.PROJECT_COUNT
+    GeneratorType.POWER_ENDURANCE -> TrainingRanges.PE_SETS
+    GeneratorType.PYRAMID -> TrainingRanges.PYRAMID_TIERS
+}
+
 /** Where in the training session the playlist will be climbed — shifts
  *  intensity and decides whether a warm-up ladder is prepended. */
 enum class SessionPosition {
@@ -70,6 +95,22 @@ data class PlaylistGeneratorParams(
     val productSizeId: Int = 0,
     /** Candidate preference (soft) — see [CandidateSelection]. */
     val selection: CandidateSelection = CandidateSelection.NEW,
+    /** Pyramid only — see [PyramidShape]. */
+    val pyramidShape: PyramidShape = PyramidShape.ASCENDING,
+    /**
+     * How big the session is, in whatever the type counts: problems for
+     * volume and hard bouldering, projects, 4x4 sets, pyramid tiers.
+     *
+     * This is what the generator actually varies. [durationMinutes] used to be
+     * the only input and was divided down to one of these — so the slider was
+     * far finer than its effect (every setting from 40 to 150 minutes built
+     * the same four 4x4 sets) and the arithmetic ran the wrong way round: the
+     * climber set a time, the planner guessed a structure, and the estimate
+     * then disagreed with the time they had set.
+     *
+     * Null keeps the old division, for playlists saved before this existed.
+     */
+    val structureSize: Int? = null,
 ) {
     fun toJson(): String = json.encodeToString(serializer(), this)
 

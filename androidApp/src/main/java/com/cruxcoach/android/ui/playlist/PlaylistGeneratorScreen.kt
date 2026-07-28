@@ -59,9 +59,12 @@ import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.domain.playlist.GeneratorType
 import com.cruxcoach.domain.playlist.PlanSlot
 import com.cruxcoach.domain.playlist.CandidateSelection
+import com.cruxcoach.domain.playlist.PyramidShape
 import com.cruxcoach.domain.playlist.SessionPosition
 import com.cruxcoach.domain.playlist.TrainingRanges
 import androidx.compose.ui.res.pluralStringResource
+import com.cruxcoach.domain.playlist.structureRange
+import kotlin.math.roundToInt
 
 /**
  * Generator wizard: session type, duration, session position, angle — with
@@ -181,19 +184,37 @@ fun PlaylistGeneratorScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            // ── Duration ────────────────────────────────────────
-            SectionTitle(
-                stringResource(R.string.playlist_generator_duration, state.durationMinutes),
-            )
+            // ── Size ────────────────────────────────────────────
+            // The slider sets the structure, not the clock. A duration slider
+            // could only be divided down into one of these anyway, so it was
+            // finer than its own effect — every setting from 40 to 150 minutes
+            // produced the same four 4x4 sets — and it named a time the
+            // session then did not take. Now the climber picks what the type
+            // actually counts and the minutes follow, shown beside it.
+            val range = state.type.structureRange()
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                SectionTitle(
+                    stringResource(sizeLabelRes(state.type), state.structureSize),
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    stringResource(R.string.playlist_generator_estimated, state.estimatedMinutes),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             Slider(
-                value = state.durationMinutes.toFloat(),
-                onValueChange = { viewModel.setDuration((it / 5).toInt() * 5) },
-                valueRange = TrainingRanges.MIN_DURATION_MINUTES.toFloat()..TrainingRanges.MAX_DURATION_MINUTES.toFloat(),
+                value = state.structureSize.toFloat(),
+                onValueChange = { viewModel.setStructureSize(it.roundToInt()) },
+                valueRange = range.first.toFloat()..range.last.toFloat(),
+                // One stop per valid value, so the thumb cannot land between
+                // two sessions that do not exist.
+                steps = (range.last - range.first - 1).coerceAtLeast(0),
                 colors = androidx.compose.material3.SliderDefaults.colors(
                     thumbColor = OrangeAccent,
                     activeTrackColor = OrangeAccent,
                 ),
-                modifier = Modifier.testTag("playlist_gen_duration"),
+                modifier = Modifier.testTag("playlist_gen_size"),
             )
 
             // ── Session position ────────────────────────────────
@@ -214,6 +235,31 @@ fun PlaylistGeneratorScreen(
                         ),
                         modifier = Modifier.testTag("playlist_gen_pos_${pos.name.lowercase()}"),
                     )
+                }
+            }
+
+            // ── Pyramid shape ───────────────────────────────────
+            // Whether the pyramid comes back down was decided by the duration
+            // alone, so every session under 90 minutes was half a pyramid
+            // under a name that promises a whole one.
+            if (state.type == GeneratorType.PYRAMID) {
+                SectionTitle(stringResource(R.string.playlist_generator_pyramid_shape))
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    PyramidShape.entries.forEach { shape ->
+                        FilterChip(
+                            selected = state.pyramidShape == shape,
+                            onClick = { viewModel.setPyramidShape(shape) },
+                            label = { Text(pyramidShapeLabel(shape), maxLines = 1) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = OrangeAccent.copy(alpha = 0.25f),
+                            ),
+                            modifier = Modifier
+                                .testTag("playlist_gen_pyramid_${shape.name.lowercase()}"),
+                        )
+                    }
                 }
             }
 
@@ -409,11 +455,12 @@ private fun PlanPreviewCard(
 }
 
 @Composable
-private fun SectionTitle(text: String) {
+private fun SectionTitle(text: String, modifier: Modifier = Modifier) {
     Text(
         text,
         style = MaterialTheme.typography.titleSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = modifier,
     )
 }
 
@@ -481,6 +528,22 @@ private fun typeDescription(type: GeneratorType): String = stringResource(
         GeneratorType.VOLUME -> R.string.playlist_type_volume_desc
         GeneratorType.LIMIT -> R.string.playlist_type_limit_desc
         GeneratorType.PROJECTING -> R.string.playlist_type_projecting_desc
+    }
+)
+
+private fun sizeLabelRes(type: GeneratorType): Int = when (type) {
+    GeneratorType.VOLUME -> R.string.playlist_generator_size_volume
+    GeneratorType.LIMIT -> R.string.playlist_generator_size_limit
+    GeneratorType.PROJECTING -> R.string.playlist_generator_size_projects
+    GeneratorType.POWER_ENDURANCE -> R.string.playlist_generator_size_sets
+    GeneratorType.PYRAMID -> R.string.playlist_generator_size_tiers
+}
+
+@Composable
+private fun pyramidShapeLabel(shape: PyramidShape): String = stringResource(
+    when (shape) {
+        PyramidShape.ASCENDING -> R.string.playlist_pyramid_ascending
+        PyramidShape.UP_AND_DOWN -> R.string.playlist_pyramid_up_and_down
     }
 )
 

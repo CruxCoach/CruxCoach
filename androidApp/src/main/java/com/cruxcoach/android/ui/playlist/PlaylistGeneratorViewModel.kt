@@ -15,10 +15,13 @@ import com.cruxcoach.data.repository.NewListPlaybackStep
 import com.cruxcoach.data.repository.PersonalBoardRepository
 import com.cruxcoach.data.repository.SortDirection
 import com.cruxcoach.domain.playlist.CandidateSelection
+import com.cruxcoach.domain.playlist.PyramidShape
+import com.cruxcoach.domain.playlist.structureRange
 import com.cruxcoach.domain.playlist.CandidateSource
 import com.cruxcoach.domain.playlist.GeneratedEntry
 import com.cruxcoach.domain.playlist.GeneratorType
 import com.cruxcoach.domain.playlist.LogbookProfile
+import com.cruxcoach.domain.playlist.LoggedSend
 import com.cruxcoach.domain.playlist.PlaylistCandidate
 import com.cruxcoach.domain.playlist.PlaylistFiller
 import com.cruxcoach.domain.playlist.PlaylistGeneratorParams
@@ -42,6 +45,10 @@ data class PlaylistGeneratorState(
     val type: GeneratorType = GeneratorType.PYRAMID,
     val durationMinutes: Int = 60,
     val selection: CandidateSelection = CandidateSelection.NEW,
+    /** Pyramid only: build-up, or up and back down. */
+    val pyramidShape: PyramidShape = PyramidShape.ASCENDING,
+    /** What the slider sets: problems, projects, sets or tiers. */
+    val structureSize: Int = 0,
     val position: SessionPosition = SessionPosition.START_COLD,
     val angle: Int = 40,
     /** MoonBoard walls are fixed-angle — hide the angle stepper. */
@@ -138,17 +145,23 @@ class PlaylistGeneratorViewModel @Inject constructor(
             else -> allSends
         }
 
-        val recencyCutoff = java.time.LocalDate.now()
-            .minusWeeks(PROFILE_RECENCY_WEEKS)
-            .toString()
-        val recent = anglePool.filter { it.climbedAt.take(10) >= recencyCutoff }
-        val pool = if (recent.size >= LogbookProfile.MIN_SAMPLE) recent else anglePool
+        // The windows themselves; the profile picks the first one holding
+        // enough sends and widens on its own. Date maths stays up here — the
+        // shared module compares ISO strings and needs no calendar.
+        val today = java.time.LocalDate.now()
+        val recencyCutoffs = PROFILE_RECENCY_WINDOWS_MONTHS.map {
+            today.minusMonths(it).toString()
+        }
 
         // First-contact check runs on the FULL history (a prior attempt
         // outside the pool still disqualifies a flash inside it).
         val flashUuids = com.cruxcoach.android.ui.board.BoardStatsComputer.trueFlashUuids(all)
-        val sends = pool.mapNotNull { it.difficultyAverage }
-        val flashes = pool.filter { it.uuid in flashUuids }.mapNotNull { it.difficultyAverage }
+        val sends = anglePool.mapNotNull { row ->
+            row.difficultyAverage?.let {
+                LoggedSend(row.climbUuid, it, row.climbedAt)
+            }
+        }
+        val flashes = sends.filter { it.climbUuid in flashUuids }
 
         val sentUuids = allSends.asSequence().map { it.climbUuid }.toSet()
         val openProjects = all.asSequence()
@@ -169,11 +182,17 @@ class PlaylistGeneratorViewModel @Inject constructor(
             )
             .map { it.first }
 
-        return LogbookProfile.fromLogbook(sends, flashes, openProjects)
+        return LogbookProfile.fromLogbook(sends, flashes, openProjects, recencyCutoffs)
     }
 
     fun setType(type: GeneratorType) {
-        _state.update { it.copy(type = type) }
+        _state.update {
+            // Each type counts something else, and the ranges barely overlap —
+            // four 4x4 sets and four volume problems are not the same session.
+            // Re-seat on the new type's midpoint rather than carry a number
+            // that meant something different a moment ago.
+            it.copy(type = type, structureSize = type.structureRange().midpoint())
+        }
         refreshPlan()
     }
 
@@ -186,6 +205,17 @@ class PlaylistGeneratorViewModel @Inject constructor(
                 )
             )
         }
+        refreshPlan()
+    }
+
+    fun setStructureSize(size: Int) {
+        _state.update { it.copy(structureSize = size.coerceIn(it.type.structureRange())) }
+        refreshPlan()
+    }
+
+    fun setPyramidShape(shape: PyramidShape) {
+        _state.update { it.copy(pyramidShape = shape) }
+        // The shape changes the plan, so the preview has to follow.
         refreshPlan()
     }
 
@@ -219,6 +249,8 @@ class PlaylistGeneratorViewModel @Inject constructor(
             boardBrand = s.boardBrand,
             layoutId = s.layoutId,
             productSizeId = s.productSizeId,
+            pyramidShape = s.pyramidShape,
+            structureSize = s.structureSize.takeIf { it > 0 },
         )
     }
 
@@ -346,10 +378,12 @@ class PlaylistGeneratorViewModel @Inject constructor(
     companion object {
         private const val TAG = "PlaylistGeneratorVM"
 
-        /** Max/flash anchor window (~6 months): current ability, not the
-         *  all-time best — falls back to the full logbook below
-         *  [LogbookProfile.MIN_SAMPLE] recent sends. */
-        private const val PROFILE_RECENCY_WEEKS = 26L
+        /**
+         * Anchor windows, newest first: current ability, not the all-time
+         * best. [LogbookProfile.anchorOf] takes the first that holds enough
+         * sends and falls back to the whole logbook if none does.
+         */
+        private val PROFILE_RECENCY_WINDOWS_MONTHS = listOf(12L, 24L)
 
         /** Climbs logged within this window rank behind untouched
          *  material — variety is the stronger training stimulus. */
@@ -368,3 +402,6 @@ class PlaylistGeneratorViewModel @Inject constructor(
         private const val CANDIDATE_POOL_SIZE = 120
     }
 }
+
+/** Where a fresh slider starts: the middle of what the type offers. */
+private fun IntRange.midpoint(): Int = first + (last - first) / 2

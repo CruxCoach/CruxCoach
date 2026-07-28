@@ -103,8 +103,10 @@ object PlaylistFiller {
 
                     val preferProjects = slot.section == PlanSection.PEAK &&
                         plan.effectiveType == GeneratorType.PROJECTING
-                    val (pick, didWiden) =
-                        pickClimb(slot, cachedSource, used, preferProjects, openProjects, selection, random)
+                    val (pick, didWiden) = pickClimb(
+                        slot, cachedSource, used, preferProjects, openProjects, selection,
+                        random, plan.hardCeiling,
+                    )
                     if (didWiden) widened++
                     if (pick == null) {
                         dropped++
@@ -137,11 +139,36 @@ object PlaylistFiller {
         openProjects: List<String>,
         selection: CandidateSelection,
         random: Random,
+        hardCeiling: Double,
     ): Pair<PlaylistCandidate?, Boolean> {
+        // Open projects first, and outside the band. A project is by definition
+        // at or above the climber's limit, while the projecting band is a
+        // narrow window above max — so a project one grade harder than that
+        // window never entered the candidate pool and the mode quietly served
+        // fresh climbs instead of the projects it promises. The ceiling does
+        // not apply either: the climber picked these themselves.
+        if (preferProjects && openProjects.isNotEmpty()) {
+            val projectSet = openProjects.toSet()
+            val engaged = source
+                .candidates(slot.minDifficulty, TrainingRanges.MAX_DIFFICULTY)
+                .filter { it.climbUuid in projectSet && it.climbUuid !in used }
+            if (engaged.isNotEmpty()) {
+                val ordered = engaged.sortedBy {
+                    openProjects.indexOf(it.climbUuid).let { i -> if (i < 0) Int.MAX_VALUE else i }
+                }
+                return ordered.first() to false
+            }
+        }
         var widening = 0.0
         while (widening <= WIDEN_MAX) {
+            // Downwards is free — an easier climb than planned costs intensity,
+            // not safety. Upwards stops at the plan's ceiling: widening used to
+            // be symmetric, so a slot that found nothing could be served a climb
+            // several grades above the cap the planner had just applied.
+            val upper = minOf(slot.maxDifficulty + widening, hardCeiling)
+            val lower = maxOf(slot.minDifficulty - widening, TrainingRanges.MIN_DIFFICULTY)
             val pool = source
-                .candidates(slot.minDifficulty - widening, slot.maxDifficulty + widening)
+                .candidates(lower, upper)
                 .filter { it.climbUuid !in used }
             if (pool.isNotEmpty()) {
                 return rank(pool, preferProjects, openProjects, selection, random) to (widening > 0.0)
