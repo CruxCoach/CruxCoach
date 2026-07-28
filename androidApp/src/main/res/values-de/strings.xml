@@ -461,7 +461,7 @@
     <!-- Settings: Climb Sharing -->
     <string name="settings_sharing_title">In der Nähe</string>
     <string name="settings_sharing_enable">Aktuellen Boulder teilen</string>
-    <string name="settings_sharing_enable_desc">Zeigt anderen CruxCoach-Nutzern in der Nähe, welcher Climb gerade projiziert ist. Wird auch benötigt, um Disconnect-Anfragen an andere Nutzer zu senden.</string>
+    <string name="settings_sharing_enable_desc">Zeigt anderen CruxCoach-Nutzern in der Nähe, welcher Climb gerade projiziert ist. Wird auch benötigt, um Disconnect-Anfragen an andere Nutzer zu senden — und erlaubt ihnen umgekehrt, dich um das Trennen vom Board zu bitten.</string>
     <string name="settings_sharing_bluetooth_off">Bluetooth ist ausgeschaltet. Schalte Bluetooth ein, um Climb-Teilen nutzen zu können.</string>
     <string name="settings_sharing_no_ble_advertising">Dieses Gerät unterstützt kein BLE Advertising. Das Feature ist nicht verfügbar.</string>
     <string name="settings_sharing_remote_disconnect">Remote-Disconnect erlauben</string>
@@ -1284,6 +1284,7 @@
     <string name="playlist_connect_board_skip">Ohne Board abspielen</string>
     <string name="ble_board_shows_instead">Am Board hängt: %1$s</string>
     <string name="ble_session_name_promoted">Warteschlange</string>
+    <string name="ble_participant_label">Teilnehmer %1$d</string>
     <string name="ble_still_visible">Noch sichtbar</string>
     <string name="ble_unknown">Unbekannt</string>
     <string name="ble_unknown_climb">Unbekannter Climb</string>
@@ -1644,7 +1645,7 @@
     <string name="settings_board_model_change">Ändern</string>
     <string name="settings_board_model_not_configured">Nicht konfiguriert</string>
     <string name="settings_board_send_mode_title">Ans Board senden</string>
-    <string name="settings_board_send_mode_desc">Lege getrennt fest, wie Boulder bei Controllern mit einer oder mehreren möglichen App-Verbindungen gesendet werden. Das gilt auch für Playlists: Bei „Sofort" geht jeder Boulder an die Wand, sobald du ihn erreichst, bei „Auf Tastendruck" bleibt die Wand, wie sie ist, bis du die Lampe antippst. Relay-Clients senden immer ausdrücklich.</string>
+    <string name="settings_board_send_mode_desc">Lege getrennt fest, wie Boulder bei Controllern mit einer oder mehreren möglichen App-Verbindungen gesendet werden. Das gilt auch für Playlists: Bei „Sofort" geht jeder Boulder an die Wand, sobald du ihn erreichst, bei „Auf Tastendruck" bleibt die Wand, wie sie ist, bis du die Lampe antippst. Über einen Relay zu klettern zählt als mehrere App-Verbindungen.</string>
     <string name="settings_board_capacity_recheck">Board-Fähigkeiten neu ermitteln</string>
     <string name="settings_board_capacity_recheck_desc">CruxCoach merkt sich, ob ein Controller eine App oder mehrere zulässt. Nutze das, wenn ein Board getauscht oder umgestellt wurde — beim nächsten Verbinden wird neu gemessen.</string>
     <string name="settings_board_capacity_recheck_done">Wird beim nächsten Verbinden neu gemessen</string>
@@ -2129,6 +2130,11 @@
     <string name="history_delete_title">Einträge löschen</string>
     <string name="cd_navigate_back">Zurück</string>
     <string name="cd_clear_selection">Auswahl löschen</string>
+    <plurals name="ble_nearby_playlists">
+        <item quantity="one">%1$d Playlist</item>
+        <item quantity="other">%1$d Playlists</item>
+    </plurals>
+
     <plurals name="history_delete_body">
         <item quantity="one">%1$d Eintrag aus dem Verlauf löschen?</item>
         <item quantity="other">%1$d Einträge aus dem Verlauf löschen?</item>

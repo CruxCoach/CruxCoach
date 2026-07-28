@@ -666,7 +666,10 @@ class SessionGattBridge(
         if (cmd is SessionCommand.Join) {
             if (commandGate.join(deviceAddress)) {
                 val count = queueManager.state.value.participants.size
-                val label = "Teilnehmer ${count + 1}"
+                // The host names participants and hands the names out over GATT,
+                // so a literal here reaches every guest's screen regardless of
+                // their own locale — same trap as the promoteToHost name below.
+                val label = context.getString(R.string.ble_participant_label, count + 1)
                 Log.d(TAG, "Participant joined published session")
                 queueManager.addParticipant(deviceAddress, label)
             } else {

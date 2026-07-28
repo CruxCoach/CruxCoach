@@ -82,6 +82,10 @@ class SessionGattBridgeMigrationTest {
     // into strings.xml.
     private val mockContext = mockk<Context>(relaxed = true).also {
         every { it.getString(any()) } answers { "res:${firstArg<Int>()}" }
+        // The participant label is formatted, so it takes the vararg overload.
+        every { it.getString(any(), *anyVararg()) } answers {
+            "res:${firstArg<Int>()}:${secondArg<Array<Any>>().joinToString(",")}"
+        }
     }
     private val mockGattServer = mockk<SessionGattServer>(relaxed = true)
     private val mockGattClient = mockk<SessionGattClient>(relaxed = true)
@@ -591,7 +595,10 @@ class SessionGattBridgeMigrationTest {
         )
 
         assertEquals(1, queueManager.state.value.participants.size)
-        assertEquals("Teilnehmer 1", queueManager.state.value.participants.single().displayName)
+        assertEquals(
+            "res:${R.string.ble_participant_label}:1",
+            queueManager.state.value.participants.single().displayName,
+        )
         assertEquals(1, queueManager.state.value.queue.size)
     }
 }

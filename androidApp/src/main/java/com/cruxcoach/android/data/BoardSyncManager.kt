@@ -1147,7 +1147,9 @@ class BoardSyncManager(
                 _state.update { it.copy(
                     isSyncing = false,
                     importStep = null,
-                    errorMessage = "Lokaler Import fehlgeschlagen: ${e.message}"
+                    // Same rule as the sync path above: the ErrorCard renders
+                    // this verbatim, so no German literal and no e.message.
+                    errorMessage = appContext.getString(R.string.board_sync_error_import)
                 ) }
             } finally {
                 tempFile.delete()

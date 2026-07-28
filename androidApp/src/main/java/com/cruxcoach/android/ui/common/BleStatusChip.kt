@@ -28,6 +28,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import androidx.compose.ui.draw.alpha
@@ -388,7 +389,13 @@ internal fun buildChipSummary(
     }
     if (state.nearbySessions.isNotEmpty()) {
         if (isNotEmpty()) append(" · ")
-        append("${state.nearbySessions.size} Session${if (state.nearbySessions.size > 1) "s" else ""}")
+        append(
+            pluralStringResource(
+                R.plurals.ble_nearby_playlists,
+                state.nearbySessions.size,
+                state.nearbySessions.size,
+            )
+        )
     }
 }
 

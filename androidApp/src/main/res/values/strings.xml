@@ -460,7 +460,7 @@
     <!-- Settings: Climb Sharing -->
     <string name="settings_sharing_title">Nearby sharing</string>
     <string name="settings_sharing_enable">Share current climb</string>
-    <string name="settings_sharing_enable_desc">Shows nearby CruxCoach users which climb is currently projected. Also needed to send disconnect requests to other users.</string>
+    <string name="settings_sharing_enable_desc">Shows nearby CruxCoach users which climb is currently projected. Also needed to send disconnect requests to other users — and, in return, lets them ask you to disconnect from the board.</string>
     <string name="settings_sharing_bluetooth_off">Bluetooth is off. Turn on Bluetooth to use climb sharing.</string>
     <string name="settings_sharing_no_ble_advertising">This device does not support BLE advertising. The feature is unavailable.</string>
     <string name="settings_sharing_remote_disconnect">Allow remote disconnect</string>
@@ -1241,6 +1241,7 @@
     <!-- Session name a participant takes on when it is promoted to host after the
          previous host disappeared. -->
     <string name="ble_session_name_promoted">Queue</string>
+    <string name="ble_participant_label">Participant %1$d</string>
     <string name="ble_still_visible">Still visible</string>
     <string name="ble_unknown">Unknown</string>
     <string name="ble_unknown_climb">Unknown climb</string>
@@ -1601,7 +1602,7 @@
     <string name="settings_board_model_change">Change</string>
     <string name="settings_board_model_not_configured">Not configured</string>
     <string name="settings_board_send_mode_title">Send to board</string>
-    <string name="settings_board_send_mode_desc">Choose separately how climbs are sent for controllers that allow one or several connected apps. This applies to playlists too: on "Immediately" each climb goes to the wall as you reach it, on "Tap to send" the wall stays as it is until you tap the lamp. Relay clients always use an explicit action.</string>
+    <string name="settings_board_send_mode_desc">Choose separately how climbs are sent for controllers that allow one or several connected apps. This applies to playlists too: on "Immediately" each climb goes to the wall as you reach it, on "Tap to send" the wall stays as it is until you tap the lamp. Climbing over a relay counts as several connected apps.</string>
     <string name="settings_board_capacity_recheck">Re-detect board capabilities</string>
     <string name="settings_board_capacity_recheck_desc">CruxCoach remembers whether a controller accepts one app or several. Use this after a board has been swapped or reconfigured — it is measured again on the next connection.</string>
     <string name="settings_board_capacity_recheck_done">Will be measured again on the next connection</string>
@@ -2130,6 +2131,11 @@
     <string name="history_delete_title">Delete entries</string>
     <string name="cd_navigate_back">Back</string>
     <string name="cd_clear_selection">Clear selection</string>
+    <plurals name="ble_nearby_playlists">
+        <item quantity="one">%1$d playlist</item>
+        <item quantity="other">%1$d playlists</item>
+    </plurals>
+
     <plurals name="history_delete_body">
         <item quantity="one">Delete %1$d entry from history?</item>
         <item quantity="other">Delete %1$d entries from history?</item>
