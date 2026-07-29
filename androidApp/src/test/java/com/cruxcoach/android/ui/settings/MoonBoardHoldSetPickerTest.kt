@@ -4,6 +4,9 @@ import app.cash.turbine.test
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.fakes.FakeBoardRepository
 import com.cruxcoach.android.fakes.createTestUserPreferences
+import com.cruxcoach.data.repository.ClimbTypeFilter
+import com.cruxcoach.data.repository.ClimbWithStats
+import com.cruxcoach.domain.board.HoldSetMask
 import com.cruxcoach.domain.board.MoonBoardHoldSets
 import com.cruxcoach.domain.board.MoonBoardVariant
 import kotlinx.coroutines.Dispatchers
@@ -170,6 +173,68 @@ class MoonBoardHoldSetPickerTest {
             cancelAndIgnoreRemainingEvents()
         }
     }
+
+    @Test
+    fun `the climbable count is countFilteredClimbs under the same mask`() = runTest {
+        val prefs = createTestUserPreferences(backgroundScope)
+        onMasters2019(prefs)
+        repo.moonBoardHoldSetMaskPresent = true
+        // Three problems: one needing Wooden Holds (bit 3), one not, one whose
+        // sets were never derived.
+        repo.addClimbs(
+            climb("needs-wooden", hsm = 0b001001L),
+            climb("hands-only", hsm = 0b000011L),
+            climb("unknown", hsm = 0L),
+        )
+        val viewModel = vm(prefs)
+
+        // AC 15: what the browse list will return for the same mask. Asserted
+        // as a literal too, so a drifting fake cannot make this vacuous.
+        val woodenOff = countWithMask(HoldSetMask.excludedMask(universe, universe - 21L))
+        assertEquals("the Wooden climb drops, the unknown one stays", 2L, woodenOff)
+
+        viewModel.state.test {
+            val complete = awaitItem { it.counts != null && it.isCompleteSetup }
+            assertEquals(3L, complete.counts!!.total)
+            assertEquals(
+                "the complete setup hides nothing",
+                3L, complete.counts!!.climbable,
+            )
+
+            viewModel.toggleSet(21L)
+            // Awaiting the converged value rather than the first post-toggle
+            // emission: selection and counts settle through separate flows.
+            val partial = awaitItem { !it.isCompleteSetup && it.counts?.climbable == woodenOff }
+            assertEquals("the total is the unfiltered board", 3L, partial.counts!!.total)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    private fun countWithMask(mask: Long): Long = repo.countFilteredClimbs(
+        angle = 40,
+        layoutId = masters2019.layoutId.toInt(),
+        boardBrand = "moonboard",
+        minDifficulty = 0.0,
+        maxDifficulty = 100.0,
+        minAscensionists = 0,
+        climbType = ClimbTypeFilter.ALL,
+        selProductSizeId = 0,
+        hsmExcludedMask = mask,
+        showUngraded = true,
+    )
+
+    private fun climb(uuid: String, hsm: Long) = ClimbWithStats(
+        uuid = uuid,
+        layoutId = masters2019.layoutId,
+        setterUsername = "s",
+        name = uuid,
+        frames = "p100r42p101r43",
+        framesCount = 1L,
+        difficultyAverage = 15.0,
+        qualityAverage = 2.5,
+        ascensionistCount = 10L,
+        hsm = hsm,
+    )
 
     /** Awaits the first emission satisfying [predicate]; the VM emits an
      *  initial placeholder plus one item per async input settling. */
