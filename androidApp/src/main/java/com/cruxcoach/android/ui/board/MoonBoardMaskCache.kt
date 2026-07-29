@@ -26,19 +26,24 @@ internal class MoonBoardMaskCache {
      * The exclusion mask for [variant] given the user's [ownedSetIds], or 0
      * when the filter cannot apply.
      *
-     * [syncGeneration] is part of the key so a completed catalogue sync
-     * re-asks the gate — that is the one event that can flip its answer.
+     * [catalogueRevision] is part of the key so a committed chunk — or a
+     * deletion — re-asks the gate. Those are the events that can flip its
+     * answer, and they are NOT the sync generation: that one advances when a
+     * run is claimed, before any import, and then stays put for the rest of
+     * the run. Keyed on it, a browser opened in that window would cache "no
+     * hold-set data" and keep answering 0 after the chunk landed, until the
+     * process restarted. See [com.cruxcoach.android.data.CatalogueRevisionSource].
      *
-     * @param hasCatalogueMask probes whether any MoonBoard row carries a real
-     *  `hsm` yet. Called ONLY when the mask would otherwise be non-zero: with
-     *  the complete setup selected the mask is 0 either way, so the probe
-     *  could not change the outcome and everyone who never opens the picker
-     *  avoids it entirely.
+     * @param hasCatalogueMask probes whether any MoonBoard **catalogue** row
+     *  carries a real `hsm` yet. Called ONLY when the mask would otherwise be
+     *  non-zero: with the complete setup selected the mask is 0 either way, so
+     *  the probe could not change the outcome and everyone who never opens the
+     *  picker avoids it entirely.
      */
     suspend fun maskFor(
         variant: MoonBoardVariant?,
         ownedSetIds: List<Long>,
-        syncGeneration: Int,
+        catalogueRevision: Int,
         hasCatalogueMask: suspend () -> Boolean,
     ): Long {
         if (variant == null) {
@@ -48,7 +53,7 @@ internal class MoonBoardMaskCache {
             mask = 0L
             return 0L
         }
-        val next = "${variant.name}|${ownedSetIds.joinToString(",")}|$syncGeneration"
+        val next = "${variant.name}|${ownedSetIds.joinToString(",")}|$catalogueRevision"
         if (next == key) return mask
         val computed = HoldSetMask.excludedMask(
             layoutSetIds = MoonBoardHoldSets.setIdsFor(variant),

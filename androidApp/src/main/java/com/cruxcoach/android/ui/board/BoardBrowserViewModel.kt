@@ -306,6 +306,39 @@ data class BoardBrowserState(
     val holdSearch: HoldSearchState = HoldSearchState()
 )
 
+/**
+ * The board switch as ONE state transition: the new brand / layout / angle
+ * arrive together with a cleared hold-set mask (FEAT-049 edge case 3).
+ *
+ * Clearing [BoardBrowserState.hsmExcludedMask] here rather than where the new
+ * mask is computed is the whole point. That computation sits behind suspending
+ * repository calls, and every read of the filter in between — a search typed in
+ * that window, a count, a queue refresh — would see the NEW layout under the
+ * OLD board's mask. The bits are positional per layout: bit 3 is *Wooden Holds*
+ * on a Masters 2019 and *Original School Holds* on a 2017, so that window hides
+ * the wrong set rather than merely too much. Worse, if the refresh is then
+ * cancelled (a rapid second switch cancels [refreshJob]) or the repository
+ * throws, nothing ever corrects it.
+ *
+ * 0 is the documented inert value, so the window degrades to "filter off",
+ * which is the safe direction for both MoonBoard and Kilter: a climb wrongly
+ * shown costs less than one wrongly hidden.
+ */
+internal fun BoardBrowserState.onBoardSwitch(
+    angle: Int,
+    layoutId: Int,
+    boardBrand: String,
+    angleChips: List<Int>,
+): BoardBrowserState = copy(
+    hsmExcludedMask = 0L,
+    filter = filter.copy(
+        angle = angle,
+        layoutId = layoutId,
+        boardBrand = boardBrand,
+        angleChips = angleChips,
+    ),
+)
+
 @HiltViewModel
 class BoardBrowserViewModel @Inject constructor(
     private val boardRepository: BoardRepository,
@@ -572,6 +605,7 @@ class BoardBrowserViewModel @Inject constructor(
         // brand is stale until the first successful refresh.
         viewModelScope.safeLaunch(TAG) {
             var lastGen = syncManager.state.value.syncGeneration
+            var lastCatalogueRevision = syncManager.state.value.catalogueRevision
             var wasImporting = false
             combine(syncManager.state, userPreferences.boardBrand) { syncState, brandWire ->
                 syncState to BoardBrand.fromWire(brandWire)
@@ -599,8 +633,19 @@ class BoardBrowserViewModel @Inject constructor(
                     refreshBoardData(force = true)
                 }
                 wasImporting = importing
+                // FEAT-049: a catalogue DELETION changes the data without a
+                // sync run, so no generation moves and none of the branches
+                // above fire — yet the hold-set gate has just gone from true to
+                // false and the mask derived from it must not survive. Commits
+                // during a run are already covered by the lane-completion
+                // refresh above (with the revision now in the cache key), so
+                // this only has to catch the quiet, sync-less changes.
+                val catalogueChanged = syncState.catalogueRevision > lastCatalogueRevision
+                if (catalogueChanged) lastCatalogueRevision = syncState.catalogueRevision
                 if (syncState.syncGeneration > lastGen && !syncState.isSyncing) {
                     lastGen = syncState.syncGeneration
+                    refreshBoardData(force = true)
+                } else if (catalogueChanged && !syncState.isSyncing) {
                     refreshBoardData(force = true)
                 }
             }
@@ -747,12 +792,12 @@ class BoardBrowserViewModel @Inject constructor(
                         // the nearest valid chip so we don't query an angle the
                         // board has zero climbs at.
                         val snappedAngle = BoardAnglePicker.clampAngle(prefAngle, angleChips)
-                        _state.update { it.copy(filter = it.filter.copy(
+                        _state.update { it.onBoardSwitch(
                             angle = snappedAngle,
                             layoutId = prefLayoutId,
                             boardBrand = prefBoardBrand,
                             angleChips = angleChips,
-                        )) }
+                        ) }
                     }
                     // FEAT-031: placements are namespaced by board_brand; reload
                     // them (with the active brand) on a board change, not just
@@ -794,7 +839,7 @@ class BoardBrowserViewModel @Inject constructor(
                         // rather than cached across variants, so a 2019
                         // selection can never be applied to a 2017.
                         val variant = MoonBoardVariant.fromBoardSelection(prefLayoutId.toLong(), prefBrand)
-                        val moonMask = moonBoardHsmMask(variant, syncManager.state.value.syncGeneration)
+                        val moonMask = moonBoardHsmMask(variant, syncManager.state.value.catalogueRevision)
                         if (moonMask != _state.value.hsmExcludedMask) {
                             _state.update { it.copy(hsmExcludedMask = moonMask) }
                         }
@@ -1362,11 +1407,11 @@ class BoardBrowserViewModel @Inject constructor(
      * silently ineffective rather than wrong. The picker is disabled behind
      * the same probe, so the two never disagree.
      */
-    private suspend fun moonBoardHsmMask(variant: MoonBoardVariant?, syncGeneration: Int): Long =
+    private suspend fun moonBoardHsmMask(variant: MoonBoardVariant?, catalogueRevision: Int): Long =
         moonBoardMaskCache.maskFor(
             variant = variant,
             ownedSetIds = variant?.let { userPreferences.getMoonBoardHoldSets(it) }.orEmpty(),
-            syncGeneration = syncGeneration,
+            catalogueRevision = catalogueRevision,
         ) {
             PerfLogger.traceQuery("hasMoonBoardHoldSetMask") {
                 boardRepository.hasMoonBoardHoldSetMask()

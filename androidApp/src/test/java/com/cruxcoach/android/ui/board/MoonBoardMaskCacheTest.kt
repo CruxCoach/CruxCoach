@@ -8,12 +8,13 @@ import kotlin.test.assertEquals
 
 /**
  * The browse filter's MoonBoard mask, and the invalidation rule around it
- * (FEAT-049 §3.6, edge cases 2/3/4).
+ * (FEAT-049 §3.6, edge cases 2/3/4/12).
  *
- * Two things could go wrong here and neither would be visible from the mask
+ * Three things could go wrong here and none would be visible from the mask
  * value alone: a stale key letting one variant's selection apply to another,
- * and the presence probe running on a path that repeats several times a
- * minute. Both are asserted directly.
+ * the presence probe running on a path that repeats several times a minute,
+ * and a key that does not move when the catalogue's contents do. All three are
+ * asserted directly, the last one as the sequence it really happens in.
  */
 class MoonBoardMaskCacheTest {
 
@@ -37,7 +38,7 @@ class MoonBoardMaskCacheTest {
         val cache = MoonBoardMaskCache()
         val gate = CountingGate(present = true)
 
-        val mask = cache.maskFor(masters2019, universe2019, syncGeneration = 1, gate::probe)
+        val mask = cache.maskFor(masters2019, universe2019, catalogueRevision = 1, gate::probe)
 
         assertEquals(0L, mask)
         assertEquals(
@@ -51,7 +52,7 @@ class MoonBoardMaskCacheTest {
         val cache = MoonBoardMaskCache()
         val gate = CountingGate(present = true)
 
-        val mask = cache.maskFor(masters2019, universe2019 - 21L, syncGeneration = 1, gate::probe)
+        val mask = cache.maskFor(masters2019, universe2019 - 21L, catalogueRevision = 1, gate::probe)
 
         assertEquals(0b001000L, mask, "Wooden Holds is bit 3 on layout 5")
         assertEquals(1, gate.calls)
@@ -65,7 +66,7 @@ class MoonBoardMaskCacheTest {
         val cache = MoonBoardMaskCache()
         val gate = CountingGate(present = false)
 
-        val mask = cache.maskFor(masters2019, universe2019 - 21L, syncGeneration = 1, gate::probe)
+        val mask = cache.maskFor(masters2019, universe2019 - 21L, catalogueRevision = 1, gate::probe)
 
         assertEquals(0L, mask)
     }
@@ -76,7 +77,7 @@ class MoonBoardMaskCacheTest {
         val gate = CountingGate(present = true)
         val owned = universe2019 - 21L
 
-        repeat(10) { cache.maskFor(masters2019, owned, syncGeneration = 4, gate::probe) }
+        repeat(10) { cache.maskFor(masters2019, owned, catalogueRevision = 4, gate::probe) }
 
         assertEquals(
             1, gate.calls,
@@ -85,16 +86,55 @@ class MoonBoardMaskCacheTest {
     }
 
     @Test
-    fun `a completed sync re-asks the catalogue`() = runTest {
+    fun `a chunk landing inside a running sync re-asks the catalogue`() = runTest {
+        // Edge case 12: the sequence, not a static end state. The previous
+        // version of this test moved its counter "when the data lands" and was
+        // green on a cache that could never see the data land at all.
+        //
+        // Really happens: the sync slot is claimed — syncGeneration advances
+        // HERE, before a single chunk is imported. A browser opened in that
+        // window probes a catalogue that is still empty. The chunk then commits
+        // under the SAME run, and syncGeneration does not move again for the
+        // rest of it. Only the catalogue revision does, which is why that is
+        // what the cache keys on.
         val cache = MoonBoardMaskCache()
         val gate = CountingGate(present = false)
         val owned = universe2019 - 21L
 
-        assertEquals(0L, cache.maskFor(masters2019, owned, 1, gate::probe))
-        // The chunk with populated hsm lands; syncGeneration moves.
+        // Run claimed, nothing imported yet, browser opens and asks.
+        assertEquals(0L, cache.maskFor(masters2019, owned, catalogueRevision = 7, gate::probe))
+        // Still the same run: refreshes keep arriving, the answer stands.
+        assertEquals(0L, cache.maskFor(masters2019, owned, catalogueRevision = 7, gate::probe))
+        assertEquals(1, gate.calls, "one probe per revision, not per refresh")
+
+        // The MoonBoard chunk commits. Same sync run — only the revision moves.
         gate.present = true
-        assertEquals(0b001000L, cache.maskFor(masters2019, owned, 2, gate::probe))
+        assertEquals(
+            0b001000L,
+            cache.maskFor(masters2019, owned, catalogueRevision = 8, gate::probe),
+            "the mask the user's selection asked for, as soon as the data exists",
+        )
         assertEquals(2, gate.calls)
+    }
+
+    @Test
+    fun `deleting the catalogue takes the mask away again`() = runTest {
+        // The inverse, which nothing invalidated before: a true gate stayed
+        // true after the rows behind it were deleted, so the browser kept
+        // filtering on a catalogue that no longer had hold-set data. The
+        // deletion advances the revision like a commit does.
+        val cache = MoonBoardMaskCache()
+        val gate = CountingGate(present = true)
+        val owned = universe2019 - 21L
+
+        assertEquals(0b001000L, cache.maskFor(masters2019, owned, catalogueRevision = 8, gate::probe))
+
+        gate.present = false
+        assertEquals(
+            0L,
+            cache.maskFor(masters2019, owned, catalogueRevision = 9, gate::probe),
+            "no catalogue, no filter — the picker says the same thing",
+        )
     }
 
     @Test
