@@ -2341,4 +2341,19 @@
     <string name="playlist_manual_rest_none">none</string>
     <string name="playlist_manual_rest_seconds">%1$d s</string>
     <string name="playlist_manual_rest_minutes">%1$d:%2$02d min</string>
+
+    <!-- FEAT-049: MoonBoard hold-set selection. Hold-set NAMES are product
+         names and stay English in every locale (the official app does not
+         translate them either) — they come from MoonBoardHoldSets, not from
+         here. -->
+    <string name="moonboard_hold_sets_title">Hold sets</string>
+    <string name="moonboard_hold_sets_subtitle">Which holds are mounted on your board</string>
+    <string name="moonboard_setup_complete">Complete %1$s setup</string>
+    <string name="moonboard_setup_complete_hint">The bundle as sold — every hold set</string>
+    <string name="moonboard_setup_partial">Some holds are missing</string>
+    <string name="moonboard_hold_sets_summary">%1$d of %2$d hold sets</string>
+    <string name="moonboard_hold_sets_count">%1$s holds</string>
+    <string name="moonboard_hold_sets_climbable">%1$s of %2$s problems climbable</string>
+    <string name="moonboard_hold_sets_needs_sync">Available after the next catalogue update</string>
+    <string name="moonboard_hold_sets_min_one">At least one hold set must stay selected</string>
 </resources>

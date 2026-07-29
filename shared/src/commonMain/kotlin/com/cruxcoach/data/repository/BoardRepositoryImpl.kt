@@ -202,6 +202,10 @@ class BoardRepositoryImpl(
         return q.hasClimbsForBrand(boardBrand).executeAsOne()
     }
 
+    override fun hasMoonBoardHoldSetMask(): Boolean {
+        return q.hasMoonBoardHoldSetMask().executeAsOne()
+    }
+
     override fun getStatCount(): Long {
         return q.countStats().executeAsOne()
     }
@@ -1039,6 +1043,30 @@ class BoardRepositoryImpl(
     private fun brandForLayout(layoutId: Long): String =
         com.cruxcoach.domain.board.BoardBrand.fromLayoutId(layoutId).wireValue
 
+    /**
+     * The `climbs.hsm` hold-set mask for a single MoonBoard climb, derived
+     * from its own holds (FEAT-049 §6.6). Returns 0 for every other brand and
+     * whenever the sets cannot be resolved.
+     *
+     * This is a PER-ROW computation on climbs we write ourselves — a locally
+     * authored draft, a climb received from a peer — not a catalogue pass. The
+     * catalogue's masks come from the build pipeline and are overwritten by
+     * `mergeSnapshotClimbs()` on every sync, so recomputing them here would be
+     * both wasted work and short-lived. These rows are the ones the pipeline
+     * never sees, which is exactly why they would otherwise stay at 0 forever
+     * and never fit the user's board selection.
+     *
+     * 0 stays the safe answer: it means UNKNOWN and passes every mask.
+     */
+    private fun moonBoardHsm(layoutId: Long, boardBrand: String, frames: String): Long {
+        val variant = com.cruxcoach.domain.board.MoonBoardVariant.fromBoardSelection(
+            layoutId, com.cruxcoach.domain.board.BoardBrand.fromWire(boardBrand),
+        ) ?: return 0L
+        val holdIds = com.cruxcoach.domain.board.MoonBoardFrameEncoder
+            .parseHolds(frames).map { it.first }
+        return com.cruxcoach.domain.board.MoonBoardHoldSets.maskForHoldIds(variant, holdIds)
+    }
+
     override fun insertLocalDraft(
         draft: LocalClimbDraft,
         layoutId: Long,
@@ -1047,6 +1075,7 @@ class BoardRepositoryImpl(
         bounds: com.cruxcoach.domain.community.ClimbBounds?,
         boardBrand: String?,
     ) {
+        val brand = boardBrand ?: brandForLayout(layoutId)
         q.transaction {
             q.insertLocalDraft(
                 uuid = draft.uuid,
@@ -1054,6 +1083,7 @@ class BoardRepositoryImpl(
                 setter_username = draft.setterUsername,
                 name = draft.name,
                 frames = draft.framesText,
+                hsm = moonBoardHsm(layoutId, brand, draft.framesText),
                 edge_left = bounds?.left?.toLong(),
                 edge_right = bounds?.right?.toLong(),
                 edge_bottom = bounds?.bottom?.toLong(),
@@ -1067,7 +1097,7 @@ class BoardRepositoryImpl(
                 // layout-derived guess only for Kilter/MoonBoard callers that
                 // pass null. Aurora-family drafts would otherwise be mis-tagged
                 // "kilter" and hidden from the active board's drafts drawer.
-                board_brand = boardBrand ?: brandForLayout(layoutId),
+                board_brand = brand,
             )
             // Stub climb_stats so the climb appears in the browse VIEW.
             // Setter difficulty is the only known signal; community
@@ -1108,6 +1138,7 @@ class BoardRepositoryImpl(
                 setter_username = setterUsername,
                 name = name,
                 frames = framesText,
+                hsm = moonBoardHsm(layoutId, boardBrand, framesText),
                 edge_left = bounds?.left?.toLong(),
                 edge_right = bounds?.right?.toLong(),
                 edge_bottom = bounds?.bottom?.toLong(),

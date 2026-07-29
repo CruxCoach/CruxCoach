@@ -952,6 +952,21 @@ SELECT EXISTS(SELECT 1 FROM climbs LIMIT 1);
 hasClimbsForBrand:
 SELECT EXISTS(SELECT 1 FROM climbs WHERE board_brand = ? LIMIT 1);
 
+-- Presence gate for the MoonBoard hold-set filter (FEAT-049): has a chunk
+-- with a POPULATED hsm arrived yet? The column is computed in the catalogue
+-- build pipeline, so until that ships every MoonBoard row carries 0 and the
+-- filter is inert. A user who deselects sets and sees an unchanged list is
+-- worse off than one who sees the picker greyed out with a reason, so the
+-- selection is made visibly unavailable rather than silently ineffective.
+--
+-- Not O(1) in the FALSE case: idx_climbs_board_brand narrows to MoonBoard,
+-- but proving that NO row is non-zero walks all of them. That is the state
+-- before the pipeline half lands, and it is why this is evaluated once per
+-- board-config change (on Dispatchers.IO, alongside the mask) and never per
+-- query. Once the data arrives the first row already answers it.
+hasMoonBoardHoldSetMask:
+SELECT EXISTS(SELECT 1 FROM climbs WHERE board_brand = 'moonboard' AND hsm != 0 LIMIT 1);
+
 getClimbCountByAngle:
 SELECT cs.angle, COUNT(*) AS climb_count
 FROM climb_stats cs
@@ -1471,7 +1486,7 @@ insertLocalDraft {
         source, created_by_pubkey, frames_hash, sync_status, origin, board_brand)
     VALUES (:uuid, :layout_id, :setter_username, :name, :frames,
         1, 1, :edge_left, :edge_right, :edge_bottom, :edge_top, :created_at,
-        :description, 0, 0, 0, :move_count,
+        :description, 0, 0, :hsm, :move_count,
         'local', :created_by_pubkey, :frames_hash, 'draft', 'cruxcoach', :board_brand);
     UPDATE climbs SET
         layout_id = :layout_id,
@@ -1488,7 +1503,7 @@ insertLocalDraft {
         description = :description,
         is_nomatch = 0,
         frames_pace = 0,
-        hsm = 0,
+        hsm = :hsm,
         move_count = :move_count,
         source = 'local',
         created_by_pubkey = :created_by_pubkey,
@@ -1702,7 +1717,7 @@ INSERT OR REPLACE INTO climbs(uuid, layout_id, setter_username, name, frames,
     source, nostr_event_id, nostr_d_tag, created_by_pubkey, frames_hash, sync_status, origin, board_brand)
 VALUES (?, ?, ?, ?, ?,
     1, 1, ?, ?, ?, ?, ?,
-    ?, 0, 0, 0, ?,
+    ?, 0, 0, ?, ?,
     'nostr', ?, ?, ?, ?, 'synced', 'cruxcoach', ?);
 
 -- Flip a draft to "published_nostr" once the relay accepts the event.

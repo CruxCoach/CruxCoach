@@ -41,6 +41,7 @@ import com.cruxcoach.domain.board.BoardZoneFilter
 import com.cruxcoach.domain.board.HoldHeatmapComputer
 import com.cruxcoach.domain.board.HoldSetMask
 import com.cruxcoach.domain.board.HoldRole
+import com.cruxcoach.domain.board.MoonBoardHoldSets
 import com.cruxcoach.domain.board.KilterGradeMapper
 import com.cruxcoach.android.util.PerfLogger
 import com.cruxcoach.util.GradeConverter
@@ -292,9 +293,13 @@ data class BoardBrowserState(
     val boardSize: com.cruxcoach.data.repository.BoardSize? = null,
     val boardImages: List<com.cruxcoach.data.repository.BoardImage> = emptyList(),
     /** Hold-set leg of the always-on "fits my board" filter: bits of the
-     *  active layout's hold sets NOT mounted on [boardSize] (see
-     *  HoldSetMask.excludedMask). 0 = filter off (full board, MoonBoard,
-     *  or no size configured). Recomputed alongside [boardSize]. */
+     *  active layout's hold sets the board does NOT carry (see
+     *  HoldSetMask.excludedMask). Which sets those are comes from the
+     *  configured [boardSize] on Kilter/Aurora and from the user's own
+     *  selection on MoonBoard (FEAT-049), which has no product size.
+     *  0 = filter off (full board, complete MoonBoard setup, no size
+     *  configured, or a catalogue without hold-set data). Recomputed on
+     *  board-config change, never cached across variants. */
     val hsmExcludedMask: Long = 0,
     val filter: BrowserFilterState = BrowserFilterState(),
     val ble: BrowserBleState = BrowserBleState(),
@@ -780,8 +785,19 @@ class BoardBrowserViewModel @Inject constructor(
                     } else if (needsBoardReload) {
                         // MoonBoard: clear any stale Kilter board image/size so
                         // the browse list doesn't carry over Kilter geometry.
-                        // (No Aurora set data either → hsm filter off.)
-                        _state.update { it.copy(boardSize = null, boardImages = emptyList(), hsmExcludedMask = 0L) }
+                        _state.update { it.copy(boardSize = null, boardImages = emptyList()) }
+                    }
+                    if (isMoonBoard) {
+                        // FEAT-049: MoonBoard's second axis is the user's OWNED
+                        // hold sets, not a product size — there is no
+                        // product_size row to derive it from. Recomputed here
+                        // rather than cached across variants, so a 2019
+                        // selection can never be applied to a 2017.
+                        val variant = MoonBoardVariant.fromBoardSelection(prefLayoutId.toLong(), prefBrand)
+                        val moonMask = moonBoardHsmMask(variant, syncManager.state.value.syncGeneration)
+                        if (moonMask != _state.value.hsmExcludedMask) {
+                            _state.update { it.copy(hsmExcludedMask = moonMask) }
+                        }
                     }
                 }
                 _state.update { it.copy(climbCount = count, hasBoardData = count > 0) }
@@ -1331,6 +1347,47 @@ class BoardBrowserViewModel @Inject constructor(
     // Hold-set leg of the same always-on filter (hsm bitmask, see
     // HoldSetMask). 0 = inert, exactly like selSizeId()'s 0 sentinel.
     private fun hsmMask(): Long = _state.value.hsmExcludedMask
+
+    // FEAT-049 hold-set mask for the active MoonBoard variant, memoised.
+    // MoonBoard has no product size, so `boardSize` stays null and
+    // `needsBoardReload` is permanently true for it — the surrounding block
+    // runs on every refresh, not only on a real board change. The inputs that
+    // actually move are the variant, the user's owned sets, and the catalogue
+    // (a completed sync bumps syncGeneration and forces a refresh anyway).
+    private var moonBoardMaskKey: String? = null
+    private var moonBoardMask: Long = 0L
+
+    /**
+     * The exclusion mask for [variant] given the user's mounted hold sets, or
+     * 0 while the catalogue cannot support the filter.
+     *
+     * Until a chunk with a populated `hsm` arrives, every MoonBoard row still
+     * carries 0 and `(0 & mask) = 0` passes everything — the filter would be
+     * silently ineffective rather than wrong. The picker is disabled behind
+     * the same probe, so the two never disagree.
+     */
+    private suspend fun moonBoardHsmMask(variant: MoonBoardVariant?, syncGeneration: Int): Long {
+        if (variant == null) return 0L
+        val owned = userPreferences.getMoonBoardHoldSets(variant)
+        val key = "${variant.name}|${owned.joinToString(",")}|$syncGeneration"
+        if (key == moonBoardMaskKey) return moonBoardMask
+        val mask = HoldSetMask.excludedMask(
+            layoutSetIds = MoonBoardHoldSets.setIdsFor(variant),
+            sizeSetIds = owned,
+        )
+        // Probe only when something is actually deselected: with the complete
+        // setup the mask is 0 and the answer cannot change it. That keeps the
+        // row-walk (see hasMoonBoardHoldSetMask in Board.sq) off the path
+        // every user who never opens the picker takes.
+        moonBoardMask = if (mask == 0L) 0L else {
+            val present = PerfLogger.traceQuery("hasMoonBoardHoldSetMask") {
+                boardRepository.hasMoonBoardHoldSetMask()
+            }
+            if (present) mask else 0L
+        }
+        moonBoardMaskKey = key
+        return moonBoardMask
+    }
 
     private suspend fun fetchPage(f: BrowserFilterState, offset: Int): List<ClimbWithStats> {
         if (f.sortField == ClimbSortField.RANDOM && f.searchQuery.isBlank()) {
