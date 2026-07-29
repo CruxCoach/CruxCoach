@@ -106,6 +106,24 @@ def font(path, size):
     return ImageFont.truetype(path, size)
 
 
+def board_art(meta, assets):
+    """The complete board: base plus every hold-set overlay.
+
+    MoonBoard 2010 and Mini 2025 ship as a bare base image with one
+    transparent PNG per hold set, listed in the JSON's `overlays`. Drawing
+    only `image` for those two yields an empty board — rings floating over
+    plain plywood — while the other five have their holds baked into a single
+    composite. Flatten everything so all seven look like the same feature.
+    """
+    img = Image.open(f"{assets}/{meta['image']}").convert("RGBA")
+    for name in meta.get("overlays", []):
+        layer = Image.open(f"{assets}/{name}").convert("RGBA")
+        if layer.size != img.size:
+            layer = layer.resize(img.size, Image.LANCZOS)
+        img = Image.alpha_composite(img, layer)
+    return img
+
+
 def panel(board, holds, mapping, set_id, w):
     h = int(w / board.width * board.height)
     img = board.resize((w, h), Image.LANCZOS).convert("RGB")
@@ -139,7 +157,7 @@ def panel(board, holds, mapping, set_id, w):
 def render(variant, layout_id, title, maps, names):
     meta = json.load(open(f"{ASSETS}/{variant}.json"))
     holds = {h["holdId"]: (h["x"], h["y"]) for h in meta["holds"]}
-    board = Image.open(f"{ASSETS}/{meta['image']}")
+    board = board_art(meta, ASSETS)
     mapping = maps[layout_id]
     nm = names[LAYOUT_KEY[layout_id]]
 
