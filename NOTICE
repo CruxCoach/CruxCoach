@@ -45,6 +45,14 @@ Aurora-family board layout images — The bundled images under
     androidApp/src/main/assets/board_images/README.md, LEGAL.md, and
     THIRD_PARTY_LICENSES.md.
 
+BoardSesh — MoonBoard hold-set cell map (which grid cell belongs to which
+    hold set, plus the set ids and product names) transcribed into
+    shared/src/commonMain/kotlin/com/cruxcoach/domain/board/MoonBoardHoldSets.kt
+    from MOONBOARD_CELL_SETS / MOONBOARD_SETS in
+    https://github.com/boardsesh/boardsesh. Licensed under the Apache License
+    2.0 (https://www.apache.org/licenses/LICENSE-2.0). See
+    THIRD_PARTY_LICENSES.md for the full attribution.
+
 dontkillmyapp.com (Urbandroid Team) — OEM background-killer taxonomy used in
     androidApp/src/main/java/com/cruxcoach/android/notification/
     NotificationReliabilityHelper.kt. Licensed under CC BY-SA 4.0
