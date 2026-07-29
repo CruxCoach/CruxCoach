@@ -42,13 +42,20 @@ docs/*.md
 !docs/KEY_ROTATION.md
 !docs/testing.md
 
-# FEAT specs are internal planning docs — never public. Kept only in the
-# local main worktree. Whole docs/specs/ tree excluded (incl. INDEX.md /
-# README.md navigation), consistent with docs/backlog/. NOTE: 23 specs
-# were tracked + pushed before this rule; they remain in public git
-# history until a deliberate history-rewrite purge — see CLAUDE.md
-# Public-Repo-Hygiene.
-docs/specs/
+# FEAT specs are PUBLIC as of 2026-07-29 (they were excluded until then).
+# The design rationale in them is the most useful thing this repo has for a
+# contributor trying to understand why the code looks the way it does, and 23
+# of them were in public git history anyway — the exclusion was protecting
+# very little.
+#
+# What that makes load-bearing, because a spec is now a published document:
+#   - no private infrastructure (hosts, internal repo/script names, cron
+#     detail), no developer home paths, no third-party contact data;
+#   - third-party interoperability findings state the CONCLUSION, not a
+#     step-by-step account of someone else's software;
+#   - audit output stays out entirely — see the triage rule below.
+# The 0.1.2–0.2.2 specs were redacted against exactly this list on 2026-07-29
+# before the rule flipped.
 
 # Internal triage workflow (RepoLens findings, verdicts, per-release audits)
 #
