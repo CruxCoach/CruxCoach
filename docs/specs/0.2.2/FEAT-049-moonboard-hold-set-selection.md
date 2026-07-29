@@ -466,6 +466,13 @@ secondary text for someone holding their order.
    use the §3.2 ringed rendering for *all* variants regardless, so the picker
    looks the same everywhere. Do not special-case the two that could stack —
    consistency beats fidelity here.
+8. **Never filter the preview on `occupied`.** `MoonBoardAsset.occupied`
+   (`MoonBoardAsset.kt:75`) is parsed from the board-image JSON and read by
+   nothing. It is also **wrong on two boards**: 2024 flags `occupied` on 0 of
+   198 positions and Masters 2019 on 68 of 198, while both boards genuinely use
+   all 198. A preview that draws only occupied holds would therefore render 2024
+   completely empty and 2019 missing two thirds of its holds. Take the hold set
+   from the cell map and the coordinates from the JSON — nothing else from it.
 8. **The one unmappable catalogue row** — exactly one climb on layout 2 uses
    cell 56 (position A6), which BoardSesh's map does not carry. It keeps
    `hsm = 0` and falls under the same leniency. Pipeline-side, it must not
