@@ -357,16 +357,44 @@ on the lenient fallback.
 
 ### 3.7 Presence gate
 
-Until the device has a chunk with populated `hsm`, the selection must be
+Until the device has a **catalogue** with populated `hsm`, the selection must be
 **visibly unavailable** rather than silently ineffective — a user deselecting
 sets and seeing an unchanged list is worse than no feature.
 
 ```sql
-SELECT EXISTS(SELECT 1 FROM climbs WHERE board_brand = 'moonboard' AND hsm != 0)
+SELECT EXISTS(
+  SELECT 1 FROM climbs
+  WHERE board_brand = 'moonboard' AND source = 'kilter' AND hsm != 0
+  LIMIT 1
+)
 ```
 
-False ⇒ the picker is disabled with an explanatory line and a pointer to the
-catalogue sync. Evaluated once per board-config change, alongside the mask.
+**`source = 'kilter'` is load-bearing, not decoration.** It is the catalogue
+provenance marker — the default every importer leaves in place, MoonBoard and
+Aurora snapshots included, and the predicate the targeted catalogue delete
+already uses (`Board.sq:1346-1380`). User-authored and peer-received rows carry
+`'local'` / `'nostr'`.
+
+Without it the gate contradicts §6.6: a single self-authored MoonBoard route
+gets a computed `hsm`, opens the gate, and the picker becomes usable while all
+277 643 catalogue rows still carry 0 and sail through every mask. That is
+exactly the visible-but-ineffective state the gate exists to prevent. An
+earlier draft of this spec shipped that contradiction; it was caught in review,
+and the semantic contract — *has a catalogue with populated `hsm` arrived* —
+governs, not the convenience of a short query.
+
+**Invalidation is part of the contract.** The gate's answer changes when
+catalogue data actually changes, which is **not** the same moment a sync
+starts. Whatever key the mask and the gate are cached under must advance:
+
+- after a catalogue chunk is successfully committed, and
+- after catalogue data is deleted,
+
+and **not** merely when a sync run is claimed. `BoardSyncManager`'s existing
+sync generation increments at slot claim, before any import, and never again —
+using it alone leaves a browser opened mid-sync answering from a stale `false`
+until the process restarts. Both the browser's mask cache and the picker must
+observe the same revision.
 
 ### 3.8 KDoc corrections
 
@@ -421,8 +449,11 @@ secondary text for someone holding their order.
    Wooden bit set is excluded from browse/search/count; one without it is not.
 5. A climb with `hsm = 0` passes every mask (leniency preserved).
 6. With the preference absent, behaviour equals "all sets selected".
-7. The presence gate returns false on a DB whose MoonBoard rows are all
-   `hsm = 0`, and true once any row is non-zero.
+7. The presence gate keys on **catalogue** rows. False when every
+   `source='kilter'` MoonBoard row is `hsm = 0` — and still false when a
+   `source='local'` or `source='nostr'` row carries a non-zero `hsm`. True once
+   an imported catalogue row is non-zero. A populated Kilter row never opens
+   the MoonBoard gate.
 8. Kilter and Tension mask computation and browse results are unchanged.
 9. `LocalSharePeerColumnContractTest` still passes unmodified (no new column).
 10. On-device: on a Masters 2019 with Wooden Holds deselected, the browse
@@ -450,8 +481,13 @@ secondary text for someone holding their order.
    "all sets", never as "exclude everything".
 2. **Layout switch** — the mask must be recomputed on board-config change, not
    cached across variants; a 2019 selection must never be applied to a 2017.
-3. **Stale non-zero mask after variant change** — the existing
-   `needsBoardReload` path must clear it, as it does for board images today.
+3. **Stale non-zero mask after variant change** — clearing it to `0L` must be
+   **atomic with** writing the new brand/layout into the filter state, before
+   any suspending call. Publishing the new layout while the old mask is still
+   in place opens a window in which a search reads both: bit 3 means *Wooden
+   Holds* on 2019 and *Original School Holds* on 2017, so the wrong set gets
+   hidden. If the board refresh is then cancelled or the repository throws, the
+   state is never corrected at all.
 4. **Old chunk, new app** — presence gate false, picker disabled, browse
    unchanged.
 5. **MoonBoard 2010** — one set, no choice; hide the picker entirely rather
@@ -461,7 +497,10 @@ secondary text for someone holding their order.
    anyway. This is a per-row computation on a handful of rows, **not** a
    catalogue pass. If it cannot be computed (unknown cell), the row keeps
    `hsm = 0` and falls back to leniency — the safe direction, since a climb
-   wrongly shown costs less than one wrongly hidden.
+   wrongly shown costs less than one wrongly hidden. **These rows must never
+   open the presence gate** (§3.7): they are not evidence that a catalogue
+   with populated `hsm` arrived, and treating them as such makes the picker
+   usable while the catalogue is still inert.
 7. **Mini 2025 and 2010 have per-set art, the others do not.** The preview must
    use the §3.2 ringed rendering for *all* variants regardless, so the picker
    looks the same everywhere. Do not special-case the two that could stack —
@@ -473,15 +512,27 @@ secondary text for someone holding their order.
    all 198. A preview that draws only occupied holds would therefore render 2024
    completely empty and 2019 missing two thirds of its holds. Take the hold set
    from the cell map and the coordinates from the JSON — nothing else from it.
-8. **The one unmappable catalogue row** — exactly one climb on layout 2 uses
+9. **The one unmappable catalogue row** — exactly one climb on layout 2 uses
    cell 56 (position A6), which BoardSesh's map does not carry. It keeps
    `hsm = 0` and falls under the same leniency. Pipeline-side, it must not
    abort the run.
-9. **Layout 2 cell-count gap** — BoardSesh carries 140 cells, the 2023 official
+10. **Layout 2 cell-count gap** — BoardSesh carries 140 cells, the 2023 official
    dump 142. The pipeline must treat an unknown cell as "leave `hsm = 0` for
    this climb", never as "set no bits" (which would wrongly claim the climb
    needs nothing).
 
+11. **Two quick taps must not lose one.** Toggling a set reads the current
+    selection, derives a full new set and writes it back. Two taps before the
+    first store round-trip both read the same list and the last full write
+    wins, silently dropping the earlier deselection. Either drive the UI from
+    an atomically updated state and serialise the writes, or toggle inside a
+    single store edit that starts from the value on disk.
+12. **A test must not encode a lifecycle that does not exist.** Where a test
+    stands in for a real sequence — a sync that lands data, a catalogue that is
+    deleted, a picker left open across both — it has to model that sequence.
+    Constructing a fresh view model after flipping a fake, or assuming a
+    counter advances at a moment when it does not, freezes the wrong assumption
+    and reads as green forever.
 ## 7. Testing
 
 ### 7.1 JVM unit tests
