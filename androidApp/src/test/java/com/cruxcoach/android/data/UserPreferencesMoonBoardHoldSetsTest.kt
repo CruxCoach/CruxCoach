@@ -4,9 +4,12 @@ import com.cruxcoach.android.fakes.createTestUserPreferences
 import com.cruxcoach.domain.board.MoonBoardHoldSets
 import com.cruxcoach.domain.board.MoonBoardVariant
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 /**
  * The stored side of the MoonBoard hold-set selection (FEAT-049 §3.5).
@@ -82,6 +85,68 @@ class UserPreferencesMoonBoardHoldSetsTest {
         prefs.setMoonBoardHoldSets(masters2019, listOf(2L, 3L, 4L))
 
         assertEquals(universe2019, prefs.getMoonBoardHoldSets(masters2019))
+    }
+
+    @Test
+    fun `toggling starts from the stored value, so concurrent taps both land`() = runTest {
+        // Edge case 11, at the level where the fix lives. The read-modify-write
+        // this replaces was in the ViewModel: two taps read the same list and
+        // each wrote a full replacement derived from it, so the second write put
+        // back what the first removed. Launching both toggles without awaiting
+        // the first is the closest a unit test gets to two fast taps; DataStore
+        // serialises the edits, and because the flip happens INSIDE the edit the
+        // second one starts from the first one's result.
+        val prefs = createTestUserPreferences(backgroundScope)
+
+        val first = launch { prefs.toggleMoonBoardHoldSet(masters2019, 21L) }
+        val second = launch { prefs.toggleMoonBoardHoldSet(masters2019, 22L) }
+        first.join()
+        second.join()
+
+        assertEquals(
+            universe2019 - 21L - 22L,
+            prefs.getMoonBoardHoldSets(masters2019),
+            "both deselections survive, in either arrival order",
+        )
+    }
+
+    @Test
+    fun `toggling flips a set back on again`() = runTest {
+        val prefs = createTestUserPreferences(backgroundScope)
+
+        assertTrue(prefs.toggleMoonBoardHoldSet(masters2019, 21L))
+        assertEquals(universe2019 - 21L, prefs.getMoonBoardHoldSets(masters2019))
+
+        assertTrue(prefs.toggleMoonBoardHoldSet(masters2019, 21L))
+        assertEquals(universe2019, prefs.getMoonBoardHoldSets(masters2019))
+    }
+
+    @Test
+    fun `toggling off the last set is refused, not stored`() = runTest {
+        // Edge case 1. The refusal has to be decided against the value the write
+        // would use, not against a copy the caller is holding — otherwise the
+        // check and the write can disagree about what "the last set" is.
+        val prefs = createTestUserPreferences(backgroundScope)
+        prefs.setMoonBoardHoldSets(masters2019, listOf(17L))
+
+        assertFalse(
+            prefs.toggleMoonBoardHoldSet(masters2019, 17L),
+            "the caller is told the toggle was refused, so it can say why",
+        )
+        assertEquals(listOf(17L), prefs.getMoonBoardHoldSets(masters2019))
+    }
+
+    @Test
+    fun `toggling ignores an id the variant does not have`() = runTest {
+        // 2016's set 2 is not part of the 2019 universe. Adding it must not
+        // change anything — and must certainly not be stored, since a stored
+        // list of foreign ids resolves back to "all sets".
+        val prefs = createTestUserPreferences(backgroundScope)
+        prefs.setMoonBoardHoldSets(masters2019, listOf(17L, 18L))
+
+        prefs.toggleMoonBoardHoldSet(masters2019, 2L)
+
+        assertEquals(listOf(17L, 18L), prefs.getMoonBoardHoldSets(masters2019))
     }
 
     @Test

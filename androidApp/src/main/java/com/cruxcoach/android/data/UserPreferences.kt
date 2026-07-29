@@ -603,6 +603,39 @@ class UserPreferences(
         }
     }
 
+    /**
+     * Tick or untick ONE set for [variant], deriving the new selection inside a
+     * single store edit. Returns false when the toggle was refused because it
+     * would have left nothing selected (edge case 1); the stored value is then
+     * untouched.
+     *
+     * Why not read the selection, flip it and call [setMoonBoardHoldSets]: two
+     * taps landing before the store's flow has emitted back would both read the
+     * same list and each write a full replacement derived from it, so the second
+     * write silently restores the set the first one removed (edge case 11). Here
+     * the read and the write are one `edit` block, and DataStore serialises
+     * edits — the second toggle starts from the first one's result even if the
+     * flow has not caught up. That is also why this belongs in the store rather
+     * than behind a ViewModel mutex: the value on disk is the shared truth, and
+     * a second ViewModel or a later caller gets the same guarantee for free.
+     */
+    suspend fun toggleMoonBoardHoldSet(variant: MoonBoardVariant, setId: Long): Boolean {
+        val universe = MoonBoardHoldSets.setIdsFor(variant)
+        val key = PreferenceKeys.moonBoardHoldSets(variant.layoutId)
+        var accepted = true
+        dataStore.edit { prefs ->
+            val current = resolveMoonBoardHoldSets(prefs[key], variant).toMutableSet()
+            if (setId in current) current -= setId else current += setId
+            val kept = universe.filter { it in current }
+            if (kept.isEmpty()) {
+                accepted = false
+                return@edit
+            }
+            prefs[key] = kept.joinToString(",")
+        }
+        return accepted
+    }
+
     private fun resolveMoonBoardHoldSets(stored: String?, variant: MoonBoardVariant): List<Long> {
         val universe = MoonBoardHoldSets.setIdsFor(variant)
         if (stored.isNullOrBlank()) return universe

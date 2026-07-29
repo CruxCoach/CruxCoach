@@ -1,6 +1,7 @@
 package com.cruxcoach.android.ui.settings
 
 import app.cash.turbine.test
+import com.cruxcoach.android.data.CatalogueRevisionSource
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.fakes.FakeBoardRepository
 import com.cruxcoach.android.fakes.createTestUserPreferences
@@ -11,6 +12,8 @@ import com.cruxcoach.domain.board.MoonBoardHoldSets
 import com.cruxcoach.domain.board.MoonBoardVariant
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -42,11 +45,20 @@ class MoonBoardHoldSetPickerTest {
     private val masters2019 = MoonBoardVariant.MASTERS_2019
     private val universe = MoonBoardHoldSets.setIdsFor(masters2019)
 
+    /** Stands in for [com.cruxcoach.android.data.BoardSyncManager]'s counter.
+     *  Advancing it is how a test says "a chunk committed" or "the catalogue
+     *  was deleted" — the events §3.7 makes the gate depend on. */
+    private val revision = MutableStateFlow(0)
+    private val revisionSource = object : CatalogueRevisionSource {
+        override val catalogueRevision: Flow<Int> = revision
+    }
+
     private suspend fun onMasters2019(prefs: UserPreferences) {
         prefs.setMoonBoardSelection(masters2019.layoutId.toInt())
     }
 
-    private fun vm(prefs: UserPreferences) = MoonBoardHoldSetViewModel(prefs, repo)
+    private fun vm(prefs: UserPreferences) =
+        MoonBoardHoldSetViewModel(prefs, repo, revisionSource)
 
     @Test
     fun `level 1 is the default and the per-set list starts collapsed`() = runTest {
@@ -165,13 +177,74 @@ class MoonBoardHoldSetPickerTest {
             )
             cancelAndIgnoreRemainingEvents()
         }
+    }
 
-        repo.moonBoardHoldSetMaskPresent = true
-        vm(prefs).state.test {
-            val open = awaitItem { it.variant != null && it.catalogueHasHoldSetData }
-            assertTrue(open.catalogueHasHoldSetData)
+    @Test
+    fun `a sync landing hold-set data unblocks the picker that is already open`() = runTest {
+        // Edge case 12. This test used to build a SECOND view model after
+        // flipping the fake, which is a different claim entirely: it proved the
+        // gate is read on construction and said nothing about the case that
+        // matters — Settings left open across the first sync that populates hsm,
+        // where the screen used to keep saying "Available after the next
+        // catalogue update" for as long as the user looked at it.
+        //
+        // One view model, one subscription, the catalogue changing underneath.
+        val prefs = createTestUserPreferences(backgroundScope)
+        onMasters2019(prefs)
+        repo.moonBoardHoldSetMaskPresent = false
+        val viewModel = vm(prefs)
+
+        viewModel.state.test {
+            val blocked = awaitItem { it.variant != null }
+            assertFalse(
+                "the sync run has only been claimed; no data yet",
+                blocked.catalogueHasHoldSetData,
+            )
+
+            // The MoonBoard chunk commits, still inside that same run.
+            repo.moonBoardHoldSetMaskPresent = true
+            revision.value = revision.value + 1
+
+            assertTrue(
+                "the picker unblocks while it is on screen",
+                awaitItem { it.catalogueHasHoldSetData }.catalogueHasHoldSetData,
+            )
+
+            // And back the other way: deleting the board data closes it again.
+            repo.moonBoardHoldSetMaskPresent = false
+            revision.value = revision.value + 1
+
+            assertFalse(
+                "a gate that was true must not stay true over deleted rows",
+                awaitItem { !it.catalogueHasHoldSetData }.catalogueHasHoldSetData,
+            )
             cancelAndIgnoreRemainingEvents()
         }
+    }
+
+    @Test
+    fun `two taps before the store answers both land`() = runTest {
+        // Edge case 11. Deriving the new selection from the state in hand loses
+        // one of these: both taps read the same six-set list, each writes a full
+        // replacement, and the second write puts back the set the first removed.
+        // Nothing is awaited between the two calls on purpose — that IS the case.
+        val prefs = createTestUserPreferences(backgroundScope)
+        onMasters2019(prefs)
+        repo.moonBoardHoldSetMaskPresent = true
+        val viewModel = vm(prefs)
+
+        viewModel.state.test {
+            awaitItem { it.isCompleteSetup }
+            viewModel.setExpanded(true)
+
+            viewModel.toggleSet(21L)  // Wooden Holds
+            viewModel.toggleSet(22L)  // Wooden Holds B
+
+            val state = awaitItem { it.selectedSetIds == universe.toSet() - 21L - 22L }
+            assertFalse("neither deselection may be swallowed", state.isCompleteSetup)
+            cancelAndIgnoreRemainingEvents()
+        }
+        assertEquals(universe - 21L - 22L, prefs.getMoonBoardHoldSets(masters2019))
     }
 
     @Test

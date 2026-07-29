@@ -2,6 +2,7 @@ package com.cruxcoach.android.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.cruxcoach.android.data.CatalogueRevisionSource
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.util.safeLaunch
 import com.cruxcoach.data.repository.BoardRepository
@@ -83,7 +84,15 @@ data class MoonBoardHoldSetState(
 class MoonBoardHoldSetViewModel @Inject constructor(
     private val userPreferences: UserPreferences,
     private val boardRepository: BoardRepository,
+    catalogueRevisionSource: CatalogueRevisionSource,
 ) : ViewModel() {
+
+    /** §3.7: the gate's answer changes when catalogue data changes, and this
+     *  screen can be open across exactly that moment — a first sync landing the
+     *  hold-set column, or a deletion taking it away again. Observed as an
+     *  input rather than probed once, so the picker unblocks (or re-blocks)
+     *  while it is on screen instead of on the next visit. */
+    private val catalogueRevision: Flow<Int> = catalogueRevisionSource.catalogueRevision
 
     private val expanded = MutableStateFlow(false)
     private val counts = MutableStateFlow<MoonBoardHoldSetCounts?>(null)
@@ -125,11 +134,13 @@ class MoonBoardHoldSetViewModel @Inject constructor(
 
     init {
         viewModelScope.safeLaunch(TAG) {
-            combine(activeVariant, selection) { variant, selected -> variant to selected }
+            combine(activeVariant, selection, catalogueRevision) { variant, selected, revision ->
+                Triple(variant, selected, revision)
+            }
                 .distinctUntilChanged()
                 // collectLatest: toggling several sets quickly must not queue a
                 // count per tap — only the last selection's numbers matter.
-                .collectLatest { (variant, selected) -> refresh(variant, selected) }
+                .collectLatest { (variant, selected, _) -> refresh(variant, selected) }
         }
         // A variant switch closes the per-set list again: the sets on screen
         // belong to a different board now, and Level 1 is where every board
@@ -165,22 +176,19 @@ class MoonBoardHoldSetViewModel @Inject constructor(
      * a board with no hold sets has no climbs, and the read path would expand
      * an empty selection back to "all" anyway, so the UI would appear to
      * accept a change that silently did the opposite.
+     *
+     * The flip happens inside the store (edge case 11). Deriving the new full
+     * selection HERE, from `state.value`, is what loses a tap: two taps before
+     * the preference flow emits back read the same list, and the second full
+     * write puts back what the first removed. The store's single-edit toggle
+     * starts from the stored value instead, so both taps land — including the
+     * "would this leave nothing selected?" check, which has to be answered
+     * against the same value the write uses.
      */
     fun toggleSet(setId: Long) {
-        val current = state.value
-        val variant = current.variant ?: return
-        val next = if (setId in current.selectedSetIds) {
-            current.selectedSetIds - setId
-        } else {
-            current.selectedSetIds + setId
-        }
-        if (next.isEmpty()) {
-            minimumOneWarning.value = true
-            return
-        }
-        minimumOneWarning.value = false
+        val variant = state.value.variant ?: return
         viewModelScope.safeLaunch(TAG) {
-            userPreferences.setMoonBoardHoldSets(variant, next)
+            minimumOneWarning.value = !userPreferences.toggleMoonBoardHoldSet(variant, setId)
         }
     }
 
