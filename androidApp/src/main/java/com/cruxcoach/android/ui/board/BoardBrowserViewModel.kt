@@ -1348,14 +1348,10 @@ class BoardBrowserViewModel @Inject constructor(
     // HoldSetMask). 0 = inert, exactly like selSizeId()'s 0 sentinel.
     private fun hsmMask(): Long = _state.value.hsmExcludedMask
 
-    // FEAT-049 hold-set mask for the active MoonBoard variant, memoised.
-    // MoonBoard has no product size, so `boardSize` stays null and
-    // `needsBoardReload` is permanently true for it — the surrounding block
-    // runs on every refresh, not only on a real board change. The inputs that
-    // actually move are the variant, the user's owned sets, and the catalogue
-    // (a completed sync bumps syncGeneration and forces a refresh anyway).
-    private var moonBoardMaskKey: String? = null
-    private var moonBoardMask: Long = 0L
+    // FEAT-049 hold-set mask for the active MoonBoard variant. Memoised — see
+    // MoonBoardMaskCache for why that is not an optimisation but a
+    // requirement.
+    private val moonBoardMaskCache = MoonBoardMaskCache()
 
     /**
      * The exclusion mask for [variant] given the user's mounted hold sets, or
@@ -1366,28 +1362,16 @@ class BoardBrowserViewModel @Inject constructor(
      * silently ineffective rather than wrong. The picker is disabled behind
      * the same probe, so the two never disagree.
      */
-    private suspend fun moonBoardHsmMask(variant: MoonBoardVariant?, syncGeneration: Int): Long {
-        if (variant == null) return 0L
-        val owned = userPreferences.getMoonBoardHoldSets(variant)
-        val key = "${variant.name}|${owned.joinToString(",")}|$syncGeneration"
-        if (key == moonBoardMaskKey) return moonBoardMask
-        val mask = HoldSetMask.excludedMask(
-            layoutSetIds = MoonBoardHoldSets.setIdsFor(variant),
-            sizeSetIds = owned,
-        )
-        // Probe only when something is actually deselected: with the complete
-        // setup the mask is 0 and the answer cannot change it. That keeps the
-        // row-walk (see hasMoonBoardHoldSetMask in Board.sq) off the path
-        // every user who never opens the picker takes.
-        moonBoardMask = if (mask == 0L) 0L else {
-            val present = PerfLogger.traceQuery("hasMoonBoardHoldSetMask") {
+    private suspend fun moonBoardHsmMask(variant: MoonBoardVariant?, syncGeneration: Int): Long =
+        moonBoardMaskCache.maskFor(
+            variant = variant,
+            ownedSetIds = variant?.let { userPreferences.getMoonBoardHoldSets(it) }.orEmpty(),
+            syncGeneration = syncGeneration,
+        ) {
+            PerfLogger.traceQuery("hasMoonBoardHoldSetMask") {
                 boardRepository.hasMoonBoardHoldSetMask()
             }
-            if (present) mask else 0L
         }
-        moonBoardMaskKey = key
-        return moonBoardMask
-    }
 
     private suspend fun fetchPage(f: BrowserFilterState, offset: Int): List<ClimbWithStats> {
         if (f.sortField == ClimbSortField.RANDOM && f.searchQuery.isBlank()) {

@@ -103,6 +103,8 @@ class BoardSizeFitFilterTest {
             frames = "p100r12p101r14",
             edge_left = edgeLeft, edge_right = edgeRight, edge_bottom = edgeBottom, edge_top = edgeTop,
             created_at = "2026-06-01T00:00:00Z", description = "", move_count = 1L,
+            // FEAT-049: MoonBoard rows derive hsm on insert; a Kilter fixture has none.
+            hsm = 0L,
             created_by_pubkey = "pk", frames_hash = "h-$uuid", board_brand = brand,
         )
         db.boardQueries.upsertClimbStat(

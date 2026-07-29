@@ -77,6 +77,8 @@ class CommunityClimbTombstoneTest {
             created_by_pubkey = pubkey,
             frames_hash = "hash-$uuid",
             created_at = "2026-05-01T10:00:00Z",
+            // FEAT-049: MoonBoard rows derive hsm on insert; a Kilter fixture has none.
+            hsm = 0L,
             board_brand = "kilter",
         )
         db.boardQueries.upsertClimbStat(

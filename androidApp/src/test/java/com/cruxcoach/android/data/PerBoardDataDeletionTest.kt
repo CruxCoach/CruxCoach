@@ -66,6 +66,8 @@ class PerBoardDataDeletionTest {
             uuid = uuid, layout_id = 1L, setter_username = "s", name = uuid,
             frames = "p100r12", edge_left = 0L, edge_right = 144L, edge_bottom = 0L, edge_top = 156L,
             created_at = "2026-07-01T10:00:00Z", description = "", move_count = 1L,
+            // FEAT-049: MoonBoard rows derive hsm on insert; a Kilter fixture has none.
+            hsm = 0L,
             created_by_pubkey = "pk", frames_hash = "h-$uuid", board_brand = brand,
         )
         if (source != "local") {

@@ -145,9 +145,12 @@ class MoonBoardHoldSetViewModel @Inject constructor(
     /** Level 1: the bundle as sold. Stores every set and closes the list. */
     fun selectCompleteSetup() {
         val variant = state.value.variant ?: return
+        // Collapse first, then persist: the list closing is the immediate
+        // answer to the tap, and it must not wait on a DataStore write.
+        expanded.value = false
+        minimumOneWarning.value = false
         viewModelScope.safeLaunch(TAG) {
             userPreferences.setMoonBoardHoldSets(variant, MoonBoardHoldSets.setIdsFor(variant))
-            expanded.value = false
         }
     }
 
