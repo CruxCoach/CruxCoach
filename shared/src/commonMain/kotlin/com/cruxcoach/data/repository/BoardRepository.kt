@@ -431,11 +431,14 @@ interface BoardClimbQueries {
      *  any imported climbs. Same O(1) EXISTS probe, scoped by board_brand. */
     fun hasClimbsForBrand(boardBrand: String): Boolean
     /** Presence gate for the MoonBoard hold-set filter (FEAT-049): true once
-     *  the catalogue carries a real `hsm` for any MoonBoard row. The value is
+     *  the CATALOGUE carries a real `hsm` for any MoonBoard row. The value is
      *  produced by the build pipeline, so before that ships every row is 0 and
      *  the filter cannot do anything — the picker says so instead of quietly
-     *  changing nothing. Evaluated once per board-config change, not per
-     *  query; the false case walks the brand's rows (see the .sq comment). */
+     *  changing nothing. Only catalogue rows (`source='kilter'`) count: a
+     *  self-authored or peer-received MoonBoard climb gets its `hsm` computed
+     *  on insert and would otherwise open the gate over an inert catalogue.
+     *  Evaluated once per catalogue revision, not per query; the false case
+     *  walks the brand's rows (see the .sq comment). */
     fun hasMoonBoardHoldSetMask(): Boolean
     fun getStatCount(): Long
     /** Stats with no matching climbs row (cron desync indicator). */

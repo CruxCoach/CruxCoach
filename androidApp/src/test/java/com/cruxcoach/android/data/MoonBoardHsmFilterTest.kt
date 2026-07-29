@@ -180,8 +180,64 @@ class MoonBoardHsmFilterTest {
         driver.execute(null, "UPDATE climbs SET hsm = 0", 0)
         assertFalse(repo.hasMoonBoardHoldSetMask(), "all-zero MoonBoard rows → gate closed")
 
-        driver.execute(null, "UPDATE climbs SET hsm = 9 WHERE uuid = 'mb-withWooden'", 0)
-        assertTrue(repo.hasMoonBoardHoldSetMask(), "one populated row is enough")
+        // source='kilter' is the importer's default and what makes this a
+        // catalogue row; spelled out rather than relied on (see
+        // presenceGate_needsACatalogueRowNotAnAuthoredOne).
+        driver.execute(
+            null,
+            "UPDATE climbs SET hsm = 9, source = 'kilter' WHERE uuid = 'mb-withWooden'",
+            0,
+        )
+        assertTrue(repo.hasMoonBoardHoldSetMask(), "one populated catalogue row is enough")
+    }
+
+    @Test
+    fun presenceGate_needsACatalogueRowNotAnAuthoredOne() {
+        // AC 7 / edge case 6, the direction that failed review. §6.6 has
+        // locally authored and peer-received MoonBoard climbs compute their own
+        // hsm on insert from the on-device cell map — so on the catalogue
+        // shipping today (every MoonBoard row hsm = 0) a single self-authored
+        // problem is the ONE non-zero MoonBoard row on the device. It is not
+        // evidence that a populated catalogue arrived: taking it as such
+        // unlocks the picker while every catalogue row still sails through
+        // every mask, which is the visible-but-inert state the gate exists to
+        // prevent.
+        driver.execute(null, "UPDATE climbs SET hsm = 0", 0)
+
+        driver.execute(
+            null,
+            "UPDATE climbs SET hsm = 9, source = 'local', origin = 'cruxcoach' " +
+                "WHERE uuid = 'mb-handsOnly'",
+            0,
+        )
+        assertFalse(
+            repo.hasMoonBoardHoldSetMask(),
+            "a route the user authored must not open the catalogue gate",
+        )
+
+        driver.execute(
+            null,
+            "UPDATE climbs SET hsm = 9, source = 'nostr', origin = 'cruxcoach' " +
+                "WHERE uuid = 'mb-woodenOnly'",
+            0,
+        )
+        assertFalse(
+            repo.hasMoonBoardHoldSetMask(),
+            "nor one received from a peer, however many arrive",
+        )
+
+        // The other direction lives in the same test so neither half can rot
+        // on its own: an imported catalogue row DOES open it, with the two
+        // authored rows still sitting there.
+        driver.execute(
+            null,
+            "UPDATE climbs SET hsm = 9, source = 'kilter' WHERE uuid = 'mb-withWooden'",
+            0,
+        )
+        assertTrue(
+            repo.hasMoonBoardHoldSetMask(),
+            "an imported catalogue row is the evidence the gate asks for",
+        )
     }
 
     @Test
@@ -199,11 +255,23 @@ class MoonBoardHsmFilterTest {
     }
 
     @Test
-    fun aMoonBoardMaskNeverReachesAnotherBrandsRows() {
-        // AC 8: the shared HoldSetMask is where Kilter would break. Its rows
-        // have carried a populated hsm since 0.2.0, and MoonBoard's bit ranks
-        // mean something else entirely — so a MoonBoard selection must not be
-        // able to hide a Kilter climb whose bits happen to collide.
+    fun theBrandPredicateScopesEveryMaskedQuery() {
+        // AC 8, stated as precisely as this fixture can state it.
+        //
+        // What the SQL guarantees: a masked query only ever sees ONE brand's
+        // rows, because the mask always travels alongside a board_brand
+        // predicate. A row that leaves the brand leaves the list.
+        //
+        // What it does NOT guarantee — and what the earlier name of this test
+        // claimed while passing 0L to the Kilter call — is that the CALLER
+        // hands each brand its own mask. `hsm & :mask` is arithmetic; it would
+        // hide a Kilter climb whose bits collide with MoonBoard's rankings just
+        // as happily. The last assertion spells that out, so nobody reads this
+        // file as protection it does not provide. The caller-side guarantee
+        // lives where the caller is: MoonBoardMaskCacheTest ("switching away
+        // from MoonBoard clears the mask and the memo") and
+        // BoardBrowserBoardSwitchTest, which pin the mask to 0 the moment the
+        // filter stops naming a MoonBoard.
         driver.execute(
             null,
             "UPDATE climbs SET board_brand = 'kilter' WHERE uuid = 'mb-withWooden'",
@@ -217,12 +285,21 @@ class MoonBoardHsmFilterTest {
         assertFalse("mb-withWooden" in browseUuids(0L))
 
         // And on its own brand it is still there, under its own mask.
-        val kilterHits = repo.searchClimbsSorted(
-            angle = 40, layoutId = layoutId, boardBrand = "kilter",
-            minDifficulty = 0.0, maxDifficulty = 100.0, minAscensionists = 0,
-            sortField = ClimbSortField.ASCENSIONISTS, sortDirection = SortDirection.DESC,
-            climbType = ClimbTypeFilter.ALL, selProductSizeId = 0, hsmExcludedMask = 0L,
-        ).map { it.uuid }
-        assertEquals(listOf("mb-withWooden"), kilterHits)
+        assertEquals(listOf("mb-withWooden"), kilterUuids(0L))
+
+        // Handed the MoonBoard mask, though, it would vanish — bit 3 is Wooden
+        // Holds on a Masters 2019 and something else entirely on a Kilter
+        // board. Which is exactly why the caller must never do this.
+        assertTrue(
+            kilterUuids(mask).isEmpty(),
+            "the predicate scopes the ROWS, not the mask's meaning",
+        )
     }
+
+    private fun kilterUuids(mask: Long): List<String> = repo.searchClimbsSorted(
+        angle = 40, layoutId = layoutId, boardBrand = "kilter",
+        minDifficulty = 0.0, maxDifficulty = 100.0, minAscensionists = 0,
+        sortField = ClimbSortField.ASCENSIONISTS, sortDirection = SortDirection.DESC,
+        climbType = ClimbTypeFilter.ALL, selProductSizeId = 0, hsmExcludedMask = mask,
+    ).map { it.uuid }
 }

@@ -181,7 +181,12 @@ class FakeBoardRepository : BoardRepository {
     override fun hasClimbsForBrand(boardBrand: String): Boolean = climbs.isNotEmpty()
 
     /** Overrides the FEAT-049 presence gate for tests that need it decided
-     *  without seeding a catalogue. Null = derive it from the seeded rows. */
+     *  without seeding a catalogue — and the only honest way to decide it here,
+     *  since the real query also demands catalogue provenance
+     *  (`source='kilter'`) and [ClimbWithStats] carries no such column. Null =
+     *  derive it from the seeded rows, which are then all taken as catalogue
+     *  rows; the provenance half is covered against real SQLite in
+     *  MoonBoardHsmFilterTest. */
     var moonBoardHoldSetMaskPresent: Boolean? = null
 
     override fun hasMoonBoardHoldSetMask(): Boolean =

@@ -952,20 +952,34 @@ SELECT EXISTS(SELECT 1 FROM climbs LIMIT 1);
 hasClimbsForBrand:
 SELECT EXISTS(SELECT 1 FROM climbs WHERE board_brand = ? LIMIT 1);
 
--- Presence gate for the MoonBoard hold-set filter (FEAT-049): has a chunk
--- with a POPULATED hsm arrived yet? The column is computed in the catalogue
--- build pipeline, so until that ships every MoonBoard row carries 0 and the
--- filter is inert. A user who deselects sets and sees an unchanged list is
--- worse off than one who sees the picker greyed out with a reason, so the
--- selection is made visibly unavailable rather than silently ineffective.
+-- Presence gate for the MoonBoard hold-set filter (FEAT-049): has a
+-- CATALOGUE with a POPULATED hsm arrived yet? The column is computed in the
+-- catalogue build pipeline, so until that ships every MoonBoard catalogue row
+-- carries 0 and the filter is inert. A user who deselects sets and sees an
+-- unchanged list is worse off than one who sees the picker greyed out with a
+-- reason, so the selection is made visibly unavailable rather than silently
+-- ineffective.
+--
+-- source = 'kilter' is load-bearing, not decoration. It is the catalogue
+-- provenance marker — the column default every importer leaves in place, for
+-- the MoonBoard / Aurora-family snapshots too, and the same predicate the
+-- targeted catalogue delete above uses. Without it a SINGLE self-authored or
+-- peer-received MoonBoard route (source='local' / 'nostr'), whose hsm IS
+-- computed on insert from the on-device cell map (§6.6), would open the gate
+-- while every catalogue row still carries 0 and sails through every mask —
+-- the visible-but-ineffective state this gate exists to prevent.
 --
 -- Not O(1) in the FALSE case: idx_climbs_board_brand narrows to MoonBoard,
 -- but proving that NO row is non-zero walks all of them. That is the state
 -- before the pipeline half lands, and it is why this is evaluated once per
--- board-config change (on Dispatchers.IO, alongside the mask) and never per
+-- catalogue revision (on Dispatchers.IO, alongside the mask) and never per
 -- query. Once the data arrives the first row already answers it.
 hasMoonBoardHoldSetMask:
-SELECT EXISTS(SELECT 1 FROM climbs WHERE board_brand = 'moonboard' AND hsm != 0 LIMIT 1);
+SELECT EXISTS(
+    SELECT 1 FROM climbs
+    WHERE board_brand = 'moonboard' AND source = 'kilter' AND hsm != 0
+    LIMIT 1
+);
 
 getClimbCountByAngle:
 SELECT cs.angle, COUNT(*) AS climb_count
