@@ -254,33 +254,111 @@ class MoonBoardHsmFilterTest {
         assertFalse(repo.hasMoonBoardHoldSetMask())
     }
 
+    /**
+     * Every repository entry point that takes an `hsmExcludedMask`, paired with
+     * the number of rows it returns for a given brand under that mask.
+     *
+     * The list is the point: "every" in the test name below used to rest on one
+     * of these ten. Adding a masked query without adding it here is the way this
+     * claim rots, so the count is asserted separately.
+     */
+    private fun maskedQueries(): Map<String, (String, Long) -> Long> = mapOf(
+        "searchClimbsSorted" to { b, m ->
+            repo.searchClimbsSorted(
+                angle = 40, layoutId = layoutId, boardBrand = b,
+                minDifficulty = 0.0, maxDifficulty = 100.0, minAscensionists = 0,
+                sortField = ClimbSortField.ASCENSIONISTS, sortDirection = SortDirection.DESC,
+                climbType = ClimbTypeFilter.ALL, selProductSizeId = 0, hsmExcludedMask = m,
+            ).size.toLong()
+        },
+        "searchClimbsByName" to { b, m ->
+            repo.searchClimbsByName(
+                "mb-", 40, layoutId, b,
+                climbType = ClimbTypeFilter.ALL, selProductSizeId = 0, hsmExcludedMask = m,
+            ).size.toLong()
+        },
+        "countFilteredClimbs" to { b, m ->
+            repo.countFilteredClimbs(40, layoutId, b, 0.0, 100.0, 0, ClimbTypeFilter.ALL, 0, m)
+        },
+        "countFilteredClimbsFast" to { b, m ->
+            repo.countFilteredClimbsFast(40, layoutId, b, 0.0, 100.0, 0, 0, m)
+        },
+        "countBenchmarkFilteredClimbs" to { b, m ->
+            repo.countBenchmarkFilteredClimbs(40, layoutId, b, 0.0, 100.0, 0, ClimbTypeFilter.ALL, 0, m)
+        },
+        "countSearchClimbs" to { b, m ->
+            repo.countSearchClimbs("mb-", 40, layoutId, b, ClimbTypeFilter.ALL, 0, m)
+        },
+        "countBenchmarkSearchClimbs" to { b, m ->
+            repo.countBenchmarkSearchClimbs("mb-", 40, layoutId, b, ClimbTypeFilter.ALL, 0, m)
+        },
+        "getAllBrowseMatchingUuids" to { b, m ->
+            repo.getAllBrowseMatchingUuids(40, layoutId, b, 0.0, 100.0, 0, ClimbTypeFilter.ALL, 0, m)
+                .size.toLong()
+        },
+        "getCruxCoachClimbs" to { b, m ->
+            repo.getCruxCoachClimbs(layoutId, b, 40, 0.0, 100.0, 0, ClimbTypeFilter.ALL, 0, m)
+                .size.toLong()
+        },
+        "getBoardSeshClimbs" to { b, m ->
+            repo.getBoardSeshClimbs(layoutId, b, 40, 0.0, 100.0, 0, ClimbTypeFilter.ALL, 0, m)
+                .size.toLong()
+        },
+    )
+
     @Test
     fun theBrandPredicateScopesEveryMaskedQuery() {
-        // AC 8, stated as precisely as this fixture can state it.
+        // AC 8. "Every" used to be a promise this method did not keep: it
+        // called searchClimbsSorted and nothing else. It now runs the claim
+        // through all ten masked entry points.
         //
         // What the SQL guarantees: a masked query only ever sees ONE brand's
-        // rows, because the mask always travels alongside a board_brand
-        // predicate. A row that leaves the brand leaves the list.
+        // rows, because the mask always travels alongside a `board_brand`
+        // predicate. Asked for the other brand, every one of them comes back
+        // empty even though the rows are sitting right there.
         //
-        // What it does NOT guarantee — and what the earlier name of this test
-        // claimed while passing 0L to the Kilter call — is that the CALLER
-        // hands each brand its own mask. `hsm & :mask` is arithmetic; it would
-        // hide a Kilter climb whose bits collide with MoonBoard's rankings just
-        // as happily. The last assertion spells that out, so nobody reads this
-        // file as protection it does not provide. The caller-side guarantee
-        // lives where the caller is: MoonBoardMaskCacheTest ("switching away
-        // from MoonBoard clears the mask and the memo") and
-        // BoardBrowserBoardSwitchTest, which pin the mask to 0 the moment the
-        // filter stops naming a MoonBoard.
+        // What it does NOT guarantee is that the CALLER hands each brand its
+        // own mask. `hsm & :mask` is arithmetic; it would hide a Kilter climb
+        // whose bits collide with MoonBoard's rankings just as happily. The
+        // last block spells that out, so nobody reads this file as protection
+        // it does not provide. The caller-side guarantee lives where the caller
+        // is: MoonBoardMaskCacheTest ("switching away from MoonBoard clears the
+        // mask and the memo") and BoardBrowserBoardSwitchTest, which pin the
+        // mask to 0 the moment the filter stops naming a MoonBoard.
+        //
+        // The two provenance browses and the two benchmark counts carry extra
+        // predicates of their own; the fixture is stamped so each has at least
+        // one MoonBoard row left under the mask, otherwise "returns nothing for
+        // Kilter" would be true for the wrong reason.
+        driver.execute(null, "UPDATE climb_stats SET benchmark_difficulty = 15.0", 0)
+        driver.execute(null, "UPDATE climbs SET origin = 'cruxcoach' WHERE uuid = 'mb-handsOnly'", 0)
+        driver.execute(null, "UPDATE climbs SET origin = 'boardsesh' WHERE uuid = 'mb-unknown'", 0)
+
+        val mask = maskWithout(21L)
+        val queries = maskedQueries()
+        assertEquals(
+            10, queries.size,
+            "a masked query that is not in this map is not covered by this test",
+        )
+        for ((name, run) in queries) {
+            assertTrue(
+                run(brand, mask) > 0L,
+                "$name must see MoonBoard rows under the mask, or the next line proves nothing",
+            )
+            assertEquals(
+                0L, run("kilter", mask),
+                "$name handed another brand must not reach these rows",
+            )
+        }
+
+        // Now move one row across the brand line: it leaves every MoonBoard
+        // result because it is no longer a MoonBoard climb, not because of its
+        // bits — it is gone under the unmasked call too.
         driver.execute(
             null,
             "UPDATE climbs SET board_brand = 'kilter' WHERE uuid = 'mb-withWooden'",
             0,
         )
-        val mask = maskWithout(21L)
-
-        // Gone from the MoonBoard list because it is no longer a MoonBoard
-        // climb, not because of its bits.
         assertFalse("mb-withWooden" in browseUuids(mask))
         assertFalse("mb-withWooden" in browseUuids(0L))
 

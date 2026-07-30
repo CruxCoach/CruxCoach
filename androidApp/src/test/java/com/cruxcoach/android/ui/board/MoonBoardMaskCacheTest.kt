@@ -14,7 +14,15 @@ import kotlin.test.assertEquals
  * value alone: a stale key letting one variant's selection apply to another,
  * the presence probe running on a path that repeats several times a minute,
  * and a key that does not move when the catalogue's contents do. All three are
- * asserted directly, the last one as the sequence it really happens in.
+ * asserted directly.
+ *
+ * **Scope, deliberately narrow.** Every test here calls `maskFor` itself, so
+ * what they pin is the invalidation RULE — never that the browser gets round to
+ * asking again. Read as edge-case-12 coverage they would be misleading: this
+ * class stayed green through a browser that refreshed one revision too early
+ * and then had no trigger left. That half is
+ * [BoardBrowserCatalogueRevisionTest], which drives the real view model through
+ * `Done → revision++ → sync end`.
  */
 class MoonBoardMaskCacheTest {
 
@@ -86,10 +94,12 @@ class MoonBoardMaskCacheTest {
     }
 
     @Test
-    fun `a chunk landing inside a running sync re-asks the catalogue`() = runTest {
-        // Edge case 12: the sequence, not a static end state. The previous
-        // version of this test moved its counter "when the data lands" and was
-        // green on a cache that could never see the data land at all.
+    fun `the revision, not the generation, is what re-asks the catalogue`() = runTest {
+        // Edge case 12 at the cache's own level — the key rule, not the
+        // lifecycle. That the browser calls this again after a mid-run commit
+        // is asserted in BoardBrowserCatalogueRevisionTest; this method would
+        // pass either way, which is why it no longer claims otherwise in its
+        // name.
         //
         // Really happens: the sync slot is claimed — syncGeneration advances
         // HERE, before a single chunk is imported. A browser opened in that
