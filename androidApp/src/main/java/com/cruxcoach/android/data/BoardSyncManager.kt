@@ -480,6 +480,18 @@ class BoardSyncManager(
      * consumer that only cares about MoonBoard re-asks its own cheap question
      * one extra time rather than being told a different lie. Additive to those
      * lanes — nothing in the Kilter or Aurora flow reads it or branches on it.
+     *
+     * Reviewed and kept global on purpose. A MoonBoard-scoped counter would not
+     * actually be narrower: the local-share import writes whatever brands its
+     * snapshot carries, and both deletion paths remove `source='kilter'` rows
+     * across every brand — so MoonBoard's own consumers would still have to be
+     * woken from those non-MoonBoard call sites, and the "only MoonBoard moves
+     * this" rule would be false the first time someone imported a shared DB.
+     * The price of staying global is that a live hold-set picker re-runs its
+     * gate probe and two scoped counts on a Kilter or Aurora commit that cannot
+     * have changed either. That is bounded (the picker exists only while its
+     * settings screen is open) and it buys correctness in the cases above; no
+     * regression has been measured from it.
      */
     private fun bumpCatalogueRevision() {
         _state.update { it.copy(catalogueRevision = it.catalogueRevision + 1) }

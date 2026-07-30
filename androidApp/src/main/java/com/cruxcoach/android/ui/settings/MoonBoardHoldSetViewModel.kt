@@ -91,7 +91,16 @@ class MoonBoardHoldSetViewModel @Inject constructor(
      *  screen can be open across exactly that moment — a first sync landing the
      *  hold-set column, or a deletion taking it away again. Observed as an
      *  input rather than probed once, so the picker unblocks (or re-blocks)
-     *  while it is on screen instead of on the next visit. */
+     *  while it is on screen instead of on the next visit.
+     *
+     *  The revision is global, so a Kilter or Aurora commit wakes [refresh]
+     *  here too and costs one `EXISTS` plus two layout-scoped counts that
+     *  cannot have changed. Accepted rather than filtered: see
+     *  `BoardSyncManager.bumpCatalogueRevision` for why a MoonBoard-only
+     *  counter would be less true, not cheaper. Note that
+     *  the counts are NOT redundant in general — a local-share import can bring
+     *  MoonBoard rows in through a lane that is not MoonBoard's, and `total`
+     *  moves when it does. */
     private val catalogueRevision: Flow<Int> = catalogueRevisionSource.catalogueRevision
 
     private val expanded = MutableStateFlow(false)
