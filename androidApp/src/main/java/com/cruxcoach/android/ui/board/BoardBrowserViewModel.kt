@@ -606,6 +606,10 @@ class BoardBrowserViewModel @Inject constructor(
         viewModelScope.safeLaunch(TAG) {
             var lastGen = syncManager.state.value.syncGeneration
             var lastCatalogueRevision = syncManager.state.value.catalogueRevision
+            // A catalogue revision that arrived mid-run and has not been
+            // refreshed on yet — see the redemption at the bottom of the
+            // collector for why it cannot be acted on where it is seen.
+            var catalogueRevisionPending = false
             var wasImporting = false
             combine(syncManager.state, userPreferences.boardBrand) { syncState, brandWire ->
                 syncState to BoardBrand.fromWire(brandWire)
@@ -633,19 +637,39 @@ class BoardBrowserViewModel @Inject constructor(
                     refreshBoardData(force = true)
                 }
                 wasImporting = importing
-                // FEAT-049: a catalogue DELETION changes the data without a
-                // sync run, so no generation moves and none of the branches
-                // above fire — yet the hold-set gate has just gone from true to
-                // false and the mask derived from it must not survive. Commits
-                // during a run are already covered by the lane-completion
-                // refresh above (with the revision now in the cache key), so
-                // this only has to catch the quiet, sync-less changes.
+                // FEAT-049: the catalogue revision moves at the COMMIT, which
+                // every lane reaches before it publishes its terminal Done —
+                // the importer commits, then emits Done; the manager only
+                // raises the revision once the lane has returned Imported
+                // (BoardSyncManager.syncMoonBoardCatalogue). The
+                // lane-completion refresh above therefore runs one revision too
+                // early: it re-asks the gate under the very key whose "no
+                // hold-set data" answer it already cached, gets the stale 0
+                // back, and nothing after it is left to correct that.
+                //
+                // Refreshing on the spot when the revision moves is not the
+                // answer either — that is a full query set per committed chunk,
+                // queued behind the bulk importer's writer lock, for a filter
+                // that is merely too LENIENT in the meantime (mask 0 = off, the
+                // direction §3 asks us to err in). So a revision seen mid-run
+                // is HELD and redeemed the moment the run ends, where one
+                // refresh covers every commit the run made. That also does not
+                // depend on syncGeneration, which is already the browser's own
+                // baseline when it was opened after the slot was claimed.
+                //
+                // A DELETION changes the catalogue with no run at all: no
+                // generation moves, none of the branches above fire, and a gate
+                // that has just gone true → false must not keep its mask. That
+                // one is refreshed where it is seen.
                 val catalogueChanged = syncState.catalogueRevision > lastCatalogueRevision
                 if (catalogueChanged) lastCatalogueRevision = syncState.catalogueRevision
-                if (syncState.syncGeneration > lastGen && !syncState.isSyncing) {
-                    lastGen = syncState.syncGeneration
-                    refreshBoardData(force = true)
-                } else if (catalogueChanged && !syncState.isSyncing) {
+                if (catalogueChanged && syncState.isSyncing) catalogueRevisionPending = true
+                val syncEnded = syncState.syncGeneration > lastGen && !syncState.isSyncing
+                if (syncEnded) lastGen = syncState.syncGeneration
+                if (!syncState.isSyncing &&
+                    (syncEnded || catalogueChanged || catalogueRevisionPending)
+                ) {
+                    catalogueRevisionPending = false
                     refreshBoardData(force = true)
                 }
             }
