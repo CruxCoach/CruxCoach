@@ -327,6 +327,35 @@ none: no "problems you cannot climb will be hidden", no count, nothing. The
 picture carries it. We follow that, with one addition it lacks — the live result
 count in §4, because we have it cheaply and it answers "did that do anything?".
 
+#### Where the picker appears — once, not three times
+
+The question *"which sets are on your board?"* belongs immediately after
+*"which board do you have?"*, wherever that is asked. There are three such
+places, and they already share one component: `BoardPickerDialog` is
+documented in `BoardFilterScreen.kt:92` as *"the one shared board picker (same
+as Settings / Onboarding / …)"*, and all three routes end in
+`BoardSelectionDialog`, which writes the selection at `:209`.
+
+So the hold-set step is **attached to the variant choice**, not built three
+times:
+
+- **Confirming a MoonBoard variant in `BoardSelectionDialog` leads into the
+  set step.** Level 1 is preselected, so a bundle owner taps once more and is
+  done. Onboarding (`OnboardingScreen.kt:289`) and the browser's filter menu
+  (`BoardFilterScreen.kt:96`) inherit this for free.
+- **Settings keeps its own standalone entry** (`SettingsScreen.kt:213`), which
+  is where someone changes the answer later without re-picking the board.
+
+Three copies of the same UI would drift; one shared step cannot. Skip the step
+entirely for MoonBoard 2010, which has a single set (§6.5), and for any
+non-MoonBoard brand.
+
+**In onboarding the step must be offered even with no catalogue at all.** Which
+holds are bolted to a wall is a fact about the user's hardware; it does not
+become answerable when a chunk arrives. Asking at the natural moment and
+storing the answer is right even if nothing can be filtered yet — see §3.7 for
+how the gate is expressed there instead of suppressing the question.
+
 ### 3.6 Wiring the filter
 
 `BoardBrowserViewModel.kt:765` — the MoonBoard arm currently forcing `0L`
@@ -374,6 +403,20 @@ provenance marker — the default every importer leaves in place, MoonBoard and
 Aurora snapshots included, and the predicate the targeted catalogue delete
 already uses (`Board.sq:1346-1380`). User-authored and peer-received rows carry
 `'local'` / `'nostr'`.
+
+**What the gate does and does not disable.** It governs the *filter*, not the
+*question*. Which holds are bolted to a wall is a fact about the user's
+hardware, true before any chunk exists — so the selection stays available and
+storable even with an empty catalogue, which is the normal state during
+onboarding (§3.5). Suppressing the question there would ask it at the one
+moment it cannot be asked again naturally.
+
+Gate closed ⇒ the sets are still selectable and the answer is still stored, but
+the live climbable count is replaced by `moonboard_hold_sets_needs_sync`. That
+keeps the original promise — a user must never deselect a set, see an
+unchanged list and conclude the feature is broken — while dropping the part
+that threw away a legitimate answer. An earlier draft disabled the whole
+picker; that was the blunt version of the same idea.
 
 Without it the gate contradicts §6.6: a single self-authored MoonBoard route
 gets a computed `hsm`, opens the gate, and the picker becomes usable while all
@@ -423,7 +466,9 @@ official app does not translate them either).
 | `moonboard_hold_sets_summary` | %1$d of %2$d hold sets | %1$d von %2$d Griffsets |
 | `moonboard_hold_sets_count` | %1$s holds | %1$s Griffe |
 | `moonboard_hold_sets_climbable` | %1$s of %2$s problems climbable | %1$s von %2$s Problemen kletterbar |
-| `moonboard_hold_sets_needs_sync` | Available after the next catalogue update | Verfügbar nach dem nächsten Katalog-Update |
+| `moonboard_hold_sets_needs_sync` | Filtering starts after the next catalogue update | Gefiltert wird ab dem nächsten Katalog-Update |
+| `moonboard_hold_sets_step_title` | Which hold sets do you have? | Welche Griffsets hast du? |
+| `moonboard_hold_sets_step_skip` | I'll decide later | Entscheide ich später |
 | `moonboard_hold_sets_min_one` | At least one hold set must stay selected | Mindestens ein Griffset muss ausgewählt bleiben |
 
 `moonboard_hold_sets_climbable` is the one thing the official app does not
@@ -473,6 +518,17 @@ secondary text for someone holding their order.
     preview would silently drop holds.
 15. The climbable count under the picker matches `countFilteredClimbs` for the
     same mask (no separate counting path).
+16. **Confirming a MoonBoard variant leads into the set step**, from all three
+    routes that share `BoardSelectionDialog`: settings, onboarding and the
+    browser's filter menu. Confirming a Kilter or Tension board does not.
+17. **The step is skipped for MoonBoard 2010** (one set, nothing to choose).
+18. **With a closed gate the sets are still selectable and the answer is still
+    stored** — asserted by writing a selection with an empty catalogue and
+    reading it back. Only the climbable count is replaced by
+    `moonboard_hold_sets_needs_sync`.
+19. **One implementation, not three.** The set step is rendered by a single
+    composable used by every route; a test asserts the same state transitions
+    from the onboarding and filter-menu entry points.
 
 ## 6. Edge cases
 
@@ -527,7 +583,11 @@ secondary text for someone holding their order.
     wins, silently dropping the earlier deselection. Either drive the UI from
     an atomically updated state and serialise the writes, or toggle inside a
     single store edit that starts from the value on disk.
-12. **A test must not encode a lifecycle that does not exist.** Where a test
+12. **Variant changed, sets not re-answered.** Switching from a 2019 to a 2017
+    must not carry the 2019 answer across — the preference is per layout
+    (§3.5), and the step re-asks for a variant with no stored answer while
+    leaving an existing one alone.
+13. **A test must not encode a lifecycle that does not exist.** Where a test
     stands in for a real sequence — a sync that lands data, a catalogue that is
     deleted, a picker left open across both — it has to model that sequence.
     Constructing a fresh view model after flipping a fake, or assuming a
