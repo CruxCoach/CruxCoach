@@ -968,10 +968,10 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideCodebergReleaseClient(
+    fun provideForgeReleaseClient(
         @Named("updater") okHttpClient: OkHttpClient,
-    ): com.cruxcoach.android.updater.CodebergReleaseClient {
-        return com.cruxcoach.android.updater.CodebergReleaseClient(okHttpClient)
+    ): com.cruxcoach.android.updater.ForgeReleaseClient {
+        return com.cruxcoach.android.updater.ForgeReleaseClient(okHttpClient)
     }
 
     @Provides
@@ -983,19 +983,52 @@ object AppModule {
         return com.cruxcoach.android.updater.ZapstoreReleaseClient(okHttpClient, pinStore)
     }
 
+    /**
+     * FEAT-050: the ordered release-source list. Singleton because it caches
+     * the runtime manifest — one fetch per day, not one per check.
+     */
+    @Provides
+    @Singleton
+    fun provideDeviceSupportGate(): com.cruxcoach.android.updater.DeviceSupportGate {
+        return com.cruxcoach.android.updater.DeviceSupportGate()
+    }
+
+    @Provides
+    @Singleton
+    fun provideUpdateSourceRegistry(
+        @Named("updater") okHttpClient: OkHttpClient,
+        preferences: com.cruxcoach.android.updater.UpdaterPreferences,
+    ): com.cruxcoach.android.updater.UpdateSourceRegistry {
+        return com.cruxcoach.android.updater.UpdateSourceRegistry(okHttpClient, preferences)
+    }
+
+    @Provides
+    @Singleton
+    fun provideReleaseSourceFactory(
+        forgeClient: com.cruxcoach.android.updater.ForgeReleaseClient,
+        zapstoreClient: com.cruxcoach.android.updater.ZapstoreReleaseClient,
+        @Named("updater") okHttpClient: OkHttpClient,
+    ): com.cruxcoach.android.updater.ReleaseSourceFactory {
+        return com.cruxcoach.android.updater.ReleaseSourceFactory(
+            forgeClient,
+            zapstoreClient,
+            okHttpClient,
+        )
+    }
+
     @Provides
     @Singleton
     fun provideUpdateChecker(
         preferences: com.cruxcoach.android.updater.UpdaterPreferences,
-        client: com.cruxcoach.android.updater.CodebergReleaseClient,
+        sourceFactory: com.cruxcoach.android.updater.ReleaseSourceFactory,
         gate: com.cruxcoach.android.updater.InstallSourceGate,
-        zapstoreClient: com.cruxcoach.android.updater.ZapstoreReleaseClient,
+        registry: com.cruxcoach.android.updater.UpdateSourceRegistry,
     ): com.cruxcoach.android.updater.UpdateChecker {
         return com.cruxcoach.android.updater.UpdateChecker(
             preferences,
-            client,
+            sourceFactory,
             gate,
-            zapstoreClient,
+            registry,
         )
     }
 

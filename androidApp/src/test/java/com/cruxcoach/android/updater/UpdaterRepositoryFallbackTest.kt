@@ -33,14 +33,18 @@ class UpdaterRepositoryFallbackTest {
     private val notifier: UpdateNotifier = mockk(relaxed = true)
     private val installSourceGate: InstallSourceGate = mockk(relaxed = true)
     private val verifiedUpdateMetrics: VerifiedUpdateMetrics = mockk(relaxed = true)
+    private val registry: UpdateSourceRegistry = mockk(relaxed = true)
 
     private val info = UpdateInfo(
         tagName = "v9.9.9",
         versionName = "9.9.9",
         version = SemVer.parseOrNull("9.9.9")!!,
-        apkUrl = "https://codeberg.org/CruxCoach/CruxCoach/releases/download/" +
-            "v9.9.9/CruxCoach-v9.9.9.apk",
-        apkFallbackUrl = "https://cdn.zapstore.dev/${"a".repeat(64)}",
+        downloadUrls = listOf(
+            "https://codeberg.org/CruxCoach/CruxCoach/releases/download/" +
+                "v9.9.9/CruxCoach-v9.9.9.apk",
+            "https://cdn.zapstore.dev/${"a".repeat(64)}",
+            "https://blossom.primal.net/${"a".repeat(64)}",
+        ),
         apkSha256Url = "https://codeberg.org/CruxCoach/CruxCoach/releases/download/" +
             "v9.9.9/CruxCoach-v9.9.9.apk.sha256",
         apkSizeBytes = 1234L,
@@ -50,12 +54,42 @@ class UpdaterRepositoryFallbackTest {
         publishedAtEpochSeconds = 1L,
     )
 
+    /**
+     * The source list the fixture's [info] URLs belong to, in the same order.
+     * Resolution goes through the real [resolveSourceId] rather than a
+     * hardcoded label, so these tests break if the URL→source mapping ever
+     * stops agreeing with the configured list.
+     */
+    private val testSources = listOf(
+        UpdateSource(
+            id = "codeberg",
+            kind = UpdateSource.Kind.FORGE,
+            url = "https://codeberg.org/api/v1",
+            owner = "CruxCoach",
+            repo = "CruxCoach",
+        ),
+        UpdateSource(
+            id = "zapstore",
+            kind = UpdateSource.Kind.NOSTR,
+            url = "wss://relay.zapstore.dev",
+            cdn = "https://cdn.zapstore.dev",
+        ),
+        UpdateSource(
+            id = "blossom",
+            kind = UpdateSource.Kind.BLOSSOM,
+            url = "https://blossom.primal.net",
+        ),
+    )
+
     @Before
     fun setUp() {
         Dispatchers.setMain(dispatcher)
         coEvery { preferences.snapshot() } returns UpdaterState()
         coEvery { preferences.update(any()) } just Runs
         every { verifiedUpdateMetrics.isConfigured } returns true
+        coEvery { registry.sourceIdForUrl(any()) } coAnswers {
+            resolveSourceId(firstArg(), testSources)
+        }
     }
 
     @After
@@ -72,6 +106,7 @@ class UpdaterRepositoryFallbackTest {
         installer = installer,
         notifier = notifier,
         installSourceGate = installSourceGate,
+        registry = registry,
         verifiedUpdateMetrics = verifiedUpdateMetrics,
         ioDispatcher = dispatcher,
     )
@@ -96,8 +131,7 @@ class UpdaterRepositoryFallbackTest {
         pendingDownloadId = id,
         pendingTagName = info.tagName,
         pendingVersionName = info.versionName,
-        pendingApkUrl = info.apkUrl,
-        pendingApkFallbackUrl = info.apkFallbackUrl,
+        pendingDownloadUrls = info.downloadUrls,
         pendingApkSha256 = info.apkSha256,
         pendingApkSizeBytes = info.apkSizeBytes,
         pendingApkSha256Url = info.apkSha256Url,
@@ -120,17 +154,49 @@ class UpdaterRepositoryFallbackTest {
     )
 
     @Test
-    fun `enqueue failure falls through to the direct APK fallback`() = runTest {
-        every { downloader.start(info, allowMobile = false, sourceIndex = 0) } returns
-            ApkDownloader.StartResult.Error("Codeberg unavailable")
-        every { downloader.start(info, allowMobile = false, sourceIndex = 1) } returns
-            ApkDownloader.StartResult.Error("Zapstore unavailable")
+    fun `enqueue failure walks every configured source before giving up`() = runTest {
+        // Three sources in the fixture — the walk must exhaust all of them,
+        // not stop after the historical two.
+        info.downloadUrls.indices.forEach { index ->
+            every { downloader.start(info, allowMobile = false, sourceIndex = index) } returns
+                ApkDownloader.StartResult.Error("source $index unavailable")
+        }
 
         repository().startDownload(info, allowMobile = false)
 
-        verify(exactly = 1) { downloader.start(info, allowMobile = false, sourceIndex = 0) }
-        verify(exactly = 1) { downloader.start(info, allowMobile = false, sourceIndex = 1) }
+        info.downloadUrls.indices.forEach { index ->
+            verify(exactly = 1) {
+                downloader.start(info, allowMobile = false, sourceIndex = index)
+            }
+        }
         verify(exactly = 1) {
+            notifier.showDownloadError(info, UpdateNotifier.DownloadError.GENERIC)
+        }
+    }
+
+    @Test
+    fun `the walk stops at the first source that enqueues`() = runTest {
+        every { downloader.start(info, allowMobile = false, sourceIndex = 0) } returns
+            ApkDownloader.StartResult.Error("primary unavailable")
+        every { downloader.start(info, allowMobile = false, sourceIndex = 1) } returns
+            ApkDownloader.StartResult.Enqueued(
+                id = 77L,
+                target = File("build/tmp/pending-update-${info.versionName}.apk"),
+            )
+        // A successful enqueue hands off to monitorDownload, whose poll loop
+        // only exits on a null query, SUCCESSFUL, or FAILED. Leaving query()
+        // to the relaxed mock returns State.PENDING (the first enum constant)
+        // forever, so the loop spins on virtual time while mockk records every
+        // call — which exhausts the heap rather than failing the assertion.
+        // Returning null ends the monitor immediately; this test is about
+        // where the source walk stops, not about download progress.
+        every { downloader.query(77L) } returns null
+
+        repository().startDownload(info, allowMobile = false)
+
+        verify(exactly = 1) { downloader.start(info, allowMobile = false, sourceIndex = 1) }
+        verify(exactly = 0) { downloader.start(info, allowMobile = false, sourceIndex = 2) }
+        verify(exactly = 0) {
             notifier.showDownloadError(info, UpdateNotifier.DownloadError.GENERIC)
         }
     }
@@ -142,8 +208,7 @@ class UpdaterRepositoryFallbackTest {
             automationMode = UpdateAutomationMode.AUTO_INSTALL,
             pendingTagName = info.tagName,
             pendingVersionName = info.versionName,
-            pendingApkUrl = info.apkUrl,
-            pendingApkFallbackUrl = info.apkFallbackUrl,
+            pendingDownloadUrls = info.downloadUrls,
             pendingApkSha256 = info.apkSha256,
             pendingApkSizeBytes = info.apkSizeBytes,
             pendingApkSha256Url = info.apkSha256Url,
@@ -169,8 +234,7 @@ class UpdaterRepositoryFallbackTest {
         val pending = UpdaterState(
             pendingTagName = info.tagName,
             pendingVersionName = info.versionName,
-            pendingApkUrl = info.apkUrl,
-            pendingApkFallbackUrl = info.apkFallbackUrl,
+            pendingDownloadUrls = info.downloadUrls,
             pendingApkSha256 = info.apkSha256,
             pendingApkSizeBytes = info.apkSizeBytes,
             pendingApkSha256Url = info.apkSha256Url,
@@ -312,11 +376,10 @@ class UpdaterRepositoryFallbackTest {
     fun `successful self update clears discovery throttle and etag`() = runTest {
         var state = UpdaterState(
             lastCheckBootRealtime = 123L,
-            lastCheckEtag = "latest-etag",
+            lastCheckEtags = mapOf("forge" to "latest-etag"),
             pendingTagName = info.tagName,
             pendingVersionName = info.versionName,
-            pendingApkUrl = info.apkUrl,
-            pendingApkFallbackUrl = info.apkFallbackUrl,
+            pendingDownloadUrls = info.downloadUrls,
             pendingApkSha256 = info.apkSha256,
             pendingApkSizeBytes = info.apkSizeBytes,
             pendingApkSha256Url = info.apkSha256Url,
@@ -335,7 +398,7 @@ class UpdaterRepositoryFallbackTest {
         repository().onInstallOutcome(InstallOutcome.Success) { completed = true }
 
         assertEquals(true, completed)
-        assertEquals(null, state.lastCheckEtag)
+        assertEquals(emptyMap<String, String>(), state.lastCheckEtags)
         assertEquals(0L, state.lastCheckBootRealtime)
         assertEquals(UpdateAutomationMode.AUTO_INSTALL, state.automationMode)
         assertEquals(false, state.anonymousUpdateMetricsEnabled)

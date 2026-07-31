@@ -79,7 +79,7 @@ class AnonymousUpdateMetricsClient internal constructor(
 
     override fun recordVerifiedUpdate(versionName: String, source: String) {
         val url = endpointUrl ?: return
-        if (!STABLE_VERSION.matches(versionName) || source !in SOURCES) return
+        if (!STABLE_VERSION.matches(versionName) || !SOURCE_ID.matches(source)) return
         val body = buildJsonObject {
             put("metric", "app_update_verified")
             put("version", versionName)
@@ -119,35 +119,39 @@ class AnonymousUpdateMetricsClient internal constructor(
         private const val TAG = "UpdateMetrics"
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         private val STABLE_VERSION = Regex("^[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}$")
-        private val SOURCES = setOf("codeberg", "zapstore")
+        /**
+         * Source ids are no longer a fixed allowlist — the runtime source
+         * list decides them, so a new host can appear without an app update.
+         * What stays fixed is the *shape*, so a malformed or hostile manifest
+         * cannot push arbitrary text into the counter's dimension. The
+         * receiving end (`anonymous_analytics.py`) applies the same rule and
+         * buckets unknown-but-well-formed ids rather than rejecting them.
+         */
+        private val SOURCE_ID = Regex("^[a-z0-9][a-z0-9-]{0,23}$")
         private val LOOPBACK_HOSTS = setOf("127.0.0.1", "::1", "localhost")
     }
 }
 
-internal fun anonymousUpdateSource(
+/**
+ * Maps a download URL back to the [UpdateSource.id] that served it, for the
+ * aggregate counter.
+ *
+ * Resolution is done against the *live* source list rather than against
+ * BuildConfig constants, because since FEAT-050 the list is data and can
+ * name hosts this build has never heard of. An unrecognised URL yields null
+ * and is not counted at all — mislabelling would silently corrupt the
+ * per-source series in cruxcoach-dlstats, which is the one thing that tells
+ * us when a retiring host has gone quiet enough to drop.
+ */
+internal suspend fun anonymousUpdateSource(
     downloadUrl: String,
-    zapstoreBaseUrl: String = BuildConfig.ZAPSTORE_CDN_BASE_URL,
-    updaterApiBase: String = BuildConfig.UPDATER_API_BASE,
-    updaterRepoOwner: String = BuildConfig.UPDATER_REPO_OWNER,
-    updaterRepoName: String = BuildConfig.UPDATER_REPO_NAME,
-): String? {
-    val candidate = downloadUrl.toHttpUrlOrNull()?.takeIf { it.isHttps } ?: return null
-    val zapstoreBase = zapstoreBaseUrl.toHttpUrlOrNull()?.takeIf { it.isHttps }
-    if (zapstoreBase != null && candidate.isBelow(zapstoreBase)) return "zapstore"
+    registry: UpdateSourceRegistry,
+): String? = registry.sourceIdForUrl(downloadUrl)
 
-    val apiBase = updaterApiBase.toHttpUrlOrNull()?.takeIf { it.isHttps } ?: return null
-    val releasePrefix = "/$updaterRepoOwner/$updaterRepoName/releases/download/"
-    return if (candidate.sameOrigin(apiBase) && candidate.encodedPath.startsWith(releasePrefix)) {
-        "codeberg"
-    } else {
-        null
-    }
-}
-
-private fun HttpUrl.isBelow(base: HttpUrl): Boolean {
+internal fun HttpUrl.isBelow(base: HttpUrl): Boolean {
     val pathPrefix = base.encodedPath.trimEnd('/') + "/"
     return sameOrigin(base) && encodedPath.startsWith(pathPrefix)
 }
 
-private fun HttpUrl.sameOrigin(other: HttpUrl): Boolean =
+internal fun HttpUrl.sameOrigin(other: HttpUrl): Boolean =
     scheme == other.scheme && host == other.host && port == other.port

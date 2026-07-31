@@ -66,12 +66,25 @@ data of a single board, and a second download source for app updates.
 - **Keep a session to yourself** — when you start one you choose whether
   nearby CruxCoach users can see and join it, or whether it stays on your
   phone.
+- **Update sources are now a list, not a pair** — CruxCoach asks every
+  known source for the newest version and takes whichever has it, so a
+  single unreachable — or simply out-of-date — server can no longer hold
+  updates back. The APK itself may come from any of them; it is installed
+  only after its checksum and signature match, exactly as before. The list
+  is fetched at runtime, which means a download server can be added or
+  retired without anyone having to install a new version first.
 - **A second source for app updates, and less to confirm** — if the usual
   download server is unreachable, CruxCoach fetches the identical, verified
   APK from Zapstore instead. You can also choose what happens when an
   update is found: just notify (unchanged default), download it
   automatically, or install it automatically. Automatic installation is off
   unless you turn it on.
+- **Android 8.0 and 8.1: this is the last version** — 0.2.3 will require
+  Android 9. CruxCoach now says so on affected devices instead of letting
+  them wait for updates that can never arrive. Nothing breaks: the app
+  keeps working and your data stays where it is — there just will not be
+  further updates. This notice is why the change is announced here, one
+  release before it takes effect.
 - **CruxCoach speaks up when board updates stop arriving** — a background
   catalogue sync that quietly fails looked exactly like a successful one.
   After three missed cycles the sync card now says so, with a tap to sync
@@ -89,6 +102,10 @@ data of a single board, and a second download source for app updates.
   could disagree before.
 - **The first browse of a newly added board is quick** — importing a single
   board on its own used to leave that board's first browse noticeably slow.
+- **Releases carry a v3 signature** — this is groundwork rather than a
+  feature: it is what allows the signing key to be replaced later without
+  every installed copy refusing the update. Nothing changes for you now;
+  the key is unchanged and updates behave exactly as before.
 
 ### Fixed
 - **No "matching allowed" badge where nobody was ever asked** — that is a

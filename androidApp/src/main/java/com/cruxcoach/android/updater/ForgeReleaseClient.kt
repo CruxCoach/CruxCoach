@@ -10,24 +10,33 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 
 /**
- * Fetches the most recent Codeberg releases for this repo and parses them
- * into [CodebergRelease]s. Honors `If-None-Match` (§6.1) — on a 304 the
+ * Fetches releases from a Forgejo/Gitea *or* GitHub release API and parses
+ * them into [ForgeRelease]s. Honors `If-None-Match` (§6.1) — on a 304 the
  * call returns [Result.NotModified] without touching the body.
+ *
+ * One client covers both forge families because their release JSON is
+ * field-for-field compatible and both expose
+ * `{apiBase}/repos/{owner}/{repo}/releases`; only the API root differs
+ * (`https://<host>/api/v1` vs `https://api.github.com`). The repo
+ * coordinates arrive per call from an [UpdateSource] rather than from
+ * BuildConfig, because since FEAT-050 there can be more than one forge in
+ * the list — typically the new canonical one plus the one being retired.
  *
  * No retry / backoff loop here: the throttle in [UpdateChecker] is the
  * single coalescing point for every trigger source. Network failures
  * surface as [Result.Error] and the next opportunistic trigger will retry.
  */
-class CodebergReleaseClient(
+class ForgeReleaseClient(
     private val httpClient: OkHttpClient,
-    /** Override only for tests against a fork. */
-    private val apiBase: String = BuildConfig.UPDATER_API_BASE,
-    private val repoOwner: String = BuildConfig.UPDATER_REPO_OWNER,
-    private val repoName: String = BuildConfig.UPDATER_REPO_NAME,
 ) {
 
-    suspend fun fetchReleases(etag: String?, limit: Int = 10): Result = withContext(Dispatchers.IO) {
-        val url = "$apiBase/repos/$repoOwner/$repoName/releases?limit=$limit"
+    suspend fun fetchReleases(
+        source: UpdateSource,
+        etag: String?,
+        limit: Int = 10,
+    ): Result = withContext(Dispatchers.IO) {
+        val apiBase = source.url.trimEnd('/')
+        val url = "$apiBase/repos/${source.owner}/${source.repo}/releases?limit=$limit"
         val request = Request.Builder()
             .url(url)
             .header("Accept", "application/json")
@@ -41,7 +50,7 @@ class CodebergReleaseClient(
                     in 200..299 -> {
                         val body = resp.body?.string().orEmpty()
                         val newEtag = resp.header("ETag")
-                        val parsed = JSON.decodeFromString<List<CodebergRelease>>(body)
+                        val parsed = JSON.decodeFromString<List<ForgeRelease>>(body)
                         Result.Success(parsed, newEtag)
                     }
                     else -> {
@@ -82,13 +91,13 @@ class CodebergReleaseClient(
     }
 
     sealed interface Result {
-        data class Success(val releases: List<CodebergRelease>, val etag: String?) : Result
+        data class Success(val releases: List<ForgeRelease>, val etag: String?) : Result
         data object NotModified : Result
         data class Error(val message: String) : Result
     }
 
     companion object {
-        private const val TAG = "CodebergReleaseClient"
+        private const val TAG = "ForgeReleaseClient"
         internal val JSON = Json {
             ignoreUnknownKeys = true
             coerceInputValues = true
@@ -97,7 +106,7 @@ class CodebergReleaseClient(
 }
 
 @Serializable
-data class CodebergRelease(
+data class ForgeRelease(
     val id: Long = 0,
     @kotlinx.serialization.SerialName("tag_name") val tagName: String,
     val name: String? = null,
@@ -106,11 +115,11 @@ data class CodebergRelease(
     val body: String? = null,
     @kotlinx.serialization.SerialName("html_url") val htmlUrl: String? = null,
     @kotlinx.serialization.SerialName("published_at") val publishedAt: String? = null,
-    val assets: List<CodebergAsset> = emptyList(),
+    val assets: List<ForgeAsset> = emptyList(),
 )
 
 @Serializable
-data class CodebergAsset(
+data class ForgeAsset(
     val id: Long = 0,
     val name: String,
     @kotlinx.serialization.SerialName("browser_download_url") val browserDownloadUrl: String,

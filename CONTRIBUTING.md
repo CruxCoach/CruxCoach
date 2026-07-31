@@ -159,9 +159,13 @@ following keys to `local.properties` — no source edits required:
 | `MAINTAINER_LIGHTNING_ADDRESS` | Lightning address shown for upstream-style donation flows | `cruxcoach@npub.cash` |
 | `MAINTAINER_KOFI_URL` | Ko-fi donation link surfaced in the Payments UI | `https://ko-fi.com/cruxcoach` |
 | `ANNOUNCE_NAMESPACE` | Nostr `L`/`l` tag namespace for announcement events | `com.cruxcoach.announce` — change this when you fork to avoid notification cross-talk with upstream users |
-| `UPDATER_API_BASE` | Forgejo/Gitea API root that the in-app auto-updater polls for new releases | `https://codeberg.org/api/v1` |
+| `UPDATER_API_BASE` | Forge API root for the *compiled-in default* forge source. Works for Forgejo/Gitea (`https://<host>/api/v1`) and for GitHub (`https://api.github.com`) — their release JSON is field-compatible | `https://codeberg.org/api/v1` |
 | `UPDATER_REPO_OWNER` | Repository owner used by the auto-updater and the "Online" app-share QR code | `CruxCoach` |
 | `UPDATER_REPO_NAME` | Repository name used by the auto-updater and the app-share QR code; also drives the expected APK filename `<repo>-<tag>.apk` | `CruxCoach` |
+| `UPDATE_SOURCES_URL` | Runtime source list (FEAT-050). Fetched at most daily and cached; lets you add, reorder or retire release hosts **without shipping a new APK**. Falls back to the compiled-in defaults when unreachable or unusable | `https://cruxcoach.org/update-sources.json` |
+| `UPDATER_MANIFEST_URL` | Plain release pointer used as a forge-independent discovery source | `https://cruxcoach.org/apk-target.json` |
+| `UPDATER_BLOSSOM_SERVERS` | Comma-separated content-addressed stores (BUD-01 `GET /<sha256>`) used as download-only last resorts | public Blossom servers |
+| `UPDATER_RELEASE_PAGE_URL` | Page the cert-mismatch handoff opens when the discovering source has no page of its own. Deliberately not a forge URL | `https://cruxcoach.org/#download` |
 | `ANONYMOUS_METRICS_ENDPOINT` | Identifier-free aggregate increment after a fully downloaded update passes SHA-256 and signer verification; set only to an endpoint you operate or trust | empty; the upstream release workflow injects the CruxCoach endpoint only when `github.repository == CruxCoach/CruxCoach` |
 | `ZAPSTORE_APP_URL` | Zapstore listing URL used as the manual release handoff when signed Zapstore metadata supplied the update | `https://zapstore.dev/apps/com.cruxcoach.android` |
 | `ZAPSTORE_RELAY_URL` | Relay queried for publisher-signed Zapstore release and APK metadata | `wss://relay.zapstore.dev` |
@@ -178,11 +182,30 @@ that sets `ANONYMOUS_METRICS_ENDPOINT` must keep its own disclosure and backend
 contract accurate; leaving the property empty disables the feature completely.
 
 The auto-updater is disabled automatically on Zapstore installs (Zapstore
-handles updates itself). For direct installs it discovers releases through
-the Forgejo/Gitea-compatible `releases` API and falls back to publisher-signed
-Zapstore events when Codeberg is unavailable. The APK may be downloaded from
-either source, but its SHA-256 and signing certificate must match before it is
-handed to Android. Forks need to upload two assets per Codeberg release:
+handles updates itself). For direct installs it walks an **ordered list of
+release sources** (FEAT-050), stopping at the first that answers and moving on
+only when one fails — so the healthy case still costs a single request. The
+list comes from `UPDATE_SOURCES_URL` at runtime, falling back to the
+compiled-in defaults: the configured forge, publisher-signed Zapstore/Nostr
+events, the website's release pointer, and content-addressed Blossom stores.
+
+Because that list is data rather than code, a release host can be added,
+reordered or retired for installs **already in the field**. This matters:
+compiled-in constants can never be changed retroactively, so a forge migration
+without a runtime list would strand every existing direct install.
+
+The APK may be downloaded from any source on the list, but its SHA-256 and
+signing certificate must match before it is handed to Android — the transport
+is untrusted by construction, which is what makes an open-ended source list
+safe. Note the corollary: with several sources, the **signing-certificate pin
+carries the entire security load**, because a hostile source could serve a
+matching APK *and* sidecar. Do not weaken `IntegrityVerifier`.
+
+Changing the forge does **not** invalidate the trust-on-first-use pin — that
+pin is on the APK signing certificate, not on the host. Signing with a
+different key does.
+
+Forks need to upload two assets per release:
 
 - `<repo>-<tag>.apk` — the signed release APK (must match `UPDATER_REPO_NAME`)
 - `<repo>-<tag>.apk.sha256` — a single-line `<hex>  <filename>` hash sidecar

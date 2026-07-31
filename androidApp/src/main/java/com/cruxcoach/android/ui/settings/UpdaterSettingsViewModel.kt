@@ -3,6 +3,7 @@ package com.cruxcoach.android.ui.settings
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.cruxcoach.android.updater.DeviceSupportGate
 import com.cruxcoach.android.updater.InstallSourceGate
 import com.cruxcoach.android.updater.PipelineStage
 import com.cruxcoach.android.updater.UpdateChecker
@@ -31,6 +32,7 @@ class UpdaterSettingsViewModel @Inject constructor(
     application: Application,
     private val repository: UpdaterRepository,
     private val installSourceGate: InstallSourceGate,
+    private val deviceSupportGate: DeviceSupportGate,
 ) : AndroidViewModel(application) {
 
     private val _checkingNow = MutableStateFlow(false)
@@ -43,6 +45,22 @@ class UpdaterSettingsViewModel @Inject constructor(
     val installPermissionGranted: StateFlow<Boolean> = _installPermissionGranted.asStateFlow()
 
     val storeGated: Boolean get() = !installSourceGate.selfUpdateAllowed()
+
+    /** False once the next release raises minSdk past this device. */
+    val receivesFutureUpdates: Boolean get() = deviceSupportGate.receivesFutureUpdates()
+
+    /** Marketing version of the API level the next release requires. */
+    val requiredAndroidVersionName: String
+        get() = when (val sdk = deviceSupportGate.requiredSdkInt()) {
+            28 -> "9"
+            29 -> "10"
+            30 -> "11"
+            31, 32 -> "12"
+            33 -> "13"
+            34 -> "14"
+            35 -> "15"
+            else -> "API $sdk"
+        }
     val anonymousUpdateMetricsAvailable: Boolean
         get() = repository.anonymousUpdateMetricsAvailable
 

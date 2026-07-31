@@ -34,11 +34,22 @@ The complete JSON body is:
 {"metric":"app_update_verified","version":"0.2.2","source":"codeberg"}
 ```
 
-The target `version` must be a stable three-part version. `source` is restricted
-to `codeberg` or `zapstore` and is derived only from the configured Codeberg
-repository release path or Zapstore CDN origin. Unknown, malformed, or insecure
-download URLs are not counted. The body has no current app version, user,
-installation, device, advertising, account, Nostr, session, or event ID.
+The target `version` must be a stable three-part version.
+
+`source` names which configured release source served the bytes. Since
+FEAT-050 the source list is runtime data (`update-sources.json`), so the value
+is no longer drawn from a compiled-in allowlist — a build can legitimately be
+updated from a host it has never heard of, and refusing to count those would
+suppress exactly the events that show a newly configured host working. The
+client therefore checks *shape* only (`^[a-z0-9][a-z0-9-]{0,23}$`) and the
+collector buckets any well-formed id it does not recognise into `other`, which
+keeps the stored dimension bounded.
+
+The id is still derived solely by matching the download URL against the
+configured source list, comparing scheme, host and port — never by trusting a
+URL's text. Unknown, malformed, or cleartext download URLs are not counted at
+all. The body has no current app version, user, installation, device,
+advertising, account, Nostr, session, or event ID.
 
 The counter owns a separate HTTP client; it does not inherit application
 interceptors. It uses a constant `CruxCoach-Metrics/1` User-Agent, no cookies or
@@ -96,9 +107,13 @@ The Android unit tests pin the following behavior:
 
 - exact payload and absence of cookie/referrer headers;
 - empty, malformed, credentialed, fragmented, and non-HTTPS endpoint rejection;
-- strict source/version allowlists;
+- strict version allowlist and source-id shape check;
+- a well-formed but unconfigured source id is still reported (and bucketed
+  server-side) rather than dropped;
+- origin-based URL→source matching, including rejection of look-alike hosts
+  (`codeberg.org.evil.example`) and cleartext URLs;
 - no redirect following or server-error retry;
 - persistent opt-out and at-most-one target-version guard;
 - no duplicate dispatch for repeated completion callbacks;
-- the actual Zapstore source after a failed Codeberg payload fallback; and
+- the actual serving source after a failed primary-source fallback; and
 - metrics exceptions never blocking a verified update from becoming ready.

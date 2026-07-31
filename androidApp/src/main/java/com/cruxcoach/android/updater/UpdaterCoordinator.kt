@@ -59,6 +59,14 @@ class UpdaterCoordinator @Inject constructor(
             runCatching { pinStore.getOrTofu() }.onFailure {
                 Log.w(TAG, "TOFU pin bootstrap failed", it)
             }
+            // Order matters: ensure a pin exists first, then move it forward
+            // if this start-up is the first one after a key rotation took
+            // effect. Doing it here rather than in the install callback is
+            // deliberate — a self-update replaces this package, so the new
+            // signature only becomes observable after the restart.
+            runCatching { pinStore.advanceToCurrentSignerIfRotated() }.onFailure {
+                Log.w(TAG, "Pin advance check failed", it)
+            }
         }
 
         ProcessLifecycleOwner.get().lifecycle.addObserver(this)

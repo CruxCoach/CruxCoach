@@ -46,6 +46,8 @@ class UpdaterRepository @Inject constructor(
     private val installer: ApkInstaller,
     private val notifier: UpdateNotifier,
     private val installSourceGate: InstallSourceGate,
+    private val registry: UpdateSourceRegistry,
+    private val deviceSupportGate: DeviceSupportGate = DeviceSupportGate(),
     private val verifiedUpdateMetrics: VerifiedUpdateMetrics = VerifiedUpdateMetrics.NONE,
     @param:Named("io") private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
@@ -111,6 +113,12 @@ class UpdaterRepository @Inject constructor(
      */
     suspend fun checkNow(trigger: UpdateChecker.Trigger): UpdateChecker.CheckOutcome {
         val outcome = checker.maybeCheck(trigger)
+        if (outcome is UpdateChecker.CheckOutcome.Skipped &&
+            outcome.reason == UpdateChecker.REASON_END_OF_SUPPORT
+        ) {
+            notifyEndOfSupportOnce()
+            return outcome
+        }
         if (outcome is UpdateChecker.CheckOutcome.Update) {
             onNewerUpdateDetected(outcome.info)
         } else {
@@ -122,6 +130,30 @@ class UpdaterRepository @Inject constructor(
         // once-dismissed update could never be re-shown by any later check.
         maybeReArmPendingNotification()
         return outcome
+    }
+
+    /**
+     * Post the end-of-support notice at most once per install.
+     *
+     * Once, not on every check: this is news exactly one time, and a warning
+     * that reappears every two hours forever would be noise the user learns
+     * to swipe away — the opposite of the intent. The persistent copy in
+     * Settings is what stays available afterwards.
+     */
+    private suspend fun notifyEndOfSupportOnce() {
+        var shouldPost = false
+        preferences.update { current ->
+            if (current.endOfSupportNoticeShown) {
+                current
+            } else {
+                shouldPost = true
+                current.copy(endOfSupportNoticeShown = true)
+            }
+        }
+        if (shouldPost) {
+            Log.i(TAG, "event=end_of_support_notice_posted required=${deviceSupportGate.requiredSdkInt()}")
+            notifier.showEndOfSupport(deviceSupportGate.requiredSdkInt())
+        }
     }
 
     /**
@@ -541,7 +573,7 @@ class UpdaterRepository @Inject constructor(
     ) = anonymousUpdateMetricsMutex.withLock {
         if (!verifiedUpdateMetrics.isConfigured) return@withLock
         val downloadUrl = info.downloadUrls.getOrNull(sourceIndex) ?: return@withLock
-        val source = anonymousUpdateSource(downloadUrl) ?: run {
+        val source = anonymousUpdateSource(downloadUrl, registry) ?: run {
             Log.w(TAG, "Anonymous update count skipped for an unknown download source")
             return@withLock
         }
@@ -610,8 +642,14 @@ class UpdaterRepository @Inject constructor(
                                 // old ETag/throttle hiding a newer release that
                                 // appeared while PackageInstaller was active.
                                 lastCheckBootRealtime = 0L,
-                                lastCheckEtag = null,
+                                lastCheckEtags = emptyMap(),
                                 lastCheckResult = CheckResult.NO_UPDATE,
+                                // The cached source list survives on purpose:
+                                // it is not version-scoped, and re-fetching it
+                                // right after an install would waste the one
+                                // request the new build needs for its own check.
+                                updateSourcesManifestJson = it.updateSourcesManifestJson,
+                                updateSourcesFetchedAtEpochMs = it.updateSourcesFetchedAtEpochMs,
                             )
                         }
                         notifier.cancel()
@@ -680,7 +718,7 @@ class UpdaterRepository @Inject constructor(
         }
     }
 
-    /** §5.4.3 — one-tap handoff to the Codeberg release page. */
+    /** §5.4.3 — one-tap handoff to the release page of whichever source announced it. */
     fun openReleasePage(info: UpdateInfo) {
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(info.releasePageUrl)).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

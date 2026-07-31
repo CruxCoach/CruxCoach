@@ -5,26 +5,35 @@ package com.cruxcoach.android.updater
  * the stable-release filter ([VersionChecker.isStableRelease]) and the
  * SemVer comparison against the currently installed app.
  *
- * Constructed from Codeberg releases or publisher-signed Zapstore events;
- * consumed by every other stage of the pipeline.
+ * Constructed from whichever [ReleaseSource] answered first; consumed by
+ * every other stage of the pipeline.
  */
 data class UpdateInfo(
     val tagName: String,
     val versionName: String,
     val version: SemVer,
-    val apkUrl: String,
-    /** Independent direct-download source for the exact same SHA-256. */
-    val apkFallbackUrl: String? = null,
+    /**
+     * Every URL that can serve these exact bytes, in try-order, announcing
+     * source first. Built by [UpdateSourceRegistry.downloadUrlsFor], so it
+     * grows and shrinks with the runtime source list rather than with the
+     * app version — which is the whole point: retiring a release host must
+     * not require shipping a new APK.
+     *
+     * All entries address the same [apkSha256] and each is gated identically
+     * by [IntegrityVerifier], which is why walking the list is safe no
+     * matter who is on it.
+     */
+    val downloadUrls: List<String>,
     val apkSha256Url: String,
     val apkSizeBytes: Long,
     val apkSha256: String,
     val releaseNotesMarkdown: String,
-    /** Codeberg `html_url` — used by the cert-mismatch handoff (§5.4.3). */
+    /** Shown by the cert-mismatch handoff (§5.4.3). */
     val releasePageUrl: String,
     val publishedAtEpochSeconds: Long,
 ) {
-    val downloadUrls: List<String>
-        get() = listOfNotNull(apkUrl, apkFallbackUrl).distinct()
+    /** The source tried first. */
+    val apkUrl: String? get() = downloadUrls.firstOrNull()
 }
 
 /** Outcome of one check round. Persisted in [UpdaterPreferences]. */

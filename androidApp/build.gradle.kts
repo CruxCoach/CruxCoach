@@ -73,16 +73,67 @@ android {
         buildConfigField("String", "ANNOUNCE_NAMESPACE",
             "\"${localProps.getProperty("ANNOUNCE_NAMESPACE", "com.cruxcoach.announce")}\"")
 
-        // FEAT-004 in-app updater: source of truth for release polling.
-        // Hardcoded for release builds; forks override via local.properties
-        // to point at their own Codeberg repo (changing the source repo
-        // invalidates the TOFU cert pin, so this cannot be user-configurable).
+        // FEAT-004 in-app updater: the compiled-in *default* forge for release
+        // polling. Forks override via local.properties to point at their own
+        // forge. Note this is only the first entry of
+        // UpdateSourceRegistry.EMBEDDED — since FEAT-050 the effective source
+        // list is data, and the runtime manifest below can reorder or replace
+        // it without a new APK.
+        //
+        // The API root works for Forgejo/Gitea and GitHub alike; their release
+        // JSON is field-compatible and both expose {base}/repos/{owner}/{repo}.
+        //   Forgejo: https://<host>/api/v1     GitHub: https://api.github.com
+        //
+        // Changing the forge does NOT invalidate the TOFU pin: that pin is on
+        // the APK *signing certificate* (UpdaterPinStore), not on the host. A
+        // fork signing with its own key is what invalidates it.
         buildConfigField("String", "UPDATER_API_BASE",
             "\"${localProps.getProperty("UPDATER_API_BASE", "https://codeberg.org/api/v1")}\"")
         buildConfigField("String", "UPDATER_REPO_OWNER",
             "\"${localProps.getProperty("UPDATER_REPO_OWNER", "CruxCoach")}\"")
         buildConfigField("String", "UPDATER_REPO_NAME",
             "\"${localProps.getProperty("UPDATER_REPO_NAME", "CruxCoach")}\"")
+
+        // FEAT-050 runtime source list. Fetched at most daily and cached; the
+        // embedded defaults apply whenever it is unreachable or unusable.
+        // This is the only lever that can retire a release host for installs
+        // already in the field, so it must stay reachable independently of
+        // the forge it points at.
+        buildConfigField("String", "UPDATE_SOURCES_URL",
+            "\"${localProps.getProperty("UPDATE_SOURCES_URL", "https://cruxcoach.org/update-sources.json")}\"")
+        // Plain release pointer already published by the website
+        // (tools/update-download-link.mjs writes it every night).
+        buildConfigField("String", "UPDATER_MANIFEST_URL",
+            "\"${localProps.getProperty("UPDATER_MANIFEST_URL", "https://cruxcoach.org/apk-target.json")}\"")
+        // Content-addressed, download-only last resort (BUD-01 GET /<sha256>).
+        // These are the public Blossom servers cruxcoach-blossom-sync already
+        // publishes board-DB chunks to. The project's own blossom-server is
+        // deliberately absent: it binds 127.0.0.1:3000 with no publicDomain
+        // and no reverse proxy, so devices cannot reach it.
+        buildConfigField("String", "UPDATER_BLOSSOM_SERVERS",
+            "\"${localProps.getProperty("UPDATER_BLOSSOM_SERVERS", "https://blossom.primal.net,https://nostr.download,https://cdn.hzrd149.com")}\"")
+        // Where the cert-mismatch handoff (§5.4.3) sends the user when the
+        // discovering source has no page of its own to show. Must NOT be a
+        // forge URL: this is precisely the path a user needs when the forge
+        // is the thing that changed.
+        buildConfigField("String", "UPDATER_RELEASE_PAGE_URL",
+            "\"${localProps.getProperty("UPDATER_RELEASE_PAGE_URL", "https://cruxcoach.org/#download")}\"")
+
+        // minSdk of the NEXT release, so this build can tell a device that it
+        // is about to fall out of support and say so while it still can.
+        //
+        // 0.2.3 raises minSdk from 26 to 28: v3 signing — and with it the
+        // certificate lineage that makes a key rotation installable — does not
+        // exist before API 28, and a rotation that leaves the old key valid on
+        // 26/27 would not actually retire a compromised key. Android 8.0/8.1
+        // therefore stops at 0.2.2.
+        //
+        // Deliberately NOT equal to this build's own minSdk: the warning has to
+        // ship in a version that still installs on the devices being dropped,
+        // which is exactly the ones the next minSdk excludes. Bump this in the
+        // release BEFORE bumping minSdk, never in the same one.
+        buildConfigField("int", "MIN_SDK_NEXT_RELEASE",
+            localProps.getProperty("MIN_SDK_NEXT_RELEASE", "28"))
         // One-way aggregate increment after a fully verified in-app update APK.
         // Empty by default; only the official CI build injects upstream's URL.
         buildConfigField("String", "ANONYMOUS_METRICS_ENDPOINT",
@@ -157,8 +208,25 @@ android {
                 // getPackageArchiveInfo() returns null — observed on HTC
                 // Android 9 / API 28. Without a v1 signature that fallback is
                 // dead and self-update is unrecoverable on those ROMs.
+                // (`apksigner verify` reports "v1: false" on a minSdk-26 APK
+                // because it validates via the strongest applicable scheme;
+                // the v1 block is still present — check with
+                // `--min-sdk-version 23`.)
                 enableV1Signing = true
                 enableV2Signing = true
+                // v3 carries the SigningCertificateLineage, which is the only
+                // mechanism that lets a signing key be rotated without every
+                // installed app refusing the update. Turned on here, one
+                // release BEFORE any rotation, deliberately: the lineage lives
+                // in the *new* APK, but shipping the scheme early means the
+                // v3 pipeline is exercised and verified while the key is still
+                // the old one and a mistake is cheap.
+                //
+                // NOTE for the rotation itself: AGP has no DSL for a lineage.
+                // The rotated release must be re-signed with
+                // `apksigner sign --lineage …` as a post-build step — see
+                // docs/KEY_ROTATION.md.
+                enableV3Signing = true
             }
         }
     }

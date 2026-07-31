@@ -1203,6 +1203,10 @@
     <!-- Updater Settings -->
     <string name="updater_settings_title">App-Updates</string>
     <string name="updater_settings_gated_info">Updates erhältst du über Zapstore. Der App-eigene Updater ist deaktiviert.</string>
+    <string name="updater_notif_end_of_support_title">Letztes Update für dieses Gerät</string>
+    <string name="updater_notif_end_of_support_body">Künftige CruxCoach-Versionen brauchen Android %1$s oder neuer. Dieses Gerät behält die installierte Version und funktioniert weiter wie bisher, bekommt aber keine Updates mehr.</string>
+    <string name="updater_settings_end_of_support_title">Keine weiteren Updates für dieses Gerät</string>
+    <string name="updater_settings_end_of_support_body">Künftige Versionen brauchen Android %1$s oder neuer. CruxCoach bleibt auf diesem Gerät voll nutzbar und deine Daten bleiben unangetastet — es kommen nur keine Updates mehr. Wenn du auf ein neueres Gerät wechselst, installiere CruxCoach dort und spiele dein Backup ein.</string>
     <string name="updater_settings_status_title">Status</string>
     <string name="updater_settings_status_last_check">Zuletzt geprüft: %1$s</string>
     <string name="updater_settings_status_never">Zuletzt geprüft: noch nie</string>
