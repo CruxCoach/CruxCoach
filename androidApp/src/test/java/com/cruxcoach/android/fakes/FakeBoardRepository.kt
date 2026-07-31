@@ -13,6 +13,7 @@ import com.cruxcoach.data.repository.ClimbSortField
 import com.cruxcoach.data.repository.ClimbTypeFilter
 import com.cruxcoach.data.repository.LedGridPoint
 import com.cruxcoach.data.repository.SortDirection
+import com.cruxcoach.domain.board.MoonBoardVariant
 
 /** Mirrors the production SQL `framesCount` predicate for ClimbTypeFilter:
  *  BOULDER = single frame, ROUTE = multi-frame, ALL = both. */
@@ -178,6 +179,20 @@ class FakeBoardRepository : BoardRepository {
     override fun getClimbCountsByBrand(): Map<String, Long> = emptyMap()
     override fun hasAnyClimbs(): Boolean = climbs.isNotEmpty()
     override fun hasClimbsForBrand(boardBrand: String): Boolean = climbs.isNotEmpty()
+
+    /** Overrides the FEAT-049 presence gate for tests that need it decided
+     *  without seeding a catalogue — and the only honest way to decide it here,
+     *  since the real query also demands catalogue provenance
+     *  (`source='kilter'`) and [ClimbWithStats] carries no such column. Null =
+     *  derive it from the seeded rows, which are then all taken as catalogue
+     *  rows; the provenance half is covered against real SQLite in
+     *  MoonBoardHsmFilterTest. */
+    var moonBoardHoldSetMaskPresent: Boolean? = null
+
+    override fun hasMoonBoardHoldSetMask(): Boolean =
+        moonBoardHoldSetMaskPresent ?: climbs.any {
+            it.hsm != 0L && MoonBoardVariant.fromLayoutId(it.layoutId) != null
+        }
     override fun climbExistsByUuid(uuid: String): Boolean = climbs.any { it.uuid == uuid }
     override fun statExistsByUuid(uuid: String): Boolean = false
 

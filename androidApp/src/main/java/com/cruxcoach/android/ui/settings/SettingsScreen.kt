@@ -207,6 +207,10 @@ fun SettingsScreen(
                         },
                         onChangeModel = { showBoardModelDialog = true },
                     )
+                    // FEAT-049: which of the variant's hold sets are actually
+                    // mounted. Renders nothing for any other brand, and none
+                    // for MoonBoard 2010 (one set, no choice).
+                    MoonBoardHoldSetSection()
                     HorizontalDivider()
                     BoardSendModeSection(
                         singleConnectionMode = state.singleConnectionBoardSendMode,

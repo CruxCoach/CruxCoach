@@ -15,6 +15,8 @@ import com.cruxcoach.android.notification.AnnouncementTagParser
 import com.cruxcoach.android.nostr.SignerMode
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.HoldRole
+import com.cruxcoach.domain.board.MoonBoardHoldSets
+import com.cruxcoach.domain.board.MoonBoardVariant
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
@@ -322,6 +324,19 @@ object PreferenceKeys {
         intPreferencesKey("last_used_board_api_level_${brand.wireValue}")
 
     /**
+     * Which MoonBoard hold sets the user has actually mounted, as a CSV of set
+     * ids (FEAT-049). Keyed PER LAYOUT — someone may own a Masters 2019 and
+     * meet a 2017 at a gym, and the id spaces are disjoint per layout, so one
+     * board's selection can never be read as another's.
+     *
+     * Absent means "every set", not "no sets". That keeps the filter off for
+     * everyone who never opens the picker, which is the pre-FEAT-049
+     * behaviour, and it makes the upgrade a no-op.
+     */
+    fun moonBoardHoldSets(layoutId: Long) =
+        stringPreferencesKey("moonboard_hold_sets_$layoutId")
+
+    /**
      * Set once a controller has been *observed* to keep advertising while
      * connected, i.e. proven to accept more than one client.
      *
@@ -539,6 +554,94 @@ class UserPreferences(
             prefs[PreferenceKeys.BOARD_BRAND] = "moonboard"
             prefs[PreferenceKeys.BOARD_ANGLE] = 40
         }
+    }
+
+    // ── MoonBoard hold sets (FEAT-049) ─────────────────────────
+    // The second axis next to the variant: WHICH of the variant's hold sets
+    // are physically mounted. MoonBoard has no product size to derive this
+    // from the way Kilter does, so it is user-owned and stored per layout.
+
+    /**
+     * The hold sets mounted on [variant], as a live flow. Emits the variant's
+     * FULL set universe when nothing is stored — an absent preference means
+     * "complete setup", which is what a bundle buyer has and what every
+     * existing install gets on upgrade.
+     *
+     * A stored value that resolves to nothing (empty string, ids from another
+     * board, hand-edited rubbish) is read the same lenient way. Reading it as
+     * "no sets mounted" would hide the entire catalogue behind a filter the
+     * user never set.
+     */
+    fun moonBoardHoldSets(variant: MoonBoardVariant): Flow<List<Long>> =
+        dataStore.data.map { prefs ->
+            resolveMoonBoardHoldSets(prefs[PreferenceKeys.moonBoardHoldSets(variant.layoutId)], variant)
+        }
+
+    /** Single-read counterpart to [moonBoardHoldSets], for the browse query's
+     *  one-shot mask computation. */
+    suspend fun getMoonBoardHoldSets(variant: MoonBoardVariant): List<Long> =
+        resolveMoonBoardHoldSets(
+            dataStore.data.first()[PreferenceKeys.moonBoardHoldSets(variant.layoutId)],
+            variant,
+        )
+
+    /**
+     * Persist the mounted hold sets for [variant]. Selecting every set — the
+     * "complete setup" line — simply stores every id; there is no separate
+     * flag for it, so the summary follows from the stored list alone.
+     *
+     * An empty [setIds] is refused rather than stored: at least one set has to
+     * stay selected for the board to have any climbs at all, and the read path
+     * would silently re-expand it to "all" anyway.
+     */
+    suspend fun setMoonBoardHoldSets(variant: MoonBoardVariant, setIds: Collection<Long>) {
+        val universe = MoonBoardHoldSets.setIdsFor(variant)
+        val kept = universe.filter { it in setIds }
+        if (kept.isEmpty()) return
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.moonBoardHoldSets(variant.layoutId)] = kept.joinToString(",")
+        }
+    }
+
+    /**
+     * Tick or untick ONE set for [variant], deriving the new selection inside a
+     * single store edit. Returns false when the toggle was refused because it
+     * would have left nothing selected (edge case 1); the stored value is then
+     * untouched.
+     *
+     * Why not read the selection, flip it and call [setMoonBoardHoldSets]: two
+     * taps landing before the store's flow has emitted back would both read the
+     * same list and each write a full replacement derived from it, so the second
+     * write silently restores the set the first one removed (edge case 11). Here
+     * the read and the write are one `edit` block, and DataStore serialises
+     * edits — the second toggle starts from the first one's result even if the
+     * flow has not caught up. That is also why this belongs in the store rather
+     * than behind a ViewModel mutex: the value on disk is the shared truth, and
+     * a second ViewModel or a later caller gets the same guarantee for free.
+     */
+    suspend fun toggleMoonBoardHoldSet(variant: MoonBoardVariant, setId: Long): Boolean {
+        val universe = MoonBoardHoldSets.setIdsFor(variant)
+        val key = PreferenceKeys.moonBoardHoldSets(variant.layoutId)
+        var accepted = true
+        dataStore.edit { prefs ->
+            val current = resolveMoonBoardHoldSets(prefs[key], variant).toMutableSet()
+            if (setId in current) current -= setId else current += setId
+            val kept = universe.filter { it in current }
+            if (kept.isEmpty()) {
+                accepted = false
+                return@edit
+            }
+            prefs[key] = kept.joinToString(",")
+        }
+        return accepted
+    }
+
+    private fun resolveMoonBoardHoldSets(stored: String?, variant: MoonBoardVariant): List<Long> {
+        val universe = MoonBoardHoldSets.setIdsFor(variant)
+        if (stored.isNullOrBlank()) return universe
+        val selected = stored.split(',').mapNotNullTo(mutableSetOf()) { it.trim().toLongOrNull() }
+        val kept = universe.filter { it in selected }
+        return kept.ifEmpty { universe }
     }
 
     /**

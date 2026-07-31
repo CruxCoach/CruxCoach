@@ -10,9 +10,13 @@ package com.cruxcoach.domain.board
  * them as separate problems, and the importer writes one climb row per
  * (problem, angle) accordingly.
  *
- * Each entry is a complete, fixed hold configuration, not a selectable
- * collection of hold sets. MoonBoard 2010 and Mini MoonBoard 2025 therefore
- * sit alongside the existing configurations as their own catalogue/render/BLE
+ * Each entry defines a variant's SET UNIVERSE and its geometry — which hold
+ * sets the generation is partitioned into, and where those holds sit. Which
+ * of those sets are actually mounted is a SEPARATE, user-owned axis: owners
+ * routinely buy only some sets, so the mounted selection is stored per layout
+ * in the user's preferences and narrows the browse filter (FEAT-049,
+ * [MoonBoardHoldSets]). MoonBoard 2010 and Mini MoonBoard 2025 therefore sit
+ * alongside the existing configurations as their own catalogue/render/BLE
  * identities. Standard boards use an 11x18 grid (198 LED positions); Mini
  * boards use 11x12 (132 positions).
  *
@@ -82,9 +86,9 @@ enum class MoonBoardVariant(
         gridRows = 18,
     ),
     MINI_2025(
-        // The 2025 Mini is a complete configuration made from Hold Set F,
-        // Original School Holds and Wooden Holds B/C. The constituent sets
-        // are deliberately not exposed as independent user choices.
+        // The 2025 Mini is made from Hold Set F, Original School Holds and
+        // Wooden Holds B/C — each individually purchasable, and each
+        // separately selectable by the owner (FEAT-049).
         layoutId = 7L,
         displayName = "Mini MoonBoard 2025",
         angles = listOf(40),

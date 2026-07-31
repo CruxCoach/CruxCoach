@@ -18,9 +18,12 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -53,7 +56,7 @@ class BoardSyncManager(
     private val boardLocationRepository: com.cruxcoach.data.repository.BoardLocationRepository,
     private val moonBoardCatalogueSync: MoonBoardCatalogueSync,
     private val auroraCatalogueSync: AuroraCatalogueSync,
-) {
+) : CatalogueRevisionSource {
     private companion object {
         const val TAG = "BoardSyncManager"
         /** How long a requested sync may take to actually start before the
@@ -100,6 +103,14 @@ class BoardSyncManager(
      *  importing the locations chunk — lets the Map show a real progress
      *  state instead of the misleading "sync the board DB" prompt. */
     val locationsBackfilling: StateFlow<Boolean> = _locationsBackfilling.asStateFlow()
+
+    /**
+     * FEAT-049 §3.7. Kept as a projection of [state] so there is exactly one
+     * counter and no way for the two to drift; see [CatalogueRevisionSource]
+     * for why [BoardSyncState.syncGeneration] cannot serve this purpose.
+     */
+    override val catalogueRevision: Flow<Int> =
+        state.map { it.catalogueRevision }.distinctUntilChanged()
 
     private val _boardDataDeletion = MutableStateFlow(BoardDataDeletionState())
     /** Progress of the board-catalogue deletion (Settings → "Delete board
@@ -249,6 +260,9 @@ class BoardSyncManager(
             // ~30-60s of resync; the import progress UI is up the
             // whole time so it's framed as "syncing", not "broken".
             boardRepository.deleteKilterCatalogData()
+            // Deletes every source='kilter' row, MoonBoard's catalogue
+            // included — a content change like any other (FEAT-049 §3.7).
+            bumpCatalogueRevision()
             blossomSyncManager.clearStoredHashes()
             userPreferences.setLastSyncTimestamp(null)
             // Clear markers now (not after sync completes) so a sync
@@ -455,6 +469,32 @@ class BoardSyncManager(
             }
         }
         return claimed
+    }
+
+    /**
+     * Record that catalogue contents changed (FEAT-049 §3.7): a chunk was
+     * committed, or catalogue rows were deleted.
+     *
+     * Called at the commit/delete points of every catalogue lane, not only
+     * MoonBoard's: "the catalogue changed" is what the counter claims, and a
+     * consumer that only cares about MoonBoard re-asks its own cheap question
+     * one extra time rather than being told a different lie. Additive to those
+     * lanes — nothing in the Kilter or Aurora flow reads it or branches on it.
+     *
+     * Reviewed and kept global on purpose. A MoonBoard-scoped counter would not
+     * actually be narrower: the local-share import writes whatever brands its
+     * snapshot carries, and both deletion paths remove `source='kilter'` rows
+     * across every brand — so MoonBoard's own consumers would still have to be
+     * woken from those non-MoonBoard call sites, and the "only MoonBoard moves
+     * this" rule would be false the first time someone imported a shared DB.
+     * The price of staying global is that a live hold-set picker re-runs its
+     * gate probe and two scoped counts on a Kilter or Aurora commit that cannot
+     * have changed either. That is bounded (the picker exists only while its
+     * settings screen is open) and it buys correctness in the cases above; no
+     * regression has been measured from it.
+     */
+    private fun bumpCatalogueRevision() {
+        _state.update { it.copy(catalogueRevision = it.catalogueRevision + 1) }
     }
 
     private fun isStale(lastSync: String?, interval: SyncInterval): Boolean {
@@ -767,6 +807,7 @@ class BoardSyncManager(
                 }
             )
             Log.d(TAG, "Import completed successfully")
+            bumpCatalogueRevision()
 
             // 5. Refresh denormalized data in SecureDB. UI is already showing
             // Finalizing from the importer's index-rebuild callback, so we
@@ -852,6 +893,10 @@ class BoardSyncManager(
                 }
                 is MoonBoardCatalogueSync.Result.Imported -> {
                     Log.i(TAG, "MoonBoard catalogue imported (total catalogue climbs=${result.climbCount})")
+                    // The commit that can flip the FEAT-049 presence gate, and
+                    // the moment the browser's mask cache must re-ask it. Still
+                    // inside the same sync run, so syncGeneration says nothing.
+                    bumpCatalogueRevision()
                     true
                 }
                 is MoonBoardCatalogueSync.Result.Failed -> {
@@ -917,6 +962,7 @@ class BoardSyncManager(
                 }
                 is AuroraCatalogueSync.Result.Imported -> {
                     Log.i(TAG, "${brand.wireValue} catalogue imported (total catalogue climbs=${result.climbCount})")
+                    bumpCatalogueRevision()
                     true
                 }
                 is AuroraCatalogueSync.Result.Failed -> {
@@ -1127,6 +1173,7 @@ class BoardSyncManager(
                 importer.importFromLocalDb(tempFile) { step ->
                     _state.update { it.copy(importStep = step) }
                 }
+                bumpCatalogueRevision()
 
                 // Refresh denormalized data in SecureDB
                 refreshDenormalizedData()
@@ -1209,6 +1256,10 @@ class BoardSyncManager(
                     boardRepository.deleteBoardDataForBrands(brands.map { it.wireValue }.toSet())
                     resetSyncStateForBrands(brands)
                 }
+                // Catalogue contents changed in the other direction: a gate
+                // that was true is now false, and anything holding a mask
+                // derived from it has to re-ask (FEAT-049 §3.7).
+                bumpCatalogueRevision()
                 Log.i(TAG, "destructive: deleteBoardData(brands=[$brandNames]) done in ${System.currentTimeMillis() - startMs}ms")
                 _boardDataDeletion.update { it.copy(running = false, completions = it.completions + 1) }
             } catch (e: Exception) {
@@ -1361,6 +1412,14 @@ data class BoardSyncState(
     val pendingLocalImportUrl: String? = null,
     /** Incremented each time a real sync starts. Banner uses this to ignore initial state. */
     val syncGeneration: Int = 0,
+    /**
+     * Incremented each time catalogue CONTENTS changed: after a catalogue
+     * commit and after a catalogue deletion. Deliberately not [syncGeneration],
+     * which marks a run being claimed *before* any import — see
+     * [CatalogueRevisionSource] for what keying a cached fact on the wrong one
+     * costs. Observed through [BoardSyncManager.catalogueRevision].
+     */
+    val catalogueRevision: Int = 0,
     /**
      * Wall-clock millis when the most recent successful sync finished.
      * Used by [SyncStatusBannerSlot] to render the success banner for a

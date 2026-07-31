@@ -2344,4 +2344,19 @@
     <string name="playlist_manual_rest_none">keine</string>
     <string name="playlist_manual_rest_seconds">%1$d s</string>
     <string name="playlist_manual_rest_minutes">%1$d:%2$02d min</string>
+
+    <!-- FEAT-049: MoonBoard-Griffset-Auswahl. Die Griffset-NAMEN sind
+         Produktnamen und bleiben in jeder Sprache englisch (die offizielle App
+         übersetzt sie ebenfalls nicht) — sie kommen aus MoonBoardHoldSets,
+         nicht von hier. -->
+    <string name="moonboard_hold_sets_title">Griffsets</string>
+    <string name="moonboard_hold_sets_subtitle">Welche Griffe an deinem Board hängen</string>
+    <string name="moonboard_setup_complete">Komplettes %1$s Setup</string>
+    <string name="moonboard_setup_complete_hint">Das Bundle wie verkauft — alle Griffsets</string>
+    <string name="moonboard_setup_partial">Mir fehlen Griffe</string>
+    <string name="moonboard_hold_sets_summary">%1$d von %2$d Griffsets</string>
+    <string name="moonboard_hold_sets_count">%1$s Griffe</string>
+    <string name="moonboard_hold_sets_climbable">%1$s von %2$s Problemen kletterbar</string>
+    <string name="moonboard_hold_sets_needs_sync">Verfügbar nach dem nächsten Katalog-Update</string>
+    <string name="moonboard_hold_sets_min_one">Mindestens ein Griffset muss ausgewählt bleiben</string>
 </resources>

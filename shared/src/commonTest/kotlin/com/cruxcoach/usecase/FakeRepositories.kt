@@ -152,6 +152,7 @@ class FakeBoardRepository : BoardRepository {
     override fun getClimbCountsByBrand(): Map<String, Long> = emptyMap()
     override fun hasAnyClimbs(): Boolean = storedClimbs.isNotEmpty()
     override fun hasClimbsForBrand(boardBrand: String): Boolean = storedClimbs.isNotEmpty()
+    override fun hasMoonBoardHoldSetMask(): Boolean = false
     override fun getStatCount(): Long = 0L
     override fun countOrphanStats(): Long = 0L
     override fun countListedClimbsWithoutStats(): Long = 0L

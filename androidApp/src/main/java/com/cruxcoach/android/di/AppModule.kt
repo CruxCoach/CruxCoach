@@ -43,6 +43,7 @@ import com.cruxcoach.android.data.CruxRelayManager
 import com.cruxcoach.android.data.ClimbNameResolver
 import com.cruxcoach.android.data.RestTimerAlarmScheduler
 import com.cruxcoach.android.data.BoardSyncManager
+import com.cruxcoach.android.data.CatalogueRevisionSource
 import com.cruxcoach.android.data.AuroraCatalogueSync
 import com.cruxcoach.android.data.MoonBoardCatalogueSync
 import com.cruxcoach.android.data.blossom.BlossomSyncManager
@@ -318,6 +319,14 @@ object AppModule {
     ): BoardSyncManager {
         return BoardSyncManager(importer, blossomSyncManager, userPreferences, context, boardRepository, personalBoardRepo, boardLocationRepository, moonBoardCatalogueSync, auroraCatalogueSync)
     }
+
+    /** FEAT-049: the catalogue revision, for consumers that need nothing else
+     *  from the sync manager (see [CatalogueRevisionSource]). Same singleton. */
+    @Provides
+    @Singleton
+    fun provideCatalogueRevisionSource(
+        boardSyncManager: BoardSyncManager
+    ): CatalogueRevisionSource = boardSyncManager
 
     @Provides
     @Singleton

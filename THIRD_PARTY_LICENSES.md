@@ -29,6 +29,22 @@ or APK.
 
 Used to decompress board manifests downloaded from Blossom relays.
 
+### MoonBoard hold-set cell map — BoardSesh
+
+- **Location:** [`MoonBoardHoldSets.kt`](shared/src/commonMain/kotlin/com/cruxcoach/domain/board/MoonBoardHoldSets.kt)
+- **Upstream:** https://github.com/boardsesh/boardsesh —
+  `MOONBOARD_CELL_SETS` and `MOONBOARD_SETS` in
+  `packages/shared/board-config/src`
+- **License:** Apache License 2.0
+- **License text:** https://www.apache.org/licenses/LICENSE-2.0
+- **Distribution form:** the mapping data (hold-set ids, product names, and
+  which grid cell belongs to which set, for all seven MoonBoard layouts) is
+  transcribed into Kotlin literals; no BoardSesh code is copied.
+
+Used to show which holds a MoonBoard hold set covers, and to derive the
+`climbs.hsm` hold-set mask for locally authored and peer-received MoonBoard
+climbs (FEAT-049).
+
 ---
 
 ## Bundled Assets
