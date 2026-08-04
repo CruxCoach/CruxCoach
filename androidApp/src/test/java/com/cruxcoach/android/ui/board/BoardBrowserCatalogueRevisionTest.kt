@@ -161,7 +161,20 @@ class BoardBrowserCatalogueRevisionTest {
         // Deliberately not awaitState: the target assertion has to be the one
         // that fails, not a timeout. settle() gives the end-of-run refresh the
         // same budget and then lets assertEquals say what actually happened.
-        val settled = settle(viewModel) { it.hsmExcludedMask == expectedMask }
+        // Wait for BOTH observable effects, not just the mask. They arrive as
+        // two emissions — the mask lands first, the re-filtered list follows
+        // from the query it triggers. Waiting only for the mask and then
+        // reading the list straight away is a race the test lost roughly one
+        // run in ten, reporting [mb-withWooden, mb-handsOnly] as if the filter
+        // were broken.
+        //
+        // This cannot hide a genuine failure: if the list never gets filtered,
+        // settle() simply runs out its budget and the assertions below report
+        // exactly the same difference — just later.
+        val settled = settle(viewModel) {
+            it.hsmExcludedMask == expectedMask &&
+                it.climbs.map { climb -> climb.uuid } == listOf("mb-handsOnly")
+        }
         assertEquals(
             "a committed chunk must reach the browse filter within its own run",
             expectedMask, settled.hsmExcludedMask,
@@ -169,7 +182,7 @@ class BoardBrowserCatalogueRevisionTest {
         // And the mask is not just held in state — the list is filtered by it.
         assertEquals(
             listOf("mb-handsOnly"),
-            viewModel.state.value.climbs.map { it.uuid },
+            settled.climbs.map { it.uuid },
         )
     }
 

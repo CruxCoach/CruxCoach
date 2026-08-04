@@ -136,18 +136,22 @@ internal fun AppShareSection(
     var showZapstoreQr by remember { mutableStateOf(false) }
     val zapstoreApkState by viewModel.zapstoreApk.collectAsStateWithLifecycle()
 
-    val releaseApkUrl = remember {
-        val tag = "v${BuildConfig.VERSION_NAME}"
-        // Derive web host from the fork-configurable updater API base
-        // ("https://codeberg.org/api/v1" → "https://codeberg.org").
-        val apiBase = BuildConfig.UPDATER_API_BASE
-        val webHost = apiBase.substringBefore("/api/", apiBase)
-        val owner = BuildConfig.UPDATER_REPO_OWNER
-        val repo = BuildConfig.UPDATER_REPO_NAME
-        "$webHost/$owner/$repo/releases/download/$tag/$repo-$tag.apk"
-    }
+    // The share QR points at the project's own install page, not at a release
+    // asset on whichever forge this build was compiled against.
+    //
+    // The old form built "<forge>/<owner>/<repo>/releases/download/v<MY
+    // VERSION>/…apk" from BuildConfig, which was wrong in three ways at once:
+    // it ignored the runtime source list and so could not follow a forge
+    // migration; it pinned the link to the *sharer's* version, so a phone
+    // still on an old build handed out an old APK forever; and a direct asset
+    // link is precisely what breaks when the host changes.
+    //
+    // The install page survives all three: it is ours, it always offers the
+    // current release, and it already routes through the site's health-checked
+    // download selector, which picks a working mirror by itself.
+    val releasePageUrl = remember { BuildConfig.UPDATER_RELEASE_PAGE_URL }
     val releaseQrBitmap = remember {
-        runCatching { ApkShareHelper.generateQrBitmap(releaseApkUrl) }.getOrNull()
+        runCatching { ApkShareHelper.generateQrBitmap(releasePageUrl) }.getOrNull()
     }
 
     val zapstoreApkUrl = (zapstoreApkState as? AppShareViewModel.ZapstoreApkState.Ready)?.url
@@ -262,7 +266,7 @@ internal fun AppShareSection(
     if (showReleaseQr && releaseQrBitmap != null) {
         ReleaseDownloadCard(
             qrBitmap = releaseQrBitmap,
-            downloadUrl = releaseApkUrl
+            downloadUrl = releasePageUrl
         )
     }
 

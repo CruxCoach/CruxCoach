@@ -116,8 +116,12 @@ android {
         // discovering source has no page of its own to show. Must NOT be a
         // forge URL: this is precisely the path a user needs when the forge
         // is the thing that changed.
+        // The anchor is #install — verified against the live page, which has
+        // ids {why, features, install, de-googled, privacy, faq, contribute}
+        // and no #download. A wrong fragment does not 404, it just silently
+        // fails to scroll, which is exactly the kind of thing nobody notices.
         buildConfigField("String", "UPDATER_RELEASE_PAGE_URL",
-            "\"${localProps.getProperty("UPDATER_RELEASE_PAGE_URL", "https://cruxcoach.org/#download")}\"")
+            "\"${localProps.getProperty("UPDATER_RELEASE_PAGE_URL", "https://cruxcoach.org/#install")}\"")
 
         // minSdk of the NEXT release, so this build can tell a device that it
         // is about to fall out of support and say so while it still can.

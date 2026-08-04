@@ -109,7 +109,7 @@ class UpdateChecker(
         if (sources.isEmpty()) {
             // Cannot happen with a non-empty EMBEDDED list, but a fork that
             // empties it should fail loudly rather than silently never check.
-            Log.w(TAG, "event=check_error reason=no_discovery_sources")
+            Log.w(TAG, "event=check_error trigger=$trigger reason=no_discovery_sources")
             preferences.update {
                 it.copy(lastCheckResult = CheckResult.ERROR, lastErrorAtEpochMs = nowMs())
             }
@@ -250,7 +250,15 @@ class UpdateChecker(
             it.copy(lastCheckResult = CheckResult.ERROR, lastErrorAtEpochMs = nowMs())
         }
         val message = lastError ?: "all_sources_failed"
-        Log.i(TAG, "Check failed on all ${sources.size} sources ($message) — will retry on next trigger")
+        // Structured and trigger-carrying on purpose: flows/updater-manual-check
+        // asserts that every MANUAL press produces a completed round, and it
+        // matches on `event=…` plus `trigger=`. A prose-only line here would
+        // fail that gate for a check that behaved correctly.
+        Log.i(
+            TAG,
+            "event=check_error trigger=$trigger reason=$message " +
+                "sources=${sources.size} — will retry on next trigger",
+        )
         return CheckOutcome.Error(message)
     }
 
