@@ -263,7 +263,19 @@ class BoardBrowserCatalogueRevisionTest {
     private suspend fun awaitRefresh() = delay(STEP_MS)
 
     private companion object {
-        const val SETTLE_MS = 5_000L
+        /**
+         * Wall-clock budget for the fixture to reach a given state.
+         *
+         * This drives real async work — importer, DB, the ViewModel's own
+         * flows — so it cannot be advanced by a test scheduler. 5 s was
+         * enough on an idle machine but not inside the full suite on a
+         * 4-core builder: the run aborted in the *setup* wait with
+         * `isLoading=true`, i.e. the fixture was still legitimately loading
+         * rather than holding a wrong value. The budget only bounds how long
+         * a genuinely stuck state may hide — a state that never arrives
+         * still fails, just later — so it is safe to be generous here.
+         */
+        const val SETTLE_MS = 20_000L
         const val STEP_MS = 150L
     }
 }

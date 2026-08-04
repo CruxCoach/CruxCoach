@@ -142,6 +142,22 @@ class PlaylistPlaybackCoordinator(
         ),
     )
 
+    init {
+        // A participant's next/prev arrives as a GATT command and used to go
+        // straight into the queue, bypassing the phase-aware rules below.
+        // During a host rest the queue already sits on the upcoming climb, so
+        // that path advanced a second time and silently skipped a climb
+        // nobody had tried. Routing it through the same entry point the local
+        // buttons use makes remote and local control behave identically.
+        //
+        // Registered here rather than in play()/startEmpty() so a future
+        // session entry point cannot forget it. Both handlers are host-only
+        // in practice — only a host receives client commands — and next()
+        // resolves the role itself, so there is nothing to guard.
+        gattBridge.onRemoteNext = { next() }
+        gattBridge.onRemotePrev = { previous() }
+    }
+
     private fun buildState(
         queue: SessionQueueState,
         climbInfo: ClimbDisplayInfo?,

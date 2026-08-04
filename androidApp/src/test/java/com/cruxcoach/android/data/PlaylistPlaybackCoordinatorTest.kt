@@ -47,6 +47,11 @@ class PlaylistPlaybackCoordinatorTest {
     private val gattBridge = mockk<SessionGattBridge>(relaxed = true)
     private val bleShareManager = mockk<BleShareManager>(relaxed = true)
 
+    /** The transport hooks the coordinator installs on the bridge in its
+     *  constructor — recorded on assignment, since a mock cannot be read back. */
+    private var remoteNext: (() -> Unit)? = null
+    private var remotePrev: (() -> Unit)? = null
+
     private val sessionState = MutableStateFlow(BoardSessionState())
     private val restState = MutableStateFlow(RestTimerState())
 
@@ -56,6 +61,8 @@ class PlaylistPlaybackCoordinatorTest {
         every { bleConnection.connectionState } returns MutableStateFlow(ConnectionState.DISCONNECTED)
         every { boardSessionManager.state } returns sessionState
         every { boardSessionManager.restTimer } returns restState
+        every { gattBridge.onRemoteNext = any() } answers { remoteNext = firstArg() }
+        every { gattBridge.onRemotePrev = any() } answers { remotePrev = firstArg() }
         scope = CoroutineScope(SupervisorJob() + testDispatcher)
         queueManager = SessionQueueManager(
             bleConnection, boardRepository, climbNameResolver, userPreferences, scope,
@@ -347,5 +354,84 @@ class PlaylistPlaybackCoordinatorTest {
         assertEquals(3 to 3, awaitState { it.currentIndex == 2 }.attemptInfo)
         queueManager.nextClimb()
         assertNull("single climb has no attempt chip", awaitState { it.currentIndex == 3 }.attemptInfo)
+    }
+
+    // ── Remote transport control (participant → host) ──────────────────────
+
+    /**
+     * Capture the callback the coordinator installs on the bridge. mockk
+     * records property writes, so this reaches back to the assignment made in
+     * the constructor during [setup].
+     */
+    private fun capturedRemoteNext(): () -> Unit =
+        requireNonNull(remoteNext, "coordinator did not install onRemoteNext")
+
+    private fun capturedRemotePrev(): () -> Unit =
+        requireNonNull(remotePrev, "coordinator did not install onRemotePrev")
+
+    private fun <T : Any> requireNonNull(value: T?, message: String): T {
+        assertTrue(message, value != null)
+        return value!!
+    }
+
+    @Test
+    fun `remote next is wired to the host's own playback logic`() {
+        // Not merely "a callback exists": the point of the fix is that the
+        // remote path and the local buttons end up in the same code.
+        capturedRemoteNext()
+        capturedRemotePrev()
+    }
+
+    @Test
+    fun `a participant's next during a host rest skips the rest instead of advancing`() {
+        coordinator.play(
+            hostName = "Host",
+            items = listOf(
+                QueueItem("A".repeat(32), 40),
+                QueueItem("B".repeat(32), 40),
+                QueueItem("C".repeat(32), 40),
+            ),
+        )
+        awaitState { it.queue.size == 3 }
+        val before = queueManager.state.value.currentIndex
+
+        // A rest is counting down on the host — the queue already sits on the
+        // upcoming climb, which is exactly when a second advance would skip a
+        // climb nobody has tried.
+        restState.value = RestTimerState(isRunning = true, secondsRemaining = 60, totalSeconds = 60)
+        awaitState { it.phase is PlaybackPhase.Resting }
+
+        capturedRemoteNext().invoke()
+
+        assertEquals(
+            "a remote next during a rest must skip the pause, not advance the queue",
+            before,
+            queueManager.state.value.currentIndex,
+        )
+        verify { boardSessionManager.cancelRestTimer() }
+    }
+
+    @Test
+    fun `a participant's next while climbing advances the queue`() {
+        coordinator.play(
+            hostName = "Host",
+            items = listOf(
+                QueueItem("A".repeat(32), 40),
+                QueueItem("B".repeat(32), 40),
+            ),
+        )
+        awaitState { it.queue.size == 2 }
+        val before = queueManager.state.value.currentIndex
+
+        restState.value = RestTimerState(isRunning = false)
+        awaitState { it.phase is PlaybackPhase.Climbing }
+
+        capturedRemoteNext().invoke()
+
+        assertEquals(
+            "outside a rest the remote next must behave like the local one",
+            before + 1,
+            queueManager.state.value.currentIndex,
+        )
     }
 }

@@ -49,6 +49,28 @@ class SessionGattBridge(
         private const val MIGRATION_INDEX_STEP_MS = 3000L
     }
 
+    /**
+     * Transport control a participant asked for, routed back through the
+     * host's own playback logic instead of straight into the queue.
+     *
+     * Set by [com.cruxcoach.android.data.PlaylistPlaybackCoordinator]; a
+     * callback rather than a constructor dependency because the coordinator
+     * already depends on this class, and injecting it back would close the
+     * cycle. Same shape as [SessionQueueManager.onRestRequested].
+     *
+     * Why this exists: advancing is phase-aware on the host. While a rest
+     * counts down, the queue already sits on the *upcoming* climb, so "next"
+     * means "skip the pause" — not "advance again". Calling
+     * `queueManager.nextClimb()` directly from a remote command skipped that
+     * rule and silently jumped a climb nobody had tried. Falls back to the
+     * raw queue call when unset, so a bridge used without a coordinator
+     * (tests, ad-hoc sessions before playback starts) keeps working.
+     */
+    @Volatile var onRemoteNext: (() -> Unit)? = null
+
+    /** Participant-requested step back; see [onRemoteNext]. */
+    @Volatile var onRemotePrev: (() -> Unit)? = null
+
     private var migrationJob: Job? = null
     private var joinJob: Job? = null
     private var hostJob: Job? = null
@@ -680,20 +702,35 @@ class SessionGattBridge(
         }
     }
 
-    fun sendNext() {
-        scope.launch { gattClient.sendCommand(SessionQueueProtocol.encodeNext()) }
-    }
+    fun sendNext() = sendParticipantCommand("next", SessionQueueProtocol.encodeNext())
 
-    fun sendPrev() {
-        scope.launch { gattClient.sendCommand(SessionQueueProtocol.encodePrev()) }
-    }
+    fun sendPrev() = sendParticipantCommand("prev", SessionQueueProtocol.encodePrev())
 
-    fun sendSetCurrent(index: Int) {
-        scope.launch { gattClient.sendCommand(SessionQueueProtocol.encodeSetCurrent(index)) }
-    }
+    fun sendSetCurrent(index: Int) =
+        sendParticipantCommand("setCurrent($index)", SessionQueueProtocol.encodeSetCurrent(index))
 
-    fun sendMove(from: Int, to: Int) {
-        scope.launch { gattClient.sendCommand(SessionQueueProtocol.encodeMove(from, to)) }
+    fun sendMove(from: Int, to: Int) =
+        sendParticipantCommand("move($from→$to)", SessionQueueProtocol.encodeMove(from, to))
+
+    /**
+     * Fire a participant's control command at the host, and say so when it
+     * does not go out.
+     *
+     * These are the only way a participant can steer the playlist, and the
+     * write can fail for mundane reasons — the command characteristic not
+     * resolved yet, the GATT link dropped. The result used to be discarded,
+     * so a failed write looked exactly like a working one that the host chose
+     * to ignore: the button did nothing and nothing said why. The command is
+     * still fire-and-forget by design (the host re-broadcasts the resulting
+     * state, so there is nothing local to roll back) — this only makes the
+     * failure findable.
+     */
+    private fun sendParticipantCommand(label: String, payload: ByteArray) {
+        scope.launch {
+            if (!gattClient.sendCommand(payload)) {
+                Log.w(TAG, "Participant command '$label' was not delivered to the host")
+            }
+        }
     }
 
     // ===== Internal: Host processes commands from clients =====
@@ -731,8 +768,10 @@ class SessionGattBridge(
             is SessionCommand.Add -> queueManager.addClimb(cmd.climbUuid, cmd.angle)
             is SessionCommand.Remove -> queueManager.removeClimb(cmd.index)
             is SessionCommand.SetCurrent -> queueManager.setCurrentClimb(cmd.index)
-            is SessionCommand.Next -> queueManager.nextClimb()
-            is SessionCommand.Prev -> queueManager.previousClimb()
+            // Through the host's phase-aware playback logic, not straight
+            // into the queue — see onRemoteNext.
+            is SessionCommand.Next -> (onRemoteNext ?: queueManager::nextClimb).invoke()
+            is SessionCommand.Prev -> (onRemotePrev ?: queueManager::previousClimb).invoke()
             is SessionCommand.Join -> Unit // handled before authorization gate
             is SessionCommand.Leave -> {
                 Log.d(TAG, "Processing LEAVE from $deviceAddress, " +

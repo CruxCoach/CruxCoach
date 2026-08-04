@@ -443,12 +443,29 @@ class SessionQueueManager(
         _state.update { it.copy(queue = items, currentIndex = currentIndex) }
     }
 
-    /** Apply current index change from host notification. */
+    /**
+     * Apply current index change from host notification.
+     *
+     * An index the local queue does not have yet is dropped: the host has
+     * already moved on but our copy of the queue is still the older, shorter
+     * one, and pointing currentIndex at a climb we cannot name would show the
+     * wrong thing. It self-heals — the host sends the full queue with its own
+     * currentIndex on the next push ([applyRemoteState]).
+     *
+     * Logged because the participant simply stops following while it lasts,
+     * which from the outside is indistinguishable from "the button does
+     * nothing".
+     */
     fun applyRemoteCurrentIndex(index: Int) {
         _state.update { s ->
             if (index in s.queue.indices) {
                 s.copy(currentIndex = index, externalBoardOverride = false)
             } else {
+                Log.w(
+                    TAG,
+                    "applyRemoteCurrentIndex: dropping index $index — local queue " +
+                        "holds ${s.queue.size} item(s); waiting for the next full push",
+                )
                 s
             }
         }
