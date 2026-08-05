@@ -484,8 +484,25 @@ class UpdaterRepository @Inject constructor(
         sourceIndex: Int,
     ) {
         val apk = downloader.targetFileFor(info.versionName)
+        // Mark the passed stages, not only the failures. Every gate below used
+        // to be silent on success, so a completed update left no trace of its
+        // own: reconstructing "did the hash match, did the signature match"
+        // meant reading DownloadManager and PackageParsing lines from the
+        // platform log and inferring the rest from the ABSENCE of warnings.
+        // That is a poor position to be in when the first field report says
+        // "the update does nothing".
+        Log.i(
+            TAG,
+            "event=download_complete version=${info.versionName} " +
+                "source=$sourceIndex bytes=${apk.length()}",
+        )
         when (val result = verifier.verify(apk, info.apkSha256)) {
             IntegrityVerifier.Result.Ok -> {
+                Log.i(
+                    TAG,
+                    "event=integrity_ok version=${info.versionName} " +
+                        "sha256+signer verified — ready to install",
+                )
                 preferences.update { it.copy(pipelineStage = PipelineStage.READY_TO_INSTALL) }
                 // Count only after both verification gates. Persist the attempt
                 // before enqueueing and never retry: without a user/event ID the

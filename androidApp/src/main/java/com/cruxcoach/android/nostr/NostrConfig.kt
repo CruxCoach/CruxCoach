@@ -38,10 +38,30 @@ object NostrConfig {
      *   - relay.damus.io             — large iOS client base, high uptime
      *   - nostr-pub.wellorder.net    — independent operator, generous limits
      */
+    /*
+     * Widened 2026-08-05 after a fresh install failed to import the So iLL
+     * catalogue. A replication sweep (cruxcoach-blossom-sync/
+     * check_manifest_replication.py) found five of seven board manifests on
+     * a single relay, four of them on damus alone — while damus was serving
+     * 503. Three relays is only three-fold redundancy if the event is
+     * actually ON three; it was not.
+     *
+     * More readers here cannot fix a manifest that was never replicated, but
+     * it widens where a correctly published one can be found, and it makes
+     * the publish side's job checkable: the pipeline publishes to this set
+     * and verifies against it.
+     *
+     * Adding a relay only helps builds that ship with it — this list is
+     * compiled in, so installs on 0.2.1 and older keep querying the old
+     * three. That is the same one-way constraint the release-source list has,
+     * and the reason both are worth widening now rather than later.
+     */
     val MANIFEST_RELAYS = listOf(
         "wss://relay.primal.net",
         "wss://relay.damus.io",
-        "wss://nostr-pub.wellorder.net"
+        "wss://nostr-pub.wellorder.net",
+        "wss://nos.lol",
+        "wss://relay.snort.social",
     )
 
     /**

@@ -288,7 +288,27 @@ class BoardBrowserCatalogueRevisionTest {
          * a genuinely stuck state may hide — a state that never arrives
          * still fails, just later — so it is safe to be generous here.
          */
-        const val SETTLE_MS = 20_000L
+        /**
+         * Wall-clock budget for the fixture to reach a given state.
+         *
+         * This drives real async work — DataStore on `Dispatchers.IO`, the
+         * importer, the view model's own flows — so no test scheduler can
+         * advance it. Measured on a 4-core builder inside the full ~1850-test
+         * suite: **typically ~3 s, occasionally over 20 s**. The spread is
+         * contention on `Dispatchers.IO`, not a stall — given room it always
+         * settles, verified by raising the budget to 120 s and watching the
+         * same run finish in 2.95 s.
+         *
+         * 60 s is 20× the typical case and covers the observed outlier, while
+         * still reporting a genuinely stuck state inside a minute. The budget
+         * only bounds how long a real failure may hide; a state that never
+         * arrives still fails.
+         *
+         * The proper fix is to make the fixture deterministic — inject a test
+         * dispatcher for the preference scope instead of doing real file I/O —
+         * but that is a refactor of the fixture, not a pre-release change.
+         */
+        const val SETTLE_MS = 60_000L
         const val STEP_MS = 150L
     }
 }

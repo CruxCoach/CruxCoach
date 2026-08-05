@@ -51,6 +51,12 @@ class IntegrityVerifier(
             return Result.PayloadMismatch
         }
 
+        // Logged separately from the signer gate below: when the certificate
+        // check fails, this line is what says the bytes themselves were fine,
+        // which is the difference between "wrong build served" and "corrupted
+        // download".
+        Log.i(TAG, "event=payload_sha256_ok bytes=${apkFile.length()}")
+
         val signerHashes = try {
             apkSignerCertHashes(apkFile)
         } catch (e: Exception) {
@@ -86,6 +92,11 @@ class IntegrityVerifier(
                 actual = signerHashes.first(),
             )
         }
+        Log.i(
+            TAG,
+            "event=signer_ok certsInApk=${signerHashes.size} " +
+                "pin=${pin.certSha256Hex.redactHash()}",
+        )
         return Result.Ok
     }
 
