@@ -8,7 +8,7 @@ import kotlinx.serialization.Serializable
  *
  * The list of these is deliberately *data*, not code: it arrives either from
  * the embedded defaults ([UpdateSourceRegistry.EMBEDDED]) or from the runtime
- * manifest at [BuildConfig.UPDATE_SOURCES_URL]. That is the whole point of
+ * manifest at [BuildConfig.UPDATE_SOURCES_URLS]. That is the whole point of
  * FEAT-050 — the set and order of sources must be changeable without
  * shipping a new APK, because an APK is exactly what we cannot deliver once
  * the current forge stops serving us.
@@ -150,7 +150,7 @@ data class UpdateSource(
     }
 }
 
-/** Wire shape of the runtime manifest at [BuildConfig.UPDATE_SOURCES_URL]. */
+/** Wire shape of the runtime manifest at [BuildConfig.UPDATE_SOURCES_URLS]. */
 @Serializable
 data class UpdateSourceManifest(
     val version: Int = 1,

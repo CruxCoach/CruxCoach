@@ -75,6 +75,7 @@ spec file so other branches see the reservation.
 | FEAT-047 | Direct Controller Reconnect | v0.2.2 | implementation | `0.2.2/FEAT-047-direct-controller-reconnect.md` |
 | FEAT-048 | Per-controller capacity (not per brand) | v0.2.3 | planned | `0.2.3/FEAT-048-per-controller-capacity.md` |
 | FEAT-049 | MoonBoard Hold-Set Selection (issue #9) | v0.2.2 | planned | `0.2.2/FEAT-049-moonboard-hold-set-selection.md` |
+| FEAT-050 | Survivable Database Downgrade | backlog | backlog | `backlog/FEAT-050-database-downgrade-safety.md` |
 
 Implementation plan for FEAT-043/045/046:
 `0.2.2/IMPLEMENTATION-PLAN-convergence-player.md`.
@@ -121,7 +122,7 @@ renumbering those is likely cheaper than renumbering the shipped side.
 
 ## Next free
 
-**FEAT-050** is the next unallocated ID. Verify against unmerged branches
+**FEAT-051** is the next unallocated ID. Verify against unmerged branches
 before allocating — the reconciliation below closed the previously listed
 gaps, but a branch this worktree cannot see may still hold one.
 

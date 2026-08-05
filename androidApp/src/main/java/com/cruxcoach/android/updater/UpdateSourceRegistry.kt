@@ -19,9 +19,10 @@ import okhttp3.Request
  *
  * Precedence, highest first:
  *
- *  1. The runtime manifest at [BuildConfig.UPDATE_SOURCES_URL], cached in
+ *  1. The runtime manifest, fetched from the first of
+ *     [BuildConfig.UPDATE_SOURCES_URLS] that answers, cached in
  *     [UpdaterPreferences] for [CACHE_TTL_MS].
- *  2. The last manifest we successfully fetched, if the network call fails.
+ *  2. The last manifest we successfully fetched, if every host fails.
  *  3. [EMBEDDED] — compiled into the APK.
  *
  * Step 3 is why [EMBEDDED] must never be empty: a device that can't reach
@@ -39,7 +40,7 @@ import okhttp3.Request
 class UpdateSourceRegistry @Inject constructor(
     @param:Named("updater") private val okHttpClient: OkHttpClient,
     private val preferences: UpdaterPreferences,
-    private val manifestUrl: String = BuildConfig.UPDATE_SOURCES_URL,
+    private val manifestUrls: List<String> = parseUrlList(BuildConfig.UPDATE_SOURCES_URLS),
     private val nowMsProvider: () -> Long = { System.currentTimeMillis() },
 ) {
 
@@ -66,7 +67,7 @@ class UpdateSourceRegistry @Inject constructor(
         val fetchedAt = snapshot.updateSourcesFetchedAtEpochMs ?: 0L
         val stale = now - fetchedAt >= CACHE_TTL_MS
 
-        if (stale && manifestUrl.startsWith("https://")) {
+        if (stale && manifestUrls.isNotEmpty()) {
             val fresh = fetchManifest()
             // Stamp the attempt whether or not it succeeded. Without this a
             // manifest host that is down would be re-fetched on every single
@@ -122,17 +123,32 @@ class UpdateSourceRegistry @Inject constructor(
     suspend fun sourceIdForUrl(downloadUrl: String): String? =
         resolveSourceId(downloadUrl, sources())
 
+    /**
+     * First host that answers with a usable body wins; the rest are not asked.
+     *
+     * Sequential rather than parallel on purpose. The common case is that the
+     * first host answers, so a race would spend a second request every day on
+     * every install to save nothing, and the ordering in the list is a
+     * preference we want honoured rather than a tie broken by latency.
+     */
     private suspend fun fetchManifest(): String? = withContext(Dispatchers.IO) {
+        for (url in manifestUrls) {
+            fetchManifestFrom(url)?.let { return@withContext it }
+        }
+        null
+    }
+
+    private fun fetchManifestFrom(manifestUrl: String): String? {
         val request = Request.Builder()
             .url(manifestUrl)
             .header("Accept", "application/json")
             .header("User-Agent", "CruxCoach-Updater/${BuildConfig.VERSION_NAME}")
             .build()
-        try {
+        return try {
             okHttpClient.newCall(request).execute().use { resp ->
                 if (!resp.isSuccessful) {
-                    Log.w(TAG, "event=sources_fetch_http_error code=${resp.code}")
-                    return@withContext null
+                    Log.w(TAG, "event=sources_fetch_http_error code=${resp.code} url=$manifestUrl")
+                    return null
                 }
                 // Bound the body: this is a small config file, and an
                 // unbounded read from a host we do not control is a trivial
@@ -141,8 +157,8 @@ class UpdateSourceRegistry @Inject constructor(
                     source.request(MAX_MANIFEST_BYTES + 1)
                     val buffered = source.buffer
                     if (buffered.size > MAX_MANIFEST_BYTES) {
-                        Log.w(TAG, "event=sources_fetch_oversize size=${buffered.size}")
-                        return@withContext null
+                        Log.w(TAG, "event=sources_fetch_oversize size=${buffered.size} url=$manifestUrl")
+                        return null
                     }
                     buffered.readUtf8()
                 }
@@ -188,6 +204,21 @@ class UpdateSourceRegistry @Inject constructor(
         }
 
         /**
+         * Split a comma-separated BuildConfig list into ordered, usable URLs.
+         *
+         * Non-https entries are dropped rather than rejected wholesale: a fork
+         * that overrides one of these in `local.properties` and fat-fingers a
+         * single entry should lose that entry, not the whole fallback chain.
+         * Duplicates are collapsed so a copy-paste in `local.properties`
+         * cannot turn one outage into two identical timeouts.
+         */
+        internal fun parseUrlList(raw: String): List<String> = raw
+            .split(',')
+            .map { it.trim() }
+            .filter { it.startsWith("https://") }
+            .distinct()
+
+        /**
          * Compiled-in fallback, used when the manifest is unreachable or
          * unusable. Order matters: most trustworthy and most likely to be
          * current first.
@@ -210,9 +241,18 @@ class UpdateSourceRegistry @Inject constructor(
                 url = BuildConfig.ZAPSTORE_RELAY_URL,
                 cdn = BuildConfig.ZAPSTORE_CDN_BASE_URL,
             ),
-            BuildConfig.UPDATER_MANIFEST_URL.takeIf { it.startsWith("https://") }?.let {
-                UpdateSource(id = "website", kind = UpdateSource.Kind.MANIFEST, url = it)
-            },
+            // One entry per manifest host, so the *embedded* fallback survives
+            // an apex outage too — the runtime list is exactly what a device
+            // does not have when it needs this list.
+            *parseUrlList(BuildConfig.UPDATER_MANIFEST_URLS)
+                .mapIndexed { index, url ->
+                    UpdateSource(
+                        id = if (index == 0) "website" else "website-$index",
+                        kind = UpdateSource.Kind.MANIFEST,
+                        url = url,
+                    )
+                }
+                .toTypedArray(),
             // Content-addressed, download-only. These are the servers
             // cruxcoach-blossom-sync already publishes board-DB chunks to, so
             // they are known-good hosts for us and cost nothing to keep as a

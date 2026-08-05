@@ -99,12 +99,28 @@ android {
         // This is the only lever that can retire a release host for installs
         // already in the field, so it must stay reachable independently of
         // the forge it points at.
-        buildConfigField("String", "UPDATE_SOURCES_URL",
-            "\"${localProps.getProperty("UPDATE_SOURCES_URL", "https://cruxcoach.org/update-sources.json")}\"")
+        //
+        // A LIST, tried in order, because "independently of the forge" was not
+        // enough: on 2026-08-05 the apex went to 502 for a full day (Codeberg
+        // moved custom-domain Pages to a new server and our DNS never followed)
+        // and took the source list with it. Shipping a multi-source updater
+        // whose source list hangs on one host is the same mistake one layer up.
+        //
+        // The mirror is deliberately NOT cruxcoach.github.io: once the apex is
+        // a GitHub Pages custom domain, that origin 301s to the apex and stops
+        // being independent. mirror.cruxcoach.org is our own machine, which is
+        // the one we can always fix ourselves.
+        buildConfigField("String", "UPDATE_SOURCES_URLS",
+            "\"${localProps.getProperty("UPDATE_SOURCES_URLS",
+                "https://cruxcoach.org/update-sources.json," +
+                    "https://mirror.cruxcoach.org/update-sources.json")}\"")
         // Plain release pointer already published by the website
-        // (tools/update-download-link.mjs writes it every night).
-        buildConfigField("String", "UPDATER_MANIFEST_URL",
-            "\"${localProps.getProperty("UPDATER_MANIFEST_URL", "https://cruxcoach.org/apk-target.json")}\"")
+        // (tools/update-download-link.mjs writes it every night). Same list
+        // and same reasoning as above — it is served from the same two hosts.
+        buildConfigField("String", "UPDATER_MANIFEST_URLS",
+            "\"${localProps.getProperty("UPDATER_MANIFEST_URLS",
+                "https://cruxcoach.org/apk-target.json," +
+                    "https://mirror.cruxcoach.org/apk-target.json")}\"")
         // Content-addressed, download-only last resort (BUD-01 GET /<sha256>).
         // These are the public Blossom servers cruxcoach-blossom-sync already
         // publishes board-DB chunks to. The project's own blossom-server is
