@@ -45,12 +45,34 @@ class AppShareTargetTest {
     }
 
     @Test
-    fun `share link downloads directly rather than landing on a page`() {
-        // Scanning a share QR already IS the decision to install. Landing on
-        // the install section and having to find the download button again is
-        // a step that buys nothing.
-        assertTrue("share link must be a download route: $url", url.contains("/download/apk/"))
+    fun `share link resolves a download rather than landing on a section`() {
+        // Scanning a share QR already IS the decision to install, so the
+        // target is the resolver that starts a download — not the marketing
+        // page's install section, which would make the scanner hunt for the
+        // button a second time.
+        assertTrue("share link must be the download resolver: $url", url.endsWith("/get.html"))
         assertFalse("share link must not carry a page anchor: $url", url.contains("#"))
+    }
+
+    @Test
+    fun `share link points at the origin with the most reach, not at one host`() {
+        // A QR gets no second chance: it is scanned by a different device, at
+        // an unknown later time, and cannot change its mind the way the
+        // website's Download button can at click time. So it names the apex —
+        // a CDN — and the fallback chain (selector, then forge, then CDN blob)
+        // lives in the page it opens.
+        //
+        // It deliberately does NOT name the selector host directly. That was
+        // one host with no way back: if our own machine is down when someone
+        // scans, nothing happens at all.
+        assertFalse(
+            "share link must not hardcode the selector host: $url",
+            url.contains("stats.cruxcoach.org"),
+        )
+        assertFalse(
+            "share link must not point at a single mirror: $url",
+            url.contains("mirror.cruxcoach.org"),
+        )
     }
 
     @Test

@@ -147,11 +147,15 @@ internal fun AppShareSection(
     // still on an old build handed out an old APK forever; and a direct asset
     // link is precisely what breaks when the host changes.
     //
-    // The selector route survives all three: it is ours, it always resolves
-    // the current release, and it picks a healthy source itself. Pointing at
-    // the install *section* would have too — but someone who has just scanned
-    // a QR has already decided to install, so making them find the button on
-    // the page they landed on is a step that buys nothing.
+    // The resolver survives all three: it is ours, it always resolves the
+    // current release, and it carries the same fallback chain as the website's
+    // Download button — selector first, then the forge, then the CDN blob.
+    //
+    // It has to, because a QR gets no second chance. The website button can
+    // ship a durable URL and upgrade it once a beacon proves our selector is
+    // up; a scanned QR is read by a different device at an unknown later time
+    // and cannot change its mind. So it names the origin with the most reach
+    // and the chain lives in the page, rather than naming one host directly.
     val shareDownloadUrl = remember { BuildConfig.APP_SHARE_DOWNLOAD_URL }
     val releaseQrBitmap = remember {
         runCatching { ApkShareHelper.generateQrBitmap(shareDownloadUrl) }.getOrNull()

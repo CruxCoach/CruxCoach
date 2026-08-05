@@ -14,23 +14,29 @@ object NostrConfig {
 
     // Community-climb publish + live-subscribe set. nos.lol is the relay that
     // empirically RETAINS one-time community-climb Kind-30078 events long-term
-    // (damus/primal age them out); wellorder + snort are added for redundancy
+    // (damus/primal age them out); wellorder + oxtr are added for redundancy
     // so a community climb never depends on a single relay surviving. wellorder
     // is the same retention-friendly operator we already trust for the manifest.
     // Probed 2026-06-05: community-climb events were on nos.lol only.
+    // relay.snort.social replaced by nostr.oxtr.dev on 2026-08-05: snort had
+    // stopped answering entirely (no WebSocket, no HTTP), so it was not a
+    // fifth relay, it was a timeout on every fetch that looked like one.
     val DEFAULT_RELAYS = listOf(
         RelayConfig(url = "wss://relay.damus.io"),
         RelayConfig(url = "wss://nos.lol"),
         RelayConfig(url = "wss://relay.primal.net"),
         RelayConfig(url = "wss://nostr-pub.wellorder.net"),
-        RelayConfig(url = "wss://relay.snort.social")
+        RelayConfig(url = "wss://nostr.oxtr.dev")
     )
 
     /**
      * Relays used exclusively for the Blossom board-DB manifest (Kind 30078).
      *
-     * The manifest event is ~66 KB, which trips the 64 KB default limit most
-     * public relays enforce. This list is a curated subset of relays confirmed
+     * The manifest event is ~127 KB for Kilter (measured 2026-08-05), far
+     * past the 64 KB default limit most public relays enforce — of nine
+     * candidates probed with the real event that day, exactly one accepted
+     * it. That is why this list cannot simply be widened with popular
+     * relays; each entry has to be verified with a real publish. This list is a curated subset of relays confirmed
      * to accept that size, so losing any single one doesn't strand the app.
      * Verified 2026-04-21 by publishing the live manifest and reading back the
      * OK/NOTICE response:
@@ -61,7 +67,7 @@ object NostrConfig {
         "wss://relay.damus.io",
         "wss://nostr-pub.wellorder.net",
         "wss://nos.lol",
-        "wss://relay.snort.social",
+        "wss://nostr.oxtr.dev",
     )
 
     /**

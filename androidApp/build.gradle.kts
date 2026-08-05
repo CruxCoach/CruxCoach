@@ -138,26 +138,26 @@ android {
         // fails to scroll, which is exactly the kind of thing nobody notices.
         buildConfigField("String", "UPDATER_RELEASE_PAGE_URL",
             "\"${localProps.getProperty("UPDATER_RELEASE_PAGE_URL", "https://cruxcoach.org/#install")}\"")
-        // Where the in-app share QR sends a scanner: the same selector route
-        // the website's "Download APK" button uses, not the page that button
-        // sits on. Scanning already IS the decision to install, so landing on
-        // a section and having to find the button again is a step for nothing.
+        // Where the in-app share QR sends a scanner.
         //
-        // Deliberately its own constant rather than a reuse of the URL above.
-        // That one is the cert-mismatch handoff, where a page is the correct
-        // destination because a human has to read something and decide; the
-        // two only look alike today.
+        // A QR encodes exactly one string and gets no second chance: the phone
+        // that generated it is gone, and whatever host it names has to answer
+        // months later. The website's Download button solves the same problem
+        // with a click-time hook it has and a QR does not — it ships the
+        // durable forge URL in `href` and is upgraded to our selector only
+        // after a beacon proves the selector is up.
         //
-        // Its own route (/app-share/qr) rather than one of the site's, so
-        // installs that came from a shared QR stay separable from website
-        // clicks in the aggregate counters instead of inflating them.
+        // So the QR names the most available host we have (the apex, a CDN)
+        // and the fallback chain lives in the page: /get.html tries the
+        // selector, then the forge, then the CDN blob, with every URL built
+        // from the nightly apk-target.json rather than baked in. Pointing
+        // straight at the selector was one host with no way back.
         //
-        // stats.cruxcoach.org, not cruxcoach.org: different host, and the one
-        // that stayed up on 2026-08-05 while Codeberg Pages served 502. It
-        // resolves the current release through its own health-checked source
-        // chain, so the link keeps working after this build is long stale.
+        // Deliberately its own constant, not UPDATER_RELEASE_PAGE_URL: that
+        // one is the cert-mismatch handoff, where landing on a page is right
+        // because a human has to read something and decide.
         buildConfigField("String", "APP_SHARE_DOWNLOAD_URL",
-            "\"${localProps.getProperty("APP_SHARE_DOWNLOAD_URL", "https://stats.cruxcoach.org/download/apk/app-share/qr")}\"")
+            "\"${localProps.getProperty("APP_SHARE_DOWNLOAD_URL", "https://cruxcoach.org/get.html")}\"")
 
         // minSdk of the NEXT release, so this build can tell a device that it
         // is about to fall out of support and say so while it still can.
@@ -174,6 +174,7 @@ android {
         // release BEFORE bumping minSdk, never in the same one.
         buildConfigField("int", "MIN_SDK_NEXT_RELEASE",
             localProps.getProperty("MIN_SDK_NEXT_RELEASE", "28"))
+
         // One-way aggregate increment after a fully verified in-app update APK.
         // Empty by default; only the official CI build injects upstream's URL.
         buildConfigField("String", "ANONYMOUS_METRICS_ENDPOINT",
