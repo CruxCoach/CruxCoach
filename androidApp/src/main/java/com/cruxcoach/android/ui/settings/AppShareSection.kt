@@ -136,8 +136,9 @@ internal fun AppShareSection(
     var showZapstoreQr by remember { mutableStateOf(false) }
     val zapstoreApkState by viewModel.zapstoreApk.collectAsStateWithLifecycle()
 
-    // The share QR points at the project's own install page, not at a release
-    // asset on whichever forge this build was compiled against.
+    // The share QR points at the project's own download route — the same one
+    // behind the website's "Download APK" button — not at a release asset on
+    // whichever forge this build was compiled against.
     //
     // The old form built "<forge>/<owner>/<repo>/releases/download/v<MY
     // VERSION>/…apk" from BuildConfig, which was wrong in three ways at once:
@@ -146,12 +147,14 @@ internal fun AppShareSection(
     // still on an old build handed out an old APK forever; and a direct asset
     // link is precisely what breaks when the host changes.
     //
-    // The install page survives all three: it is ours, it always offers the
-    // current release, and it already routes through the site's health-checked
-    // download selector, which picks a working mirror by itself.
-    val releasePageUrl = remember { BuildConfig.UPDATER_RELEASE_PAGE_URL }
+    // The selector route survives all three: it is ours, it always resolves
+    // the current release, and it picks a healthy source itself. Pointing at
+    // the install *section* would have too — but someone who has just scanned
+    // a QR has already decided to install, so making them find the button on
+    // the page they landed on is a step that buys nothing.
+    val shareDownloadUrl = remember { BuildConfig.APP_SHARE_DOWNLOAD_URL }
     val releaseQrBitmap = remember {
-        runCatching { ApkShareHelper.generateQrBitmap(releasePageUrl) }.getOrNull()
+        runCatching { ApkShareHelper.generateQrBitmap(shareDownloadUrl) }.getOrNull()
     }
 
     val zapstoreApkUrl = (zapstoreApkState as? AppShareViewModel.ZapstoreApkState.Ready)?.url
@@ -266,7 +269,7 @@ internal fun AppShareSection(
     if (showReleaseQr && releaseQrBitmap != null) {
         ReleaseDownloadCard(
             qrBitmap = releaseQrBitmap,
-            downloadUrl = releasePageUrl
+            downloadUrl = shareDownloadUrl
         )
     }
 
@@ -525,5 +528,6 @@ private fun ReleaseDownloadCard(
     downloadUrl = downloadUrl,
     hintRes = R.string.settings_share_online_hint,
     contentDescriptionRes = R.string.cd_release_download_qr,
-    clipLabel = "CruxCoach Codeberg APK URL",
+    // Not "Codeberg" any more: the link names no forge, which is the point.
+    clipLabel = "CruxCoach APK URL",
 )

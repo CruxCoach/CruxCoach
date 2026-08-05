@@ -443,8 +443,8 @@
     <string name="settings_share_via_apps">Über Apps teilen</string>
     <string name="settings_share_online">Online teilen</string>
     <string name="settings_share_online_hide">Online-QR ausblenden</string>
-    <string name="settings_share_online_desc">QR-Code scannen, um die CruxCoach-Installationsseite zu öffnen — dort steht immer die aktuelle Version.</string>
-    <string name="settings_share_online_hint">Scannen, um die Installationsseite zu öffnen.</string>
+    <string name="settings_share_online_desc">QR-Code scannen, um CruxCoach herunterzuladen — immer die aktuelle Version, nicht die auf diesem Handy.</string>
+    <string name="settings_share_online_hint">Scannen, um die aktuelle APK herunterzuladen.</string>
     <string name="settings_share_local">Offline teilen</string>
     <string name="settings_share_local_desc">App lokal per WiFi-Hotspot teilen. Kein Internet nötig.</string>
     <string name="settings_share_stop">Stoppen</string>
