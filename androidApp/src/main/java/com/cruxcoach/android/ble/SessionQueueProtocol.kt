@@ -45,6 +45,31 @@ object SessionQueueProtocol {
     const val EVT_PARTICIPANT_JOINED: Byte = 0x05
     const val EVT_PARTICIPANT_LEFT: Byte = 0x06
 
+    /**
+     * Rest phase, added 2026-08-06.
+     *
+     * A rest is not a queue position — it is a phase during which the queue
+     * already points at the upcoming climb. Participants therefore only ever
+     * received [EVT_CURRENT] and jumped straight to that climb while the host
+     * was still counting down. Measured on two devices: the host showed
+     * "Pause 0:26 · next DA REAL 6A+" while the participant showed DA REAL
+     * 6A+ ready to climb, both labelled "2 of 3".
+     *
+     * [QueueItem.restAfterSeconds] deliberately stays off the wire — the
+     * 17-byte frame and old-client compatibility were good reasons and still
+     * are. What the old reasoning got wrong is the sentence "rest timers are
+     * personal pacing, not shared board state": the host drives the wall, so
+     * during its rest the NEXT climb is already lit. That makes the rest very
+     * much shared state, and it is the phase that has to travel, not the
+     * per-item duration.
+     *
+     * New opcodes rather than a wider frame: both decoders answer `null` on
+     * anything unknown, so a 0.2.2-or-older participant ignores these and
+     * behaves exactly as it does today.
+     */
+    const val EVT_REST_STARTED: Byte = 0x07
+    const val EVT_REST_ENDED: Byte = 0x08
+
     // ===== Command encoding (Client → Host) =====
 
     fun encodeAdd(climbUuid: String, angle: Int): ByteArray {
@@ -155,6 +180,22 @@ object SessionQueueProtocol {
         return buf
     }
 
+    /**
+     * Two bytes for the countdown: a rest can legitimately run to 60 minutes
+     * (the editor's own upper bound), which does not fit in one.
+     */
+    fun encodeEventRestStarted(remainingSeconds: Int, nextIndex: Int): ByteArray {
+        val clamped = remainingSeconds.coerceIn(0, 0xFFFF)
+        return byteArrayOf(
+            EVT_REST_STARTED,
+            ((clamped shr 8) and 0xFF).toByte(),
+            (clamped and 0xFF).toByte(),
+            nextIndex.coerceIn(0, 0xFF).toByte(),
+        )
+    }
+
+    fun encodeEventRestEnded(): ByteArray = byteArrayOf(EVT_REST_ENDED)
+
     // ===== Event decoding (Client reads from Host notifications) =====
 
     fun decodeEvent(data: ByteArray): SessionEvent? {
@@ -186,6 +227,12 @@ object SessionQueueProtocol {
                 val nameLen = (data[1].toInt() and 0xFF).coerceAtMost(data.size - 2)
                 SessionEvent.ParticipantLeft(String(data, 2, nameLen, Charsets.UTF_8))
             }
+            EVT_REST_STARTED -> {
+                if (data.size < 4) return null
+                val seconds = ((data[1].toInt() and 0xFF) shl 8) or (data[2].toInt() and 0xFF)
+                SessionEvent.RestStarted(seconds, data[3].toInt() and 0xFF)
+            }
+            EVT_REST_ENDED -> SessionEvent.RestEnded
             else -> null
         }
     }
@@ -359,6 +406,21 @@ sealed class SessionEvent {
     data object Cleared : SessionEvent()
     data class ParticipantJoined(val name: String) : SessionEvent()
     data class ParticipantLeft(val name: String) : SessionEvent()
+
+    /**
+     * The host has begun a planned rest and will resume in
+     * [remainingSeconds]. [nextIndex] is the climb the queue already points
+     * at — sent alongside so a participant that missed the preceding
+     * [CurrentChanged] still shows the right "up next".
+     *
+     * Seconds remaining, not an absolute deadline: the two clocks are not
+     * synchronised and a wall-clock skew of even a few seconds would show
+     * one side a countdown that ends at the wrong moment.
+     */
+    data class RestStarted(val remainingSeconds: Int, val nextIndex: Int) : SessionEvent()
+
+    /** The rest is over — either it ran out or somebody skipped it. */
+    data object RestEnded : SessionEvent()
 }
 
 /**

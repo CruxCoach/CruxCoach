@@ -98,6 +98,19 @@ class SessionGattBridgeMigrationTest {
     private val mockUserPreferences = mockk<UserPreferences>(relaxed = true)
     private val mockBoardSessionManager = mockk<BoardSessionManager>(relaxed = true)
 
+    /**
+     * The host broadcasts the rest phase, so the bridge now collects this.
+     *
+     * A real flow, not the relaxed mock's stand-in: `StateFlow.collect`
+     * returns `Nothing`, and a relaxed mock of that throws
+     * KotlinNothingValueException. Thrown inside the bridge's own
+     * `scope.launch` it never reaches the test that caused it — it surfaces as
+     * UncaughtExceptionsBeforeTest in whichever tests run next in the same
+     * JVM, which is how one missing stub failed nine tests across three
+     * unrelated classes.
+     */
+    private val restTimerFlow = MutableStateFlow(RestTimerState())
+
     // Controllable flows for SessionGattClient
     private val clientStateFlow = MutableStateFlow(SessionClientState.DISCONNECTED)
     private val sessionInfoFlow = MutableSharedFlow<ByteArray>(extraBufferCapacity = 4)
@@ -130,6 +143,7 @@ class SessionGattBridgeMigrationTest {
         every { mockBleConnection.connectedBoardBrand } returns
             MutableStateFlow<BoardBrand?>(null)
 
+        every { mockBoardSessionManager.restTimer } returns restTimerFlow
         every { mockGattClient.connectionState } returns clientStateFlow
         every { mockGattClient.queueEvents } returns queueEventsFlow
         every { mockGattClient.sessionInfoUpdates } returns sessionInfoFlow

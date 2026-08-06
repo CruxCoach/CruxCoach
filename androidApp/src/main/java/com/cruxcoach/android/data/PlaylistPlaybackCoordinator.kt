@@ -1,5 +1,6 @@
 package com.cruxcoach.android.data
 
+import android.util.Log
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ble.QueueItem
@@ -200,21 +201,39 @@ class PlaylistPlaybackCoordinator(
      * you haven't tried yet and arm the following pause".
      */
     fun next() {
+        // Participants ask; they never decide. Both branches below are host
+        // decisions — advancing the queue and skipping a pause — and the host
+        // is the one driving the wall. A participant that resolved its own
+        // rest locally would stop counting down while the host still was,
+        // which is the desync this whole change exists to remove.
+        if (state.value.isParticipant) {
+            Log.i(TAG, "event=transport_requested action=next role=participant")
+            gattBridge.sendNext()
+            return
+        }
         if (state.value.phase is PlaybackPhase.Resting) {
+            Log.i(TAG, "event=transport_applied action=next role=host effect=skip_rest")
             skipRest()
             return
         }
-        if (state.value.isParticipant) gattBridge.sendNext() else queueManager.nextClimb()
+        Log.i(TAG, "event=transport_applied action=next role=host effect=advance")
+        queueManager.nextClimb()
     }
 
     /** Previous during a rest = undo the advance: cancel the pause (and
      *  resume the session clock it paused — same semantics as [skipRest])
      *  and step back to the climb you just left. */
     fun previous() {
+        if (state.value.isParticipant) {
+            Log.i(TAG, "event=transport_requested action=prev role=participant")
+            gattBridge.sendPrev()
+            return
+        }
         if (state.value.phase is PlaybackPhase.Resting) {
             skipRest()
         }
-        if (state.value.isParticipant) gattBridge.sendPrev() else queueManager.previousClimb()
+        Log.i(TAG, "event=transport_applied action=prev role=host")
+        queueManager.previousClimb()
     }
 
     /** Clears the lingering "rest finished" banner state once the player
@@ -240,8 +259,22 @@ class PlaylistPlaybackCoordinator(
         else boardSessionManager.pauseSession(PauseReason.MANUAL)
     }
 
-    /** End the rest block early and restart the clock. */
+    /**
+     * End the rest block early and restart the clock.
+     *
+     * A participant routes this through the host instead of cancelling its own
+     * timer: the host's `next()` during a rest skips it and broadcasts
+     * RestEnded, which cancels the timer here anyway. Cancelling locally would
+     * put this device back on the wall's climb while everyone else — and the
+     * wall's own countdown — was still resting.
+     */
     fun skipRest() {
+        if (state.value.isParticipant) {
+            Log.i(TAG, "event=transport_requested action=skip_rest role=participant")
+            gattBridge.sendNext()
+            return
+        }
+        Log.i(TAG, "event=transport_applied action=skip_rest role=host")
         boardSessionManager.cancelRestTimer()
     }
 
@@ -373,5 +406,11 @@ class PlaylistPlaybackCoordinator(
         }
         advanceMode = ListPlaybackAdvance.MANUAL
         return finished
+    }
+
+    private companion object {
+        /** Shares the CruxBLE prefix so one logcat filter covers the whole
+         *  session path — bridge, queue and playback. */
+        const val TAG = "CruxBLE/Playback"
     }
 }

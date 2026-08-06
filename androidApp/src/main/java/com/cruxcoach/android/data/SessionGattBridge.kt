@@ -234,6 +234,44 @@ class SessionGattBridge(
                     }
                 }
             }
+
+            // Broadcast the rest phase.
+            //
+            // Without this a participant only ever hears CurrentChanged, which
+            // the queue emits when the advance ARMS the pause — so it jumped
+            // straight to the upcoming climb while the host counted down.
+            // Measured on two devices 2026-08-06: host "Pause 0:26 · next DA
+            // REAL 6A+", participant showing DA REAL 6A+ ready to climb.
+            //
+            // Edge-triggered rather than per-tick: the countdown ticks once a
+            // second and notifying every tick would spend the connection on
+            // data the participant can derive itself from its own timer.
+            launch {
+                var wasResting = false
+                boardSessionManager.restTimer.collect { rest ->
+                    if (rest.isRunning && !wasResting) {
+                        val index = queueManager.state.value.currentIndex
+                        Log.i(
+                            TAG,
+                            "event=rest_broadcast state=started " +
+                                "seconds=${rest.secondsRemaining} nextIndex=$index",
+                        )
+                        gattServer.notifyAll(
+                            SessionGattUuids.QUEUE_EVENT,
+                            SessionQueueProtocol.encodeEventRestStarted(
+                                rest.secondsRemaining, index,
+                            ),
+                        )
+                    } else if (!rest.isRunning && wasResting) {
+                        Log.i(TAG, "event=rest_broadcast state=ended")
+                        gattServer.notifyAll(
+                            SessionGattUuids.QUEUE_EVENT,
+                            SessionQueueProtocol.encodeEventRestEnded(),
+                        )
+                    }
+                    wasResting = rest.isRunning
+                }
+            }
         }
 
         // Auto-import the active/last climb from nearby devices into the queue.
@@ -727,8 +765,16 @@ class SessionGattBridge(
      */
     private fun sendParticipantCommand(label: String, payload: ByteArray) {
         scope.launch {
-            if (!gattClient.sendCommand(payload)) {
-                Log.w(TAG, "Participant command '$label' was not delivered to the host")
+            if (gattClient.sendCommand(payload)) {
+                // Logged on success too, not only on failure. Only logging the
+                // failure leaves the working path silent, and during the
+                // 2026-08-06 two-device test that made three candidate causes
+                // for "next does nothing" indistinguishable: no line meant
+                // "never pressed", "not sent", "sent and ignored" or "applied"
+                // equally well. A support log has to separate those.
+                Log.i(TAG, "event=transport_sent action=$label")
+            } else {
+                Log.w(TAG, "event=transport_send_failed action=$label")
             }
         }
     }
@@ -750,7 +796,13 @@ class SessionGattBridge(
                 // so a literal here reaches every guest's screen regardless of
                 // their own locale — same trap as the promoteToHost name below.
                 val label = context.getString(R.string.ble_participant_label, count + 1)
-                Log.d(TAG, "Participant joined published session")
+                // INFO and structured: during the 2026-08-06 two-device test
+                // the host produced no app-level line for a join at all, so
+                // the only evidence a participant had arrived was Android's
+                // own BluetoothGattServer chatter plus a screenshot of the
+                // counter. Deliberately no address or name — the count is
+                // what diagnosis needs, and the rest is the guest's.
+                Log.i(TAG, "event=participant_joined count=${count + 1}")
                 queueManager.addParticipant(deviceAddress, label)
             } else {
                 Log.d(TAG, "Ignoring duplicate JOIN from current connection")
@@ -770,12 +822,19 @@ class SessionGattBridge(
             is SessionCommand.SetCurrent -> queueManager.setCurrentClimb(cmd.index)
             // Through the host's phase-aware playback logic, not straight
             // into the queue — see onRemoteNext.
-            is SessionCommand.Next -> (onRemoteNext ?: queueManager::nextClimb).invoke()
-            is SessionCommand.Prev -> (onRemotePrev ?: queueManager::previousClimb).invoke()
+            is SessionCommand.Next -> {
+                Log.i(TAG, "event=transport_received action=next")
+                (onRemoteNext ?: queueManager::nextClimb).invoke()
+            }
+            is SessionCommand.Prev -> {
+                Log.i(TAG, "event=transport_received action=prev")
+                (onRemotePrev ?: queueManager::previousClimb).invoke()
+            }
             is SessionCommand.Join -> Unit // handled before authorization gate
             is SessionCommand.Leave -> {
                 Log.d(TAG, "Processing LEAVE from $deviceAddress, " +
                     "participants before: ${queueManager.state.value.participants.map { it.deviceAddress }}")
+                Log.i(TAG, "event=participant_left")
                 queueManager.removeParticipant(deviceAddress)
                 commandGate.remove(deviceAddress)
                 Log.d(TAG, "After removeParticipant: count=${queueManager.state.value.participantCount}, " +
@@ -807,6 +866,30 @@ class SessionGattBridge(
             is SessionEvent.Cleared -> queueManager.clearQueue()
             is SessionEvent.ParticipantJoined, is SessionEvent.ParticipantLeft -> {
                 // Participant list comes via dedicated characteristic
+            }
+            // Drive the participant's OWN rest timer rather than inventing a
+            // second kind of rest UI. PlaylistPlaybackCoordinator derives
+            // PlaybackPhase.Resting from exactly this flow, so the participant
+            // gets the identical countdown, "up next" card and skip button the
+            // host has, for free.
+            is SessionEvent.RestStarted -> {
+                Log.i(
+                    TAG,
+                    "event=rest_applied state=started " +
+                        "seconds=${event.remainingSeconds} nextIndex=${event.nextIndex}",
+                )
+                // The queue may still be behind if CurrentChanged was dropped;
+                // the host tells us where it landed, so trust that.
+                if (event.nextIndex != queueManager.state.value.currentIndex) {
+                    queueManager.setCurrentClimb(event.nextIndex)
+                }
+                if (event.remainingSeconds > 0) {
+                    boardSessionManager.startRestTimer(event.remainingSeconds)
+                }
+            }
+            is SessionEvent.RestEnded -> {
+                Log.i(TAG, "event=rest_applied state=ended")
+                boardSessionManager.cancelRestTimer()
             }
         }
     }
