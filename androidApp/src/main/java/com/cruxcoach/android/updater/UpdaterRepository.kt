@@ -169,7 +169,48 @@ class UpdaterRepository @Inject constructor(
         prefs.pendingUpdate()?.let { onNewerUpdateDetected(it) }
     }
 
+    /**
+     * Enforce the precondition this function's name asserts.
+     *
+     * Callers do not all establish it. [checkNow] does — the checker only
+     * reports a release newer than the running one. [resumePendingAutomationIfAllowed]
+     * does not: it replays a block of DataStore state that nothing ever
+     * invalidated, so it stays valid-looking after the described version has
+     * been installed, or after the user installed a newer one by hand.
+     *
+     * Observed on a Nokia 6.1 on 2026-08-06, running 0.2.2 with 0.2.1 pending:
+     * every trigger downloaded 34.5 MB, verified it, and committed an install
+     * session that Android refused with INSTALL_FAILED_VERSION_DOWNGRADE —
+     * while the check in the same second correctly reported no update. Three
+     * copies of the APK had accumulated on the device.
+     *
+     * The state is CLEARED, not skipped. Skipping would repeat the whole
+     * sequence on the next trigger, forever, which is what made a defect this
+     * loud invisible for so long: everything it does, it does silently and
+     * successfully right up to the install Android rejects.
+     */
+    private suspend fun discardPendingIfNotNewer(info: UpdateInfo): Boolean {
+        val installed = SemVer.parseOrNull(BuildConfig.VERSION_NAME) ?: return false
+        if (info.version > installed) return false
+        Log.i(
+            TAG,
+            "event=pending_discarded version=${info.versionName} " +
+                "installed=${BuildConfig.VERSION_NAME} reason=not_newer",
+        )
+        preferences.snapshot().pendingDownloadId?.let { staleId ->
+            downloadMonitorJob?.cancel()
+            downloadMonitorJob = null
+            downloader.cancel(staleId)
+            _downloadProgress.value = null
+        }
+        downloader.deleteDownloadedApks()
+        notifier.cancel()
+        preferences.update { it.withoutPendingUpdate() }
+        return true
+    }
+
     private suspend fun onNewerUpdateDetected(info: UpdateInfo) {
+        if (discardPendingIfNotNewer(info)) return
         val prefs = preferences.snapshot()
         when (prefs.pipelineStage) {
             PipelineStage.DOWNLOADING,

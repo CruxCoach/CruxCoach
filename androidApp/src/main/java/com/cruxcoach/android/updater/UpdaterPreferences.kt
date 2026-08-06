@@ -245,6 +245,34 @@ data class UpdaterState(
     /** At-most-once guard for the end-of-support notification. */
     val endOfSupportNoticeShown: Boolean = false,
 ) {
+    /**
+     * Every pending-update field back to its default, pipeline included.
+     *
+     * Nothing else in this class clears them: the pending block is written
+     * when a check finds a release and was never unwritten, so the state
+     * outlived the very install it described. Once the app is running the
+     * version it was pointing at, the block is not merely stale — it is a
+     * standing instruction to install something already installed.
+     *
+     * Deliberately exhaustive rather than "the fields pendingUpdate() reads":
+     * a half-cleared block would leave pendingDownloadId naming a
+     * DownloadManager job nobody owns any more.
+     */
+    fun withoutPendingUpdate(): UpdaterState = copy(
+        pendingDownloadId = null,
+        pendingTagName = null,
+        pendingVersionName = null,
+        pendingDownloadUrls = emptyList(),
+        pendingApkSha256 = null,
+        pendingApkSizeBytes = null,
+        pendingApkSha256Url = null,
+        pendingReleasePageUrl = null,
+        pendingReleaseNotesMarkdown = null,
+        pendingDownloadSourceIndex = 0,
+        pendingAllowMobile = false,
+        pipelineStage = PipelineStage.NONE,
+    )
+
     /** Reconstitutes the [UpdateInfo] previously written to state, if all fields are present. */
     fun pendingUpdate(): UpdateInfo? {
         val tag = pendingTagName ?: return null

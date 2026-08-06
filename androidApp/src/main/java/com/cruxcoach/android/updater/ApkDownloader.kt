@@ -46,7 +46,7 @@ class ApkDownloader(private val context: Context) {
     /** Prepare — does not enqueue. Returns the target file the caller should pass to [start]. */
     fun targetFileFor(versionName: String): File {
         val dir = updaterDir() ?: File(context.cacheDir, "updater").apply { mkdirs() }
-        return File(dir, "pending-update-$versionName.apk")
+        return File(dir, "$APK_PREFIX$versionName.apk")
     }
 
     /**
@@ -121,6 +121,36 @@ class ApkDownloader(private val context: Context) {
         }
     }
 
+    /**
+     * Deletes every downloaded APK, whatever it is called.
+     *
+     * [clearCacheFor] only removes the exact name we asked DownloadManager to
+     * write. DownloadManager does not overwrite: handed a destination that
+     * already exists it silently writes `pending-update-0.2.1-1.apk`, then
+     * `-2`, and nothing ever removed those. A Nokia 6.1 was found on
+     * 2026-08-06 holding three copies of the same release — 103 MB, each one
+     * a full re-download.
+     *
+     * Called when the pending state is discarded, where "whatever it is
+     * called" is the point: the version in the file name is exactly the
+     * information that has just been established as untrustworthy.
+     */
+    fun deleteDownloadedApks() {
+        val dir = updaterDir() ?: return
+        val stale = dir.listFiles { f ->
+            f.isFile && f.name.startsWith(APK_PREFIX) && f.name.endsWith(".apk")
+        } ?: return
+        var freed = 0L
+        for (file in stale) {
+            val size = file.length()
+            if (file.delete()) freed += size
+            else Log.w(TAG, "Could not delete stale APK at ${file.absolutePath}")
+        }
+        if (stale.isNotEmpty()) {
+            Log.i(TAG, "event=stale_apks_deleted count=${stale.size} bytes=$freed")
+        }
+    }
+
     /** Current transport — used to gate auto-download decisions (§6.14). */
     fun currentTransport(): Transport {
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
@@ -188,5 +218,9 @@ class ApkDownloader(private val context: Context) {
 
     companion object {
         private const val TAG = "ApkDownloader"
+
+        /** Shared by [targetFileFor] and [deleteDownloadedApks] so a rename in
+         *  one cannot leave the other silently matching nothing. */
+        internal const val APK_PREFIX = "pending-update-"
     }
 }
