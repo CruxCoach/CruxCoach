@@ -804,6 +804,31 @@ class SessionGattBridge(
                 // what diagnosis needs, and the rest is the guest's.
                 Log.i(TAG, "event=participant_joined count=${count + 1}")
                 queueManager.addParticipant(deviceAddress, label)
+
+                // Tell a late joiner that a rest is running.
+                //
+                // The rest broadcast is edge-triggered, and the initial state a
+                // client reads (session info, queue, current climb, participant
+                // list) has no phase in it. Without this, joining DURING a rest
+                // reproduces the exact defect the rest events were added to fix:
+                // the newcomer sees the upcoming climb and is invited to start
+                // on a wall everyone else is resting in front of.
+                //
+                // notifyAll rather than a targeted write: participants already
+                // resting get the same remaining seconds they are counting
+                // anyway, so the resync is a no-op for them, and the alternative
+                // is a second code path for one client.
+                val rest = boardSessionManager.restTimer.value
+                if (rest.isRunning && rest.secondsRemaining > 0) {
+                    Log.i(TAG, "event=rest_broadcast state=resync seconds=${rest.secondsRemaining}")
+                    gattServer.notifyAll(
+                        SessionGattUuids.QUEUE_EVENT,
+                        SessionQueueProtocol.encodeEventRestStarted(
+                            rest.secondsRemaining,
+                            queueManager.state.value.currentIndex,
+                        ),
+                    )
+                }
             } else {
                 Log.d(TAG, "Ignoring duplicate JOIN from current connection")
             }

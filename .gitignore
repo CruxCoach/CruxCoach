@@ -41,6 +41,7 @@ docs/backlog/
 docs/*.md
 !docs/KEY_ROTATION.md
 !docs/testing.md
+!docs/nostr-architecture.md
 
 # FEAT specs are PUBLIC as of 2026-07-29 (they were excluded until then).
 # The design rationale in them is the most useful thing this repo has for a
