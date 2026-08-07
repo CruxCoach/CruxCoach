@@ -36,10 +36,18 @@ class ForgeReleaseClient(
         limit: Int = 10,
     ): Result = withContext(Dispatchers.IO) {
         val apiBase = source.url.trimEnd('/')
-        val url = "$apiBase/repos/${source.owner}/${source.repo}/releases?limit=$limit"
+        // Both forges page this endpoint, under different names: Forgejo/Gitea
+        // read `limit`, GitHub reads `per_page` and ignores `limit` entirely —
+        // which would silently fetch its default 30 releases instead of 10.
+        // Harmless in itself, but it is mobile data on every check, and the
+        // parameter is free to send. Sending both is simpler and safer than
+        // sniffing the host.
+        val url = "$apiBase/repos/${source.owner}/${source.repo}/releases" +
+            "?limit=$limit&per_page=$limit"
         val request = Request.Builder()
             .url(url)
-            .header("Accept", "application/json")
+            // GitHub's documented media type; Forgejo answers JSON regardless.
+            .header("Accept", "application/vnd.github+json, application/json")
             .header("User-Agent", "CruxCoach-Updater/${BuildConfig.VERSION_NAME}")
             .apply { if (!etag.isNullOrBlank()) header("If-None-Match", etag) }
             .build()
