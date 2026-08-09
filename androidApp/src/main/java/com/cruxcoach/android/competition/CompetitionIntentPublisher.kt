@@ -1,5 +1,6 @@
 package com.cruxcoach.android.competition
 
+import android.content.Context
 import android.util.Log
 import com.cruxcoach.android.nostr.NostrPublicEventBuilder
 import com.cruxcoach.android.nostr.NostrRelayPool
@@ -7,6 +8,7 @@ import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.domain.competition.Competition
 import com.cruxcoach.domain.competition.CompetitionProtocol
 import com.vitorpamplona.quartz.nip01Core.core.Event
+import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.random.Random
@@ -24,9 +26,22 @@ import kotlinx.serialization.json.JsonPrimitive
  */
 @Singleton
 class CompetitionIntentPublisher @Inject constructor(
+    @ApplicationContext context: Context,
     private val relayPool: NostrRelayPool,
     private val signer: NostrSigner,
 ) {
+
+    /**
+     * Nonces outlive the process.
+     *
+     * They were kept in memory only, which meant Android killing the app in the
+     * background produced fresh ones — so registering again after coming back
+     * added a *second* live request instead of replacing the first. On the paid
+     * path it is worse than untidy: the zap request carries the registration's
+     * nonce, and the organizer checks a receipt against it, so a nonce that
+     * changed would strand a payment that had already been made.
+     */
+    private val store = context.getSharedPreferences("competition_nonces", Context.MODE_PRIVATE)
 
     /** Outcome of a publish, with enough detail for the UI to be honest. */
     sealed interface Result {
@@ -35,7 +50,7 @@ class CompetitionIntentPublisher @Inject constructor(
     }
 
     /**
-     * A nonce per (competition, operation), kept for the process lifetime.
+     * A nonce per (competition, operation, signer), persisted across restarts.
      *
      * Reusing it means a retry REPLACES the earlier request rather than adding a
      * second one — the addressable-replacement rule doing the deduplication for
@@ -44,8 +59,15 @@ class CompetitionIntentPublisher @Inject constructor(
     private val nonces = mutableMapOf<String, String>()
 
     private fun nonceFor(compId: String, op: String): String = synchronized(nonces) {
-        nonces.getOrPut("$compId:$op") {
-            (0 until 4).joinToString("") { "%02x".format(Random.nextInt(256)) }
+        // Keyed by the signer too: two identities on one device must not share
+        // a nonce, or one would replace the other's request.
+        val key = "${signer.getPublicKeyHex().take(8)}:$compId:$op"
+        nonces.getOrPut(key) {
+            store.getString(key, null) ?: run {
+                val fresh = (0 until 4).joinToString("") { "%02x".format(Random.nextInt(256)) }
+                store.edit().putString(key, fresh).apply()
+                fresh
+            }
         }
     }
 

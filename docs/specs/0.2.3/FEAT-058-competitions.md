@@ -288,6 +288,7 @@ Each is mapped to automation in [`FEAT-058-conformance.md`](FEAT-058-conformance
 | AC-42 | The build identifies as the release it is, and a release with no What's New entry fails the build. |
 | AC-43 | A camera plane with row padding, pixel interleaving or a crop rectangle decodes; a plane too small for what it claims is refused rather than read out of bounds. |
 | AC-44 | No participant state is displayed without the control that leaves it: a failed or expired payment stays payable, a withdrawal is reversible while registration is open, and an accepted entrant can ask to be checked in. |
+| AC-45 | An intent keeps its nonce across a reload or process death, so asking again replaces the earlier request rather than adding a second one — and a zap receipt bound to that nonce still matches. |
 
 ## 11. Non-goals
 
