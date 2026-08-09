@@ -62,7 +62,7 @@ clients render nonsense and it makes our own validation lie.
 > **addressable event** throughout and cites NIP-01. Kotlin and JavaScript
 > identifiers follow the same rule. (The existing `docs/nostr-architecture.md`
 > §1 table still uses the old wording; that is a pre-existing doc, out of scope
-> for this branch, and noted in `DECISIONS-TO-REVIEW.md`.)
+> for this branch, and noted in [the decision register](FEAT-058-decisions.md) §12.)
 
 | NIP | Verdict | Reasoning |
 |---|---|---|
@@ -1342,11 +1342,17 @@ presents to the user as a permanently spinning button.
 - Generated with `crypto.getRandomValues`. No custom PRNG, no `Math.random`.
 - **Never persisted in plaintext.** Storage is AES-GCM ciphertext with a random
   96-bit IV, keyed by PBKDF2-SHA-256 (600 000 iterations, random 128-bit salt)
-  over a user passphrase. The plaintext key is held in a module-scoped
-  `Uint8Array`, overwritten with zeros on logout, tab hide, and session expiry.
-- **Backup confirmation is real.** The user must re-enter three challenged words
-  of the displayed `nsec`'s checksum-verified encoding before the flow completes.
-  "I have written it down" alone does not advance.
+  over a user passphrase. The plaintext key is held in a `Uint8Array` owned by
+  the session and overwritten with zeros **by a scheduled timer** at the
+  absolute limit, at the idle limit, and five minutes after the page is hidden.
+  The distinction matters: an implementation that only checks the deadline
+  before the next signing call leaves the key in memory for as long as nobody
+  signs anything, which is most of a competition.
+- **Backup confirmation is real.** The user must re-enter three challenged
+  **characters**, at positions derived from the key itself, of the displayed
+  `nsec`'s checksum-verified encoding before the flow completes. "I have written
+  it down" alone does not advance. (Three *words* would be a seed-phrase
+  challenge; an `nsec` is bech32 and has no words.)
 - **Clipboard:** copying the nsec is a distinct, explicitly-labelled action that
   warns first and schedules a best-effort clipboard clear after 60 s. It is never
   copied implicitly.
@@ -1354,9 +1360,25 @@ presents to the user as a permanently spinning button.
   `aria-describedby` warning that is announced *before* the value.
 - **Shared device:** a "this is a shared device" choice keeps the key in memory
   only for the session and never writes storage at all.
-- **Session expiry:** 12 h absolute, 60 min idle, both zeroing the key.
-- **Logout** zeroes memory, removes the ciphertext, and revokes the NIP-46
-  session where one exists.
+- **Session expiry:** 12 h absolute, 60 min idle, 5 min hidden — each armed as
+  a timer when the key is adopted and re-armed on use, so the zeroing happens
+  whether or not anything asks the session a question. Locking, forgetting and
+  disposing all cancel every timer; the page-visibility listener is attached
+  once per session and removed by `dispose()`, so a page that replaces its
+  session does not accumulate one per sign-in.
+- **Sign out and forget are different actions, deliberately.** *Sign out* zeroes
+  the plaintext and **keeps** the encrypted vault, because somebody signing out
+  on their own phone expects to return with their passphrase, and a session
+  button that destroyed the only copy of a key would be a data-loss button
+  wearing the wrong label. *Forget this key* removes the ciphertext and asks for
+  confirmation first. The UI shows the second only when this device is actually
+  holding a key.
+- **NIP-46 teardown is local, and says so.** Closing a bunker session rejects
+  every pending request, closes the subscription and drops the pool. It does
+  **not** revoke anything remotely: NIP-46 has no revoke a client can rely on,
+  so the approval lives in the user's own signer app and is withdrawn there.
+  Claiming otherwise would tell someone their access had been cut off when it
+  had not.
 - **No secret is ever sent anywhere.** There is no endpoint that could receive
   one; the site is static.
 

@@ -10,6 +10,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
@@ -87,6 +88,7 @@ fun CompetitionScannerScreen(
     var asked by remember { mutableStateOf(false) }
     var permanentlyDenied by remember { mutableStateOf(false) }
     var problem by remember { mutableStateOf<CompetitionShareLink.Scan?>(null) }
+    var cameraFailed by remember { mutableStateOf(false) }
 
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { result ->
         granted = result
@@ -122,6 +124,14 @@ fun CompetitionScannerScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             when {
+                cameraFailed -> {
+                    // Permission was given and the camera still would not
+                    // start: no back camera, or another app holding it. Saying
+                    // "allow the camera" here would be wrong twice over.
+                    Text(stringResource(R.string.comp_scan_camera_failed))
+                    OtherWaysIn(onNavigateBack)
+                }
+
                 granted -> {
                     Box(Modifier.fillMaxWidth().weight(1f)) {
                         CameraPreview(
@@ -132,6 +142,7 @@ fun CompetitionScannerScreen(
                                     else -> problem = scan
                                 }
                             },
+                            onCameraFailed = { cameraFailed = true },
                         )
                     }
                     Text(stringResource(R.string.comp_scan_hint))
@@ -196,7 +207,11 @@ private fun scanMessage(scan: CompetitionShareLink.Scan): String = when (scan) {
  * up reading a code the phone is no longer pointing at.
  */
 @Composable
-private fun CameraPreview(decoder: CompetitionQrDecoder, onText: (String) -> Unit) {
+private fun CameraPreview(
+    decoder: CompetitionQrDecoder,
+    onText: (String) -> Unit,
+    onCameraFailed: () -> Unit,
+) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val handle by rememberUpdatedState(onText)
@@ -210,34 +225,43 @@ private fun CameraPreview(decoder: CompetitionQrDecoder, onText: (String) -> Uni
     DisposableEffect(lifecycleOwner) {
         val future = ProcessCameraProvider.getInstance(context)
         val listener = Runnable {
-            val provider = future.get()
-            val preview = Preview.Builder().build().also {
-                it.surfaceProvider = previewView.surfaceProvider
-            }
-            val analysis = ImageAnalysis.Builder()
-                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                .build()
-            analysis.setAnalyzer(executor) { image ->
-                try {
-                    val plane = image.planes.firstOrNull()
-                    if (plane != null) {
-                        val bytes = ByteArray(plane.buffer.remaining())
-                        plane.buffer.get(bytes)
-                        val text = decoder.decode(bytes, image.width, image.height)
-                            ?: decoder.decode(bytes, image.width, image.height, rotate = true)
-                        if (text != null && text != lastText[0]) {
-                            lastText[0] = text
-                            previewView.post { handle(text) }
-                        }
-                    }
-                } finally {
-                    // Always: a frame that is not closed stalls the camera for
-                    // good, and the screen simply freezes.
-                    image.close()
+            // A provider that cannot start, or a device with no back camera,
+            // must leave a message on screen rather than take the process down.
+            val bound = runCatching {
+                val provider = future.get()
+                val preview = Preview.Builder().build().also {
+                    it.surfaceProvider = previewView.surfaceProvider
                 }
-            }
-            provider.unbindAll()
-            provider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
+                val analysis = ImageAnalysis.Builder()
+                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                    .build()
+                analysis.setAnalyzer(executor) { image ->
+                    try {
+                        readFrame(decoder, image)?.let { text ->
+                            // Duplicate suppression: a QR sits in frame for many
+                            // frames and firing on each would navigate repeatedly.
+                            if (text != lastText[0]) {
+                                lastText[0] = text
+                                previewView.post { handle(text) }
+                            }
+                        }
+                    } catch (_: Exception) {
+                        // One unreadable frame is not a reason to stop scanning.
+                    } finally {
+                        // Always: a frame that is not closed stalls the camera
+                        // for good, and the screen simply freezes.
+                        image.close()
+                    }
+                }
+                provider.unbindAll()
+                provider.bindToLifecycle(
+                    lifecycleOwner,
+                    CameraSelector.DEFAULT_BACK_CAMERA,
+                    preview,
+                    analysis,
+                )
+            }.isSuccess
+            if (!bound) onCameraFailed()
         }
         future.addListener(listener, ContextCompat.getMainExecutor(context))
 
@@ -251,6 +275,44 @@ private fun CameraPreview(decoder: CompetitionQrDecoder, onText: (String) -> Uni
         factory = { previewView },
         modifier = Modifier.fillMaxSize().testTag("competition_scan_preview"),
     )
+}
+
+/**
+ * Turn one analyser frame into text, if it holds any.
+ *
+ * The plane is repacked using its own `rowStride` and `pixelStride` rather than
+ * assumed to be tightly packed, and cropped to the rectangle the camera calls
+ * valid. Both are why a scanner can pass a synthetic test and fail on a phone.
+ *
+ * Rotation is tried second rather than first: `imageInfo.rotationDegrees` says
+ * how the sensor is mounted, and a QR is square, so an upright code usually
+ * decodes without it. Trying the cheap path first keeps the common case fast.
+ */
+private fun readFrame(decoder: CompetitionQrDecoder, image: ImageProxy): String? {
+    val plane = image.planes.firstOrNull() ?: return null
+    val buffer = plane.buffer
+    val bytes = ByteArray(buffer.remaining())
+    buffer.get(bytes)
+
+    val crop = image.cropRect
+    val width = if (crop.width() > 0) crop.width() else image.width
+    val height = if (crop.height() > 0) crop.height() else image.height
+
+    val packed = decoder.packLuminance(
+        plane = bytes,
+        width = width,
+        height = height,
+        rowStride = plane.rowStride,
+        pixelStride = plane.pixelStride,
+        left = crop.left.coerceAtLeast(0),
+        top = crop.top.coerceAtLeast(0),
+    ) ?: return null
+
+    decoder.decode(packed, width, height)?.let { return it }
+    // A code partly out of frame can read one way and not the other, and the
+    // sensor's own orientation decides which.
+    val quarterTurns = ((image.imageInfo.rotationDegrees % 360) + 360) % 360
+    return if (quarterTurns == 0) null else decoder.decode(packed, width, height, rotate = true)
 }
 
 private fun hasCameraPermission(context: Context): Boolean =

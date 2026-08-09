@@ -75,6 +75,29 @@ object Nip19 {
         override fun hashCode(): Int = 31 * hrp.hashCode() + bytes.contentHashCode()
     }
 
+    /** The raw 5-bit words, checksum verified. BOLT11 needs these: its payload
+     *  is a stream of word-counted tagged fields, and converting to bytes first
+     *  throws away exactly the alignment that stream depends on. */
+    fun decodeWords(value: String): Pair<String, List<Int>>? {
+        if (value != value.lowercase() && value != value.uppercase()) return null
+        val lower = value.lowercase()
+        val split = lower.lastIndexOf('1')
+        if (split < 1 || split + 7 > lower.length) return null
+        val hrp = lower.substring(0, split)
+        val data = mutableListOf<Int>()
+        for (index in (split + 1) until lower.length) {
+            val position = CHARSET.indexOf(lower[index])
+            if (position == -1) return null
+            data.add(position)
+        }
+        if (polymod(hrpExpand(hrp) + data) != 1) return null
+        return hrp to data.subList(0, data.size - 6).toList()
+    }
+
+    /** 5-bit words back to bytes, for a field that is a whole number of bytes. */
+    fun wordsToBytes(words: List<Int>): ByteArray? =
+        convertBits(words, 5, 8, false)?.map { it.toByte() }?.toByteArray()
+
     /** @return null on a bad checksum, mixed case, or an impossible length. */
     fun decode(value: String): Decoded? {
         if (value != value.lowercase() && value != value.uppercase()) return null

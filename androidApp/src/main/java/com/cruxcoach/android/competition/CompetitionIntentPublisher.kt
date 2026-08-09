@@ -112,6 +112,33 @@ class CompetitionIntentPublisher @Inject constructor(
         ),
     )
 
+    /**
+     * Tell the organizer which receipt to look for.
+     *
+     * Idempotent by the same rule as everything else here: the nonce is per
+     * (competition, op), so retrying replaces the claim rather than adding a
+     * second one.
+     */
+    suspend fun claimPayment(
+        competition: Competition,
+        organizerPubkey: String,
+        zapReceiptId: String,
+        bolt11: String,
+    ): Result = send(
+        competition,
+        organizerPubkey,
+        "payment_claim",
+        JsonObject(
+            buildMap {
+                put("zap_receipt_id", JsonPrimitive(zapReceiptId))
+                if (bolt11.isNotEmpty()) put("bolt11", JsonPrimitive(bolt11))
+            },
+        ),
+    )
+
+    /** The stable nonce for this competition's registration, for zap binding. */
+    fun registrationNonce(compId: String): String = nonceFor(compId, "register")
+
     private suspend fun send(
         competition: Competition,
         organizerPubkey: String,

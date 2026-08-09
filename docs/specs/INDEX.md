@@ -81,11 +81,13 @@ spec file so other branches see the reservation.
 Implementation plan for FEAT-043/045/046:
 `0.2.2/IMPLEMENTATION-PLAN-convergence-player.md`.
 
-FEAT-058 ships as three documents: the user-level feature spec
+FEAT-058 ships as four documents: the user-level feature spec
 `0.2.3/FEAT-058-competitions.md`, the wire contract
-`0.2.3/FEAT-058-competition-protocol.md`, and the cross-client conformance
-matrix `0.2.3/FEAT-058-conformance.md`. Its website half lives on the
-`cruxcoach-pages` branch `feat/competitions`.
+`0.2.3/FEAT-058-competition-protocol.md`, the cross-client conformance matrix
+`0.2.3/FEAT-058-conformance.md`, and the decision register
+`0.2.3/FEAT-058-decisions.md` — what was decided to finish the feature, what is
+still an open product question, and which is which. Its website half lives on
+the `cruxcoach-pages` branch `feat/competitions`.
 
 FEAT-043 and FEAT-046 moved to v0.2.3 on 2026-07-27: neither is in the 0.2.2
 build, and a milestone column that says otherwise makes the release claim

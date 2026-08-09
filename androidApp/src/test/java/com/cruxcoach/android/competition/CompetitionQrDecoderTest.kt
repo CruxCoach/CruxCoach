@@ -6,8 +6,11 @@ import com.google.zxing.qrcode.QRCodeWriter
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertContentEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 
 /**
  * Scanning a competition code, without a camera.
@@ -118,5 +121,109 @@ class CompetitionQrDecoderTest {
             "an naddr that is not a competition must not open one",
         )
         assertNull(CompetitionShareLink.parse(someoneElse))
+    }
+
+    // ── the part a tightly-packed synthetic buffer never exercises ──
+
+    /**
+     * Lay a tightly-packed image out the way a camera does: padded rows, and
+     * optionally an interleaved plane, inside a larger buffer.
+     */
+    private fun asCameraPlane(
+        packed: ByteArray,
+        width: Int,
+        height: Int,
+        rowStride: Int,
+        pixelStride: Int = 1,
+        left: Int = 0,
+        top: Int = 0,
+        filler: Byte = 0x7f,
+    ): ByteArray {
+        val plane = ByteArray((top + height) * rowStride + left * pixelStride + width * pixelStride) { filler }
+        for (y in 0 until height) {
+            for (x in 0 until width) {
+                plane[(top + y) * rowStride + (left + x) * pixelStride] = packed[y * width + x]
+            }
+        }
+        return plane
+    }
+
+    @Test
+    fun `a padded plane decodes, where a tightly-packed assumption would not`() {
+        // This is the real-device failure: CameraX pads rows out to a hardware
+        // alignment, so rowStride > width. Reading width * height bytes walks
+        // diagonally across the image and decodes nothing at all.
+        val link = CompetitionShareLink.httpsLink(naddr, "cruxcoach.org")
+        val (packed, width, height) = luminance(link)
+        val rowStride = width + 48
+        val plane = asCameraPlane(packed, width, height, rowStride)
+
+        assertNull(
+            decoder.decode(plane, width, height),
+            "the padded buffer must not be readable as if it were packed",
+        )
+        val repacked = decoder.packLuminance(plane, width, height, rowStride, 1)!!
+        assertEquals(link, decoder.decode(repacked, width, height))
+    }
+
+    @Test
+    fun `an interleaved plane decodes`() {
+        // pixelStride > 1 happens when the Y plane shares a buffer with the
+        // chroma planes.
+        val link = CompetitionShareLink.httpsLink(naddr, "cruxcoach.org")
+        val (packed, width, height) = luminance(link)
+        val pixelStride = 2
+        val rowStride = width * pixelStride + 16
+        val plane = asCameraPlane(packed, width, height, rowStride, pixelStride)
+
+        val repacked = decoder.packLuminance(plane, width, height, rowStride, pixelStride)!!
+        assertContentEquals(packed, repacked)
+        assertEquals(link, decoder.decode(repacked, width, height))
+    }
+
+    @Test
+    fun `a cropped region is taken from where the camera says it is`() {
+        // The analyser can be handed a buffer larger than the valid region.
+        // Decoding the whole thing means decoding a border of noise.
+        val link = CompetitionShareLink.httpsLink(naddr, "cruxcoach.org")
+        val (packed, width, height) = luminance(link)
+        val rowStride = width + 64
+        val left = 7
+        val top = 5
+        val plane = asCameraPlane(packed, width, height, rowStride, 1, left, top)
+
+        val repacked = decoder.packLuminance(plane, width, height, rowStride, 1, left, top)!!
+        assertContentEquals(packed, repacked)
+        assertEquals(link, decoder.decode(repacked, width, height))
+    }
+
+    @Test
+    fun `a plane too small for what it claims is refused, not read out of bounds`() {
+        assertNull(decoder.packLuminance(ByteArray(10), 240, 240, 240, 1))
+        assertNull(decoder.packLuminance(ByteArray(100), 0, 0, 1, 1))
+        assertNull(decoder.packLuminance(ByteArray(100), 10, 10, 0, 1))
+        assertNull(decoder.packLuminance(ByteArray(100), 10, 10, 10, 0))
+        assertNull(decoder.packLuminance(ByteArray(100), 10, 10, 10, 1, left = -1))
+        // Exactly one byte short of what the last pixel needs.
+        assertNull(decoder.packLuminance(ByteArray(10 * 10 - 1), 10, 10, 10, 1))
+        assertNotNull(decoder.packLuminance(ByteArray(10 * 10), 10, 10, 10, 1))
+    }
+
+    @Test
+    fun `an already-packed plane is passed through rather than copied`() {
+        // Every frame goes through this, thirty times a second.
+        val packed = ByteArray(64 * 64) { 0x40 }
+        val result = decoder.packLuminance(packed, 64, 64, 64, 1)
+        assertSame(packed, result, "the common case must not allocate")
+    }
+
+    @Test
+    fun `a rotated padded plane decodes too`() {
+        val link = CompetitionShareLink.httpsLink(naddr, "cruxcoach.org")
+        val (packed, width, height) = luminance(link)
+        val rowStride = width + 32
+        val plane = asCameraPlane(packed, width, height, rowStride)
+        val repacked = decoder.packLuminance(plane, width, height, rowStride, 1)!!
+        assertEquals(link, decoder.decode(repacked, width, height, rotate = true))
     }
 }

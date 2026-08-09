@@ -1039,6 +1039,7 @@ fun CruxCoachNavHost(
         onNavigateToAuroraMigration = { navController.navigate(Routes.AURORA_MIGRATION) },
         onNavigateToBoardMap = { navController.navigate(Routes.BOARD_MAP) },
         onNavigateToSettings = { navController.navigate(Routes.SETTINGS) },
+        onNavigateToCompetitions = { navController.navigate(Routes.COMPETITIONS) },
     )
     } // CompositionLocalProvider
 }

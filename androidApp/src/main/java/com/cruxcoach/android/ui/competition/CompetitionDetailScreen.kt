@@ -18,6 +18,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -29,6 +30,10 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -375,6 +380,10 @@ private fun RegistrationPanel(
             }
 
             if (me != null) {
+                if (competition.feeMsat > 0 && me.payment == "pending") {
+                    PaymentSection(ui, viewModel)
+                    Spacer(Modifier.height(8.dp))
+                }
                 if (ui.picksOwnClimbs) {
                     ClaimStatusSection(ui, viewModel, onOpenClimb)
                     Spacer(Modifier.height(8.dp))
@@ -472,6 +481,134 @@ private fun RegistrationPanel(
             }
         }
     }
+}
+
+/**
+ * Paying the entry fee.
+ *
+ * The app used to render `payment == pending` and stop there, which left an
+ * entrant looking at a state with no way out of it. Three steps, each of which
+ * can fail in a way they have to be told about: resolve the organizer's
+ * endpoint, ask it for an invoice bound to this person and this registration,
+ * then show that invoice with what it costs and when it dies.
+ *
+ * The invoice is checked before it is shown — an invoice for a different amount
+ * is refused rather than displayed with a warning, because the number on the
+ * screen and the number a wallet would send have to be the same number.
+ */
+@Composable
+private fun PaymentSection(
+    ui: CompetitionDetailViewModel.Ui,
+    viewModel: CompetitionDetailViewModel,
+) {
+    val competition = ui.snapshot.competition ?: return
+    val payment by viewModel.payment.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+
+    Text(stringResource(R.string.comp_pay_title), fontWeight = FontWeight.Bold)
+    Text(
+        stringResource(R.string.comp_pay_amount, competition.feeMsat / 1000),
+        style = MaterialTheme.typography.bodyMedium,
+    )
+
+    if (competition.feeLnurl.isNullOrBlank()) {
+        // A fee with nowhere to send it is the organizer's problem to fix, but
+        // the entrant still needs to know why there is no button.
+        Text(stringResource(R.string.comp_pay_no_endpoint), style = MaterialTheme.typography.bodySmall)
+        return
+    }
+
+    when (val state = payment) {
+        CompetitionDetailViewModel.Payment.Working -> CircularProgressIndicator()
+
+        is CompetitionDetailViewModel.Payment.Ready -> {
+            val invoice = state.invoice
+            Text(
+                invoice.bolt11,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.fillMaxWidth().testTag("competition_pay_invoice"),
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = {
+                        // A device with no Lightning wallet must not crash; the
+                        // invoice is on screen and copyable either way.
+                        runCatching {
+                            context.startActivity(
+                                Intent(Intent.ACTION_VIEW, Uri.parse(invoice.walletUri)),
+                            )
+                        }
+                    },
+                    modifier = Modifier.testTag("competition_pay_open"),
+                ) { Text(stringResource(R.string.comp_pay_open_wallet)) }
+                OutlinedButton(
+                    onClick = {
+                        val clipboard = context.getSystemService(ClipboardManager::class.java)
+                        clipboard?.setPrimaryClip(ClipData.newPlainText("bolt11", invoice.bolt11))
+                    },
+                    modifier = Modifier.testTag("competition_pay_copy"),
+                ) { Text(stringResource(R.string.comp_pay_copy)) }
+            }
+            val minutes = (invoice.secondsLeft(System.currentTimeMillis() / 1000) + 59) / 60
+            Text(
+                if (minutes > 0) stringResource(R.string.comp_pay_expires_in, minutes)
+                else stringResource(R.string.comp_pay_invoice_expired),
+                style = MaterialTheme.typography.bodySmall,
+            )
+            // Said before they pay, not after: what the organizer will be able
+            // to check, and what they will have to take on trust.
+            Text(
+                if (invoice.verifiable) stringResource(R.string.comp_pay_will_verify)
+                else stringResource(R.string.comp_pay_manual_confirm),
+                style = MaterialTheme.typography.bodySmall,
+            )
+            TextButton(
+                onClick = { viewModel.requestInvoice() },
+                modifier = Modifier.testTag("competition_pay_retry"),
+            ) { Text(stringResource(R.string.comp_pay_new_invoice)) }
+        }
+
+        is CompetitionDetailViewModel.Payment.Failed -> {
+            Text(
+                payErrorMessage(state.code, state.amountSats),
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier
+                    .testTag("competition_pay_error")
+                    .semantics { liveRegion = LiveRegionMode.Assertive },
+            )
+            Button(
+                onClick = { viewModel.requestInvoice() },
+                modifier = Modifier.testTag("competition_pay_retry"),
+            ) { Text(stringResource(R.string.comp_pay_try_again)) }
+        }
+
+        CompetitionDetailViewModel.Payment.Idle -> Button(
+            onClick = { viewModel.requestInvoice() },
+            modifier = Modifier.fillMaxWidth().testTag("competition_pay_start"),
+        ) { Text(stringResource(R.string.comp_pay_get_invoice)) }
+    }
+
+    Text(stringResource(R.string.comp_pay_settle_hint), style = MaterialTheme.typography.bodySmall)
+}
+
+/** One sentence per way this can fail, rather than a code on screen. */
+@Composable
+private fun payErrorMessage(code: String, amountSats: Long): String = when (code) {
+    "empty", "no_fee" -> stringResource(R.string.comp_pay_no_endpoint)
+    "bad_address", "bad_domain", "bad_url", "unrecognised" ->
+        stringResource(R.string.comp_pay_err_bad_address)
+    "onion" -> stringResource(R.string.comp_pay_err_onion)
+    "not_https" -> stringResource(R.string.comp_pay_err_not_https)
+    "bad_lnurl" -> stringResource(R.string.comp_pay_err_bad_lnurl)
+    "not_a_pay_request" -> stringResource(R.string.comp_pay_err_not_a_pay_request)
+    "bad_callback" -> stringResource(R.string.comp_pay_err_bad_callback)
+    "below_minimum" -> stringResource(R.string.comp_pay_err_below_minimum, amountSats)
+    "above_maximum" -> stringResource(R.string.comp_pay_err_above_maximum, amountSats)
+    "wrong_amount" -> stringResource(R.string.comp_pay_err_wrong_amount, amountSats)
+    "expired" -> stringResource(R.string.comp_pay_invoice_expired)
+    "unreachable" -> stringResource(R.string.comp_pay_err_unreachable)
+    "signing_failed" -> stringResource(R.string.comp_pay_err_signing)
+    else -> stringResource(R.string.comp_pay_err_provider)
 }
 
 /**

@@ -95,6 +95,10 @@ quartz-android = { group = "com.vitorpamplona.quartz", name = "quartz-android", 
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 # OkHttp MockWebServer — used in unit tests to fake the Kilter Keycloak / API endpoints.
 okhttp-mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver", version.ref = "okhttp" }
+# okhttp-tls — lets MockWebServer serve https in unit tests. The competition
+# payment path refuses a plain-http endpoint, so a test that used http would be
+# testing the refusal instead of the flow.
+okhttp-tls = { group = "com.squareup.okhttp3", name = "okhttp-tls", version.ref = "okhttp" }
 
 # Encrypted SharedPreferences
 security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "security-crypto" }

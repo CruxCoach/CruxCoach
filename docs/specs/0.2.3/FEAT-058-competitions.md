@@ -158,7 +158,7 @@ spectator information, refund policy.
 Modes are composable rather than a list of named formats: climb source,
 selection count, uniqueness, progression, attempts, timing, rest, deferral and
 scoring are independent axes. The first release's UI exposes a coherent subset
-and the protocol carries all of them (see `DECISIONS-TO-REVIEW.md`).
+and the protocol carries all of them (see [the decision register](FEAT-058-decisions.md) §1–2).
 
 ## 6. The rules that need stating in words
 
@@ -261,7 +261,7 @@ Each is mapped to automation in [`FEAT-058-conformance.md`](FEAT-058-conformance
 | AC-15 | An `naddr` for another kind, or for a non-competition d-tag, is refused. |
 | AC-16 | The QR a projector renders decodes back to exactly the join link, with valid error correction. |
 | AC-17 | The site's crypto matches the published BIP-340, RFC 8439 and NIP-44 vectors. |
-| AC-18 | A local key is never persisted in plaintext, is zeroed on logout and expiry, and writes nothing on a shared device. |
+| AC-18 | A local key is never persisted in plaintext, is zeroed by a scheduled timer at the absolute, idle and page-hidden limits rather than only before the next signature, and writes nothing on a shared device. |
 | AC-19 | Backup confirmation requires three specific characters of the nsec, not a tick box. |
 | AC-20 | NIP-46 learns the *user* pubkey via `get_public_key`, not from the bunker URI, and every request times out. |
 | AC-21 | A publish no relay accepted is reported as a failure and does not move local state. |
@@ -283,6 +283,10 @@ Each is mapped to automation in [`FEAT-058-conformance.md`](FEAT-058-conformance
 | AC-37 | Recording a payment by hand is an override carrying a mandatory reason, visible in the audit trail of every client. |
 | AC-38 | The in-app scanner requests the camera only when opened, explains a refusal and a permanent refusal separately, releases the camera with the screen, and accepts only competition links — naming what a rejected code was instead. |
 | AC-39 | Cleartext to loopback is permitted in the debug build only; the release policy forbids it, and a test asserts the difference. |
+| AC-40 | Signing out keeps the encrypted key on the device; removing it is a separate, confirmed action. Neither leaves a timer or a page listener behind. |
+| AC-41 | A participant can pay a Lightning entry fee natively in the Android app, through the same resolution, validation and verification rules as the website. |
+| AC-42 | The build identifies as the release it is, and a release with no What's New entry fails the build. |
+| AC-43 | A camera plane with row padding, pixel interleaving or a crop rectangle decodes; a plane too small for what it claims is refused rather than read out of bounds. |
 
 ## 11. Non-goals
 

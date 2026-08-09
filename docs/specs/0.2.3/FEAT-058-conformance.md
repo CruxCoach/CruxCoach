@@ -75,7 +75,7 @@ signed Lightning fixtures — no invoice, no network), `qr-reference.json`
 | **AC-15** wrong kind / wrong d-tag | web + app | `parseCompetitionRef` refuses; `CompetitionShareLinkTest` → *refuses an naddr for another kind*, *refuses an naddr whose d-tag is not a competition* |
 | **AC-16** QR decodes back | web | `competition-qr.test.mjs` → *the symbol decodes back to exactly the text that went in*, *every Reed-Solomon block is a valid codeword*, *the function areas match an independent encoder exactly* |
 | **AC-17** published crypto vectors | web | `nostr-crypto.test.mjs` (19 BIP-340 vectors incl. 10 negative, RFC 8439 ChaCha20); `nip44.test.mjs` (35 conversation keys, 24 padding, 10 encrypt/decrypt, 3 long, 12 must-fail) |
-| **AC-18** key never in plaintext | web | `competition-signer.test.mjs` → *a sealed vault contains no plaintext key material*, *the session never writes plaintext to storage*, *a shared device never touches storage at all*, *a session expires on the absolute limit and on the idle limit* |
+| **AC-18** key never in plaintext, zeroed on a schedule | web | `competition-signer.test.mjs` → *a sealed vault contains no plaintext key material*, *the session never writes plaintext to storage*, *a shared device never touches storage at all*, *the key is zeroed at the absolute limit however busy the person is*, *the key is zeroed at the idle limit, and activity pushes it back*, *a hidden page gives the key five minutes, not the full idle hour* |
 | **AC-19** real backup confirmation | web | *the backup challenge asks about real positions and is stable* |
 | **AC-20** NIP-46 user pubkey + timeouts | web | *a NIP-46 session connects, learns the USER pubkey, and signs* (asserts it differs from the bunker pubkey); *a silent bunker times out with a message instead of hanging forever* |
 | **AC-21** failed publish reported | web + app | `competition-e2e.test.mjs` → *a publish that no relay accepts is reported as a failure*; app: `CompetitionIntentPublisher` returns `Failed("no_relay")` on `accepted == 0` |
@@ -97,6 +97,10 @@ signed Lightning fixtures — no invoice, no network), `qr-reference.json`
 | **AC-37** manual settlement is an audited override | web | `competition-e2e.test.mjs` → *…or by an override that is named*: asserts the write is refused without a reason and that the reason lands in the audit trail |
 | **AC-38** the scanner accepts only our codes | app | `CompetitionQrDecoderTest` → *the code this app generates is the code this app reads*, *every other code someone might point the camera at is named*, *a naddr for something that is not a competition is refused* |
 | **AC-39** cleartext stays out of release | app | `CompetitionDevRelayPolicyTest` → *the shipped policy permits no cleartext to loopback*, *the emulator host alias is not accepted, which is why adb reverse is the instruction* |
+| **AC-40** lock versus forget | web | `competition-signer.test.mjs` → *sign out keeps the encrypted key; forget removes it*, *locking and forgetting both stop every timer*, *disposing removes the page listener rather than leaking one per sign-in* |
+| **AC-41** native paid entry | app | `CompetitionPaymentTest` and `CompetitionLightningTest` → the shared Kotlin LNURL/BOLT11/zap layer against the same `vectors/zap.json` the website asserts on; `CompetitionPaymentFlowTest` → the app's flow states |
+| **AC-42** the build says which release it is | app | `ReleaseMetadataTest` → *the build identifies as this release*, *this release announces itself to upgrading users*, *the changelog has a section for this release* |
+| **AC-43** real camera planes | app | `CompetitionQrDecoderTest` → *a padded plane decodes, where a tightly-packed assumption would not*, *an interleaved plane decodes*, *a cropped region is taken from where the camera says it is*, *a plane too small for what it claims is refused* |
 
 ---
 

@@ -27,6 +27,71 @@ class CompetitionQrDecoder @Inject constructor() {
     private val hints = mapOf(DecodeHintType.TRY_HARDER to true)
 
     /**
+     * Repack a camera plane into tightly-packed luminance.
+     *
+     * This is the part that a synthetic test will not tell you about. CameraX
+     * hands back a `PlaneProxy` whose rows may be padded — `rowStride` can
+     * exceed the width, and `pixelStride` can exceed one when the Y plane is
+     * interleaved — and a decoder that assumes `width * height` reads the
+     * padding as image data. The synthetic buffers in a JVM test are always
+     * tightly packed, so the bug only appears on a real phone, as "it just
+     * does not scan".
+     *
+     * The crop rectangle matters for the same reason: the analyser may be
+     * handed a buffer larger than the region the camera actually considers
+     * valid, and decoding the whole thing means decoding a border of noise.
+     *
+     * @param plane the raw plane bytes, exactly as read from the buffer
+     * @param rowStride bytes from the start of one row to the start of the next
+     * @param pixelStride bytes from one pixel to the next within a row
+     * @return a `width * height` buffer, or null when the plane is too small to
+     *   hold what it claims — refused rather than read out of bounds.
+     */
+    fun packLuminance(
+        plane: ByteArray,
+        width: Int,
+        height: Int,
+        rowStride: Int,
+        pixelStride: Int,
+        left: Int = 0,
+        top: Int = 0,
+    ): ByteArray? {
+        if (width <= 0 || height <= 0 || rowStride <= 0 || pixelStride <= 0) return null
+        if (left < 0 || top < 0) return null
+
+        // The last byte this would read, checked before reading any of it.
+        val lastRow = top + height - 1
+        val lastPixel = left + width - 1
+        val lastIndex = lastRow.toLong() * rowStride + lastPixel.toLong() * pixelStride
+        if (lastIndex >= plane.size) return null
+
+        // The common case is already what we want, and copying it row by row
+        // would be a measurable cost on every frame.
+        if (rowStride == width && pixelStride == 1 && left == 0 && top == 0 &&
+            plane.size == width * height
+        ) {
+            return plane
+        }
+
+        val packed = ByteArray(width * height)
+        var out = 0
+        for (y in 0 until height) {
+            var index = (top + y) * rowStride + left * pixelStride
+            if (pixelStride == 1) {
+                // Contiguous within the row: one copy per row rather than per pixel.
+                System.arraycopy(plane, index, packed, out, width)
+                out += width
+            } else {
+                for (x in 0 until width) {
+                    packed[out++] = plane[index]
+                    index += pixelStride
+                }
+            }
+        }
+        return packed
+    }
+
+    /**
      * Decode one frame.
      *
      * @param luminance Y plane, one byte per pixel, row-major

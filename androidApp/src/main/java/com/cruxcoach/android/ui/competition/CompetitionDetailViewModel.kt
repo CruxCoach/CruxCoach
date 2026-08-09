@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.competition.CompetitionClimbResolver
 import com.cruxcoach.android.competition.CompetitionIntentPublisher
+import com.cruxcoach.android.competition.CompetitionPaymentFlow
 import com.cruxcoach.android.competition.CompetitionRelayClient
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.domain.competition.CompetitionClimb
@@ -37,6 +38,7 @@ class CompetitionDetailViewModel @Inject constructor(
     private val client: CompetitionRelayClient,
     private val intents: CompetitionIntentPublisher,
     private val climbs: CompetitionClimbResolver,
+    private val payments: CompetitionPaymentFlow,
     private val signer: NostrSigner,
 ) : ViewModel() {
 
@@ -267,6 +269,52 @@ class CompetitionDetailViewModel @Inject constructor(
     }
 
     fun clearAction() = _action.update { Action.Idle }
+
+    // ── paying the entry fee ──
+
+    /** Where the payment attempt has got to. Nothing here is a payment itself. */
+    sealed interface Payment {
+        data object Idle : Payment
+        data object Working : Payment
+        data class Ready(val invoice: CompetitionPaymentFlow.Invoice) : Payment
+        data class Failed(val code: String, val amountSats: Long) : Payment
+    }
+
+    private val _payment = MutableStateFlow<Payment>(Payment.Idle)
+    val payment: StateFlow<Payment> = _payment.asStateFlow()
+
+    /**
+     * Ask the organizer's endpoint for an invoice for this entry.
+     *
+     * Safe to press twice: the zap request carries the registration's own
+     * nonce and the payment claim reuses its nonce, so a retry replaces the
+     * previous attempt rather than producing a second one.
+     */
+    fun requestInvoice() {
+        if (_payment.value is Payment.Working) return
+        _payment.update { Payment.Working }
+        viewModelScope.launch {
+            val snapshot = client.snapshot.value
+            val competition = snapshot.competition
+            if (competition == null) {
+                _payment.update { Payment.Failed("not_loaded", 0) }
+                return@launch
+            }
+            val result = payments.requestInvoice(
+                competition = competition,
+                organizerPubkey = organizerPubkey,
+                relays = competition.relays,
+            )
+            _payment.update {
+                when (result) {
+                    is CompetitionPaymentFlow.Result.Ready -> Payment.Ready(result.invoice)
+                    is CompetitionPaymentFlow.Result.Failed -> Payment.Failed(result.code, result.amountSats)
+                }
+            }
+        }
+    }
+
+    fun clearPayment() = _payment.update { Payment.Idle }
 
     /** What happened the last time somebody asked to see a climb on the board. */
     private val _climbOpen = MutableStateFlow<CompetitionClimbResolver.Result?>(null)
