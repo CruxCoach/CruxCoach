@@ -1154,7 +1154,7 @@ untouched, which is why §2.1's choice is reversible.
 | `divisions` | 1–8 |
 | `climbs` | 1–40 |
 | `prizes` | 0–10 |
-| `relays` | 1–8, `wss://` only |
+| `relays` | 1–8; `wss://` anywhere, `ws://` **only** for loopback (§16.6) |
 | `capacity` | 0–500 |
 | `attempts_per_climb` | 1–20 |
 | `turn_deadline_sec` | 30–1800 |
@@ -1240,6 +1240,34 @@ Relays are not trusted to have applied the filter they were given. Every
 consumer re-checks kind, author, `L` namespace, `d`-tag shape, `a`-tag target
 and clock skew locally — the same defence the manifest path already needed when
 a relay could answer a Kilter query with the MoonBoard manifest.
+
+---
+
+### 16.6 Which relay URLs a client will talk to
+
+`wss://` anywhere; `ws://` **only** when the host is `localhost`, `127.0.0.1` or
+`[::1]`.
+
+Cleartext WebSocket to a public host would let any network on the path rewrite a
+competition's results in transit, so it is refused outright — a transport that
+can be downgraded is one that can be edited. Cleartext to loopback has no
+network on the path by definition, and it is the only way the development relay
+in the localhost runbook can be reached at all; a TLS certificate for a
+throwaway loopback port would be theatre.
+
+A host that merely *starts* with a loopback literal — `ws://127.0.0.1.evil.example`
+— is not loopback and is refused. The check parses the authority and compares
+the host exactly, case-insensitively.
+
+This is a cross-client rule: if one client accepts a competition the other
+rejects, the two disagree about which competitions exist. It is therefore pinned
+by shared vectors (`vectors/protocol.json` → `relay_urls`), implemented once per
+language (`competitions/app/protocol/relay-url.mjs`,
+`CompetitionProtocol.isAllowedRelayUrl`), and asserted by both suites.
+
+A client whose resolved relay set contains a loopback relay MUST say so in the
+UI. A competition running against a development relay is not a real competition,
+and the screen has to be honest about that rather than looking identical to one.
 
 ---
 

@@ -32,7 +32,7 @@ import kotlinx.serialization.json.longOrNull
  */
 object CompetitionFixtures {
 
-    const val MANIFEST_SHA256 = "bbd69b26aff94cef27a135e65cfea4b4c7571c149650e4d48263934c34656f8b"
+    const val MANIFEST_SHA256 = "5d5dd69ac844a77e3c3af605833a4a8baa32fdd2596591ea9730166a84c0aa39"
 
     val json = Json { ignoreUnknownKeys = true }
 

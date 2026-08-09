@@ -1,6 +1,68 @@
 {
   "schema": "cruxcoach-competition/1",
   "note": "Every key here is derived from a public label in build-competition-fixtures.mjs. They are test keys and are worthless.",
+  "relay_urls": [
+    {
+      "url": "wss://relay.example.invalid",
+      "allowed": true,
+      "loopback": false
+    },
+    {
+      "url": "wss://relay2.example.invalid/path",
+      "allowed": true,
+      "loopback": false
+    },
+    {
+      "url": "ws://127.0.0.1:7447",
+      "allowed": true,
+      "loopback": true
+    },
+    {
+      "url": "ws://localhost:7447",
+      "allowed": true,
+      "loopback": true
+    },
+    {
+      "url": "ws://LOCALHOST:7447",
+      "allowed": true,
+      "loopback": true
+    },
+    {
+      "url": "ws://[::1]:7447",
+      "allowed": true,
+      "loopback": true
+    },
+    {
+      "url": "ws://relay.example.invalid",
+      "allowed": false,
+      "loopback": false
+    },
+    {
+      "url": "ws://127.0.0.1.evil.invalid:7447",
+      "allowed": false,
+      "loopback": false
+    },
+    {
+      "url": "http://127.0.0.1:7447",
+      "allowed": false,
+      "loopback": false
+    },
+    {
+      "url": "wss://",
+      "allowed": false,
+      "loopback": false
+    },
+    {
+      "url": "",
+      "allowed": false,
+      "loopback": false
+    },
+    {
+      "url": "wss://relay.example.invalid with a space",
+      "allowed": false,
+      "loopback": false
+    }
+  ],
   "keys": {
     "organizer": {
       "secret_hex": "69645ed9e31d01d6821ccfd6b80cffcf0209d2adf2d1fdc4d1feec1a2bf249ab",

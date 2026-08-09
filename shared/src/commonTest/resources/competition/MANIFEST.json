@@ -8,8 +8,8 @@
     "streams/paid-unique-async.json": "048a0558451c15b40c6c1897222cec9270a8d88356f6c849182f7c5d8b698c1c",
     "streams/rejections-paid.json": "b46d3595ee906a22715e227b142bd0c111d921f16db062d660c7acc189a46257",
     "streams/rejections.json": "0bceb8d06a10a607da8162b03666fe93662c728827f1c2b81e7ad9a50e400fab",
-    "vectors/protocol.json": "4dfa5d71b2f17898e355e729e61a18c2e4eaaf181363bd17136de88f35a18859",
+    "vectors/protocol.json": "d203780035d099dcc7fb3b7ec99cba671e0919a3831b6a1818b6a2ace9e81f6b",
     "vectors/zap.json": "21ad6f319c959907139f705dff96ae3d0a7a9ca319186724c8e9ec785a655007"
   },
-  "manifest_sha256": "bbd69b26aff94cef27a135e65cfea4b4c7571c149650e4d48263934c34656f8b"
+  "manifest_sha256": "5d5dd69ac844a77e3c3af605833a4a8baa32fdd2596591ea9730166a84c0aa39"
 }

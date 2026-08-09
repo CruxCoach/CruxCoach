@@ -34,7 +34,6 @@ object CompetitionValidation {
 
     private val ID_PATTERN = Regex("^[a-z0-9_]{1,24}$")
     private val CONTROL_CHARS = Regex("[\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f\\u007f]")
-    private val WSS = Regex("^wss://\\S+$")
 
     fun validate(competition: Competition): List<Problem> {
         val problems = mutableListOf<Problem>()
@@ -183,10 +182,10 @@ object CompetitionValidation {
 
         if (competition.relays.isEmpty() || competition.relays.size > 8) {
             fail("relays", "must list between 1 and 8 relays")
-        } else if (competition.relays.any { !WSS.matches(it) }) {
-            // ws:// is refused deliberately: a competition whose transport can
-            // be downgraded to cleartext is one a network can rewrite.
-            fail("relays", "must all be wss:// URLs")
+        } else if (competition.relays.any { !CompetitionProtocol.isAllowedRelayUrl(it) }) {
+            // See CompetitionProtocol.isAllowedRelayUrl: wss:// anywhere,
+            // ws:// only for loopback.
+            fail("relays", "must all be wss:// URLs (ws:// only for localhost)")
         }
 
         return problems

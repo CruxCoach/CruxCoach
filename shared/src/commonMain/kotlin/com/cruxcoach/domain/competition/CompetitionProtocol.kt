@@ -86,6 +86,42 @@ object CompetitionProtocol {
     fun competitionAddress(organizerPubkey: String, compId: String) =
         "$KIND:$organizerPubkey:${compDTag(compId)}"
 
+    private val LOOPBACK_HOSTS = setOf("localhost", "127.0.0.1", "[::1]", "::1")
+
+    /**
+     * Which relay URLs this client will talk to: `wss://` anywhere, `ws://`
+     * only for loopback.
+     *
+     * Cleartext WebSocket to a public host lets any network on the path rewrite
+     * a competition's results in transit, so it is refused. Cleartext to
+     * 127.0.0.1 has no network on the path by definition, and it is the only
+     * way the development relay used by the localhost runbook can be reached at
+     * all — a TLS certificate for a throwaway loopback port would be theatre.
+     *
+     * Must agree exactly with `competitions/app/protocol/relay-url.mjs`, or the
+     * two clients disagree about which competitions are valid.
+     */
+    fun isLoopbackRelay(url: String): Boolean {
+        if (!url.startsWith("ws://")) return false
+        val rest = url.removePrefix("ws://")
+        val host = rest.substringBefore('/').substringBefore('?')
+        val withoutPort = if (host.startsWith("[")) {
+            host.substring(0, host.indexOf(']') + 1)
+        } else {
+            host.substringBefore(':')
+        }
+        return withoutPort.lowercase() in LOOPBACK_HOSTS
+    }
+
+    fun isAllowedRelayUrl(url: String): Boolean {
+        if (url.isEmpty() || url.any { it.isWhitespace() }) return false
+        if (url.startsWith("wss://")) return url.length > "wss://".length
+        return isLoopbackRelay(url)
+    }
+
+    /** True when a relay set contains a development relay — the UI must say so. */
+    fun usesDevelopmentRelay(urls: List<String>): Boolean = urls.any { isLoopbackRelay(it) }
+
     private fun pad6(seq: Int): String {
         val text = seq.toString()
         return "0".repeat((6 - text.length).coerceAtLeast(0)) + text
