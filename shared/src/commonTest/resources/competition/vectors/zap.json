@@ -1,6 +1,7 @@
 {
   "note": "Locally generated. No invoice was created, no payment was made, nothing here touches a network.",
   "lnurl_response": {
+    "tag": "payRequest",
     "allowsNostr": true,
     "nostrPubkey": "8e9b6c1625647191d503917fa27a066d307188a5672fcde5e79780baf01f53b1",
     "callback": "https://lnurl.example.invalid/callback",
@@ -41,6 +42,16 @@
     "id": "6388cce9a5a78308cac08ad71530c2babfd98a7cf848156aa53d484c2e05b994",
     "sig": "070fd4ea4de48eaf2e07a15c9e1e1ebfcb3a720dd444f618259232501d3c11ea90b5d23bce57ea8d94982227aa42f7695a3e96ca96db8c1f36171d26e4373747"
   },
+  "invoice": {
+    "note": "Structurally valid, deliberately unsigned. Nothing can pay it.",
+    "bolt11": "lnbc20u1p42r73lpp5424242424242424242424242424242424242424242424242424qhp5qg3705vzydsg7v4dhymjdksveeglzzju2mtuy6hmgytswkl06qrsxqzuyqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqrpkntp",
+    "amount_msat": 2000000,
+    "timestamp": 1789000255,
+    "expiry_sec": 900,
+    "expires_at": 1789001155,
+    "payment_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "description_hash": "0223e7d18223608f32adb93726da0cce51f10a5c56d7c26afb4117075befd007"
+  },
   "valid_receipt": {
     "pubkey": "8e9b6c1625647191d503917fa27a066d307188a5672fcde5e79780baf01f53b1",
     "created_at": 1789000260,
@@ -60,7 +71,7 @@
       ],
       [
         "bolt11",
-        "lnbc20u1pfixture0000000000000000000000000000000000000000000000000000000000"
+        "lnbc20u1p42r73lpp5424242424242424242424242424242424242424242424242424qhp5qg3705vzydsg7v4dhymjdksveeglzzju2mtuy6hmgytswkl06qrsxqzuyqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqrpkntp"
       ],
       [
         "description",
@@ -68,8 +79,8 @@
       ]
     ],
     "content": "",
-    "id": "3e48293721d3a3d5a31b555f27c5812eec80af9438b29a8dbe6259b23d8b04fb",
-    "sig": "88fa7ef81700434f20728a2b2ff4ba423aa464cd691b73231f4fc28e07242f1b56ce764b25b9ef676ba8e7a2c6971d1a7576dceecadf02e4b6672dae42b48b74"
+    "id": "d0362f8906f429e503fa5011daebddd7d9939d7b41ba36a299aff74148bc978b",
+    "sig": "8b3a7e938ae6c001af793113890d3214c23f99404db6302bdde5159d6f312fbf6e183074339c97b1e71dc335bc56032c0aa7e96c9f6082596943fb0680093ee8"
   },
   "rejected": {
     "signed_by_the_wrong_key": {
@@ -91,7 +102,7 @@
         ],
         [
           "bolt11",
-          "lnbc20u1pfixture0000000000000000000000000000000000000000000000000000000000"
+          "lnbc20u1p42r73lpp5424242424242424242424242424242424242424242424242424qhp5qg3705vzydsg7v4dhymjdksveeglzzju2mtuy6hmgytswkl06qrsxqzuyqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqrpkntp"
         ],
         [
           "description",
@@ -99,8 +110,8 @@
         ]
       ],
       "content": "",
-      "id": "49a0a990195756086231f7b2d4e87f84c055b74906d542a56e9b1687ef505a48",
-      "sig": "f76fe6ff7b24a244351b67f76d8506b4e80db4d7752fb81f50ec41704ac62baabf80d7b9d0b11b547c51de4ccf0045f41a97abc597a8cdf5cd1c4aadd519a653"
+      "id": "bd805a9e76eb453c58ebfc9a7f7af86bd2e8e6d528e1b55f0b0c9a6761c0ae8a",
+      "sig": "7b3f2b9a59467c487888108c7f37d7f2aeb26e875dbee1dc9d77972be38dc0d2b53dca7cc996f50fe5a19fe74a1c4b67b2c2a1d1cc9205e15219ceadb0952202"
     },
     "references_another_competition": {
       "pubkey": "8e9b6c1625647191d503917fa27a066d307188a5672fcde5e79780baf01f53b1",
@@ -121,7 +132,7 @@
         ],
         [
           "bolt11",
-          "lnbc20u1pfixture0000000000000000000000000000000000000000000000000000000000"
+          "lnbc20u1p42r73lpp5424242424242424242424242424242424242424242424242424qhp5qg3705vzydsg7v4dhymjdksveeglzzju2mtuy6hmgytswkl06qrsxqzuyqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqrpkntp"
         ],
         [
           "description",
@@ -129,8 +140,128 @@
         ]
       ],
       "content": "",
-      "id": "5298d74bcbde375f2a797d53e4ab6a3bc16fb3d61cb307feb1b2d7678560995e",
-      "sig": "7f948e8f57f1d791544c595839a641c2f60090f47db585cbb4155d14b9290b6a946f5a3668ea8fffd4397f8d8fc2faa9ae5580e6f4e573cb6e77b505658786a9"
+      "id": "736a9b935f49c5249e5f35f9f872a33b927c0d35100ad58f53fd8a0cc5966924",
+      "sig": "fff01bb94f412ff373653e3d0d96e31261bb5d55e80e36affc9bab8b31544f5801270de3521d15badc1e91ae4cf89eff26d19e9fe97f1a73d05bf2dbffe5e054"
+    },
+    "attests_a_smaller_amount": {
+      "pubkey": "8e9b6c1625647191d503917fa27a066d307188a5672fcde5e79780baf01f53b1",
+      "created_at": 1789000260,
+      "kind": 9735,
+      "tags": [
+        [
+          "p",
+          "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004"
+        ],
+        [
+          "P",
+          "d4d41c056c407711c552ace7aaf4fa9b51b4ea80d06beac56a399c0034229130"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:bb00cc11dd22ee33"
+        ],
+        [
+          "bolt11",
+          "lnbc20u1p42r73lpp5424242424242424242424242424242424242424242424242424qhp5qg3705vzydsg7v4dhymjdksveeglzzju2mtuy6hmgytswkl06qrsxqzuyqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqrpkntp"
+        ],
+        [
+          "description",
+          "{\"pubkey\":\"d4d41c056c407711c552ace7aaf4fa9b51b4ea80d06beac56a399c0034229130\",\"created_at\":1789000250,\"kind\":9734,\"tags\":[[\"p\",\"2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004\"],[\"a\",\"30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:bb00cc11dd22ee33\"],[\"amount\",\"200000\"],[\"relays\",\"wss://relay.example.invalid\"],[\"cc-intent\",\"3f9a2c17\"]],\"content\":\"CruxCoach competition entry\",\"id\":\"413694cf5bc0a800e4e320d106d5fbc5378c006e87ed5ab555633171ce0f782d\",\"sig\":\"d149f10ce2516095a5306f9c711525a31e8ff1a647deb3ace093d0c07e439006baddf953497f4fba4ac02904d033578ea451cccdc22a2d92c13976954abad9b8\"}"
+        ]
+      ],
+      "content": "",
+      "id": "747e19f98e700f650fc32cc69925fe23c55ef8d1f790f5760a597744e7314f96",
+      "sig": "17fea9bbf7b9a8d24370e02191dccbbe14632bf7dd46739f21014f814edb66547ae9f3f242e0545e9be9daab935db9dcbd69860c949422d230ae45065b342b43"
+    },
+    "attests_somebody_elses_payment": {
+      "pubkey": "8e9b6c1625647191d503917fa27a066d307188a5672fcde5e79780baf01f53b1",
+      "created_at": 1789000260,
+      "kind": 9735,
+      "tags": [
+        [
+          "p",
+          "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004"
+        ],
+        [
+          "P",
+          "019244fa7971d9b335e80017cc0627eae1909c7bc991cb64dad2328df614f911"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:bb00cc11dd22ee33"
+        ],
+        [
+          "bolt11",
+          "lnbc20u1p42r73lpp5424242424242424242424242424242424242424242424242424qhp5qg3705vzydsg7v4dhymjdksveeglzzju2mtuy6hmgytswkl06qrsxqzuyqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqrpkntp"
+        ],
+        [
+          "description",
+          "{\"pubkey\":\"019244fa7971d9b335e80017cc0627eae1909c7bc991cb64dad2328df614f911\",\"created_at\":1789000250,\"kind\":9734,\"tags\":[[\"p\",\"2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004\"],[\"a\",\"30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:bb00cc11dd22ee33\"],[\"amount\",\"2000000\"],[\"relays\",\"wss://relay.example.invalid\"],[\"cc-intent\",\"3f9a2c17\"]],\"content\":\"CruxCoach competition entry\",\"id\":\"5aeacd05f985b8d09d24c29ee1e8e0d8a444c2776a5db90c0617211cb26f03b0\",\"sig\":\"00360f6c1dd469cac9ac7500b6e2422799e6087aaed620fc4df437649940a0ee785c86e858e7469ff9c892f4a5ac0c3ba812e01cbee37aa05410ca9d1232add9\"}"
+        ]
+      ],
+      "content": "",
+      "id": "f101477eeb12b740124d124abd5ccc9d68633c5a8dc379ae4bf0d20b61df60f7",
+      "sig": "3e9b4b003290cf9294266774e3b4ff82c76aa8f37a9c9268722ab1b6c8d9fe078efe9302ee1b4ed1fb623b9335dc3f5e6e9bc8785f90827837096c92730d6ef7"
+    },
+    "pays_a_different_registration": {
+      "pubkey": "8e9b6c1625647191d503917fa27a066d307188a5672fcde5e79780baf01f53b1",
+      "created_at": 1789000260,
+      "kind": 9735,
+      "tags": [
+        [
+          "p",
+          "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004"
+        ],
+        [
+          "P",
+          "d4d41c056c407711c552ace7aaf4fa9b51b4ea80d06beac56a399c0034229130"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:bb00cc11dd22ee33"
+        ],
+        [
+          "bolt11",
+          "lnbc20u1p42r73lpp5424242424242424242424242424242424242424242424242424qhp5qg3705vzydsg7v4dhymjdksveeglzzju2mtuy6hmgytswkl06qrsxqzuyqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqrpkntp"
+        ],
+        [
+          "description",
+          "{\"pubkey\":\"d4d41c056c407711c552ace7aaf4fa9b51b4ea80d06beac56a399c0034229130\",\"created_at\":1789000250,\"kind\":9734,\"tags\":[[\"p\",\"2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004\"],[\"a\",\"30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:bb00cc11dd22ee33\"],[\"amount\",\"2000000\"],[\"relays\",\"wss://relay.example.invalid\"],[\"cc-intent\",\"99887766\"]],\"content\":\"CruxCoach competition entry\",\"id\":\"b30419384ab7b94c254cf49c4e5092b5ac588753c733305317fd3b181b99b4f9\",\"sig\":\"374b2a75b9c58077aa76db8b88675d62d195a2739536bd74b1181b835719f4bc5928f3245fada54095b9e41058d29227091dd85155a3971ac2ba47a6ca12ef47\"}"
+        ]
+      ],
+      "content": "",
+      "id": "5eb129a969b27c424ac5b88bcb5ccf589ac77349a6c73d9e38017317b61580a2",
+      "sig": "9ef19be153b7a4ace01fbafeff689b96b14b986ad652ad9d97feabae432f7216adaa69ce59305259bcbed2929a73593f2d20911f6477948dd238f37bb45a83d0"
+    },
+    "description_signature_does_not_hold": {
+      "pubkey": "8e9b6c1625647191d503917fa27a066d307188a5672fcde5e79780baf01f53b1",
+      "created_at": 1789000260,
+      "kind": 9735,
+      "tags": [
+        [
+          "p",
+          "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004"
+        ],
+        [
+          "P",
+          "d4d41c056c407711c552ace7aaf4fa9b51b4ea80d06beac56a399c0034229130"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:bb00cc11dd22ee33"
+        ],
+        [
+          "bolt11",
+          "lnbc20u1p42r73lpp5424242424242424242424242424242424242424242424242424qhp5qg3705vzydsg7v4dhymjdksveeglzzju2mtuy6hmgytswkl06qrsxqzuyqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqrpkntp"
+        ],
+        [
+          "description",
+          "{\"pubkey\":\"d4d41c056c407711c552ace7aaf4fa9b51b4ea80d06beac56a399c0034229130\",\"created_at\":1789000250,\"kind\":9734,\"tags\":[[\"p\",\"2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004\"],[\"a\",\"30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:bb00cc11dd22ee33\"],[\"amount\",\"1\"],[\"relays\",\"wss://relay.example.invalid\"],[\"cc-intent\",\"3f9a2c17\"]],\"content\":\"CruxCoach competition entry\",\"id\":\"6388cce9a5a78308cac08ad71530c2babfd98a7cf848156aa53d484c2e05b994\",\"sig\":\"070fd4ea4de48eaf2e07a15c9e1e1ebfcb3a720dd444f618259232501d3c11ea90b5d23bce57ea8d94982227aa42f7695a3e96ca96db8c1f36171d26e4373747\"}"
+        ]
+      ],
+      "content": "",
+      "id": "09626f06eb6f70d1a685325496260bb07691c0132900d89cd8a90608cf67ac1c",
+      "sig": "3b5a789d87dac9ac2ad1c6e04ad4e3d0d97d7f96a65b33d482366321e6900934f1ed9adb7cc9c56efc14debf2cca42535a0e1dca254e72fa4bbc6d8aacc00f5e"
     }
   }
 }
