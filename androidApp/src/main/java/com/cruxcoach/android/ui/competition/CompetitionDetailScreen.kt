@@ -25,6 +25,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -34,7 +35,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,6 +53,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.BuildConfig
 import com.cruxcoach.android.R
+import com.cruxcoach.android.competition.CompetitionClimbResolver
 import com.cruxcoach.android.competition.CompetitionRelayClient
 import kotlinx.coroutines.delay
 
@@ -64,11 +68,22 @@ import kotlinx.coroutines.delay
 @Composable
 fun CompetitionDetailScreen(
     onNavigateBack: () -> Unit,
+    onOpenClimb: (climbUuid: String, angle: Int) -> Unit = { _, _ -> },
     viewModel: CompetitionDetailViewModel = hiltViewModel(),
 ) {
     val ui by viewModel.ui.collectAsStateWithLifecycle()
     val action by viewModel.action.collectAsStateWithLifecycle()
+    val climbOpen by viewModel.climbOpen.collectAsStateWithLifecycle()
     val context = LocalContext.current
+
+    // The board screen is only reached once the climb resolves against what
+    // this phone actually holds; everything else stays here with a reason.
+    var lastAsked by remember { mutableStateOf("") }
+    LaunchedEffect(climbOpen) {
+        val ready = climbOpen as? CompetitionClimbResolver.Result.Ready ?: return@LaunchedEffect
+        viewModel.clearClimbOpen()
+        onOpenClimb(ready.climbUuid, ready.angle)
+    }
 
     // The countdown is the one thing that has to move without an event arriving.
     var now by remember { mutableLongStateOf(System.currentTimeMillis() / 1000) }
@@ -189,7 +204,7 @@ fun CompetitionDetailScreen(
 
             // ── the four questions, in order ──
             if (state != null && state.status in listOf("running", "paused")) {
-                item { LivePanel(ui, now) }
+                item { LivePanel(ui, now, viewModel) { id, _ -> lastAsked = id; viewModel.openClimb(id) } }
             } else if (state != null) {
                 item {
                     Card(Modifier.fillMaxWidth()) {
@@ -201,7 +216,8 @@ fun CompetitionDetailScreen(
             }
 
             // ── registration ──
-            item { RegistrationPanel(ui, viewModel, action) }
+            item { RegistrationPanel(ui, viewModel, action) { id, _ -> lastAsked = id; viewModel.openClimb(id) } }
+            item { ClimbOpenProblem(climbOpen, lastAsked, viewModel) }
 
             if (snapshot.standings.isNotEmpty()) {
                 item { LeaderboardCard(ui) }
@@ -255,7 +271,12 @@ private fun TextSection(title: String, body: String) {
 }
 
 @Composable
-private fun LivePanel(ui: CompetitionDetailViewModel.Ui, nowSeconds: Long) {
+private fun LivePanel(
+    ui: CompetitionDetailViewModel.Ui,
+    nowSeconds: Long,
+    viewModel: CompetitionDetailViewModel,
+    onOpenClimb: (String, Int) -> Unit,
+) {
     val state = ui.snapshot.state ?: return
     val competition = ui.snapshot.competition ?: return
     val current = ui.currentClimber
@@ -302,6 +323,11 @@ private fun LivePanel(ui: CompetitionDetailViewModel.Ui, nowSeconds: Long) {
                 }
             }
 
+            if (competition.rules.progression == "asynchronous_turns" && ui.me != null) {
+                Spacer(Modifier.height(12.dp))
+                NextClimbSection(ui, nowSeconds, viewModel, onOpenClimb)
+            }
+
             // What a deferral costs, stated where the decision is made. The
             // button itself lives in the actions card below — one control, not
             // a disabled twin of it here.
@@ -323,6 +349,7 @@ private fun RegistrationPanel(
     ui: CompetitionDetailViewModel.Ui,
     viewModel: CompetitionDetailViewModel,
     action: CompetitionDetailViewModel.Action,
+    onOpenClimb: (String, Int) -> Unit,
 ) {
     val competition = ui.snapshot.competition ?: return
     val state = ui.snapshot.state ?: return
@@ -348,6 +375,10 @@ private fun RegistrationPanel(
             }
 
             if (me != null) {
+                if (ui.picksOwnClimbs) {
+                    ClaimStatusSection(ui, viewModel, onOpenClimb)
+                    Spacer(Modifier.height(8.dp))
+                }
                 if (me.registration == "accepted" && me.checkin == "none" &&
                     state.status in listOf("checkin_open", "running")
                 ) {
@@ -407,22 +438,316 @@ private fun RegistrationPanel(
                     Text(stringResource(R.string.comp_waiver_accept))
                 }
             }
+            val picked = remember { mutableStateListOf<String>() }
+            if (ui.picksOwnClimbs) {
+                Spacer(Modifier.height(12.dp))
+                ClimbPicker(
+                    ui = ui,
+                    picked = picked,
+                    needed = competition.rules.climbCount,
+                    onOpenClimb = onOpenClimb,
+                )
+            }
+            val picksComplete = !ui.picksOwnClimbs || picked.size == competition.rules.climbCount
             Button(
                 onClick = {
                     viewModel.register(
                         division = competition.divisions.firstOrNull()?.id ?: "open",
                         display = display.trim().ifEmpty { viewModel.myPubkey.take(8) },
                         waiverAccepted = !competition.waiverRequired || waiver,
+                        selections = picked.toList(),
                     )
                 },
-                enabled = !competition.waiverRequired || waiver,
+                enabled = (!competition.waiverRequired || waiver) && picksComplete,
                 modifier = Modifier.fillMaxWidth().testTag("competition_register"),
             ) { Text(stringResource(R.string.comp_register)) }
+            if (!picksComplete) {
+                Text(
+                    stringResource(R.string.comp_pick_incomplete, competition.rules.climbCount),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
             if (competition.waiverRequired && !waiver) {
                 Text(stringResource(R.string.comp_waiver_required), style = MaterialTheme.typography.bodySmall)
             }
         }
     }
+}
+
+/**
+ * Choosing climbs at registration, when the organizer let entrants choose.
+ *
+ * A climb somebody already holds is shown as taken and cannot be ticked, so the
+ * race is visible before it is lost rather than after. Each one can be opened
+ * on the board first — picking a problem you have not seen is how you find out
+ * at the wall that it is not for you.
+ */
+@Composable
+private fun ClimbPicker(
+    ui: CompetitionDetailViewModel.Ui,
+    picked: SnapshotStateList<String>,
+    needed: Int,
+    onOpenClimb: (String, Int) -> Unit,
+) {
+    val competition = ui.snapshot.competition ?: return
+    val state = ui.snapshot.state ?: return
+    val unique = competition.rules.selectionUniqueness == "unique_per_competition"
+
+    Text(stringResource(R.string.comp_pick_title), fontWeight = FontWeight.Bold)
+    Text(stringResource(R.string.comp_pick_hint, needed), style = MaterialTheme.typography.bodySmall)
+    if (unique) {
+        Text(stringResource(R.string.comp_pick_unique_hint), style = MaterialTheme.typography.bodySmall)
+    }
+    Text(
+        stringResource(R.string.comp_pick_count, picked.size, needed),
+        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+    )
+    competition.climbPool.forEach { climb ->
+        val takenBy = if (unique) state.claims[climb.id] else null
+        val taken = takenBy != null && takenBy != ui.myPubkey
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Checkbox(
+                checked = picked.contains(climb.id),
+                enabled = !taken,
+                onCheckedChange = { checked ->
+                    if (checked) {
+                        if (picked.size < needed) picked.add(climb.id)
+                    } else {
+                        picked.remove(climb.id)
+                    }
+                },
+                modifier = Modifier.testTag("competition_pick_${climb.id}"),
+            )
+            Column(Modifier.weight(1f)) {
+                Text(climb.label)
+                Text(
+                    if (taken) stringResource(R.string.comp_pick_taken)
+                    else stringResource(R.string.comp_climb_angle, climb.angle),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            OpenOnBoardButton(climb, onOpenClimb)
+        }
+    }
+}
+
+/**
+ * What happened to an entrant's picks.
+ *
+ * Losing a race silently is the worst version of it, so this names the climbs
+ * that were granted, says plainly when one was taken first, and offers what is
+ * still free. Re-registering replaces the earlier request rather than adding a
+ * second one, because an intent reuses its nonce.
+ */
+@Composable
+private fun ClaimStatusSection(
+    ui: CompetitionDetailViewModel.Ui,
+    viewModel: CompetitionDetailViewModel,
+    onOpenClimb: (String, Int) -> Unit,
+) {
+    val competition = ui.snapshot.competition ?: return
+    val state = ui.snapshot.state ?: return
+    val me = ui.me ?: return
+
+    Text(stringResource(R.string.comp_your_climbs), fontWeight = FontWeight.Bold)
+    me.selections.forEach { id ->
+        val climb = competition.climb(id)
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Text(climb?.label ?: id, modifier = Modifier.weight(1f))
+            if (climb != null) OpenOnBoardButton(climb, onOpenClimb)
+        }
+    }
+
+    if (ui.climbsStillToPick == 0) {
+        Text(stringResource(R.string.comp_picks_confirmed), style = MaterialTheme.typography.bodySmall)
+        return
+    }
+    if (state.status != "registration_open") {
+        Text(stringResource(R.string.comp_picks_pending), style = MaterialTheme.typography.bodySmall)
+        return
+    }
+    val free = ui.freePoolClimbs.filter { it.id !in me.selections }
+    if (free.isEmpty()) {
+        Text(stringResource(R.string.comp_picks_none_left), style = MaterialTheme.typography.bodySmall)
+        return
+    }
+
+    Text(
+        stringResource(R.string.comp_picks_lost, ui.climbsStillToPick),
+        style = MaterialTheme.typography.bodySmall,
+        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+    )
+    val repick = remember(me.selections) { mutableStateListOf<String>().apply { addAll(me.selections) } }
+    free.forEach { climb ->
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Checkbox(
+                checked = repick.contains(climb.id),
+                onCheckedChange = { checked ->
+                    if (checked) {
+                        if (repick.size < competition.rules.climbCount) repick.add(climb.id)
+                    } else {
+                        repick.remove(climb.id)
+                    }
+                },
+                modifier = Modifier.testTag("competition_repick_${climb.id}"),
+            )
+            Text(climb.label, modifier = Modifier.weight(1f))
+            OpenOnBoardButton(climb, onOpenClimb)
+        }
+    }
+    Button(
+        onClick = {
+            viewModel.register(
+                division = me.division.ifEmpty { competition.divisions.firstOrNull()?.id ?: "open" },
+                display = me.display,
+                waiverAccepted = true,
+                selections = repick.toList(),
+            )
+        },
+        enabled = repick.size == competition.rules.climbCount,
+        modifier = Modifier.fillMaxWidth().testTag("competition_repick"),
+    ) { Text(stringResource(R.string.comp_pick_again)) }
+}
+
+/**
+ * Asynchronous turns: which of my climbs I go to next.
+ *
+ * The control exists only while this climber may actually act. Every reason
+ * they cannot gets its own sentence instead — a disabled button teaches nobody
+ * anything, and one that publishes a report the reducer then rejects is worse,
+ * because they would walk away believing the attempt counted.
+ */
+@Composable
+private fun NextClimbSection(
+    ui: CompetitionDetailViewModel.Ui,
+    nowSeconds: Long,
+    viewModel: CompetitionDetailViewModel,
+    onOpenClimb: (String, Int) -> Unit,
+) {
+    val remaining = ui.remainingClimbs
+    Text(stringResource(R.string.comp_next_title), fontWeight = FontWeight.Bold)
+    if (remaining.isEmpty()) {
+        Text(stringResource(R.string.comp_next_none_left), style = MaterialTheme.typography.bodySmall)
+        return
+    }
+    if (!ui.mayAct(nowSeconds)) {
+        Text(whyNotYet(ui, nowSeconds), style = MaterialTheme.typography.bodySmall)
+        return
+    }
+
+    var chosen by rememberSaveable { mutableStateOf(remaining.first().climb.id) }
+    if (remaining.none { it.climb.id == chosen }) chosen = remaining.first().climb.id
+
+    remaining.forEach { entry ->
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            RadioButton(
+                selected = chosen == entry.climb.id,
+                onClick = { chosen = entry.climb.id },
+                modifier = Modifier.testTag("competition_next_${entry.climb.id}"),
+            )
+            Column(Modifier.weight(1f)) {
+                Text(entry.climb.label)
+                Text(
+                    stringResource(R.string.comp_next_attempts, entry.attemptsLeft),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            OpenOnBoardButton(entry.climb, onOpenClimb)
+        }
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        listOf("top" to R.string.comp_outcome_top, "zone" to R.string.comp_outcome_zone,
+            "fall" to R.string.comp_outcome_fall).forEach { (outcome, label) ->
+            Button(
+                onClick = { viewModel.reportAttempt(chosen, outcome) },
+                modifier = Modifier.testTag("competition_report_$outcome"),
+            ) { Text(stringResource(label)) }
+        }
+    }
+    Text(stringResource(R.string.comp_next_report_hint), style = MaterialTheme.typography.bodySmall)
+}
+
+/** The one sentence that says why the chooser is not there. */
+@Composable
+private fun whyNotYet(ui: CompetitionDetailViewModel.Ui, nowSeconds: Long): String {
+    val state = ui.snapshot.state
+    val competition = ui.snapshot.competition
+    val me = ui.me
+    val rest = ui.restSecondsLeft(nowSeconds)
+    return when {
+        state?.paused == true -> stringResource(R.string.comp_next_paused)
+        me == null -> stringResource(R.string.comp_next_not_entered)
+        me.result != "active" -> stringResource(R.string.comp_next_out)
+        me.checkin != "checked_in" -> stringResource(R.string.comp_next_not_checked_in)
+        competition != null && competition.feeMsat > 0 && me.payment != "settled" ->
+            stringResource(R.string.comp_next_unpaid)
+        rest > 0 -> stringResource(R.string.comp_next_resting, rest)
+        else -> stringResource(R.string.comp_next_not_your_turn)
+    }
+}
+
+/**
+ * Why a climb did not open.
+ *
+ * Two situations, two different fixes, and neither is the app being broken:
+ * the board has not been downloaded on this phone, or it has and nothing we
+ * hold can draw this climb. Retry is offered for the first, because a sync
+ * between now and then changes the answer.
+ */
+@Composable
+private fun ClimbOpenProblem(
+    result: CompetitionClimbResolver.Result?,
+    lastAsked: String,
+    viewModel: CompetitionDetailViewModel,
+) {
+    if (result == null || result is CompetitionClimbResolver.Result.Ready) return
+    Card(
+        Modifier.fillMaxWidth().testTag("competition_climb_problem"),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Text(
+                when (result) {
+                    is CompetitionClimbResolver.Result.NotInCatalogue ->
+                        stringResource(R.string.comp_climb_not_downloaded, result.brand)
+                    is CompetitionClimbResolver.Result.WrongBoard ->
+                        stringResource(R.string.comp_climb_wrong_board, result.brand)
+                    else -> stringResource(R.string.comp_climb_unusable)
+                },
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Assertive },
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (result is CompetitionClimbResolver.Result.NotInCatalogue && lastAsked.isNotEmpty()) {
+                    Button(
+                        onClick = { viewModel.retryOpenClimb(lastAsked) },
+                        modifier = Modifier.testTag("competition_climb_retry"),
+                    ) { Text(stringResource(R.string.comp_climb_retry)) }
+                }
+                OutlinedButton(
+                    onClick = { viewModel.clearClimbOpen() },
+                    modifier = Modifier.testTag("competition_climb_dismiss"),
+                ) { Text(stringResource(R.string.comp_climb_dismiss)) }
+            }
+        }
+    }
+}
+
+/**
+ * Put this climb on the wall.
+ *
+ * The whole reason a competition climb carries a real board uuid: the existing
+ * board screen takes it from here, at the competition's angle.
+ */
+@Composable
+private fun OpenOnBoardButton(
+    climb: com.cruxcoach.domain.competition.CompetitionClimb,
+    onOpenClimb: (String, Int) -> Unit,
+) {
+    if (climb.climbUuid.isBlank()) return
+    OutlinedButton(
+        onClick = { onOpenClimb(climb.id, climb.angle) },
+        modifier = Modifier.testTag("competition_open_${climb.id}"),
+    ) { Text(stringResource(R.string.comp_open_on_board)) }
 }
 
 @Composable

@@ -414,12 +414,21 @@ data class Competition(
     val revision: Int,
     val divisions: List<CompetitionDivision>,
     val climbs: List<CompetitionClimb>,
+    /** What entrants may choose from, when the organizer let them choose. */
+    val climbPool: List<CompetitionClimb>,
     val rules: CompetitionRules,
     val relays: List<String>,
     /** Everything else, for display without widening this class per field. */
     val raw: JsonObject,
 ) {
-    fun climb(id: String): CompetitionClimb? = climbs.firstOrNull { it.id == id }
+    /** A climb by id, from wherever this competition's climbs come from. */
+    fun climb(id: String): CompetitionClimb? =
+        climbs.firstOrNull { it.id == id } ?: climbPool.firstOrNull { it.id == id }
+
+    /** The climbs one participant runs: their own picks, or the organizer's set. */
+    fun climbsFor(selections: List<String>): List<CompetitionClimb> =
+        if (rules.climbSource == "participant_choice") climbPool.filter { it.id in selections }
+        else climbs
 
     companion object {
         fun from(payload: JsonObject): Competition {
@@ -451,16 +460,9 @@ data class Competition(
                     val obj = it.jsonObject
                     CompetitionDivision(obj.str("id").orEmpty(), obj.str("label").orEmpty())
                 },
-                climbs = payload["climbs"]?.jsonArray.orEmpty().map {
-                    val obj = it.jsonObject
-                    CompetitionClimb(
-                        id = obj.str("id").orEmpty(),
-                        climbUuid = obj.str("climb_uuid").orEmpty(),
-                        angle = obj.int("angle") ?: 0,
-                        label = obj.str("label").orEmpty(),
-                        points = obj.int("points") ?: 0,
-                    )
-                },
+                climbs = payload["climbs"]?.jsonArray.orEmpty().map(::climbFrom),
+                climbPool = payload["climb_pool"]?.jsonObject
+                    ?.get("options")?.jsonArray.orEmpty().map(::climbFrom),
                 rules = CompetitionRules(
                     climbSource = rules.str("climb_source").orEmpty(),
                     climbCount = rules.int("climb_count") ?: 0,
@@ -484,6 +486,17 @@ data class Competition(
             )
         }
     }
+}
+
+private fun climbFrom(element: kotlinx.serialization.json.JsonElement): CompetitionClimb {
+    val obj = element.jsonObject
+    return CompetitionClimb(
+        id = obj.str("id").orEmpty(),
+        climbUuid = obj.str("climb_uuid").orEmpty(),
+        angle = obj.int("angle") ?: 0,
+        label = obj.str("label").orEmpty(),
+        points = obj.int("points") ?: 0,
+    )
 }
 
 // ── small JSON readers, so the model code above stays readable ──

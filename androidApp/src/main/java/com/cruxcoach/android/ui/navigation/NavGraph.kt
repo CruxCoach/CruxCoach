@@ -546,7 +546,15 @@ fun CruxCoachNavHost(
                     screenName = "CompetitionDetail",
                     onNavigateBack = { navController.popBackStack() },
                 ) {
-                    CompetitionDetailScreen(onNavigateBack = { navController.popBackStack() })
+                    CompetitionDetailScreen(
+                        onNavigateBack = { navController.popBackStack() },
+                        // A competition climb carries a real board uuid, so it
+                        // opens on the same board screen as any other climb, at
+                        // the angle the competition runs.
+                        onOpenClimb = { climbUuid, angle ->
+                            navController.navigate(Routes.boardClimbDetail(climbUuid, angle))
+                        },
+                    )
                 }
             }
 

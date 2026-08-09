@@ -1166,7 +1166,7 @@
         "tops": 1,
         "zones": 1,
         "attempts": 1,
-        "points": 0,
+        "points": 100,
         "zone_attempts": 1,
         "total_attempts": 1,
         "finished_at": 1789005520,

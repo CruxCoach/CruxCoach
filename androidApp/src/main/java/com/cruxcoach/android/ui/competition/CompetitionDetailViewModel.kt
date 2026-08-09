@@ -3,9 +3,11 @@ package com.cruxcoach.android.ui.competition
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.cruxcoach.android.competition.CompetitionClimbResolver
 import com.cruxcoach.android.competition.CompetitionIntentPublisher
 import com.cruxcoach.android.competition.CompetitionRelayClient
 import com.cruxcoach.android.nostr.NostrSigner
+import com.cruxcoach.domain.competition.CompetitionClimb
 import com.cruxcoach.domain.competition.CompetitionProtocol
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -34,6 +36,7 @@ class CompetitionDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val client: CompetitionRelayClient,
     private val intents: CompetitionIntentPublisher,
+    private val climbs: CompetitionClimbResolver,
     private val signer: NostrSigner,
 ) : ViewModel() {
 
@@ -103,6 +106,86 @@ class CompetitionDetailViewModel @Inject constructor(
                     mine.consecutiveDefers < rules.maxConsecutiveDefers
             }
 
+        /**
+         * Whether this climber may act right now.
+         *
+         * Every condition the reducer would apply to their next attempt,
+         * checked before a control is drawn. An attempt the reducer is going to
+         * reject is worse than no button at all, because they walk away
+         * believing it counted.
+         */
+        fun mayAct(nowSeconds: Long): Boolean {
+            val state = snapshot.state ?: return false
+            val competition = snapshot.competition ?: return false
+            val mine = me ?: return false
+            if (state.status != "running" || state.paused) return false
+            if (!isMyTurn) return false
+            if (mine.registration != "accepted") return false
+            if (mine.checkin != "checked_in") return false
+            if (mine.result != "active") return false
+            if (competition.feeMsat > 0 && mine.payment != "settled") return false
+            val rest = competition.rules.minRestSec
+            if (rest > 0 && mine.lastAttemptAt > 0 && nowSeconds - mine.lastAttemptAt < rest) return false
+            return true
+        }
+
+        /** Seconds of rest still owed before this climber may go again. */
+        fun restSecondsLeft(nowSeconds: Long): Long {
+            val competition = snapshot.competition ?: return 0
+            val mine = me ?: return 0
+            val rest = competition.rules.minRestSec
+            if (rest <= 0 || mine.lastAttemptAt <= 0) return 0
+            return (mine.lastAttemptAt + rest - nowSeconds).coerceAtLeast(0)
+        }
+
+        /** One climb this person runs, with what is left on it. */
+        data class Remaining(
+            val climb: CompetitionClimb,
+            val attemptsLeft: Int,
+            val outcome: String,
+        )
+
+        /**
+         * The climbs this person may still attempt.
+         *
+         * Under participant choice that is the set they hold, never the whole
+         * pool: the reducer refuses an attempt on somebody else's climb, so a
+         * control offering one would only produce a rejection.
+         */
+        val remainingClimbs: List<Remaining>
+            get() {
+                val competition = snapshot.competition ?: return emptyList()
+                val mine = me ?: return emptyList()
+                val attemptsPerClimb = competition.rules.attemptsPerClimb
+                return competition.climbsFor(mine.selections).mapNotNull { climb ->
+                    val record = mine.climb(climb.id)
+                    if (record?.outcome == "top") return@mapNotNull null
+                    val left = (attemptsPerClimb - (record?.attemptsUsed ?: 0)).coerceAtLeast(0)
+                    if (left == 0) null else Remaining(climb, left, record?.outcome ?: "none")
+                }
+            }
+
+        /** Pool climbs nobody holds yet — what may still be picked. */
+        val freePoolClimbs: List<CompetitionClimb>
+            get() {
+                val competition = snapshot.competition ?: return emptyList()
+                val state = snapshot.state ?: return emptyList()
+                if (competition.rules.selectionUniqueness != "unique_per_competition") {
+                    return competition.climbPool
+                }
+                return competition.climbPool.filter { state.claims[it.id] == null }
+            }
+
+        /** How many more climbs this person still has to pick. */
+        val climbsStillToPick: Int
+            get() {
+                val competition = snapshot.competition ?: return 0
+                return (competition.rules.climbCount - (me?.selections?.size ?: 0)).coerceAtLeast(0)
+            }
+
+        val picksOwnClimbs: Boolean
+            get() = snapshot.competition?.rules?.climbSource == "participant_choice"
+
         fun secondsToDeadline(nowSeconds: Long): Long? {
             val state = snapshot.state ?: return null
             if (state.cursor < 0 || state.turnDeadlineAt == 0L) return null
@@ -127,9 +210,29 @@ class CompetitionDetailViewModel @Inject constructor(
         }
     }
 
-    fun register(division: String, display: String, waiverAccepted: Boolean) = act {
+    fun register(
+        division: String,
+        display: String,
+        waiverAccepted: Boolean,
+        selections: List<String> = emptyList(),
+    ) = act {
         val competition = client.snapshot.value.competition ?: return@act null
-        intents.register(competition, organizerPubkey, division, display, waiverAccepted)
+        intents.register(competition, organizerPubkey, division, display, waiverAccepted, selections.sorted())
+    }
+
+    /**
+     * Report an attempt on one of my own climbs.
+     *
+     * A report, not a result: the authority's entry is what scores. The screen
+     * says so, because someone who thinks their top is banked and finds it is
+     * not has been misled by us.
+     */
+    fun reportAttempt(climbId: String, outcome: String) = act {
+        val snapshot = client.snapshot.value
+        val competition = snapshot.competition ?: return@act null
+        val mine = snapshot.state?.participants?.firstOrNull { it.pubkey == myPubkey } ?: return@act null
+        val used = mine.climb(climbId)?.attemptsUsed ?: 0
+        intents.reportAttempt(competition, organizerPubkey, climbId, outcome, used + 1)
     }
 
     fun withdraw() = act {
@@ -164,6 +267,28 @@ class CompetitionDetailViewModel @Inject constructor(
     }
 
     fun clearAction() = _action.update { Action.Idle }
+
+    /** What happened the last time somebody asked to see a climb on the board. */
+    private val _climbOpen = MutableStateFlow<CompetitionClimbResolver.Result?>(null)
+    val climbOpen: StateFlow<CompetitionClimbResolver.Result?> = _climbOpen.asStateFlow()
+
+    /**
+     * Ask for a competition climb on the board.
+     *
+     * Resolved against what this phone holds before anything navigates: a climb
+     * whose board has not been downloaded, or that no size we have can draw,
+     * produces a sentence and a way to fix it rather than an empty board.
+     */
+    fun openClimb(climbId: String) {
+        val competition = client.snapshot.value.competition ?: return
+        val climb = competition.climb(climbId) ?: return
+        _climbOpen.update { climbs.resolve(competition, climb) }
+    }
+
+    /** Try again — the catalogue may have been downloaded since. */
+    fun retryOpenClimb(climbId: String) = openClimb(climbId)
+
+    fun clearClimbOpen() = _climbOpen.update { null }
 
     /** The share link for this competition, for the system share sheet. */
     fun shareLink(host: String): String? {
