@@ -4,6 +4,30 @@ All notable changes to CruxCoach will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.3] - Unreleased
+
+### Added
+- **Competitions** — run a comp on your board, or take part in one, with no
+  account and no server. The whole competition lives on Nostr: a signed
+  document, then an append-only linked record of every decision the organiser
+  makes, which every client replays to the same standings.
+  - The CruxCoach logo in the browser's top bar now opens a menu with two
+    entries: **Board Catalog** and **Competitions**. Nothing else moved.
+  - Join by pointing your camera at the organiser's QR code, by opening their
+    link, or by pasting it. `cruxcoach.org/comp/…` opens the app when it is
+    installed and the website when it is not.
+  - The live view answers, in this order: whose turn it is, how many climbers
+    are ahead of you, how many attempts you have left, and where you stand.
+  - **Defer my turn** when you need a minute. It moves you back two places in
+    the round — not to the end — and gives you no extra attempts. The screen
+    says that before you press it, and the button is simply absent once you
+    have used your deferral.
+  - Organising happens on **cruxcoach.org/competitions/**, which also has the
+    participant view for iPhones and a read-only live screen for a projector.
+  - If an entry is missing from the record, no standings are shown and the
+    screen says which entry it is waiting for. A confident wrong result is
+    worse than an honest wait.
+
 ## [0.2.2] - Unreleased
 
 Training playlists you can actually play — climb by climb, with rests,

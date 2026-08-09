@@ -93,6 +93,11 @@ fun CompetitionDetailScreen(
                 },
                 actions = {
                     val link = viewModel.shareLink(BuildConfig.APP_LINK_HOST)
+                    // Resolved here rather than inside the click handler: a
+                    // Context read does not re-run when the configuration
+                    // changes, so the chooser title could be in the previous
+                    // locale after a language switch.
+                    val shareLabel = stringResource(R.string.comp_share)
                     if (link != null) {
                         IconButton(
                             onClick = {
@@ -101,14 +106,12 @@ fun CompetitionDetailScreen(
                                     putExtra(android.content.Intent.EXTRA_TEXT, link)
                                 }
                                 context.startActivity(
-                                    android.content.Intent.createChooser(
-                                        intent, context.getString(R.string.comp_share),
-                                    ),
+                                    android.content.Intent.createChooser(intent, shareLabel),
                                 )
                             },
                             modifier = Modifier.testTag("competition_share"),
                         ) {
-                            Icon(Icons.Default.Share, contentDescription = stringResource(R.string.comp_share))
+                            Icon(Icons.Default.Share, contentDescription = shareLabel)
                         }
                     }
                 },
