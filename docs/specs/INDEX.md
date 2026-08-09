@@ -76,9 +76,16 @@ spec file so other branches see the reservation.
 | FEAT-048 | Per-controller capacity (not per brand) | v0.2.3 | planned | `0.2.3/FEAT-048-per-controller-capacity.md` |
 | FEAT-049 | MoonBoard Hold-Set Selection (issue #9) | v0.2.2 | planned | `0.2.2/FEAT-049-moonboard-hold-set-selection.md` |
 | FEAT-050 | Survivable Database Downgrade | backlog | backlog | `backlog/FEAT-050-database-downgrade-safety.md` |
+| FEAT-058 | CruxCoach Competitions (app + web + protocol) | v0.2.3 | implementation | `0.2.3/FEAT-058-competitions.md` |
 
 Implementation plan for FEAT-043/045/046:
 `0.2.2/IMPLEMENTATION-PLAN-convergence-player.md`.
+
+FEAT-058 ships as three documents: the user-level feature spec
+`0.2.3/FEAT-058-competitions.md`, the wire contract
+`0.2.3/FEAT-058-competition-protocol.md`, and the cross-client conformance
+matrix `0.2.3/FEAT-058-conformance.md`. Its website half lives on the
+`cruxcoach-pages` branch `feat/competitions`.
 
 FEAT-043 and FEAT-046 moved to v0.2.3 on 2026-07-27: neither is in the 0.2.2
 build, and a milestone column that says otherwise makes the release claim
@@ -122,9 +129,37 @@ renumbering those is likely cheaper than renumbering the shipped side.
 
 ## Next free
 
-**FEAT-051** is the next unallocated ID. Verify against unmerged branches
+**FEAT-059** is the next unallocated ID. Verify against unmerged branches
 before allocating — the reconciliation below closed the previously listed
 gaps, but a branch this worktree cannot see may still hold one.
+
+### Allocation of FEAT-058 (2026-08-09) — and why not FEAT-051
+
+This worktree's table said FEAT-051 was next free, with the standing warning to
+check unmerged branches first. That check paid off. The read-only worktree
+`/home/myuser/cruxcoach-worktrees/nostr-potential-20260804`, on branch
+`goal/nostr-potential-20260804`, had already allocated **FEAT-050–055 on
+2026-08-04 and FEAT-056–057 on 2026-08-05**:
+
+| ID | Title on that branch |
+|----|----------------------|
+| FEAT-050 | Portable Circuits — lists as NIP-51 sets |
+| FEAT-051 | Board Status — opt-in NIP-38 presence |
+| FEAT-052 | Open Climb Identity + Cross-Client Comments |
+| FEAT-053 | Zap the Setter (NIP-57 on a climb) |
+| FEAT-054 | Remote Sessions over Nostr |
+| FEAT-055 | Plural Board Catalogue (multi-publisher manifests) |
+| FEAT-056 | NIP-17 DM Relay Lists (`kind:10050`) |
+| FEAT-057 | Ascent Provenance — board-witnessed + board-attested |
+
+Note that FEAT-050 is a *different* feature on each branch — this branch's
+FEAT-050 is Survivable Database Downgrade. That collision is pre-existing and is
+not touched here; it is listed under *Unresolved ID collisions* territory and
+belongs to whoever merges those two branches.
+
+Competitions therefore took **FEAT-058**, the first ID free on both branches,
+rather than adding a fifth avoidable collision. That branch was **not edited**;
+it is read-only reference.
 
 ## Status legend
 

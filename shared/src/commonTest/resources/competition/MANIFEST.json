@@ -1,0 +1,15 @@
+{
+  "schema": "cruxcoach-competition/1",
+  "files": {
+    "streams/chain-break.json": "0a01af4d1394c8df2a0b6ba2641c24dd71e9993a8ecbe05dbb55ba5f00947c0c",
+    "streams/defer-and-timeout.json": "0acdc12464e6bc684ffa6d85b7b90af82c3afba3e297146f5c786fdcca57f433",
+    "streams/fork-and-correction.json": "1c3fbdfa4fb2c05964f2be7a58c03e7aae285ab25dbc30652f9cc397cbddc8ae",
+    "streams/happy-sync.json": "6dd655494c39f9b8742ea80927e73be503462666ac544e28fe0da896fa183c88",
+    "streams/paid-unique-async.json": "048a0558451c15b40c6c1897222cec9270a8d88356f6c849182f7c5d8b698c1c",
+    "streams/rejections-paid.json": "b46d3595ee906a22715e227b142bd0c111d921f16db062d660c7acc189a46257",
+    "streams/rejections.json": "0bceb8d06a10a607da8162b03666fe93662c728827f1c2b81e7ad9a50e400fab",
+    "vectors/protocol.json": "4dfa5d71b2f17898e355e729e61a18c2e4eaaf181363bd17136de88f35a18859",
+    "vectors/zap.json": "21ad6f319c959907139f705dff96ae3d0a7a9ca319186724c8e9ec785a655007"
+  },
+  "manifest_sha256": "bbd69b26aff94cef27a135e65cfea4b4c7571c149650e4d48263934c34656f8b"
+}

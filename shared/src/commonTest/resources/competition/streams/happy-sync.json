@@ -1,0 +1,2349 @@
+{
+  "name": "happy-sync",
+  "description": "Organizer-set climbs, synchronous rounds, no fee, three climbers, clean run to finish.",
+  "schema": "cruxcoach-competition/1",
+  "competition_event": {
+    "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+    "created_at": 1788900000,
+    "kind": 30078,
+    "tags": [
+      [
+        "d",
+        "cruxcoach:comp:9f2c41ab77e05d13"
+      ],
+      [
+        "L",
+        "com.cruxcoach.competition"
+      ],
+      [
+        "l",
+        "competition",
+        "com.cruxcoach.competition"
+      ],
+      [
+        "cc-schema",
+        "cruxcoach-competition/1"
+      ],
+      [
+        "alt",
+        "CruxCoach competition: Kellerwand Winter Session"
+      ],
+      [
+        "status",
+        "draft"
+      ],
+      [
+        "visibility",
+        "public"
+      ],
+      [
+        "board_brand",
+        "kilter"
+      ],
+      [
+        "starts",
+        "1789005400"
+      ],
+      [
+        "ends",
+        "1789012600"
+      ],
+      [
+        "authority",
+        "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004"
+      ],
+      [
+        "p",
+        "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004"
+      ],
+      [
+        "t",
+        "cruxcoach-competition"
+      ],
+      [
+        "t",
+        "climbing"
+      ]
+    ],
+    "content": "{\"authority\":\"2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004\",\"authority_epoch\":1,\"board\":{\"angle\":40,\"brand\":\"kilter\",\"layout_id\":1,\"model\":\"kilterboard-og\",\"size\":\"12x12\"},\"capacity\":8,\"checkin_closes_at\":1789005400,\"checkin_opens_at\":1789003600,\"climbs\":[{\"angle\":40,\"climb_uuid\":\"11111111-1111-4111-8111-111111111111\",\"id\":\"c1\",\"label\":\"Qualifier 1\",\"points\":100},{\"angle\":40,\"climb_uuid\":\"22222222-2222-4222-8222-222222222222\",\"id\":\"c2\",\"label\":\"Qualifier 2\",\"points\":150}],\"comp_id\":\"9f2c41ab77e05d13\",\"created_at\":1788900000,\"description\":\"A friendly in-house session on the Kilter board at 40 degrees.\",\"divisions\":[{\"id\":\"open\",\"label\":\"Open\"}],\"eligibility\":\"Open to everyone who has climbed here before.\",\"ends_at\":1789012600,\"fee_msat\":0,\"organizer\":{\"contact\":\"kellerwand@example.org\",\"name\":\"Kellerwand Bouldern\"},\"participant_instructions\":\"Arrive twenty minutes early and warm up on the slab.\",\"prizes\":[{\"kind\":\"non_cash\",\"label\":\"Chalk bag\",\"rank\":1}],\"refund_policy\":\"Full refund until 24 hours before the start.\",\"registration_closes_at\":1789003600,\"registration_opens_at\":1789000000,\"relays\":[\"wss://relay.example.invalid\"],\"revision\":1,\"rules\":{\"attempt_deadline_sec\":0,\"attempts_per_climb\":3,\"climb_count\":2,\"climb_source\":\"organizer_set\",\"defer_budget_per_round\":1,\"defer_slots\":2,\"late_entry_allowed\":false,\"max_consecutive_defers\":1,\"min_rest_sec\":0,\"progression\":\"synchronous_rounds\",\"scoring\":\"tops_then_attempts\",\"selection_uniqueness\":\"none\",\"tiebreaks\":[\"fewest_attempts\",\"most_zones\",\"earliest_finish\",\"seed_order\"],\"turn_deadline_sec\":120},\"spectator_info\":\"Free entry. The live screen is by the entrance.\",\"starts_at\":1789005400,\"status\":\"draft\",\"summary\":\"Five problems, three attempts each, one evening.\",\"timezone\":\"Europe/Berlin\",\"title\":\"Kellerwand Winter Session\",\"type\":\"competition\",\"v\":1,\"venue\":{\"address\":\"Beispielweg 3, Berlin\",\"kind\":\"physical\",\"name\":\"Kellerwand Bouldern\"},\"visibility\":\"public\",\"waitlist_enabled\":true,\"waiver\":\"I understand that climbing is dangerous and I climb at my own risk.\",\"waiver_required\":true}",
+    "id": "fda35fae40ea133afe64f70e20a2ce2d2a95abcc0716fa3f70df989d459d06cf",
+    "sig": "16ded9502d6bd9a22fd7f32bbf9c3bfa2b8360554633f5205d9d6cfcde116d644fca1db2b7278f6dacd5d9828f9eeaa626359ba8cd83fcf23cd6e4bb1f5b21df"
+  },
+  "log_events": [
+    {
+      "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+      "created_at": 1788900100,
+      "kind": 30078,
+      "tags": [
+        [
+          "d",
+          "cruxcoach:comp:9f2c41ab77e05d13:log:000001"
+        ],
+        [
+          "L",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "l",
+          "log",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "cc-schema",
+          "cruxcoach-competition/1"
+        ],
+        [
+          "alt",
+          "CruxCoach competition log entry 1: lifecycle"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:9f2c41ab77e05d13"
+        ],
+        [
+          "seq",
+          "1"
+        ],
+        [
+          "prev",
+          "fda35fae40ea133afe64f70e20a2ce2d2a95abcc0716fa3f70df989d459d06cf"
+        ],
+        [
+          "op",
+          "lifecycle"
+        ],
+        [
+          "epoch",
+          "1"
+        ]
+      ],
+      "content": "{\"actor\":\"authority\",\"at\":1788900100,\"comp_id\":\"9f2c41ab77e05d13\",\"data\":{\"at\":1788900100,\"status\":\"published\"},\"epoch\":1,\"op\":\"lifecycle\",\"prev\":\"fda35fae40ea133afe64f70e20a2ce2d2a95abcc0716fa3f70df989d459d06cf\",\"seq\":1,\"type\":\"log\",\"v\":1}",
+      "id": "ee180b73563708366e8c2e023849284a4ee68201bc248a596843ff37deced4c1",
+      "sig": "5a13ab646e2b7056a751e679b7ce4d9531748d546451baebc5d84f7478950443efcb4666756c4c6fc730a57961205e3abcfdcf50e43e12c420d8eefe7aa9c4fc"
+    },
+    {
+      "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+      "created_at": 1789000000,
+      "kind": 30078,
+      "tags": [
+        [
+          "d",
+          "cruxcoach:comp:9f2c41ab77e05d13:log:000002"
+        ],
+        [
+          "L",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "l",
+          "log",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "cc-schema",
+          "cruxcoach-competition/1"
+        ],
+        [
+          "alt",
+          "CruxCoach competition log entry 2: lifecycle"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:9f2c41ab77e05d13"
+        ],
+        [
+          "seq",
+          "2"
+        ],
+        [
+          "prev",
+          "ee180b73563708366e8c2e023849284a4ee68201bc248a596843ff37deced4c1"
+        ],
+        [
+          "op",
+          "lifecycle"
+        ],
+        [
+          "epoch",
+          "1"
+        ]
+      ],
+      "content": "{\"actor\":\"authority\",\"at\":1789000000,\"comp_id\":\"9f2c41ab77e05d13\",\"data\":{\"at\":1789000000,\"status\":\"registration_open\"},\"epoch\":1,\"op\":\"lifecycle\",\"prev\":\"ee180b73563708366e8c2e023849284a4ee68201bc248a596843ff37deced4c1\",\"seq\":2,\"type\":\"log\",\"v\":1}",
+      "id": "7525c3e9fa285ebbb23c8e420aad5864cfef7ad62d47674a38f87bdcd0a095f4",
+      "sig": "b4e7c3875017f4da97eb93aa860fefafb1ada8d842a485d4dfe62cd5b24fa6d6b67297a0d616a52fae34935e9af97eb23c6d6f2017a9bcfedf6f3d2b29a162de"
+    },
+    {
+      "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+      "created_at": 1789000100,
+      "kind": 30078,
+      "tags": [
+        [
+          "d",
+          "cruxcoach:comp:9f2c41ab77e05d13:log:000003"
+        ],
+        [
+          "L",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "l",
+          "log",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "cc-schema",
+          "cruxcoach-competition/1"
+        ],
+        [
+          "alt",
+          "CruxCoach competition log entry 3: registration_decision"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:9f2c41ab77e05d13"
+        ],
+        [
+          "seq",
+          "3"
+        ],
+        [
+          "prev",
+          "7525c3e9fa285ebbb23c8e420aad5864cfef7ad62d47674a38f87bdcd0a095f4"
+        ],
+        [
+          "op",
+          "registration_decision"
+        ],
+        [
+          "epoch",
+          "1"
+        ],
+        [
+          "p",
+          "d4d41c056c407711c552ace7aaf4fa9b51b4ea80d06beac56a399c0034229130"
+        ]
+      ],
+      "content": "{\"actor\":\"authority\",\"at\":1789000100,\"comp_id\":\"9f2c41ab77e05d13\",\"data\":{\"decision\":\"accepted\",\"display\":\"alice\",\"division\":\"open\",\"pubkey\":\"d4d41c056c407711c552ace7aaf4fa9b51b4ea80d06beac56a399c0034229130\"},\"epoch\":1,\"op\":\"registration_decision\",\"prev\":\"7525c3e9fa285ebbb23c8e420aad5864cfef7ad62d47674a38f87bdcd0a095f4\",\"seq\":3,\"type\":\"log\",\"v\":1}",
+      "id": "49f2ddca8cad3ac1230a1657a49c5fec4de3e0364aef159f69bfa5eaabe27d3c",
+      "sig": "080e9d470dc858213484a38cdaa2ae9f531c664f3b03ccef763383c42192e25bf5463c181c16125c80b053cb38b013ef1454d3791a20c8740bf983514508d920"
+    },
+    {
+      "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+      "created_at": 1789000101,
+      "kind": 30078,
+      "tags": [
+        [
+          "d",
+          "cruxcoach:comp:9f2c41ab77e05d13:log:000004"
+        ],
+        [
+          "L",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "l",
+          "log",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "cc-schema",
+          "cruxcoach-competition/1"
+        ],
+        [
+          "alt",
+          "CruxCoach competition log entry 4: registration_decision"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:9f2c41ab77e05d13"
+        ],
+        [
+          "seq",
+          "4"
+        ],
+        [
+          "prev",
+          "49f2ddca8cad3ac1230a1657a49c5fec4de3e0364aef159f69bfa5eaabe27d3c"
+        ],
+        [
+          "op",
+          "registration_decision"
+        ],
+        [
+          "epoch",
+          "1"
+        ],
+        [
+          "p",
+          "019244fa7971d9b335e80017cc0627eae1909c7bc991cb64dad2328df614f911"
+        ]
+      ],
+      "content": "{\"actor\":\"authority\",\"at\":1789000101,\"comp_id\":\"9f2c41ab77e05d13\",\"data\":{\"decision\":\"accepted\",\"display\":\"bob\",\"division\":\"open\",\"pubkey\":\"019244fa7971d9b335e80017cc0627eae1909c7bc991cb64dad2328df614f911\"},\"epoch\":1,\"op\":\"registration_decision\",\"prev\":\"49f2ddca8cad3ac1230a1657a49c5fec4de3e0364aef159f69bfa5eaabe27d3c\",\"seq\":4,\"type\":\"log\",\"v\":1}",
+      "id": "1667d03a61c4c67c499306cec78f8560188477f2772528ed11ab704b2abc6406",
+      "sig": "9fce1bdb2ac58d59857a4c82355bf80fb5671a8644c386752baff7c5312834539d63ae5f9234976348fc63524289a00a5f768076fe321b8c316958e35ae0d61e"
+    },
+    {
+      "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+      "created_at": 1789000102,
+      "kind": 30078,
+      "tags": [
+        [
+          "d",
+          "cruxcoach:comp:9f2c41ab77e05d13:log:000005"
+        ],
+        [
+          "L",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "l",
+          "log",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "cc-schema",
+          "cruxcoach-competition/1"
+        ],
+        [
+          "alt",
+          "CruxCoach competition log entry 5: registration_decision"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:9f2c41ab77e05d13"
+        ],
+        [
+          "seq",
+          "5"
+        ],
+        [
+          "prev",
+          "1667d03a61c4c67c499306cec78f8560188477f2772528ed11ab704b2abc6406"
+        ],
+        [
+          "op",
+          "registration_decision"
+        ],
+        [
+          "epoch",
+          "1"
+        ],
+        [
+          "p",
+          "cc2e7ee700ae9f6647ffcf8cc599fd2d7742f843d64850bfc5bb4c1d800ca66c"
+        ]
+      ],
+      "content": "{\"actor\":\"authority\",\"at\":1789000102,\"comp_id\":\"9f2c41ab77e05d13\",\"data\":{\"decision\":\"accepted\",\"display\":\"carla\",\"division\":\"open\",\"pubkey\":\"cc2e7ee700ae9f6647ffcf8cc599fd2d7742f843d64850bfc5bb4c1d800ca66c\"},\"epoch\":1,\"op\":\"registration_decision\",\"prev\":\"1667d03a61c4c67c499306cec78f8560188477f2772528ed11ab704b2abc6406\",\"seq\":5,\"type\":\"log\",\"v\":1}",
+      "id": "7b763ce5b5bf99236d0e847e22edfd89239415079430bb1a61cb56023fd8c07e",
+      "sig": "9d27c51f7ea2a0e1b9d2b007f3b7702f6d5b7a693f5611ee5627282d1ab86544cb94d66844242876e807a383514c03dce7463dfb865af1688c4fbb9593e2bccc"
+    },
+    {
+      "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+      "created_at": 1789003600,
+      "kind": 30078,
+      "tags": [
+        [
+          "d",
+          "cruxcoach:comp:9f2c41ab77e05d13:log:000006"
+        ],
+        [
+          "L",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "l",
+          "log",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "cc-schema",
+          "cruxcoach-competition/1"
+        ],
+        [
+          "alt",
+          "CruxCoach competition log entry 6: lifecycle"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:9f2c41ab77e05d13"
+        ],
+        [
+          "seq",
+          "6"
+        ],
+        [
+          "prev",
+          "7b763ce5b5bf99236d0e847e22edfd89239415079430bb1a61cb56023fd8c07e"
+        ],
+        [
+          "op",
+          "lifecycle"
+        ],
+        [
+          "epoch",
+          "1"
+        ]
+      ],
+      "content": "{\"actor\":\"authority\",\"at\":1789003600,\"comp_id\":\"9f2c41ab77e05d13\",\"data\":{\"at\":1789003600,\"status\":\"registration_closed\"},\"epoch\":1,\"op\":\"lifecycle\",\"prev\":\"7b763ce5b5bf99236d0e847e22edfd89239415079430bb1a61cb56023fd8c07e\",\"seq\":6,\"type\":\"log\",\"v\":1}",
+      "id": "d1e647e3313e4753418893e7bb2c78d4a08da05234bb687ce7a00542d8837b2f",
+      "sig": "6d01ed1ae5cc034516d1ea1081d0e1b1fb32371971619e2867cd1152f2753976011e99b778cb0e625db04bc4352038a70967b0e6c111d65a8afe891ac8a6b6a3"
+    },
+    {
+      "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+      "created_at": 1789003700,
+      "kind": 30078,
+      "tags": [
+        [
+          "d",
+          "cruxcoach:comp:9f2c41ab77e05d13:log:000007"
+        ],
+        [
+          "L",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "l",
+          "log",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "cc-schema",
+          "cruxcoach-competition/1"
+        ],
+        [
+          "alt",
+          "CruxCoach competition log entry 7: lifecycle"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:9f2c41ab77e05d13"
+        ],
+        [
+          "seq",
+          "7"
+        ],
+        [
+          "prev",
+          "d1e647e3313e4753418893e7bb2c78d4a08da05234bb687ce7a00542d8837b2f"
+        ],
+        [
+          "op",
+          "lifecycle"
+        ],
+        [
+          "epoch",
+          "1"
+        ]
+      ],
+      "content": "{\"actor\":\"authority\",\"at\":1789003700,\"comp_id\":\"9f2c41ab77e05d13\",\"data\":{\"at\":1789003700,\"status\":\"checkin_open\"},\"epoch\":1,\"op\":\"lifecycle\",\"prev\":\"d1e647e3313e4753418893e7bb2c78d4a08da05234bb687ce7a00542d8837b2f\",\"seq\":7,\"type\":\"log\",\"v\":1}",
+      "id": "296d72a7a7a157b16c3d90e6d652fedfa28304516eb4b9a57daac336431a052e",
+      "sig": "66966e8c69f81e7174b8cffbf952ed44c8b5b95d896502bf3b97b8c6ca19cadd8445c56bdffd8654e9d51e3c1926901b9f95108231a5a0d5f53bd3a78ced3033"
+    },
+    {
+      "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+      "created_at": 1789003800,
+      "kind": 30078,
+      "tags": [
+        [
+          "d",
+          "cruxcoach:comp:9f2c41ab77e05d13:log:000008"
+        ],
+        [
+          "L",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "l",
+          "log",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "cc-schema",
+          "cruxcoach-competition/1"
+        ],
+        [
+          "alt",
+          "CruxCoach competition log entry 8: checkin"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:9f2c41ab77e05d13"
+        ],
+        [
+          "seq",
+          "8"
+        ],
+        [
+          "prev",
+          "296d72a7a7a157b16c3d90e6d652fedfa28304516eb4b9a57daac336431a052e"
+        ],
+        [
+          "op",
+          "checkin"
+        ],
+        [
+          "epoch",
+          "1"
+        ],
+        [
+          "p",
+          "d4d41c056c407711c552ace7aaf4fa9b51b4ea80d06beac56a399c0034229130"
+        ]
+      ],
+      "content": "{\"actor\":\"authority\",\"at\":1789003800,\"comp_id\":\"9f2c41ab77e05d13\",\"data\":{\"pubkey\":\"d4d41c056c407711c552ace7aaf4fa9b51b4ea80d06beac56a399c0034229130\",\"state\":\"checked_in\"},\"epoch\":1,\"op\":\"checkin\",\"prev\":\"296d72a7a7a157b16c3d90e6d652fedfa28304516eb4b9a57daac336431a052e\",\"seq\":8,\"type\":\"log\",\"v\":1}",
+      "id": "f1bab12abc0b231fa3219a85a906194ae28c6dd0b67d7d68756e886e54f1ab2b",
+      "sig": "091c7b4fbefee421051500559b64decee48778df1c3415f7f44e698519ececabe1874e0826b0f27053b52ac1bbd76ea621396ab191289edf05ec46cd243b7b98"
+    },
+    {
+      "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+      "created_at": 1789003801,
+      "kind": 30078,
+      "tags": [
+        [
+          "d",
+          "cruxcoach:comp:9f2c41ab77e05d13:log:000009"
+        ],
+        [
+          "L",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "l",
+          "log",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "cc-schema",
+          "cruxcoach-competition/1"
+        ],
+        [
+          "alt",
+          "CruxCoach competition log entry 9: checkin"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:9f2c41ab77e05d13"
+        ],
+        [
+          "seq",
+          "9"
+        ],
+        [
+          "prev",
+          "f1bab12abc0b231fa3219a85a906194ae28c6dd0b67d7d68756e886e54f1ab2b"
+        ],
+        [
+          "op",
+          "checkin"
+        ],
+        [
+          "epoch",
+          "1"
+        ],
+        [
+          "p",
+          "019244fa7971d9b335e80017cc0627eae1909c7bc991cb64dad2328df614f911"
+        ]
+      ],
+      "content": "{\"actor\":\"authority\",\"at\":1789003801,\"comp_id\":\"9f2c41ab77e05d13\",\"data\":{\"pubkey\":\"019244fa7971d9b335e80017cc0627eae1909c7bc991cb64dad2328df614f911\",\"state\":\"checked_in\"},\"epoch\":1,\"op\":\"checkin\",\"prev\":\"f1bab12abc0b231fa3219a85a906194ae28c6dd0b67d7d68756e886e54f1ab2b\",\"seq\":9,\"type\":\"log\",\"v\":1}",
+      "id": "242c9d40e37552c0fb61d6a57ba76df89050ee5d78cc04b040a8b578f44e3d16",
+      "sig": "beefa313995bd599a7ed2d8cca68fccec6e5c5d13d4319e0426a4a7ed625d392d523cecb8d9be0b09970ff9fa5dba72f39024156a58774e5597fa412653c7dc9"
+    },
+    {
+      "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+      "created_at": 1789003802,
+      "kind": 30078,
+      "tags": [
+        [
+          "d",
+          "cruxcoach:comp:9f2c41ab77e05d13:log:000010"
+        ],
+        [
+          "L",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "l",
+          "log",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "cc-schema",
+          "cruxcoach-competition/1"
+        ],
+        [
+          "alt",
+          "CruxCoach competition log entry 10: checkin"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:9f2c41ab77e05d13"
+        ],
+        [
+          "seq",
+          "10"
+        ],
+        [
+          "prev",
+          "242c9d40e37552c0fb61d6a57ba76df89050ee5d78cc04b040a8b578f44e3d16"
+        ],
+        [
+          "op",
+          "checkin"
+        ],
+        [
+          "epoch",
+          "1"
+        ],
+        [
+          "p",
+          "cc2e7ee700ae9f6647ffcf8cc599fd2d7742f843d64850bfc5bb4c1d800ca66c"
+        ]
+      ],
+      "content": "{\"actor\":\"authority\",\"at\":1789003802,\"comp_id\":\"9f2c41ab77e05d13\",\"data\":{\"pubkey\":\"cc2e7ee700ae9f6647ffcf8cc599fd2d7742f843d64850bfc5bb4c1d800ca66c\",\"state\":\"checked_in\"},\"epoch\":1,\"op\":\"checkin\",\"prev\":\"242c9d40e37552c0fb61d6a57ba76df89050ee5d78cc04b040a8b578f44e3d16\",\"seq\":10,\"type\":\"log\",\"v\":1}",
+      "id": "542790b5900a47dc1e85b8633122f5f1027ab48a9aee5ea0163402cc069b23e0",
+      "sig": "891a4a7fcfcc23dbe0ca395e623832cb46eb74680a16ec286353f4a426ff3ffaeeb54f4c623f938965946b1332f52d8ddfc05b003ff229648c45062914d912b7"
+    },
+    {
+      "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+      "created_at": 1789005300,
+      "kind": 30078,
+      "tags": [
+        [
+          "d",
+          "cruxcoach:comp:9f2c41ab77e05d13:log:000011"
+        ],
+        [
+          "L",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "l",
+          "log",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "cc-schema",
+          "cruxcoach-competition/1"
+        ],
+        [
+          "alt",
+          "CruxCoach competition log entry 11: queue"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:9f2c41ab77e05d13"
+        ],
+        [
+          "seq",
+          "11"
+        ],
+        [
+          "prev",
+          "542790b5900a47dc1e85b8633122f5f1027ab48a9aee5ea0163402cc069b23e0"
+        ],
+        [
+          "op",
+          "queue"
+        ],
+        [
+          "epoch",
+          "1"
+        ]
+      ],
+      "content": "{\"actor\":\"authority\",\"at\":1789005300,\"comp_id\":\"9f2c41ab77e05d13\",\"data\":{\"action\":\"seed\",\"order\":[\"cc2e7ee700ae9f6647ffcf8cc599fd2d7742f843d64850bfc5bb4c1d800ca66c\",\"019244fa7971d9b335e80017cc0627eae1909c7bc991cb64dad2328df614f911\",\"d4d41c056c407711c552ace7aaf4fa9b51b4ea80d06beac56a399c0034229130\"]},\"epoch\":1,\"op\":\"queue\",\"prev\":\"542790b5900a47dc1e85b8633122f5f1027ab48a9aee5ea0163402cc069b23e0\",\"seq\":11,\"type\":\"log\",\"v\":1}",
+      "id": "7a93642689c423eda565830934b6afc986b9543856fcb8ee70b4ba79d22de3f1",
+      "sig": "2a31e768bf2c0ed4507ab50937f7ed67efac12a1a40d404d8f781a5d415546c7d39f0c28d293f54a468cd0d22a369191b51297e480f53e9e98b0ff80c15f2372"
+    },
+    {
+      "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+      "created_at": 1789005400,
+      "kind": 30078,
+      "tags": [
+        [
+          "d",
+          "cruxcoach:comp:9f2c41ab77e05d13:log:000012"
+        ],
+        [
+          "L",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "l",
+          "log",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "cc-schema",
+          "cruxcoach-competition/1"
+        ],
+        [
+          "alt",
+          "CruxCoach competition log entry 12: lifecycle"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:9f2c41ab77e05d13"
+        ],
+        [
+          "seq",
+          "12"
+        ],
+        [
+          "prev",
+          "7a93642689c423eda565830934b6afc986b9543856fcb8ee70b4ba79d22de3f1"
+        ],
+        [
+          "op",
+          "lifecycle"
+        ],
+        [
+          "epoch",
+          "1"
+        ]
+      ],
+      "content": "{\"actor\":\"authority\",\"at\":1789005400,\"comp_id\":\"9f2c41ab77e05d13\",\"data\":{\"at\":1789005400,\"status\":\"running\"},\"epoch\":1,\"op\":\"lifecycle\",\"prev\":\"7a93642689c423eda565830934b6afc986b9543856fcb8ee70b4ba79d22de3f1\",\"seq\":12,\"type\":\"log\",\"v\":1}",
+      "id": "a90fab227800d22e6e9aa2956a261c68b5551fb747522d52d9a27a5a86d6752a",
+      "sig": "e2487d5da994e2fb12bb61ceef6233bc39586a7eec8109838eb9954686998976d862ca8b92ee61c05d49823966dd08b1eb77e5f4ac11f8b553fd8fc12c041146"
+    },
+    {
+      "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+      "created_at": 1789005410,
+      "kind": 30078,
+      "tags": [
+        [
+          "d",
+          "cruxcoach:comp:9f2c41ab77e05d13:log:000013"
+        ],
+        [
+          "L",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "l",
+          "log",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "cc-schema",
+          "cruxcoach-competition/1"
+        ],
+        [
+          "alt",
+          "CruxCoach competition log entry 13: announcement"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:9f2c41ab77e05d13"
+        ],
+        [
+          "seq",
+          "13"
+        ],
+        [
+          "prev",
+          "a90fab227800d22e6e9aa2956a261c68b5551fb747522d52d9a27a5a86d6752a"
+        ],
+        [
+          "op",
+          "announcement"
+        ],
+        [
+          "epoch",
+          "1"
+        ]
+      ],
+      "content": "{\"actor\":\"authority\",\"at\":1789005410,\"comp_id\":\"9f2c41ab77e05d13\",\"data\":{\"text\":\"Climb 1 is open. Three attempts each.\"},\"epoch\":1,\"op\":\"announcement\",\"prev\":\"a90fab227800d22e6e9aa2956a261c68b5551fb747522d52d9a27a5a86d6752a\",\"seq\":13,\"type\":\"log\",\"v\":1}",
+      "id": "6ac3276a89188729a68cc80d89c18f35c916e61c6db1925c0cb96e7cfdaa35fd",
+      "sig": "1eef6e6b4e13907b629f3bf8c42b65f7764b9858082a843e85ed6869536bf37d7bee8d671b98a070a7f5944edc0830a1080068a97f4c2f50af4297979d1c1c4b"
+    },
+    {
+      "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+      "created_at": 1789005520,
+      "kind": 30078,
+      "tags": [
+        [
+          "d",
+          "cruxcoach:comp:9f2c41ab77e05d13:log:000014"
+        ],
+        [
+          "L",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "l",
+          "log",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "cc-schema",
+          "cruxcoach-competition/1"
+        ],
+        [
+          "alt",
+          "CruxCoach competition log entry 14: queue"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:9f2c41ab77e05d13"
+        ],
+        [
+          "seq",
+          "14"
+        ],
+        [
+          "prev",
+          "6ac3276a89188729a68cc80d89c18f35c916e61c6db1925c0cb96e7cfdaa35fd"
+        ],
+        [
+          "op",
+          "queue"
+        ],
+        [
+          "epoch",
+          "1"
+        ]
+      ],
+      "content": "{\"actor\":\"authority\",\"at\":1789005520,\"comp_id\":\"9f2c41ab77e05d13\",\"data\":{\"action\":\"open_turn\",\"index\":0},\"epoch\":1,\"op\":\"queue\",\"prev\":\"6ac3276a89188729a68cc80d89c18f35c916e61c6db1925c0cb96e7cfdaa35fd\",\"seq\":14,\"type\":\"log\",\"v\":1}",
+      "id": "976c25cbfa87338197c89c0de5862dcea5ae09be77bd0a9461691ffc8e277388",
+      "sig": "eb833bcbebbdb235a8635b42b97c9bae9bd1895d3807ca7cdce9c0e429f6fc982c148b39a5d2919ed1998ae055800fc393a7b29b7b891dcfc67758db445eea5e"
+    },
+    {
+      "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+      "created_at": 1789005545,
+      "kind": 30078,
+      "tags": [
+        [
+          "d",
+          "cruxcoach:comp:9f2c41ab77e05d13:log:000015"
+        ],
+        [
+          "L",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "l",
+          "log",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "cc-schema",
+          "cruxcoach-competition/1"
+        ],
+        [
+          "alt",
+          "CruxCoach competition log entry 15: attempt_result"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:9f2c41ab77e05d13"
+        ],
+        [
+          "seq",
+          "15"
+        ],
+        [
+          "prev",
+          "976c25cbfa87338197c89c0de5862dcea5ae09be77bd0a9461691ffc8e277388"
+        ],
+        [
+          "op",
+          "attempt_result"
+        ],
+        [
+          "epoch",
+          "1"
+        ],
+        [
+          "p",
+          "cc2e7ee700ae9f6647ffcf8cc599fd2d7742f843d64850bfc5bb4c1d800ca66c"
+        ]
+      ],
+      "content": "{\"actor\":\"authority\",\"at\":1789005545,\"comp_id\":\"9f2c41ab77e05d13\",\"data\":{\"attempt_no\":1,\"climb_id\":\"c1\",\"outcome\":\"fall\",\"pubkey\":\"cc2e7ee700ae9f6647ffcf8cc599fd2d7742f843d64850bfc5bb4c1d800ca66c\"},\"epoch\":1,\"op\":\"attempt_result\",\"prev\":\"976c25cbfa87338197c89c0de5862dcea5ae09be77bd0a9461691ffc8e277388\",\"seq\":15,\"type\":\"log\",\"v\":1}",
+      "id": "8f0cc1effe44403ab3432765371b8a4aa5a07d381f71eceb11c06d9e73ee2ec0",
+      "sig": "16aa2bdc27d39335ff17dec7f5443503d7928ca7fef4d46ec316ec4852446e514f5741233947c9e121185f168a7b9a3622e8e6df4d3e7495f695346d2c75a80a"
+    },
+    {
+      "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+      "created_at": 1789005570,
+      "kind": 30078,
+      "tags": [
+        [
+          "d",
+          "cruxcoach:comp:9f2c41ab77e05d13:log:000016"
+        ],
+        [
+          "L",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "l",
+          "log",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "cc-schema",
+          "cruxcoach-competition/1"
+        ],
+        [
+          "alt",
+          "CruxCoach competition log entry 16: attempt_result"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:9f2c41ab77e05d13"
+        ],
+        [
+          "seq",
+          "16"
+        ],
+        [
+          "prev",
+          "8f0cc1effe44403ab3432765371b8a4aa5a07d381f71eceb11c06d9e73ee2ec0"
+        ],
+        [
+          "op",
+          "attempt_result"
+        ],
+        [
+          "epoch",
+          "1"
+        ],
+        [
+          "p",
+          "cc2e7ee700ae9f6647ffcf8cc599fd2d7742f843d64850bfc5bb4c1d800ca66c"
+        ]
+      ],
+      "content": "{\"actor\":\"authority\",\"at\":1789005570,\"comp_id\":\"9f2c41ab77e05d13\",\"data\":{\"attempt_no\":2,\"climb_id\":\"c1\",\"outcome\":\"fall\",\"pubkey\":\"cc2e7ee700ae9f6647ffcf8cc599fd2d7742f843d64850bfc5bb4c1d800ca66c\"},\"epoch\":1,\"op\":\"attempt_result\",\"prev\":\"8f0cc1effe44403ab3432765371b8a4aa5a07d381f71eceb11c06d9e73ee2ec0\",\"seq\":16,\"type\":\"log\",\"v\":1}",
+      "id": "af44064b9a4d4ed2ded93a15d4a8a73ba9d773300f768d813578a252efcde884",
+      "sig": "e7a1b76441e2fd31202da21504a5691d39eba6e64ab8a5c5d50469345802f40615ae4b9b90dfe69328eafb46f587705ff789c60cbe5b751223478703f53d157c"
+    },
+    {
+      "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+      "created_at": 1789005595,
+      "kind": 30078,
+      "tags": [
+        [
+          "d",
+          "cruxcoach:comp:9f2c41ab77e05d13:log:000017"
+        ],
+        [
+          "L",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "l",
+          "log",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "cc-schema",
+          "cruxcoach-competition/1"
+        ],
+        [
+          "alt",
+          "CruxCoach competition log entry 17: attempt_result"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:9f2c41ab77e05d13"
+        ],
+        [
+          "seq",
+          "17"
+        ],
+        [
+          "prev",
+          "af44064b9a4d4ed2ded93a15d4a8a73ba9d773300f768d813578a252efcde884"
+        ],
+        [
+          "op",
+          "attempt_result"
+        ],
+        [
+          "epoch",
+          "1"
+        ],
+        [
+          "p",
+          "cc2e7ee700ae9f6647ffcf8cc599fd2d7742f843d64850bfc5bb4c1d800ca66c"
+        ]
+      ],
+      "content": "{\"actor\":\"authority\",\"at\":1789005595,\"comp_id\":\"9f2c41ab77e05d13\",\"data\":{\"attempt_no\":3,\"climb_id\":\"c1\",\"outcome\":\"fall\",\"pubkey\":\"cc2e7ee700ae9f6647ffcf8cc599fd2d7742f843d64850bfc5bb4c1d800ca66c\"},\"epoch\":1,\"op\":\"attempt_result\",\"prev\":\"af44064b9a4d4ed2ded93a15d4a8a73ba9d773300f768d813578a252efcde884\",\"seq\":17,\"type\":\"log\",\"v\":1}",
+      "id": "fc78494b93f0b61b071deb64a52ffb986ff2ebc85f6b6a8b793d4648f43dceda",
+      "sig": "cba9e191ae33740b739ac7f0c690d07118bd965ed330caabd8db0b27915e05989bafe2cd00edb8c76a0811bfd12818bbf05cef5dbb81919ac1d4d94c9693951e"
+    },
+    {
+      "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+      "created_at": 1789005600,
+      "kind": 30078,
+      "tags": [
+        [
+          "d",
+          "cruxcoach:comp:9f2c41ab77e05d13:log:000018"
+        ],
+        [
+          "L",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "l",
+          "log",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "cc-schema",
+          "cruxcoach-competition/1"
+        ],
+        [
+          "alt",
+          "CruxCoach competition log entry 18: queue"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:9f2c41ab77e05d13"
+        ],
+        [
+          "seq",
+          "18"
+        ],
+        [
+          "prev",
+          "fc78494b93f0b61b071deb64a52ffb986ff2ebc85f6b6a8b793d4648f43dceda"
+        ],
+        [
+          "op",
+          "queue"
+        ],
+        [
+          "epoch",
+          "1"
+        ]
+      ],
+      "content": "{\"actor\":\"authority\",\"at\":1789005600,\"comp_id\":\"9f2c41ab77e05d13\",\"data\":{\"action\":\"close_turn\"},\"epoch\":1,\"op\":\"queue\",\"prev\":\"fc78494b93f0b61b071deb64a52ffb986ff2ebc85f6b6a8b793d4648f43dceda\",\"seq\":18,\"type\":\"log\",\"v\":1}",
+      "id": "c0610114f5a493763bec3d5012336b253ba1f349a1d91001c1bd50981a25214f",
+      "sig": "5fb60cff631144de2bdf13a15c902f14101944fb60aa68fc3be49fe578bd9e8d773741a872932079e7570b467d724a609dc39fe1f63286623deccb28ad7f4213"
+    },
+    {
+      "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+      "created_at": 1789005620,
+      "kind": 30078,
+      "tags": [
+        [
+          "d",
+          "cruxcoach:comp:9f2c41ab77e05d13:log:000019"
+        ],
+        [
+          "L",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "l",
+          "log",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "cc-schema",
+          "cruxcoach-competition/1"
+        ],
+        [
+          "alt",
+          "CruxCoach competition log entry 19: queue"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:9f2c41ab77e05d13"
+        ],
+        [
+          "seq",
+          "19"
+        ],
+        [
+          "prev",
+          "c0610114f5a493763bec3d5012336b253ba1f349a1d91001c1bd50981a25214f"
+        ],
+        [
+          "op",
+          "queue"
+        ],
+        [
+          "epoch",
+          "1"
+        ]
+      ],
+      "content": "{\"actor\":\"authority\",\"at\":1789005620,\"comp_id\":\"9f2c41ab77e05d13\",\"data\":{\"action\":\"open_turn\",\"index\":1},\"epoch\":1,\"op\":\"queue\",\"prev\":\"c0610114f5a493763bec3d5012336b253ba1f349a1d91001c1bd50981a25214f\",\"seq\":19,\"type\":\"log\",\"v\":1}",
+      "id": "742be36f1b335054cf4bdd16fc7ad5cab1211270e4b22089c1938f83101900c6",
+      "sig": "814fd3aff93b2484e921ffdf62b718b8b3927daad96eafc0549f937b48d2c70c93a23b80db41ca3bf05e179b33a4d0cc96e5b21038db2498725dce182178b548"
+    },
+    {
+      "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+      "created_at": 1789005645,
+      "kind": 30078,
+      "tags": [
+        [
+          "d",
+          "cruxcoach:comp:9f2c41ab77e05d13:log:000020"
+        ],
+        [
+          "L",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "l",
+          "log",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "cc-schema",
+          "cruxcoach-competition/1"
+        ],
+        [
+          "alt",
+          "CruxCoach competition log entry 20: attempt_result"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:9f2c41ab77e05d13"
+        ],
+        [
+          "seq",
+          "20"
+        ],
+        [
+          "prev",
+          "742be36f1b335054cf4bdd16fc7ad5cab1211270e4b22089c1938f83101900c6"
+        ],
+        [
+          "op",
+          "attempt_result"
+        ],
+        [
+          "epoch",
+          "1"
+        ],
+        [
+          "p",
+          "019244fa7971d9b335e80017cc0627eae1909c7bc991cb64dad2328df614f911"
+        ]
+      ],
+      "content": "{\"actor\":\"authority\",\"at\":1789005645,\"comp_id\":\"9f2c41ab77e05d13\",\"data\":{\"attempt_no\":1,\"climb_id\":\"c1\",\"outcome\":\"fall\",\"pubkey\":\"019244fa7971d9b335e80017cc0627eae1909c7bc991cb64dad2328df614f911\"},\"epoch\":1,\"op\":\"attempt_result\",\"prev\":\"742be36f1b335054cf4bdd16fc7ad5cab1211270e4b22089c1938f83101900c6\",\"seq\":20,\"type\":\"log\",\"v\":1}",
+      "id": "e60bc73954f14cba3f82afadae81a82dfb32af1e4264aae625fadc4dfdea9c19",
+      "sig": "34ef8cfe00e38772d1e11838805ab08a063a9f94d5268d8549021539b70f4773618ba579501cddb26ee07a3c3ccc5476e3b083fc024dc61f080de016a318ec79"
+    },
+    {
+      "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+      "created_at": 1789005670,
+      "kind": 30078,
+      "tags": [
+        [
+          "d",
+          "cruxcoach:comp:9f2c41ab77e05d13:log:000021"
+        ],
+        [
+          "L",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "l",
+          "log",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "cc-schema",
+          "cruxcoach-competition/1"
+        ],
+        [
+          "alt",
+          "CruxCoach competition log entry 21: attempt_result"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:9f2c41ab77e05d13"
+        ],
+        [
+          "seq",
+          "21"
+        ],
+        [
+          "prev",
+          "e60bc73954f14cba3f82afadae81a82dfb32af1e4264aae625fadc4dfdea9c19"
+        ],
+        [
+          "op",
+          "attempt_result"
+        ],
+        [
+          "epoch",
+          "1"
+        ],
+        [
+          "p",
+          "019244fa7971d9b335e80017cc0627eae1909c7bc991cb64dad2328df614f911"
+        ]
+      ],
+      "content": "{\"actor\":\"authority\",\"at\":1789005670,\"comp_id\":\"9f2c41ab77e05d13\",\"data\":{\"attempt_no\":2,\"climb_id\":\"c1\",\"outcome\":\"top\",\"pubkey\":\"019244fa7971d9b335e80017cc0627eae1909c7bc991cb64dad2328df614f911\"},\"epoch\":1,\"op\":\"attempt_result\",\"prev\":\"e60bc73954f14cba3f82afadae81a82dfb32af1e4264aae625fadc4dfdea9c19\",\"seq\":21,\"type\":\"log\",\"v\":1}",
+      "id": "b239a250be35f5aa51ef7e6af6a5a941693f3c7821a1610bbc6dbda6bf3faa8f",
+      "sig": "a8d1c387b9f421f874bfd339117fe12f0e9f0d334ba68163f74df17fea810a62f39b51df1d878b32cbf837a275f8fd1396ad5ba616d069dd363c01f49d5dabca"
+    },
+    {
+      "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+      "created_at": 1789005675,
+      "kind": 30078,
+      "tags": [
+        [
+          "d",
+          "cruxcoach:comp:9f2c41ab77e05d13:log:000022"
+        ],
+        [
+          "L",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "l",
+          "log",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "cc-schema",
+          "cruxcoach-competition/1"
+        ],
+        [
+          "alt",
+          "CruxCoach competition log entry 22: queue"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:9f2c41ab77e05d13"
+        ],
+        [
+          "seq",
+          "22"
+        ],
+        [
+          "prev",
+          "b239a250be35f5aa51ef7e6af6a5a941693f3c7821a1610bbc6dbda6bf3faa8f"
+        ],
+        [
+          "op",
+          "queue"
+        ],
+        [
+          "epoch",
+          "1"
+        ]
+      ],
+      "content": "{\"actor\":\"authority\",\"at\":1789005675,\"comp_id\":\"9f2c41ab77e05d13\",\"data\":{\"action\":\"close_turn\"},\"epoch\":1,\"op\":\"queue\",\"prev\":\"b239a250be35f5aa51ef7e6af6a5a941693f3c7821a1610bbc6dbda6bf3faa8f\",\"seq\":22,\"type\":\"log\",\"v\":1}",
+      "id": "bfadc2441aeca38b947a7a4648166ff44639f657f4816479debe7f043846dbb5",
+      "sig": "984f9648a2e1acc930d1c8ad431d3ac20d41c45324e5689fc17bace9eec228cbc19017a5f58bc48b261c57d93348437eda402139cff847a7921fe39742978996"
+    },
+    {
+      "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+      "created_at": 1789005695,
+      "kind": 30078,
+      "tags": [
+        [
+          "d",
+          "cruxcoach:comp:9f2c41ab77e05d13:log:000023"
+        ],
+        [
+          "L",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "l",
+          "log",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "cc-schema",
+          "cruxcoach-competition/1"
+        ],
+        [
+          "alt",
+          "CruxCoach competition log entry 23: queue"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:9f2c41ab77e05d13"
+        ],
+        [
+          "seq",
+          "23"
+        ],
+        [
+          "prev",
+          "bfadc2441aeca38b947a7a4648166ff44639f657f4816479debe7f043846dbb5"
+        ],
+        [
+          "op",
+          "queue"
+        ],
+        [
+          "epoch",
+          "1"
+        ]
+      ],
+      "content": "{\"actor\":\"authority\",\"at\":1789005695,\"comp_id\":\"9f2c41ab77e05d13\",\"data\":{\"action\":\"open_turn\",\"index\":2},\"epoch\":1,\"op\":\"queue\",\"prev\":\"bfadc2441aeca38b947a7a4648166ff44639f657f4816479debe7f043846dbb5\",\"seq\":23,\"type\":\"log\",\"v\":1}",
+      "id": "50ad3958f9b2260d2aeaa6a1d79c795d304342237e619664411829aaa3e89996",
+      "sig": "9864b19266b35ebbe6d90b53c09451e4f7297b383c4ccfd291864a6ec404710e8803f8d096d11913fe77deaddb41ca0504ec2b0723c23959af66fdfcd3c8f57c"
+    },
+    {
+      "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+      "created_at": 1789005720,
+      "kind": 30078,
+      "tags": [
+        [
+          "d",
+          "cruxcoach:comp:9f2c41ab77e05d13:log:000024"
+        ],
+        [
+          "L",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "l",
+          "log",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "cc-schema",
+          "cruxcoach-competition/1"
+        ],
+        [
+          "alt",
+          "CruxCoach competition log entry 24: attempt_result"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:9f2c41ab77e05d13"
+        ],
+        [
+          "seq",
+          "24"
+        ],
+        [
+          "prev",
+          "50ad3958f9b2260d2aeaa6a1d79c795d304342237e619664411829aaa3e89996"
+        ],
+        [
+          "op",
+          "attempt_result"
+        ],
+        [
+          "epoch",
+          "1"
+        ],
+        [
+          "p",
+          "d4d41c056c407711c552ace7aaf4fa9b51b4ea80d06beac56a399c0034229130"
+        ]
+      ],
+      "content": "{\"actor\":\"authority\",\"at\":1789005720,\"comp_id\":\"9f2c41ab77e05d13\",\"data\":{\"attempt_no\":1,\"climb_id\":\"c1\",\"outcome\":\"top\",\"pubkey\":\"d4d41c056c407711c552ace7aaf4fa9b51b4ea80d06beac56a399c0034229130\"},\"epoch\":1,\"op\":\"attempt_result\",\"prev\":\"50ad3958f9b2260d2aeaa6a1d79c795d304342237e619664411829aaa3e89996\",\"seq\":24,\"type\":\"log\",\"v\":1}",
+      "id": "7ccf841fe941ff0b49d08496a35f49500a1d449fa6dd97054a8def1d4eaa6017",
+      "sig": "dc404a90aa498d9f353268ac8ad20ea44d9289c93b03dae454187811cacf20a5cf4c85444df793974836b0c8646af95dda0e2888822bcaf735356f05f6fdd051"
+    },
+    {
+      "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+      "created_at": 1789005725,
+      "kind": 30078,
+      "tags": [
+        [
+          "d",
+          "cruxcoach:comp:9f2c41ab77e05d13:log:000025"
+        ],
+        [
+          "L",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "l",
+          "log",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "cc-schema",
+          "cruxcoach-competition/1"
+        ],
+        [
+          "alt",
+          "CruxCoach competition log entry 25: queue"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:9f2c41ab77e05d13"
+        ],
+        [
+          "seq",
+          "25"
+        ],
+        [
+          "prev",
+          "7ccf841fe941ff0b49d08496a35f49500a1d449fa6dd97054a8def1d4eaa6017"
+        ],
+        [
+          "op",
+          "queue"
+        ],
+        [
+          "epoch",
+          "1"
+        ]
+      ],
+      "content": "{\"actor\":\"authority\",\"at\":1789005725,\"comp_id\":\"9f2c41ab77e05d13\",\"data\":{\"action\":\"close_turn\"},\"epoch\":1,\"op\":\"queue\",\"prev\":\"7ccf841fe941ff0b49d08496a35f49500a1d449fa6dd97054a8def1d4eaa6017\",\"seq\":25,\"type\":\"log\",\"v\":1}",
+      "id": "b9dfd6488d2754fa2e568caf329c8596512ba6dfcfd6fb2d7a4403becbbb8c64",
+      "sig": "afcc1d6bb6babf74f27979087e3879d84df2ec4363731f7923312d06e7582d36fb10f61d4ef7447fe106cd381a80c0bae92997c618a366fffca896ea21228ad7"
+    },
+    {
+      "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+      "created_at": 1789005755,
+      "kind": 30078,
+      "tags": [
+        [
+          "d",
+          "cruxcoach:comp:9f2c41ab77e05d13:log:000026"
+        ],
+        [
+          "L",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "l",
+          "log",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "cc-schema",
+          "cruxcoach-competition/1"
+        ],
+        [
+          "alt",
+          "CruxCoach competition log entry 26: queue"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:9f2c41ab77e05d13"
+        ],
+        [
+          "seq",
+          "26"
+        ],
+        [
+          "prev",
+          "b9dfd6488d2754fa2e568caf329c8596512ba6dfcfd6fb2d7a4403becbbb8c64"
+        ],
+        [
+          "op",
+          "queue"
+        ],
+        [
+          "epoch",
+          "1"
+        ]
+      ],
+      "content": "{\"actor\":\"authority\",\"at\":1789005755,\"comp_id\":\"9f2c41ab77e05d13\",\"data\":{\"action\":\"next_climb\",\"climb_id\":\"c2\"},\"epoch\":1,\"op\":\"queue\",\"prev\":\"b9dfd6488d2754fa2e568caf329c8596512ba6dfcfd6fb2d7a4403becbbb8c64\",\"seq\":26,\"type\":\"log\",\"v\":1}",
+      "id": "9162d9419712be6ee3760dd52b9e2aa58c5463f89f36c224cdb6a6afad4abb5d",
+      "sig": "2901c8dedad4277e22dc796d44c642ed29b174de8b388243ce56c0b8019fefe7f1ff0f1328eb849aa7106573cdb154f7f518f8e5639484a87c7527dfae940e50"
+    },
+    {
+      "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+      "created_at": 1789005760,
+      "kind": 30078,
+      "tags": [
+        [
+          "d",
+          "cruxcoach:comp:9f2c41ab77e05d13:log:000027"
+        ],
+        [
+          "L",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "l",
+          "log",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "cc-schema",
+          "cruxcoach-competition/1"
+        ],
+        [
+          "alt",
+          "CruxCoach competition log entry 27: queue"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:9f2c41ab77e05d13"
+        ],
+        [
+          "seq",
+          "27"
+        ],
+        [
+          "prev",
+          "9162d9419712be6ee3760dd52b9e2aa58c5463f89f36c224cdb6a6afad4abb5d"
+        ],
+        [
+          "op",
+          "queue"
+        ],
+        [
+          "epoch",
+          "1"
+        ]
+      ],
+      "content": "{\"actor\":\"authority\",\"at\":1789005760,\"comp_id\":\"9f2c41ab77e05d13\",\"data\":{\"action\":\"next_round\"},\"epoch\":1,\"op\":\"queue\",\"prev\":\"9162d9419712be6ee3760dd52b9e2aa58c5463f89f36c224cdb6a6afad4abb5d\",\"seq\":27,\"type\":\"log\",\"v\":1}",
+      "id": "688328bfe892ab25bf620c30f22c74a5b93c08a923fa374443c49988a1e013ca",
+      "sig": "1230f6d04aad95c45caedaae42b75d90acfb1394f5327682972b4d70e3b0ec3a42df9f776f40717bf34b1c8ef98b2ced9d1d2489310038bdea12897bec0ad1e4"
+    },
+    {
+      "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+      "created_at": 1789005765,
+      "kind": 30078,
+      "tags": [
+        [
+          "d",
+          "cruxcoach:comp:9f2c41ab77e05d13:log:000028"
+        ],
+        [
+          "L",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "l",
+          "log",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "cc-schema",
+          "cruxcoach-competition/1"
+        ],
+        [
+          "alt",
+          "CruxCoach competition log entry 28: queue"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:9f2c41ab77e05d13"
+        ],
+        [
+          "seq",
+          "28"
+        ],
+        [
+          "prev",
+          "688328bfe892ab25bf620c30f22c74a5b93c08a923fa374443c49988a1e013ca"
+        ],
+        [
+          "op",
+          "queue"
+        ],
+        [
+          "epoch",
+          "1"
+        ]
+      ],
+      "content": "{\"actor\":\"authority\",\"at\":1789005765,\"comp_id\":\"9f2c41ab77e05d13\",\"data\":{\"action\":\"seed\",\"order\":[\"cc2e7ee700ae9f6647ffcf8cc599fd2d7742f843d64850bfc5bb4c1d800ca66c\",\"019244fa7971d9b335e80017cc0627eae1909c7bc991cb64dad2328df614f911\",\"d4d41c056c407711c552ace7aaf4fa9b51b4ea80d06beac56a399c0034229130\"]},\"epoch\":1,\"op\":\"queue\",\"prev\":\"688328bfe892ab25bf620c30f22c74a5b93c08a923fa374443c49988a1e013ca\",\"seq\":28,\"type\":\"log\",\"v\":1}",
+      "id": "880e559225f72e87aaaf50a79740cffccf0204154d740be7831767e06fe6a51d",
+      "sig": "b333bfc89e1dd0bbf82e20e5aa26a250112ae5559814ccb41279b23e4452bc4974b8aba434c27f1008f75b3fe1915a9eaf769821d62ba4f9f7d772cab12617a6"
+    },
+    {
+      "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+      "created_at": 1789005785,
+      "kind": 30078,
+      "tags": [
+        [
+          "d",
+          "cruxcoach:comp:9f2c41ab77e05d13:log:000029"
+        ],
+        [
+          "L",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "l",
+          "log",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "cc-schema",
+          "cruxcoach-competition/1"
+        ],
+        [
+          "alt",
+          "CruxCoach competition log entry 29: queue"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:9f2c41ab77e05d13"
+        ],
+        [
+          "seq",
+          "29"
+        ],
+        [
+          "prev",
+          "880e559225f72e87aaaf50a79740cffccf0204154d740be7831767e06fe6a51d"
+        ],
+        [
+          "op",
+          "queue"
+        ],
+        [
+          "epoch",
+          "1"
+        ]
+      ],
+      "content": "{\"actor\":\"authority\",\"at\":1789005785,\"comp_id\":\"9f2c41ab77e05d13\",\"data\":{\"action\":\"open_turn\",\"index\":0},\"epoch\":1,\"op\":\"queue\",\"prev\":\"880e559225f72e87aaaf50a79740cffccf0204154d740be7831767e06fe6a51d\",\"seq\":29,\"type\":\"log\",\"v\":1}",
+      "id": "320de551082322348aaf3328906b77e70783b7fa249cee1f90bf4e0921deb95a",
+      "sig": "f22a6614b5311d91b6bb15de904c880e752adbb72655f7a5f92f16a2785b9d6b0b976e0d40e27f47ce635bdff11e2a20a32522369541a49cc52b13f48de558a0"
+    },
+    {
+      "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+      "created_at": 1789005810,
+      "kind": 30078,
+      "tags": [
+        [
+          "d",
+          "cruxcoach:comp:9f2c41ab77e05d13:log:000030"
+        ],
+        [
+          "L",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "l",
+          "log",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "cc-schema",
+          "cruxcoach-competition/1"
+        ],
+        [
+          "alt",
+          "CruxCoach competition log entry 30: attempt_result"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:9f2c41ab77e05d13"
+        ],
+        [
+          "seq",
+          "30"
+        ],
+        [
+          "prev",
+          "320de551082322348aaf3328906b77e70783b7fa249cee1f90bf4e0921deb95a"
+        ],
+        [
+          "op",
+          "attempt_result"
+        ],
+        [
+          "epoch",
+          "1"
+        ],
+        [
+          "p",
+          "cc2e7ee700ae9f6647ffcf8cc599fd2d7742f843d64850bfc5bb4c1d800ca66c"
+        ]
+      ],
+      "content": "{\"actor\":\"authority\",\"at\":1789005810,\"comp_id\":\"9f2c41ab77e05d13\",\"data\":{\"attempt_no\":1,\"climb_id\":\"c2\",\"outcome\":\"fall\",\"pubkey\":\"cc2e7ee700ae9f6647ffcf8cc599fd2d7742f843d64850bfc5bb4c1d800ca66c\"},\"epoch\":1,\"op\":\"attempt_result\",\"prev\":\"320de551082322348aaf3328906b77e70783b7fa249cee1f90bf4e0921deb95a\",\"seq\":30,\"type\":\"log\",\"v\":1}",
+      "id": "ebe03b9501444f559b5fdbc1bc71d68209f11ab4e06f05ed200d362b3f8891b6",
+      "sig": "8e22d03717b5cac036dc4ee4d06141b27f3d224c200e25376b87d9d7875bd0b93b8faeaaf4d2227c68100dd3a1b14bcf8a3d5b8ac20fa71135d726d15b29eea1"
+    },
+    {
+      "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+      "created_at": 1789005835,
+      "kind": 30078,
+      "tags": [
+        [
+          "d",
+          "cruxcoach:comp:9f2c41ab77e05d13:log:000031"
+        ],
+        [
+          "L",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "l",
+          "log",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "cc-schema",
+          "cruxcoach-competition/1"
+        ],
+        [
+          "alt",
+          "CruxCoach competition log entry 31: attempt_result"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:9f2c41ab77e05d13"
+        ],
+        [
+          "seq",
+          "31"
+        ],
+        [
+          "prev",
+          "ebe03b9501444f559b5fdbc1bc71d68209f11ab4e06f05ed200d362b3f8891b6"
+        ],
+        [
+          "op",
+          "attempt_result"
+        ],
+        [
+          "epoch",
+          "1"
+        ],
+        [
+          "p",
+          "cc2e7ee700ae9f6647ffcf8cc599fd2d7742f843d64850bfc5bb4c1d800ca66c"
+        ]
+      ],
+      "content": "{\"actor\":\"authority\",\"at\":1789005835,\"comp_id\":\"9f2c41ab77e05d13\",\"data\":{\"attempt_no\":2,\"climb_id\":\"c2\",\"outcome\":\"top\",\"pubkey\":\"cc2e7ee700ae9f6647ffcf8cc599fd2d7742f843d64850bfc5bb4c1d800ca66c\"},\"epoch\":1,\"op\":\"attempt_result\",\"prev\":\"ebe03b9501444f559b5fdbc1bc71d68209f11ab4e06f05ed200d362b3f8891b6\",\"seq\":31,\"type\":\"log\",\"v\":1}",
+      "id": "67b4e94117c63bf331e0d83fe1fc4e879cbfa952afc2f527100868eb53b1b2d2",
+      "sig": "0022b6d82aa6a253fc86691ef1a050e7c17ae760cb8e2f82dd1c4eb8767ceef268676884a4bee65e4c678fd9619eaac5e34e939dc8f19bded0d8d03ccc3528c2"
+    },
+    {
+      "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+      "created_at": 1789005840,
+      "kind": 30078,
+      "tags": [
+        [
+          "d",
+          "cruxcoach:comp:9f2c41ab77e05d13:log:000032"
+        ],
+        [
+          "L",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "l",
+          "log",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "cc-schema",
+          "cruxcoach-competition/1"
+        ],
+        [
+          "alt",
+          "CruxCoach competition log entry 32: queue"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:9f2c41ab77e05d13"
+        ],
+        [
+          "seq",
+          "32"
+        ],
+        [
+          "prev",
+          "67b4e94117c63bf331e0d83fe1fc4e879cbfa952afc2f527100868eb53b1b2d2"
+        ],
+        [
+          "op",
+          "queue"
+        ],
+        [
+          "epoch",
+          "1"
+        ]
+      ],
+      "content": "{\"actor\":\"authority\",\"at\":1789005840,\"comp_id\":\"9f2c41ab77e05d13\",\"data\":{\"action\":\"close_turn\"},\"epoch\":1,\"op\":\"queue\",\"prev\":\"67b4e94117c63bf331e0d83fe1fc4e879cbfa952afc2f527100868eb53b1b2d2\",\"seq\":32,\"type\":\"log\",\"v\":1}",
+      "id": "b4abfa2f7a655ace40d0b3152518b303346eee1c4f214ad051e42c106653e5a0",
+      "sig": "fde68610b8437b75ee6e9e7d7171094e74e8eaec207146f81a9d6bc7eddc370697e94cbd64d4ce47731fdf36a82abc7d52556449639f1e38ca8e8377f0b2df70"
+    },
+    {
+      "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+      "created_at": 1789005860,
+      "kind": 30078,
+      "tags": [
+        [
+          "d",
+          "cruxcoach:comp:9f2c41ab77e05d13:log:000033"
+        ],
+        [
+          "L",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "l",
+          "log",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "cc-schema",
+          "cruxcoach-competition/1"
+        ],
+        [
+          "alt",
+          "CruxCoach competition log entry 33: queue"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:9f2c41ab77e05d13"
+        ],
+        [
+          "seq",
+          "33"
+        ],
+        [
+          "prev",
+          "b4abfa2f7a655ace40d0b3152518b303346eee1c4f214ad051e42c106653e5a0"
+        ],
+        [
+          "op",
+          "queue"
+        ],
+        [
+          "epoch",
+          "1"
+        ]
+      ],
+      "content": "{\"actor\":\"authority\",\"at\":1789005860,\"comp_id\":\"9f2c41ab77e05d13\",\"data\":{\"action\":\"open_turn\",\"index\":1},\"epoch\":1,\"op\":\"queue\",\"prev\":\"b4abfa2f7a655ace40d0b3152518b303346eee1c4f214ad051e42c106653e5a0\",\"seq\":33,\"type\":\"log\",\"v\":1}",
+      "id": "2ba49bce8255dbc3798502276899b4b1e6cb1aa452c682188ae45bd21cc01149",
+      "sig": "54e5c10e2c432f2e3130f18039d50abe61ea552dda641ab9b58e9a3ecdb3461493d696e246094d9661bb03b8f21d553e4121068f71d4486b5606e3c7751af867"
+    },
+    {
+      "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+      "created_at": 1789005885,
+      "kind": 30078,
+      "tags": [
+        [
+          "d",
+          "cruxcoach:comp:9f2c41ab77e05d13:log:000034"
+        ],
+        [
+          "L",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "l",
+          "log",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "cc-schema",
+          "cruxcoach-competition/1"
+        ],
+        [
+          "alt",
+          "CruxCoach competition log entry 34: attempt_result"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:9f2c41ab77e05d13"
+        ],
+        [
+          "seq",
+          "34"
+        ],
+        [
+          "prev",
+          "2ba49bce8255dbc3798502276899b4b1e6cb1aa452c682188ae45bd21cc01149"
+        ],
+        [
+          "op",
+          "attempt_result"
+        ],
+        [
+          "epoch",
+          "1"
+        ],
+        [
+          "p",
+          "019244fa7971d9b335e80017cc0627eae1909c7bc991cb64dad2328df614f911"
+        ]
+      ],
+      "content": "{\"actor\":\"authority\",\"at\":1789005885,\"comp_id\":\"9f2c41ab77e05d13\",\"data\":{\"attempt_no\":1,\"climb_id\":\"c2\",\"outcome\":\"top\",\"pubkey\":\"019244fa7971d9b335e80017cc0627eae1909c7bc991cb64dad2328df614f911\"},\"epoch\":1,\"op\":\"attempt_result\",\"prev\":\"2ba49bce8255dbc3798502276899b4b1e6cb1aa452c682188ae45bd21cc01149\",\"seq\":34,\"type\":\"log\",\"v\":1}",
+      "id": "9c02e58928c8a0a7a972274068224fe21d3c6e214d4f4ce7b5d30da721b4dfda",
+      "sig": "05dee17d3d9542fd02cab548bdbcb0affc8561a30101a33d3aaa703e97bf2075df80700e1a496be37d349bd94573a3f8cf01206502b9f016adf55f625b74fae3"
+    },
+    {
+      "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+      "created_at": 1789005890,
+      "kind": 30078,
+      "tags": [
+        [
+          "d",
+          "cruxcoach:comp:9f2c41ab77e05d13:log:000035"
+        ],
+        [
+          "L",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "l",
+          "log",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "cc-schema",
+          "cruxcoach-competition/1"
+        ],
+        [
+          "alt",
+          "CruxCoach competition log entry 35: queue"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:9f2c41ab77e05d13"
+        ],
+        [
+          "seq",
+          "35"
+        ],
+        [
+          "prev",
+          "9c02e58928c8a0a7a972274068224fe21d3c6e214d4f4ce7b5d30da721b4dfda"
+        ],
+        [
+          "op",
+          "queue"
+        ],
+        [
+          "epoch",
+          "1"
+        ]
+      ],
+      "content": "{\"actor\":\"authority\",\"at\":1789005890,\"comp_id\":\"9f2c41ab77e05d13\",\"data\":{\"action\":\"close_turn\"},\"epoch\":1,\"op\":\"queue\",\"prev\":\"9c02e58928c8a0a7a972274068224fe21d3c6e214d4f4ce7b5d30da721b4dfda\",\"seq\":35,\"type\":\"log\",\"v\":1}",
+      "id": "759add67f12ec04d2682cd2a89b215193b330b86be80aa1f34d84156f7d30df4",
+      "sig": "0ab504f3360726e3fc5bf58b61a379d576365be7d95b0e3c006ea94adcd2e20e17186d4f70974db3edc092b900e537257b2c253cf7a6e1e68f70916083e210ab"
+    },
+    {
+      "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+      "created_at": 1789005910,
+      "kind": 30078,
+      "tags": [
+        [
+          "d",
+          "cruxcoach:comp:9f2c41ab77e05d13:log:000036"
+        ],
+        [
+          "L",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "l",
+          "log",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "cc-schema",
+          "cruxcoach-competition/1"
+        ],
+        [
+          "alt",
+          "CruxCoach competition log entry 36: queue"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:9f2c41ab77e05d13"
+        ],
+        [
+          "seq",
+          "36"
+        ],
+        [
+          "prev",
+          "759add67f12ec04d2682cd2a89b215193b330b86be80aa1f34d84156f7d30df4"
+        ],
+        [
+          "op",
+          "queue"
+        ],
+        [
+          "epoch",
+          "1"
+        ]
+      ],
+      "content": "{\"actor\":\"authority\",\"at\":1789005910,\"comp_id\":\"9f2c41ab77e05d13\",\"data\":{\"action\":\"open_turn\",\"index\":2},\"epoch\":1,\"op\":\"queue\",\"prev\":\"759add67f12ec04d2682cd2a89b215193b330b86be80aa1f34d84156f7d30df4\",\"seq\":36,\"type\":\"log\",\"v\":1}",
+      "id": "f538cb70d96e15de21c5ba1bd0ba0758422938cab80fa68e5771fcd849fd72d5",
+      "sig": "cb0fc6e8c4db3a9065c31ebd0da6472a8f4ab857639acbf9966d36a692da2ba55dbdb3dbb59dc0d0990de3d2edc057cdbd763feab261f6266cedd7a252e07793"
+    },
+    {
+      "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+      "created_at": 1789005935,
+      "kind": 30078,
+      "tags": [
+        [
+          "d",
+          "cruxcoach:comp:9f2c41ab77e05d13:log:000037"
+        ],
+        [
+          "L",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "l",
+          "log",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "cc-schema",
+          "cruxcoach-competition/1"
+        ],
+        [
+          "alt",
+          "CruxCoach competition log entry 37: attempt_result"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:9f2c41ab77e05d13"
+        ],
+        [
+          "seq",
+          "37"
+        ],
+        [
+          "prev",
+          "f538cb70d96e15de21c5ba1bd0ba0758422938cab80fa68e5771fcd849fd72d5"
+        ],
+        [
+          "op",
+          "attempt_result"
+        ],
+        [
+          "epoch",
+          "1"
+        ],
+        [
+          "p",
+          "d4d41c056c407711c552ace7aaf4fa9b51b4ea80d06beac56a399c0034229130"
+        ]
+      ],
+      "content": "{\"actor\":\"authority\",\"at\":1789005935,\"comp_id\":\"9f2c41ab77e05d13\",\"data\":{\"attempt_no\":1,\"climb_id\":\"c2\",\"outcome\":\"fall\",\"pubkey\":\"d4d41c056c407711c552ace7aaf4fa9b51b4ea80d06beac56a399c0034229130\"},\"epoch\":1,\"op\":\"attempt_result\",\"prev\":\"f538cb70d96e15de21c5ba1bd0ba0758422938cab80fa68e5771fcd849fd72d5\",\"seq\":37,\"type\":\"log\",\"v\":1}",
+      "id": "cbc45edc12c0ca035301d9195cedac9aa8c289ff0600f877a75d6ef05a3ea028",
+      "sig": "f5a3645d4550f3f7d1bf9f8318a333e00e86921eca33ba6505c2bbf2f5c747c881c69b844d8fec669d5dd2d8bfe17919f80e6c244be52556c8a7dce844f95562"
+    },
+    {
+      "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+      "created_at": 1789005960,
+      "kind": 30078,
+      "tags": [
+        [
+          "d",
+          "cruxcoach:comp:9f2c41ab77e05d13:log:000038"
+        ],
+        [
+          "L",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "l",
+          "log",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "cc-schema",
+          "cruxcoach-competition/1"
+        ],
+        [
+          "alt",
+          "CruxCoach competition log entry 38: attempt_result"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:9f2c41ab77e05d13"
+        ],
+        [
+          "seq",
+          "38"
+        ],
+        [
+          "prev",
+          "cbc45edc12c0ca035301d9195cedac9aa8c289ff0600f877a75d6ef05a3ea028"
+        ],
+        [
+          "op",
+          "attempt_result"
+        ],
+        [
+          "epoch",
+          "1"
+        ],
+        [
+          "p",
+          "d4d41c056c407711c552ace7aaf4fa9b51b4ea80d06beac56a399c0034229130"
+        ]
+      ],
+      "content": "{\"actor\":\"authority\",\"at\":1789005960,\"comp_id\":\"9f2c41ab77e05d13\",\"data\":{\"attempt_no\":2,\"climb_id\":\"c2\",\"outcome\":\"zone\",\"pubkey\":\"d4d41c056c407711c552ace7aaf4fa9b51b4ea80d06beac56a399c0034229130\"},\"epoch\":1,\"op\":\"attempt_result\",\"prev\":\"cbc45edc12c0ca035301d9195cedac9aa8c289ff0600f877a75d6ef05a3ea028\",\"seq\":38,\"type\":\"log\",\"v\":1}",
+      "id": "534e6bfe69bab6ab925c404fb09318d91cf4a440302100e48f35b139fbeff08f",
+      "sig": "13c00e3d61597ff3c744599815e591f8725c298e4d1871e69043f35bb84239fca7e3fcfbd6ab0ff2d30845050ad9e8c3e0944eb0cfc565865091c7232b22369a"
+    },
+    {
+      "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+      "created_at": 1789005965,
+      "kind": 30078,
+      "tags": [
+        [
+          "d",
+          "cruxcoach:comp:9f2c41ab77e05d13:log:000039"
+        ],
+        [
+          "L",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "l",
+          "log",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "cc-schema",
+          "cruxcoach-competition/1"
+        ],
+        [
+          "alt",
+          "CruxCoach competition log entry 39: queue"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:9f2c41ab77e05d13"
+        ],
+        [
+          "seq",
+          "39"
+        ],
+        [
+          "prev",
+          "534e6bfe69bab6ab925c404fb09318d91cf4a440302100e48f35b139fbeff08f"
+        ],
+        [
+          "op",
+          "queue"
+        ],
+        [
+          "epoch",
+          "1"
+        ]
+      ],
+      "content": "{\"actor\":\"authority\",\"at\":1789005965,\"comp_id\":\"9f2c41ab77e05d13\",\"data\":{\"action\":\"close_turn\"},\"epoch\":1,\"op\":\"queue\",\"prev\":\"534e6bfe69bab6ab925c404fb09318d91cf4a440302100e48f35b139fbeff08f\",\"seq\":39,\"type\":\"log\",\"v\":1}",
+      "id": "fcf169019ac1a72cd212aca807b251809716c217db2f54c014b4dd5cef7d30b8",
+      "sig": "94356f5dd127936af23d2b899a2a3cd045e808150e6749e03509c79b5dd09c76a59f4417e35a16e8b19205dae0b0f0ce1d4b3070affd52048c4740b694bb6fe4"
+    },
+    {
+      "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+      "created_at": 1789006025,
+      "kind": 30078,
+      "tags": [
+        [
+          "d",
+          "cruxcoach:comp:9f2c41ab77e05d13:log:000040"
+        ],
+        [
+          "L",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "l",
+          "log",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "cc-schema",
+          "cruxcoach-competition/1"
+        ],
+        [
+          "alt",
+          "CruxCoach competition log entry 40: lifecycle"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:9f2c41ab77e05d13"
+        ],
+        [
+          "seq",
+          "40"
+        ],
+        [
+          "prev",
+          "fcf169019ac1a72cd212aca807b251809716c217db2f54c014b4dd5cef7d30b8"
+        ],
+        [
+          "op",
+          "lifecycle"
+        ],
+        [
+          "epoch",
+          "1"
+        ]
+      ],
+      "content": "{\"actor\":\"authority\",\"at\":1789006025,\"comp_id\":\"9f2c41ab77e05d13\",\"data\":{\"at\":1789006025,\"status\":\"finished\"},\"epoch\":1,\"op\":\"lifecycle\",\"prev\":\"fcf169019ac1a72cd212aca807b251809716c217db2f54c014b4dd5cef7d30b8\",\"seq\":40,\"type\":\"log\",\"v\":1}",
+      "id": "2179e6219dba7c77b3f6f6343a5d5ed06b4c13ea6952c8648756ca8dbd511d6b",
+      "sig": "60a1e5b9a70418665dc77218efbd84c3d40724a0712d376f2705c5b29aed4a6f8002adb4828fb85a22fcbc5b909b02923ff2f917e20605af7476a92bd21c3c7d"
+    }
+  ],
+  "expected": {
+    "chain_break_at": null,
+    "state_hash": "8886d76bfceaa546775d28856897264d517405d1f1cd5cafa60d29ee0841be9a",
+    "state": {
+      "comp_id": "9f2c41ab77e05d13",
+      "schema": "cruxcoach-competition/1",
+      "authority": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+      "epoch": 1,
+      "seq": 40,
+      "head": "2179e6219dba7c77b3f6f6343a5d5ed06b4c13ea6952c8648756ca8dbd511d6b",
+      "status": "finished",
+      "paused": false,
+      "config_revision": 1,
+      "round": 2,
+      "current_climb_id": "c2",
+      "cursor": -1,
+      "turn_opened_at": 1789005910,
+      "turn_deadline_at": 0,
+      "participants": [
+        {
+          "pubkey": "019244fa7971d9b335e80017cc0627eae1909c7bc991cb64dad2328df614f911",
+          "display": "bob",
+          "division": "open",
+          "registration": "accepted",
+          "waitlist_position": 0,
+          "payment": "not_required",
+          "checkin": "checked_in",
+          "selections": [],
+          "defers_used_this_round": 0,
+          "consecutive_defers": 0,
+          "result": "active",
+          "climbs": [
+            {
+              "climb_id": "c1",
+              "attempts_used": 2,
+              "outcome": "top",
+              "at": 1789005670
+            },
+            {
+              "climb_id": "c2",
+              "attempts_used": 1,
+              "outcome": "top",
+              "at": 1789005885
+            }
+          ],
+          "last_attempt_at": 1789005885
+        },
+        {
+          "pubkey": "cc2e7ee700ae9f6647ffcf8cc599fd2d7742f843d64850bfc5bb4c1d800ca66c",
+          "display": "carla",
+          "division": "open",
+          "registration": "accepted",
+          "waitlist_position": 0,
+          "payment": "not_required",
+          "checkin": "checked_in",
+          "selections": [],
+          "defers_used_this_round": 0,
+          "consecutive_defers": 0,
+          "result": "active",
+          "climbs": [
+            {
+              "climb_id": "c1",
+              "attempts_used": 3,
+              "outcome": "dnf",
+              "at": 1789005595
+            },
+            {
+              "climb_id": "c2",
+              "attempts_used": 2,
+              "outcome": "top",
+              "at": 1789005835
+            }
+          ],
+          "last_attempt_at": 1789005835
+        },
+        {
+          "pubkey": "d4d41c056c407711c552ace7aaf4fa9b51b4ea80d06beac56a399c0034229130",
+          "display": "alice",
+          "division": "open",
+          "registration": "accepted",
+          "waitlist_position": 0,
+          "payment": "not_required",
+          "checkin": "checked_in",
+          "selections": [],
+          "defers_used_this_round": 0,
+          "consecutive_defers": 0,
+          "result": "active",
+          "climbs": [
+            {
+              "climb_id": "c1",
+              "attempts_used": 1,
+              "outcome": "top",
+              "at": 1789005720
+            },
+            {
+              "climb_id": "c2",
+              "attempts_used": 2,
+              "outcome": "zone",
+              "at": 1789005960
+            }
+          ],
+          "last_attempt_at": 1789005960
+        }
+      ],
+      "order": [
+        "cc2e7ee700ae9f6647ffcf8cc599fd2d7742f843d64850bfc5bb4c1d800ca66c",
+        "019244fa7971d9b335e80017cc0627eae1909c7bc991cb64dad2328df614f911",
+        "d4d41c056c407711c552ace7aaf4fa9b51b4ea80d06beac56a399c0034229130"
+      ],
+      "claims": {},
+      "announcements": [
+        {
+          "seq": 13,
+          "text": "Climb 1 is open. Three attempts each.",
+          "at": 1789005410
+        }
+      ],
+      "audit": [],
+      "rejected": [],
+      "fork_detected": false,
+      "chain_complete": true
+    },
+    "standings": [
+      {
+        "pubkey": "019244fa7971d9b335e80017cc0627eae1909c7bc991cb64dad2328df614f911",
+        "display": "bob",
+        "division": "open",
+        "result": "active",
+        "tops": 2,
+        "zones": 2,
+        "attempts": 3,
+        "points": 250,
+        "zone_attempts": 3,
+        "total_attempts": 3,
+        "finished_at": 1789005885,
+        "rank": 1
+      },
+      {
+        "pubkey": "d4d41c056c407711c552ace7aaf4fa9b51b4ea80d06beac56a399c0034229130",
+        "display": "alice",
+        "division": "open",
+        "result": "active",
+        "tops": 1,
+        "zones": 2,
+        "attempts": 1,
+        "points": 100,
+        "zone_attempts": 3,
+        "total_attempts": 3,
+        "finished_at": 1789005720,
+        "rank": 2
+      },
+      {
+        "pubkey": "cc2e7ee700ae9f6647ffcf8cc599fd2d7742f843d64850bfc5bb4c1d800ca66c",
+        "display": "carla",
+        "division": "open",
+        "result": "active",
+        "tops": 1,
+        "zones": 1,
+        "attempts": 2,
+        "points": 150,
+        "zone_attempts": 2,
+        "total_attempts": 5,
+        "finished_at": 1789005835,
+        "rank": 3
+      }
+    ]
+  }
+}

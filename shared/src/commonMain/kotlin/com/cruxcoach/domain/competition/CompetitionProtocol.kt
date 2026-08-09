@@ -1,0 +1,442 @@
+package com.cruxcoach.domain.competition
+
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
+
+/**
+ * `cruxcoach-competition/1` — the wire contract, FEAT-058 §2, §3, §6.
+ *
+ * This is `commonMain` on purpose. The protocol, the reducer and the scoring
+ * are the parts two clients must agree on byte-for-byte, so they live where
+ * they can be unit-tested on the JVM against the same fixtures the website
+ * runs, with no Android class anywhere near them. Signature verification stays
+ * in the Android layer, where Quartz already owns the trust boundary.
+ */
+object CompetitionProtocol {
+    const val KIND = 30078
+    const val NAMESPACE = "com.cruxcoach.competition"
+    const val SCHEMA = "cruxcoach-competition/1"
+    const val SCHEMA_MAJOR = 1
+
+    /** Same ceiling as `NostrEventPolicy.MAX_FUTURE_SKEW_SECONDS`. */
+    const val MAX_FUTURE_SKEW_SECONDS = 3600L
+
+    /** FEAT-058 §16.2 — half the tightest observed relay frame limit. */
+    const val MAX_EVENT_BYTES = 65536
+
+    val LIFECYCLE = listOf(
+        "draft", "published", "registration_open", "registration_closed",
+        "checkin_open", "running", "paused", "finished", "cancelled",
+    )
+
+    val LEGAL_TRANSITIONS: Map<String, List<String>> = mapOf(
+        "draft" to listOf("published", "cancelled"),
+        "published" to listOf("registration_open", "cancelled"),
+        "registration_open" to listOf("registration_closed", "cancelled"),
+        "registration_closed" to listOf("checkin_open", "cancelled"),
+        "checkin_open" to listOf("running", "cancelled"),
+        "running" to listOf("paused", "finished", "cancelled"),
+        "paused" to listOf("running", "finished", "cancelled"),
+        "finished" to emptyList(),
+        "cancelled" to emptyList(),
+    )
+
+    val LOG_OPS = listOf(
+        "lifecycle", "registration_decision", "payment_decision", "claim_decision",
+        "checkin", "queue", "defer_decision", "attempt_result", "correction",
+        "override", "announcement", "disqualify",
+    )
+
+    val INTENT_OPS = listOf(
+        "register", "withdraw", "checkin_request", "defer_request",
+        "attempt_report", "payment_claim",
+    )
+
+    val QUEUE_ACTIONS = listOf("seed", "open_turn", "close_turn", "advance", "reorder", "next_climb", "next_round")
+    val ATTEMPT_OUTCOMES = listOf("top", "zone", "fall", "pass", "timeout")
+    val PAYMENT_STATES = listOf("not_required", "pending", "settled", "failed", "expired", "refunded")
+
+    /** An audit trail whose entries do not say why is a log, not an audit trail. */
+    val REASON_REQUIRED_OPS = setOf("correction", "override", "disqualify")
+
+    private val COMP_ID = Regex("^[0-9a-f]{16}$")
+    private val HEX32 = Regex("^[0-9a-f]{64}$")
+    private val SEQ_SEGMENT = Regex("^\\d{6}$")
+    private val HEX8 = Regex("^[0-9a-f]{8}$")
+
+    fun isCompId(value: String?) = value != null && COMP_ID.matches(value)
+    fun isHex32(value: String?) = value != null && HEX32.matches(value)
+
+    fun compDTag(compId: String) = "cruxcoach:comp:$compId"
+    fun logDTag(compId: String, seq: Int) = "cruxcoach:comp:$compId:log:${pad6(seq)}"
+    fun snapDTag(compId: String, seq: Int) = "cruxcoach:comp:$compId:snap:${pad6(seq)}"
+    fun resultsDTag(compId: String) = "cruxcoach:comp:$compId:results"
+    fun intentDTag(compId: String, pubkey: String, nonce: String) =
+        "cruxcoach:comp:$compId:intent:${pubkey.take(8)}:$nonce"
+
+    fun competitionAddress(organizerPubkey: String, compId: String) =
+        "$KIND:$organizerPubkey:${compDTag(compId)}"
+
+    private fun pad6(seq: Int): String {
+        val text = seq.toString()
+        return "0".repeat((6 - text.length).coerceAtLeast(0)) + text
+    }
+
+    /** What a competition d-tag addresses. */
+    data class DTag(
+        val compId: String,
+        val kind: String,
+        val seq: Int? = null,
+        val pubkeyPrefix: String? = null,
+        val nonce: String? = null,
+    )
+
+    fun parseDTag(dTag: String?): DTag? {
+        if (dTag == null) return null
+        val parts = dTag.split(":")
+        if (parts.size < 3 || parts[0] != "cruxcoach" || parts[1] != "comp" || !isCompId(parts[2])) return null
+        val compId = parts[2]
+        return when {
+            parts.size == 3 -> DTag(compId, "competition")
+            parts.size == 5 && (parts[3] == "log" || parts[3] == "snap") -> {
+                if (!SEQ_SEGMENT.matches(parts[4])) return null
+                val seq = parts[4].toInt()
+                if (seq < 1) return null
+                DTag(compId, if (parts[3] == "log") "log" else "snapshot", seq = seq)
+            }
+            parts.size == 4 && parts[3] == "results" -> DTag(compId, "results")
+            parts.size == 6 && parts[3] == "intent" -> {
+                if (!HEX8.matches(parts[4]) || !HEX8.matches(parts[5])) return null
+                DTag(compId, "intent", pubkeyPrefix = parts[4], nonce = parts[5])
+            }
+            else -> null
+        }
+    }
+
+    private val json = Json { ignoreUnknownKeys = true; isLenient = false }
+
+    /**
+     * Envelope gate (FEAT-058 §2.3).
+     *
+     * Signature and id verification must already have happened; this function
+     * takes no "trust me" flag precisely so a caller cannot skip that step by
+     * passing `true`.
+     */
+    fun classify(event: CompetitionEvent, nowSeconds: Long): Classified {
+        if (event.kind != KIND) return Classified.Rejected("wrong kind")
+        if (NAMESPACE !in event.tagValues("L")) return Classified.Rejected("not a competition namespace")
+        val schema = event.tagValue("cc-schema") ?: return Classified.Rejected("missing cc-schema tag")
+        val schemaParts = schema.split("/")
+        val major = schemaParts.getOrNull(1)?.toIntOrNull()
+        if (schemaParts.getOrNull(0) != "cruxcoach-competition" || major == null) {
+            return Classified.Rejected("unreadable schema tag \"$schema\"")
+        }
+        if (major != SCHEMA_MAJOR) {
+            return Classified.Rejected("schema version $major needs a newer CruxCoach", needsUpgrade = true)
+        }
+        if (event.createdAt > nowSeconds + MAX_FUTURE_SKEW_SECONDS) {
+            return Classified.Rejected("created_at is too far in the future")
+        }
+        val dTag = parseDTag(event.tagValue("d")) ?: return Classified.Rejected("malformed d tag")
+        val labelled = event.tags.firstOrNull { it.size >= 3 && it[0] == "l" && it[2] == NAMESPACE }?.getOrNull(1)
+        if (labelled != dTag.kind) {
+            return Classified.Rejected("label \"$labelled\" does not match d-tag shape \"${dTag.kind}\"")
+        }
+        if (event.content.length > MAX_EVENT_BYTES) return Classified.Rejected("content is too large")
+        val payload = runCatching { json.parseToJsonElement(event.content).jsonObject }.getOrNull()
+            ?: return Classified.Rejected("content is not a JSON object")
+        if (payload["v"]?.jsonPrimitive?.intOrNull != SCHEMA_MAJOR) {
+            return Classified.Rejected("payload version mismatch")
+        }
+        if (payload["type"]?.jsonPrimitive?.contentOrNullSafe() != dTag.kind) {
+            return Classified.Rejected("payload type does not match d-tag")
+        }
+        val payloadCompId = payload["comp_id"]?.jsonPrimitive?.contentOrNullSafe()
+        if (payloadCompId != null && payloadCompId != dTag.compId) {
+            return Classified.Rejected("payload comp_id does not match d-tag")
+        }
+        return Classified.Accepted(dTag.kind, dTag, payload)
+    }
+
+    sealed interface Classified {
+        data class Accepted(val type: String, val dTag: DTag, val payload: JsonObject) : Classified
+        data class Rejected(val error: String, val needsUpgrade: Boolean = false) : Classified
+    }
+
+    /** Parse and validate a competition definition. */
+    fun parseCompetition(event: CompetitionEvent, nowSeconds: Long): ParsedCompetition {
+        val classified = classify(event, nowSeconds)
+        if (classified is Classified.Rejected) {
+            return ParsedCompetition.Invalid(classified.error, classified.needsUpgrade)
+        }
+        val accepted = classified as Classified.Accepted
+        if (accepted.type != "competition") return ParsedCompetition.Invalid("not a competition definition")
+        val competition = runCatching { Competition.from(accepted.payload) }.getOrElse {
+            return ParsedCompetition.Invalid("invalid competition: ${it.message}")
+        }
+        val problems = CompetitionValidation.validate(competition)
+        if (problems.isNotEmpty()) {
+            return ParsedCompetition.Invalid("invalid competition: ${problems.first().field} ${problems.first().message}")
+        }
+        return ParsedCompetition.Valid(
+            competition = competition,
+            organizerPubkey = event.pubkey,
+            eventId = event.id,
+            address = competitionAddress(event.pubkey, competition.compId),
+        )
+    }
+
+    sealed interface ParsedCompetition {
+        data class Valid(
+            val competition: Competition,
+            val organizerPubkey: String,
+            val eventId: String,
+            val address: String,
+        ) : ParsedCompetition
+
+        data class Invalid(val error: String, val needsUpgrade: Boolean = false) : ParsedCompetition
+    }
+
+    /**
+     * Parse a log entry and bind it to its competition. The binding is the
+     * point: an entry that is well-formed but signed by someone who is not the
+     * authority is not a log entry, it is someone else's event that looks like
+     * one.
+     */
+    fun parseLogEntry(
+        event: CompetitionEvent,
+        competition: Competition,
+        organizerPubkey: String,
+        nowSeconds: Long,
+    ): ParsedLogEntry {
+        val classified = classify(event, nowSeconds)
+        if (classified is Classified.Rejected) {
+            return ParsedLogEntry.Invalid(classified.error, classified.needsUpgrade)
+        }
+        val accepted = classified as Classified.Accepted
+        if (accepted.type != "log") return ParsedLogEntry.Invalid("not a log entry")
+        if (event.pubkey != competition.authority) {
+            return ParsedLogEntry.Invalid("not signed by the competition authority")
+        }
+        if (event.tagValue("a") != competitionAddress(organizerPubkey, competition.compId)) {
+            return ParsedLogEntry.Invalid("a-tag does not reference this competition")
+        }
+        val payload = accepted.payload
+        val seq = payload["seq"]?.jsonPrimitive?.intOrNull
+            ?: return ParsedLogEntry.Invalid("seq must be a positive integer")
+        if (seq != accepted.dTag.seq) return ParsedLogEntry.Invalid("seq does not match d-tag")
+        if (seq < 1) return ParsedLogEntry.Invalid("seq must be a positive integer")
+        val prev = payload["prev"]?.jsonPrimitive?.contentOrNullSafe()
+        if (!isHex32(prev)) return ParsedLogEntry.Invalid("prev is not an event id")
+        val op = payload["op"]?.jsonPrimitive?.contentOrNullSafe()
+            ?: return ParsedLogEntry.Invalid("missing op")
+        if (op !in LOG_OPS) return ParsedLogEntry.Invalid("unknown operation \"$op\"", needsUpgrade = true)
+        val reason = payload["reason"]?.jsonPrimitive?.contentOrNullSafe()
+        if (op in REASON_REQUIRED_OPS && reason.isNullOrEmpty()) {
+            return ParsedLogEntry.Invalid("operation \"$op\" is missing its mandatory reason")
+        }
+        val data = payload["data"] as? JsonObject ?: return ParsedLogEntry.Invalid("data is missing")
+        val epoch = payload["epoch"]?.jsonPrimitive?.intOrNull
+        if (epoch == null || epoch < 1) return ParsedLogEntry.Invalid("epoch is missing")
+        val at = payload["at"]?.jsonPrimitive?.longOrNull ?: event.createdAt
+        return ParsedLogEntry.Valid(
+            LogEntry(
+                seq = seq,
+                prev = prev!!,
+                epoch = epoch,
+                at = at,
+                op = op,
+                actor = payload["actor"]?.jsonPrimitive?.contentOrNullSafe() ?: "authority",
+                reason = reason,
+                data = data,
+            ),
+            eventId = event.id,
+            createdAt = event.createdAt,
+        )
+    }
+
+    sealed interface ParsedLogEntry {
+        data class Valid(val entry: LogEntry, val eventId: String, val createdAt: Long) : ParsedLogEntry
+        data class Invalid(val error: String, val needsUpgrade: Boolean = false) : ParsedLogEntry
+    }
+}
+
+/**
+ * A Nostr event reduced to what the protocol layer needs.
+ *
+ * Deliberately not Quartz's `Event`: `:shared` must stay free of Android and of
+ * the signing library, so the reducer can be tested on the JVM and reused by a
+ * future iOS target.
+ */
+data class CompetitionEvent(
+    val id: String,
+    val pubkey: String,
+    val createdAt: Long,
+    val kind: Int,
+    val tags: List<List<String>>,
+    val content: String,
+) {
+    fun tagValue(name: String): String? = tags.firstOrNull { it.size >= 2 && it[0] == name }?.get(1)
+    fun tagValues(name: String): List<String> = tags.filter { it.size >= 2 && it[0] == name }.map { it[1] }
+}
+
+data class LogEntry(
+    val seq: Int,
+    val prev: String,
+    val epoch: Int,
+    val at: Long,
+    val op: String,
+    val actor: String,
+    val reason: String?,
+    val data: JsonObject,
+)
+
+// ── configuration model ──
+
+data class CompetitionRules(
+    val climbSource: String,
+    val climbCount: Int,
+    val selectionUniqueness: String,
+    val progression: String,
+    val attemptsPerClimb: Int,
+    val turnDeadlineSec: Int,
+    val attemptDeadlineSec: Int,
+    val minRestSec: Int,
+    val deferBudgetPerRound: Int,
+    val maxConsecutiveDefers: Int,
+    val deferSlots: Int,
+    val scoring: String,
+    val tiebreaks: List<String>,
+    val lateEntryAllowed: Boolean,
+)
+
+data class CompetitionClimb(
+    val id: String,
+    val climbUuid: String,
+    val angle: Int,
+    val label: String,
+    val points: Int,
+)
+
+data class CompetitionDivision(val id: String, val label: String)
+
+data class Competition(
+    val compId: String,
+    val authority: String,
+    val authorityEpoch: Int,
+    val title: String,
+    val summary: String,
+    val description: String,
+    val visibility: String,
+    val status: String,
+    val timezone: String,
+    val startsAt: Long,
+    val endsAt: Long,
+    val registrationOpensAt: Long,
+    val registrationClosesAt: Long,
+    val checkinOpensAt: Long,
+    val checkinClosesAt: Long,
+    val capacity: Int,
+    val waitlistEnabled: Boolean,
+    val feeMsat: Long,
+    val feeLnurl: String?,
+    val waiverRequired: Boolean,
+    val revision: Int,
+    val divisions: List<CompetitionDivision>,
+    val climbs: List<CompetitionClimb>,
+    val rules: CompetitionRules,
+    val relays: List<String>,
+    /** Everything else, for display without widening this class per field. */
+    val raw: JsonObject,
+) {
+    fun climb(id: String): CompetitionClimb? = climbs.firstOrNull { it.id == id }
+
+    companion object {
+        fun from(payload: JsonObject): Competition {
+            val rules = payload["rules"]?.jsonObject
+                ?: throw IllegalArgumentException("rules is required")
+            return Competition(
+                compId = payload.str("comp_id") ?: throw IllegalArgumentException("comp_id is required"),
+                authority = payload.str("authority") ?: throw IllegalArgumentException("authority is required"),
+                authorityEpoch = payload.int("authority_epoch") ?: 1,
+                title = payload.str("title").orEmpty(),
+                summary = payload.str("summary").orEmpty(),
+                description = payload.str("description").orEmpty(),
+                visibility = payload.str("visibility").orEmpty(),
+                status = payload.str("status").orEmpty(),
+                timezone = payload.str("timezone").orEmpty(),
+                startsAt = payload.long("starts_at") ?: 0L,
+                endsAt = payload.long("ends_at") ?: 0L,
+                registrationOpensAt = payload.long("registration_opens_at") ?: 0L,
+                registrationClosesAt = payload.long("registration_closes_at") ?: 0L,
+                checkinOpensAt = payload.long("checkin_opens_at") ?: 0L,
+                checkinClosesAt = payload.long("checkin_closes_at") ?: 0L,
+                capacity = payload.int("capacity") ?: 0,
+                waitlistEnabled = payload.bool("waitlist_enabled") ?: false,
+                feeMsat = payload.long("fee_msat") ?: 0L,
+                feeLnurl = payload.str("fee_lnurl"),
+                waiverRequired = payload.bool("waiver_required") ?: false,
+                revision = payload.int("revision") ?: 1,
+                divisions = payload["divisions"]?.jsonArray.orEmpty().map {
+                    val obj = it.jsonObject
+                    CompetitionDivision(obj.str("id").orEmpty(), obj.str("label").orEmpty())
+                },
+                climbs = payload["climbs"]?.jsonArray.orEmpty().map {
+                    val obj = it.jsonObject
+                    CompetitionClimb(
+                        id = obj.str("id").orEmpty(),
+                        climbUuid = obj.str("climb_uuid").orEmpty(),
+                        angle = obj.int("angle") ?: 0,
+                        label = obj.str("label").orEmpty(),
+                        points = obj.int("points") ?: 0,
+                    )
+                },
+                rules = CompetitionRules(
+                    climbSource = rules.str("climb_source").orEmpty(),
+                    climbCount = rules.int("climb_count") ?: 0,
+                    selectionUniqueness = rules.str("selection_uniqueness").orEmpty(),
+                    progression = rules.str("progression").orEmpty(),
+                    attemptsPerClimb = rules.int("attempts_per_climb") ?: 0,
+                    turnDeadlineSec = rules.int("turn_deadline_sec") ?: 0,
+                    attemptDeadlineSec = rules.int("attempt_deadline_sec") ?: 0,
+                    minRestSec = rules.int("min_rest_sec") ?: 0,
+                    deferBudgetPerRound = rules.int("defer_budget_per_round") ?: 0,
+                    maxConsecutiveDefers = rules.int("max_consecutive_defers") ?: 0,
+                    deferSlots = rules.int("defer_slots") ?: 1,
+                    scoring = rules.str("scoring").orEmpty(),
+                    tiebreaks = rules["tiebreaks"]?.jsonArray.orEmpty()
+                        .mapNotNull { it.jsonPrimitive.contentOrNullSafe() },
+                    lateEntryAllowed = rules.bool("late_entry_allowed") ?: false,
+                ),
+                relays = payload["relays"]?.jsonArray.orEmpty()
+                    .mapNotNull { it.jsonPrimitive.contentOrNullSafe() },
+                raw = payload,
+            )
+        }
+    }
+}
+
+// ── small JSON readers, so the model code above stays readable ──
+
+internal fun JsonObject.str(key: String): String? =
+    (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
+
+internal fun JsonObject.int(key: String): Int? = (this[key] as? JsonPrimitive)?.intOrNull
+
+internal fun JsonObject.long(key: String): Long? = (this[key] as? JsonPrimitive)?.longOrNull
+
+internal fun JsonObject.bool(key: String): Boolean? = (this[key] as? JsonPrimitive)?.booleanOrNull
+
+internal fun JsonPrimitive.contentOrNullSafe(): String? = if (isString) content else null
+
+private fun kotlinx.serialization.json.JsonArray?.orEmpty(): List<kotlinx.serialization.json.JsonElement> =
+    this ?: emptyList()

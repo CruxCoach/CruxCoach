@@ -1,0 +1,136 @@
+{
+  "note": "Locally generated. No invoice was created, no payment was made, nothing here touches a network.",
+  "lnurl_response": {
+    "allowsNostr": true,
+    "nostrPubkey": "8e9b6c1625647191d503917fa27a066d307188a5672fcde5e79780baf01f53b1",
+    "callback": "https://lnurl.example.invalid/callback",
+    "minSendable": 1000,
+    "maxSendable": 100000000,
+    "metadata": "[[\"text/plain\",\"CruxCoach competition entry\"]]"
+  },
+  "fee_msat": 2000000,
+  "competition_address": "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:bb00cc11dd22ee33",
+  "intent_nonce": "3f9a2c17",
+  "zap_request": {
+    "pubkey": "d4d41c056c407711c552ace7aaf4fa9b51b4ea80d06beac56a399c0034229130",
+    "created_at": 1789000250,
+    "kind": 9734,
+    "tags": [
+      [
+        "p",
+        "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004"
+      ],
+      [
+        "a",
+        "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:bb00cc11dd22ee33"
+      ],
+      [
+        "amount",
+        "2000000"
+      ],
+      [
+        "relays",
+        "wss://relay.example.invalid"
+      ],
+      [
+        "cc-intent",
+        "3f9a2c17"
+      ]
+    ],
+    "content": "CruxCoach competition entry",
+    "id": "6388cce9a5a78308cac08ad71530c2babfd98a7cf848156aa53d484c2e05b994",
+    "sig": "070fd4ea4de48eaf2e07a15c9e1e1ebfcb3a720dd444f618259232501d3c11ea90b5d23bce57ea8d94982227aa42f7695a3e96ca96db8c1f36171d26e4373747"
+  },
+  "valid_receipt": {
+    "pubkey": "8e9b6c1625647191d503917fa27a066d307188a5672fcde5e79780baf01f53b1",
+    "created_at": 1789000260,
+    "kind": 9735,
+    "tags": [
+      [
+        "p",
+        "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004"
+      ],
+      [
+        "P",
+        "d4d41c056c407711c552ace7aaf4fa9b51b4ea80d06beac56a399c0034229130"
+      ],
+      [
+        "a",
+        "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:bb00cc11dd22ee33"
+      ],
+      [
+        "bolt11",
+        "lnbc20u1pfixture0000000000000000000000000000000000000000000000000000000000"
+      ],
+      [
+        "description",
+        "{\"pubkey\":\"d4d41c056c407711c552ace7aaf4fa9b51b4ea80d06beac56a399c0034229130\",\"created_at\":1789000250,\"kind\":9734,\"tags\":[[\"p\",\"2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004\"],[\"a\",\"30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:bb00cc11dd22ee33\"],[\"amount\",\"2000000\"],[\"relays\",\"wss://relay.example.invalid\"],[\"cc-intent\",\"3f9a2c17\"]],\"content\":\"CruxCoach competition entry\",\"id\":\"6388cce9a5a78308cac08ad71530c2babfd98a7cf848156aa53d484c2e05b994\",\"sig\":\"070fd4ea4de48eaf2e07a15c9e1e1ebfcb3a720dd444f618259232501d3c11ea90b5d23bce57ea8d94982227aa42f7695a3e96ca96db8c1f36171d26e4373747\"}"
+      ]
+    ],
+    "content": "",
+    "id": "3e48293721d3a3d5a31b555f27c5812eec80af9438b29a8dbe6259b23d8b04fb",
+    "sig": "88fa7ef81700434f20728a2b2ff4ba423aa464cd691b73231f4fc28e07242f1b56ce764b25b9ef676ba8e7a2c6971d1a7576dceecadf02e4b6672dae42b48b74"
+  },
+  "rejected": {
+    "signed_by_the_wrong_key": {
+      "pubkey": "5e55bef5672b519fac25499b8231a4974d7c8bda22c0d74da5821670a30c82b1",
+      "created_at": 1789000260,
+      "kind": 9735,
+      "tags": [
+        [
+          "p",
+          "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004"
+        ],
+        [
+          "P",
+          "d4d41c056c407711c552ace7aaf4fa9b51b4ea80d06beac56a399c0034229130"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:bb00cc11dd22ee33"
+        ],
+        [
+          "bolt11",
+          "lnbc20u1pfixture0000000000000000000000000000000000000000000000000000000000"
+        ],
+        [
+          "description",
+          "{\"pubkey\":\"d4d41c056c407711c552ace7aaf4fa9b51b4ea80d06beac56a399c0034229130\",\"created_at\":1789000250,\"kind\":9734,\"tags\":[[\"p\",\"2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004\"],[\"a\",\"30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:bb00cc11dd22ee33\"],[\"amount\",\"2000000\"],[\"relays\",\"wss://relay.example.invalid\"],[\"cc-intent\",\"3f9a2c17\"]],\"content\":\"CruxCoach competition entry\",\"id\":\"6388cce9a5a78308cac08ad71530c2babfd98a7cf848156aa53d484c2e05b994\",\"sig\":\"070fd4ea4de48eaf2e07a15c9e1e1ebfcb3a720dd444f618259232501d3c11ea90b5d23bce57ea8d94982227aa42f7695a3e96ca96db8c1f36171d26e4373747\"}"
+        ]
+      ],
+      "content": "",
+      "id": "49a0a990195756086231f7b2d4e87f84c055b74906d542a56e9b1687ef505a48",
+      "sig": "f76fe6ff7b24a244351b67f76d8506b4e80db4d7752fb81f50ec41704ac62baabf80d7b9d0b11b547c51de4ccf0045f41a97abc597a8cdf5cd1c4aadd519a653"
+    },
+    "references_another_competition": {
+      "pubkey": "8e9b6c1625647191d503917fa27a066d307188a5672fcde5e79780baf01f53b1",
+      "created_at": 1789000260,
+      "kind": 9735,
+      "tags": [
+        [
+          "p",
+          "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004"
+        ],
+        [
+          "P",
+          "d4d41c056c407711c552ace7aaf4fa9b51b4ea80d06beac56a399c0034229130"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:0000000000000000"
+        ],
+        [
+          "bolt11",
+          "lnbc20u1pfixture0000000000000000000000000000000000000000000000000000000000"
+        ],
+        [
+          "description",
+          "{\"pubkey\":\"d4d41c056c407711c552ace7aaf4fa9b51b4ea80d06beac56a399c0034229130\",\"created_at\":1789000250,\"kind\":9734,\"tags\":[[\"p\",\"2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004\"],[\"a\",\"30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:bb00cc11dd22ee33\"],[\"amount\",\"2000000\"],[\"relays\",\"wss://relay.example.invalid\"],[\"cc-intent\",\"3f9a2c17\"]],\"content\":\"CruxCoach competition entry\",\"id\":\"6388cce9a5a78308cac08ad71530c2babfd98a7cf848156aa53d484c2e05b994\",\"sig\":\"070fd4ea4de48eaf2e07a15c9e1e1ebfcb3a720dd444f618259232501d3c11ea90b5d23bce57ea8d94982227aa42f7695a3e96ca96db8c1f36171d26e4373747\"}"
+        ]
+      ],
+      "content": "",
+      "id": "5298d74bcbde375f2a797d53e4ab6a3bc16fb3d61cb307feb1b2d7678560995e",
+      "sig": "7f948e8f57f1d791544c595839a641c2f60090f47db585cbb4155d14b9290b6a946f5a3668ea8fffd4397f8d8fc2faa9ae5580e6f4e573cb6e77b505658786a9"
+    }
+  }
+}

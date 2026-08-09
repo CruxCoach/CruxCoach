@@ -1,0 +1,275 @@
+{
+  "schema": "cruxcoach-competition/1",
+  "note": "Every key here is derived from a public label in build-competition-fixtures.mjs. They are test keys and are worthless.",
+  "keys": {
+    "organizer": {
+      "secret_hex": "69645ed9e31d01d6821ccfd6b80cffcf0209d2adf2d1fdc4d1feec1a2bf249ab",
+      "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004"
+    },
+    "alice": {
+      "secret_hex": "6a3ce2fce59f2239922458ff23538dc50e9e53ee4065dae2fd4d7216d7d25b97",
+      "pubkey": "d4d41c056c407711c552ace7aaf4fa9b51b4ea80d06beac56a399c0034229130"
+    },
+    "bob": {
+      "secret_hex": "c668dcf3733d4b971757b9fb430d66be7df11ade8916da09d4c333b2e8d5cd06",
+      "pubkey": "019244fa7971d9b335e80017cc0627eae1909c7bc991cb64dad2328df614f911"
+    },
+    "carla": {
+      "secret_hex": "25b5befae781918b96b5144323188d569b979afe22d47f137cdb52ba06661bf3",
+      "pubkey": "cc2e7ee700ae9f6647ffcf8cc599fd2d7742f843d64850bfc5bb4c1d800ca66c"
+    },
+    "dan": {
+      "secret_hex": "8027aa3fefdb0242e196e75b51d336bd1e0cdb6d27f90ce6152910201737a85c",
+      "pubkey": "5e55bef5672b519fac25499b8231a4974d7c8bda22c0d74da5821670a30c82b1"
+    },
+    "zapper": {
+      "secret_hex": "82fca56a0b15a35f582dd4e87b61d09bed59726cb0b877f508cdf4472dd82f1c",
+      "pubkey": "8e9b6c1625647191d503917fa27a066d307188a5672fcde5e79780baf01f53b1"
+    }
+  },
+  "ccj": [
+    {
+      "name": "key order",
+      "value": {
+        "b": 1,
+        "a": 2,
+        "c_1": 3
+      },
+      "expected": "{\"a\":2,\"b\":1,\"c_1\":3}",
+      "sha256": "427415e48c0efd1304a6511dd817993dbbb4f8791de0b491c6481459ef5ef531"
+    },
+    {
+      "name": "nested",
+      "value": {
+        "z": {
+          "y": [
+            1,
+            2
+          ],
+          "x": "q"
+        }
+      },
+      "expected": "{\"z\":{\"x\":\"q\",\"y\":[1,2]}}",
+      "sha256": "a2d7a893e6ee53c9070e4d2870546e677d8e35d1bcd994563a1307f81f954089"
+    },
+    {
+      "name": "null and undefined are dropped",
+      "value": {
+        "a": 1,
+        "b": null
+      },
+      "expected": "{\"a\":1}",
+      "sha256": "015abd7f5cc57a2dd94b7590f04ad8084273905ee33ec5cebeae62276a97f862"
+    },
+    {
+      "name": "negative integer",
+      "value": {
+        "n": -42
+      },
+      "expected": "{\"n\":-42}",
+      "sha256": "fbd5ac2f42479228ed2d3b495816fbda98a9cb9d71d523869a37e784790e9f2c"
+    },
+    {
+      "name": "zero",
+      "value": {
+        "n": 0
+      },
+      "expected": "{\"n\":0}",
+      "sha256": "f3013f933b9fb80ab6d995e7ad9da36f683837ba1d81e950c943d40111eac2f0"
+    },
+    {
+      "name": "booleans",
+      "value": {
+        "t": true,
+        "f": false
+      },
+      "expected": "{\"f\":false,\"t\":true}",
+      "sha256": "c22848c47426fcf4d27e55573c22f1d23546315c251e8e4bc384820ba5fae568"
+    },
+    {
+      "name": "empty containers",
+      "value": {
+        "a": [],
+        "o": {}
+      },
+      "expected": "{\"a\":[],\"o\":{}}",
+      "sha256": "9bee7ebfc94b459dacb8cbc72cb2900e61f0aa42189df18329f84f92568f4f89"
+    },
+    {
+      "name": "array order is preserved",
+      "value": {
+        "a": [
+          3,
+          1,
+          2
+        ]
+      },
+      "expected": "{\"a\":[3,1,2]}",
+      "sha256": "d934227f5a9f29b31bd6a8ceed3213dd498a07ce32bdfa9ae2488de0c0ab68f1"
+    },
+    {
+      "name": "quote and backslash",
+      "value": {
+        "s": "a\"b\\c"
+      },
+      "expected": "{\"s\":\"a\\\"b\\\\c\"}",
+      "sha256": "97a1049b950c4967857a84a892616be14cfa33824839b42b557d9299074e9ea6"
+    },
+    {
+      "name": "newline tab return",
+      "value": {
+        "s": "a\nb\tc\rd"
+      },
+      "expected": "{\"s\":\"a\\nb\\tc\\rd\"}",
+      "sha256": "16b8bfcb27caa20b5a2a18aaa026091abf6423586abcc0e278537bef2a255b49"
+    },
+    {
+      "name": "control character",
+      "value": {
+        "s": "\u0001"
+      },
+      "expected": "{\"s\":\"\\u0001\"}",
+      "sha256": "8d4f0e5fe4a5bba1edb70f8fefc66bfede576b92884d96ea3f2e58f099712594"
+    },
+    {
+      "name": "non-ascii is literal",
+      "value": {
+        "s": "Kellerwand — Übung"
+      },
+      "expected": "{\"s\":\"Kellerwand — Übung\"}",
+      "sha256": "32766f12e5a2a426f8f43ec44875077d4b887f115bebcd253ad7ef999985c7b3"
+    },
+    {
+      "name": "emoji outside the BMP",
+      "value": {
+        "s": "🧗"
+      },
+      "expected": "{\"s\":\"🧗\"}",
+      "sha256": "4ab4ddcb5c0429f86a300d74501cf50a4c0e2f09deda03e790cb210bb81e6af8"
+    }
+  ],
+  "ccj_rejected": [
+    {
+      "name": "float",
+      "value_json": "{\"n\":1.5}"
+    },
+    {
+      "name": "uppercase key",
+      "value_json": "{\"A\":1}"
+    },
+    {
+      "name": "key with a dash",
+      "value_json": "{\"a-b\":1}"
+    },
+    {
+      "name": "top-level null",
+      "value_json": "null"
+    },
+    {
+      "name": "negative zero",
+      "value_json": "{\"n\":0}"
+    }
+  ],
+  "d_tags": [
+    {
+      "d": "cruxcoach:comp:9f2c41ab77e05d13",
+      "expected": {
+        "compId": "9f2c41ab77e05d13",
+        "kind": "competition"
+      }
+    },
+    {
+      "d": "cruxcoach:comp:9f2c41ab77e05d13:log:000001",
+      "expected": {
+        "compId": "9f2c41ab77e05d13",
+        "kind": "log",
+        "seq": 1
+      }
+    },
+    {
+      "d": "cruxcoach:comp:9f2c41ab77e05d13:log:999999",
+      "expected": {
+        "compId": "9f2c41ab77e05d13",
+        "kind": "log",
+        "seq": 999999
+      }
+    },
+    {
+      "d": "cruxcoach:comp:9f2c41ab77e05d13:intent:d4d41c05:3f9a2c17",
+      "expected": {
+        "compId": "9f2c41ab77e05d13",
+        "kind": "intent",
+        "pubkeyPrefix": "d4d41c05",
+        "nonce": "3f9a2c17"
+      }
+    },
+    {
+      "d": "cruxcoach:comp:9f2c41ab77e05d13:results",
+      "expected": {
+        "compId": "9f2c41ab77e05d13",
+        "kind": "results"
+      }
+    },
+    {
+      "d": "cruxcoach:climb:354c9b2d:089ccfd9",
+      "expected": null
+    },
+    {
+      "d": "cruxcoach:comp:9f2c41ab77e05d13:log:1",
+      "expected": null
+    },
+    {
+      "d": "cruxcoach:comp:9f2c41ab77e05d13:log:000000",
+      "expected": null
+    },
+    {
+      "d": "cruxcoach:comp:NOTHEX:log:000001",
+      "expected": null
+    }
+  ],
+  "address": {
+    "comp_id": "9f2c41ab77e05d13",
+    "organizer": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+    "address": "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:9f2c41ab77e05d13",
+    "naddr": "naddr1qq0kxun40p3k7ctrdqaxxmmdwqarje3jvv6rzctzxumk2vp4vscnxq3qyq2dcwc7dj3h3zxnk33ql48j8uwcu4zqm7l9zysu77r66ca32qzqxpqqqp6hudrsee7"
+  },
+  "event": {
+    "serialized": "[0,\"2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004\",1789000000,30078,[[\"d\",\"cruxcoach:comp:9f2c41ab77e05d13\"],[\"L\",\"com.cruxcoach.competition\"]],\"{\\\"hello\\\":\\\"world\\\"}\"]",
+    "signed": {
+      "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+      "created_at": 1789000000,
+      "kind": 30078,
+      "tags": [
+        [
+          "d",
+          "cruxcoach:comp:9f2c41ab77e05d13"
+        ],
+        [
+          "L",
+          "com.cruxcoach.competition"
+        ]
+      ],
+      "content": "{\"hello\":\"world\"}",
+      "id": "c6594ee0965a61ad71c47f52c921578d813d101156ede117c354e442f9bd1b3d",
+      "sig": "b1a467cc419864cd97c653691e65ae1aaa2ec006e37483898e174341db3bec9cf9a4f90a28bb800999af1332c8ac82dc40bb7be832bd9dd2e654829e2b445b68"
+    },
+    "tampered_must_fail_verification": {
+      "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+      "created_at": 1789000000,
+      "kind": 30078,
+      "tags": [
+        [
+          "d",
+          "cruxcoach:comp:9f2c41ab77e05d13"
+        ],
+        [
+          "L",
+          "com.cruxcoach.competition"
+        ]
+      ],
+      "content": "{\"hello\":\"w0rld\"}",
+      "id": "c6594ee0965a61ad71c47f52c921578d813d101156ede117c354e442f9bd1b3d",
+      "sig": "b1a467cc419864cd97c653691e65ae1aaa2ec006e37483898e174341db3bec9cf9a4f90a28bb800999af1332c8ac82dc40bb7be832bd9dd2e654829e2b445b68"
+    }
+  }
+}
