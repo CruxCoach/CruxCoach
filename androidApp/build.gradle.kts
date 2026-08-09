@@ -394,6 +394,10 @@ dependencies {
 
     // ZXing (QR code generation for APK sharing)
     implementation(libs.zxing.core)
+    implementation(libs.camera.core)
+    implementation(libs.camera.camera2)
+    implementation(libs.camera.lifecycle)
+    implementation(libs.camera.view)
 
     // Nostr NIP-17 crash reporting (quartz requires Jackson for event hashing/signing)
     implementation(libs.quartz.android)

@@ -64,6 +64,7 @@ import androidx.navigation.NavType
 import androidx.navigation.navArgument
 import kotlinx.coroutines.launch
 import com.cruxcoach.android.ui.competition.CompetitionDetailScreen
+import com.cruxcoach.android.ui.competition.CompetitionScannerScreen
 import com.cruxcoach.android.ui.competition.CompetitionsScreen
 import com.cruxcoach.android.competition.CompetitionShareLink
 import com.cruxcoach.android.ui.board.BoardBrowserScreen
@@ -113,6 +114,7 @@ object Routes {
     const val EXERCISE_LIBRARY = "exercise_library"
     const val BOARD_BROWSER = "board_browser"
     const val COMPETITIONS = "competitions"
+    const val COMPETITION_SCAN = "competition_scan"
     const val COMPETITION_DETAIL = "competition_detail/{organizerPubkey}/{compId}"
     fun competitionDetail(organizerPubkey: String, compId: String) =
         "competition_detail/$organizerPubkey/$compId"
@@ -264,7 +266,8 @@ fun CruxCoachNavHost(
             route.startsWith("message_thread/") ||
             route.startsWith("playlist_import/") ->
                 navController.navigate(route) { launchSingleTop = true }
-            route == Routes.COMPETITIONS || route.startsWith("competition_detail/") ->
+            route == Routes.COMPETITIONS || route == Routes.COMPETITION_SCAN ||
+                route.startsWith("competition_detail/") ->
                 // Replace an already-open competition rather than stacking a
                 // second one: the detail view model reads its address once at
                 // init, so reusing the entry would keep showing the old one.
@@ -530,7 +533,27 @@ fun CruxCoachNavHost(
                                 Routes.competitionDetail(ref.organizerPubkey, ref.compId),
                             )
                         },
+                        onScan = { navController.navigate(Routes.COMPETITION_SCAN) },
                         onNavigateBack = { navController.popBackStack() },
+                    )
+                }
+            }
+
+            composable(Routes.COMPETITION_SCAN) {
+                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
+                    screenName = "CompetitionScanner",
+                    onNavigateBack = { navController.popBackStack() },
+                ) {
+                    CompetitionScannerScreen(
+                        onNavigateBack = { navController.popBackStack() },
+                        onCompetition = { ref ->
+                            // Replace the scanner rather than stack on it: back
+                            // from a competition should return to the list, not
+                            // to a camera pointed at the code just scanned.
+                            navController.navigate(
+                                Routes.competitionDetail(ref.organizerPubkey, ref.compId),
+                            ) { popUpTo(Routes.COMPETITION_SCAN) { inclusive = true } }
+                        },
                     )
                 }
             }

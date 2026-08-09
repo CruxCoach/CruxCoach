@@ -19,6 +19,7 @@ kotlinx-serialization = "1.10.0"
 kotlinx-coroutines = "1.10.2"
 kotlinx-datetime = "0.7.1"
 zxing = "3.5.4"
+camerax = "1.4.2"
 quartz = "1.05.1"
 okhttp = "4.12.0"
 security-crypto = "1.1.0"
@@ -80,6 +81,12 @@ kotlinx-datetime = { group = "org.jetbrains.kotlinx", name = "kotlinx-datetime",
 
 # ZXing (QR code generation)
 zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" }
+# CameraX rather than ML Kit: the scanner has to work on a build with no Google
+# Play services, and the decoding is done by the ZXing core already vendored here.
+camera-core = { group = "androidx.camera", name = "camera-core", version.ref = "camerax" }
+camera-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "camerax" }
+camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "camerax" }
+camera-view = { group = "androidx.camera", name = "camera-view", version.ref = "camerax" }
 
 # Nostr (NIP-17 crash reporting)
 quartz-android = { group = "com.vitorpamplona.quartz", name = "quartz-android", version.ref = "quartz" }

@@ -59,6 +59,53 @@ object CompetitionShareLink {
         )
     }
 
+    /**
+     * What a scanned code turned out to be.
+     *
+     * [parse] deliberately collapses every failure into null, which is right
+     * for a pasted string. A camera is different: people point it at whatever
+     * is on the wall, and "that is a climb, not a competition" is something
+     * they can act on immediately, where "that did not work" is not.
+     */
+    sealed interface Scan {
+        data class Competition(val ref: Ref) : Scan
+
+        /** A CruxCoach climb link — the other QR a gym is likely to have up. */
+        data object Climb : Scan
+
+        /** Valid NIP-19, but not a competition: somebody's profile, a note. */
+        data object OtherNostr : Scan
+
+        /** Addresses a competition, but the address itself does not decode. */
+        data object Damaged : Scan
+
+        /** Not a CruxCoach link at all — a wifi code, a URL, a menu. */
+        data object Unknown : Scan
+    }
+
+    private val CLIMB_LINK = Regex("(?:^|/)c/([0-9a-zA-Z-]{8,})", RegexOption.IGNORE_CASE)
+    private val ANY_NIP19 = Regex("^(?:nostr:)?(npub1|nsec1|note1|nprofile1|nevent1|naddr1)[0-9a-z]+$", RegexOption.IGNORE_CASE)
+
+    fun classify(input: String?): Scan {
+        if (input.isNullOrBlank()) return Scan.Unknown
+        val trimmed = input.trim()
+
+        parse(trimmed)?.let { return Scan.Competition(it) }
+
+        if (CLIMB_LINK.containsMatchIn(trimmed)) return Scan.Climb
+
+        // It pointed at a competition and did not decode: a damaged code, or
+        // one from a version of the format this build does not know.
+        val looksLikeOurs = IN_URL.containsMatchIn(trimmed) ||
+            IN_FRAGMENT.containsMatchIn(trimmed) ||
+            NADDR.matches(trimmed) ||
+            NOSTR_URI.matches(trimmed)
+        if (looksLikeOurs) return Scan.Damaged
+
+        if (ANY_NIP19.matches(trimmed)) return Scan.OtherNostr
+        return Scan.Unknown
+    }
+
     /** The link that goes on a poster, into a QR, and into a share sheet. */
     fun httpsLink(naddr: String, host: String): String = "https://$host/comp/$naddr"
 

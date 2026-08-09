@@ -11,7 +11,7 @@ listed as device-owed or manual, and says why.
 **The gates**
 
 ```bash
-# web — 247 tests
+# web — 334 tests
 cd cruxcoach-pages && scripts/check
 
 # app — the shared protocol, reducer, scoring, NIP-19 and canonical JSON
@@ -70,7 +70,7 @@ signed Lightning fixtures — no invoice, no network), `qr-reference.json`
 | **AC-10** deferral refused | web + app | *a second consecutive deferral is refused, with a stable code*; `defer_budget_exhausted` and `defer_consecutive_limit` both covered |
 | **AC-11** timeout costs an attempt | web | *an expired turn consumes an attempt* |
 | **AC-12** payment gates the turn | web | `competition-e2e.test.mjs` → *a paid competition keeps an unpaid entrant out of the running order*; stream `rejections-paid` produces `not_eligible` |
-| **AC-13** every rejection code | web + app | *every rejection code in the closed set is exercised by a fixture* (both suites; 32 of 32) |
+| **AC-13** every rejection code | web + app | *every rejection code in the closed set is exercised by a fixture* (both suites; 33 of 33) |
 | **AC-14** link shapes | web + app | `competition-pages.test.mjs` → *a join reference is recognised in every shape we hand out*; `CompetitionShareLinkTest` → *recognises every shape a link arrives in* |
 | **AC-15** wrong kind / wrong d-tag | web + app | `parseCompetitionRef` refuses; `CompetitionShareLinkTest` → *refuses an naddr for another kind*, *refuses an naddr whose d-tag is not a competition* |
 | **AC-16** QR decodes back | web | `competition-qr.test.mjs` → *the symbol decodes back to exactly the text that went in*, *every Reed-Solomon block is a valid codeword*, *the function areas match an independent encoder exactly* |
@@ -84,6 +84,19 @@ signed Lightning fixtures — no invoice, no network), `qr-reference.json`
 | **AC-24** protocol layer is DOM-free | web | *the protocol layer stays free of the DOM* |
 | **AC-25** no public relay, no sats | web | `competition-fixtures.test.mjs` → *no fixture references a public relay*; `dev-relay.test.mjs` → *the relay refuses to bind anything but loopback*; `competition-e2e.test.mjs` asserts every relay URL is loopback |
 | **AC-26** end to end | web | `competition-e2e.test.mjs` → *a competition runs end to end and every reader agrees on the state* (four independent readers, one state hash) |
+| **AC-27** profile gate on all three signers | web | `competition-profile.test.mjs` → *a NIP-07 extension can publish a profile that satisfies the gate*, *a NIP-46 bunker can too*, *a local key can too*; *a name of only invisible characters is refused* |
+| **AC-28** unreachable ≠ no profile | web | `competition-profile.test.mjs` → *an unreachable relay is not mistaken for "you have no profile"*; `relay-pool.mjs` reports `answered` and `failed` separately |
+| **AC-29** real climbs only | web + app | `competition-climb-ref.test.mjs` → *a placeholder uuid is refused in every form it arrives in*, *a competition carrying a placeholder climb does not validate*; `CompetitionValidationTest` → the same rules in the app, plus *the uuid rules agree with the website's, character for character* |
+| **AC-30** every mode is offered | web | `competition-pages.test.mjs` → *the organizer form offers every mode the protocol defines*, *every mode the form offers has a label in both languages*, *the participant pages can render every mode the form can set*; `competition-e2e.test.mjs` runs both climb sources end to end |
+| **AC-31** claims decided in registration order | web | `competition-claims.test.mjs` → *registration order decides the race, not pubkey order*, *the answer does not depend on the order the requests arrived in*, *a decision already in the log is not published a second time*; `competition-e2e.test.mjs` → *two entrants race for one climb and the loser re-picks* |
+| **AC-32** attempts only on your own climbs | web + app | fixture `paid-unique-async` produces `climb_not_selected`; both suites assert the closed code set (33 of 33) |
+| **AC-33** the chooser exists only when it can be used | app | `CompetitionSelectionTest` → *may act only when every rule the reducer applies is satisfied*, *an unpaid entrant may not act*, *a resting climber may not act until the rest is over* |
+| **AC-34** climbs resolve before they open | app | `CompetitionClimbResolverTest` → *a climb whose board is not downloaded says so, and is retryable*, *a climb no held board size can draw is not opened*, *placeholder and malformed uuids never reach the board screen* |
+| **AC-35** https-only LNURL, checked amount | web | `competition-lightning.test.mjs` → *an endpoint that could be intercepted is refused, never downgraded*, *an invoice for a different amount is refused, not shown with a warning* |
+| **AC-36** receipts are verified, not trusted | web | `competition-lightning.test.mjs` → *every way of being the wrong receipt is caught* (six cases), *the invoice has to be for at least the fee, and bound to this request*; `competition-e2e.test.mjs` → *a fee is settled by a receipt that verifies* |
+| **AC-37** manual settlement is an audited override | web | `competition-e2e.test.mjs` → *…or by an override that is named*: asserts the write is refused without a reason and that the reason lands in the audit trail |
+| **AC-38** the scanner accepts only our codes | app | `CompetitionQrDecoderTest` → *the code this app generates is the code this app reads*, *every other code someone might point the camera at is named*, *a naddr for something that is not a competition is refused* |
+| **AC-39** cleartext stays out of release | app | `CompetitionDevRelayPolicyTest` → *the shipped policy permits no cleartext to loopback*, *the emulator host alias is not accepted, which is why adb reverse is the instruction* |
 
 ---
 
@@ -111,10 +124,11 @@ Nothing below is skipped for convenience; each says exactly what it needs.
 | Check | Why it is not automated here | How to do it |
 |---|---|---|
 | **Maestro UI flows** | No Android device is attached to this machine (`adb devices` is empty). The app's flows in `flows/` need one. | Attach a device and run `flows/run.sh`. |
-| **Compose rendering of the two new screens** | Same. The screens' logic is in view models and the shared reducer, both covered; what is not covered is that Compose draws them. | Device, or add Compose UI tests with Robolectric. |
+| **Compose rendering of the new screens** | Same. The screens' logic is in view models, the resolver and the shared reducer, all covered; what is not covered is that Compose draws them. | Device, or add Compose UI tests with Robolectric. |
+| **The camera preview and the permission dialog** | Needs a camera and a real permission grant. The decode path is covered without one: a QR is encoded, rendered to luminance the way a sensor would, and read back (`CompetitionQrDecoderTest`). Frame delivery, `adb reverse`, and Android's own permission UI are not. | Attach a device and follow the runbook's Android section. |
 | **App Link verification** | `autoVerify` needs the real `assetlinks.json` at the real host and a real install. | Install a release build and open `https://cruxcoach.org/comp/<naddr>`. |
-| **Scanning a printed QR with a real camera** | The encoder is proved by decoding and by Reed-Solomon syndromes; a camera adds optics, not correctness. | Print the projector's QR and scan it. |
-| **A real Lightning payment** | No test may spend a satoshi. The verification logic is covered with locally signed fixtures; the provider's honesty is not testable by us and the protocol says so. | An organizer with a real LNURL endpoint and a test payment. |
+| **Scanning a printed QR with a real camera** | The encoder is proved by decoding and by Reed-Solomon syndromes, and the app's decoder is proved against the app's own encoder; a camera adds optics, not correctness. | Print the projector's QR and scan it with the in-app scanner. |
+| **A real Lightning payment** | No test may spend a satoshi. Resolution, invoice checking and receipt verification are covered against locally signed fixtures whose invoice is deliberately unsigned and unpayable; what is not covered is a real provider's behaviour, and a zap receipt is that provider's attestation by construction. | An organizer with a real LNURL endpoint and a test payment. |
 | **Behaviour against a real public relay** | No test may write to one. Relay limits are recorded in protocol §16.2 from live NIP-11 reads. | Run a competition on a relay you control. |
 | **Screen-reader pass** | The markup is asserted (live regions, labels, focus, target sizes); how TalkBack and VoiceOver actually read it is not. | TalkBack on the app, VoiceOver on the participant page. |
 

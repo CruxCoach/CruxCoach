@@ -12,6 +12,15 @@
     <!-- Vibration for rest timer -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!-- FEAT-058 competition QR scanning. Requested only when the scanner is
+         opened, never at startup, and the app runs perfectly well without it:
+         a competition can also be joined by App Link, by pasting, or from a
+         share sheet. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature
+        android:name="android.hardware.camera.any"
+        android:required="false" />
+
     <!-- FEAT-004 in-app updater. Silent self-update is strictly opt-in and
          available only when Android's PackageInstaller conditions are met. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />

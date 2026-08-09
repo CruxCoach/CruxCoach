@@ -975,7 +975,7 @@ A conformant authority accepts a receipt only if **all** hold:
   where the invoice carries one — this is the check that cryptographically binds
   the invoice to that exact zap request. NIP-57 makes it a SHOULD, so a receipt
   without it is downgraded to "settled (weakly bound)" in the audit trail rather
-  than rejected;
+  than rejected. Implemented as `verifyZapReceipt(...).weaklyBound`;
 - the receipt's `created_at` falls inside the registration window.
 
 **What that proves:** the participant asked to pay this competition, and the
@@ -1006,6 +1006,14 @@ stays checkable after a rotation.
 unverified receipt, a matching amount alone, or "the relay showed me a 9735" as
 settlement. There is exactly one path from `pending` to `settled`, and it runs
 through an authority-signed `payment_decision`.
+
+**The manual path.** Gyms take cash, and plenty of LNURL endpoints publish no
+verifiable receipt at all, so an organizer must be able to record a payment
+themselves. That is deliberately *not* the same control: it is an `override`
+wrapping the `payment_decision`, which the parser refuses without a `reason` and
+which the reducer records in `state.audit`. Every client can therefore see that
+a fee was settled by assertion rather than by verification, and by whom, which
+is what keeps "settled" worth reading.
 
 `failed`, `expired` and `refunded` are all authority decisions too, each with a
 UI state and none of them defaulting to `settled`.

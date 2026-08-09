@@ -819,6 +819,23 @@ müssen denselben `state_hash` erreichen.
 als die Unit-Tests laufen, deshalb hat `:shared` eine eigene bech32/NIP-19-
 Implementierung (`Nip19.kt`). Der Rest der App benutzt weiterhin Quartz.
 
+**Wettkampf-Boulder sind echte Board-Boulder.** Jeder Eintrag trägt eine
+`climb_uuid` aus dem Board-Katalog; Platzhalter werden von beiden Validatoren
+abgelehnt. `CompetitionClimbResolver` prüft vor jeder Navigation gegen das, was
+dieses Telefon tatsächlich hat: fehlender Katalog (mit Wiederholung), keine
+darstellbare Boardgröße, oder los. Ein leerer Board-Screen liest sich wie ein
+kaputtes Programm, nicht wie ein fehlendes Board.
+
+**Der QR-Scanner** nutzt CameraX plus den bereits vorhandenen ZXing-Core — nicht
+ML Kit, das Google Play Services braucht. Die Kameraberechtigung wird genau dann
+angefragt, wenn der Scanner geöffnet wird, und die drei anderen Wege hinein
+(App Link, Einfügen, Teilen) funktionieren ohne sie weiter.
+
+**Cleartext zu Loopback** ist ausschließlich im Debug-Build erlaubt
+(`src/debug/res/xml/network_security_config.xml`), damit die Entwicklungs-Relay
+über `adb reverse` erreichbar ist. Der Release-Build verbietet es, und
+`CompetitionDevRelayPolicyTest` hält den Unterschied fest.
+
 ---
 
 ## 14. Querschnitt: Wie der aktuellste Stand bestimmt wird
@@ -952,7 +969,7 @@ Weitere Deckel gegen feindliche Antworten:
 | `nostr/relaydiscovery/` | NIP-65 (Fetcher, Resolver, Cache, Parser) |
 | `nostr/profile/` | NIP-05, LNURL, Bild-Upload |
 | `community/` | Climb-Publisher, -Subscriber, -Deleter, Retry-Worker, `CommunityEventTime` |
-| `competition/` | Wettkampf: Relay-Client, Discovery, Intent-Publisher, Share-Links |
+| `competition/` | Wettkampf: Relay-Client, Discovery, Intent-Publisher, Share-Links, QR-Decoder, Climb-Auflösung |
 | `data/blossom/BlossomSyncManager.kt` | Manifest-Fetch + Chunk-Download |
 | `notification/` | Push-Coordinator, Poll-Worker, Ingestor, Announcement-Parser |
 | `payment/` | Kind-0-Profilverwaltung, Zaps |

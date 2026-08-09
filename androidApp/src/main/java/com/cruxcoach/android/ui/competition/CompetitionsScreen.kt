@@ -41,15 +41,17 @@ import com.cruxcoach.android.competition.CompetitionShareLink
 /**
  * The competition list.
  *
- * Two ways in, in the order people actually arrive: a link somebody sent them,
- * and a list of what is on. Scanning a QR is the third, and it needs nothing
- * here — the phone's own camera opens the link and the App Link filter brings
- * it to this app.
+ * Three ways in, in the order people actually arrive: a link somebody sent
+ * them, the code on the gym wall, and a list of what is on. The phone's own
+ * camera still works — the App Link filter brings a scanned link here — but at
+ * a wall with the app already open, leaving it to come back is a worse version
+ * of the same thing, so there is a scanner here too.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CompetitionsScreen(
     onOpenCompetition: (CompetitionShareLink.Ref) -> Unit,
+    onScan: () -> Unit,
     onNavigateBack: () -> Unit,
     viewModel: CompetitionsViewModel = hiltViewModel(),
 ) {
@@ -114,10 +116,16 @@ fun CompetitionsScreen(
                                 .fillMaxWidth()
                                 .testTag("competition_link_input"),
                         )
-                        TextButton(
-                            onClick = { viewModel.openLink()?.let(onOpenCompetition) },
-                            modifier = Modifier.testTag("competition_link_open"),
-                        ) { Text(stringResource(R.string.comp_open_action)) }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(
+                                onClick = { viewModel.openLink()?.let(onOpenCompetition) },
+                                modifier = Modifier.testTag("competition_link_open"),
+                            ) { Text(stringResource(R.string.comp_open_action)) }
+                            TextButton(
+                                onClick = onScan,
+                                modifier = Modifier.testTag("competition_scan_open"),
+                            ) { Text(stringResource(R.string.comp_scan_action)) }
+                        }
                     }
                 }
             }

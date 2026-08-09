@@ -270,6 +270,19 @@ Each is mapped to automation in [`FEAT-058-conformance.md`](FEAT-058-conformance
 | AC-24 | The protocol layer contains no DOM reference, so the shipped code is what the tests run. |
 | AC-25 | No test or fixture contacts a public relay or spends a satoshi. |
 | AC-26 | A whole competition runs end to end on a loopback relay, with four independent readers agreeing. |
+| AC-27 | Signing in publishes or confirms a kind-0 profile with a usable name before anything else is offered, on all three signer paths, and never deletes a field it did not write. |
+| AC-28 | An unreachable relay is distinguishable from "you have no profile"; the second invites an overwrite and the first must not. |
+| AC-29 | Every competition climb names a real board climb. Placeholder UUIDs are refused by both validators, and duplicates within one competition are refused. |
+| AC-30 | The organizer form can set every mode axis, and every configured mode is offered in both participant clients. |
+| AC-31 | With participant-chosen climbs, entrants publish their picks, the authority decides them in registration order — not in pubkey order — and the loser of a race is told and can pick again. |
+| AC-32 | An attempt on a climb the participant does not hold, or that the competition does not run, is refused by both reducers. |
+| AC-33 | In asynchronous turns, the next-climb chooser exists only when that participant may act; every reason it is absent is stated. |
+| AC-34 | Android resolves a competition climb against its own board data before opening it: a missing board offers a retry, an unrenderable one says so, and neither opens an empty board screen. |
+| AC-35 | The entry fee resolves through LNURL-pay over https only, and an invoice whose amount differs from the fee is refused rather than displayed. |
+| AC-36 | A fee is settled automatically only by a kind-9735 signed by the key the competition's own payment endpoint named, over a zap request the entrant signed, for this competition and this amount. |
+| AC-37 | Recording a payment by hand is an override carrying a mandatory reason, visible in the audit trail of every client. |
+| AC-38 | The in-app scanner requests the camera only when opened, explains a refusal and a permanent refusal separately, releases the camera with the screen, and accepts only competition links — naming what a rejected code was instead. |
+| AC-39 | Cleartext to loopback is permitted in the debug build only; the release policy forbids it, and a test asserts the difference. |
 
 ## 11. Non-goals
 
@@ -285,11 +298,10 @@ wire format:
 - **Teams, leagues, qualifiers, multi-board and remote events.** The protocol is
   extensible to them; the UI is not built for them.
 - **Personal leaderboards and score cards.** FEAT-043 owns those.
-- **Wiring competition climbs to real catalogue climbs.** The organizer names
-  them; selecting them from the board catalogue is app work and is in
-  `DECISIONS-TO-REVIEW.md`.
-- **An in-app QR scanner.** The phone's camera plus the App Link does the job
-  without a camera permission or a new dependency.
+- **A board catalogue browser inside the organizer form.** Competition climbs
+  are real board climbs (§7), added by pasting the share link the app already
+  produces. Browsing the catalogue from the website would need the board
+  database on the web, which is a far larger piece of work than this feature.
 - **Organizing from the Android app.** The app is a participant client; the
   console is the website.
 - **Analytics on the competition pages.** The collector's allowlist is in
