@@ -56,6 +56,16 @@ import com.cruxcoach.android.ui.stats.StatsScreen
 import com.cruxcoach.android.ui.bodystat.BodyStatScreen
 import com.cruxcoach.android.ui.bodystat.DataExportScreen
 import com.cruxcoach.android.ui.bodystat.DataImportScreen
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.rememberDrawerState
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
+import kotlinx.coroutines.launch
+import com.cruxcoach.android.ui.competition.CompetitionDetailScreen
+import com.cruxcoach.android.ui.competition.CompetitionsScreen
+import com.cruxcoach.android.competition.CompetitionShareLink
 import com.cruxcoach.android.ui.board.BoardBrowserScreen
 import com.cruxcoach.android.ui.board.BoardBrowserViewModel
 import com.cruxcoach.android.ui.board.BoardFilterScreen
@@ -102,6 +112,10 @@ object Routes {
     const val STATS = "stats"
     const val EXERCISE_LIBRARY = "exercise_library"
     const val BOARD_BROWSER = "board_browser"
+    const val COMPETITIONS = "competitions"
+    const val COMPETITION_DETAIL = "competition_detail/{organizerPubkey}/{compId}"
+    fun competitionDetail(organizerPubkey: String, compId: String) =
+        "competition_detail/$organizerPubkey/$compId"
     const val BOARD_FILTER = "board_filter"
     const val BOARD_CLIMB_DETAIL = "board_climb_detail/{climbUuid}/{angle}"
     const val CLIMB_CREATOR = "climb_creator?forkUuid={forkUuid}&editUuid={editUuid}"
@@ -250,6 +264,14 @@ fun CruxCoachNavHost(
             route.startsWith("message_thread/") ||
             route.startsWith("playlist_import/") ->
                 navController.navigate(route) { launchSingleTop = true }
+            route == Routes.COMPETITIONS || route.startsWith("competition_detail/") ->
+                // Replace an already-open competition rather than stacking a
+                // second one: the detail view model reads its address once at
+                // init, so reusing the entry would keep showing the old one.
+                navController.navigate(route) {
+                    launchSingleTop = true
+                    popUpTo(Routes.COMPETITION_DETAIL) { inclusive = true }
+                }
             route.startsWith("board_sync") -> {
                 // Deep link: board_sync?localDbUrl=http://...
                 val localDbUrl = android.net.Uri.parse("nav://$route")
@@ -458,7 +480,28 @@ fun CruxCoachNavHost(
             }
 
             composable(Routes.BOARD_BROWSER) {
+                // The drawer wraps only this screen because this is the only
+                // place its handle lives — the logo in the browser's app bar.
+                // Wrapping the whole NavHost would put an invisible edge-swipe
+                // on every detail screen, which competes with back gestures.
+                val drawerState = rememberDrawerState(DrawerValue.Closed)
+                val drawerScope = rememberCoroutineScope()
+                ModalNavigationDrawer(
+                    drawerState = drawerState,
+                    drawerContent = {
+                        MainDrawerSheet(
+                            selected = MainDestination.BOARD_CATALOG,
+                            onSelect = { destination ->
+                                drawerScope.launch { drawerState.close() }
+                                if (destination == MainDestination.COMPETITIONS) {
+                                    navController.navigate(Routes.COMPETITIONS)
+                                }
+                            },
+                        )
+                    },
+                ) {
                 BoardBrowserScreen(
+                    onOpenMenu = { drawerScope.launch { drawerState.open() } },
                     onNavigateToClimb = { climbUuid, angle ->
                         navController.navigate(Routes.boardClimbDetail(climbUuid, angle))
                     },
@@ -473,6 +516,38 @@ fun CruxCoachNavHost(
                     },
                     onNavigateToMap = { navController.navigate(Routes.BOARD_MAP) }
                 )
+                }
+            }
+
+            composable(Routes.COMPETITIONS) {
+                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
+                    screenName = "Competitions",
+                    onNavigateBack = { navController.popBackStack() },
+                ) {
+                    CompetitionsScreen(
+                        onOpenCompetition = { ref ->
+                            navController.navigate(
+                                Routes.competitionDetail(ref.organizerPubkey, ref.compId),
+                            )
+                        },
+                        onNavigateBack = { navController.popBackStack() },
+                    )
+                }
+            }
+
+            composable(
+                route = Routes.COMPETITION_DETAIL,
+                arguments = listOf(
+                    navArgument("organizerPubkey") { type = NavType.StringType },
+                    navArgument("compId") { type = NavType.StringType },
+                ),
+            ) {
+                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
+                    screenName = "CompetitionDetail",
+                    onNavigateBack = { navController.popBackStack() },
+                ) {
+                    CompetitionDetailScreen(onNavigateBack = { navController.popBackStack() })
+                }
             }
 
             composable(Routes.BOARD_MAP) {

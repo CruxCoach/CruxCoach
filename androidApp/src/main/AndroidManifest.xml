@@ -129,6 +129,12 @@
                 <data android:scheme="https"
                       android:host="${appLinkHost}"
                       android:pathPrefix="/l/" />
+                <!-- FEAT-058: a competition join link. The same URL the website
+                     serves and a QR code carries, so the phone's own camera app
+                     opens the competition here without an in-app scanner. -->
+                <data android:scheme="https"
+                      android:host="${appLinkHost}"
+                      android:pathPrefix="/comp/" />
             </intent-filter>
         </activity>
 
