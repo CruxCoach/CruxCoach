@@ -380,7 +380,11 @@ private fun RegistrationPanel(
             }
 
             if (me != null) {
-                if (competition.feeMsat > 0 && me.payment == "pending") {
+                // Not only `pending`. A payment the organizer recorded as
+                // failed or expired is precisely the state somebody has to be
+                // able to leave, and showing the badge without the button
+                // strands them.
+                if (competition.feeMsat > 0 && me.payment in PAYABLE_STATES) {
                     PaymentSection(ui, viewModel)
                     Spacer(Modifier.height(8.dp))
                 }
@@ -403,6 +407,30 @@ private fun RegistrationPanel(
                         onClick = { viewModel.withdraw() },
                         modifier = Modifier.testTag("competition_withdraw"),
                     ) { Text(stringResource(R.string.comp_withdraw)) }
+                }
+                // Withdrawing is not meant to be a door that locks behind you.
+                // While registration is open, asking again replaces the
+                // withdrawal rather than adding a second request.
+                if (me.registration in listOf("withdrawn", "rejected") &&
+                    state.status == "registration_open"
+                ) {
+                    Text(
+                        stringResource(R.string.comp_register_again_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Button(
+                        onClick = {
+                            viewModel.register(
+                                division = me.division.ifEmpty {
+                                    competition.divisions.firstOrNull()?.id ?: "open"
+                                },
+                                display = me.display,
+                                waiverAccepted = true,
+                                selections = me.selections,
+                            )
+                        },
+                        modifier = Modifier.testTag("competition_register_again"),
+                    ) { Text(stringResource(R.string.comp_register_again)) }
                 }
                 if (ui.canDefer) {
                     Button(
@@ -482,6 +510,9 @@ private fun RegistrationPanel(
         }
     }
 }
+
+/** Payment states an entrant can still act on. */
+private val PAYABLE_STATES = setOf("pending", "failed", "expired")
 
 /**
  * Paying the entry fee.

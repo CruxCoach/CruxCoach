@@ -2452,6 +2452,8 @@
     <string name="comp_scan_damaged">Dieser Code zeigt auf einen Wettkampf, lie\u00df sich aber nicht lesen. Er ist besch\u00e4digt oder stammt aus einer neueren CruxCoach-Version.</string>
     <string name="comp_scan_unknown">Das ist kein CruxCoach-Wettkampfcode.</string>
     <string name="comp_scan_action">Code scannen</string>
+    <string name="comp_register_again">Erneut anfragen</string>
+    <string name="comp_register_again_hint">Du bist nicht angemeldet. Solange die Anmeldung offen ist, kannst du erneut anfragen.</string>
     <string name="comp_pay_title">Startgeld</string>
     <string name="comp_pay_amount">%1$d Sats</string>
     <string name="comp_pay_no_endpoint">Dieser Wettkampf kostet Startgeld, aber die Ausrichtung hat keinen Zahlweg ver\u00f6ffentlicht. Frag nach.</string>

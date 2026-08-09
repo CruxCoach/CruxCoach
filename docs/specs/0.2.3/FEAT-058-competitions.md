@@ -287,6 +287,7 @@ Each is mapped to automation in [`FEAT-058-conformance.md`](FEAT-058-conformance
 | AC-41 | A participant can pay a Lightning entry fee natively in the Android app, through the same resolution, validation and verification rules as the website. |
 | AC-42 | The build identifies as the release it is, and a release with no What's New entry fails the build. |
 | AC-43 | A camera plane with row padding, pixel interleaving or a crop rectangle decodes; a plane too small for what it claims is refused rather than read out of bounds. |
+| AC-44 | No participant state is displayed without the control that leaves it: a failed or expired payment stays payable, a withdrawal is reversible while registration is open, and an accepted entrant can ask to be checked in. |
 
 ## 11. Non-goals
 
@@ -307,6 +308,12 @@ wire format:
   produces. Browsing the catalogue from the website would need the board
   database on the web, which is a far larger piece of work than this feature.
 - **Organizing from the Android app.** The app is a participant client; the
-  console is the website.
+  console is the website. Every capability a *participant* has in the browser
+  exists natively in the app — sign-in, registration, choosing climbs and
+  re-picking after losing a race, checking in, deferring, reporting an attempt,
+  paying a Lightning entry fee, opening a competition climb on the board, and
+  scanning a join code. Running a competition is what the app does not do, and
+  a test asserts the participant lists match so this stays a scoping decision
+  rather than a gap that grew.
 - **Analytics on the competition pages.** The collector's allowlist is in
   another repository, and a label it rejects counts nothing.

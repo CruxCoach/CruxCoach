@@ -2453,6 +2453,8 @@
     <string name="comp_scan_damaged">That code points at a competition but could not be read. It may be damaged, or from a newer version of CruxCoach.</string>
     <string name="comp_scan_unknown">That is not a CruxCoach competition code.</string>
     <string name="comp_scan_action">Scan a code</string>
+    <string name="comp_register_again">Ask to enter again</string>
+    <string name="comp_register_again_hint">You are not entered. While registration is open you can ask again.</string>
     <string name="comp_pay_title">Entry fee</string>
     <string name="comp_pay_amount">%1$d sats</string>
     <string name="comp_pay_no_endpoint">This competition charges a fee but the organiser has not published a way to pay it. Ask them.</string>
