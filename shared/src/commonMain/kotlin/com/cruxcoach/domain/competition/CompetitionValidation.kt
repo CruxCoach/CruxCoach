@@ -156,20 +156,78 @@ object CompetitionValidation {
                 fail("climbs", "must list between 1 and 40 climbs")
             } else {
                 val seen = mutableSetOf<String>()
+                val uuids = mutableSetOf<String>()
                 for (climb in competition.climbs) {
                     if (!ID_PATTERN.matches(climb.id)) {
                         fail("climbs", "each climb needs an id of [a-z0-9_], max 24 characters")
                     } else if (!seen.add(climb.id)) {
                         fail("climbs", "duplicate climb id \"${climb.id}\"")
                     }
-                    if (climb.climbUuid.isEmpty()) fail("climbs", "each climb needs a catalogue uuid")
+                    if (!CompetitionProtocol.isClimbUuid(climb.climbUuid)) {
+                        fail("climbs", "each climb needs a real board climb id")
+                    } else if (CompetitionProtocol.isPlaceholderUuid(climb.climbUuid)) {
+                        // A competition built on placeholder ids cannot be
+                        // climbed. Refusing here means neither client can
+                        // publish or accept one.
+                        fail("climbs", "contains a placeholder climb id, which no board can load")
+                    } else if (!uuids.add(climb.climbUuid.lowercase())) {
+                        fail("climbs", "lists the same climb twice")
+                    }
+                    if (climb.label.isBlank()) fail("climbs", "each climb needs a label")
                 }
                 if (competition.climbs.size < rules.climbCount) {
                     fail("climbs", "needs at least ${rules.climbCount} climbs for this format")
                 }
             }
-        } else if (competition.raw.containsKey("climbs")) {
-            fail("climbs", "must be absent when participants choose their own climbs")
+        } else {
+            if (competition.raw.containsKey("climbs")) {
+                fail("climbs", "must be absent when participants choose their own climbs")
+            }
+            val pool = competition.raw["climb_pool"] as? kotlinx.serialization.json.JsonObject
+            val options = pool?.get("options") as? kotlinx.serialization.json.JsonArray
+            if (pool == null) {
+                fail("climb_pool", "is required when participants choose their own climbs")
+            } else if (options == null || options.isEmpty()) {
+                fail("climb_pool", "needs at least one climb for entrants to choose from")
+            } else if (options.size > 60) {
+                fail("climb_pool", "must offer at most 60 climbs")
+            } else {
+                val poolIds = mutableSetOf<String>()
+                val poolUuids = mutableSetOf<String>()
+                for (element in options) {
+                    val option = element as? kotlinx.serialization.json.JsonObject ?: continue
+                    val id = option.str("id").orEmpty()
+                    if (!ID_PATTERN.matches(id)) {
+                        fail("climb_pool", "each option needs an id of [a-z0-9_], max 24 characters")
+                    } else if (!poolIds.add(id)) {
+                        fail("climb_pool", "duplicate option id \"$id\"")
+                    }
+                    val uuid = option.str("climb_uuid").orEmpty()
+                    if (!CompetitionProtocol.isClimbUuid(uuid)) {
+                        fail("climb_pool", "each option needs a real board climb id")
+                    } else if (CompetitionProtocol.isPlaceholderUuid(uuid)) {
+                        fail("climb_pool", "contains a placeholder climb id, which no board can load")
+                    } else if (!poolUuids.add(uuid.lowercase())) {
+                        fail("climb_pool", "offers the same climb twice")
+                    }
+                    if (option.int("angle") == null) fail("climb_pool", "each option needs an angle")
+                    if (option.str("label").isNullOrBlank()) fail("climb_pool", "each option needs a label")
+                }
+                if (options.size < rules.climbCount) {
+                    fail("climb_pool", "needs at least ${rules.climbCount} climbs for this format")
+                }
+                if (rules.selectionUniqueness == "unique_per_competition" && competition.capacity > 0
+                    && options.size < competition.capacity * rules.climbCount
+                ) {
+                    // With unique claims, fewer climbs than entrants x picks
+                    // guarantees somebody loses a race they cannot recover from.
+                    fail(
+                        "climb_pool",
+                        "needs at least ${competition.capacity * rules.climbCount} climbs " +
+                            "so every entrant can claim a full set",
+                    )
+                }
+            }
         }
 
         if (competition.feeMsat < 0) {

@@ -23,6 +23,7 @@ object CompetitionReducer {
      */
     val REJECTION_CODES = listOf(
         "already_topped", "attempt_out_of_order", "capacity_full", "climb_already_claimed",
+        "climb_not_selected",
         "correction_missing_replacement", "defer_budget_exhausted", "defer_consecutive_limit",
         "duplicate_in_order", "empty_announcement", "epoch_mismatch", "illegal_transition",
         "incomplete_seed_order", "index_out_of_range", "ineligible_in_order", "no_attempts_left",
@@ -418,6 +419,16 @@ object CompetitionReducer {
         val participant = pubkey?.let { state.participant(it) } ?: return reject(state, entry, "no_such_participant")
         if (participant.result != "active") return reject(state, entry, "participant_inactive")
         val climbId = entry.data.str("climb_id") ?: return reject(state, entry, "unknown_climb")
+
+        // The climb has to be one this competition actually runs. Without this an
+        // attempt on any string at all would score: under `organizer_set` a climb
+        // that is not in the competition, and under `participant_choice` a climb
+        // somebody else holds — which is the whole point of unique claims.
+        if (competition.rules.climbSource == "organizer_set") {
+            if (competition.climbs.none { it.id == climbId }) return reject(state, entry, "unknown_climb")
+        } else if (climbId !in participant.selections) {
+            return reject(state, entry, "climb_not_selected")
+        }
 
         val existing = participant.climb(climbId) ?: ClimbProgress(climbId = climbId)
         if (existing.outcome == "top") return reject(state, entry, "already_topped")

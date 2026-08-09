@@ -122,6 +122,31 @@ object CompetitionProtocol {
     /** True when a relay set contains a development relay — the UI must say so. */
     fun usesDevelopmentRelay(urls: List<String>): Boolean = urls.any { isLoopbackRelay(it) }
 
+    private val CLIMB_UUID = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+    private val CLIMB_UUID_LEGACY = Regex("^[0-9a-f]{32}$")
+    private val PLACEHOLDER_SEQUENCE = Regex("^0{7}[0-9a-f]0{4}40{3}80{3}0{12}$")
+
+    fun isClimbUuid(value: String): Boolean {
+        val v = value.lowercase()
+        return CLIMB_UUID.matches(v) || CLIMB_UUID_LEGACY.matches(v)
+    }
+
+    /**
+     * Placeholder climb ids that must never reach a published competition.
+     *
+     * A competition built on these cannot be climbed — the app has nothing to
+     * load onto the wall — and they parse as perfectly good uuids, which is
+     * exactly why they need naming. Must agree with `isPlaceholderUuid` in
+     * `competitions/app/protocol/climb-ref.mjs`.
+     */
+    fun isPlaceholderUuid(value: String): Boolean {
+        val normalized = value.lowercase().replace("-", "")
+        if (!Regex("^[0-9a-f]{32}$").matches(normalized)) return false
+        if (normalized.all { it == '0' }) return true
+        if (normalized.all { it == normalized[0] }) return true
+        return PLACEHOLDER_SEQUENCE.matches(normalized)
+    }
+
     private fun pad6(seq: Int): String {
         val text = seq.toString()
         return "0".repeat((6 - text.length).coerceAtLeast(0)) + text

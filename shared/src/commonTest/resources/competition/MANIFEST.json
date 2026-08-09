@@ -5,11 +5,11 @@
     "streams/defer-and-timeout.json": "0acdc12464e6bc684ffa6d85b7b90af82c3afba3e297146f5c786fdcca57f433",
     "streams/fork-and-correction.json": "1c3fbdfa4fb2c05964f2be7a58c03e7aae285ab25dbc30652f9cc397cbddc8ae",
     "streams/happy-sync.json": "6dd655494c39f9b8742ea80927e73be503462666ac544e28fe0da896fa183c88",
-    "streams/paid-unique-async.json": "048a0558451c15b40c6c1897222cec9270a8d88356f6c849182f7c5d8b698c1c",
+    "streams/paid-unique-async.json": "f76e283fedaaadcbad98e01c30413463df0d9a672200cad1a0d16c3fa82e39bc",
     "streams/rejections-paid.json": "b46d3595ee906a22715e227b142bd0c111d921f16db062d660c7acc189a46257",
     "streams/rejections.json": "0bceb8d06a10a607da8162b03666fe93662c728827f1c2b81e7ad9a50e400fab",
     "vectors/protocol.json": "d203780035d099dcc7fb3b7ec99cba671e0919a3831b6a1818b6a2ace9e81f6b",
     "vectors/zap.json": "21ad6f319c959907139f705dff96ae3d0a7a9ca319186724c8e9ec785a655007"
   },
-  "manifest_sha256": "5d5dd69ac844a77e3c3af605833a4a8baa32fdd2596591ea9730166a84c0aa39"
+  "manifest_sha256": "6d976e1d8adf2d753e2669a43a0913c0057e8d013bcc3bdff4cb7d35491c7f3c"
 }
