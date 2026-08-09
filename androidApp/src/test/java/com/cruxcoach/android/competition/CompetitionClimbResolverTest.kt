@@ -24,7 +24,7 @@ class CompetitionClimbResolverTest {
     private val repository: BoardRepository = mockk(relaxed = true)
     private val resolver = CompetitionClimbResolver(repository)
 
-    private val real = "aaaaaaaa-1111-4111-8111-111111111111"
+    private val real = "a1c93f57-6e28-4b04-9d75-2f8a1e63c0b9"
 
     private fun competition(brand: String = "kilter"): Competition = Competition.from(
         json.parseToJsonElement(

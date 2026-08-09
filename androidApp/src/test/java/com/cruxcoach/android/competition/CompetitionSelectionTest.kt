@@ -42,17 +42,17 @@ class CompetitionSelectionTest {
               "fee_msat": $feeMsat,
               "divisions": [{"id": "open", "label": "Open"}],
               "climbs": [
-                {"id": "s1", "climb_uuid": "99999999-9999-4999-8999-999999999999",
+                {"id": "s1", "climb_uuid": "5a7c2e18-9d40-4a37-8b61-4f2e0c95d713",
                  "angle": 40, "label": "Organizer one", "points": 100}
               ],
               "climb_pool": {
                 "source": "organizer_list",
                 "options": [
-                  {"id": "p1", "climb_uuid": "aaaaaaaa-1111-4111-8111-111111111111",
+                  {"id": "p1", "climb_uuid": "a1c93f57-6e28-4b04-9d75-2f8a1e63c0b9",
                    "angle": 40, "label": "Blue slab", "points": 100},
-                  {"id": "p2", "climb_uuid": "bbbbbbbb-2222-4222-8222-222222222222",
+                  {"id": "p2", "climb_uuid": "b6d0428e-1f75-4c93-a208-7e35d1b49c60",
                    "angle": 40, "label": "Red roof", "points": 100},
-                  {"id": "p3", "climb_uuid": "cccccccc-3333-4333-8333-333333333333",
+                  {"id": "p3", "climb_uuid": "c8f24b06-3a91-4e57-b0d4-9c6153e8a2f7",
                    "angle": 45, "label": "Yellow arete", "points": 100}
                 ]
               },

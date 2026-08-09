@@ -65,9 +65,9 @@
         "climbing"
       ]
     ],
-    "content": "{\"authority\":\"2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004\",\"authority_epoch\":1,\"board\":{\"angle\":40,\"brand\":\"kilter\",\"layout_id\":1,\"model\":\"kilterboard-og\",\"size\":\"12x12\"},\"capacity\":8,\"checkin_closes_at\":1789005400,\"checkin_opens_at\":1789003600,\"climbs\":[{\"angle\":40,\"climb_uuid\":\"11111111-1111-4111-8111-111111111111\",\"id\":\"c1\",\"label\":\"Qualifier 1\",\"points\":100},{\"angle\":40,\"climb_uuid\":\"22222222-2222-4222-8222-222222222222\",\"id\":\"c2\",\"label\":\"Qualifier 2\",\"points\":150}],\"comp_id\":\"dd88ee99ffaa0b1c\",\"created_at\":1788900000,\"description\":\"A friendly in-house session on the Kilter board at 40 degrees.\",\"divisions\":[{\"id\":\"open\",\"label\":\"Open\"}],\"eligibility\":\"Open to everyone who has climbed here before.\",\"ends_at\":1789012600,\"fee_msat\":0,\"organizer\":{\"contact\":\"kellerwand@example.org\",\"name\":\"Kellerwand Bouldern\"},\"participant_instructions\":\"Arrive twenty minutes early and warm up on the slab.\",\"prizes\":[{\"kind\":\"non_cash\",\"label\":\"Chalk bag\",\"rank\":1}],\"refund_policy\":\"Full refund until 24 hours before the start.\",\"registration_closes_at\":1789003600,\"registration_opens_at\":1789000000,\"relays\":[\"wss://relay.example.invalid\"],\"revision\":1,\"rules\":{\"attempt_deadline_sec\":0,\"attempts_per_climb\":3,\"climb_count\":2,\"climb_source\":\"organizer_set\",\"defer_budget_per_round\":1,\"defer_slots\":2,\"late_entry_allowed\":false,\"max_consecutive_defers\":1,\"min_rest_sec\":0,\"progression\":\"synchronous_rounds\",\"scoring\":\"tops_then_attempts\",\"selection_uniqueness\":\"none\",\"tiebreaks\":[\"fewest_attempts\",\"most_zones\",\"earliest_finish\",\"seed_order\"],\"turn_deadline_sec\":120},\"spectator_info\":\"Free entry. The live screen is by the entrance.\",\"starts_at\":1789005400,\"status\":\"draft\",\"summary\":\"Five problems, three attempts each, one evening.\",\"timezone\":\"Europe/Berlin\",\"title\":\"Chain break\",\"type\":\"competition\",\"v\":1,\"venue\":{\"address\":\"Beispielweg 3, Berlin\",\"kind\":\"physical\",\"name\":\"Kellerwand Bouldern\"},\"visibility\":\"public\",\"waitlist_enabled\":true,\"waiver\":\"I understand that climbing is dangerous and I climb at my own risk.\",\"waiver_required\":true}",
-    "id": "724d60d424dc7ef3669639b0628184991624324a98348ec5c5004905f7b85d64",
-    "sig": "5926634694512c7012dc29da280059fdead473d0a94cf714e8b69c784fbfaae2ed085dcbc6ef41ebbbd63a3e717d886201f79b585d408d4fd6d3fa00e806e55c"
+    "content": "{\"authority\":\"2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004\",\"authority_epoch\":1,\"board\":{\"angle\":40,\"brand\":\"kilter\",\"layout_id\":1,\"model\":\"kilterboard-og\",\"size\":\"12x12\"},\"capacity\":8,\"checkin_closes_at\":1789005400,\"checkin_opens_at\":1789003600,\"climbs\":[{\"angle\":40,\"climb_uuid\":\"3f8a1c24-5b6d-4e71-9a03-2c7d8e4f5061\",\"id\":\"c1\",\"label\":\"Qualifier 1\",\"points\":100},{\"angle\":40,\"climb_uuid\":\"7b2e9d15-4c8a-4f36-8d52-1e9a3b7c4d08\",\"id\":\"c2\",\"label\":\"Qualifier 2\",\"points\":150}],\"comp_id\":\"dd88ee99ffaa0b1c\",\"created_at\":1788900000,\"description\":\"A friendly in-house session on the Kilter board at 40 degrees.\",\"divisions\":[{\"id\":\"open\",\"label\":\"Open\"}],\"eligibility\":\"Open to everyone who has climbed here before.\",\"ends_at\":1789012600,\"fee_msat\":0,\"organizer\":{\"contact\":\"kellerwand@example.org\",\"name\":\"Kellerwand Bouldern\"},\"participant_instructions\":\"Arrive twenty minutes early and warm up on the slab.\",\"prizes\":[{\"kind\":\"non_cash\",\"label\":\"Chalk bag\",\"rank\":1}],\"refund_policy\":\"Full refund until 24 hours before the start.\",\"registration_closes_at\":1789003600,\"registration_opens_at\":1789000000,\"relays\":[\"wss://relay.example.invalid\"],\"revision\":1,\"rules\":{\"attempt_deadline_sec\":0,\"attempts_per_climb\":3,\"climb_count\":2,\"climb_source\":\"organizer_set\",\"defer_budget_per_round\":1,\"defer_slots\":2,\"late_entry_allowed\":false,\"max_consecutive_defers\":1,\"min_rest_sec\":0,\"progression\":\"synchronous_rounds\",\"scoring\":\"tops_then_attempts\",\"selection_uniqueness\":\"none\",\"tiebreaks\":[\"fewest_attempts\",\"most_zones\",\"earliest_finish\",\"seed_order\"],\"turn_deadline_sec\":120},\"spectator_info\":\"Free entry. The live screen is by the entrance.\",\"starts_at\":1789005400,\"status\":\"draft\",\"summary\":\"Five problems, three attempts each, one evening.\",\"timezone\":\"Europe/Berlin\",\"title\":\"Chain break\",\"type\":\"competition\",\"v\":1,\"venue\":{\"address\":\"Beispielweg 3, Berlin\",\"kind\":\"physical\",\"name\":\"Kellerwand Bouldern\"},\"visibility\":\"public\",\"waitlist_enabled\":true,\"waiver\":\"I understand that climbing is dangerous and I climb at my own risk.\",\"waiver_required\":true}",
+    "id": "4d1336b3f6dd692e9f7164d2ff2e0487e8519fe4c83f2f53e28fa253c37545ec",
+    "sig": "566d71673a5bafcf5c3f9ad63fe44f046c7932081e233e9e6d6e241807e8178ef18ca5848f374e7b1f9c17f275970057f0755c57c914e59206a77389eabff3f7"
   },
   "log_events": [
     {
@@ -106,7 +106,7 @@
         ],
         [
           "prev",
-          "724d60d424dc7ef3669639b0628184991624324a98348ec5c5004905f7b85d64"
+          "4d1336b3f6dd692e9f7164d2ff2e0487e8519fe4c83f2f53e28fa253c37545ec"
         ],
         [
           "op",
@@ -117,9 +117,9 @@
           "1"
         ]
       ],
-      "content": "{\"actor\":\"authority\",\"at\":1788900100,\"comp_id\":\"dd88ee99ffaa0b1c\",\"data\":{\"at\":1788900100,\"status\":\"published\"},\"epoch\":1,\"op\":\"lifecycle\",\"prev\":\"724d60d424dc7ef3669639b0628184991624324a98348ec5c5004905f7b85d64\",\"seq\":1,\"type\":\"log\",\"v\":1}",
-      "id": "afa2c3803b3e55189850d295e795cd0a0cd33f7210817c063167c77b49321b51",
-      "sig": "f31888488014d0044354ee510f8e06970890e2f440f11cd8f3172c1301e800874edb66110601e290e5c376f2aff2f67dc224343ec08f15535c7f21e65335205f"
+      "content": "{\"actor\":\"authority\",\"at\":1788900100,\"comp_id\":\"dd88ee99ffaa0b1c\",\"data\":{\"at\":1788900100,\"status\":\"published\"},\"epoch\":1,\"op\":\"lifecycle\",\"prev\":\"4d1336b3f6dd692e9f7164d2ff2e0487e8519fe4c83f2f53e28fa253c37545ec\",\"seq\":1,\"type\":\"log\",\"v\":1}",
+      "id": "96fdf17bae801a1c509b46bb8ea9471a9646c7a23149d45e5fe944ec9856bcba",
+      "sig": "616ab6a02ae37a63d25d115498062b8e44f677d7f52739173ffc24f0a5df9752a99376bcccb62df62344af502be3d0f8a48923a5d877d689c19090e149712b2a"
     },
     {
       "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
@@ -157,7 +157,7 @@
         ],
         [
           "prev",
-          "afa2c3803b3e55189850d295e795cd0a0cd33f7210817c063167c77b49321b51"
+          "96fdf17bae801a1c509b46bb8ea9471a9646c7a23149d45e5fe944ec9856bcba"
         ],
         [
           "op",
@@ -168,9 +168,9 @@
           "1"
         ]
       ],
-      "content": "{\"actor\":\"authority\",\"at\":1789000000,\"comp_id\":\"dd88ee99ffaa0b1c\",\"data\":{\"at\":1789000000,\"status\":\"registration_open\"},\"epoch\":1,\"op\":\"lifecycle\",\"prev\":\"afa2c3803b3e55189850d295e795cd0a0cd33f7210817c063167c77b49321b51\",\"seq\":2,\"type\":\"log\",\"v\":1}",
-      "id": "17ed98fdfc00d30f58a67055f01973e30ffb9d9a49f3e4406547280ecb85a759",
-      "sig": "d72414b8e11ef5e2d2c827f16c8f3fe20e753a614b6fd80bebd2a3f6d320cabaa1557a922d35caebbe56a89c0c5d835fdc62441dddab9fa89042b018578822ee"
+      "content": "{\"actor\":\"authority\",\"at\":1789000000,\"comp_id\":\"dd88ee99ffaa0b1c\",\"data\":{\"at\":1789000000,\"status\":\"registration_open\"},\"epoch\":1,\"op\":\"lifecycle\",\"prev\":\"96fdf17bae801a1c509b46bb8ea9471a9646c7a23149d45e5fe944ec9856bcba\",\"seq\":2,\"type\":\"log\",\"v\":1}",
+      "id": "8719ffeda366308338c90d57797e03d5418b02e419b119990212548af8b3b10b",
+      "sig": "c0b584c1d3c31075729247e809347acdfbacb77fa0efa16975a966ea915e78fabf9509e4d3859fe71980bd1c3e078ab3f000ff2f9144d71f09c579bf605fce18"
     },
     {
       "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
@@ -208,7 +208,7 @@
         ],
         [
           "prev",
-          "87539e8e87cde7896fd509d454b1dcac35f192835e7aa76d122af5ad9d8458bc"
+          "b6ff092e1dad8d2fef152adc8e9357e3bf562f2fccd4c0b8cdf1dcb18a82af0e"
         ],
         [
           "op",
@@ -223,21 +223,21 @@
           "019244fa7971d9b335e80017cc0627eae1909c7bc991cb64dad2328df614f911"
         ]
       ],
-      "content": "{\"actor\":\"authority\",\"at\":1789000200,\"comp_id\":\"dd88ee99ffaa0b1c\",\"data\":{\"decision\":\"accepted\",\"display\":\"bob\",\"division\":\"open\",\"pubkey\":\"019244fa7971d9b335e80017cc0627eae1909c7bc991cb64dad2328df614f911\"},\"epoch\":1,\"op\":\"registration_decision\",\"prev\":\"87539e8e87cde7896fd509d454b1dcac35f192835e7aa76d122af5ad9d8458bc\",\"seq\":4,\"type\":\"log\",\"v\":1}",
-      "id": "9f500b44e1b6a2126bfe6cf306e3db2db982d7dca899bd4f7ca2a4f3bcb3d63d",
-      "sig": "2480b4e3890fd0ca92a50dbd7ffe6011a950816aecd0208f1b59eb4ceb4a36b95d9422658ff883c53c3ce9949563e11f61cef4f26b58c86ec0902fc68589aeb0"
+      "content": "{\"actor\":\"authority\",\"at\":1789000200,\"comp_id\":\"dd88ee99ffaa0b1c\",\"data\":{\"decision\":\"accepted\",\"display\":\"bob\",\"division\":\"open\",\"pubkey\":\"019244fa7971d9b335e80017cc0627eae1909c7bc991cb64dad2328df614f911\"},\"epoch\":1,\"op\":\"registration_decision\",\"prev\":\"b6ff092e1dad8d2fef152adc8e9357e3bf562f2fccd4c0b8cdf1dcb18a82af0e\",\"seq\":4,\"type\":\"log\",\"v\":1}",
+      "id": "29f1704ad736214a4fb41bf4fcc16068ff9495275ffa295aaaa888bb99c3fb2a",
+      "sig": "17072d3d4c4eb3122ef8dff2d6bde4954ef7bf4c1bd10a685508e7251edef209fd120b3cf6fb81c48f24d86d1c643c3c01f9d6a933f5de33326aa90b0f3cd219"
     }
   ],
   "expected": {
     "chain_break_at": 3,
-    "state_hash": "0379011c225e898b7eb3b07aa805ef12d32b351c648516ccca3535acaf91baf5",
+    "state_hash": "4ac5098654b279b0110226ab38fe4212839c0e17701823f227bdce24be3b03a2",
     "state": {
       "comp_id": "dd88ee99ffaa0b1c",
       "schema": "cruxcoach-competition/1",
       "authority": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
       "epoch": 1,
       "seq": 2,
-      "head": "17ed98fdfc00d30f58a67055f01973e30ffb9d9a49f3e4406547280ecb85a759",
+      "head": "8719ffeda366308338c90d57797e03d5418b02e419b119990212548af8b3b10b",
       "status": "registration_open",
       "paused": false,
       "config_revision": 1,
@@ -293,7 +293,7 @@
       ],
       [
         "prev",
-        "17ed98fdfc00d30f58a67055f01973e30ffb9d9a49f3e4406547280ecb85a759"
+        "8719ffeda366308338c90d57797e03d5418b02e419b119990212548af8b3b10b"
       ],
       [
         "op",
@@ -308,8 +308,8 @@
         "d4d41c056c407711c552ace7aaf4fa9b51b4ea80d06beac56a399c0034229130"
       ]
     ],
-    "content": "{\"actor\":\"authority\",\"at\":1789000100,\"comp_id\":\"dd88ee99ffaa0b1c\",\"data\":{\"decision\":\"accepted\",\"display\":\"alice\",\"division\":\"open\",\"pubkey\":\"d4d41c056c407711c552ace7aaf4fa9b51b4ea80d06beac56a399c0034229130\"},\"epoch\":1,\"op\":\"registration_decision\",\"prev\":\"17ed98fdfc00d30f58a67055f01973e30ffb9d9a49f3e4406547280ecb85a759\",\"seq\":3,\"type\":\"log\",\"v\":1}",
-    "id": "87539e8e87cde7896fd509d454b1dcac35f192835e7aa76d122af5ad9d8458bc",
-    "sig": "e602909499ac05aadd7fb319ebd690d7e100efc13895d943bc64a6faa4ad3df02948980f7f21b104763267cb19e0c31229352613ea1439af08ac545a4ffb5da6"
+    "content": "{\"actor\":\"authority\",\"at\":1789000100,\"comp_id\":\"dd88ee99ffaa0b1c\",\"data\":{\"decision\":\"accepted\",\"display\":\"alice\",\"division\":\"open\",\"pubkey\":\"d4d41c056c407711c552ace7aaf4fa9b51b4ea80d06beac56a399c0034229130\"},\"epoch\":1,\"op\":\"registration_decision\",\"prev\":\"8719ffeda366308338c90d57797e03d5418b02e419b119990212548af8b3b10b\",\"seq\":3,\"type\":\"log\",\"v\":1}",
+    "id": "b6ff092e1dad8d2fef152adc8e9357e3bf562f2fccd4c0b8cdf1dcb18a82af0e",
+    "sig": "13dbc2336b8a6e907910947c78179361d671d7cc2788452fe6905676597a4d7d16b9842c711a8ccc3a3d3663b5584f98c0d8f1613e1859db157f7640a5a37f4f"
   }
 }

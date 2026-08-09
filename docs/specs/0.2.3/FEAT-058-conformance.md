@@ -134,13 +134,20 @@ Nothing below is skipped for convenience; each says exactly what it needs.
 
 ---
 
-## Known flaky tests, not caused by this branch
+## Load-sensitive tests, not caused by this branch
 
-Two `:androidApp` tests each failed once during this work and passed on re-run;
-neither has code this branch touches:
+Two `:androidApp` tests fail when the machine is busy and pass when it is not.
+Neither has code this branch touches — both drive board sync and the browser
+view model, and this branch's only board-screen change is a Compose semantics
+label on the drawer handle.
 
 - `GymBoardPickerViewModelTest > selectGym on MoonBoard gym with resolved variant offers that variant`
 - `BoardBrowserCatalogueRevisionTest > a chunk committed mid-sync reaches the browse filter before the run ends`
 
-Recorded here rather than left out, because a suite that needs a re-run is not
-the same as a green suite.
+The second was characterised rather than re-run until green: it waits up to
+`SETTLE_MS = 60_000` of **wall-clock** time for real `Dispatchers.IO` work, on a
+four-core machine. It failed twice in a row while a lint run and an APK build
+were in flight (load average 3.4) and passed on the first attempt once they
+finished (load average 1.5). That is a real property of the test, not a verdict
+on the code under it, and it is recorded here rather than left out — a suite
+that needs a quiet machine is not the same as a green suite.

@@ -144,7 +144,13 @@ object CompetitionProtocol {
         if (!Regex("^[0-9a-f]{32}$").matches(normalized)) return false
         if (normalized.all { it == '0' }) return true
         if (normalized.all { it == normalized[0] }) return true
-        return PLACEHOLDER_SEQUENCE.matches(normalized)
+        if (PLACEHOLDER_SEQUENCE.matches(normalized)) return true
+        // Every digit the same except the version nibble (index 12) and the
+        // variant nibble (index 16) — the shape a placeholder takes when it is
+        // dressed up to look like a real v4 uuid. Must agree with
+        // `isPlaceholderUuid` in competitions/app/protocol/climb-ref.mjs.
+        val free = normalized.substring(0, 12) + normalized.substring(13, 16) + normalized.substring(17)
+        return free.all { it == free[0] }
     }
 
     private fun pad6(seq: Int): String {

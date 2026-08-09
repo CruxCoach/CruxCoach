@@ -91,7 +91,7 @@ class CompetitionQrDecoderTest {
         // A person standing at a wall can act on "that is a climb code". They
         // cannot act on "that did not work".
         val cases = listOf(
-            "https://cruxcoach.org/c/aaaaaaaa-1111-4111-8111-111111111111"
+            "https://cruxcoach.org/c/a1c93f57-6e28-4b04-9d75-2f8a1e63c0b9"
                 to CompetitionShareLink.Scan.Climb,
             "npub1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqshp52w2"
                 to CompetitionShareLink.Scan.OtherNostr,

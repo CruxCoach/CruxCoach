@@ -19,7 +19,7 @@ import kotlinx.serialization.json.jsonObject
 class CompetitionValidationTest {
 
     private val json = Json { ignoreUnknownKeys = true }
-    private val real = "aaaaaaaa-1111-4111-8111-111111111111"
+    private val real = "a1c93f57-6e28-4b04-9d75-2f8a1e63c0b9"
 
     private fun config(
         /** Empty means the key is omitted, which is what "absent" means on the wire. */
@@ -149,7 +149,7 @@ class CompetitionValidationTest {
 
         val two = """{"source":"organizer_list","options":[
             {"id":"p1","climb_uuid":"$real","angle":40,"label":"Blue slab","points":100},
-            {"id":"p2","climb_uuid":"bbbbbbbb-2222-4222-8222-222222222222","angle":40,
+            {"id":"p2","climb_uuid":"b6d0428e-1f75-4c93-a208-7e35d1b49c60","angle":40,
              "label":"Red roof","points":100}]}"""
         val enough = problems(
             config(
@@ -183,7 +183,7 @@ class CompetitionValidationTest {
     fun `the pool is parsed into the model, so the app can offer it`() {
         val pool = """{"source":"organizer_list","options":[
             {"id":"p1","climb_uuid":"$real","angle":40,"label":"Blue slab","points":100},
-            {"id":"p2","climb_uuid":"bbbbbbbb-2222-4222-8222-222222222222","angle":45,
+            {"id":"p2","climb_uuid":"b6d0428e-1f75-4c93-a208-7e35d1b49c60","angle":45,
              "label":"Red roof","points":150}]}"""
         val competition = Competition.from(
             config(

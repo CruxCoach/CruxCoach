@@ -1,15 +1,15 @@
 {
   "schema": "cruxcoach-competition/1",
   "files": {
-    "streams/chain-break.json": "0a01af4d1394c8df2a0b6ba2641c24dd71e9993a8ecbe05dbb55ba5f00947c0c",
-    "streams/defer-and-timeout.json": "0acdc12464e6bc684ffa6d85b7b90af82c3afba3e297146f5c786fdcca57f433",
-    "streams/fork-and-correction.json": "1c3fbdfa4fb2c05964f2be7a58c03e7aae285ab25dbc30652f9cc397cbddc8ae",
-    "streams/happy-sync.json": "6dd655494c39f9b8742ea80927e73be503462666ac544e28fe0da896fa183c88",
-    "streams/paid-unique-async.json": "3b2b807aae0b37d5c3eec8f420ca01497c9a3880b29d700ef2a400b205c15258",
-    "streams/rejections-paid.json": "b46d3595ee906a22715e227b142bd0c111d921f16db062d660c7acc189a46257",
-    "streams/rejections.json": "0bceb8d06a10a607da8162b03666fe93662c728827f1c2b81e7ad9a50e400fab",
+    "streams/chain-break.json": "01ac871d6efa21068a61b26947a5afc03c2a693209f28b30a771373613f92865",
+    "streams/defer-and-timeout.json": "db3507b9b6c6a0607f5db0ec26bacbe9b4c330894bad2fd9f23989bb491598c1",
+    "streams/fork-and-correction.json": "677491d9d698f01fb582c6466cb1ca2115f2159be5c43960a93e4bc471c26a65",
+    "streams/happy-sync.json": "afb03a58291b1420ee36a8f0545cda16bcb13c4a2ddd7ea21193cd2770654c63",
+    "streams/paid-unique-async.json": "31f6be60bb1ef2fb835c7ad0105bfbbc0aba351169650c7326707af1dfcd21d8",
+    "streams/rejections-paid.json": "db4239f2a8eb461edb70b9e7697a1a1648981c78e27af442af4141280357bf58",
+    "streams/rejections.json": "5e4ef9cce3dce7543b350dd3561519b4d2e5edb87ecceefaa9a286c709e273fd",
     "vectors/protocol.json": "d203780035d099dcc7fb3b7ec99cba671e0919a3831b6a1818b6a2ace9e81f6b",
     "vectors/zap.json": "665a98ebc26b0315899e26c62bb780e1570fc015d347585a6416db063feb826a"
   },
-  "manifest_sha256": "5019b500f00d7c644b6bc68bb42ae3f70083940c76618862c79a821b541f8109"
+  "manifest_sha256": "c50868c665e202bc8a8c62294db8d6ee99331398739c93ae5395a5346dbf19e2"
 }
