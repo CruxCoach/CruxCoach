@@ -175,8 +175,8 @@ following keys to `local.properties` — no source edits required:
 | `UPDATER_API_BASE` | Forge API root for the *compiled-in default* forge source. Works for Forgejo/Gitea (`https://<host>/api/v1`) and for GitHub (`https://api.github.com`) — their release JSON is field-compatible | `https://codeberg.org/api/v1` |
 | `UPDATER_REPO_OWNER` | Repository owner used by the auto-updater and the "Online" app-share QR code | `CruxCoach` |
 | `UPDATER_REPO_NAME` | Repository name used by the auto-updater and the app-share QR code; also drives the expected APK filename `<repo>-<tag>.apk` | `CruxCoach` |
-| `UPDATE_SOURCES_URL` | Runtime source list (FEAT-050). Fetched at most daily and cached; lets you add, reorder or retire release hosts **without shipping a new APK**. Falls back to the compiled-in defaults when unreachable or unusable | `https://cruxcoach.org/update-sources.json` |
-| `UPDATER_MANIFEST_URL` | Plain release pointer used as a forge-independent discovery source | `https://cruxcoach.org/apk-target.json` |
+| `UPDATE_SOURCES_URLS` | Runtime source list (FEAT-050), comma-separated; the first host that answers wins. Fetched at most daily and cached; lets you add, reorder or retire release hosts **without shipping a new APK**. Falls back to the compiled-in defaults when unreachable or unusable | `https://cruxcoach.org/update-sources.json,https://mirror.cruxcoach.org/update-sources.json` |
+| `UPDATER_MANIFEST_URLS` | Plain release pointer used as a forge-independent discovery source, comma-separated like the above | `https://cruxcoach.org/apk-target.json,https://mirror.cruxcoach.org/apk-target.json` |
 | `UPDATER_BLOSSOM_SERVERS` | Comma-separated content-addressed stores (BUD-01 `GET /<sha256>`) used as download-only last resorts | public Blossom servers |
 | `UPDATER_RELEASE_PAGE_URL` | Install page used by the cert-mismatch handoff *and* by the "Share app" QR. Deliberately not a forge URL: it survives a forge migration, always offers the current release rather than the sharing device's version, and routes through the site's health-checked download selector | `https://cruxcoach.org/#install` |
 | `ANONYMOUS_METRICS_ENDPOINT` | Identifier-free aggregate increment after a fully downloaded update passes SHA-256 and signer verification; set only to an endpoint you operate or trust | empty; the upstream release workflow injects the CruxCoach endpoint only when `github.repository == CruxCoach/CruxCoach` |
@@ -198,7 +198,7 @@ The auto-updater is disabled automatically on Zapstore installs (Zapstore
 handles updates itself). For direct installs it walks an **ordered list of
 release sources** (FEAT-050), stopping at the first that answers and moving on
 only when one fails — so the healthy case still costs a single request. The
-list comes from `UPDATE_SOURCES_URL` at runtime, falling back to the
+list comes from `UPDATE_SOURCES_URLS` at runtime, falling back to the
 compiled-in defaults: the configured forge, publisher-signed Zapstore/Nostr
 events, the website's release pointer, and content-addressed Blossom stores.
 
