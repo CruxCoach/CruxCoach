@@ -1176,7 +1176,7 @@
     <string name="updater_settings_auto_mobile">Also download over mobile data</string>
     <string name="updater_settings_auto_mobile_desc">Only enable if you have an unlimited data plan.</string>
     <string name="updater_settings_anonymous_metrics">Anonymous verified-update count</string>
-    <string name="updater_settings_anonymous_metrics_desc">After an update download passes both hash and signer verification, make at most one best-effort count attempt per target version containing only that version and the source (Codeberg or Zapstore). No user, device, installation, account, Nostr, or session ID. Turn this off to send nothing. It never affects update checks, downloads, or installation.</string>
+    <string name="updater_settings_anonymous_metrics_desc">After an update download passes both hash and signer verification, make at most one best-effort count attempt per target version containing only that version and which configured download source delivered the file. No user, device, installation, account, Nostr, or session ID. Turn this off to send nothing. It never affects update checks, downloads, or installation.</string>
     <string name="updater_auto_install_info_title">Automatic installation</string>
     <string name="updater_auto_install_ready_desc">Ready. Android 12 or newer can normally install verified CruxCoach self-updates in the background. The system may still ask for confirmation.</string>
     <string name="updater_auto_install_permission_desc">Android needs one system-level approval before CruxCoach may install its own verified updates.</string>
@@ -1977,7 +1977,7 @@
     <string name="settings_share_zapstore">Share APK fallback</string>
     <string name="settings_share_zapstore_hide">Hide fallback QR</string>
     <string name="settings_share_zapstore_retry">Retry APK fallback</string>
-    <string name="settings_share_zapstore_desc">Same APK, downloaded directly from Zapstore’s content-addressed CDN if Codeberg is unavailable.</string>
+    <string name="settings_share_zapstore_desc">Same APK, downloaded directly from Zapstore’s content-addressed CDN if the usual download source is unavailable.</string>
     <string name="settings_share_zapstore_hint">Scan to download the APK directly from the Zapstore CDN.</string>
     <string name="cd_zapstore_share_qr">Zapstore share QR code</string>
 

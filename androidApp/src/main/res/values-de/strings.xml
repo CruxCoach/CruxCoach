@@ -1223,7 +1223,7 @@
     <string name="updater_settings_auto_mobile">Auch über mobile Daten laden</string>
     <string name="updater_settings_auto_mobile_desc">Nur aktivieren, wenn du einen unbegrenzten Datentarif hast.</string>
     <string name="updater_settings_anonymous_metrics">Anonymer Zähler verifizierter Updates</string>
-    <string name="updater_settings_anonymous_metrics_desc">Nachdem ein Update-Download sowohl Hash- als auch Signaturprüfung bestanden hat, wird pro Zielversion höchstens ein Best-Effort-Zählversuch unternommen. Er enthält nur Zielversion und Quelle (Codeberg oder Zapstore), aber keine Nutzer-, Geräte-, Installations-, Account-, Nostr- oder Session-Kennung. Schalte dies aus, um nichts zu senden. Update-Prüfung, Download und Installation bleiben immer unbeeinflusst.</string>
+    <string name="updater_settings_anonymous_metrics_desc">Nachdem ein Update-Download sowohl Hash- als auch Signaturprüfung bestanden hat, wird pro Zielversion höchstens ein Best-Effort-Zählversuch unternommen. Er enthält nur die Zielversion und welche konfigurierte Download-Quelle die Datei geliefert hat, aber keine Nutzer-, Geräte-, Installations-, Account-, Nostr- oder Session-Kennung. Schalte dies aus, um nichts zu senden. Update-Prüfung, Download und Installation bleiben immer unbeeinflusst.</string>
     <string name="updater_auto_install_info_title">Automatische Installation</string>
     <string name="updater_auto_install_ready_desc">Bereit. Ab Android 12 kann CruxCoach verifizierte eigene Updates normalerweise im Hintergrund installieren. Das System kann trotzdem eine Bestätigung verlangen.</string>
     <string name="updater_auto_install_permission_desc">Android benötigt einmalig eine Systemfreigabe, bevor CruxCoach eigene verifizierte Updates installieren darf.</string>
@@ -1976,7 +1976,7 @@
     <string name="settings_share_zapstore">APK-Fallback teilen</string>
     <string name="settings_share_zapstore_hide">Fallback-QR ausblenden</string>
     <string name="settings_share_zapstore_retry">APK-Fallback erneut prüfen</string>
-    <string name="settings_share_zapstore_desc">Dieselbe APK direkt vom content-adressierten Zapstore-CDN, falls Codeberg nicht erreichbar ist.</string>
+    <string name="settings_share_zapstore_desc">Dieselbe APK direkt vom content-adressierten Zapstore-CDN, falls die übliche Download-Quelle nicht erreichbar ist.</string>
     <string name="settings_share_zapstore_hint">Scannen, um die APK direkt vom Zapstore-CDN herunterzuladen.</string>
     <string name="cd_zapstore_share_qr">Zapstore-Share-QR-Code</string>
 
