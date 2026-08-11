@@ -461,6 +461,11 @@
     <string name="settings_share_already_installed">CruxCoach is already installed</string>
     <string name="settings_share_install_step1">1. Connect to the share Wi-Fi</string>
     <string name="settings_share_install_step2">2. Open the install page</string>
+    <string name="settings_share_install_step2_auto">2. The install page opens automatically</string>
+    <string name="settings_share_install_auto_hint">Wait a moment after connecting. Android opens the page directly or shows “Sign in to Wi-Fi”.</string>
+    <string name="settings_share_install_fallback_show">Page did not open? Show QR fallback</string>
+    <string name="settings_share_install_fallback_hide">Hide QR fallback</string>
+    <string name="settings_share_install_fallback_direct">Automatic opening is unavailable for this hotspot. Scan this second QR code.</string>
     <string name="settings_share_install_step3">Install the APK and tap Open. CruxCoach detects this share and imports every available board catalogue automatically — no return to the browser.</string>
     <string name="local_share_notification_channel">Offline sharing</string>
     <string name="local_share_notification_channel_desc">Keeps a local CruxCoach share session available</string>

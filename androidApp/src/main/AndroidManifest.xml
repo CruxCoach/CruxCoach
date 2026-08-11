@@ -47,11 +47,12 @@
         android:usesPermissionFlags="neverForLocation" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
 
-    <!-- BLE scanning requires coarse location on Android 8-9 and fine
-         location on Android 10-11. Runtime requests are API-specific.
-         On Android 12+ BLUETOOTH_SCAN with neverForLocation is sufficient. -->
+    <!-- Wi-Fi Direct requires fine location through Android 12; Android 12
+         additionally requires coarse+fine to be requested as a pair. BLE
+         uses these declarations on older releases too. Android 13+ uses the
+         nearby-device permissions above instead. -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"
-        android:maxSdkVersion="28" />
+        android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"
         android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />

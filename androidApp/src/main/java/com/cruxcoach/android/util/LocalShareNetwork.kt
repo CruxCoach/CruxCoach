@@ -11,6 +11,7 @@ import android.net.wifi.WifiManager
 import android.net.wifi.WifiNetworkSpecifier
 import android.os.Build
 import android.util.Log
+import androidx.annotation.RequiresApi
 import java.io.Closeable
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicBoolean
@@ -44,6 +45,7 @@ class LocalShareNetwork(private val context: Context) {
         }
 
     @SuppressLint("MissingPermission")
+    @RequiresApi(Build.VERSION_CODES.Q)
     private suspend fun connectWithSpecifier(invitation: LocalShareProtocol.Invitation): Session =
         suspendCancellableCoroutine { continuation ->
             val specifier = WifiNetworkSpecifier.Builder()

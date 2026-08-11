@@ -68,9 +68,9 @@ fun BoardSyncInlineCard(
     val context = LocalContext.current
     val syncBugReportTitle = stringResource(R.string.error_bug_report_sync_title)
     val wifiPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        if (granted) viewModel.confirmOfflineShare()
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { grants ->
+        if (grants.values.all { it }) viewModel.confirmOfflineShare()
     }
 
     LaunchedEffect(Unit) { viewModel.checkNetwork() }
@@ -180,17 +180,25 @@ fun BoardSyncInlineCard(
             confirmButton = {
                 Button(
                     onClick = {
-                        val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                            Manifest.permission.NEARBY_WIFI_DEVICES
+                        val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            arrayOf(Manifest.permission.NEARBY_WIFI_DEVICES)
                         } else {
-                            Manifest.permission.ACCESS_FINE_LOCATION
+                            // Android 12 ignores a fine-only runtime request
+                            // on some releases. Wi-Fi APIs still require fine
+                            // location through API 32, so request the pair.
+                            arrayOf(
+                                Manifest.permission.ACCESS_COARSE_LOCATION,
+                                Manifest.permission.ACCESS_FINE_LOCATION,
+                            )
                         }
-                        if (ContextCompat.checkSelfPermission(context, permission) ==
-                            PackageManager.PERMISSION_GRANTED
+                        if (permissions.all { permission ->
+                                ContextCompat.checkSelfPermission(context, permission) ==
+                                    PackageManager.PERMISSION_GRANTED
+                            }
                         ) {
                             viewModel.confirmOfflineShare()
                         } else {
-                            wifiPermissionLauncher.launch(permission)
+                            wifiPermissionLauncher.launch(permissions)
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),

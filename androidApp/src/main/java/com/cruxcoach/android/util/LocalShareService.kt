@@ -40,6 +40,7 @@ class LocalShareService : Service() {
             val ssid: String,
             val password: String,
             val baseUrl: String,
+            val automaticPortalAvailable: Boolean,
         ) : State {
             val invitation: LocalShareProtocol.Invitation
                 get() = LocalShareProtocol.Invitation(baseUrl, ssid, password)
@@ -50,6 +51,7 @@ class LocalShareService : Service() {
     private val mainHandler = Handler(Looper.getMainLooper())
     private var hotspot: WifiDirectHotspot? = null
     private var server: LocalApkServer? = null
+    private var captivePortal: LocalCaptivePortal? = null
     private var stopping = false
 
     override fun onCreate() {
@@ -102,29 +104,38 @@ class LocalShareService : Service() {
                     }
                     val port = localServer.start(hostIp = info.ip)
                     server = localServer
+                    val baseUrl = "http://${info.ip}:$port"
+                    val portal = LocalCaptivePortal(
+                        hostIp = info.ip,
+                        landingUrl = baseUrl,
+                    )
+                    captivePortal = portal
+                    val automaticPortalAvailable = runCatching {
+                        portal.start().automaticOpeningAvailable
+                    }.onFailure { error ->
+                        Log.w(TAG, "Captive portal could not be started", error)
+                    }.getOrDefault(false)
                     val active = State.Active(
                         ssid = info.ssid,
                         password = info.password,
-                        baseUrl = "http://${info.ip}:$port",
+                        baseUrl = baseUrl,
+                        automaticPortalAvailable = automaticPortalAvailable,
                     )
                     _state.value = active
                     updateNotification(getString(R.string.local_share_notification_active))
                 } catch (error: Exception) {
                     Log.e(TAG, "Local share server failed to start", error)
-                    wifiHotspot.stop()
-                    hotspot = null
                     fail(getString(R.string.settings_share_server_error, error.message.orEmpty()))
                 }
             },
             onError = { message ->
-                wifiHotspot.stop()
-                hotspot = null
                 fail(message)
             },
         )
     }
 
     private fun fail(message: String) {
+        releaseShareResources()
         _state.value = State.Failed(message)
         stopping = true
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
@@ -134,23 +145,26 @@ class LocalShareService : Service() {
     private fun stopSharing() {
         if (stopping) return
         stopping = true
-        server?.stop()
-        server = null
-        hotspot?.stop()
-        hotspot = null
+        releaseShareResources()
         _state.value = State.Idle
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
 
     override fun onDestroy() {
+        releaseShareResources()
+        if (_state.value !is State.Failed) _state.value = State.Idle
+        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        super.onDestroy()
+    }
+
+    private fun releaseShareResources() {
+        captivePortal?.stop()
+        captivePortal = null
         server?.stop()
         server = null
         hotspot?.stop()
         hotspot = null
-        if (_state.value !is State.Failed) _state.value = State.Idle
-        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
-        super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null

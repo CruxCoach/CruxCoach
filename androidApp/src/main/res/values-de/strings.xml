@@ -462,6 +462,11 @@
     <string name="settings_share_already_installed">CruxCoach ist bereits installiert</string>
     <string name="settings_share_install_step1">1. Mit dem Share-WLAN verbinden</string>
     <string name="settings_share_install_step2">2. Installationsseite öffnen</string>
+    <string name="settings_share_install_step2_auto">2. Installationsseite öffnet sich automatisch</string>
+    <string name="settings_share_install_auto_hint">Nach dem Verbinden kurz warten. Android öffnet die Seite direkt oder zeigt „Im WLAN anmelden“ an.</string>
+    <string name="settings_share_install_fallback_show">Seite öffnet sich nicht? QR-Fallback anzeigen</string>
+    <string name="settings_share_install_fallback_hide">QR-Fallback ausblenden</string>
+    <string name="settings_share_install_fallback_direct">Automatisches Öffnen ist für diesen Hotspot nicht verfügbar. Bitte diesen zweiten QR-Code scannen.</string>
     <string name="settings_share_install_step3">APK installieren und auf Öffnen tippen. CruxCoach erkennt die Freigabe und importiert automatisch alle verfügbaren Board-Kataloge — ohne Rückkehr zum Browser.</string>
     <string name="local_share_notification_channel">Offline-Teilen</string>
     <string name="local_share_notification_channel_desc">Hält eine lokale CruxCoach-Share-Session verfügbar</string>

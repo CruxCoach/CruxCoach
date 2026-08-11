@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
@@ -121,6 +122,7 @@ internal fun AppShareSection(
     viewModel: AppShareViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val activity = LocalActivity.current
     val shareState by LocalShareService.state.collectAsStateWithLifecycle()
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -166,7 +168,10 @@ internal fun AppShareSection(
         LocalShareService.clearFailure()
         runCatching { LocalShareService.start(context) }
             .onFailure {
-                errorMessage = context.getString(R.string.settings_share_error, it.message.orEmpty())
+                errorMessage = resources.getString(
+                    R.string.settings_share_error,
+                    it.message.orEmpty(),
+                )
             }
     }
 
@@ -179,7 +184,7 @@ internal fun AppShareSection(
             val denied = results.filter { !it.value }.keys.joinToString(", ") {
                 it.substringAfterLast(".")
             }
-            errorMessage = context.getString(R.string.settings_share_permissions_needed, denied)
+            errorMessage = resources.getString(R.string.settings_share_permissions_needed, denied)
         }
     }
 
@@ -250,7 +255,7 @@ internal fun AppShareSection(
             onDismiss = { errorMessage = null },
             onReportBug = {
                 onNavigateToBugReport(
-                    context.getString(R.string.error_bug_report_share_title),
+                    resources.getString(R.string.error_bug_report_share_title),
                     err
                 )
                 errorMessage = null
@@ -275,6 +280,7 @@ internal fun AppShareSection(
             hotspotSsid = activeShare.ssid,
             hotspotPassword = activeShare.password,
             landingUrl = activeShare.baseUrl,
+            automaticPortalAvailable = activeShare.automaticPortalAvailable,
             onStop = { LocalShareService.stop(context) },
         )
     } else if (errorMessage == null) {
@@ -284,6 +290,7 @@ internal fun AppShareSection(
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                         add(Manifest.permission.NEARBY_WIFI_DEVICES)
                     } else {
+                        add(Manifest.permission.ACCESS_COARSE_LOCATION)
                         add(Manifest.permission.ACCESS_FINE_LOCATION)
                     }
                 }
@@ -371,9 +378,13 @@ private fun AppShareActiveCard(
     hotspotSsid: String,
     hotspotPassword: String,
     landingUrl: String,
+    automaticPortalAvailable: Boolean,
     onStop: () -> Unit
 ) {
     var showInstalledShortcut by remember { mutableStateOf(false) }
+    var showLandingFallback by remember(automaticPortalAvailable) {
+        mutableStateOf(!automaticPortalAvailable)
+    }
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
@@ -427,20 +438,57 @@ private fun AppShareActiveCard(
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
             Text(
-                stringResource(R.string.settings_share_install_step2),
+                stringResource(
+                    if (automaticPortalAvailable) {
+                        R.string.settings_share_install_step2_auto
+                    } else {
+                        R.string.settings_share_install_step2
+                    },
+                ),
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold,
             )
-            Image(
-                bitmap = landingQr.asImageBitmap(),
-                contentDescription = stringResource(R.string.cd_download_qr_code),
-                modifier = Modifier.size(200.dp),
-            )
-            CopyableUrlRow(
-                url = landingUrl,
-                clipLabel = "CruxCoach local install URL",
-                toastMessage = stringResource(R.string.settings_share_copied_url),
-            )
+            if (automaticPortalAvailable) {
+                Text(
+                    stringResource(R.string.settings_share_install_auto_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedButton(
+                    onClick = { showLandingFallback = !showLandingFallback },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = OrangeAccent),
+                ) {
+                    Text(
+                        stringResource(
+                            if (showLandingFallback) {
+                                R.string.settings_share_install_fallback_hide
+                            } else {
+                                R.string.settings_share_install_fallback_show
+                            },
+                        ),
+                    )
+                }
+            } else {
+                Text(
+                    stringResource(R.string.settings_share_install_fallback_direct),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (showLandingFallback) {
+                Image(
+                    bitmap = landingQr.asImageBitmap(),
+                    contentDescription = stringResource(R.string.cd_download_qr_code),
+                    modifier = Modifier.size(200.dp),
+                )
+                CopyableUrlRow(
+                    url = landingUrl,
+                    clipLabel = "CruxCoach local install URL",
+                    toastMessage = stringResource(R.string.settings_share_copied_url),
+                )
+            }
             Text(
                 stringResource(R.string.settings_share_install_step3),
                 style = MaterialTheme.typography.bodySmall,
