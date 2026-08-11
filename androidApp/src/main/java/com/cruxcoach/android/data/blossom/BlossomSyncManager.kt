@@ -71,8 +71,9 @@ class BlossomSyncManager(
      * Fetches the manifest from Nostr relays. Uses dedicated short-lived
      * WebSockets to avoid coupling with the app's relay pool lifecycle.
      *
-     * Queries all relays in parallel and returns the manifest with the highest
-     * `created_at`. Kind 30078 is a parameterized-replaceable event, so
+     * Queries all relays in parallel and returns the NIP-01-preferred manifest:
+     * highest event `created_at`, then lowest event id on an exact timestamp
+     * tie. Kind 30078 is a parameterized-replaceable event, so
      * different relays may serve different versions (e.g. a relay that was
      * offline during the last publish still holds yesterday's manifest).
      * Picking first-success would deterministically pin us to the slowest-
@@ -137,7 +138,10 @@ class BlossomSyncManager(
                                         return
                                     }
                                     val parsed = json.decodeFromString<BlossomManifest>(event.content)
-                                    result = Companion.validateManifest(parsed)
+                                    result = Companion.validateManifest(parsed).copy(
+                                        eventCreatedAt = event.createdAt,
+                                        eventId = event.id,
+                                    )
                                 }
                                 "EOSE" -> {
                                     ws.close(1000, "done")
@@ -444,11 +448,12 @@ class BlossomSyncManager(
                     }
                 }
 
-                val newest = outcomes.mapNotNull { it.manifest }.maxByOrNull { it.createdAt }
+                val newest = selectPreferredManifest(outcomes.mapNotNull { it.manifest })
                 if (newest != null) {
                     Log.d(
                         TAG,
-                        "[$dTag] selected manifest: createdAt=${newest.createdAt} " +
+                        "[$dTag] selected manifest: eventCreatedAt=${newest.eventCreatedAt} " +
+                            "eventId=${newest.eventId.take(12)} createdAt=${newest.createdAt} " +
                             "chunks=${newest.chunks.size} (pass ${pass + 1}/$passes)"
                     )
                     return newest
@@ -518,6 +523,22 @@ class BlossomSyncManager(
         // do not lose their incremental-sync state on upgrade.
         const val DEFAULT_PREFS_NAME = "blossom_sync"
         const val MOONBOARD_PREFS_NAME = "blossom_sync_moonboard"
+
+        /**
+         * Applies the NIP-01 ordering rule for parameterized-replaceable events.
+         * `eventCreatedAt == 0` is retained as a test/backward-compatible
+         * fallback for manifests constructed without an envelope.
+         */
+        internal fun selectPreferredManifest(
+            manifests: Iterable<BlossomManifest>,
+        ): BlossomManifest? = manifests.reduceOrNull { selected, candidate ->
+            val selectedAt = selected.eventCreatedAt.takeIf { it > 0 } ?: selected.createdAt
+            val candidateAt = candidate.eventCreatedAt.takeIf { it > 0 } ?: candidate.createdAt
+            val candidateWins = candidateAt > selectedAt ||
+                (candidateAt == selectedAt && candidate.eventId.isNotBlank() &&
+                    (selected.eventId.isBlank() || candidate.eventId < selected.eventId))
+            if (candidateWins) candidate else selected
+        }
 
         /**
          * Validates chunk names and URL schemes after the manifest is parsed.

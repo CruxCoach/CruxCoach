@@ -32,7 +32,11 @@ class BlossomManifestRetryTest {
     private val dTag = "cruxcoach/tension-db"
     private val relays = listOf("wss://a.example", "wss://b.example", "wss://c.example")
 
-    private fun manifest(createdAt: Long) = BlossomManifest(
+    private fun manifest(
+        createdAt: Long,
+        eventId: String = createdAt.toString(16).padStart(64, '0'),
+        eventCreatedAt: Long = createdAt,
+    ) = BlossomManifest(
         v = 1,
         board = "tension",
         productId = 1,
@@ -47,6 +51,8 @@ class BlossomManifestRetryTest {
                 urls = listOf("https://mirror.example/blob"),
             )
         ),
+        eventCreatedAt = eventCreatedAt,
+        eventId = eventId,
     )
 
     @Test
@@ -70,6 +76,33 @@ class BlossomManifestRetryTest {
             }
         }
         assertEquals("newest wins regardless of relay order", 300L, result.createdAt)
+    }
+
+    @Test
+    fun `NIP-01 tie picks the lower event id regardless of relay order`() = runTest {
+        val higherId = "f".repeat(64)
+        val lowerId = "0".repeat(64)
+        val result = BlossomSyncManager.fetchManifestWithRetry(dTag, relays) { relay ->
+            when (relay) {
+                "wss://a.example" -> manifest(100, eventId = higherId)
+                "wss://b.example" -> manifest(100, eventId = lowerId)
+                else -> null
+            }
+        }
+        assertEquals(lowerId, result.eventId)
+    }
+
+    @Test
+    fun `Nostr envelope timestamp wins over manifest content timestamp`() = runTest {
+        val result = BlossomSyncManager.fetchManifestWithRetry(dTag, relays) { relay ->
+            when (relay) {
+                "wss://a.example" -> manifest(createdAt = 999, eventCreatedAt = 100)
+                "wss://b.example" -> manifest(createdAt = 1, eventCreatedAt = 101)
+                else -> null
+            }
+        }
+        assertEquals(101L, result.eventCreatedAt)
+        assertEquals(1L, result.createdAt)
     }
 
     /** The actual regression: one bad window must not fail the board. */
