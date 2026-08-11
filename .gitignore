@@ -42,6 +42,10 @@ docs/*.md
 !docs/KEY_ROTATION.md
 !docs/testing.md
 !docs/nostr-architecture.md
+# Public because it documents how a release is produced and verified, which is
+# what someone reproducing a build needs. `docs/*.md` above is why an earlier
+# `git add` of this file silently did nothing.
+!docs/RELEASE_GITHUB.md
 
 # FEAT specs are PUBLIC as of 2026-07-29 (they were excluded until then).
 # The design rationale in them is the most useful thing this repo has for a
