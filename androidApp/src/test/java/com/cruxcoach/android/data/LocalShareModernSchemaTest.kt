@@ -3,6 +3,7 @@ package com.cruxcoach.android.data
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import com.cruxcoach.db.board.BoardDatabase
+import com.cruxcoach.domain.board.BoardBrand
 import io.mockk.mockk
 import io.mockk.verify
 import java.io.File
@@ -223,6 +224,48 @@ class LocalShareModernSchemaTest {
         // Modern sync-state table resolved (pre-fix: "no such table:
         // aurora_sync_state" killed the import right here).
         verify { boardRepository.upsertSyncState("climbs", "2026-07-01 00:00:00") }
+    }
+
+    @Test
+    fun freshInstall_importsEveryInteractiveBoardBrand() {
+        val additionalBrands = BoardBrand.entries.filter {
+            it.isInteractive && it != BoardBrand.KILTER && it != BoardBrand.MOONBOARD
+        }
+        SQLiteDatabase.openDatabase(
+            srcPath.absolutePath,
+            null,
+            SQLiteDatabase.OPEN_READWRITE,
+        ).use { db ->
+            additionalBrands.forEachIndexed { index, brand ->
+                db.execSQL(
+                    """
+                    INSERT INTO climbs(uuid, layout_id, setter_username, name, frames,
+                        frames_count, is_listed, created_at, description, is_nomatch,
+                        frames_pace, hsm, move_count, source, sync_status, origin,
+                        board_brand, created_by_pubkey, method)
+                    VALUES (?, 1, 'setter', ?, 'p1100r12p1200r14', 1, 1,
+                        '2026-06-01 00:00:00', '', 0, 0, 0, 2, 'kilter',
+                        'synced', 'kilter', ?, NULL, NULL)
+                    """.trimIndent(),
+                    arrayOf(
+                        "66666666-6666-6666-6666-${(index + 1).toString().padStart(12, '0')}",
+                        "${brand.displayName} Test",
+                        brand.wireValue,
+                    ),
+                )
+            }
+        }
+
+        importer.importFromLocalDb(srcPath)
+
+        openTarget().use { db ->
+            BoardBrand.entries.filter { it.isInteractive }.forEach { brand ->
+                assertTrue(
+                    "${brand.displayName} catalogue row crosses the local-share boundary",
+                    countWhere(db, "climbs", "board_brand = '${brand.wireValue}'") > 0,
+                )
+            }
+        }
     }
 
     // ── MoonBoard `method` (25.sqm) crosses the peer boundary ──

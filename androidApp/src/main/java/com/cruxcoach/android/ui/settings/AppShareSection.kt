@@ -6,8 +6,9 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.Bitmap
 import android.os.Build
-import android.util.Log
+import android.view.WindowManager
 import android.widget.Toast
+import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -28,7 +29,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
@@ -40,9 +40,8 @@ import com.cruxcoach.android.ui.common.ErrorCard
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.SuccessGreen
 import com.cruxcoach.android.util.ApkShareHelper
-import com.cruxcoach.android.util.LocalApkServer
-import com.cruxcoach.android.util.WifiDirectHotspot
-import java.io.File
+import com.cruxcoach.android.util.LocalShareProtocol
+import com.cruxcoach.android.util.LocalShareService
 
 /**
  * Copies [text] to the system clipboard under [label] and shows a short
@@ -122,15 +121,8 @@ internal fun AppShareSection(
     viewModel: AppShareViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
-    val resources = LocalResources.current
-    var hotspot by remember { mutableStateOf<WifiDirectHotspot?>(null) }
-    var server by remember { mutableStateOf<LocalApkServer?>(null) }
-    var qrBitmap by remember { mutableStateOf<Bitmap?>(null) }
-    var urlQrBitmap by remember { mutableStateOf<Bitmap?>(null) }
-    var hotspotSsid by remember { mutableStateOf("") }
-    var hotspotPassword by remember { mutableStateOf("") }
-    var downloadUrl by remember { mutableStateOf("") }
-    var isStarting by remember { mutableStateOf(false) }
+    val activity = LocalActivity.current
+    val shareState by LocalShareService.state.collectAsStateWithLifecycle()
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var showReleaseQr by remember { mutableStateOf(false) }
     var showZapstoreQr by remember { mutableStateOf(false) }
@@ -170,55 +162,12 @@ internal fun AppShareSection(
     }
 
     val startSharing: () -> Unit = {
-        isStarting = true
         errorMessage = null
-        try {
-            val wifiHotspot = WifiDirectHotspot(context)
-            wifiHotspot.start(
-                onStarted = { info ->
-                    try {
-                        val apk = File(context.applicationInfo.sourceDir)
-                        // Serve the public board DB alongside the APK (community climb data only).
-                        // NEVER serve cruxcoach_secure.db or any user data.
-                        val boardDb = context.getDatabasePath("cruxcoach.db")
-                        val apkServer = LocalApkServer(
-                            apkFile = apk,
-                            boardDbFile = if (boardDb.exists()) boardDb else null,
-                            // Serve a checkpointed snapshot, not the live WAL
-                            // file — see LocalApkServer.boardDbSnapshot.
-                            snapshotDir = context.cacheDir
-                        )
-                        apkServer.onAutoShutdown = {
-                            android.os.Handler(android.os.Looper.getMainLooper()).post {
-                                server = null
-                                hotspot?.stop(); hotspot = null
-                                qrBitmap = null; urlQrBitmap = null
-                            }
-                        }
-                        val port = apkServer.start(hostIp = info.ip)
-                        val url = "http://${info.ip}:$port"
-                        val qr = ApkShareHelper.generateWifiQrBitmap(
-                            info.ssid, info.password
-                        )
-                        val urlQr = ApkShareHelper.generateQrBitmap(url)
-                        hotspot = wifiHotspot; server = apkServer; qrBitmap = qr; urlQrBitmap = urlQr
-                        hotspotSsid = info.ssid; hotspotPassword = info.password; downloadUrl = url
-                        isStarting = false
-                    } catch (e: Exception) {
-                        Log.e("AppShare", "Server start failed", e)
-                        wifiHotspot.stop()
-                        errorMessage = resources.getString(R.string.settings_share_server_error, e.message ?: ""); isStarting = false
-                    }
-                },
-                onError = { err ->
-                    wifiHotspot.stop()
-                    errorMessage = err; isStarting = false
-                }
-            )
-        } catch (e: Exception) {
-            Log.e("AppShare", "WiFi Direct failed", e)
-            errorMessage = resources.getString(R.string.settings_share_error, e.message ?: ""); isStarting = false
-        }
+        LocalShareService.clearFailure()
+        runCatching { LocalShareService.start(context) }
+            .onFailure {
+                errorMessage = context.getString(R.string.settings_share_error, it.message.orEmpty())
+            }
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -230,15 +179,32 @@ internal fun AppShareSection(
             val denied = results.filter { !it.value }.keys.joinToString(", ") {
                 it.substringAfterLast(".")
             }
-            errorMessage = resources.getString(R.string.settings_share_permissions_needed, denied)
-            isStarting = false
+            errorMessage = context.getString(R.string.settings_share_permissions_needed, denied)
         }
     }
 
-    DisposableEffect(Unit) {
+    LaunchedEffect(shareState) {
+        if (shareState is LocalShareService.State.Failed) {
+            errorMessage = (shareState as LocalShareService.State.Failed).message
+        }
+    }
+
+    // A QR code that dims or a display that sleeps halfway through setup is a
+    // broken sender UX. Restore the user's previous brightness/flag exactly
+    // when the active card leaves composition; the foreground service itself
+    // continues if they navigate away.
+    DisposableEffect(activity, shareState is LocalShareService.State.Active) {
+        val window = activity?.window
+        if (window == null || shareState !is LocalShareService.State.Active) {
+            return@DisposableEffect onDispose { }
+        }
+        val previousBrightness = window.attributes.screenBrightness
+        val alreadyKeptOn = window.attributes.flags and WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON != 0
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        window.attributes = window.attributes.apply { screenBrightness = 1f }
         onDispose {
-            server?.stop()
-            hotspot?.stop()
+            window.attributes = window.attributes.apply { screenBrightness = previousBrightness }
+            if (!alreadyKeptOn) window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
     }
 
@@ -284,25 +250,32 @@ internal fun AppShareSection(
             onDismiss = { errorMessage = null },
             onReportBug = {
                 onNavigateToBugReport(
-                    resources.getString(R.string.error_bug_report_share_title),
+                    context.getString(R.string.error_bug_report_share_title),
                     err
                 )
                 errorMessage = null
             }
         )
     }
-    if (qrBitmap != null) {
+    val activeShare = shareState as? LocalShareService.State.Active
+    if (activeShare != null) {
+        val invitationQr = remember(activeShare) {
+            ApkShareHelper.generateQrBitmap(LocalShareProtocol.invitationUri(activeShare.invitation))
+        }
+        val wifiQr = remember(activeShare) {
+            ApkShareHelper.generateWifiQrBitmap(activeShare.ssid, activeShare.password)
+        }
+        val landingQr = remember(activeShare) {
+            ApkShareHelper.generateQrBitmap(activeShare.baseUrl)
+        }
         AppShareActiveCard(
-            qrBitmap = qrBitmap!!,
-            urlQrBitmap = urlQrBitmap,
-            hotspotSsid = hotspotSsid,
-            hotspotPassword = hotspotPassword,
-            downloadUrl = downloadUrl,
-            onStop = {
-                server?.stop(); server = null
-                hotspot?.stop(); hotspot = null
-                qrBitmap = null; urlQrBitmap = null
-            }
+            invitationQr = invitationQr,
+            wifiQr = wifiQr,
+            landingQr = landingQr,
+            hotspotSsid = activeShare.ssid,
+            hotspotPassword = activeShare.password,
+            landingUrl = activeShare.baseUrl,
+            onStop = { LocalShareService.stop(context) },
         )
     } else if (errorMessage == null) {
         OutlinedButton(
@@ -319,9 +292,9 @@ internal fun AppShareSection(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.outlinedButtonColors(contentColor = OrangeAccent),
-            enabled = !isStarting
+            enabled = shareState !is LocalShareService.State.Starting
         ) {
-            if (isStarting) {
+            if (shareState is LocalShareService.State.Starting) {
                 CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = OrangeAccent)
                 Spacer(modifier = Modifier.width(8.dp))
             }
@@ -392,13 +365,15 @@ internal fun AppShareSection(
 
 @Composable
 private fun AppShareActiveCard(
-    qrBitmap: Bitmap,
-    urlQrBitmap: Bitmap?,
+    invitationQr: Bitmap,
+    wifiQr: Bitmap,
+    landingQr: Bitmap,
     hotspotSsid: String,
     hotspotPassword: String,
-    downloadUrl: String,
+    landingUrl: String,
     onStop: () -> Unit
 ) {
+    var showInstalledShortcut by remember { mutableStateOf(false) }
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
@@ -409,23 +384,21 @@ private fun AppShareActiveCard(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(stringResource(R.string.settings_share_mobile_data_warning),
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold,
-                color = OrangeAccent)
-
-            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-
-            Text(stringResource(R.string.settings_share_step1),
+            Text(stringResource(R.string.settings_share_new_install_title),
                 style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Bold, color = SuccessGreen)
+                fontWeight = FontWeight.Bold,
+                color = SuccessGreen)
 
-            Image(
-                bitmap = qrBitmap.asImageBitmap(),
-                contentDescription = stringResource(R.string.cd_wifi_qr_code),
-                modifier = Modifier.size(220.dp)
+            Text(
+                stringResource(R.string.settings_share_install_step1),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
             )
-
+            Image(
+                bitmap = wifiQr.asImageBitmap(),
+                contentDescription = stringResource(R.string.cd_wifi_qr_code),
+                modifier = Modifier.size(200.dp)
+            )
             val context = LocalContext.current
             val copiedPasswordMessage = stringResource(R.string.settings_share_copied_password)
             Text(
@@ -453,27 +426,53 @@ private fun AppShareActiveCard(
             }
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+            Text(
+                stringResource(R.string.settings_share_install_step2),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Image(
+                bitmap = landingQr.asImageBitmap(),
+                contentDescription = stringResource(R.string.cd_download_qr_code),
+                modifier = Modifier.size(200.dp),
+            )
+            CopyableUrlRow(
+                url = landingUrl,
+                clipLabel = "CruxCoach local install URL",
+                toastMessage = stringResource(R.string.settings_share_copied_url),
+            )
+            Text(
+                stringResource(R.string.settings_share_install_step3),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
 
-            Text(stringResource(R.string.settings_share_step2),
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Bold, color = SuccessGreen)
-
-            if (urlQrBitmap != null) {
-                Image(
-                    bitmap = urlQrBitmap.asImageBitmap(),
-                    contentDescription = stringResource(R.string.cd_download_qr_code),
-                    modifier = Modifier.size(180.dp)
-                )
+            OutlinedButton(
+                onClick = { showInstalledShortcut = !showInstalledShortcut },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = OrangeAccent),
+            ) {
+                Text(stringResource(R.string.settings_share_already_installed))
             }
 
-            CopyableUrlRow(
-                url = downloadUrl,
-                clipLabel = "CruxCoach download URL",
-                toastMessage = stringResource(R.string.settings_share_copied_url),
-                textStyle = MaterialTheme.typography.titleMedium,
-                textColor = OrangeAccent,
-                fontWeight = FontWeight.Bold,
-            )
+            if (showInstalledShortcut) {
+                Text(
+                    stringResource(R.string.settings_share_installed_step),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Image(
+                    bitmap = invitationQr.asImageBitmap(),
+                    contentDescription = stringResource(R.string.cd_download_qr_code),
+                    modifier = Modifier.size(180.dp),
+                )
+                Text(
+                    stringResource(R.string.settings_share_connection_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
 
             Spacer(modifier = Modifier.height(4.dp))
             OutlinedButton(

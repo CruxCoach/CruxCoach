@@ -437,7 +437,7 @@
 
     <!-- Settings: App Sharing -->
     <string name="settings_share_title">App teilen</string>
-    <string name="settings_share_desc">CruxCoach APK mit anderen teilen (ohne Nutzerdaten).</string>
+    <string name="settings_share_desc">CruxCoach und öffentliche Board-Kataloge teilen — niemals persönliche Daten.</string>
     <string name="board_filter_title">Filter</string>
     <string name="board_filter_selected_board">Gewähltes Board</string>
     <string name="settings_share_via_apps">Über Apps teilen</string>
@@ -446,17 +446,29 @@
     <string name="settings_share_online_desc">QR-Code scannen, um CruxCoach herunterzuladen — immer die aktuelle Version, nicht die auf diesem Handy.</string>
     <string name="settings_share_online_hint">Scannen, um die aktuelle APK herunterzuladen.</string>
     <string name="settings_share_local">Offline teilen</string>
-    <string name="settings_share_local_desc">App lokal per WiFi-Hotspot teilen. Kein Internet nötig.</string>
+    <string name="settings_share_local_desc">App und alle Board-Kataloge auf diesem Gerät lokal per WLAN-Hotspot teilen. Kein Internet nötig.</string>
     <string name="settings_share_stop">Stoppen</string>
     <string name="settings_share_network">Netzwerk: %s</string>
     <string name="settings_share_password">Passwort: %s</string>
-    <string name="settings_share_mobile_data_warning">Wichtig: VPN auf beiden Geräten ausschalten. Mobile Daten auf dem anderen Gerät ausschalten, damit der Download über den Hotspot läuft.</string>
+    <string name="settings_share_connection_hint">CruxCoach nutzt das ausgewählte Share-WLAN direkt und wechselt danach zurück ins vorherige WLAN.</string>
     <string name="settings_share_step1">Schritt 1: QR-Code scannen, um mit dem Hotspot zu verbinden</string>
     <string name="settings_share_step2">Schritt 2: Diesen QR-Code scannen oder URL öffnen, um die App herunterzuladen</string>
     <string name="settings_share_permissions_needed">Berechtigungen benötigt: %s. Bitte in den App-Einstellungen erlauben.</string>
     <string name="settings_share_open_settings">App-Einstellungen öffnen</string>
     <string name="settings_share_error">Fehler: %s</string>
     <string name="settings_share_server_error">Server-Fehler: %s</string>
+    <string name="settings_share_new_install_title">Neuinstallation — empfohlen</string>
+    <string name="settings_share_installed_step">Einmal scannen. CruxCoach verbindet sich mit diesem WLAN, vergleicht APK und Board-Daten und überträgt nur Fehlendes.</string>
+    <string name="settings_share_already_installed">CruxCoach ist bereits installiert</string>
+    <string name="settings_share_install_step1">1. Mit dem Share-WLAN verbinden</string>
+    <string name="settings_share_install_step2">2. Installationsseite öffnen</string>
+    <string name="settings_share_install_step3">APK installieren und auf Öffnen tippen. CruxCoach erkennt die Freigabe und importiert automatisch alle verfügbaren Board-Kataloge — ohne Rückkehr zum Browser.</string>
+    <string name="local_share_notification_channel">Offline-Teilen</string>
+    <string name="local_share_notification_channel_desc">Hält eine lokale CruxCoach-Share-Session verfügbar</string>
+    <string name="local_share_notification_title">CruxCoach offline teilen</string>
+    <string name="local_share_notification_starting">Share-Session wird vorbereitet…</string>
+    <string name="local_share_notification_active">Bereit für Geräte in der Nähe</string>
+    <string name="local_share_notification_complete">Übertragung abgeschlossen — zurück zum vorherigen WLAN</string>
 
     <!-- Settings: Climb Sharing -->
     <string name="settings_sharing_title">In der Nähe</string>
@@ -1021,6 +1033,13 @@
     <string name="board_sync_local_import_title">Board-Datenbank importieren?</string>
     <string name="board_sync_local_import_message">Von %1$s wird eine Board-Datenbank angeboten. Nur bestätigen, wenn du dich bewusst mit einem CruxCoach-Share-Hotspot einer dir bekannten Person verbunden hast. Der Import ersetzt deine aktuelle Climb-Datenbank.</string>
     <string name="board_sync_local_import_confirm">Importieren</string>
+    <string name="board_sync_offline_share_title">Offline-Share empfangen?</string>
+    <string name="board_sync_offline_share_message">CruxCoach verbindet sich vorübergehend mit %1$s, vergleicht App und Board-Daten und lädt nur Fehlendes. Danach wechselt Android zurück ins vorherige WLAN.</string>
+    <string name="board_sync_offline_share_confirm">Verbinden und vergleichen</string>
+    <string name="board_sync_local_update_title">App-Update bereit</string>
+    <string name="board_sync_local_update_message">CruxCoach %1$s wurde übertragen und geprüft. Jetzt installieren?</string>
+    <string name="board_sync_local_update_install">Installieren</string>
+    <string name="action_not_now">Später</string>
 
     <!-- Kilter Account -->
     <string name="kilter_section_title">Kilter Board Account</string>
@@ -1074,15 +1093,23 @@
     <string name="kilter_no_new">Keine neuen Begehungen gefunden</string>
 
     <string name="board_sync_step_prepare_db">Datenbank vorbereiten</string>
+    <string name="board_sync_step_discover_local_share">Offline-Freigabe in der Nähe wird gesucht…</string>
+    <string name="board_sync_step_sender_preparing">Das sendende Gerät bereitet einen konsistenten Board-Snapshot vor…</string>
     <string name="board_sync_step_check_update">Update prüfen\u2026</string>
     <string name="board_sync_step_fetch_manifest">Manifest laden\u2026</string>
     <string name="board_sync_step_download_chunk" formatted="false">%s herunterladen (%d/%d)</string>
     <string name="board_sync_step_download_db">Climb-Datenbank herunterladen</string>
+    <string name="board_sync_step_download_apk">App-Update herunterladen</string>
+    <string name="board_sync_step_verify_db">Board-Daten prüfen</string>
+    <string name="board_sync_step_verify_apk">App-Update prüfen</string>
     <string name="board_sync_step_extract_db">Datenbank extrahieren</string>
     <string name="board_sync_step_import_climbs">Climbs importieren</string>
     <string name="board_sync_step_import_stats">Statistiken importieren</string>
     <string name="board_sync_step_import_layout">Layout-Daten importieren</string>
     <string name="board_sync_step_finalize">Finalisieren</string>
+    <string name="board_sync_local_progress_title">Board-Daten vom Gerät in der Nähe laden</string>
+    <string name="board_sync_local_catalogue_count">%d Board-Kataloge enthalten</string>
+    <string name="board_sync_local_complete">Lokaler Import abgeschlossen</string>
     <string name="sync_finalizing">Finalisieren…</string>
     <!-- FEAT-031: per-board sync sections are titled by the board's name; a
          board's non-fatal sync error uses this. -->

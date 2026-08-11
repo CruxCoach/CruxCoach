@@ -1,7 +1,9 @@
 package com.cruxcoach.android.data
 
 import android.content.Context
+import android.net.Network
 import android.util.Log
+import com.cruxcoach.android.BuildConfig
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.BoardDatabaseImporter.ImportStep
 import com.cruxcoach.domain.board.BoardBrand
@@ -12,6 +14,13 @@ import com.cruxcoach.android.util.isNetworkAvailable
 import com.cruxcoach.android.util.isNetworkPermissionGranted
 import com.cruxcoach.android.util.isWifiConnected
 import com.cruxcoach.android.util.safeLaunch
+import com.cruxcoach.android.util.LocalShareClient
+import com.cruxcoach.android.util.LocalShareDiscovery
+import com.cruxcoach.android.util.LocalShareNetwork
+import com.cruxcoach.android.util.LocalShareProtocol
+import com.cruxcoach.android.util.LocalShareResumeStore
+import com.cruxcoach.android.util.ShareCompression
+import com.cruxcoach.android.updater.IntegrityVerifier
 import com.cruxcoach.util.DateTimeUtil
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -56,6 +65,7 @@ class BoardSyncManager(
     private val boardLocationRepository: com.cruxcoach.data.repository.BoardLocationRepository,
     private val moonBoardCatalogueSync: MoonBoardCatalogueSync,
     private val auroraCatalogueSync: AuroraCatalogueSync,
+    private val integrityVerifier: IntegrityVerifier,
 ) : CatalogueRevisionSource {
     private companion object {
         const val TAG = "BoardSyncManager"
@@ -90,10 +100,15 @@ class BoardSyncManager(
          *  distinguishes "sender gone" (fail fast) from "sender busy
          *  preparing" (503, keep polling). */
         const val CONNECT_MAX_RETRIES = 3
+        const val MAX_LOCAL_SHARE_DB_BYTES = 1_024L * 1_024L * 1_024L
+        /** Lets Android finish dropping the local-only hotspot before the
+         *  status banners re-check which normal network became active. */
+        const val LOCAL_SHARE_NETWORK_RECHECK_MS = 2_500L
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var deferralWatchdog: Job? = null
+    private val localShareResumeStore = LocalShareResumeStore(appContext)
 
     private val _state = MutableStateFlow(BoardSyncState())
     val state: StateFlow<BoardSyncState> = _state.asStateFlow()
@@ -127,6 +142,7 @@ class BoardSyncManager(
                 syncComplete = imported,
                 lastSyncTimestamp = lastSync
             ) }
+            resumePendingOfflineShareIfPossible()
         }
     }
 
@@ -447,7 +463,7 @@ class BoardSyncManager(
      * (user tap + auto-sync, Blossom + local share, etc.) could both
      * observe isSyncing=false and start duplicate imports.
      */
-    private fun claimSyncSlot(initialStep: ImportStep): Boolean {
+    private fun claimSyncSlot(initialStep: ImportStep, localShare: Boolean = false): Boolean {
         var claimed = false
         _state.update { current ->
             if (current.isSyncing) {
@@ -460,6 +476,12 @@ class BoardSyncManager(
                     syncComplete = false,
                     errorMessage = null,
                     importStep = initialStep,
+                    localShareInProgress = localShare,
+                    localShareBoardSteps = if (localShare) {
+                        interactiveBoardBrands().associateWith { initialStep }
+                    } else {
+                        emptyMap()
+                    },
                     // Drop the previous run's per-board terminal steps so a
                     // fresh sync doesn't render stale Done rows (and their
                     // old counts) for boards whose lane hasn't started yet.
@@ -469,6 +491,79 @@ class BoardSyncManager(
             }
         }
         return claimed
+    }
+
+    /**
+     * First-onboarding entry point. A newly installed receiver is already on
+     * the sender's Wi-Fi after downloading the APK in its browser, so probe
+     * that network first. Only when no valid CruxCoach manifest is present do
+     * we fall back to the normal online Blossom sync.
+     */
+    fun startInitialSyncIfNeeded() {
+        val current = _state.value
+        if (current.alreadyImported || current.isSyncing) return
+        if (!claimSyncSlot(ImportStep.DiscoveringLocalShare, localShare = true)) return
+
+        scope.launch {
+            val found = runCatching { LocalShareDiscovery(appContext).discover() }
+                .onFailure { Log.w(TAG, "Local-share onboarding discovery failed", it) }
+                .getOrNull()
+            if (found == null) {
+                _state.update {
+                    it.copy(
+                        isSyncing = false,
+                        importStep = null,
+                        localShareInProgress = false,
+                        localShareBoardSteps = emptyMap(),
+                    )
+                }
+                startApiSync()
+                return@launch
+            }
+            try {
+                runOfflineShare(
+                    network = found.network,
+                    baseUrl = found.baseUrl,
+                    initialManifest = found.manifest,
+                    releaseNetwork = {},
+                )
+            } catch (error: Exception) {
+                failOfflineShare(error)
+            }
+        }
+    }
+
+    private fun interactiveBoardBrands(): List<BoardBrand> =
+        BoardBrand.entries.filter { it.isInteractive }
+
+    private fun sharedBoardBrands(board: LocalShareProtocol.BoardArtifact?): List<BoardBrand> =
+        board?.catalogues
+            ?.mapNotNull { BoardBrand.fromWireOrNull(it.boardBrand) }
+            ?.filter { it.isInteractive }
+            ?.distinct()
+            ?.takeIf { it.isNotEmpty() }
+            ?: interactiveBoardBrands()
+
+    private fun updateLocalShareProgress(step: ImportStep, brands: List<BoardBrand>) {
+        _state.update {
+            it.copy(
+                importStep = step,
+                localShareInProgress = true,
+                localShareBoardSteps = brands.associateWith { step },
+            )
+        }
+    }
+
+    private fun completedLocalShareSteps(brands: List<BoardBrand>): Map<BoardBrand, ImportStep> {
+        val counts = boardRepository.getClimbCountsByBrand()
+        return brands.associateWith { brand ->
+            ImportStep.Done(
+                climbs = (counts[brand.wireValue] ?: 0L)
+                    .coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+                stats = 0,
+                placements = 0,
+            )
+        }
     }
 
     /**
@@ -493,8 +588,11 @@ class BoardSyncManager(
      * settings screen is open) and it buys correctness in the cases above; no
      * regression has been measured from it.
      */
-    private fun bumpCatalogueRevision() {
+    private suspend fun bumpCatalogueRevision() {
         _state.update { it.copy(catalogueRevision = it.catalogueRevision + 1) }
+        // The remembered peer snapshot is a valid no-download gate only while
+        // the catalogue has not changed through any other path.
+        userPreferences.setLastLocalShareSnapshotSha256(null)
     }
 
     private fun isStale(lastSync: String?, interval: SyncInterval): Boolean {
@@ -527,6 +625,25 @@ class BoardSyncManager(
     fun stageLocalImport(url: String) {
         if (_state.value.isSyncing) return
         _state.update { it.copy(pendingLocalImportUrl = url) }
+    }
+
+    fun stageOfflineShare(invitation: LocalShareProtocol.Invitation) {
+        if (_state.value.isSyncing) return
+        _state.update { it.copy(pendingOfflineShare = invitation) }
+    }
+
+    fun confirmOfflineShare() {
+        val invitation = _state.value.pendingOfflineShare ?: return
+        _state.update { it.copy(pendingOfflineShare = null) }
+        performOfflineShare(invitation)
+    }
+
+    fun dismissOfflineShare() {
+        _state.update { it.copy(pendingOfflineShare = null) }
+    }
+
+    fun dismissLocalShareUpdate() {
+        _state.update { it.copy(localShareUpdate = null) }
     }
 
     fun confirmLocalImport() {
@@ -1099,6 +1216,338 @@ class BoardSyncManager(
         }
     }
 
+    /** Continue the board import after PackageInstaller replaced the app. */
+    private suspend fun resumePendingOfflineShareIfPossible() {
+        val pending = localShareResumeStore.load() ?: return
+        if (pending.requiredVersionCode > BuildConfig.VERSION_CODE.toLong()) {
+            val apk = pending.apkPath?.let(::File)?.takeIf { it.isFile }
+            if (apk == null) {
+                localShareResumeStore.clear()
+                return
+            }
+            _state.update {
+                it.copy(
+                    localShareUpdate = LocalShareUpdate(
+                        apkPath = apk.absolutePath,
+                        versionName = pending.apkVersionName ?: "",
+                    ),
+                )
+            }
+            return
+        }
+
+        val compressed = pending.boardPath?.let(::File)?.takeIf { it.isFile }
+        val board = pending.board
+        if (compressed == null || board == null) {
+            pending.apkPath?.let(::File)?.delete()
+            localShareResumeStore.clear()
+            return
+        }
+        if (!claimSyncSlot(ImportStep.Extract, localShare = true)) return
+        try {
+            importDownloadedBoard(compressed, board)
+            pending.apkPath?.let(::File)?.delete()
+            localShareResumeStore.clear()
+            val timestamp = DateTimeUtil.nowIso()
+            userPreferences.setLastSyncTimestamp(timestamp)
+            _state.update {
+                it.copy(
+                    isSyncing = false,
+                    syncComplete = true,
+                    alreadyImported = true,
+                    lastSyncTimestamp = timestamp,
+                    importStep = null,
+                    errorMessage = null,
+                    localShareInProgress = false,
+                    lastSyncCompletedAtMillis = System.currentTimeMillis(),
+                )
+            }
+        } catch (error: Exception) {
+            Log.e(TAG, "Resuming board import after local APK update failed", error)
+            _state.update {
+                it.copy(
+                    isSyncing = false,
+                    importStep = null,
+                    localShareInProgress = false,
+                    localShareBoardSteps = emptyMap(),
+                    errorMessage = appContext.getString(R.string.board_sync_error_import),
+                )
+            }
+        }
+    }
+
+    private suspend fun importDownloadedBoard(
+        compressed: File,
+        board: LocalShareProtocol.BoardArtifact,
+    ) {
+        val brands = sharedBoardBrands(board)
+        require(board.uncompressedSizeBytes in 1..MAX_LOCAL_SHARE_DB_BYTES) {
+            "Shared board snapshot exceeds size limit"
+        }
+        if (compressed.length() != board.artifact.sizeBytes ||
+            LocalShareProtocol.sha256(compressed) != board.artifact.sha256
+        ) {
+            throw java.io.IOException("Compressed board snapshot failed verification")
+        }
+        val raw = File(
+            appContext.cacheDir,
+            "local_board_${board.uncompressedSha256.take(16)}.sqlite3",
+        )
+        try {
+            updateLocalShareProgress(ImportStep.VerifyingSnapshot, brands)
+            raw.delete()
+            require(board.compression == "gzip") { "Unsupported share compression" }
+            ShareCompression.gunzip(
+                inputFile = compressed,
+                outputFile = raw,
+                maxOutputBytes = board.uncompressedSizeBytes,
+            ) { outputBytes ->
+                updateLocalShareProgress(
+                    ImportStep.Decompress(outputBytes, board.uncompressedSizeBytes),
+                    brands,
+                )
+            }
+            updateLocalShareProgress(ImportStep.VerifyingSnapshot, brands)
+            if (raw.length() != board.uncompressedSizeBytes ||
+                LocalShareProtocol.sha256(raw) != board.uncompressedSha256
+            ) {
+                throw java.io.IOException("Shared board snapshot failed verification")
+            }
+            importer.importFromLocalDb(raw) { step ->
+                // ImportStep.Done is emitted before the manager's own
+                // denormalized refresh and durable hash bookkeeping. Keep the
+                // visible run in Finalizing until all of that is actually done.
+                updateLocalShareProgress(
+                    if (step is ImportStep.Done) ImportStep.Finalizing else step,
+                    brands,
+                )
+            }
+            updateLocalShareProgress(ImportStep.Finalizing, brands)
+            bumpCatalogueRevision()
+            userPreferences.setLastLocalShareSnapshotSha256(board.uncompressedSha256)
+            refreshDenormalizedData()
+            val completedSteps = completedLocalShareSteps(brands)
+            _state.update { current ->
+                current.copy(
+                    localShareBoardSteps = completedSteps,
+                )
+            }
+            compressed.delete()
+        } finally {
+            raw.delete()
+        }
+    }
+
+    /**
+     * Runs the v1 one-scan offline-share flow. The sender always advertises
+     * APK + board artifacts; this receiver compares the manifest first and
+     * transfers only a newer APK and/or a board snapshot it has not already
+     * imported. All HTTP connections are opened on the explicitly requested
+     * share Wi-Fi. Closing that scoped request immediately after the last byte
+     * lets Android restore the receiver's previous Wi-Fi before decompression
+     * and SQLite import begin.
+     */
+    private fun performOfflineShare(invitation: LocalShareProtocol.Invitation) {
+        if (!claimSyncSlot(ImportStep.FetchingManifest, localShare = true)) return
+
+        scope.launch {
+            try {
+                val networkSession = LocalShareNetwork(appContext).connect(invitation)
+                runOfflineShare(
+                    network = networkSession.network,
+                    baseUrl = invitation.baseUrl,
+                    initialManifest = null,
+                    releaseNetwork = networkSession::close,
+                )
+            } catch (error: Exception) {
+                failOfflineShare(error)
+            }
+        }
+    }
+
+    private suspend fun runOfflineShare(
+        network: Network,
+        baseUrl: String,
+        initialManifest: LocalShareProtocol.Manifest?,
+        releaseNetwork: () -> Unit,
+    ) {
+        val client = LocalShareClient()
+        var boardDownload: File? = null
+        var apkDownload: File? = null
+        var boardArtifact: LocalShareProtocol.BoardArtifact? = null
+        val receivedManifest: LocalShareProtocol.Manifest
+        try {
+            val initial = initialManifest
+            receivedManifest = if (initial != null && initial.boardStatus != "preparing") {
+                initial
+            } else {
+                updateLocalShareProgress(
+                    if (initial?.boardStatus == "preparing") {
+                        ImportStep.PreparingSnapshot
+                    } else {
+                        ImportStep.FetchingManifest
+                    },
+                    interactiveBoardBrands(),
+                )
+                client.awaitReadyManifest(
+                    network = network,
+                    baseUrl = baseUrl,
+                    timeoutMs = SNAPSHOT_WAIT_MAX_MS,
+                    onPreparing = {
+                        updateLocalShareProgress(
+                            ImportStep.PreparingSnapshot,
+                            interactiveBoardBrands(),
+                        )
+                    },
+                )
+            }
+
+            val offeredBoard = receivedManifest.board
+            val brands = sharedBoardBrands(offeredBoard)
+            updateLocalShareProgress(ImportStep.CheckingUpdate, brands)
+            val lastSnapshotHash = userPreferences.lastLocalShareSnapshotSha256.first()
+            val needsBoard = offeredBoard != null &&
+                offeredBoard.uncompressedSha256 != lastSnapshotHash
+            if (needsBoard) {
+                boardArtifact = offeredBoard
+                val target = File(
+                    appContext.cacheDir,
+                    "local_board_${offeredBoard.artifact.sha256.take(20)}.gz",
+                )
+                boardDownload = client.downloadResumable(
+                    network = network,
+                    baseUrl = baseUrl,
+                    artifact = offeredBoard.artifact,
+                    target = target,
+                    onVerifying = {
+                        updateLocalShareProgress(ImportStep.VerifyingSnapshot, brands)
+                    },
+                ) { downloaded, total ->
+                    updateLocalShareProgress(ImportStep.Download(downloaded, total), brands)
+                }
+            } else if (offeredBoard == null && !importer.isImported()) {
+                throw java.io.IOException("Sender has no board snapshot")
+            }
+
+            if (receivedManifest.apkVersionCode > BuildConfig.VERSION_CODE.toLong()) {
+                val safeVersion = receivedManifest.apkVersionName
+                    .replace(Regex("[^0-9A-Za-z._-]"), "_")
+                val target = File(
+                    appContext.cacheDir,
+                    "local_share_update_${safeVersion}_${receivedManifest.apk.sha256.take(16)}.apk",
+                )
+                apkDownload = client.downloadResumable(
+                    network = network,
+                    baseUrl = baseUrl,
+                    artifact = receivedManifest.apk,
+                    target = target,
+                    onVerifying = {
+                        updateLocalShareProgress(ImportStep.VerifyingApk, brands)
+                    },
+                ) { downloaded, total ->
+                    updateLocalShareProgress(ImportStep.DownloadApk(downloaded, total), brands)
+                }
+            }
+            runCatching { client.notifyDownloadComplete(network, baseUrl) }
+                .onFailure { Log.w(TAG, "Could not notify sender that downloads completed", it) }
+        } finally {
+            // The explicit one-scan path releases its scoped Wi-Fi request at
+            // this exact boundary, before decompression/import. Android can
+            // immediately restore the receiver's previous Wi-Fi. The fresh-
+            // install discovery path did not create the connection, so its
+            // callback is intentionally a no-op.
+            releaseNetwork()
+        }
+
+        val downloadedApk = apkDownload
+        val readyUpdate = if (downloadedApk != null) {
+            when (integrityVerifier.verify(downloadedApk, receivedManifest.apk.sha256)) {
+                IntegrityVerifier.Result.Ok -> LocalShareUpdate(
+                    apkPath = downloadedApk.absolutePath,
+                    versionName = receivedManifest.apkVersionName,
+                )
+                else -> {
+                    downloadedApk.delete()
+                    throw SecurityException("Shared APK failed integrity verification")
+                }
+            }
+        } else {
+            null
+        }
+
+        val offeredBoard = boardArtifact
+        val compressedBoard = boardDownload
+        var boardImported = false
+        if (readyUpdate != null) {
+            // The running (older) app must not parse a snapshot from a newer
+            // schema. Persist both verified downloads; the new APK resumes the
+            // local import on its first launch.
+            localShareResumeStore.save(
+                LocalShareResumeStore.Pending(
+                    requiredVersionCode = receivedManifest.apkVersionCode,
+                    apkPath = readyUpdate.apkPath,
+                    apkVersionName = readyUpdate.versionName,
+                    boardPath = compressedBoard?.absolutePath,
+                    board = offeredBoard,
+                ),
+            )
+        } else if (offeredBoard != null && compressedBoard != null) {
+            importDownloadedBoard(compressedBoard, offeredBoard)
+            boardImported = true
+        }
+
+        val timestamp = DateTimeUtil.nowIso()
+        if (boardImported) userPreferences.setLastSyncTimestamp(timestamp)
+        val imported = importer.isImported()
+        val terminalBoardSteps = if (readyUpdate != null && compressedBoard != null) {
+            // A newer app will resume this downloaded board snapshot. Do not
+            // leave non-terminal spinners behind in the old process.
+            emptyMap()
+        } else {
+            completedLocalShareSteps(sharedBoardBrands(receivedManifest.board))
+        }
+        val networkAvailable = isNetworkAvailable(appContext)
+        val wifiConnected = isWifiConnected(appContext)
+        _state.update {
+            it.copy(
+                isSyncing = false,
+                syncComplete = imported,
+                alreadyImported = imported,
+                lastSyncTimestamp = if (boardImported) timestamp else it.lastSyncTimestamp,
+                errorMessage = null,
+                importStep = null,
+                localShareInProgress = false,
+                localShareBoardSteps = terminalBoardSteps,
+                localShareUpdate = readyUpdate,
+                networkAvailable = networkAvailable,
+                wifiConnected = wifiConnected,
+                lastSyncCompletedAtMillis = System.currentTimeMillis(),
+            )
+        }
+        refreshNetworkAfterLocalShare()
+    }
+
+    private fun failOfflineShare(error: Throwable) {
+        Log.e(TAG, "Offline share failed", error)
+        _state.update {
+            it.copy(
+                isSyncing = false,
+                importStep = null,
+                localShareInProgress = false,
+                localShareBoardSteps = emptyMap(),
+                errorMessage = appContext.getString(R.string.board_sync_error_import),
+            )
+        }
+        refreshNetworkAfterLocalShare()
+    }
+
+    private fun refreshNetworkAfterLocalShare() {
+        scope.launch {
+            delay(LOCAL_SHARE_NETWORK_RECHECK_MS)
+            checkNetwork()
+        }
+    }
+
     /**
      * Import board DB from a local URL (e.g., WiFi Direct share).
      * Downloads the full uncompressed SQLite file and imports it.
@@ -1380,6 +1829,11 @@ data class BoardDataDeletionState(
     val completions: Int = 0,
 )
 
+data class LocalShareUpdate(
+    val apkPath: String,
+    val versionName: String,
+)
+
 data class BoardSyncState(
     val isSyncing: Boolean = false,
     val syncComplete: Boolean = false,
@@ -1410,6 +1864,16 @@ data class BoardSyncState(
      * Non-null means the BoardSyncScreen should show the consent dialog.
      */
     val pendingLocalImportUrl: String? = null,
+    /** One-scan invitation awaiting the in-app trust confirmation. */
+    val pendingOfflineShare: LocalShareProtocol.Invitation? = null,
+    /** A newer, hash- and signer-verified APK downloaded from the peer. */
+    val localShareUpdate: LocalShareUpdate? = null,
+    /** True from local sender discovery through the final local DB refresh. */
+    val localShareInProgress: Boolean = false,
+    /** Per-catalogue projection of the shared full-DB import. A local snapshot
+     *  contains all brands in shared tables; mapping the common ingest phase
+     *  onto every advertised brand prevents the old Kilter-only spinner. */
+    val localShareBoardSteps: Map<BoardBrand, ImportStep> = emptyMap(),
     /** Incremented each time a real sync starts. Banner uses this to ignore initial state. */
     val syncGeneration: Int = 0,
     /**
@@ -1452,6 +1916,10 @@ data class BoardSyncState(
             importStep?.let { put(BoardBrand.KILTER, it) }
             moonBoardStep?.let { put(BoardBrand.MOONBOARD, it) }
             putAll(auroraSteps)
+            // Local share is a multi-brand full-DB path. Put it last so its
+            // truthful per-catalogue state overrides the legacy Kilter-only
+            // projection of importStep while this run is active/completing.
+            putAll(localShareBoardSteps)
         }
 
     /** Unified per-board non-fatal sync errors (FEAT-031). */

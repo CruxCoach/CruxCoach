@@ -925,6 +925,10 @@ class BoardDatabaseImporter(
             importSyncState(rawDb)
             onProgress?.invoke(ImportStep.ImportLayout(layoutCount))
 
+            // The local full-DB path still has sync-state writes and result
+            // accounting after geometry. Emit an explicit terminal phase so
+            // the UI never appears frozen at "Layout 100%".
+            onProgress?.invoke(ImportStep.Finalizing)
             val nomatchCount = boardRepository.countNomatchClimbs()
             onProgress?.invoke(ImportStep.Done(
                 climbCount, statCount, layoutCount,
@@ -938,9 +942,19 @@ class BoardDatabaseImporter(
     // ── Progress model ───────────────────────────────────────────────
 
     sealed class ImportStep {
+        /** First-onboarding probe for a sender on the currently joined Wi-Fi. */
+        data object DiscoveringLocalShare : ImportStep()
+        /** Sender is folding, scrubbing and compressing its immutable DB copy. */
+        data object PreparingSnapshot : ImportStep()
         data object CheckingUpdate : ImportStep()
         data class Download(val bytesRead: Long, val totalBytes: Long) : ImportStep()
+        data class DownloadApk(val bytesRead: Long, val totalBytes: Long) : ImportStep()
+        /** Hash/integrity validation can take several seconds after a bar has
+         *  reached 100%; expose it so 100% never looks like a frozen transfer. */
+        data object VerifyingSnapshot : ImportStep()
+        data object VerifyingApk : ImportStep()
         data object Extract : ImportStep()
+        data class Decompress(val bytesRead: Long, val totalBytes: Long) : ImportStep()
 
         /** Fetching the Blossom manifest from Nostr relays. */
         data object FetchingManifest : ImportStep()
