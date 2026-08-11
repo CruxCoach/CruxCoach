@@ -128,18 +128,31 @@ androidApp/                # Android app (Jetpack Compose)
 
 ### Releases & CI (maintainer only)
 
-The release workflow (`.forgejo/workflows/release.yml`) runs **exclusively** on the maintainer's self-hosted Forgejo runner. Pull requests do **not** receive automated build or test feedback — the maintainer runs Gradle locally during review.
+The release workflow is `.github/workflows/release.yml`, and it runs **exclusively** on the maintainer's self-hosted runner — which is the whole reason GitHub Actions is acceptable for a signed release at all: the keystore stays on our own filesystem and never enters GitHub's secret store. `.forgejo/workflows/release.yml` is the Codeberg fallback and is **manual-trigger only** (`workflow_dispatch`), so a single merge cannot start two pipelines that would publish different bytes under one version number. Full rationale and migration order: [`docs/RELEASE_GITHUB.md`](docs/RELEASE_GITHUB.md).
 
-The runner expects two environment variables to be defined in its execution environment (e.g. via systemd `Environment=` directives or the runner's config file):
+Pull requests do **not** receive automated build or test feedback — the maintainer runs Gradle locally during review. Keep the self-hosted runner off pull-request triggers: it executes whatever a push contains, on the host that holds the signing key.
+
+The runner expects these environment variables in its execution environment (e.g. via systemd `Environment=` directives or the runner's config file):
 
 | Variable | Purpose |
 |----------|---------|
 | `CRUXCOACH_SECRETS_DIR` | Directory containing `local.properties`, `.signing/`, and `.env` for Zapstore publishing — kept outside the repo and never committed |
-| `ANDROID_SDK_ROOT` | Standard Android SDK location; the workflow auto-discovers `build-tools/<version>/apksigner` |
+| `ANDROID_SDK_ROOT` | Standard Android SDK location; the workflow auto-discovers `build-tools/<version>/apksigner` and `aapt2` |
+| `CRUXCOACH_APK_LOCAL_DIR` | Optional. Download-server APK directory; defaults to `~/cruxcoach-dlstats/apk` |
+| `CRUXCOACH_PAGES_DIR` | Optional. Website checkout whose `tools/publish-release.sh` refreshes the download links; defaults to `~/cruxcoach-pages` |
 
-The only repository secret used is `CODEBERG_TOKEN` (for creating Codeberg releases via the Forgejo API).
+Files the runner reads off its own filesystem, none of which is a forge secret:
 
-Forks running their own Forgejo runner can reproduce the workflow by providing equivalent secrets and an `ANDROID_SDK_ROOT`; the workflow itself contains no host-specific paths.
+| Path | Purpose |
+|------|---------|
+| `$CRUXCOACH_SECRETS_DIR/local.properties` | Build config, including `RELEASE_STORE_FILE` — beware the trap documented above: an empty value makes a release build fall back to debug signing **silently** |
+| `$CRUXCOACH_SECRETS_DIR/.signing/` | Release keystore |
+| `$CRUXCOACH_SECRETS_DIR/.env` | Zapstore publishing. Must define `SIGN_WITH` (`nsec1…`, `npub1…`, or a `bunker://` URL for a NIP-46 remote signer). See [`.env.example`](.env.example) |
+| `~/.config/cruxcoach/github-release-token` | Mode 600, `Contents: Read and write` on `CruxCoach/CruxCoach`. Authenticates both the GitHub API calls and the tag push. Override with `GITHUB_TOKEN` / `GITHUB_TOKEN_FILE`, or `GITHUB_RELEASE_TOKEN` for the dev-release cleanup step |
+
+**No GitHub repository secret is required, and none is load-bearing** — that is deliberate, so a GitHub-side compromise cannot reach the signing key or the publisher identity. The Codeberg fallback still uses one repository secret, `CODEBERG_TOKEN`, for creating Codeberg releases via the Forgejo API.
+
+Forks running their own runner can reproduce the workflow by providing the equivalent directories and an `ANDROID_SDK_ROOT`; the workflows themselves contain no host-specific paths.
 
 ### Customizing for forks
 

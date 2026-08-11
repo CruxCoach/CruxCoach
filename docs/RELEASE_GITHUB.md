@@ -1,0 +1,270 @@
+# Releasing on GitHub
+
+GitHub is the primary forge. A push to `main` runs
+`.github/workflows/release.yml` on a **self-hosted** runner: unit tests, a
+signed APK, the tag, the GitHub release with its SHA-256 sidecar, the Zapstore
+publish, and the website and download-server update.
+
+Codeberg is a fallback. `.forgejo/workflows/release.yml` still exists and still
+works, but it is no longer the path a release takes. Codeberg's ToU now bans
+predominantly LLM-generated projects, so its availability was never fully ours
+to schedule — that is the dependency this move sheds.
+
+## Why GitHub Actions is acceptable, given the signing key
+
+The standing objection to Actions was that it would put the release signing key
+into GitHub's secret store. That key is the one thing here whose loss or
+compromise cannot be undone: a rotation is only installable from 0.2.3 onwards,
+and only on Android 9+. Everything else in this system has a second path; the
+key does not.
+
+A **self-hosted runner** answers the objection rather than accepting it. The
+job runs on our own machine, reads the keystore from `$CRUXCOACH_SECRETS_DIR`
+on the local filesystem, and uploads nothing. The workflow declares
+`permissions: contents: read` and defines no secrets — nothing in the GitHub
+secret store is load-bearing, so a GitHub-side compromise cannot reach the key.
+
+The trade is different, not free: a self-hosted runner executes whatever a push
+to `main` or `dev` contains, on a host that holds the signing key. Keep the
+runner off pull-request triggers, and keep write access to those two branches
+as narrow as it is today.
+
+## One implementation, two callers
+
+`scripts/publish-github-release.sh` is the only place the release logic lives.
+The workflow **calls** it; it does not reimplement it. That matters because the
+subtle part is an ordering constraint, not a step list — see below — and an
+ordering constraint kept in two files is an ordering constraint that will
+eventually differ in one of them. The Forgejo workflow is where that duplicate
+used to be, which is the reason it is now marked fallback-only at the top.
+
+The same script is the **break-glass path**. Run by hand it takes an APK that
+is already built and signed on a machine we control and needs nothing but a
+token and a network path to GitHub — no forge has to be willing to run a
+pipeline for us:
+
+```bash
+./gradlew :androidApp:assembleRelease
+scripts/publish-github-release.sh v0.2.2 --dry-run     # refuses loudly, changes nothing
+scripts/publish-github-release.sh v0.2.2
+```
+
+## What the script refuses to do
+
+Before anything leaves the machine:
+
+- the APK is not signed by `EXPECTED_SIGNERS` — a wrong keystore would produce
+  a release that every existing install silently rejects through the TOFU pin,
+  and the rejection would only surface much later
+- v3 signing is off — a future key rotation would be uninstallable
+- `versionName` does not match the tag's base version — the updater compares
+  the version it reads, not the file name, so 0.2.1 bytes under a `v0.2.2` tag
+  would install and then never update again
+
+"Base version" means everything before the first `-`: dev builds are tagged
+`v0.2.2-dev.<sha>` while `versionName` stays `0.2.2`, because the suffix
+identifies the build and not the version the APK reports.
+
+It uploads the `.sha256` sidecar **before** the APK. The updater ignores a
+release unless both assets exist, so a run that dies between the two must not
+leave "APK present, sidecar missing": that looks complete to a human, is
+invisible to every in-app updater, and the tag already exists to block a
+rebuild. Afterwards it reads the release back and compares the stored asset
+size against the bytes sent — names alone would not catch a truncated upload.
+
+Re-running is safe: an existing release is reused and same-named assets are
+replaced.
+
+## Authentication: one token, no SSH
+
+`~/.config/cruxcoach/github-release-token`, mode 600, with
+`Contents: Read and write` on `CruxCoach/CruxCoach`. Override with
+`GITHUB_TOKEN` or `GITHUB_TOKEN_FILE`. The runner runs as the same user, so it
+finds the file itself and nothing has to be handed to it.
+
+The same token authenticates the API calls **and** the tag push. The push
+therefore goes over HTTPS, not SSH, and that is deliberate: `~/.ssh/config`
+pins `github.com` to `id_ed25519_github_pages` with `IdentitiesOnly yes`, and
+that key is a deploy key for `CruxCoach.github.io` alone. An SSH push to
+`CruxCoach/CruxCoach` fails with "Repository not found", which reads like a
+missing repository rather than a missing permission — the wrong thing to be
+debugging in the middle of a release.
+
+The token never appears in the process list (curl reads the `Authorization`
+header from a file descriptor; git gets it through the environment of a
+one-shot credential helper) and never lands in `.git/config` — the `github`
+remote is stored credential-free, because a URL with an embedded token outlives
+the run and travels into every backup.
+
+## Zapstore signing: which methods can work in CI
+
+`zsp` signs the release event with whatever `SIGN_WITH` names. Four forms
+exist, and only some of them can work on a headless runner:
+
+| `SIGN_WITH` | Headless? | Notes |
+|---|---|---|
+| `nsec1…` | yes | Publisher key in the clear, wherever the value is stored |
+| `bunker://…` | yes, *if* the signer auto-approves | NIP-46 remote signer. CI holds a revocable connection token, not the key |
+| `npub1…` | only with a reachable remote signer for that pubkey | Same NIP-46 path, discovered rather than given |
+| `browser` | **no** | NIP-07, wants a human at a browser window |
+
+**Amber is not part of this pipeline and never was.** It is an Android NIP-46
+signer, so it could in principle serve a `bunker://` URL — but it would have to
+be online and approve every release from a phone, which is a moving part in the
+one step that must not need a human at 02:00. Amber appears in this project as
+the *user's* identity signer inside the app (backups, profile, DMs); that is
+unrelated to publishing.
+
+What the workflow does: it reads `$CRUXCOACH_SECRETS_DIR/.env` off the runner's
+own filesystem and exports the variables into the publish step's environment.
+Deliberately **not** a GitHub secret — same reasoning as the keystore, so that
+nothing in GitHub's secret store is load-bearing for a release. Deliberately
+**not** copied to `./.env` either: a job killed with SIGKILL runs no `trap`, and
+the workspace is reused between jobs on a self-hosted runner, so a copy left
+in the tree would be read by the next release — potentially signing it with a
+superseded key. The step removes any such leftover before publishing, requires
+`SIGN_WITH` to be non-empty (an empty value makes `zsp --quiet` fail late,
+after the GitHub release is already public and immutable), and masks the value
+in the log.
+
+## Release notes are checked before the keystore is touched
+
+`RELEASE_NOTES.md` is the GitHub release body *and* the Zapstore
+`release_notes`, and `changelog-extract.sh` matches on the `## [<version>]`
+prefix — so a section still headed *Unreleased* extracts cleanly and publishes
+the word to both, plus the in-app "what's new". The tag then exists and blocks
+a rebuild.
+
+The workflow therefore refuses, on `main`, before copying the signing config:
+the changelog section for the version must exist and be non-empty, and neither
+its heading nor the first line of `RELEASE_NOTES.md` may still say
+*Unreleased* or *TBD*. It also requires the notes heading to mention the
+version, which catches the opposite mistake — last release's notes under a new
+tag. Dev prereleases are exempt: they are built from in-progress text on
+purpose.
+
+## Migration order
+
+The steps below are ordered, and the order is the load-bearing part.
+
+1. **Register the self-hosted runner** on `github.com/CruxCoach/CruxCoach`,
+   as the same user that holds `$CRUXCOACH_SECRETS_DIR` and the release token.
+2. **Turn the Codeberg push mirror off.** A Forgejo push mirror syncs with
+   `--mirror` semantics: it makes the target match the source and **deletes
+   refs on the target that the source does not have**. While it is running,
+   the first tag pushed directly to GitHub is a ref Codeberg does not know
+   about, and the next mirror run removes it — together with the release that
+   hangs off it. The mirror must be off *before* anything is pushed straight
+   to GitHub, not merely before the switch is announced.
+3. **Publish one release to GitHub** and confirm it has both assets.
+4. **Only then**, flip the updater source list — next section.
+
+## Then, and only then: enable the source
+
+`update-sources.json` in `cruxcoach-pages` carries a `github` entry with
+`enabled: false`. Flip it once the release exists:
+
+```bash
+curl -s -H 'User-Agent: cruxcoach-check' \
+  https://api.github.com/repos/CruxCoach/CruxCoach/releases \
+  | python3 -c "import json,sys; print(len(json.load(sys.stdin)), 'releases')"
+```
+
+Enabling it earlier is worse than leaving it out. An empty releases endpoint
+answers every check with "no releases", and the sweep counts that as a healthy
+source that happens to have no update — nothing is logged as wrong while the
+source insures nothing.
+
+Existing 0.2.2 installs pick the change up within the 24 h manifest TTL. Doing
+this **while Codeberg still works** is the point: adding the replacement after
+the old host is gone is a race against every install that has not refreshed.
+
+The website's nightly `tools/update-download-link.mjs` has the same ordering
+condition for a different reason: it reads `releases/latest`, which answers
+**404** on a repository with no releases. That is a loud failure rather than a
+quiet one — the script exits non-zero and the previous links stay — but it will
+run red every night until the first GitHub release exists.
+
+## The mirror, afterwards: GitHub → Codeberg
+
+Reversing the mirror keeps Codeberg as a readable second home for the code, but
+it does **not** give Codeberg the releases. Forgejo mirrors git refs —
+branches, tags, commits — and not releases or their assets. Forgejo's own
+feature request for continuous release mirroring was closed as out of scope,
+with third-party tooling named as the answer.
+
+This repository already demonstrates it: GitHub carries **9 tags** mirrored
+from Codeberg and **0 releases**, while Codeberg has five releases with their
+APK and `.sha256` assets. Tags crossed; releases never did.
+
+So a pull mirror on Codeberg would leave `codeberg.org/CruxCoach/CruxCoach`
+showing current code under a releases tab that stops at v0.2.1. Two ways to
+avoid advertising a dead download path:
+
+1. Let the tags mirror and point Codeberg's release story at GitHub — a line in
+   the README, and nothing in `update-sources.json` claiming Codeberg serves
+   0.2.2+. The in-app updater asks every configured source and takes the
+   highest version, so a Codeberg entry that has no new release is merely a
+   wasted request, not a failure.
+2. Publish to both from the runner. That means the Forgejo pipeline's
+   Codeberg-release step, driven by hand after a GitHub release — the
+   `workflow_dispatch` fallback already does exactly this, including the
+   sidecar-before-APK ordering. Cost: a second build of the same version,
+   which is **not** byte-identical, so the two forges would serve APKs with
+   different hashes under one version number. Only do this if a second
+   download path matters more than one hash per version.
+
+Keeping the old direction (Codeberg → GitHub) running is not an option once
+GitHub is primary: a Forgejo push mirror pushes with `--mirror` semantics, so
+it makes the target match the source and deletes refs the source does not have.
+The first tag pushed straight to GitHub is exactly such a ref, and the next
+mirror run would remove it along with the release hanging off it.
+
+## For 0.2.3
+
+Move the compiled-in default (`UPDATER_API_BASE` in `androidApp/build.gradle.kts`)
+to `https://api.github.com`, so fresh installs do not depend on the runtime list
+at all. Keep Codeberg in `update-sources.json` for as long as it answers — the
+sweep asks every source and takes the highest version, so a second forge costs
+one request and buys a fallback.
+
+## Known differences between the two forges
+
+Both were checked against the shipped client on 2026-08-07 and are covered by
+`ForgeSourceGitHubCompatTest`:
+
+| | Forgejo (Codeberg) | GitHub |
+|---|---|---|
+| API root | `https://codeberg.org/api/v1` | `https://api.github.com` |
+| Web host for assets | same host | `github.com`, not `api.github.com` |
+| Page size parameter | `limit` | `per_page` |
+| Asset upload | multipart `attachment=` | raw body to `uploads.github.com` |
+| Missing User-Agent | tolerated | **403** |
+| Deleting a release | removes the tag too | leaves the tag; delete `git/refs/tags/:tag` separately |
+| `releases/latest`, none published | `404` | `404` (and `releases` returns `[]`) |
+
+The client sends both page-size parameters and always sets a User-Agent.
+
+Unauthenticated GitHub API calls are limited to 60 per hour per IP. A device
+checking every two hours is far below that; a large gym behind one carrier NAT
+could in principle approach it, at which point the sweep simply falls through to
+the other sources — it is a degradation, not an outage.
+
+## While both pipelines exist
+
+Only one of them may publish a given version. They would each build the tag,
+and the second to finish would publish different bytes under a version number
+that is already in the field — the builds are not reproducible byte-for-byte.
+
+This used to be an instruction rather than a guarantee: both workflows
+triggered on a push to `main`, and while the mirror is running a single merge
+reaches both forges. The Forgejo workflow is therefore now
+**`workflow_dispatch` only** — the race is gone because nothing starts the
+second pipeline by itself. Arm the fallback by hand when you need it:
+
+Codeberg → the repository → **Actions** → **Release** → **Run workflow**,
+with `main` selected.
+
+That is a property of the file, so it holds even if someone re-enables the
+mirror or forgets step 2 below. Switching the mirror off is still required, for
+the separate reason in step 2 (it would delete tags pushed straight to GitHub).

@@ -1,41 +1,48 @@
 name: Release
 
-# NOT THE PRIMARY RELEASE PATH ANY MORE.
+# The primary release pipeline. Ported from .forgejo/workflows/release.yml,
+# which is kept as a fallback until the Codeberg mirror is switched off.
 #
-# .github/workflows/release.yml took over when the project moved to GitHub as
-# its primary forge. This file is kept, and kept working, as the fallback for
-# as long as the Codeberg push mirror is still running — losing GitHub should
-# cost a re-point, not a rebuild of the pipeline.
-#
-# Two consequences worth knowing before editing anything here:
-#
-#   * The release logic below is the OLD duplicate. The GitHub workflow calls
-#     scripts/publish-github-release.sh instead of inlining it, precisely so
-#     that the subtle part — sidecar uploaded BEFORE the APK — lives in one
-#     place. Do not copy fixes from here to there; make them in the script.
-#   * Only one of the two pipelines may publish a given version. They would
-#     otherwise both build the tag, and the second one to finish would publish
-#     different bytes under a version number that is already in the field.
-#
-# Retiring it: delete this file only once the push mirror is off and GitHub
-# has served at least one full release. See docs/RELEASE_GITHUB.md.
+# WHY ACTIONS IS ACCEPTABLE NOW
+# The standing objection to GitHub Actions was the release signing key: a
+# hosted runner would mean putting it into GitHub's secret store, and the key
+# is the one thing here whose compromise cannot be undone (a rotation is only
+# installable from 0.2.3 onwards, and only on Android 9+). This job runs on a
+# SELF-HOSTED runner, so the key stays on our own filesystem under
+# $CRUXCOACH_SECRETS_DIR and is never uploaded anywhere. No secret in this
+# workflow, and none configured in the repository, is load-bearing.
 
-# MANUAL TRIGGER ONLY — this is what makes "secondary" true rather than merely
-# documented. The note above (only one pipeline may publish a given version)
-# used to be an instruction to a human: both files triggered on a push to
-# main, and while the Codeberg -> GitHub mirror is running a single merge
-# reaches both forges. Both would build the tag, and the second to finish
-# would publish DIFFERENT bytes under a version number that is already in the
-# field — the builds are not reproducible byte-for-byte. A comment cannot
-# prevent that; removing the push trigger can.
-#
-# So the fallback is now armed by hand: run it from the Codeberg UI
-# (Actions -> Release -> Run workflow) when GitHub cannot serve a release.
-# `paths-ignore` went with the push trigger — it only ever existed to stop
-# documentation commits from firing a build, and nothing fires this by itself
-# any more.
 on:
-  workflow_dispatch:
+  push:
+    branches: [main, dev]
+    # A release is an APK build, a tag and a Zapstore publish. Commits that
+    # cannot change the artefact must not start one — a README fix used to
+    # be enough to fire the whole pipeline, which is why documentation ends
+    # up bundled into release branches instead of landing on its own.
+    # Note the semantics: this skips a push only when *every* changed file
+    # matches, so a real release commit still triggers even though it also
+    # touches the changelog.
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
+
+# Nothing here writes through the automatic GITHUB_TOKEN. Releases, assets and
+# the tag push all authenticate with the maintainer token that the runner reads
+# off its own filesystem, so the job token only needs to clone.
+permissions:
+  contents: read
+
+# Two release runs must never overlap. They share one self-hosted runner, one
+# workspace and one tag: the second checkout would move the tree under the
+# first one's Gradle build, and both would try to publish the same version.
+# Queue instead of cancelling — a run that has already created the release and
+# is mid-Zapstore-publish must be allowed to finish, or it leaves a release
+# whose Zapstore half never happened.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   release:
@@ -88,6 +95,58 @@ jobs:
             echo "skip=false" >> "$GITHUB_OUTPUT"
             echo "New release: $RELEASE_NAME"
           fi
+
+      # A release whose notes still say "Unreleased" is what this catches, and
+      # nothing else in the pipeline would. scripts/publish-github-release.sh
+      # passes RELEASE_NOTES.md through verbatim as the release body, and
+      # zapstore.yaml points `release_notes` at the same file, so one stale
+      # heading reaches the GitHub release, the Zapstore listing and the in-app
+      # "what's new" together — and the tag then exists and blocks a rebuild.
+      # changelog-extract.sh matches on the `## [<version>]` prefix, so it is
+      # perfectly happy to extract a section headed "Unreleased".
+      #
+      # Placed before the signing config is copied: a text mistake should fail
+      # the run while the keystore is still untouched.
+      #
+      # main only. A dev prerelease is deliberately built from in-progress text.
+      - name: Check release notes match the version
+        if: steps.version.outputs.skip == 'false' && steps.version.outputs.branch == 'main'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          # Absent heading and mistyped version look the same to this script,
+          # so it doubles as a check that the version marker was updated at all.
+          BODY="$(scripts/changelog-extract.sh "$VERSION")" \
+            || { echo "::error::CHANGELOG.md has no '## [$VERSION]' section"; exit 1; }
+          [ -n "$(printf '%s' "$BODY" | tr -d '[:space:]')" ] \
+            || { echo "::error::the CHANGELOG.md section for $VERSION is empty"; exit 1; }
+
+          HEADING="$(grep -m1 "^## \[${VERSION}\]" CHANGELOG.md || true)"
+          case "$HEADING" in
+            *Unreleased*|*unreleased*|*TBD*)
+              echo "::error::CHANGELOG.md still reads '$HEADING' — put the release date there"
+              exit 1;;
+          esac
+
+          [ -f RELEASE_NOTES.md ] || {
+            echo "::error::RELEASE_NOTES.md is missing — it is both the release body and the Zapstore release_notes"
+            exit 1
+          }
+          NOTES_HEADING="$(head -1 RELEASE_NOTES.md)"
+          case "$NOTES_HEADING" in
+            *Unreleased*|*unreleased*|*TBD*)
+              echo "::error::RELEASE_NOTES.md still reads '$NOTES_HEADING' — put the release date there"
+              exit 1;;
+          esac
+          # Catches the other direction: last release's notes under a new tag.
+          case "$NOTES_HEADING" in
+            *"$VERSION"*) ;;
+            *) echo "::error::RELEASE_NOTES.md heading does not mention $VERSION: '$NOTES_HEADING'"; exit 1;;
+          esac
+
+          echo "Release notes and changelog both look like $VERSION"
 
       - name: Copy signing config
         if: steps.version.outputs.skip == 'false'
@@ -160,6 +219,10 @@ jobs:
             "$APK"
           echo "Re-signed with rotated key + lineage"
 
+      # scripts/publish-github-release.sh repeats these checks before it
+      # uploads anything, deliberately: it is also the by-hand path and cannot
+      # assume a pipeline ran first. Keeping them here too means a bad build
+      # fails at the build stage, annotated, instead of at the publish stage.
       - name: Verify APK signature
         if: steps.version.outputs.skip == 'false'
         run: |
@@ -180,7 +243,8 @@ jobs:
 
           # Pin the expected signer so a wrong keystore on the runner cannot
           # ship silently. On a deliberate rotation, update EXPECTED_SIGNERS
-          # in the same commit that provisions lineage.bin.
+          # in the same commit that provisions lineage.bin — in BOTH this file
+          # and scripts/publish-github-release.sh.
           EXPECTED_SIGNERS="7f8308e8fe25e41aad0c7f0ac087775acd7d8c6a23da3a824212a8f3fe1bc2c4"
           MATCHED=0
           for want in $EXPECTED_SIGNERS; do
@@ -191,145 +255,121 @@ jobs:
 
           echo "APK verified successfully (v3 on, signer as expected)"
 
-      - name: Delete old dev release
+      # Dev prereleases are per-commit (v<version>-dev.<sha>), so without a
+      # sweep they accumulate for ever. Deleting the release does not delete
+      # its tag on GitHub — that is a second call, and the orphan-tag pass
+      # below catches tags left behind by runs that died in between.
+      #
+      # The tag being built right now is excluded: a re-run of the same commit
+      # must repair its release, not destroy and recreate it.
+      - name: Delete old dev releases
         if: steps.version.outputs.skip == 'false' && steps.version.outputs.branch == 'dev'
         env:
-          CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN }}
+          KEEP_TAG: ${{ steps.version.outputs.tag }}
+          REPO_SLUG: ${{ github.repository }}
         run: |
-          API="https://codeberg.org/api/v1/repos/CruxCoach/CruxCoach"
+          set -euo pipefail
+          API="https://api.github.com/repos/${REPO_SLUG}"
 
-          # Delete existing dev releases (by tag pattern, regardless of prerelease flag)
-          RELEASES=$(curl -s -H "Authorization: token ${CODEBERG_TOKEN}" \
-            "${API}/releases?limit=50")
-          echo "$RELEASES" | sed 's/},{/}\n{/g' | while read -r entry; do
-            OLD_TAG=$(echo "$entry" | sed -n 's/.*"tag_name":"\([^"]*\)".*/\1/p')
-            echo "$OLD_TAG" | grep -q '\-dev\.' || continue
-            OLD_ID=$(echo "$entry" | grep -o '"id":[0-9]*' | head -1 | grep -o '[0-9]*')
-            DEL_CODE=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE \
-              -H "Authorization: token ${CODEBERG_TOKEN}" "${API}/releases/${OLD_ID}")
-            echo "Deleted dev release: $OLD_TAG (ID: $OLD_ID) → $DEL_CODE"
-            TAG_DEL=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE \
-              -H "Authorization: token ${CODEBERG_TOKEN}" "${API}/tags/${OLD_TAG}")
-            echo "Deleted tag: $OLD_TAG → $TAG_DEL"
+          # Same token, same lookup order as scripts/publish-github-release.sh.
+          # It is read off the runner's filesystem rather than out of GitHub's
+          # secret store, so this workflow needs no configured secrets at all.
+          TOKEN="${GITHUB_RELEASE_TOKEN:-}"
+          TOKEN_PATH="${GITHUB_TOKEN_FILE:-$HOME/.config/cruxcoach/github-release-token}"
+          if [ -z "$TOKEN" ] && [ -f "$TOKEN_PATH" ]; then
+            TOKEN="$(tr -d ' \t\r\n' < "$TOKEN_PATH")"
+          fi
+          [ -n "$TOKEN" ] || { echo "::error::no release token at $TOKEN_PATH"; exit 1; }
+
+          # curl reads the header from stdin so the token never appears in the
+          # process list, where every other process on the runner could read it.
+          gh_curl() {
+            curl -sS --max-time 60 \
+              -H @<(printf 'Authorization: Bearer %s\n' "$TOKEN") \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              -H "User-Agent: cruxcoach-release/1.0" \
+              "$@"
+          }
+
+          # Parsed with python3, not sed. The Forgejo version split the JSON on
+          # '},{' and pulled fields out with regexes; that survives only as long
+          # as the API keeps its exact field order, and a mis-parse here deletes
+          # the wrong release.
+          # The inline Python below is indented to the block-scalar margin on
+          # purpose: YAML strips exactly that margin, so the interpreter sees
+          # it at column 0. Un-indenting it here would end the block scalar.
+          gh_curl "${API}/releases?per_page=100" | python3 -c '
+          import json, sys
+          keep = sys.argv[1]
+          for r in json.load(sys.stdin):
+              tag = r.get("tag_name", "")
+              if "-dev." in tag and tag != keep:
+                  print(r["id"], tag)
+          ' "$KEEP_TAG" | while read -r OLD_ID OLD_TAG; do
+            CODE=$(gh_curl -o /dev/null -w '%{http_code}' -X DELETE "${API}/releases/${OLD_ID}")
+            echo "Deleted dev release: $OLD_TAG (id $OLD_ID) -> $CODE"
           done
 
-          # Clean up orphan dev tags (from previous failed runs)
-          TAGS=$(curl -s -H "Authorization: token ${CODEBERG_TOKEN}" "${API}/tags?limit=50")
-          echo "$TAGS" | sed 's/},{/}\n{/g' | while read -r entry; do
-            OLD_TAG=$(echo "$entry" | sed -n 's/.*"name":"\([^"]*\)".*/\1/p')
-            echo "$OLD_TAG" | grep -q '\-dev\.' || continue
-            TAG_DEL=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE \
-              -H "Authorization: token ${CODEBERG_TOKEN}" "${API}/tags/${OLD_TAG}")
-            echo "Deleted orphan dev tag: $OLD_TAG → $TAG_DEL"
+          # Orphan dev tags, including any the Codeberg mirror pushed here
+          # while it was still running.
+          gh_curl "${API}/tags?per_page=100" | python3 -c '
+          import json, sys
+          keep = sys.argv[1]
+          for t in json.load(sys.stdin):
+              name = t.get("name", "")
+              if "-dev." in name and name != keep:
+                  print(name)
+          ' "$KEEP_TAG" | while read -r OLD_TAG; do
+            CODE=$(gh_curl -o /dev/null -w '%{http_code}' -X DELETE "${API}/git/refs/tags/${OLD_TAG}")
+            echo "Deleted orphan dev tag: $OLD_TAG -> $CODE"
           done
           echo "Cleanup done"
 
-      - name: Create Codeberg release
+      # One implementation of "publish a release", called from here and usable
+      # by hand. The script pushes the tag, creates the release, uploads the
+      # SHA-256 sidecar BEFORE the APK, and reads the result back to compare
+      # stored asset sizes against the bytes sent. That ordering is the subtle
+      # part — the updater ignores a release unless both assets exist — and it
+      # is the reason this step is a call and not a copy.
+      #
+      # The token comes from the runner's filesystem; nothing is passed in.
+      - name: Create GitHub release
         if: steps.version.outputs.skip == 'false'
         env:
-          CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+          PRERELEASE: ${{ steps.version.outputs.prerelease }}
+          REPO_SLUG: ${{ github.repository }}
         run: |
           set -euo pipefail
-          TAG="${{ steps.version.outputs.tag }}"
-          NAME="${{ steps.version.outputs.release_name }}"
-          PRERELEASE="${{ steps.version.outputs.prerelease }}"
-          APK="androidApp/build/outputs/apk/release/androidApp-release.apk"
-          API="https://codeberg.org/api/v1/repos/CruxCoach/CruxCoach"
+          ARGS=(--repo "$REPO_SLUG")
+          # Release notes come from the tagged working tree, so the release
+          # body says the same thing the in-app "what's new" does.
+          if [ -f RELEASE_NOTES.md ]; then
+            ARGS+=(--notes-file RELEASE_NOTES.md)
+          fi
+          # Written out rather than `[ ... ] && ARGS+=(...)`: under `set -e` a
+          # false test as the last statement of the step would fail the job.
+          if [ "$PRERELEASE" = "true" ]; then
+            ARGS+=(--prerelease)
+          fi
+          scripts/publish-github-release.sh "$TAG" "${ARGS[@]}"
 
-          # Sanitize prerelease to valid JSON bool
-          case "$PRERELEASE" in true|false) ;; *) PRERELEASE=false ;; esac
-
-          # Push tag via git
-          git config user.name "CruxCoach CI"
-          git config user.email "ci@cruxcoach.local"
-          REMOTE_URL="https://x-access-token:${CODEBERG_TOKEN}@codeberg.org/CruxCoach/CruxCoach.git"
-          # Delete tag if it exists (from a previous failed run)
-          git tag -d "$TAG" 2>/dev/null || true
-          git push "$REMOTE_URL" ":refs/tags/$TAG" 2>/dev/null || true
-          curl -sS -o /dev/null -X DELETE \
-            -H "Authorization: token ${CODEBERG_TOKEN}" \
-            "${API}/tags/${TAG}"
-          git tag "$TAG"
-          git push "$REMOTE_URL" "$TAG"
-
-          # Create release via minimal POST + PATCH (full POST triggers
-          # intermittent Forgejo 500). Retry on transient failures.
-          for ATTEMPT in 1 2 3; do
-            HTTP_CODE=$(curl -sS -o /tmp/release.json -w '%{http_code}' \
-              -X POST "${API}/releases" \
-              -H "Authorization: token ${CODEBERG_TOKEN}" \
-              -H "Content-Type: application/json" \
-              -d "{\"tag_name\":\"$TAG\"}")
-            [ "$HTTP_CODE" = "201" ] && break
-            sleep 3
-          done
-          [ "$HTTP_CODE" = "201" ] || { cat /tmp/release.json; exit 1; }
-
-          RELEASE_ID=$(grep -o '"id":[0-9]*' /tmp/release.json | head -1 | grep -o '[0-9]*')
-
-          # Set name, body, and prerelease flag
-          PATCH_CODE=$(curl -sS -o /dev/null -w '%{http_code}' \
-            -X PATCH "${API}/releases/${RELEASE_ID}" \
-            -H "Authorization: token ${CODEBERG_TOKEN}" \
-            -H "Content-Type: application/json" \
-            -d "$(printf '{"name":"%s","body":"Release %s","prerelease":%s}' \
-              "$NAME" "$NAME" "$PRERELEASE")")
-          [ "$PATCH_CODE" = "200" ] || { echo "PATCH failed: $PATCH_CODE"; exit 1; }
-
-          # Generate SHA-256 sidecar in coreutils `sha256sum` format.
-          # Required by in-app UpdateChecker (rejects releases without .apk.sha256).
-          SHA_FILE="${APK}.sha256"
-          (cd "$(dirname "$APK")" && sha256sum "$(basename "$APK")" > "$(basename "$APK").sha256")
-
-          # Upload SHA-256 sidecar FIRST, then the APK. The updater ignores a
-          # release unless BOTH assets exist, so a job that dies between the
-          # two uploads must not leave the deceptive state "APK present,
-          # sidecar missing" — that looks complete to a human but is invisible
-          # to every in-app updater, and the existing tag stops CI from
-          # rebuilding it. With the tiny sidecar first, the long risky APK
-          # upload is the last step: if it fails, the run is red and the
-          # release is obviously incomplete. Both uploads retry transient
-          # failures like the release POST above.
-          upload_asset() {
-            local FILE="$1" FILENAME="$2" CODE
-            for ATTEMPT in 1 2 3; do
-              CODE=$(curl -sS -o /tmp/asset_upload.json -w '%{http_code}' -X POST \
-                -H "Authorization: token ${CODEBERG_TOKEN}" \
-                -F "attachment=@${FILE};filename=${FILENAME}" \
-                "${API}/releases/${RELEASE_ID}/assets")
-              [ "$CODE" = "201" ] && return 0
-              echo "Upload of ${FILENAME} failed (attempt ${ATTEMPT}): ${CODE}"
-              cat /tmp/asset_upload.json
-              sleep 3
-            done
-            return 1
-          }
-          upload_asset "$SHA_FILE" "CruxCoach-${TAG}.apk.sha256" || exit 1
-          upload_asset "$APK" "CruxCoach-${TAG}.apk" || exit 1
-
-          # Post-verify: read the release back and require BOTH asset names.
-          # Catches every remaining partial-upload path loudly instead of
-          # shipping a release the updater silently rejects.
-          ASSETS=$(curl -sS -H "Authorization: token ${CODEBERG_TOKEN}" \
-            "${API}/releases/${RELEASE_ID}" | grep -o '"name":"[^"]*"')
-          echo "$ASSETS" | grep -q "CruxCoach-${TAG}.apk\"" \
-            || { echo "Post-verify: APK asset missing"; exit 1; }
-          echo "$ASSETS" | grep -q "CruxCoach-${TAG}.apk.sha256" \
-            || { echo "Post-verify: sha256 sidecar missing"; exit 1; }
-
-          echo "Release $NAME published with APK + SHA-256 sidecar (verified)"
-
-      # A previous run may have completed Codeberg and then failed while
+      # A previous run may have completed the release and then failed while
       # publishing the mirror. Re-use that exact tagged APK so a retry can
       # repair Zapstore without rebuilding different bytes under the same
       # version number.
       - name: Prepare existing release for Zapstore repair
         if: steps.version.outputs.skip == 'true' && steps.version.outputs.branch == 'main'
+        env:
+          REPO_SLUG: ${{ github.repository }}
         run: |
           set -euo pipefail
           TAG="${{ steps.version.outputs.tag }}"
           APK="androidApp/build/outputs/apk/release/androidApp-release.apk"
-          BASE="https://codeberg.org/CruxCoach/CruxCoach/releases/download/${TAG}"
+          # Release assets are served from github.com, not api.github.com, and
+          # need no token on a public repository.
+          BASE="https://github.com/${REPO_SLUG}/releases/download/${TAG}"
           mkdir -p "$(dirname "$APK")"
 
           curl --fail --location --retry 4 --retry-all-errors \
@@ -340,7 +380,7 @@ jobs:
             "${BASE}/CruxCoach-${TAG}.apk.sha256" | awk '/^[0-9a-fA-F]{64}/ { print tolower($1); exit }')
           ACTUAL_SHA=$(sha256sum "$APK" | awk '{ print $1 }')
           if [ -z "$EXPECTED_SHA" ] || [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
-            echo "::error::Existing Codeberg APK does not match its SHA-256 sidecar"
+            echo "::error::Existing GitHub release APK does not match its SHA-256 sidecar"
             exit 1
           fi
 
@@ -359,7 +399,17 @@ jobs:
           APK_SIZE=$(stat -c '%s' "$APK")
           CDN_URL="https://cdn.zapstore.dev/${APK_SHA}"
           CDN_APK=$(mktemp)
-          trap 'rm -f .env "$CDN_APK"' EXIT
+          trap 'rm -f "$CDN_APK"' EXIT
+
+          # zsp reads .env from the working directory when it is there, and it
+          # takes precedence over nothing — it simply supplies the variables. A
+          # copy left behind in the workspace by a run that was SIGKILLed (a
+          # trap does not fire for that) would therefore be picked up silently
+          # by the next release, and could sign it with a superseded key. The
+          # workspace is reused across jobs on a self-hosted runner, so remove
+          # any such leftover before publishing rather than trusting that none
+          # exists. This workflow never creates one — see below.
+          rm -f .env
 
           verify_cdn_apk() {
             rm -f "$CDN_APK"
@@ -375,8 +425,42 @@ jobs:
             exit 0
           fi
 
+          # ---- Zapstore signing ------------------------------------------
+          # zsp signs the release event with whatever SIGN_WITH names: an nsec,
+          # an npub or a bunker:// URL for a NIP-46 remote signer, or `browser`
+          # for NIP-07. Only the first three can work here at all — `browser`
+          # wants a human at a browser window, and Amber is an Android NIP-46
+          # signer that would have to approve every run from a phone. Amber is
+          # therefore NOT part of this pipeline and never was; it signs *user*
+          # identities inside the app, which is unrelated work.
+          #
+          # The value is read out of the runner's own filesystem, deliberately
+          # NOT out of GitHub's secret store — same reasoning as the keystore
+          # (see the header): nothing in the GitHub secret store is load-bearing
+          # for a release, so a GitHub-side compromise cannot sign as us.
+          #
+          # It is exported into this step's environment instead of being copied
+          # to ./.env, so the publisher key never lands in the git worktree,
+          # where a killed job would leave it for every later job to read. zsp
+          # documents the environment as the interface and advises against
+          # keeping the value in files.
           : "${CRUXCOACH_SECRETS_DIR:?CRUXCOACH_SECRETS_DIR must be set on the runner}"
-          cp "$CRUXCOACH_SECRETS_DIR/.env" .env
+          ZAPSTORE_ENV="$CRUXCOACH_SECRETS_DIR/.env"
+          [ -f "$ZAPSTORE_ENV" ] \
+            || { echo "::error::$ZAPSTORE_ENV is missing — see .env.example and CONTRIBUTING.md 'Releases & CI (maintainer only)'"; exit 1; }
+          set -a
+          # shellcheck disable=SC1090
+          . "$ZAPSTORE_ENV"
+          set +a
+          # An empty SIGN_WITH makes zsp stop and ask, which in --quiet mode is
+          # a hang or a bare failure well after the release is already public.
+          # Fail here, where the diagnosis is in the message.
+          [ -n "${SIGN_WITH:-}" ] \
+            || { echo "::error::SIGN_WITH is not set in $ZAPSTORE_ENV — Zapstore cannot sign the release"; exit 1; }
+          # Belt and braces: keep it out of the log if zsp ever echoes it back.
+          echo "::add-mask::$SIGN_WITH"
+          export SIGN_WITH
+
           PUBLISHED=false
           for ATTEMPT in 1 2 3; do
             echo "Zapstore publish attempt $ATTEMPT/3..."
@@ -434,7 +518,7 @@ jobs:
               echo "Local APK copy installed: $APK_DIR/CruxCoach-v${VERSION}.apk"
             else
               rm -f "$TMP"
-              echo "::warning::Could not install the local APK copy — the selector falls back to Codeberg"
+              echo "::warning::Could not install the local APK copy — the selector falls back to the forge"
             fi
           fi
 
