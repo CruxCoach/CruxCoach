@@ -188,9 +188,9 @@ CruxCoach is not affiliated with Kilter, LLC or Aurora Climbing. See [LEGAL.md](
 ## Support
 
 - **Bug Reports**: [Codeberg Issues](https://codeberg.org/CruxCoach/CruxCoach/issues) or in-app via Settings
-- **Donate** (upstream maintainer): Lightning `cruxcoach@npub.cash`
+- **Donate** (upstream maintainer): Lightning `npub1uadpshqpn5ysf82lev8zngkvn07szmkq7mvf9lyc7ml7qxq6fqxsmrqt2s@npub.cash`
 
-  <img src="docs/lightning-qr.png" alt="Lightning: cruxcoach@npub.cash" width="180">
+  <img src="docs/lightning-qr.png" alt="Lightning: npub1uadpshqpn5ysf82lev8zngkvn07szmkq7mvf9lyc7ml7qxq6fqxsmrqt2s@npub.cash" width="220">
 
   > Forks: this address routes to the upstream maintainer. Replace it via
   > `local.properties` before publishing your build — see

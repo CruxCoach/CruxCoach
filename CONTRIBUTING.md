@@ -169,7 +169,7 @@ following keys to `local.properties` — no source edits required:
 | `local.properties` key | What it sets | Default |
 |------------------------|--------------|---------|
 | `MAINTAINER_PUBKEY` | Recipient hex pubkey for in-app crash reports, dev-contact DMs, and announcement subscriptions | upstream maintainer |
-| `MAINTAINER_LIGHTNING_ADDRESS` | Lightning address shown for upstream-style donation flows | `cruxcoach@npub.cash` |
+| `MAINTAINER_LIGHTNING_ADDRESS` | Lightning address shown for upstream-style donation flows | `npub1uadpshqpn5ysf82lev8zngkvn07szmkq7mvf9lyc7ml7qxq6fqxsmrqt2s@npub.cash` |
 | `MAINTAINER_KOFI_URL` | Ko-fi donation link surfaced in the Payments UI | `https://ko-fi.com/cruxcoach` |
 | `ANNOUNCE_NAMESPACE` | Nostr `L`/`l` tag namespace for announcement events | `com.cruxcoach.announce` — change this when you fork to avoid notification cross-talk with upstream users |
 | `UPDATER_API_BASE` | Forge API root for the *compiled-in default* forge source. Works for Forgejo/Gitea (`https://<host>/api/v1`) and for GitHub (`https://api.github.com`) — their release JSON is field-compatible | `https://codeberg.org/api/v1` |

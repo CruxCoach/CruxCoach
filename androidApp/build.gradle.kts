@@ -69,7 +69,7 @@ android {
         buildConfigField("String", "MAINTAINER_KOFI_URL",
             "\"${localProps.getProperty("MAINTAINER_KOFI_URL", "https://ko-fi.com/cruxcoach")}\"")
         buildConfigField("String", "MAINTAINER_LIGHTNING_ADDRESS",
-            "\"${localProps.getProperty("MAINTAINER_LIGHTNING_ADDRESS", "cruxcoach@npub.cash")}\"")
+            "\"${localProps.getProperty("MAINTAINER_LIGHTNING_ADDRESS", "npub1uadpshqpn5ysf82lev8zngkvn07szmkq7mvf9lyc7ml7qxq6fqxsmrqt2s@npub.cash")}\"")
         buildConfigField("String", "ANNOUNCE_NAMESPACE",
             "\"${localProps.getProperty("ANNOUNCE_NAMESPACE", "com.cruxcoach.announce")}\"")
 
