@@ -2071,7 +2071,7 @@
     <string name="whatsnew_021_action_go">Got it</string>
     <string name="whatsnew_021_action_boards">See boards</string>
     <string name="whatsnew_022_title">New in 0.2.2</string>
-    <string name="whatsnew_022_body">• Lists can now be played as training playlists, with order, advance rules, interaction, and rest times.\n\n• Board delivery adapts to single- and multi-connect controllers, and CruxRelay lets several CruxCoach users share an exclusive board connection.\n\n• MoonBoard handling keeps the active climb visible as reliably as the controller permits, with clearer reconnect and send controls.\n\n• APK downloads now have an independent Zapstore fallback, and verified app updates can optionally download or install automatically.</string>
+    <string name="whatsnew_022_body">• Play your lists — one climb at a time, with rests, one-tap logging and a summary at the end. Or let CruxCoach plan the session from your logbook.\n\n• CruxRelay — share your board so that everyone in the session can send from their own phone.\n\n• Two more MoonBoards (2010 and Mini 2025), problems that say when they are meant to be climbed footless, and a climb that stays lit while you work it.\n\n• Tap your last board to reconnect, choose when a climb goes to the wall, and get app updates from more than one download source.</string>
     <string name="whatsnew_022_hint">Automatic installation is off by default. Choose your preferred update behavior in Settings.</string>
     <string name="whatsnew_022_action_go">Got it</string>
     <string name="whatsnew_022_action_settings">Update settings</string>

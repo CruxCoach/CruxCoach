@@ -1,18 +1,36 @@
 # CruxCoach 0.2.2 — Unreleased
 
-Lists become playable training sessions, board delivery adapts to the controller in front of you, and app updates keep a verified second download path.
+Your lists become training sessions you can play, the board connection adapts to the controller in front of you, two more MoonBoards join the list — and app updates no longer hang on a single download server.
+
+> **Android 8.0 and 8.1: this is the last version for your device.** 0.2.3 will need Android 9. CruxCoach now says so on affected devices instead of letting them wait for updates that can never arrive — the app keeps working and your data stays where it is.
 
 ## Highlights
-- **Lists + playlists in one feature** — every normal list can optionally be played as an interactive training session with per-entry pauses, progress and playback controls. Existing list workflows stay unchanged until playback starts.
-- **One consistent board-delivery UX** — direct and explicit sending are available for single- and multi-connect boards. CruxCoach probes controller capacity during the live connection and can expose a single-connect board through CruxRelay without coupling relay use to a queue.
-- **MoonBoard behavior that matches its firmware** — the projected climb remains selected while CruxCoach keeps the required BLE connection alive. MoonBoard 2010 and Mini MoonBoard 2025 are represented as their own verified board variants.
-- **More reliable reconnects on older Android** — a known controller can be reused directly without a fresh scan; users can still choose a rescan when they need discovery.
-- **Resilient APK delivery** — Codeberg and Zapstore now serve the exact same signed APK through direct-download links. The in-app updater switches sources transparently after a network or integrity failure.
-- **Optional automatic updates** — choose notification only, automatic verified download, or automatic installation. Silent self-update is opt-in and used only where Android permits it; otherwise CruxCoach asks for the required system confirmation. The normal What's New dialog still appears after the updated app starts.
+- **Playlists — play a list instead of scrolling it** — one climb at a time on a full-screen player, sent to the wall as it comes up, a rest countdown that already shows what's next, *Sent it* / *Attempt* logging without leaving the screen, and a summary with total, active and rest time at the end. Every list you already have can be played; sharing a playlist works like sharing a climb.
+- **Let CruxCoach plan the session** — pick a training type (pyramid, power endurance, volume, max strength, or working your projects), a duration, an angle and how warmed up you are. The grades come from your own logbook — the grade you repeat reliably and the one you flash — not from a fixed table. Or set the grade range, the number of climbs, the tries and the rests yourself and get exactly that.
+- **CruxRelay — everyone in the session sends to the board** — most controllers talk to one app at a time, so one phone owns the wall and everyone else watches. Switch sharing on and your phone stands in for the board: other CruxCoach users join and send from their own phones, and the official board apps can send through you too. It runs only while you have it on, shows a notification throughout, and restores your phone's Bluetooth name when you stop.
+- **Two more MoonBoards** — the original **MoonBoard 2010** and the **Mini MoonBoard 2025**, each on its own measured board photo. Problems now also say when the setter meant them to be climbed *footless* or *without the kickboard*, and a MoonBoard climb stays lit while you are working it instead of going dark.
+- **One tap back to your last board** — the board you used last is offered as a card in the connect sheet; tapping it reconnects without scanning the room again. CruxCoach also works out on connecting whether your controller takes one app or several, and you choose per case whether a climb goes to the wall the moment you open it or only when you tap.
+- **Updates no longer depend on one server** — CruxCoach asks every known source for the newest version and takes whichever has it, and that list is fetched at runtime, so a download server can be added or retired without anyone installing a new version first. An APK is still installed only after its checksum and signature match. You can also choose to have updates download or install themselves — off unless you turn it on.
 
 ## More improvements
-- **Consistent draft badge** — a climb's published/draft state now looks the same in the browser and on the detail screen.
-- **Faster first look at a newly-added board** — browsing a board right after adding it on its own is quicker.
+- **Delete one board's data, not all of it** — both *delete board data* and *delete logbook data* let you pick which boards they apply to. Your own climbs and community climbs are always kept.
+- **Auto-disconnect can be switched off** — the board connection stays open until you disconnect it yourself.
+- **Keep a session to yourself** — when you start one, you decide whether nearby CruxCoach users can see and join it.
+- **A calmer browser** — the bar echoing your active board, layout, size and angle is gone; it only repeated what Settings already shows.
+- **Playlists are called playlists** — the Kilter import no longer calls them "circuits".
+- **CruxCoach speaks up when board updates stop arriving** — a background catalogue sync that keeps failing used to look exactly like a successful one.
+- **An anonymous count of verified updates** — once an update is downloaded and verified, CruxCoach may report which version and which source, and nothing about you, your device or your installation. On by default, switchable off under Settings → Updates.
+- **Small things** — a climb's published/draft state now looks the same in the browser and on its detail screen, and browsing a board right after adding it on its own is quicker.
+
+## Fixes & reliability
+- **Nobody is told to climb during a shared rest** — in a session you had joined, your phone could show the next climb as ready while the host was still resting and the wall showed something else. Rests now reach everyone, including anyone joining mid-rest.
+- **No more downloading an update that cannot be installed** — after an interrupted update, CruxCoach could re-download and re-verify an older version on every check, only for Android to refuse it at the last step — a 34 MB download for a guaranteed failure, on mobile data too.
+- **Sharing CruxCoach handed out an old app** — the share QR was built from the sharing phone's own version, so an older build pointed everyone at that older build. It now opens a download page that always resolves to the current release, with a fallback host.
+- **Boards no longer fail on the very first download** — each catalogue retries before giving up, instead of one unlucky moment losing a whole board.
+- **Hold and zone filters reset when you switch boards** — a filter drawn on one board no longer survives onto the next, where it matched nothing.
+- **No "matching allowed" badge where nobody was ever asked** — it is a Kilter setting, so it no longer appears on MoonBoard problems or community climbs.
+- **Turning Bluetooth on from the connect sheet no longer closes the app.**
+- **The angle picker opens instantly**, swiping between climbs no longer hides the send button, and a re-download you asked for reports why it is waiting instead of appearing to do nothing.
 - **Deleted community climbs stay deleted** — even on devices that only sync via the catalogue.
 
 ---

@@ -2070,7 +2070,7 @@
     <string name="whatsnew_021_action_go">Alles klar</string>
     <string name="whatsnew_021_action_boards">Boards ansehen</string>
     <string name="whatsnew_022_title">Neu in 0.2.2</string>
-    <string name="whatsnew_022_body">• Listen lassen sich jetzt als Trainings-Playlists abspielen — mit Reihenfolge, Weiterschaltregeln, Interaktion und Pausenzeiten.\n\n• Die Board-Steuerung passt sich an Single- und Multi-Connect-Controller an. Mit CruxRelay können mehrere CruxCoach-Nutzer eine exklusive Board-Verbindung teilen.\n\n• Die MoonBoard-Steuerung hält den aktiven Climb so zuverlässig sichtbar, wie es der Controller zulässt, mit klareren Reconnect- und Sendeoptionen.\n\n• APK-Downloads haben jetzt einen unabhängigen Zapstore-Fallback. Verifizierte App-Updates können optional automatisch geladen oder installiert werden.</string>
+    <string name="whatsnew_022_body">• Spiel deine Listen ab — ein Climb nach dem anderen, mit Pausen, Loggen per Tipp und einer Zusammenfassung am Ende. Oder lass CruxCoach die Session aus deinem Logbuch planen.\n\n• CruxRelay — teile dein Board, damit alle in der Session von ihrem eigenen Handy senden können.\n\n• Zwei weitere MoonBoards (2010 und Mini 2025), Probleme mit Angabe wie „footless“, und ein Climb, der beim Ausbouldern angeleuchtet bleibt.\n\n• Tippe dein letztes Board an, um dich wieder zu verbinden, wähle, wann ein Climb aufs Board geht, und hol dir App-Updates aus mehreren Quellen.</string>
     <string name="whatsnew_022_hint">Automatische Installation ist standardmäßig aus. Das gewünschte Update-Verhalten lässt sich in den Einstellungen wählen.</string>
     <string name="whatsnew_022_action_go">Alles klar</string>
     <string name="whatsnew_022_action_settings">Update-Einstellungen</string>
