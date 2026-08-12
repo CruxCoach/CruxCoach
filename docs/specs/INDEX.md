@@ -69,12 +69,12 @@ spec file so other branches see the reservation.
 | FEAT-041 | Tombstone Delisted Community Climbs *(inferred)* | v0.2.1 | shipped | — |
 | FEAT-042 | Open Climbing Data Interop via Nostr | backlog | backlog | `backlog/FEAT-042-nostr-open-climbing-interop.md` |
 | FEAT-043 | Reach Metric (ReachAnalyzer) — save-time wiring | v0.2.3 | design-locked | `0.2.2/FEAT-043-reach-analyzer-integration.md` |
-| FEAT-044 | CruxRelay — Transparent Board Relay | v0.2.2 | implementation | `0.2.2/FEAT-044-cruxrelay.md` |
-| FEAT-045 | Lists ⇄ Playlists Full Convergence | v0.2.2 | implementation | `0.2.2/FEAT-045-lists-playlists-convergence.md` |
+| FEAT-044 | CruxRelay — Transparent Board Relay | v0.2.2 | shipped | `0.2.2/FEAT-044-cruxrelay.md` |
+| FEAT-045 | Lists ⇄ Playlists Full Convergence | v0.2.2 | shipped | `0.2.2/FEAT-045-lists-playlists-convergence.md` |
 | FEAT-046 | Playlist Player Upgrades (FGS, Drag Reorder, Swipe) | v0.2.3 | design-locked | `0.2.2/FEAT-046-playlist-player-upgrades.md` |
-| FEAT-047 | Direct Controller Reconnect | v0.2.2 | implementation | `0.2.2/FEAT-047-direct-controller-reconnect.md` |
+| FEAT-047 | Direct Controller Reconnect | v0.2.2 | shipped | `0.2.2/FEAT-047-direct-controller-reconnect.md` |
 | FEAT-048 | Per-controller capacity (not per brand) | v0.2.3 | planned | `0.2.3/FEAT-048-per-controller-capacity.md` |
-| FEAT-049 | MoonBoard Hold-Set Selection (issue #9) | v0.2.2 | planned | `0.2.2/FEAT-049-moonboard-hold-set-selection.md` |
+| FEAT-049 | MoonBoard Hold-Set Selection (issue #9) | v0.2.2 | shipped | `0.2.2/FEAT-049-moonboard-hold-set-selection.md` |
 | FEAT-050 | Survivable Database Downgrade | backlog | backlog | `backlog/FEAT-050-database-downgrade-safety.md` |
 | FEAT-051 | Blossom Manifest Rollback Guard | v0.2.3 | planned | `0.2.3/FEAT-051-blossom-manifest-rollback-guard.md` |
 
@@ -87,6 +87,13 @@ something it does not contain. FEAT-043 has its algorithm (`bd169ac8`) but not
 the save-time wiring or the filter; FEAT-046 has no commits at all and its own
 spec calls it a follow-up to FEAT-045. Their files stay under `0.2.2/` so
 existing cross-references keep resolving.
+
+FEAT-044/045/047/049 marked shipped on 2026-08-12, ahead of the 0.2.2 release.
+All four are in the build and described in the changelog for the version, so
+the working statuses they still carried said less than the release did. Each
+spec file keeps its own frontmatter `status:` — those are not maintained past
+implementation (`0.2.1/FEAT-028` is still `skeleton`), so this table, not the
+frontmatter, is what records that a spec shipped.
 
 ## Renumbered (history)
 
@@ -132,6 +139,7 @@ gaps, but a branch this worktree cannot see may still hold one.
 | Status | Meaning |
 |--------|---------|
 | skeleton | scope captured, design open |
+| planned | scope + target agreed, queued for implementation |
 | design-locked | scope + design decisions agreed; implementation not started |
 | implementation | code work in progress on its target branch |
 | shipped | merged to main + present in a tagged release |
