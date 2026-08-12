@@ -54,6 +54,7 @@ jobs:
       # this step runs in a clean checkout.
       - name: Run unit tests
         run: |
+          python3 -m unittest discover -s scripts -p '*_test.py'
           ./gradlew :shared:testDebugUnitTest :androidApp:testDebugUnitTest --console=plain
 
       - name: Extract version
@@ -88,6 +89,19 @@ jobs:
             echo "skip=false" >> "$GITHUB_OUTPUT"
             echo "New release: $RELEASE_NAME"
           fi
+
+      # The Codeberg workflow is manual fallback only, but it must enforce the
+      # same publisher pin before it creates a public release.  Read .env as
+      # zsp data rather than shell: the unquoted '&' in a bunker URL is valid
+      # for zsp and a shell control operator.
+      - name: Preflight Zapstore signer
+        if: steps.version.outputs.skip == 'false' && steps.version.outputs.branch == 'main'
+        run: |
+          set -euo pipefail
+          : "${CRUXCOACH_SECRETS_DIR:?CRUXCOACH_SECRETS_DIR must be set on the runner}"
+          scripts/zapstore-signer.py \
+            --env-file "$CRUXCOACH_SECRETS_DIR/.env" \
+            --config zapstore.yaml
 
       - name: Copy signing config
         if: steps.version.outputs.skip == 'false'
@@ -190,6 +204,32 @@ jobs:
             || { echo "::error::APK signer is not in EXPECTED_SIGNERS — refusing to publish."; exit 1; }
 
           echo "APK verified successfully (v3 on, signer as expected)"
+
+      # Prove the remote signer is reachable and answers before the manual
+      # fallback creates a public Codeberg release. --offline signs locally
+      # prepared events but publishes and uploads none. The signer is Amber and
+      # prompts the maintainer's phone, so keep it to hand when running this.
+      - name: Prove Zapstore signer is available
+        if: steps.version.outputs.skip == 'false' && steps.version.outputs.branch == 'main'
+        run: |
+          set -euo pipefail
+          rm -f .env
+          ZAPSTORE_ENV="$CRUXCOACH_SECRETS_DIR/.env"
+          SIGN_WITH="$(scripts/zapstore-signer.py \
+            --env-file "$ZAPSTORE_ENV" \
+            --config zapstore.yaml \
+            --emit-value)"
+          echo "::add-mask::$SIGN_WITH"
+          export SIGN_WITH
+          # Amber prompts on the maintainer's phone, so this has to outlast a
+          # human unlocking it. Kept in step with .github/workflows/release.yml.
+          if ! timeout 300 zsp publish zapstore.yaml \
+            --offline --quiet --skip-preview --skip-certificate-linking \
+            >/dev/null 2>&1; then
+            echo "::error::Zapstore signer did not complete a headless offline signature within 300 seconds — was the request approved in Amber?"
+            exit 1
+          fi
+          echo "Zapstore signer completed a headless offline signature (nothing published)"
 
       - name: Delete old dev release
         if: steps.version.outputs.skip == 'false' && steps.version.outputs.branch == 'dev'
@@ -359,7 +399,12 @@ jobs:
           APK_SIZE=$(stat -c '%s' "$APK")
           CDN_URL="https://cdn.zapstore.dev/${APK_SHA}"
           CDN_APK=$(mktemp)
-          trap 'rm -f .env "$CDN_APK"' EXIT
+          trap 'rm -f "$CDN_APK"' EXIT
+
+          # A reused self-hosted workspace may contain a copy left by the old
+          # fallback implementation.  Never let zsp prefer it over the signer
+          # that is validated and exported below.
+          rm -f .env
 
           verify_cdn_apk() {
             rm -f "$CDN_APK"
@@ -376,11 +421,17 @@ jobs:
           fi
 
           : "${CRUXCOACH_SECRETS_DIR:?CRUXCOACH_SECRETS_DIR must be set on the runner}"
-          cp "$CRUXCOACH_SECRETS_DIR/.env" .env
+          ZAPSTORE_ENV="$CRUXCOACH_SECRETS_DIR/.env"
+          SIGN_WITH="$(scripts/zapstore-signer.py \
+            --env-file "$ZAPSTORE_ENV" \
+            --config zapstore.yaml \
+            --emit-value)"
+          echo "::add-mask::$SIGN_WITH"
+          export SIGN_WITH
           PUBLISHED=false
           for ATTEMPT in 1 2 3; do
-            echo "Zapstore publish attempt $ATTEMPT/3..."
-            if timeout 120 zsp publish --skip-preview --skip-certificate-linking --quiet; then
+            echo "Zapstore publish attempt $ATTEMPT/3 (approve the request in Amber)..."
+            if timeout 300 zsp publish --skip-preview --skip-certificate-linking --quiet; then
               PUBLISHED=true
               break
             fi

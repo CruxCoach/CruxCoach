@@ -147,7 +147,7 @@ Files the runner reads off its own filesystem, none of which is a forge secret:
 |------|---------|
 | `$CRUXCOACH_SECRETS_DIR/local.properties` | Build config, including `RELEASE_STORE_FILE` — beware the trap documented above: an empty value makes a release build fall back to debug signing **silently** |
 | `$CRUXCOACH_SECRETS_DIR/.signing/` | Release keystore |
-| `$CRUXCOACH_SECRETS_DIR/.env` | Zapstore publishing. Must define `SIGN_WITH` (`nsec1…`, `npub1…`, or a `bunker://` URL for a NIP-46 remote signer). See [`.env.example`](.env.example) |
+| `$CRUXCOACH_SECRETS_DIR/.env` | Zapstore publishing. Mode 600; must define a headless `SIGN_WITH` (`nsec1…`, hex private key, or a provisioned `bunker://` NIP-46 signer) whose public key matches `zapstore.yaml`. A bare `npub1…` only creates unsigned output. The file uses raw zsp `KEY=value` syntax and is never sourced as shell. See [`.env.example`](.env.example) |
 | `~/.config/cruxcoach/github-release-token` | Mode 600, `Contents: Read and write` on `CruxCoach/CruxCoach`. Authenticates both the GitHub API calls and the tag push. Override with `GITHUB_TOKEN` / `GITHUB_TOKEN_FILE`, or `GITHUB_RELEASE_TOKEN` for the dev-release cleanup step |
 
 **No GitHub repository secret is required, and none is load-bearing** — that is deliberate, so a GitHub-side compromise cannot reach the signing key or the publisher identity. The Codeberg fallback still uses one repository secret, `CODEBERG_TOKEN`, for creating Codeberg releases via the Forgejo API.

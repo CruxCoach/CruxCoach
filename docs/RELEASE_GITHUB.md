@@ -104,28 +104,65 @@ exist, and only some of them can work on a headless runner:
 | `SIGN_WITH` | Headless? | Notes |
 |---|---|---|
 | `nsec1…` | yes | Publisher key in the clear, wherever the value is stored |
-| `bunker://…` | yes, *if* the signer auto-approves | NIP-46 remote signer. CI holds a revocable connection token, not the key |
-| `npub1…` | only with a reachable remote signer for that pubkey | Same NIP-46 path, discovered rather than given |
+| `bunker://…` | yes, but see below | NIP-46 remote signer. CI holds a revocable connection token, not the key |
+| `npub1…` | **no** | zsp 0.4.8 emits unsigned events; it does not discover a signer |
 | `browser` | **no** | NIP-07, wants a human at a browser window |
 
-**Amber is not part of this pipeline and never was.** It is an Android NIP-46
-signer, so it could in principle serve a `bunker://` URL — but it would have to
-be online and approve every release from a phone, which is a moving part in the
-one step that must not need a human at 02:00. Amber appears in this project as
-the *user's* identity signer inside the app (backups, profile, DMs); that is
-unrelated to publishing.
+**This pipeline signs with Amber, and a release therefore needs the
+maintainer's phone.** `SIGN_WITH` is a `bunker://` URL served by Amber, the
+Android NIP-46 signer holding the publisher key; the zsp client key under
+`~/.config/zsp/bunker-keys/` has been provisioned since 2026-04-14. Verified
+end-to-end on 2026-08-11: all three release events (32267, 30063, 3063) came
+back signed by the publisher key with valid signatures.
 
-What the workflow does: it reads `$CRUXCOACH_SECRETS_DIR/.env` off the runner's
-own filesystem and exports the variables into the publish step's environment.
-Deliberately **not** a GitHub secret — same reasoning as the keystore, so that
-nothing in GitHub's secret store is load-bearing for a release. Deliberately
-**not** copied to `./.env` either: a job killed with SIGKILL runs no `trap`, and
-the workspace is reused between jobs on a self-hosted runner, so a copy left
-in the tree would be read by the next release — potentially signing it with a
-superseded key. The step removes any such leftover before publishing, requires
-`SIGN_WITH` to be non-empty (an empty value makes `zsp --quiet` fail late,
-after the GitHub release is already public and immutable), and masks the value
-in the log.
+The connection does **not** auto-approve — each request raises a prompt that
+has to be tapped. A release therefore raises **two** prompts: the signer proof
+before the build, and the publish itself. Both steps allow 300s; 120s expired
+while the phone was still being unlocked, and the retry then raised a second
+prompt for the same release. Keep the two timeouts in step.
+
+The practical consequence: **a release cannot run unattended.** Do not merge to
+`main` and walk away, and do not schedule one for 02:00 — the job will build,
+then fail at the signer gate. If unattended releases are wanted later, switch
+the Amber connection to automatic approval and the constraint disappears; the
+timeouts can stay as they are.
+
+Amber *also* appears in this project as the user's identity signer inside the
+app (backups, profile, DMs). That is a separate role and unrelated to
+publishing — do not conflate the two.
+
+What the workflows do: `scripts/zapstore-signer.py` reads only `SIGN_WITH` from
+`$CRUXCOACH_SECRETS_DIR/.env` on the runner's filesystem. The file uses zsp's
+raw `KEY=value` syntax: no shell quotes, and it is never sourced. That detail is
+load-bearing for a `bunker://` URL, whose unquoted `&secret=…` is valid zsp data
+but a shell control operator. The helper accepts only signing-capable headless
+modes, derives their public key, and requires it to equal `zapstore.yaml`'s
+publisher npub. For a bunker it also requires an existing mode-600 zsp client
+key under `~/.config/zsp/bunker-keys/`, so a release cannot become its first
+interactive authorisation attempt.
+
+The same preflight runs before either workflow creates a public release. The
+static check happens before the APK build; after signature verification, a
+second gate runs `zsp publish --offline` against the finished APK. That requires
+the bunker to be online and the request to be approved, while uploading no
+APK and publishing no Nostr event. Only then may the workflow create the forge
+release. The validated value is exported only inside these signing steps and
+masked before `zsp` runs. It is deliberately **not** a GitHub secret — same
+reasoning as the APK keystore — and deliberately **not** copied to `./.env`: a
+job killed with SIGKILL runs no `trap`, and the workspace is reused between
+jobs. Each signing step removes a possible legacy copy first.
+
+Provision a bunker once, interactively, as the runner user; that establishes
+the NIP-46 client and creates the cached client-key file. Put the raw bunker
+URL in `$CRUXCOACH_SECRETS_DIR/.env`, mode 600. Subsequent release runs reuse
+that client and retain the existing publisher identity — they still need each
+request approved in Amber unless the connection is set to approve
+automatically.
+
+Note that the `secret=` in a freshly issued bunker URL is single-use: it
+authorises the first connection, after which the cached client key carries the
+session. A second client presenting the same consumed secret is answered with
+`unauthorized`, which reads like a broken URL but is not.
 
 ## Release notes are checked before the keystore is touched
 
