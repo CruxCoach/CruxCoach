@@ -1,4 +1,4 @@
-# CruxCoach 0.2.2 — Unreleased
+# CruxCoach 0.2.2 — 2026-08-11
 
 Your lists become training sessions you can play, the board connection adapts to the controller in front of you, two more MoonBoards join the list — and app updates no longer hang on a single download server.
 
