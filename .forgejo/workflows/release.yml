@@ -62,6 +62,17 @@ jobs:
         run: |
           VERSION_NAME=$(grep 'versionName' androidApp/build.gradle.kts | head -1 | grep -Po '"\K[^"]+')
           BRANCH="${GITHUB_REF_NAME}"
+
+          # Dev prereleases were dropped project-wide along with the push
+          # trigger, so this fallback must not be the one place that can still
+          # mint them. The dev branches below are kept rather than deleted —
+          # this file is break-glass, and a smaller diff is easier to trust in
+          # an emergency — but they are now unreachable.
+          if [ "$BRANCH" != "main" ]; then
+            echo "::error::Releases run from main only; this dispatch was on '$BRANCH'"
+            exit 1
+          fi
+
           if [ "$BRANCH" = "dev" ]; then
             SHORT_SHA=$(git rev-parse --short HEAD)
             TAG_NAME="v${VERSION_NAME}-dev.${SHORT_SHA}"

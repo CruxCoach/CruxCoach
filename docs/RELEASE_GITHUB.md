@@ -1,9 +1,15 @@
 # Releasing on GitHub
 
-GitHub is the primary forge. A push to `main` runs
-`.github/workflows/release.yml` on a **self-hosted** runner: unit tests, a
-signed APK, the tag, the GitHub release with its SHA-256 sidecar, the Zapstore
-publish, and the website and download-server update.
+GitHub is the primary forge. Dispatching `.github/workflows/release.yml` from
+`main` runs it on a **self-hosted** runner: unit tests, a signed APK, the tag,
+the GitHub release with its SHA-256 sidecar, the Zapstore publish, and the
+website and download-server update.
+
+It is a manual trigger, and it refuses to run off `main`. The Zapstore signer
+prompts a phone twice per release (see below), so an unattended run would stall
+waiting for a human — and the second prompt falls after the GitHub release is
+already public. There are no dev prereleases: the pipeline builds full releases
+only.
 
 Codeberg is a fallback. `.forgejo/workflows/release.yml` still exists and still
 works, but it is no longer the path a release takes. Codeberg's ToU now bans
@@ -24,10 +30,11 @@ on the local filesystem, and uploads nothing. The workflow declares
 `permissions: contents: read` and defines no secrets — nothing in the GitHub
 secret store is load-bearing, so a GitHub-side compromise cannot reach the key.
 
-The trade is different, not free: a self-hosted runner executes whatever a push
-to `main` or `dev` contains, on a host that holds the signing key. Keep the
-runner off pull-request triggers, and keep write access to those two branches
-as narrow as it is today.
+The trade is different, not free: a self-hosted runner executes whatever the
+dispatched ref contains, on a host that holds the signing key. Keep the runner
+off pull-request triggers, keep write access to `main` as narrow as it is
+today, and keep the dispatch permission with it — starting a run is starting a
+signature.
 
 ## One implementation, two callers
 
@@ -61,9 +68,9 @@ Before anything leaves the machine:
   the version it reads, not the file name, so 0.2.1 bytes under a `v0.2.2` tag
   would install and then never update again
 
-"Base version" means everything before the first `-`: dev builds are tagged
-`v0.2.2-dev.<sha>` while `versionName` stays `0.2.2`, because the suffix
-identifies the build and not the version the APK reports.
+"Base version" means everything before the first `-`. The pipeline no longer
+produces suffixed tags, but the comparison keeps the rule so a hand-made tag
+like `v0.2.2-hotfix.1` still validates against a `versionName` of `0.2.2`.
 
 It uploads the `.sha256` sidecar **before** the APK. The updater ignores a
 release unless both assets exist, so a run that dies between the two must not
@@ -172,13 +179,12 @@ prefix — so a section still headed *Unreleased* extracts cleanly and publishes
 the word to both, plus the in-app "what's new". The tag then exists and blocks
 a rebuild.
 
-The workflow therefore refuses, on `main`, before copying the signing config:
-the changelog section for the version must exist and be non-empty, and neither
-its heading nor the first line of `RELEASE_NOTES.md` may still say
-*Unreleased* or *TBD*. It also requires the notes heading to mention the
-version, which catches the opposite mistake — last release's notes under a new
-tag. Dev prereleases are exempt: they are built from in-progress text on
-purpose.
+The workflow therefore refuses, before copying the signing config: the
+changelog section for the version must exist and be non-empty, and neither its
+heading nor the first line of `RELEASE_NOTES.md` may still say *Unreleased* or
+*TBD*. It also requires the notes heading to mention the version, which catches
+the opposite mistake — last release's notes under a new tag. Nothing is exempt;
+every run of this pipeline is a full release.
 
 ## Migration order
 
@@ -295,9 +301,9 @@ that is already in the field — the builds are not reproducible byte-for-byte.
 
 This used to be an instruction rather than a guarantee: both workflows
 triggered on a push to `main`, and while the mirror is running a single merge
-reaches both forges. The Forgejo workflow is therefore now
-**`workflow_dispatch` only** — the race is gone because nothing starts the
-second pipeline by itself. Arm the fallback by hand when you need it:
+reaches both forges. **Both are now `workflow_dispatch` only** — the race is
+gone because nothing starts either pipeline by itself, and starting the wrong
+one is now a deliberate act. Arm the fallback by hand when you need it:
 
 Codeberg → the repository → **Actions** → **Release** → **Run workflow**,
 with `main` selected.

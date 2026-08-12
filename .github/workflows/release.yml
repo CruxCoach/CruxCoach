@@ -12,21 +12,27 @@ name: Release
 # $CRUXCOACH_SECRETS_DIR and is never uploaded anywhere. No secret in this
 # workflow, and none configured in the repository, is load-bearing.
 
+# MANUAL TRIGGER ONLY, and that is a consequence of how this pipeline signs.
+#
+# The Zapstore signer is an Amber NIP-46 bunker that prompts the maintainer's
+# phone, twice per release: once for the signer proof before the build, once
+# for the publish. A push-triggered release therefore only completes if someone
+# is holding the phone at the moment of the merge. Worse, the second prompt
+# falls *after* the GitHub release is created, so an unattended run can leave
+# the release and its tag public while Zapstore has nothing — recoverable
+# through the repair path below, but publicly inconsistent until someone
+# notices.
+#
+# Making the trigger explicit puts the release at a moment the maintainer
+# chose, which is also the moment the phone is to hand. It further means a
+# merge to main by anyone else cannot start a run that needs the release
+# signing key.
+#
+# `paths-ignore` went with the push trigger — it only ever existed to stop
+# documentation commits from firing a build, and nothing fires this by itself
+# any more.
 on:
-  push:
-    branches: [main, dev]
-    # A release is an APK build, a tag and a Zapstore publish. Commits that
-    # cannot change the artefact must not start one — a README fix used to
-    # be enough to fire the whole pipeline, which is why documentation ends
-    # up bundled into release branches instead of landing on its own.
-    # Note the semantics: this skips a push only when *every* changed file
-    # matches, so a real release commit still triggers even though it also
-    # touches the changelog.
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - 'LICENSE'
-      - '.gitignore'
+  workflow_dispatch:
 
 # Nothing here writes through the automatic GITHUB_TOKEN. Releases, assets and
 # the tag push all authenticate with the maintainer token that the runner reads
@@ -69,27 +75,31 @@ jobs:
         run: |
           VERSION_NAME=$(grep 'versionName' androidApp/build.gradle.kts | head -1 | grep -Po '"\K[^"]+')
           BRANCH="${GITHUB_REF_NAME}"
-          if [ "$BRANCH" = "dev" ]; then
-            SHORT_SHA=$(git rev-parse --short HEAD)
-            TAG_NAME="v${VERSION_NAME}-dev.${SHORT_SHA}"
-            RELEASE_NAME="v${VERSION_NAME}-dev (${SHORT_SHA})"
-            PRERELEASE=true
-          else
-            TAG_NAME="v${VERSION_NAME}"
-            RELEASE_NAME="v${VERSION_NAME}"
-            PRERELEASE=false
+
+          # Dispatch lets the caller pick any ref, and every step below assumes
+          # a real release: it tags v<version>, publishes to Zapstore and moves
+          # the download server. Run from anywhere else and it would ship a
+          # feature branch under a release version number. There is only one
+          # kind of release here now, so refuse rather than guess.
+          if [ "$BRANCH" != "main" ]; then
+            echo "::error::Releases run from main only; this dispatch was on '$BRANCH'"
+            exit 1
           fi
+
+          TAG_NAME="v${VERSION_NAME}"
+          RELEASE_NAME="v${VERSION_NAME}"
 
           {
             echo "version=$VERSION_NAME"
             echo "tag=$TAG_NAME"
             echo "release_name=$RELEASE_NAME"
-            echo "prerelease=$PRERELEASE"
             echo "branch=$BRANCH"
           } >> "$GITHUB_OUTPUT"
 
-          # On main: skip if tag already exists. On dev: always build.
-          if [ "$BRANCH" = "main" ] && git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+          # An existing tag means a previous run got at least this far. Skipping
+          # keeps its bytes and sends the run down the Zapstore repair path
+          # rather than building a second APK under a shipped version number.
+          if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "Tag $TAG_NAME already exists — skipping release"
           else
@@ -108,8 +118,6 @@ jobs:
       #
       # Placed before the signing config is copied: a text mistake should fail
       # the run while the keystore is still untouched.
-      #
-      # main only. A dev prerelease is deliberately built from in-progress text.
       - name: Check release notes match the version
         if: steps.version.outputs.skip == 'false' && steps.version.outputs.branch == 'main'
         env:
@@ -301,77 +309,6 @@ jobs:
           fi
           echo "Zapstore signer completed a headless offline signature (nothing published)"
 
-      # Dev prereleases are per-commit (v<version>-dev.<sha>), so without a
-      # sweep they accumulate for ever. Deleting the release does not delete
-      # its tag on GitHub — that is a second call, and the orphan-tag pass
-      # below catches tags left behind by runs that died in between.
-      #
-      # The tag being built right now is excluded: a re-run of the same commit
-      # must repair its release, not destroy and recreate it.
-      - name: Delete old dev releases
-        if: steps.version.outputs.skip == 'false' && steps.version.outputs.branch == 'dev'
-        env:
-          KEEP_TAG: ${{ steps.version.outputs.tag }}
-          REPO_SLUG: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          API="https://api.github.com/repos/${REPO_SLUG}"
-
-          # Same token, same lookup order as scripts/publish-github-release.sh.
-          # It is read off the runner's filesystem rather than out of GitHub's
-          # secret store, so this workflow needs no configured secrets at all.
-          TOKEN="${GITHUB_RELEASE_TOKEN:-}"
-          TOKEN_PATH="${GITHUB_TOKEN_FILE:-$HOME/.config/cruxcoach/github-release-token}"
-          if [ -z "$TOKEN" ] && [ -f "$TOKEN_PATH" ]; then
-            TOKEN="$(tr -d ' \t\r\n' < "$TOKEN_PATH")"
-          fi
-          [ -n "$TOKEN" ] || { echo "::error::no release token at $TOKEN_PATH"; exit 1; }
-
-          # curl reads the header from stdin so the token never appears in the
-          # process list, where every other process on the runner could read it.
-          gh_curl() {
-            curl -sS --max-time 60 \
-              -H @<(printf 'Authorization: Bearer %s\n' "$TOKEN") \
-              -H "Accept: application/vnd.github+json" \
-              -H "X-GitHub-Api-Version: 2022-11-28" \
-              -H "User-Agent: cruxcoach-release/1.0" \
-              "$@"
-          }
-
-          # Parsed with python3, not sed. The Forgejo version split the JSON on
-          # '},{' and pulled fields out with regexes; that survives only as long
-          # as the API keeps its exact field order, and a mis-parse here deletes
-          # the wrong release.
-          # The inline Python below is indented to the block-scalar margin on
-          # purpose: YAML strips exactly that margin, so the interpreter sees
-          # it at column 0. Un-indenting it here would end the block scalar.
-          gh_curl "${API}/releases?per_page=100" | python3 -c '
-          import json, sys
-          keep = sys.argv[1]
-          for r in json.load(sys.stdin):
-              tag = r.get("tag_name", "")
-              if "-dev." in tag and tag != keep:
-                  print(r["id"], tag)
-          ' "$KEEP_TAG" | while read -r OLD_ID OLD_TAG; do
-            CODE=$(gh_curl -o /dev/null -w '%{http_code}' -X DELETE "${API}/releases/${OLD_ID}")
-            echo "Deleted dev release: $OLD_TAG (id $OLD_ID) -> $CODE"
-          done
-
-          # Orphan dev tags, including any the Codeberg mirror pushed here
-          # while it was still running.
-          gh_curl "${API}/tags?per_page=100" | python3 -c '
-          import json, sys
-          keep = sys.argv[1]
-          for t in json.load(sys.stdin):
-              name = t.get("name", "")
-              if "-dev." in name and name != keep:
-                  print(name)
-          ' "$KEEP_TAG" | while read -r OLD_TAG; do
-            CODE=$(gh_curl -o /dev/null -w '%{http_code}' -X DELETE "${API}/git/refs/tags/${OLD_TAG}")
-            echo "Deleted orphan dev tag: $OLD_TAG -> $CODE"
-          done
-          echo "Cleanup done"
-
       # One implementation of "publish a release", called from here and usable
       # by hand. The script pushes the tag, creates the release, uploads the
       # SHA-256 sidecar BEFORE the APK, and reads the result back to compare
@@ -384,7 +321,6 @@ jobs:
         if: steps.version.outputs.skip == 'false'
         env:
           TAG: ${{ steps.version.outputs.tag }}
-          PRERELEASE: ${{ steps.version.outputs.prerelease }}
           REPO_SLUG: ${{ github.repository }}
         run: |
           set -euo pipefail
@@ -394,11 +330,8 @@ jobs:
           if [ -f RELEASE_NOTES.md ]; then
             ARGS+=(--notes-file RELEASE_NOTES.md)
           fi
-          # Written out rather than `[ ... ] && ARGS+=(...)`: under `set -e` a
-          # false test as the last statement of the step would fail the job.
-          if [ "$PRERELEASE" = "true" ]; then
-            ARGS+=(--prerelease)
-          fi
+          # Nothing here is ever a prerelease: dev prereleases were dropped
+          # along with the push trigger, so every run publishes a full release.
           scripts/publish-github-release.sh "$TAG" "${ARGS[@]}"
 
       # A previous run may have completed the release and then failed while
