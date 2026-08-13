@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.clickable
@@ -159,6 +160,14 @@ fun CompetitionDetailScreen(
                 },
             )
         },
+        bottomBar = {
+            ParticipantActionBar(
+                ui = ui,
+                nowSeconds = now,
+                viewModel = viewModel,
+                onOpenClimb = { id -> lastAsked = id; viewModel.openClimb(id) },
+            )
+        },
     ) { padding ->
         val snapshot = ui.snapshot
         if (snapshot.loading && snapshot.competition == null) {
@@ -191,7 +200,7 @@ fun CompetitionDetailScreen(
             return@Scaffold
         }
 
-        val competition = snapshot.competition!!
+        val competition = snapshot.competition
         val state = snapshot.state
 
         LazyColumn(
@@ -237,30 +246,22 @@ fun CompetitionDetailScreen(
                 }
             }
 
-            item { CompetitionEssentials(competition) }
-            item { CompetitionScoringCard(competition) }
-            if (!ui.picksOwnClimbs) {
-                item { CompetitionCatalogueOverview(ui) { id, _ -> lastAsked = id; viewModel.openClimb(id) } }
-            }
-
             // ── the four questions, in order ──
-            if (state != null && state.status in listOf("running", "paused")) {
+            if (state != null) {
                 item { LivePanel(ui, now, viewModel) { id, _ -> lastAsked = id; viewModel.openClimb(id) } }
-            } else if (state != null) {
-                item {
-                    Card(Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(16.dp)) {
-                            Text(stringResource(R.string.comp_waiting_to_start))
-                        }
-                    }
-                }
             }
 
             // ── registration ──
             item { RegistrationPanel(ui, viewModel, action) { id, _ -> lastAsked = id; viewModel.openClimb(id) } }
             item { ClimbOpenProblem(climbOpen, lastAsked, viewModel) }
 
-            if (snapshot.standings.isNotEmpty()) {
+            item { CompetitionEssentials(competition) }
+            item { CompetitionScoringCard(competition) }
+            if (!ui.picksOwnClimbs) {
+                item { CompetitionCatalogueOverview(ui) { id, _ -> lastAsked = id; viewModel.openClimb(id) } }
+            }
+
+            if (snapshot.trustworthy && snapshot.standings.isNotEmpty()) {
                 item { LeaderboardCard(ui) }
             }
 
@@ -402,34 +403,132 @@ private fun LivePanel(
     val currentName = current?.let { pubkey ->
         state.participants.firstOrNull { it.pubkey == pubkey }?.displayOrShort()
     }
+    val nextName = ui.nextClimber?.let { pubkey -> state.participant(pubkey)?.displayOrShort() }
+    val cue = ui.personalCue
+    val sync = CompetitionLivePolicy.syncHealth(
+        hasState = true,
+        connectedRelays = ui.connectedRelays,
+        lastSyncedAt = ui.snapshot.lastSyncedAt,
+        nowSeconds = nowSeconds,
+    )
 
-    Card(Modifier.fillMaxWidth().testTag("competition_live")) {
+    Card(
+        Modifier.fillMaxWidth().testTag("competition_live"),
+        colors = CardDefaults.cardColors(
+            containerColor = when (cue.kind) {
+                CompetitionLivePolicy.Cue.CURRENT -> MaterialTheme.colorScheme.primaryContainer
+                CompetitionLivePolicy.Cue.PAUSED -> MaterialTheme.colorScheme.tertiaryContainer
+                CompetitionLivePolicy.Cue.CANCELLED -> MaterialTheme.colorScheme.errorContainer
+                else -> MaterialTheme.colorScheme.surfaceContainerHigh
+            },
+        ),
+    ) {
         Column(Modifier.padding(16.dp)) {
-            if (ui.isMyTurn) {
-                Text(
-                    stringResource(R.string.comp_your_turn),
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Assertive },
-                )
-                Text(stringResource(R.string.comp_your_turn_hint))
-                Spacer(Modifier.height(8.dp))
-            }
+            Text(
+                personalCueText(cue),
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = if (cue.kind == CompetitionLivePolicy.Cue.CURRENT) {
+                    Modifier.semantics { liveRegion = LiveRegionMode.Assertive }
+                } else Modifier,
+            )
+            val nextTask = ui.rotation.entries.firstOrNull()?.climb
+            Text(
+                if (nextTask != null) stringResource(R.string.comp_live_next_task, nextTask.label)
+                else stringResource(R.string.comp_live_no_next_task),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(12.dp))
             LabelledValue(
                 stringResource(R.string.comp_current_climber),
                 currentName ?: stringResource(R.string.comp_nobody_climbing),
             )
             LabelledValue(stringResource(R.string.comp_current_climb), climbLabel(ui, state.currentClimbId))
+            LabelledValue(stringResource(R.string.comp_next_climber), nextName ?: "—")
             LabelledValue(stringResource(R.string.comp_round), stringResource(R.string.comp_round, state.round))
-            ui.climbersBefore?.let {
-                LabelledValue(stringResource(R.string.comp_before_you), it.toString())
-            }
-            LabelledValue(stringResource(R.string.comp_attempts_left), ui.attemptsLeft.toString())
-            LabelledValue(stringResource(R.string.comp_defers_left), ui.defersLeft.toString())
-            ui.secondsToDeadline(nowSeconds)?.let { seconds ->
+            if (state.status == "running") ui.secondsToDeadline(nowSeconds)?.let { seconds ->
                 LabelledValue(
                     stringResource(R.string.comp_deadline),
                     "%d:%02d".format(seconds / 60, seconds % 60),
+                )
+            }
+
+            Spacer(Modifier.height(12.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                LiveMetric(
+                    ui.climbersBefore?.toString() ?: "—",
+                    stringResource(R.string.comp_before_you),
+                    Modifier.weight(1f),
+                )
+                LiveMetric(
+                    ui.attemptsLeftFor(nextTask?.id ?: state.currentClimbId).toString(),
+                    stringResource(R.string.comp_attempts_left),
+                    Modifier.weight(1f),
+                )
+                LiveMetric(ui.defersLeft.toString(), stringResource(R.string.comp_defers_left), Modifier.weight(1f))
+            }
+
+            if (ui.queue.entries.isNotEmpty()) {
+                Spacer(Modifier.height(16.dp))
+                Text(stringResource(R.string.comp_live_queue), fontWeight = FontWeight.Bold)
+                ui.queue.entries.forEach { entry ->
+                    val label = entry.participant?.displayOrShort() ?: entry.pubkey.take(8)
+                    Row(
+                        Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Text(
+                            if (entry.current) stringResource(R.string.comp_live_now_short)
+                            else (entry.queuePosition + 1).toString(),
+                            Modifier.width(44.dp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            label,
+                            fontWeight = if (entry.pubkey == ui.myPubkey || entry.current) FontWeight.Bold else FontWeight.Normal,
+                            color = if (entry.pubkey == ui.myPubkey) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                }
+                if (ui.queue.hidden > 0) {
+                    Text(
+                        stringResource(R.string.comp_live_more, ui.queue.hidden),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+
+            if (ui.rotation.entries.isNotEmpty()) {
+                Spacer(Modifier.height(16.dp))
+                Text(stringResource(R.string.comp_live_your_rotation), fontWeight = FontWeight.Bold)
+                ui.rotation.entries.forEachIndexed { index, entry ->
+                    Row(
+                        Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(
+                            entry.climb.label,
+                            fontWeight = if (index == 0) FontWeight.Bold else FontWeight.Normal,
+                        )
+                        Text("${entry.climb.angle}°", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                if (ui.rotation.hidden > 0) Text(
+                    stringResource(R.string.comp_live_more, ui.rotation.hidden),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+
+            if (sync.kind != CompetitionLivePolicy.Sync.LIVE) {
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    syncHealthText(sync),
+                    color = if (sync.kind == CompetitionLivePolicy.Sync.STALE) MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                 )
             }
 
@@ -447,17 +546,118 @@ private fun LivePanel(
                 NextClimbSection(ui, nowSeconds, viewModel, onOpenClimb)
             }
 
-            // What a deferral costs, stated where the decision is made. The
-            // button itself lives in the actions card below — one control, not
-            // a disabled twin of it here.
-            if (ui.canDefer) {
-                Spacer(Modifier.height(8.dp))
+        }
+    }
+}
+
+@Composable
+private fun LiveMetric(value: String, label: String, modifier: Modifier = Modifier) {
+    Card(modifier) {
+        Column(Modifier.padding(10.dp)) {
+            Text(value, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun personalCueText(cue: CompetitionLivePolicy.PersonalCue): String = when (cue.kind) {
+    CompetitionLivePolicy.Cue.SPECTATOR -> stringResource(R.string.comp_live_follow)
+    CompetitionLivePolicy.Cue.WAITING -> stringResource(R.string.comp_live_get_ready)
+    CompetitionLivePolicy.Cue.NOT_QUEUED -> stringResource(R.string.comp_live_not_queued)
+    CompetitionLivePolicy.Cue.CURRENT -> stringResource(R.string.comp_your_turn)
+    CompetitionLivePolicy.Cue.NEXT -> stringResource(R.string.comp_live_you_are_next)
+    CompetitionLivePolicy.Cue.QUEUED -> stringResource(R.string.comp_live_ahead, cue.ahead ?: 0)
+    CompetitionLivePolicy.Cue.PAUSED -> stringResource(R.string.comp_live_paused)
+    CompetitionLivePolicy.Cue.FINISHED -> stringResource(R.string.comp_live_final_result)
+    CompetitionLivePolicy.Cue.CANCELLED -> stringResource(R.string.comp_live_cancelled)
+}
+
+@Composable
+private fun syncHealthText(health: CompetitionLivePolicy.SyncHealth): String = when (health.kind) {
+    CompetitionLivePolicy.Sync.CONNECTING -> stringResource(R.string.comp_live_connecting)
+    CompetitionLivePolicy.Sync.LIVE -> stringResource(R.string.comp_live_synced, health.connectedRelays)
+    CompetitionLivePolicy.Sync.OFFLINE -> stringResource(R.string.comp_live_offline)
+    CompetitionLivePolicy.Sync.STALE -> stringResource(R.string.comp_live_stale, health.ageSeconds ?: 0)
+}
+
+/** One-hand action region: the next valid participant action stays reachable. */
+@Composable
+private fun ParticipantActionBar(
+    ui: CompetitionDetailViewModel.Ui,
+    nowSeconds: Long,
+    viewModel: CompetitionDetailViewModel,
+    onOpenClimb: (String) -> Unit,
+) {
+    val state = ui.snapshot.state ?: return
+    val competition = ui.snapshot.competition ?: return
+    val me = ui.me ?: return
+    val activeClimb = ui.rotation.entries.firstOrNull()?.climb
+    val canCheckIn = me.registration == "accepted" && me.checkin == "none" &&
+        checkinWindowOpen(competition, state.status, nowSeconds)
+    if (state.status !in listOf("running", "paused") && !canCheckIn) return
+
+    Card(
+        Modifier.fillMaxWidth().navigationBarsPadding().testTag("competition_actions"),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHighest),
+        elevation = CardDefaults.cardElevation(defaultElevation = 12.dp),
+    ) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+            Text(
+                if (ui.isMyTurn) stringResource(R.string.comp_your_turn)
+                else stringResource(R.string.comp_live_next_action),
+                fontWeight = FontWeight.Bold,
+            )
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (canCheckIn) {
+                    Button(
+                        onClick = { viewModel.requestCheckIn() },
+                        modifier = Modifier.weight(1f).testTag("competition_checkin_sticky"),
+                    ) { Text(stringResource(R.string.comp_checkin_action)) }
+                }
+                if (activeClimb != null && state.status == "running") {
+                    Button(
+                        onClick = { onOpenClimb(activeClimb.id) },
+                        modifier = Modifier.weight(1f).testTag("competition_open_live"),
+                    ) {
+                        Text(
+                            if (ui.isMyTurn) stringResource(R.string.comp_live_open_now)
+                            else stringResource(R.string.comp_live_prepare),
+                        )
+                    }
+                }
+                if (ui.deferAvailability.allowed) {
+                    OutlinedButton(
+                        onClick = { viewModel.requestDefer() },
+                        modifier = Modifier.testTag("competition_defer"),
+                    ) { Text(stringResource(R.string.comp_defer)) }
+                }
+            }
+            if (ui.isMyTurn && !ui.deferAvailability.allowed) {
+                val reason = when (ui.deferAvailability.reason) {
+                    CompetitionLivePolicy.DeferReason.PAUSED -> R.string.comp_next_paused
+                    CompetitionLivePolicy.DeferReason.BUDGET -> R.string.comp_defer_none
+                    CompetitionLivePolicy.DeferReason.CONSECUTIVE -> R.string.comp_live_defer_consecutive
+                    else -> null
+                }
+                reason?.let {
+                    Text(
+                        stringResource(it),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            } else if (ui.deferAvailability.allowed) {
                 Text(
                     stringResource(R.string.comp_defer_hint, competition.rules.deferSlots),
                     style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            } else if (ui.isMyTurn && ui.defersLeft == 0) {
-                Text(stringResource(R.string.comp_defer_none), style = MaterialTheme.typography.bodySmall)
             }
         }
     }
@@ -475,7 +675,6 @@ private fun RegistrationPanel(
     val me = ui.me
     val now = System.currentTimeMillis() / 1000
     val registrationOpen = registrationWindowOpen(competition, state.status, now)
-    val checkinOpen = checkinWindowOpen(competition, state.status, now)
 
     Card(Modifier.fillMaxWidth().testTag("competition_registration")) {
         Column(Modifier.padding(16.dp)) {
@@ -509,12 +708,6 @@ private fun RegistrationPanel(
                 if (ui.picksOwnClimbs) {
                     ClaimStatusSection(ui, viewModel, onOpenClimb)
                     Spacer(Modifier.height(8.dp))
-                }
-                if (me.registration == "accepted" && me.checkin == "none" && checkinOpen) {
-                    Button(
-                        onClick = { viewModel.requestCheckIn() },
-                        modifier = Modifier.testTag("competition_checkin"),
-                    ) { Text(stringResource(R.string.comp_checkin_action)) }
                 }
                 if (me.registration in listOf("pending", "accepted", "waitlisted") &&
                     state.status !in listOf("finished", "cancelled")
@@ -563,12 +756,6 @@ private fun RegistrationPanel(
                         },
                         modifier = Modifier.testTag("competition_register_again"),
                     ) { Text(stringResource(R.string.comp_register_again)) }
-                }
-                if (ui.canDefer) {
-                    Button(
-                        onClick = { viewModel.requestDefer() },
-                        modifier = Modifier.testTag("competition_defer"),
-                    ) { Text(stringResource(R.string.comp_defer)) }
                 }
                 return@Column
             }
@@ -1424,27 +1611,44 @@ private fun LeaderboardCard(ui: CompetitionDetailViewModel.Ui) {
             Spacer(Modifier.height(4.dp))
             Row(Modifier.fillMaxWidth()) {
                 Text(stringResource(R.string.comp_table_rank), Modifier.weight(0.15f), style = MaterialTheme.typography.labelSmall)
-                Text(stringResource(R.string.comp_table_climber), Modifier.weight(0.45f), style = MaterialTheme.typography.labelSmall)
+                Text(stringResource(R.string.comp_table_climber), Modifier.weight(0.4f), style = MaterialTheme.typography.labelSmall)
                 if (showPoints) Text(stringResource(R.string.comp_table_points), Modifier.weight(0.2f), style = MaterialTheme.typography.labelSmall)
-                Text(stringResource(R.string.comp_table_tops), Modifier.weight(0.2f), style = MaterialTheme.typography.labelSmall)
-                Text(stringResource(R.string.comp_table_attempts), Modifier.weight(0.2f), style = MaterialTheme.typography.labelSmall)
+                Text(stringResource(R.string.comp_table_tops), Modifier.weight(0.16f), style = MaterialTheme.typography.labelSmall)
+                Text(stringResource(R.string.comp_table_zones), Modifier.weight(0.16f), style = MaterialTheme.typography.labelSmall)
+                Text(stringResource(R.string.comp_table_attempts), Modifier.weight(0.16f), style = MaterialTheme.typography.labelSmall)
             }
             HorizontalDivider()
-            ui.snapshot.standings.forEach { row ->
+            ui.snapshot.standings.forEachIndexed { index, row ->
+                val tied = row.rank > 0 && ui.snapshot.standings.anyIndexed { otherIndex, other ->
+                    otherIndex != index && other.rank == row.rank
+                }
+                val active = row.pubkey == ui.currentClimber
                 Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
-                    Text(if (row.rank == 0) "—" else row.rank.toString(), Modifier.weight(0.15f))
                     Text(
-                        row.display.ifBlank { row.pubkey.take(8) },
-                        Modifier.weight(0.45f),
-                        fontWeight = if (row.pubkey == ui.myPubkey) FontWeight.Bold else FontWeight.Normal,
+                        if (row.rank == 0) "—" else if (tied) "${row.rank}=" else row.rank.toString(),
+                        Modifier.weight(0.15f),
+                        color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        (if (active) "● " else "") + row.display.ifBlank { row.pubkey.take(8) },
+                        Modifier.weight(0.4f),
+                        fontWeight = if (row.pubkey == ui.myPubkey || active) FontWeight.Bold else FontWeight.Normal,
+                        color = if (row.pubkey == ui.myPubkey || active) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurface,
                     )
                     if (showPoints) Text(row.points.toString(), Modifier.weight(0.2f))
-                    Text(row.tops.toString(), Modifier.weight(0.2f))
-                    Text(row.attempts.toString(), Modifier.weight(0.2f))
+                    Text(row.tops.toString(), Modifier.weight(0.16f))
+                    Text(row.zones.toString(), Modifier.weight(0.16f))
+                    Text(row.attempts.toString(), Modifier.weight(0.16f))
                 }
             }
         }
     }
+}
+
+private inline fun <T> List<T>.anyIndexed(predicate: (Int, T) -> Boolean): Boolean {
+    forEachIndexed { index, value -> if (predicate(index, value)) return true }
+    return false
 }
 
 @Composable

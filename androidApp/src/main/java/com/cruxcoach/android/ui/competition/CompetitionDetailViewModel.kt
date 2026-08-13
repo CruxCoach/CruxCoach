@@ -85,6 +85,7 @@ class CompetitionDetailViewModel @Inject constructor(
         val suggestedDisplayName: String = "",
         val catalogue: CatalogueState = CatalogueState.Loading,
         val gradeScale: GradeScale = GradeScale.FRENCH,
+        val connectedRelays: Int = 0,
     ) {
         val me get() = snapshot.state?.participants?.firstOrNull { it.pubkey == myPubkey }
         val currentClimber: String?
@@ -92,6 +93,14 @@ class CompetitionDetailViewModel @Inject constructor(
                 if (s.cursor < 0) null else s.order.getOrNull(s.cursor)
             }
         val isMyTurn: Boolean get() = me != null && currentClimber == me!!.pubkey
+        val nextClimber: String?
+            get() = snapshot.state?.let { state ->
+                if (state.cursor < 0) null else state.order.getOrNull(state.cursor + 1)
+            }
+        val personalCue get() = CompetitionLivePolicy.personalCue(snapshot.state, myPubkey)
+        val queue get() = CompetitionLivePolicy.queue(snapshot.state)
+        val rotation get() = CompetitionLivePolicy.rotation(snapshot.competition, snapshot.state, me)
+        val deferAvailability get() = CompetitionLivePolicy.defer(snapshot.state, snapshot.competition, me, myPubkey)
 
         /** How many climbers are ahead of me in this round, or null when I am not in it. */
         val climbersBefore: Int?
@@ -112,6 +121,13 @@ class CompetitionDetailViewModel @Inject constructor(
                 return (rules.attemptsPerClimb - (record?.attemptsUsed ?: 0)).coerceAtLeast(0)
             }
 
+        fun attemptsLeftFor(climbId: String): Int {
+            val rules = snapshot.competition?.rules ?: return 0
+            val record = me?.climb(climbId)
+            if (record?.outcome == "top") return 0
+            return (rules.attemptsPerClimb - (record?.attemptsUsed ?: 0)).coerceAtLeast(0)
+        }
+
         val defersLeft: Int
             get() {
                 val rules = snapshot.competition?.rules ?: return 0
@@ -124,13 +140,7 @@ class CompetitionDetailViewModel @Inject constructor(
          * explains itself is a worse answer than no button plus a sentence.
          */
         val canDefer: Boolean
-            get() {
-                val state = snapshot.state ?: return false
-                val rules = snapshot.competition?.rules ?: return false
-                val mine = me ?: return false
-                return state.status == "running" && isMyTurn && defersLeft > 0 &&
-                    mine.consecutiveDefers < rules.maxConsecutiveDefers
-            }
+            get() = deferAvailability.allowed
 
         /**
          * Whether this climber may act right now.
@@ -246,14 +256,18 @@ class CompetitionDetailViewModel @Inject constructor(
 
     private val catalogue = MutableStateFlow<CatalogueState>(CatalogueState.Loading)
 
+    private val transportSnapshot = combine(client.snapshot, client.connectedRelayCount) { snapshot, connected ->
+        snapshot to connected
+    }
+
     val ui: StateFlow<Ui> = combine(
-        client.snapshot,
+        transportSnapshot,
         MutableStateFlow(myPubkey),
         suggestedDisplayName,
         catalogue,
         preferences.gradeScale,
-    ) { snapshot, pubkey, displayName, localCatalogue, gradeScale ->
-        Ui(snapshot, pubkey, displayName, localCatalogue, gradeScale)
+    ) { transported, pubkey, displayName, localCatalogue, gradeScale ->
+        Ui(transported.first, pubkey, displayName, localCatalogue, gradeScale, transported.second)
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
