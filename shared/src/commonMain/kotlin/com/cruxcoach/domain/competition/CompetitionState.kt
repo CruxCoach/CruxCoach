@@ -29,6 +29,21 @@ data class ClimbProgress(
     )
 }
 
+/**
+ * Who holds a prize, and where the claim has got to.
+ *
+ * Deliberately two fields. Anything richer would be a payout detail, and a
+ * payout detail in public state is exactly what §11.7 exists to prevent.
+ */
+data class PrizeStatus(val pubkey: String, val state: String) {
+    fun toCanonicalJson(): JsonObject = JsonObject(
+        mapOf(
+            "pubkey" to JsonPrimitive(pubkey),
+            "state" to JsonPrimitive(state),
+        ),
+    )
+}
+
 data class Participant(
     val pubkey: String,
     val display: String = "",
@@ -121,6 +136,14 @@ data class CompetitionState(
     val participants: List<Participant> = emptyList(),
     val order: List<String> = emptyList(),
     val claims: Map<String, String> = emptyMap(),
+    /**
+     * prize_id -> holder and status.
+     *
+     * The status of a prize and nothing else. The claim, the payout
+     * destination and any contact detail travel NIP-44 encrypted between the
+     * winner and the organizer and never reach this map.
+     */
+    val prizes: Map<String, PrizeStatus> = emptyMap(),
     val announcements: List<Announcement> = emptyList(),
     val audit: List<AuditEntry> = emptyList(),
     val rejected: List<Rejection> = emptyList(),
@@ -159,6 +182,7 @@ data class CompetitionState(
             "order" to JsonArray(order.map { JsonPrimitive(it) }),
             "participants" to JsonArray(participants.map { it.toCanonicalJson() }),
             "paused" to JsonPrimitive(paused),
+            "prizes" to JsonObject(prizes.toSortedMap().mapValues { it.value.toCanonicalJson() }),
             "rejected" to JsonArray(rejected.map { it.toCanonicalJson() }),
             "round" to JsonPrimitive(round),
             "schema" to JsonPrimitive(schema),

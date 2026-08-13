@@ -30,7 +30,8 @@ object CompetitionReducer {
         "no_fee", "no_order", "no_such_participant", "not_accepted_registration", "not_eligible",
         "not_in_order", "participant_inactive", "unknown_checkin_state", "unknown_climb",
         "unknown_decision", "unknown_division", "unknown_op", "unknown_outcome",
-        "unknown_payment_state", "unknown_queue_action", "uniqueness_not_enforced", "wrong_status",
+        "unknown_payment_state", "unknown_prize", "unknown_prize_state", "unknown_queue_action",
+        "uniqueness_not_enforced", "prize_already_awarded", "results_not_final", "wrong_status",
     )
 
     private val REGISTRATION_STATES = setOf("registration_open")
@@ -142,9 +143,18 @@ object CompetitionReducer {
         return dispatch(state, entry, competition)
     }
 
+    /**
+     * Every op `dispatch` can actually apply.
+     *
+     * Has to stay in step with the `when` below and with the JS reducer's
+     * HANDLERS table: an op missing here is rejected as `unknown_op` even
+     * though a handler exists, which reads to a client as "your build is too
+     * old" when the truth is that this list was not updated.
+     */
     private val HANDLED_OPS = setOf(
         "lifecycle", "registration_decision", "payment_decision", "claim_decision",
-        "checkin", "queue", "defer_decision", "attempt_result", "disqualify", "announcement",
+        "prize_decision", "checkin", "queue", "defer_decision", "attempt_result",
+        "disqualify", "announcement",
     )
 
     private fun dispatch(state: CompetitionState, entry: LogEntry, competition: Competition) = when (entry.op) {
@@ -152,6 +162,7 @@ object CompetitionReducer {
         "registration_decision" -> applyRegistrationDecision(state, entry, competition)
         "payment_decision" -> applyPaymentDecision(state, entry, competition)
         "claim_decision" -> applyClaimDecision(state, entry, competition)
+        "prize_decision" -> applyPrizeDecision(state, entry, competition)
         "checkin" -> applyCheckin(state, entry, competition)
         "queue" -> applyQueue(state, entry, competition)
         "defer_decision" -> applyDeferDecision(state, entry, competition)
@@ -271,6 +282,46 @@ object CompetitionReducer {
         return state
             .copy(claims = state.claims + (climbId to pubkey))
             .withParticipant(participant.copy(selections = selections))
+    }
+
+    /**
+     * A prize's public status — FEAT-058 §11.7.
+     *
+     * Must agree with `applyPrizeDecision` in reduce.mjs exactly. What it
+     * refuses is the thing an organizer cannot undo: two people being told the
+     * same prize is theirs.
+     */
+    private fun applyPrizeDecision(
+        state: CompetitionState,
+        entry: LogEntry,
+        competition: Competition,
+    ): CompetitionState {
+        val prizeId = entry.data.str("prize_id")
+        val prizeState = entry.data.str("state")
+        val pubkey = entry.data.str("pubkey")
+
+        if (competition.prizes.none { it.id == prizeId }) return reject(state, entry, "unknown_prize")
+        if (prizeState == null || prizeState !in CompetitionProtocol.PRIZE_STATES) {
+            return reject(state, entry, "unknown_prize_state")
+        }
+        // Nothing about a prize is decidable before the results are.
+        if (state.status != "finished") return reject(state, entry, "results_not_final")
+
+        val held = state.prizes[prizeId]
+        val awarded = held != null && held.state in listOf("approved", "paid")
+
+        if (prizeState == "expired") {
+            if (awarded) return reject(state, entry, "prize_already_awarded")
+            return state.copy(prizes = state.prizes + (prizeId!! to PrizeStatus("", "expired")))
+        }
+
+        if (pubkey == null || state.participant(pubkey) == null) {
+            return reject(state, entry, "no_such_participant")
+        }
+        if (awarded && held!!.pubkey != pubkey) {
+            return reject(state, entry, "prize_already_awarded")
+        }
+        return state.copy(prizes = state.prizes + (prizeId!! to PrizeStatus(pubkey, prizeState)))
     }
 
     private fun applyCheckin(state: CompetitionState, entry: LogEntry, competition: Competition): CompetitionState {

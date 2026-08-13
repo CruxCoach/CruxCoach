@@ -929,112 +929,183 @@ cancelled: reachable from draft, published, registration_open,
 
 ---
 
-## 11. Lightning fees
+## 11. Money: fees, privacy, and prizes
+
+### 11.0 What CruxCoach is, and is not
+
+**CruxCoach never holds competition money.** It does not pool, escrow, custody,
+split, reserve or intermediate a single satoshi. There is no prize pot, no
+platform balance, and no platform fee. Every payment in this feature is
+**wallet to wallet**: a participant's own wallet pays a Lightning destination
+the organizer controls, and an organizer's own wallet pays a winner.
+
+What the software does is narrower and worth stating precisely:
+
+- it helps produce and check an invoice handoff
+- it records competition state — `pending`, `settled`, `refunded`, `claimed`,
+  `paid` — which are *statements about the competition*, not balances
+- it never possesses funds, and therefore cannot refund, reverse, guarantee or
+  release them
+
+**A configured cash prize is an organizer's promise, not a funded pot.** Entry
+fees are not linked to prizes by this protocol: fees go to the organizer's
+destination and stay there, and a prize is paid from the organizer's own wallet
+whether or not anybody paid a fee. Nothing here escrows an entry fee against a
+future prize, and no screen may imply otherwise. Both clients say this before a
+competition with a fee or a prize is created, and again before an entrant pays
+or a winner claims.
 
 ### 11.1 The zero-fee path
 
-`fee_msat == 0` sets every participant's `payment` to `not_required` and removes
-the entire payment surface from all three clients. This is the default and the
-path the localhost demo exercises end to end.
+`fee_msat: 0`. Every participant is `not_required` and nothing below applies.
+This is the default and the one that involves no money at all.
 
-### 11.2 The paid path
+### 11.2 What the old design leaked, and why it changed
 
-1. The organizer's client fetches the **LNURL-pay** endpoint for
-   `competition.fee_lnurl` **itself**, and records the `nostrPubkey` it
-   advertises (the "zapper key") plus `allowsNostr: true` into the competition
-   document's derived state. It never takes that key from a participant.
-2. The participant's client builds a NIP-57 **kind 9734 zap request**, signed by
-   the participant, carrying
-   `["a", "<competition address>"]`, `["p", "<organizer pubkey>"]`,
-   `["amount", "<msat>"]`, `["relays", …]`, and a `["cc-intent", "<intent nonce>"]`
-   tag binding it to the registration.
-3. The participant pays the invoice the LNURL callback returns.
-4. The LNURL provider publishes a **kind 9735 zap receipt**, signed by the
-   zapper key, whose `description` tag contains the original 9734 JSON.
-5. The participant publishes `intent{op: "payment_claim"}` naming the receipt id
-   (a convenience — the authority also subscribes for receipts directly).
-6. The **authority** verifies, and only then publishes
-   `payment_decision{state: "settled"}`.
+The first implementation used a plain NIP-57 zap: the participant signed a
+kind-9734 with their **long-term identity key**, carrying the competition's `a`
+coordinate, the amount and the registration nonce; the provider then published a
+kind-9735 whose `description` tag repeats that request **verbatim** on public
+relays, with the payer's key again in `P`.
 
-### 11.3 What verification actually proves
+Anybody scraping relays could therefore read: *this person attends this
+competition, paid this much, at this time* — permanently, and correlated with
+everything else that key has ever done. That was described as the paid path
+without ever being examined as a privacy question. It is not privacy-preserving
+and this document no longer implies that it is.
 
-This is where an implementation is tempted to lie to itself, so it is spelled
-out.
+NIP-57 acknowledges the gap in its own text — "zaps can be extended to be more
+private by encrypting zap request notes to the target user, but for simplicity
+it has been left out of this initial draft" — so **private zaps are unstandardised
+future work.** Nothing here depends on them, and no claim is made that they are
+portable today.
 
-A conformant authority accepts a receipt only if **all** hold:
+### 11.3 The privacy-first default: a direct invoice and an encrypted preimage
 
-- the 9735 is signed by the zapper key the organizer fetched **from their own
-  LNURL endpoint** in step 1 (`allowsNostr: true`, `nostrPubkey` a valid BIP-340
-  key), and its id binds its body;
-- its `description` tag parses as a 9734 whose signature is valid and whose
-  `pubkey` is the participant;
-- that 9734's `a` tag equals this competition's address and its `cc-intent` tag
-  equals the registration intent's nonce;
-- the `bolt11` tag's amount is `>= fee_msat` and matches the 9734 `amount`;
-- `SHA256(description)` equals the `description_hash` in the decoded `bolt11`
-  where the invoice carries one — this is the check that cryptographically binds
-  the invoice to that exact zap request. NIP-57 makes it a SHOULD, so a receipt
-  without it is downgraded to "settled (weakly bound)" in the audit trail rather
-  than rejected. Implemented as `verifyZapReceipt(...).weaklyBound`;
-- the receipt's `created_at` falls inside the registration window.
+The default path publishes **nothing at all** about the payment.
 
-**What that proves:** the participant asked to pay this competition, and the
-organizer's own Lightning provider asserts the invoice was settled.
+1. The participant's client resolves the organizer's LNURL-pay endpoint (§11.5)
+   and asks for an invoice **without** the `nostr` parameter. No zap request is
+   created, so no kind-9734 exists to be republished.
+2. The client checks the invoice before showing it: amount equal to the fee,
+   readable, not already expired (§11.5).
+3. The participant pays from their own wallet. Their wallet returns a
+   **payment preimage**.
+4. The client sends the organizer a `payment_claim` intent whose content is
+   **NIP-44 encrypted to the organizer's key**, carrying the preimage, the
+   invoice, and the registration nonce.
+5. The organizer's console decrypts it and verifies, with no network and no
+   third party: `sha256(preimage) == payment_hash` from the invoice, and the
+   invoice amount equals the fee.
 
-**What it does not prove — in the specification's own words:**
+**Why this is stronger than a zap receipt.** BOLT11 defines the payment hash as
+"256-bit SHA256 payment_hash. Preimage of this provides proof of payment", and
+the payer learns the preimage only when the payment settles. That is
+cryptography. A zap receipt, by the spec's own admission, "is not a proof of
+payment, all it proves is that some nostr user fetched an invoice". The private
+path is therefore the *more* trustworthy one as well as the more private one —
+an unusual and welcome combination, and the reason it is the default rather than
+a hardened option.
 
-> "The `zap receipt` is not a proof of payment, all it proves is that some nostr
-> user fetched an invoice. The existence of the `zap receipt` implies the
-> invoice as paid, but it could be a lie given a rogue implementation."
+**What is public afterwards:** `payment_decision{state: "settled"}` naming the
+participant and nothing else. No amount, no invoice, no preimage, no endpoint.
 
-and on `preimage`:
+**The honest limit:** not every wallet surfaces a preimage, and a person can
+paste one they were given rather than one they obtained by paying. The first is
+handled by the fallback below. The second is not a real attack — the only way to
+obtain a valid preimage is for the invoice to have been settled, which is what
+the organizer is being asked to believe.
 
-> "This isn't really a payment proof, there is no real way to prove that the
-> invoice is real or has been paid. You are trusting the author of the `zap
-> receipt` for the legitimacy of the payment."
+### 11.4 The fallback: an ephemeral zap key and a one-time token
 
-So the provider is trusted, by construction — and we make that acceptable by
-requiring it to be **the organizer's own** provider, so the only party who can
-be defrauded by a rogue zapper is the organizer who chose it. A further weak
-link is that `nostrPubkey` is reached via kind-0 `lud16` → DNS → TLS → an HTTP
-document, and an organizer who rotates their Lightning address invalidates
-verification of historic receipts; the authority therefore records the
-`nostrPubkey` it used into the `payment_decision` entry, so the audit trail
-stays checkable after a rotation.
+For a wallet that cannot produce a preimage, an automatic path still exists, and
+it still does not publish the participant's identity.
 
-**What a client never does:** treat a participant's `payment_claim`, an
-unverified receipt, a matching amount alone, or "the relay showed me a 9735" as
-settlement. There is exactly one path from `pending` to `settled`, and it runs
-through an authority-signed `payment_decision`.
+- The client generates a **throwaway keypair** for this payment alone. The zap
+  request is signed by that key, never by the participant's identity key.
+- The request carries `p` (the organizer), `amount`, `relays`, and a **random
+  one-time token**. It deliberately **omits the `a` coordinate** — NIP-57 marks
+  `a` optional, so a conformant provider is unaffected, and the public receipt
+  therefore does not name the competition.
+- The participant sends the organizer a NIP-44 encrypted `payment_claim`
+  binding *their real pubkey ↔ the token ↔ the ephemeral pubkey*.
+- The organizer's console finds the 9735, checks it against the key their own
+  endpoint named, matches the token and the ephemeral key from the decrypted
+  mapping, and checks the amount.
 
-**The manual path.** Gyms take cash, and plenty of LNURL endpoints publish no
-verifiable receipt at all, so an organizer must be able to record a payment
-themselves. That is deliberately *not* the same control: it is an `override`
-wrapping the `payment_decision`, which the parser refuses without a `reason` and
-which the reducer records in `state.audit`. Every client can therefore see that
-a fee was settled by assertion rather than by verification, and by whom, which
-is what keeps "settled" worth reading.
+**What still leaks:** an observer sees that the organizer's destination received
+a payment of some amount at some time from a key that has never appeared before
+and never will again. They cannot tell who paid or which competition it was for.
+That residue is unavoidable for any automatic path built on public receipts, and
+it is stated rather than glossed.
 
-`failed`, `expired` and `refunded` are all authority decisions too, each with a
-UI state and none of them defaulting to `settled`.
+**Fee destination.** The organizer's Lightning address is in the competition
+document, which is public — a poster and a website have to show people where to
+pay. Hiding it would need a per-participant encrypted handoff, which needs the
+organizer's client online at registration time; v0.2.3 has no coordinator and no
+persistent organizer process, so **this is not attempted**. The limitation is
+recorded here rather than papered over with a privacy claim the code does not
+earn.
 
-### 11.4 Decentralization boundary
+### 11.5 Invoice and endpoint rules, in both clients
 
-| Concern | Where it lives |
-|---|---|
-| Competition data, registrations, results | Nostr relays — replicated, no central party |
-| Identity and signatures | The user's key or signer — no central party |
-| Invoice generation and settlement | **The organizer's LNURL/wallet provider** |
-| The zapper key that signs receipts | **That same provider** |
-| Verifying a receipt against a registration | The authority (v1: organizer's client; later: coordinator) |
+Identical in `competitions/app/protocol/{lnurl,bolt11}.mjs` and
+`domain/competition/Competition{Lnurl,Bolt11}.kt`, pinned by shared fixtures:
 
-No test in either repository may publish to a public relay or move real sats.
-The paid path is exercised with a locally generated zapper keypair and
-locally-signed 9735 fixtures (`competition/vectors/zap-*.json`), which is a
-faithful test of *our* verification logic and an explicitly incomplete test of
-the provider's behaviour.
+- **https only**, never downgraded, never `.onion`, and no credentials in the
+  authority — `https://evil.example@bank.example` reads as the bank and resolves
+  to the attacker.
+- `tag == "payRequest"`, callback checked as strictly as the endpoint, metadata
+  present and a JSON array, amount inside `minSendable`/`maxSendable`.
+- The invoice is **decoded and its amount compared to the fee before it is
+  shown**. A mismatch is refused, not displayed with a warning: the number on
+  the screen and the number the wallet would send must be the same number.
+- Expiry is read and stated; an already-expired invoice is never offered.
 
----
+### 11.6 The manual path stays, and stays honest
+
+Gyms take cash. An organizer may always record a payment by hand — as an
+`override` carrying a **mandatory reason**, which the reducer writes into
+`state.audit` where every client can read it. It is deliberately a different
+control from the verified one, because "settled because the maths says so" and
+"settled because the organizer says so" are different claims and a record that
+conflates them is worth less than one that does not.
+
+### 11.7 Prize claims
+
+`prizes` was metadata: a competition could promise money with no way to ask for
+it. A winner can now claim, from either client, after results are final.
+
+**The rules that make a claim safe:**
+
+- Every prize has a **stable id** and unambiguous eligibility: a `rank`, and a
+  `division` where the competition has more than one. Validation refuses two
+  prizes claiming the same (division, rank), because two people would then be
+  entitled to one payment.
+- A claim is a **NIP-44 encrypted intent**. The payout destination — a Lightning
+  address or an exact-amount BOLT11 — never touches the public log, nor does any
+  contact detail for a non-cash prize.
+- The claim is **bound to one result**: it names the competition, the prize id
+  and the `results_hash` of the final standings it was made against. A claim
+  cannot be replayed into another competition, and a corrected result invalidates
+  claims made against the old one rather than silently paying out on it.
+- The authority verifies **before** showing an organizer anything: the claimant
+  signed the intent, the claimant is the entrant standing at that rank in that
+  division in the final results, the prize is unclaimed, and the destination
+  parses and — for a BOLT11 — is for the right amount and not expired.
+- The public log records only `prize_decision{prize_id, pubkey, state}` where
+  state is `claimed`, `approved`, `paid` or `rejected`. The reducer refuses a
+  second `approved` or `paid` for a prize already held by somebody else, so a
+  double payout is a protocol error rather than an organizer's mistake.
+- **`paid` is the organizer's assertion**, and the spec says so. The optional
+  winner-signed acknowledgement (`prize_receipt`) is the only evidence that
+  comes from the other side, and its absence is shown rather than assumed.
+- A **claim deadline** (default 30 days after results) bounds the organizer's
+  exposure. After it, unclaimed prizes are `expired` — a state, not a transfer.
+
+**What CruxCoach still does not do:** hold the prize, guarantee it, or verify
+that it arrived. A cash prize is one person promising to pay another, recorded
+where both can see it.
 
 ## 12. Optional NIP-52 companion
 

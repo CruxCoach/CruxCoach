@@ -685,6 +685,12 @@ private fun PaymentSection(
         stringResource(R.string.comp_pay_amount, competition.feeMsat / 1000),
         style = MaterialTheme.typography.bodyMedium,
     )
+    // Before they pay, not after: where the money goes, and who cannot get it
+    // back for them.
+    Text(
+        stringResource(R.string.comp_money_no_custody),
+        style = MaterialTheme.typography.bodySmall,
+    )
 
     if (competition.feeLnurl.isNullOrBlank()) {
         // A fee with nowhere to send it is the organizer's problem to fix, but

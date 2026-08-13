@@ -53,17 +53,23 @@ object CompetitionProtocol {
     val LOG_OPS = listOf(
         "lifecycle", "registration_decision", "payment_decision", "claim_decision",
         "checkin", "queue", "defer_decision", "attempt_result", "correction",
-        "override", "announcement", "disqualify",
+        "override", "announcement", "disqualify", "prize_decision",
     )
 
     val INTENT_OPS = listOf(
         "register", "withdraw", "checkin_request", "defer_request",
-        "attempt_report", "payment_claim",
+        "attempt_report", "payment_claim", "prize_claim", "prize_receipt",
     )
 
     val QUEUE_ACTIONS = listOf("seed", "open_turn", "close_turn", "advance", "reorder", "next_climb", "next_round")
     val ATTEMPT_OUTCOMES = listOf("top", "zone", "fall", "pass", "timeout")
     val PAYMENT_STATES = listOf("not_required", "pending", "settled", "failed", "expired", "refunded")
+
+    /** What can happen to a prize in the public log — FEAT-058 §11.7. */
+    val PRIZE_STATES = listOf("claimed", "approved", "paid", "rejected", "expired")
+
+    /** How long a winner has to claim, when the organizer sets no deadline. */
+    const val DEFAULT_PRIZE_CLAIM_DAYS = 30
 
     /** An audit trail whose entries do not say why is a log, not an audit trail. */
     val REASON_REQUIRED_OPS = setOf("correction", "override", "disqualify")
@@ -399,6 +405,24 @@ data class CompetitionClimb(
 
 data class CompetitionDivision(val id: String, val label: String)
 
+/**
+ * A prize a competition promises — FEAT-058 §11.7.
+ *
+ * `valueMsat` is what the organizer said they would pay, not money anybody
+ * holds: CruxCoach has no pot and no escrow, and a cash prize is the
+ * organizer's promise paid from their own wallet.
+ */
+data class CompetitionPrize(
+    val id: String,
+    val rank: Int,
+    val kind: String,
+    val label: String,
+    val valueMsat: Long,
+    val division: String?,
+) {
+    val isCash: Boolean get() = kind == "cash"
+}
+
 data class Competition(
     val compId: String,
     val authority: String,
@@ -425,6 +449,9 @@ data class Competition(
     val climbs: List<CompetitionClimb>,
     /** What entrants may choose from, when the organizer let them choose. */
     val climbPool: List<CompetitionClimb>,
+    val prizes: List<CompetitionPrize>,
+    /** How long a winner has to claim, in days. */
+    val prizeClaimDays: Int,
     val rules: CompetitionRules,
     val relays: List<String>,
     /** Everything else, for display without widening this class per field. */
@@ -472,6 +499,20 @@ data class Competition(
                 climbs = payload["climbs"]?.jsonArray.orEmpty().map(::climbFrom),
                 climbPool = payload["climb_pool"]?.jsonObject
                     ?.get("options")?.jsonArray.orEmpty().map(::climbFrom),
+                prizes = payload["prizes"]?.jsonArray.orEmpty().mapNotNull { element ->
+                    val obj = element.jsonObject
+                    val id = obj.str("id") ?: return@mapNotNull null
+                    CompetitionPrize(
+                        id = id,
+                        rank = obj.int("rank") ?: 0,
+                        kind = obj.str("kind").orEmpty(),
+                        label = obj.str("label").orEmpty(),
+                        valueMsat = obj.long("value_msat") ?: 0L,
+                        division = obj.str("division"),
+                    )
+                },
+                prizeClaimDays = payload.int("prize_claim_days")
+                    ?: CompetitionProtocol.DEFAULT_PRIZE_CLAIM_DAYS,
                 rules = CompetitionRules(
                     climbSource = rules.str("climb_source").orEmpty(),
                     climbCount = rules.int("climb_count") ?: 0,

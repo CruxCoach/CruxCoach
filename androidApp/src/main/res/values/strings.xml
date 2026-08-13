@@ -2469,6 +2469,8 @@
     <string name="comp_scan_action">Scan a code</string>
     <string name="comp_register_again">Ask to enter again</string>
     <string name="comp_register_again_hint">You are not entered. While registration is open you can ask again.</string>
+    <string name="comp_money_no_custody">This payment goes straight from your wallet to the organiser\u2019s. CruxCoach never holds it, and cannot refund it.</string>
+    <string name="comp_money_prize_not_funded">This prize is the organiser\u2019s promise to pay from their own wallet. CruxCoach does not hold it, has not set entry fees aside for it, and cannot guarantee it.</string>
     <string name="comp_pay_title">Entry fee</string>
     <string name="comp_pay_amount">%1$d sats</string>
     <string name="comp_pay_no_endpoint">This competition charges a fee but the organiser has not published a way to pay it. Ask them.</string>

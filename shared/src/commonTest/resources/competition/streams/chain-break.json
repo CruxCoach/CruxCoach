@@ -65,9 +65,9 @@
         "climbing"
       ]
     ],
-    "content": "{\"authority\":\"2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004\",\"authority_epoch\":1,\"board\":{\"angle\":40,\"brand\":\"kilter\",\"layout_id\":1,\"model\":\"kilterboard-og\",\"size\":\"12x12\"},\"capacity\":8,\"checkin_closes_at\":1789005400,\"checkin_opens_at\":1789003600,\"climbs\":[{\"angle\":40,\"climb_uuid\":\"3f8a1c24-5b6d-4e71-9a03-2c7d8e4f5061\",\"id\":\"c1\",\"label\":\"Qualifier 1\",\"points\":100},{\"angle\":40,\"climb_uuid\":\"7b2e9d15-4c8a-4f36-8d52-1e9a3b7c4d08\",\"id\":\"c2\",\"label\":\"Qualifier 2\",\"points\":150}],\"comp_id\":\"dd88ee99ffaa0b1c\",\"created_at\":1788900000,\"description\":\"A friendly in-house session on the Kilter board at 40 degrees.\",\"divisions\":[{\"id\":\"open\",\"label\":\"Open\"}],\"eligibility\":\"Open to everyone who has climbed here before.\",\"ends_at\":1789012600,\"fee_msat\":0,\"organizer\":{\"contact\":\"kellerwand@example.org\",\"name\":\"Kellerwand Bouldern\"},\"participant_instructions\":\"Arrive twenty minutes early and warm up on the slab.\",\"prizes\":[{\"kind\":\"non_cash\",\"label\":\"Chalk bag\",\"rank\":1}],\"refund_policy\":\"Full refund until 24 hours before the start.\",\"registration_closes_at\":1789003600,\"registration_opens_at\":1789000000,\"relays\":[\"wss://relay.example.invalid\"],\"revision\":1,\"rules\":{\"attempt_deadline_sec\":0,\"attempts_per_climb\":3,\"climb_count\":2,\"climb_source\":\"organizer_set\",\"defer_budget_per_round\":1,\"defer_slots\":2,\"late_entry_allowed\":false,\"max_consecutive_defers\":1,\"min_rest_sec\":0,\"progression\":\"synchronous_rounds\",\"scoring\":\"tops_then_attempts\",\"selection_uniqueness\":\"none\",\"tiebreaks\":[\"fewest_attempts\",\"most_zones\",\"earliest_finish\",\"seed_order\"],\"turn_deadline_sec\":120},\"spectator_info\":\"Free entry. The live screen is by the entrance.\",\"starts_at\":1789005400,\"status\":\"draft\",\"summary\":\"Five problems, three attempts each, one evening.\",\"timezone\":\"Europe/Berlin\",\"title\":\"Chain break\",\"type\":\"competition\",\"v\":1,\"venue\":{\"address\":\"Beispielweg 3, Berlin\",\"kind\":\"physical\",\"name\":\"Kellerwand Bouldern\"},\"visibility\":\"public\",\"waitlist_enabled\":true,\"waiver\":\"I understand that climbing is dangerous and I climb at my own risk.\",\"waiver_required\":true}",
-    "id": "4d1336b3f6dd692e9f7164d2ff2e0487e8519fe4c83f2f53e28fa253c37545ec",
-    "sig": "566d71673a5bafcf5c3f9ad63fe44f046c7932081e233e9e6d6e241807e8178ef18ca5848f374e7b1f9c17f275970057f0755c57c914e59206a77389eabff3f7"
+    "content": "{\"authority\":\"2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004\",\"authority_epoch\":1,\"board\":{\"angle\":40,\"brand\":\"kilter\",\"layout_id\":1,\"model\":\"kilterboard-og\",\"size\":\"12x12\"},\"capacity\":8,\"checkin_closes_at\":1789005400,\"checkin_opens_at\":1789003600,\"climbs\":[{\"angle\":40,\"climb_uuid\":\"3f8a1c24-5b6d-4e71-9a03-2c7d8e4f5061\",\"id\":\"c1\",\"label\":\"Qualifier 1\",\"points\":100},{\"angle\":40,\"climb_uuid\":\"7b2e9d15-4c8a-4f36-8d52-1e9a3b7c4d08\",\"id\":\"c2\",\"label\":\"Qualifier 2\",\"points\":150}],\"comp_id\":\"dd88ee99ffaa0b1c\",\"created_at\":1788900000,\"description\":\"A friendly in-house session on the Kilter board at 40 degrees.\",\"divisions\":[{\"id\":\"open\",\"label\":\"Open\"}],\"eligibility\":\"Open to everyone who has climbed here before.\",\"ends_at\":1789012600,\"fee_msat\":0,\"organizer\":{\"contact\":\"kellerwand@example.org\",\"name\":\"Kellerwand Bouldern\"},\"participant_instructions\":\"Arrive twenty minutes early and warm up on the slab.\",\"prizes\":[{\"id\":\"place_1\",\"kind\":\"non_cash\",\"label\":\"Chalk bag\",\"rank\":1}],\"refund_policy\":\"Full refund until 24 hours before the start.\",\"registration_closes_at\":1789003600,\"registration_opens_at\":1789000000,\"relays\":[\"wss://relay.example.invalid\"],\"revision\":1,\"rules\":{\"attempt_deadline_sec\":0,\"attempts_per_climb\":3,\"climb_count\":2,\"climb_source\":\"organizer_set\",\"defer_budget_per_round\":1,\"defer_slots\":2,\"late_entry_allowed\":false,\"max_consecutive_defers\":1,\"min_rest_sec\":0,\"progression\":\"synchronous_rounds\",\"scoring\":\"tops_then_attempts\",\"selection_uniqueness\":\"none\",\"tiebreaks\":[\"fewest_attempts\",\"most_zones\",\"earliest_finish\",\"seed_order\"],\"turn_deadline_sec\":120},\"spectator_info\":\"Free entry. The live screen is by the entrance.\",\"starts_at\":1789005400,\"status\":\"draft\",\"summary\":\"Five problems, three attempts each, one evening.\",\"timezone\":\"Europe/Berlin\",\"title\":\"Chain break\",\"type\":\"competition\",\"v\":1,\"venue\":{\"address\":\"Beispielweg 3, Berlin\",\"kind\":\"physical\",\"name\":\"Kellerwand Bouldern\"},\"visibility\":\"public\",\"waitlist_enabled\":true,\"waiver\":\"I understand that climbing is dangerous and I climb at my own risk.\",\"waiver_required\":true}",
+    "id": "8c1eef3598080a45f4537017580c686d866df8a971721239ea8e07e99e43a016",
+    "sig": "7906f4f94b4f494d7d33036a7da0ed73c73f54186cdfd47d8af1199cde9b467eaf06ae662c53d597137bca7bf8563513bba133a5cd30056fe1ff6318c7ec1f96"
   },
   "log_events": [
     {
@@ -106,7 +106,7 @@
         ],
         [
           "prev",
-          "4d1336b3f6dd692e9f7164d2ff2e0487e8519fe4c83f2f53e28fa253c37545ec"
+          "8c1eef3598080a45f4537017580c686d866df8a971721239ea8e07e99e43a016"
         ],
         [
           "op",
@@ -117,9 +117,9 @@
           "1"
         ]
       ],
-      "content": "{\"actor\":\"authority\",\"at\":1788900100,\"comp_id\":\"dd88ee99ffaa0b1c\",\"data\":{\"at\":1788900100,\"status\":\"published\"},\"epoch\":1,\"op\":\"lifecycle\",\"prev\":\"4d1336b3f6dd692e9f7164d2ff2e0487e8519fe4c83f2f53e28fa253c37545ec\",\"seq\":1,\"type\":\"log\",\"v\":1}",
-      "id": "96fdf17bae801a1c509b46bb8ea9471a9646c7a23149d45e5fe944ec9856bcba",
-      "sig": "616ab6a02ae37a63d25d115498062b8e44f677d7f52739173ffc24f0a5df9752a99376bcccb62df62344af502be3d0f8a48923a5d877d689c19090e149712b2a"
+      "content": "{\"actor\":\"authority\",\"at\":1788900100,\"comp_id\":\"dd88ee99ffaa0b1c\",\"data\":{\"at\":1788900100,\"status\":\"published\"},\"epoch\":1,\"op\":\"lifecycle\",\"prev\":\"8c1eef3598080a45f4537017580c686d866df8a971721239ea8e07e99e43a016\",\"seq\":1,\"type\":\"log\",\"v\":1}",
+      "id": "38b923867361cbb989e20ff6ec6699b0041c650c8227ef445dd9124d981ba4b0",
+      "sig": "a431b5e5c9f16fbdcf7421257f3da6b8184cbad4e8f73f1c6783ddea445694f8c7944631d2d82cdcb30fcfdf91991659e004458442aa723492f5cef25af2d8af"
     },
     {
       "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
@@ -157,7 +157,7 @@
         ],
         [
           "prev",
-          "96fdf17bae801a1c509b46bb8ea9471a9646c7a23149d45e5fe944ec9856bcba"
+          "38b923867361cbb989e20ff6ec6699b0041c650c8227ef445dd9124d981ba4b0"
         ],
         [
           "op",
@@ -168,9 +168,9 @@
           "1"
         ]
       ],
-      "content": "{\"actor\":\"authority\",\"at\":1789000000,\"comp_id\":\"dd88ee99ffaa0b1c\",\"data\":{\"at\":1789000000,\"status\":\"registration_open\"},\"epoch\":1,\"op\":\"lifecycle\",\"prev\":\"96fdf17bae801a1c509b46bb8ea9471a9646c7a23149d45e5fe944ec9856bcba\",\"seq\":2,\"type\":\"log\",\"v\":1}",
-      "id": "8719ffeda366308338c90d57797e03d5418b02e419b119990212548af8b3b10b",
-      "sig": "c0b584c1d3c31075729247e809347acdfbacb77fa0efa16975a966ea915e78fabf9509e4d3859fe71980bd1c3e078ab3f000ff2f9144d71f09c579bf605fce18"
+      "content": "{\"actor\":\"authority\",\"at\":1789000000,\"comp_id\":\"dd88ee99ffaa0b1c\",\"data\":{\"at\":1789000000,\"status\":\"registration_open\"},\"epoch\":1,\"op\":\"lifecycle\",\"prev\":\"38b923867361cbb989e20ff6ec6699b0041c650c8227ef445dd9124d981ba4b0\",\"seq\":2,\"type\":\"log\",\"v\":1}",
+      "id": "13a384a92748f229322d422182ea920e7216419f98ba7839f5ead8d29c44883a",
+      "sig": "53285e4304a6e15346a80ea39bf663f2576c4fc150e128d473aec21357ca9b0b429bb1bb0c52786aedb2681b1b10e0508c519ca7c14a50517f68fa8a572dcd59"
     },
     {
       "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
@@ -208,7 +208,7 @@
         ],
         [
           "prev",
-          "b6ff092e1dad8d2fef152adc8e9357e3bf562f2fccd4c0b8cdf1dcb18a82af0e"
+          "18bdc1bd31272bdbe1e47420b7bcba92485dcce9cf3a3fa181e5cf9f49ab1e63"
         ],
         [
           "op",
@@ -223,21 +223,21 @@
           "019244fa7971d9b335e80017cc0627eae1909c7bc991cb64dad2328df614f911"
         ]
       ],
-      "content": "{\"actor\":\"authority\",\"at\":1789000200,\"comp_id\":\"dd88ee99ffaa0b1c\",\"data\":{\"decision\":\"accepted\",\"display\":\"bob\",\"division\":\"open\",\"pubkey\":\"019244fa7971d9b335e80017cc0627eae1909c7bc991cb64dad2328df614f911\"},\"epoch\":1,\"op\":\"registration_decision\",\"prev\":\"b6ff092e1dad8d2fef152adc8e9357e3bf562f2fccd4c0b8cdf1dcb18a82af0e\",\"seq\":4,\"type\":\"log\",\"v\":1}",
-      "id": "29f1704ad736214a4fb41bf4fcc16068ff9495275ffa295aaaa888bb99c3fb2a",
-      "sig": "17072d3d4c4eb3122ef8dff2d6bde4954ef7bf4c1bd10a685508e7251edef209fd120b3cf6fb81c48f24d86d1c643c3c01f9d6a933f5de33326aa90b0f3cd219"
+      "content": "{\"actor\":\"authority\",\"at\":1789000200,\"comp_id\":\"dd88ee99ffaa0b1c\",\"data\":{\"decision\":\"accepted\",\"display\":\"bob\",\"division\":\"open\",\"pubkey\":\"019244fa7971d9b335e80017cc0627eae1909c7bc991cb64dad2328df614f911\"},\"epoch\":1,\"op\":\"registration_decision\",\"prev\":\"18bdc1bd31272bdbe1e47420b7bcba92485dcce9cf3a3fa181e5cf9f49ab1e63\",\"seq\":4,\"type\":\"log\",\"v\":1}",
+      "id": "ee3b3f15b272d72ccee6375b14ca67036df5d89a29fed56dd048deabd7a77256",
+      "sig": "457ed404c32dc9efe4843b0d66e75e536973744e6efd5cd517d6628a53228e942a5dfd7092510f29f2df505d05e69cc8e0e39735d6ff237730e5c198d4002f7a"
     }
   ],
   "expected": {
     "chain_break_at": 3,
-    "state_hash": "4ac5098654b279b0110226ab38fe4212839c0e17701823f227bdce24be3b03a2",
+    "state_hash": "08b0964d0582c8e160f5b03eb2106ffce4c227672d702254515fef57501a0b26",
     "state": {
       "comp_id": "dd88ee99ffaa0b1c",
       "schema": "cruxcoach-competition/1",
       "authority": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
       "epoch": 1,
       "seq": 2,
-      "head": "8719ffeda366308338c90d57797e03d5418b02e419b119990212548af8b3b10b",
+      "head": "13a384a92748f229322d422182ea920e7216419f98ba7839f5ead8d29c44883a",
       "status": "registration_open",
       "paused": false,
       "config_revision": 1,
@@ -249,6 +249,7 @@
       "participants": [],
       "order": [],
       "claims": {},
+      "prizes": {},
       "announcements": [],
       "audit": [],
       "rejected": [],
@@ -293,7 +294,7 @@
       ],
       [
         "prev",
-        "8719ffeda366308338c90d57797e03d5418b02e419b119990212548af8b3b10b"
+        "13a384a92748f229322d422182ea920e7216419f98ba7839f5ead8d29c44883a"
       ],
       [
         "op",
@@ -308,8 +309,8 @@
         "d4d41c056c407711c552ace7aaf4fa9b51b4ea80d06beac56a399c0034229130"
       ]
     ],
-    "content": "{\"actor\":\"authority\",\"at\":1789000100,\"comp_id\":\"dd88ee99ffaa0b1c\",\"data\":{\"decision\":\"accepted\",\"display\":\"alice\",\"division\":\"open\",\"pubkey\":\"d4d41c056c407711c552ace7aaf4fa9b51b4ea80d06beac56a399c0034229130\"},\"epoch\":1,\"op\":\"registration_decision\",\"prev\":\"8719ffeda366308338c90d57797e03d5418b02e419b119990212548af8b3b10b\",\"seq\":3,\"type\":\"log\",\"v\":1}",
-    "id": "b6ff092e1dad8d2fef152adc8e9357e3bf562f2fccd4c0b8cdf1dcb18a82af0e",
-    "sig": "13dbc2336b8a6e907910947c78179361d671d7cc2788452fe6905676597a4d7d16b9842c711a8ccc3a3d3663b5584f98c0d8f1613e1859db157f7640a5a37f4f"
+    "content": "{\"actor\":\"authority\",\"at\":1789000100,\"comp_id\":\"dd88ee99ffaa0b1c\",\"data\":{\"decision\":\"accepted\",\"display\":\"alice\",\"division\":\"open\",\"pubkey\":\"d4d41c056c407711c552ace7aaf4fa9b51b4ea80d06beac56a399c0034229130\"},\"epoch\":1,\"op\":\"registration_decision\",\"prev\":\"13a384a92748f229322d422182ea920e7216419f98ba7839f5ead8d29c44883a\",\"seq\":3,\"type\":\"log\",\"v\":1}",
+    "id": "18bdc1bd31272bdbe1e47420b7bcba92485dcce9cf3a3fa181e5cf9f49ab1e63",
+    "sig": "acfc255e22ef56da741fb15d2b2d73638cc732ec6f14a7e5c9c05b329cdae3313ee30ef31b9e644d3674e593d8f6a143bc9ac3e4a88ee02b86a9bc0ebb27e7b7"
   }
 }

@@ -68,7 +68,13 @@ before a paid competition is run in anger.
 
 ## 5. Entry fees, and what "settled" means
 
-**Shipped.** A fee is settled automatically only by a kind-9735 signed by the
+> **Superseded by [5b](#5b-payment-privacy-a-direct-invoice-by-default-an-ephemeral-zap-as-fallback).**
+> What follows described the zap path when it was the only path. It is now the
+> *fallback*, for wallets that cannot produce a preimage; the default publishes
+> nothing. Kept because the reasoning about what a receipt proves is still the
+> reasoning that made the private path preferable.
+
+**Shipped as the fallback.** A fee is settled automatically only by a kind-9735 signed by the
 key the competition's *own* LNURL endpoint named, over a zap request the entrant
 signed, for this competition and this amount, with the invoice's description
 hash binding it to that request where the invoice carries one. Recording a
@@ -84,6 +90,79 @@ zapper is the organizer who chose it.
 a cancelled competition with paid entrants is currently an organizer's problem
 to solve out of band. Recommendation: decide whether CruxCoach wants to be
 anywhere near refund mechanics before gyms charge real money through it.
+
+## 5a. CruxCoach never touches the money
+
+**Shipped.** No pooling, escrow, custody, splitting or platform fee, anywhere.
+Entry fees go from a participant's wallet to a destination the organizer
+controls; a prize goes from the organizer's wallet to the winner's. The software
+produces and checks invoices and records competition state, and that is all it
+can do — it has no balance to draw on.
+
+**Consequences that are stated rather than hidden.** A configured cash prize is
+a promise, not a funded pot: entry fees are not linked to prizes by the
+protocol. CruxCoach cannot refund anybody, cannot guarantee a prize, and cannot
+confirm that a payout arrived. Every screen that mentions money says so before
+the money moves.
+
+**Open — business.** Whether CruxCoach ever *wants* to be closer to the money
+than this. Recommendation: no. Custody is a regulatory posture, not a feature,
+and the moment there is a pot somebody has to be liable for it.
+
+## 5b. Payment privacy: a direct invoice by default, an ephemeral zap as fallback
+
+**Shipped.** The default path publishes nothing about the payment. The client
+asks the organizer's endpoint for an invoice with no `nostr` parameter, the
+participant pays it, and the preimage travels to the organizer NIP-44 encrypted.
+The organizer verifies `sha256(preimage) == payment_hash` locally.
+
+**Why this and not a zap.** BOLT11 says the preimage "provides proof of
+payment"; NIP-57 says its receipt "is not a proof of payment". The private path
+is the cryptographically stronger one as well as the more private one. The zap
+path survives as a fallback for wallets that do not surface a preimage, using a
+throwaway key and a one-time token, with the `a` coordinate omitted so the public
+receipt does not name the competition.
+
+**What was rejected.** NIP-57's encrypted private zaps: the spec itself marks
+them as left out of the draft, so nothing portable can be built on them today,
+and claiming otherwise would be inventing a standard. NIP-47/NWC was evaluated
+and not adopted: it needs a wallet-connection secret per participant, which is a
+larger trust surface than the problem needs and would exclude anybody whose
+wallet does not speak it.
+
+**The limit, stated.** The organizer's Lightning address is in the public
+competition document, because a poster has to tell people where to pay. Hiding
+it would need a per-participant encrypted handoff and therefore an organizer
+client that is online when people register — a coordinator, which v0.2.3
+deliberately does not have. This is the least-leaky honest behaviour available,
+not a privacy claim the code has earned.
+
+**Open — taste.** Whether the fallback should exist at all, or whether wallets
+without preimages should simply be sent down the manual path. Recommendation:
+keep it; a gym should not have to audit its entrants' wallet choices.
+
+## 5c. Prize claims are a promise, recorded — not an escrow
+
+**Shipped.** Prizes have stable ids and unambiguous eligibility (rank, and
+division where there is more than one). After final results the winner claims
+from either client; the claim and the payout destination are NIP-44 encrypted to
+the organizer and never appear in the public log. The authority checks the
+claimant against the final standings before an organizer sees anything, and the
+log records only `claimed`/`approved`/`paid`/`rejected`.
+
+**What is deliberately not claimed.** `paid` is the organizer's assertion. The
+only evidence from the other side is an optional winner-signed acknowledgement,
+and its absence is shown rather than assumed. No amount of protocol makes one
+person's promise into a settled fact.
+
+**Open — business.** The 30-day claim deadline is a guess. It bounds an
+organizer's exposure and gives a winner a reasonable window, and nobody has run
+a competition yet to say whether it is right.
+
+**Open — business.** Non-cash prizes use the same encrypted channel for
+collection details but are deliberately a different flow from a Lightning
+payout. Whether gyms actually want that, or would rather hand a t-shirt over at
+the desk and mark it done, is unknown.
 
 ## 6. Competition climbs are added by share link
 

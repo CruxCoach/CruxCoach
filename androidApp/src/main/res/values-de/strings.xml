@@ -2468,6 +2468,8 @@
     <string name="comp_scan_action">Code scannen</string>
     <string name="comp_register_again">Erneut anfragen</string>
     <string name="comp_register_again_hint">Du bist nicht angemeldet. Solange die Anmeldung offen ist, kannst du erneut anfragen.</string>
+    <string name="comp_money_no_custody">Diese Zahlung geht direkt von deiner Wallet an die der Ausrichtung. CruxCoach h\u00e4lt sie nie und kann sie nicht zur\u00fcckerstatten.</string>
+    <string name="comp_money_prize_not_funded">Dieser Preis ist das Zahlungsversprechen der Ausrichtung aus ihrer eigenen Wallet. CruxCoach h\u00e4lt ihn nicht, hat daf\u00fcr keine Startgelder zur\u00fcckgelegt und kann ihn nicht garantieren.</string>
     <string name="comp_pay_title">Startgeld</string>
     <string name="comp_pay_amount">%1$d Sats</string>
     <string name="comp_pay_no_endpoint">Dieser Wettkampf kostet Startgeld, aber die Ausrichtung hat keinen Zahlweg ver\u00f6ffentlicht. Frag nach.</string>
