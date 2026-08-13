@@ -401,6 +401,14 @@ data class CompetitionClimb(
     val angle: Int,
     val label: String,
     val points: Int,
+    /**
+     * Placement id of the scoring zone hold. The organizer defines it even
+     * when entrants choose from a pool: entrants choose a problem, never the
+     * meaning of its result. New zone-scored competitions require it in their
+     * creation UI. It stays nullable so older signed v1 competitions remain
+     * readable.
+     */
+    val zoneHold: Int? = null,
 )
 
 data class CompetitionDivision(val id: String, val label: String)
@@ -553,6 +561,7 @@ private fun climbFrom(element: kotlinx.serialization.json.JsonElement): Competit
         angle = obj.int("angle") ?: 0,
         label = obj.str("label").orEmpty(),
         points = obj.int("points") ?: 0,
+        zoneHold = obj.int("zone_hold"),
     )
 }
 

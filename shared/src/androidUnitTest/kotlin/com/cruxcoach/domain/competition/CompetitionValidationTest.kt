@@ -105,6 +105,20 @@ class CompetitionValidationTest {
     }
 
     @Test
+    fun `zone hold is parsed and must be positive when present`() {
+        val marked = Competition.from(
+            config(climbs = """[{"id":"c1","climb_uuid":"$real","angle":40,"label":"Blue slab","points":100,"zone_hold":321}]"""),
+        )
+        assertEquals(321, marked.climbs.single().zoneHold)
+        assertTrue(CompetitionValidation.validate(marked).isEmpty())
+
+        val invalid = problems(
+            config(climbs = """[{"id":"c1","climb_uuid":"$real","angle":40,"label":"Blue slab","points":100,"zone_hold":0}]"""),
+        )
+        assertTrue(invalid.any { it.field == "climbs" && "zone_hold" in it.message })
+    }
+
+    @Test
     fun `registration and check-in may overlap`() {
         val found = problems(config(registrationClose = 1789004200, checkinOpen = 1789003600))
         assertTrue(found.isEmpty(), found.joinToString())

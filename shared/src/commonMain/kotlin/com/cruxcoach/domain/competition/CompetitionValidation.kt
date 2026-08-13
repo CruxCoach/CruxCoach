@@ -191,6 +191,9 @@ object CompetitionValidation {
                         fail("climbs", "lists the same climb twice")
                     }
                     if (climb.label.isBlank()) fail("climbs", "each climb needs a label")
+                    if (climb.zoneHold != null && climb.zoneHold <= 0) {
+                        fail("climbs", "zone_hold must be a positive placement id")
+                    }
                 }
                 if (competition.climbs.size < rules.climbCount) {
                     fail("climbs", "needs at least ${rules.climbCount} climbs for this format")
@@ -229,6 +232,10 @@ object CompetitionValidation {
                     }
                     if (option.int("angle") == null) fail("climb_pool", "each option needs an angle")
                     if (option.str("label").isNullOrBlank()) fail("climb_pool", "each option needs a label")
+                    val zoneHold = option.int("zone_hold")
+                    if (zoneHold != null && zoneHold <= 0) {
+                        fail("climb_pool", "zone_hold must be a positive placement id")
+                    }
                 }
                 if (options.size < rules.climbCount) {
                     fail("climb_pool", "needs at least ${rules.climbCount} climbs for this format")

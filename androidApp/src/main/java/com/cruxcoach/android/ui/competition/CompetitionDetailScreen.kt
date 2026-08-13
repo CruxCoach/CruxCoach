@@ -2,12 +2,15 @@ package com.cruxcoach.android.ui.competition
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.clickable
@@ -20,6 +23,8 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -44,6 +49,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -62,7 +68,16 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.BuildConfig
 import com.cruxcoach.android.R
 import com.cruxcoach.android.competition.CompetitionClimbResolver
+import com.cruxcoach.android.competition.CompetitionCataloguePolicy
 import com.cruxcoach.android.competition.CompetitionRelayClient
+import com.cruxcoach.android.data.LedHoldColors
+import com.cruxcoach.android.ui.board.KilterBoardVisualization
+import com.cruxcoach.android.ui.board.MoonBoardVisualization
+import com.cruxcoach.android.ui.board.rememberMoonBoardAsset
+import com.cruxcoach.android.util.GradeDisplayHelper
+import com.cruxcoach.android.data.GradeScale
+import com.cruxcoach.domain.board.BoardBrand
+import com.cruxcoach.domain.board.MoonBoardVariant
 import com.cruxcoach.domain.competition.Competition
 import kotlinx.coroutines.delay
 import java.text.DateFormat
@@ -224,6 +239,9 @@ fun CompetitionDetailScreen(
 
             item { CompetitionEssentials(competition) }
             item { CompetitionScoringCard(competition) }
+            if (!ui.picksOwnClimbs) {
+                item { CompetitionCatalogueOverview(ui) { id, _ -> lastAsked = id; viewModel.openClimb(id) } }
+            }
 
             // ── the four questions, in order ──
             if (state != null && state.status in listOf("running", "paused")) {
@@ -619,7 +637,27 @@ private fun RegistrationPanel(
                     Text(stringResource(R.string.comp_waiver_accept))
                 }
             }
-            val picked = remember { mutableStateListOf<String>() }
+            val picked = rememberSaveable(
+                competition.compId,
+                saver = listSaver<SnapshotStateList<String>, String>(
+                    save = { it.toList() },
+                    restore = { saved -> mutableStateListOf<String>().apply { addAll(saved) } },
+                ),
+            ) { mutableStateListOf() }
+            var prunedPicks by rememberSaveable(competition.compId) { mutableStateOf(0) }
+            LaunchedEffect(ui.catalogue, state.claims) {
+                val ready = ui.catalogue as? CompetitionDetailViewModel.CatalogueState.Ready
+                    ?: return@LaunchedEffect
+                val allowed = competition.climbPool.map { it.id }.filter { id ->
+                    id in ready.entries && (
+                        competition.rules.selectionUniqueness != "unique_per_competition" ||
+                            state.claims[id] == null || state.claims[id] == ui.myPubkey
+                        )
+                }.toSet()
+                val before = picked.size
+                picked.removeAll { it !in allowed }
+                prunedPicks += before - picked.size
+            }
             if (ui.picksOwnClimbs) {
                 Spacer(Modifier.height(12.dp))
                 ClimbPicker(
@@ -629,7 +667,18 @@ private fun RegistrationPanel(
                     onOpenClimb = onOpenClimb,
                 )
             }
-            val picksComplete = !ui.picksOwnClimbs || picked.size == competition.rules.climbCount
+            if (prunedPicks > 0) {
+                Text(
+                    stringResource(R.string.comp_pick_pruned, prunedPicks),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            val readyIds = (ui.catalogue as? CompetitionDetailViewModel.CatalogueState.Ready)
+                ?.entries?.keys.orEmpty()
+            val picksComplete = !ui.picksOwnClimbs ||
+                (ui.catalogue is CompetitionDetailViewModel.CatalogueState.Ready &&
+                    picked.size == competition.rules.climbCount && picked.all { it in readyIds })
             Button(
                 onClick = {
                     viewModel.register(
@@ -642,14 +691,24 @@ private fun RegistrationPanel(
                 enabled = display.isNotBlank() && (!competition.waiverRequired || waiver) && picksComplete,
                 modifier = Modifier.fillMaxWidth().testTag("competition_register"),
             ) { Text(stringResource(R.string.comp_register)) }
-            if (!picksComplete) {
-                Text(
-                    stringResource(R.string.comp_pick_incomplete, competition.rules.climbCount),
-                    style = MaterialTheme.typography.bodySmall,
+            val registerProblem = when {
+                display.isBlank() -> stringResource(R.string.comp_display_required)
+                ui.picksOwnClimbs && ui.catalogue is CompetitionDetailViewModel.CatalogueState.Loading ->
+                    stringResource(R.string.comp_catalog_loading_register)
+                ui.picksOwnClimbs && ui.catalogue is CompetitionDetailViewModel.CatalogueState.Unavailable ->
+                    stringResource(R.string.comp_catalog_unavailable_register)
+                ui.picksOwnClimbs && !picksComplete -> stringResource(
+                    R.string.comp_pick_remaining,
+                    (competition.rules.climbCount - picked.size).coerceAtLeast(0),
                 )
+                competition.waiverRequired && !waiver -> stringResource(R.string.comp_waiver_required)
+                else -> null
+            }
+            registerProblem?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
             if (competition.waiverRequired && !waiver) {
-                Text(stringResource(R.string.comp_waiver_required), style = MaterialTheme.typography.bodySmall)
+                if (registerProblem == null) Text(stringResource(R.string.comp_waiver_required), style = MaterialTheme.typography.bodySmall)
             }
         }
     }
@@ -810,6 +869,10 @@ private fun ClimbPicker(
     val competition = ui.snapshot.competition ?: return
     val state = ui.snapshot.state ?: return
     val unique = competition.rules.selectionUniqueness == "unique_per_competition"
+    var query by rememberSaveable(competition.compId) { mutableStateOf("") }
+    var gradeBand by rememberSaveable(competition.compId) { mutableStateOf("all") }
+    var minimumSends by rememberSaveable(competition.compId) { mutableStateOf(0) }
+    var sort by rememberSaveable(competition.compId) { mutableStateOf("popular") }
 
     Text(stringResource(R.string.comp_pick_title), fontWeight = FontWeight.Bold)
     Text(stringResource(R.string.comp_pick_hint, needed), style = MaterialTheme.typography.bodySmall)
@@ -820,34 +883,288 @@ private fun ClimbPicker(
         stringResource(R.string.comp_pick_count, picked.size, needed),
         modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
     )
-    competition.climbPool.forEach { climb ->
-        val takenBy = if (unique) state.claims[climb.id] else null
-        val taken = takenBy != null && takenBy != ui.myPubkey
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-            Checkbox(
-                checked = picked.contains(climb.id),
-                enabled = !taken,
-                onCheckedChange = { checked ->
-                    if (checked) {
-                        if (picked.size < needed) picked.add(climb.id)
+    LinearProgressIndicator(
+        progress = { (picked.size.toFloat() / needed.coerceAtLeast(1)).coerceIn(0f, 1f) },
+        modifier = Modifier.fillMaxWidth().testTag("competition_pick_progress"),
+    )
+
+    when (val catalogue = ui.catalogue) {
+        CompetitionDetailViewModel.CatalogueState.Loading -> {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(Modifier.size(22.dp))
+                Spacer(Modifier.width(10.dp))
+                Text(stringResource(R.string.comp_catalog_loading))
+            }
+            return
+        }
+        is CompetitionDetailViewModel.CatalogueState.Unavailable -> {
+            WarningCard(
+                stringResource(
+                    if (catalogue.reason == CompetitionDetailViewModel.CatalogueState.Reason.CATALOGUE_NOT_DOWNLOADED) {
+                        R.string.comp_catalog_missing
                     } else {
-                        picked.remove(climb.id)
-                    }
-                },
-                modifier = Modifier.testTag("competition_pick_${climb.id}"),
+                        R.string.comp_catalog_bad_board
+                    },
+                ),
             )
-            Column(Modifier.weight(1f)) {
-                Text(climb.label)
+            return
+        }
+        is CompetitionDetailViewModel.CatalogueState.Ready -> {
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it.take(80) },
+                label = { Text(stringResource(R.string.comp_catalog_search)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().testTag("competition_catalog_search"),
+            )
+            Text(stringResource(R.string.comp_catalog_grade), style = MaterialTheme.typography.labelMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf(
+                    "all" to R.string.comp_catalog_all,
+                    "easy" to R.string.comp_catalog_easy,
+                    "mid" to R.string.comp_catalog_mid,
+                    "hard" to R.string.comp_catalog_hard,
+                ).forEach { (value, label) ->
+                    FilterChip(
+                        selected = gradeBand == value,
+                        onClick = { gradeBand = value },
+                        label = { Text(stringResource(label)) },
+                    )
+                }
+            }
+            Text(stringResource(R.string.comp_catalog_sends), style = MaterialTheme.typography.labelMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf(0, 10, 100).forEach { threshold ->
+                    FilterChip(
+                        selected = minimumSends == threshold,
+                        onClick = { minimumSends = threshold },
+                        label = {
+                            Text(
+                                if (threshold == 0) stringResource(R.string.comp_catalog_any)
+                                else stringResource(R.string.comp_catalog_sends_min, threshold),
+                            )
+                        },
+                    )
+                }
+            }
+            Text(stringResource(R.string.comp_catalog_sort), style = MaterialTheme.typography.labelMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf(
+                    "popular" to R.string.comp_catalog_sort_popular,
+                    "grade" to R.string.comp_catalog_sort_grade,
+                    "quality" to R.string.comp_catalog_sort_quality,
+                ).forEach { (value, label) ->
+                    FilterChip(
+                        selected = sort == value,
+                        onClick = { sort = value },
+                        label = { Text(stringResource(label)) },
+                    )
+                }
+            }
+
+            val entries = competition.climbPool.mapNotNull { catalogue.entries[it.id] }
+                .filter { entry ->
+                    val needle = query.trim().lowercase()
+                    (needle.isEmpty() || entry.climb.name.lowercase().contains(needle) ||
+                        entry.climb.setterUsername.orEmpty().lowercase().contains(needle)) &&
+                        (entry.climb.ascensionistCount ?: 0) >= minimumSends &&
+                        when (gradeBand) {
+                            "easy" -> (entry.climb.difficultyAverage ?: Double.MAX_VALUE) <= 18.0
+                            "mid" -> (entry.climb.difficultyAverage ?: -1.0) in 18.01..24.99
+                            "hard" -> (entry.climb.difficultyAverage ?: -1.0) >= 25.0
+                            else -> true
+                        }
+                }
+                .let { list ->
+                    when (sort) {
+                        "grade" -> list.sortedBy { it.climb.difficultyAverage ?: Double.MAX_VALUE }
+                        "quality" -> list.sortedByDescending { it.climb.qualityAverage ?: -1.0 }
+                        else -> list.sortedByDescending { it.climb.ascensionistCount ?: -1 }
+                    }
+                }
+            if (catalogue.incompatibleCount > 0 || catalogue.missingCount > 0) {
                 Text(
-                    if (taken) stringResource(R.string.comp_pick_taken)
-                    else stringResource(R.string.comp_climb_angle, climb.angle),
+                    stringResource(
+                        R.string.comp_catalog_hidden,
+                        catalogue.incompatibleCount,
+                        catalogue.missingCount,
+                    ),
                     style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
                 )
             }
-            OpenOnBoardButton(climb, onOpenClimb)
+            if (entries.isEmpty()) {
+                Text(stringResource(R.string.comp_catalog_no_results), style = MaterialTheme.typography.bodySmall)
+            }
+            entries.forEach { entry ->
+                val climb = entry.option
+                val takenBy = if (unique) state.claims[climb.id] else null
+                val taken = takenBy != null && takenBy != ui.myPubkey
+                CompetitionCatalogueCard(
+                    entry = entry,
+                    checked = picked.contains(climb.id),
+                    enabled = !taken && (picked.size < needed || picked.contains(climb.id)),
+                    taken = taken,
+                    zoneRelevant = competition.zoneScoringActive(),
+                    gradeScale = ui.gradeScale,
+                    onCheckedChange = { checked ->
+                        if (checked) {
+                            if (picked.size < needed) picked.add(climb.id)
+                        } else {
+                            picked.remove(climb.id)
+                        }
+                    },
+                    onOpenClimb = onOpenClimb,
+                )
+            }
         }
     }
 }
+
+@Composable
+private fun CompetitionCatalogueCard(
+    entry: CompetitionDetailViewModel.CatalogueEntry,
+    checked: Boolean,
+    enabled: Boolean,
+    taken: Boolean,
+    zoneRelevant: Boolean,
+    gradeScale: GradeScale,
+    onCheckedChange: (Boolean) -> Unit,
+    onOpenClimb: (String, Int) -> Unit,
+    showSelection: Boolean = true,
+) {
+    val option = entry.option
+    val climb = entry.climb
+    val validZoneHold = CompetitionCataloguePolicy.validZoneHold(option, entry.holds)
+    Card(
+        modifier = Modifier.fillMaxWidth().testTag("competition_catalog_${option.id}"),
+        colors = CardDefaults.cardColors(
+            containerColor = if (checked) MaterialTheme.colorScheme.primaryContainer
+            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.38f),
+        ),
+    ) {
+        Row(Modifier.padding(10.dp), verticalAlignment = Alignment.Top) {
+            Box(Modifier.width(104.dp)) {
+                if (climb.boardBrand == BoardBrand.MOONBOARD.wireValue) {
+                    MoonBoardVisualization(
+                        frames = climb.frames,
+                        assetState = rememberMoonBoardAsset(climb.layoutId),
+                        variant = MoonBoardVariant.fromLayoutId(climb.layoutId),
+                        highlightedHoldId = validZoneHold,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                } else {
+                    KilterBoardVisualization(
+                        holds = entry.holds,
+                        placements = entry.placements,
+                        boardSize = entry.boardSize,
+                        boardImages = entry.boardImages,
+                        ledColors = LedHoldColors.standardFor(BoardBrand.fromWire(climb.boardBrand)),
+                        selectedHolds = validZoneHold?.let(::setOf).orEmpty(),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (showSelection) {
+                        Checkbox(
+                            checked = checked,
+                            enabled = enabled,
+                            onCheckedChange = onCheckedChange,
+                            modifier = Modifier.testTag("competition_pick_${option.id}"),
+                        )
+                    }
+                    Text(climb.name.ifBlank { option.label }, fontWeight = FontWeight.Bold)
+                }
+                val grade = climb.difficultyAverage?.let {
+                    GradeDisplayHelper.formatDifficulty(it, gradeScale)
+                } ?: stringResource(R.string.comp_catalog_ungraded)
+                Text(
+                    stringResource(
+                        R.string.comp_catalog_details,
+                        grade,
+                        climb.ascensionistCount ?: 0,
+                        option.angle,
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                climb.setterUsername?.takeIf { it.isNotBlank() }?.let {
+                    Text(stringResource(R.string.comp_catalog_setter, it), style = MaterialTheme.typography.bodySmall)
+                }
+                climb.qualityAverage?.let {
+                    Text(stringResource(R.string.comp_catalog_quality, it), style = MaterialTheme.typography.bodySmall)
+                }
+                if (taken) {
+                    Text(stringResource(R.string.comp_pick_taken), color = MaterialTheme.colorScheme.error)
+                } else if (!enabled && !checked) {
+                    Text(stringResource(R.string.comp_pick_limit_reached), style = MaterialTheme.typography.bodySmall)
+                }
+                if (zoneRelevant) {
+                    Text(
+                        stringResource(
+                            if (validZoneHold != null) R.string.comp_catalog_zone_marked
+                            else R.string.comp_catalog_zone_legacy,
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (validZoneHold == null) MaterialTheme.colorScheme.error
+                        else MaterialTheme.colorScheme.primary,
+                    )
+                }
+                OpenOnBoardButton(option, onOpenClimb)
+            }
+        }
+    }
+}
+
+@Composable
+private fun CompetitionCatalogueOverview(
+    ui: CompetitionDetailViewModel.Ui,
+    onOpenClimb: (String, Int) -> Unit,
+) {
+    val competition = ui.snapshot.competition ?: return
+    if (competition.rules.climbSource != "organizer_set") return
+    val ready = ui.catalogue as? CompetitionDetailViewModel.CatalogueState.Ready
+    Card(Modifier.fillMaxWidth().testTag("competition_organizer_climbs")) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(stringResource(R.string.comp_catalog_comp_climbs), fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.comp_catalog_comp_climbs_hint), style = MaterialTheme.typography.bodySmall)
+            if (ready == null) {
+                Text(
+                    stringResource(
+                        if (ui.catalogue is CompetitionDetailViewModel.CatalogueState.Loading) {
+                            R.string.comp_catalog_loading
+                        } else {
+                            R.string.comp_catalog_read_only_unavailable
+                        },
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+                return@Column
+            }
+            competition.climbs.mapNotNull { ready.entries[it.id] }.forEach { entry ->
+                CompetitionCatalogueCard(
+                    entry = entry,
+                    checked = false,
+                    enabled = false,
+                    taken = false,
+                    zoneRelevant = competition.zoneScoringActive(),
+                    gradeScale = ui.gradeScale,
+                    onCheckedChange = {},
+                    onOpenClimb = onOpenClimb,
+                    showSelection = false,
+                )
+            }
+        }
+    }
+}
+
+private fun Competition.zoneScoringActive(): Boolean =
+    rules.scoring == "tops_then_attempts" ||
+        (rules.scoring == "achievement_points" && (rules.scorePoints?.zone ?: 0) > 0) ||
+        "most_zones" in rules.tiebreaks || "fewest_zone_attempts" in rules.tiebreaks
 
 /**
  * What happened to an entrant's picks.
@@ -895,24 +1212,29 @@ private fun ClaimStatusSection(
         style = MaterialTheme.typography.bodySmall,
         modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
     )
-    val repick = remember(me.selections) { mutableStateListOf<String>().apply { addAll(me.selections) } }
-    free.forEach { climb ->
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-            Checkbox(
-                checked = repick.contains(climb.id),
-                onCheckedChange = { checked ->
-                    if (checked) {
-                        if (repick.size < competition.rules.climbCount) repick.add(climb.id)
-                    } else {
-                        repick.remove(climb.id)
-                    }
-                },
-                modifier = Modifier.testTag("competition_repick_${climb.id}"),
-            )
-            Text(climb.label, modifier = Modifier.weight(1f))
-            OpenOnBoardButton(climb, onOpenClimb)
+    val repick = rememberSaveable(
+        competition.compId,
+        "repick",
+        saver = listSaver<SnapshotStateList<String>, String>(
+            save = { it.toList() },
+            restore = { saved -> mutableStateListOf<String>().apply { addAll(saved) } },
+        ),
+    ) { mutableStateListOf<String>().apply { addAll(me.selections) } }
+    LaunchedEffect(ui.catalogue, state.claims) {
+        val ready = ui.catalogue as? CompetitionDetailViewModel.CatalogueState.Ready
+            ?: return@LaunchedEffect
+        repick.removeAll { id ->
+            id !in ready.entries || (state.claims[id] != null && state.claims[id] != ui.myPubkey)
         }
     }
+    ClimbPicker(
+        ui = ui,
+        picked = repick,
+        needed = competition.rules.climbCount,
+        onOpenClimb = onOpenClimb,
+    )
+    val repickReady = ui.catalogue is CompetitionDetailViewModel.CatalogueState.Ready &&
+        repick.size == competition.rules.climbCount
     Button(
         onClick = {
             viewModel.register(
@@ -922,9 +1244,23 @@ private fun ClaimStatusSection(
                 selections = repick.toList(),
             )
         },
-        enabled = repick.size == competition.rules.climbCount,
+        enabled = repickReady,
         modifier = Modifier.fillMaxWidth().testTag("competition_repick"),
     ) { Text(stringResource(R.string.comp_pick_again)) }
+    if (!repickReady) {
+        Text(
+            when (ui.catalogue) {
+                CompetitionDetailViewModel.CatalogueState.Loading -> stringResource(R.string.comp_catalog_loading_register)
+                is CompetitionDetailViewModel.CatalogueState.Unavailable -> stringResource(R.string.comp_catalog_unavailable_register)
+                is CompetitionDetailViewModel.CatalogueState.Ready -> stringResource(
+                    R.string.comp_pick_remaining,
+                    (competition.rules.climbCount - repick.size).coerceAtLeast(0),
+                )
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+        )
+    }
 }
 
 private fun registrationWindowOpen(competition: Competition, status: String, at: Long): Boolean =

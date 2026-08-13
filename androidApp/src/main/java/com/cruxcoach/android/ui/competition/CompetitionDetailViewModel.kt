@@ -9,6 +9,16 @@ import com.cruxcoach.android.competition.CompetitionPaymentFlow
 import com.cruxcoach.android.competition.CompetitionRelayClient
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.android.payment.NostrProfileManager
+import com.cruxcoach.android.data.GradeScale
+import com.cruxcoach.android.data.UserPreferences
+import com.cruxcoach.data.repository.BoardImage
+import com.cruxcoach.data.repository.BoardPlacement
+import com.cruxcoach.data.repository.BoardRepository
+import com.cruxcoach.data.repository.BoardSize
+import com.cruxcoach.data.repository.ClimbWithStats
+import com.cruxcoach.domain.board.BoardBrand
+import com.cruxcoach.domain.board.BoardClimbParser
+import com.cruxcoach.domain.board.BoardHold
 import com.cruxcoach.domain.competition.CompetitionClimb
 import com.cruxcoach.domain.competition.CompetitionProtocol
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -17,10 +27,17 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
 /**
  * One competition, live.
@@ -42,6 +59,8 @@ class CompetitionDetailViewModel @Inject constructor(
     private val payments: CompetitionPaymentFlow,
     private val signer: NostrSigner,
     private val profiles: NostrProfileManager,
+    private val boardRepository: BoardRepository,
+    private val preferences: UserPreferences,
 ) : ViewModel() {
 
     private val organizerPubkey: String = savedStateHandle["organizerPubkey"] ?: ""
@@ -64,6 +83,8 @@ class CompetitionDetailViewModel @Inject constructor(
         val snapshot: CompetitionRelayClient.Snapshot,
         val myPubkey: String,
         val suggestedDisplayName: String = "",
+        val catalogue: CatalogueState = CatalogueState.Loading,
+        val gradeScale: GradeScale = GradeScale.FRENCH,
     ) {
         val me get() = snapshot.state?.participants?.firstOrNull { it.pubkey == myPubkey }
         val currentClimber: String?
@@ -200,12 +221,39 @@ class CompetitionDetailViewModel @Inject constructor(
 
     private val suggestedDisplayName = MutableStateFlow("")
 
+    /** Local catalogue detail for one protocol option, already board-checked. */
+    data class CatalogueEntry(
+        val option: CompetitionClimb,
+        val climb: ClimbWithStats,
+        val boardSize: BoardSize? = null,
+        val placements: Map<Int, BoardPlacement> = emptyMap(),
+        val boardImages: List<BoardImage> = emptyList(),
+        val holds: List<BoardHold> = emptyList(),
+    )
+
+    sealed interface CatalogueState {
+        data object Loading : CatalogueState
+        data class Ready(
+            val entries: Map<String, CatalogueEntry>,
+            /** Options deliberately omitted because they do not match the competition board. */
+            val incompatibleCount: Int = 0,
+            val missingCount: Int = 0,
+        ) : CatalogueState
+        data class Unavailable(val reason: Reason) : CatalogueState
+
+        enum class Reason { BOARD_CONFIGURATION, CATALOGUE_NOT_DOWNLOADED }
+    }
+
+    private val catalogue = MutableStateFlow<CatalogueState>(CatalogueState.Loading)
+
     val ui: StateFlow<Ui> = combine(
         client.snapshot,
         MutableStateFlow(myPubkey),
         suggestedDisplayName,
-    ) { snapshot, pubkey, displayName ->
-        Ui(snapshot, pubkey, displayName)
+        catalogue,
+        preferences.gradeScale,
+    ) { snapshot, pubkey, displayName, localCatalogue, gradeScale ->
+        Ui(snapshot, pubkey, displayName, localCatalogue, gradeScale)
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
@@ -227,7 +275,104 @@ class CompetitionDetailViewModel @Inject constructor(
                 client.follow { System.currentTimeMillis() / 1000 }.collect { /* state flows out via snapshot */ }
             }
         }
+        viewModelScope.launch {
+            client.snapshot
+                .map { snapshot -> snapshot.competition?.let { "${it.compId}:${it.revision}" to it } }
+                .distinctUntilChanged { old, new -> old?.first == new?.first }
+                .collectLatest { keyed ->
+                    val competition = keyed?.second
+                    if (competition == null) {
+                        catalogue.value = CatalogueState.Loading
+                    } else {
+                        catalogue.value = loadCatalogue(competition)
+                    }
+                }
+        }
     }
+
+    /**
+     * Resolve only rows that match brand + layout + angle + physical size.
+     * A same-name climb on another board is never a useful fallback in a comp.
+     */
+    private suspend fun loadCatalogue(competition: com.cruxcoach.domain.competition.Competition): CatalogueState =
+        withContext(Dispatchers.IO) {
+            val board = competition.raw["board"] as? JsonObject
+                ?: return@withContext CatalogueState.Unavailable(CatalogueState.Reason.BOARD_CONFIGURATION)
+            val brand = (board["brand"] as? JsonPrimitive)?.content?.lowercase()
+                ?: return@withContext CatalogueState.Unavailable(CatalogueState.Reason.BOARD_CONFIGURATION)
+            val layoutId = (board["layout_id"] as? JsonPrimitive)?.content?.toIntOrNull()
+                ?: return@withContext CatalogueState.Unavailable(CatalogueState.Reason.BOARD_CONFIGURATION)
+            val configuredAngle = (board["angle"] as? JsonPrimitive)?.content?.toIntOrNull()
+                ?: return@withContext CatalogueState.Unavailable(CatalogueState.Reason.BOARD_CONFIGURATION)
+            val sizeName = (board["size"] as? JsonPrimitive)?.content.orEmpty()
+            val boardBrand = BoardBrand.fromWire(brand)
+            if (boardBrand.wireValue != brand) {
+                return@withContext CatalogueState.Unavailable(CatalogueState.Reason.BOARD_CONFIGURATION)
+            }
+
+            val size = if (boardBrand == BoardBrand.MOONBOARD) null else {
+                val wanted = normalizeSize(sizeName)
+                val allowed = boardRepository.getProductSizesForLayout(layoutId, brand).toSet()
+                boardRepository.getSelectableProductSizesForBrand(brand)
+                    .firstOrNull { it.id.toInt() in allowed && normalizeSize(it.name) == wanted }
+                    ?: return@withContext CatalogueState.Unavailable(CatalogueState.Reason.BOARD_CONFIGURATION)
+            }
+            val options = (competition.climbs + competition.climbPool).distinctBy { it.id }
+            val entries = linkedMapOf<String, CatalogueEntry>()
+            var missing = 0
+            var incompatible = 0
+            val rows = boardRepository.getClimbsByUuidsForBoard(
+                uuids = options.filter { it.angle == configuredAngle }.map { it.climbUuid },
+                angle = configuredAngle,
+                boardBrand = brand,
+                layoutId = layoutId,
+                selProductSizeId = size?.id?.toInt() ?: 0,
+            ).associateBy { normalizeUuid(it.uuid) }
+            val placements = size?.let {
+                boardRepository.getPlacementsForLayout(it.id.toInt(), layoutId, brand)
+                    .associateBy { placement -> placement.placementId.toInt() }
+            }.orEmpty()
+            val images = size?.let {
+                boardRepository.getBoardImages(it.id.toInt(), layoutId, brand)
+            }.orEmpty()
+
+            options.forEach { option ->
+                if (option.angle != configuredAngle) {
+                    incompatible++
+                    return@forEach
+                }
+                val row = rows[normalizeUuid(option.climbUuid)]
+                if (row == null) {
+                    missing++
+                    return@forEach
+                }
+                if (row.boardBrand.lowercase() != brand || row.layoutId.toInt() != layoutId ||
+                    (size != null && !boardRepository.canRenderClimbOnSize(row.uuid, size.id.toInt(), brand))
+                ) {
+                    incompatible++
+                    return@forEach
+                }
+                val holds = BoardClimbParser.parseFrames(row.frames)
+                entries[option.id] = CatalogueEntry(
+                    option = option,
+                    climb = row,
+                    boardSize = size,
+                    placements = placements,
+                    boardImages = images,
+                    holds = holds,
+                )
+            }
+            if (entries.isEmpty() && missing > 0 && incompatible == 0) {
+                CatalogueState.Unavailable(CatalogueState.Reason.CATALOGUE_NOT_DOWNLOADED)
+            } else {
+                CatalogueState.Ready(entries, incompatible, missing)
+            }
+        }
+
+    private fun normalizeSize(value: String): String = value
+        .lowercase().replace('×', 'x').replace(" ", "").replace("ft", "")
+
+    private fun normalizeUuid(value: String): String = value.lowercase().replace("-", "")
 
     fun register(
         division: String,
