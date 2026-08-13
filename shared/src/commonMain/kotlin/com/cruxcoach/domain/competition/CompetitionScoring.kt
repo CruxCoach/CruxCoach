@@ -45,6 +45,7 @@ object CompetitionScoring {
         var points = 0
         var finishedAt = 0L
         val toppedPoints = mutableListOf<Int>()
+        val achievement = competition.rules.scorePoints ?: CompetitionScorePoints(0, 0, 0)
 
         for (climb in climbs) {
             totalAttempts += climb.attemptsUsed
@@ -55,13 +56,18 @@ object CompetitionScoring {
                     attempts += climb.attemptsUsed
                     zoneAttempts += climb.attemptsUsed
                     val value = competition.climb(climb.climbId)?.points ?: 0
-                    points += value
+                    points += if (competition.rules.scoring == "achievement_points") {
+                        achievement.zone + achievement.top + if (climb.attemptsUsed == 1) achievement.flash else 0
+                    } else {
+                        value
+                    }
                     toppedPoints += value
                     if (climb.at > finishedAt) finishedAt = climb.at
                 }
                 "zone" -> {
                     zones += 1
                     zoneAttempts += climb.attemptsUsed
+                    if (competition.rules.scoring == "achievement_points") points += achievement.zone
                 }
             }
         }

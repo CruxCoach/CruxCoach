@@ -2548,6 +2548,12 @@
     <string name="comp_table_climber">Person</string>
     <string name="comp_table_tops">Tops</string>
     <string name="comp_table_zones">Zonen</string>
+    <string name="comp_table_points">Punkte</string>
+    <string name="comp_scoring_title">So funktioniert die Wertung</string>
+    <string name="comp_scoring_ifsc">Die meisten Tops führen. Bei Gleichstand zählen weniger Top-Versuche, danach mehr Zonen und anschließend weniger Zonenversuche.</string>
+    <string name="comp_scoring_achievement">Pro Boulder gibt es %1$d für die Zone, zusätzlich %2$d für ein Top und zusätzlich %3$d für einen Flash im ersten Versuch. Insgesamt: Zone %1$d, Top %4$d, Flash %5$d. Die höchste Punktzahl führt.</string>
+    <string name="comp_scoring_points_sum">Jeder getoppte Boulder zählt den festgelegten Punktwert. Alle Werte werden addiert; die höchste Summe führt.</string>
+    <string name="comp_scoring_hardest_n">Nur die höchstwertigen getoppten Boulder bis zur festgelegten Boulderzahl werden addiert. Die höchste Summe führt.</string>
     <string name="comp_table_attempts">Versuche</string>
     <string name="comp_fee">Teilnahme: %1$s</string>
     <string name="comp_sats">%1$d sat</string>

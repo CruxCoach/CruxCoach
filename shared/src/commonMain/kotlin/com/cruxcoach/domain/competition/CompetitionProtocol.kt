@@ -382,9 +382,12 @@ data class CompetitionRules(
     val maxConsecutiveDefers: Int,
     val deferSlots: Int,
     val scoring: String,
+    val scorePoints: CompetitionScorePoints?,
     val tiebreaks: List<String>,
     val lateEntryAllowed: Boolean,
 )
+
+data class CompetitionScorePoints(val zone: Int, val top: Int, val flash: Int)
 
 data class CompetitionClimb(
     val id: String,
@@ -482,6 +485,13 @@ data class Competition(
                     maxConsecutiveDefers = rules.int("max_consecutive_defers") ?: 0,
                     deferSlots = rules.int("defer_slots") ?: 1,
                     scoring = rules.str("scoring").orEmpty(),
+                    scorePoints = rules["score_points"]?.jsonObject?.let { points ->
+                        CompetitionScorePoints(
+                            zone = points.int("zone") ?: 0,
+                            top = points.int("top") ?: 0,
+                            flash = points.int("flash") ?: 0,
+                        )
+                    },
                     tiebreaks = rules["tiebreaks"]?.jsonArray.orEmpty()
                         .mapNotNull { it.jsonPrimitive.contentOrNullSafe() },
                     lateEntryAllowed = rules.bool("late_entry_allowed") ?: false,

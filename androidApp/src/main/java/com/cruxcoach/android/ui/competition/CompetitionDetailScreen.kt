@@ -223,6 +223,7 @@ fun CompetitionDetailScreen(
             }
 
             item { CompetitionEssentials(competition) }
+            item { CompetitionScoringCard(competition) }
 
             // ── the four questions, in order ──
             if (state != null && state.status in listOf("running", "paused")) {
@@ -329,6 +330,33 @@ private fun WarningCard(message: String) {
             color = MaterialTheme.colorScheme.onErrorContainer,
             modifier = Modifier.padding(16.dp),
         )
+    }
+}
+
+@Composable
+private fun CompetitionScoringCard(competition: Competition) {
+    val rules = competition.rules
+    val explanation = when (rules.scoring) {
+        "achievement_points" -> {
+            val points = rules.scorePoints ?: return
+            stringResource(
+                R.string.comp_scoring_achievement,
+                points.zone,
+                points.top,
+                points.flash,
+                points.zone + points.top,
+                points.zone + points.top + points.flash,
+            )
+        }
+        "points_sum" -> stringResource(R.string.comp_scoring_points_sum)
+        "hardest_n" -> stringResource(R.string.comp_scoring_hardest_n)
+        else -> stringResource(R.string.comp_scoring_ifsc)
+    }
+    Card(Modifier.fillMaxWidth().testTag("competition_scoring")) {
+        Column(Modifier.padding(16.dp)) {
+            Text(stringResource(R.string.comp_scoring_title), fontWeight = FontWeight.Bold)
+            Text(explanation)
+        }
     }
 }
 
@@ -1047,6 +1075,7 @@ private fun OpenOnBoardButton(
 
 @Composable
 private fun LeaderboardCard(ui: CompetitionDetailViewModel.Ui) {
+    val showPoints = ui.snapshot.competition?.rules?.scoring != "tops_then_attempts"
     Card(Modifier.fillMaxWidth().testTag("competition_leaderboard")) {
         Column(Modifier.padding(16.dp)) {
             Text(stringResource(R.string.comp_leaderboard), fontWeight = FontWeight.Bold)
@@ -1054,6 +1083,7 @@ private fun LeaderboardCard(ui: CompetitionDetailViewModel.Ui) {
             Row(Modifier.fillMaxWidth()) {
                 Text(stringResource(R.string.comp_table_rank), Modifier.weight(0.15f), style = MaterialTheme.typography.labelSmall)
                 Text(stringResource(R.string.comp_table_climber), Modifier.weight(0.45f), style = MaterialTheme.typography.labelSmall)
+                if (showPoints) Text(stringResource(R.string.comp_table_points), Modifier.weight(0.2f), style = MaterialTheme.typography.labelSmall)
                 Text(stringResource(R.string.comp_table_tops), Modifier.weight(0.2f), style = MaterialTheme.typography.labelSmall)
                 Text(stringResource(R.string.comp_table_attempts), Modifier.weight(0.2f), style = MaterialTheme.typography.labelSmall)
             }
@@ -1066,6 +1096,7 @@ private fun LeaderboardCard(ui: CompetitionDetailViewModel.Ui) {
                         Modifier.weight(0.45f),
                         fontWeight = if (row.pubkey == ui.myPubkey) FontWeight.Bold else FontWeight.Normal,
                     )
+                    if (showPoints) Text(row.points.toString(), Modifier.weight(0.2f))
                     Text(row.tops.toString(), Modifier.weight(0.2f))
                     Text(row.attempts.toString(), Modifier.weight(0.2f))
                 }

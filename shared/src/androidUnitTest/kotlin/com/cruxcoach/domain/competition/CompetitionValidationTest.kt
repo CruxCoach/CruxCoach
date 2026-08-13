@@ -34,6 +34,8 @@ class CompetitionValidationTest {
         checkinClose: Long = 1789005400,
         startsAt: Long = 1789005400,
         lateEntryAllowed: Boolean = false,
+        scoring: String = "tops_then_attempts",
+        scorePoints: String = "",
     ) = json.parseToJsonElement(
         """
         {
@@ -79,7 +81,8 @@ class CompetitionValidationTest {
             "defer_budget_per_round": 1,
             "max_consecutive_defers": 1,
             "defer_slots": 2,
-            "scoring": "tops_then_attempts",
+            "scoring": "$scoring",
+            ${if (scorePoints.isEmpty()) "" else "\"score_points\": $scorePoints,"}
             "tiebreaks": ["fewest_attempts"],
             "late_entry_allowed": $lateEntryAllowed
           },
@@ -120,6 +123,49 @@ class CompetitionValidationTest {
             ),
         )
         assertTrue(allowed.isEmpty(), allowed.joinToString())
+    }
+
+    @Test
+    fun `Zone Top and Flash scoring requires explicit points`() {
+        assertFalse(problems(config(scoring = "achievement_points")).isEmpty())
+        val valid = problems(
+            config(
+                scoring = "achievement_points",
+                scorePoints = """{"zone":10,"top":15,"flash":5}""",
+            ),
+        )
+        assertTrue(valid.isEmpty(), valid.joinToString())
+    }
+
+    @Test
+    fun `Zone Top and Flash points stack exactly once per climb`() {
+        val competition = Competition.from(
+            config(
+                scoring = "achievement_points",
+                scorePoints = """{"zone":10,"top":15,"flash":5}""",
+                climbs = """[
+                  {"id":"zone","climb_uuid":"$real","angle":40,"label":"Zone","points":0},
+                  {"id":"top","climb_uuid":"2a9d3f57-6e28-4b04-9d75-2f8a1e63c0b8","angle":40,"label":"Top","points":0},
+                  {"id":"flash","climb_uuid":"3a9d3f57-6e28-4b04-9d75-2f8a1e63c0b7","angle":40,"label":"Flash","points":0}
+                ]""",
+                climbCount = 3,
+            ),
+        )
+        val participant = Participant(
+            pubkey = "p", display = "Pat", division = "open",
+            registration = "accepted", checkin = "checked_in",
+            climbs = listOf(
+                ClimbProgress("zone", 1, "zone", 1),
+                ClimbProgress("top", 2, "top", 2),
+                ClimbProgress("flash", 1, "top", 3),
+            ),
+        )
+        val state = CompetitionState(
+            compId = competition.compId, authority = competition.authority,
+            epoch = 1, head = "head", status = "running",
+            participants = listOf(participant), order = listOf("p"),
+        )
+        assertEquals(65, CompetitionScoring.standings(state, competition).single().points)
     }
 
     @Test

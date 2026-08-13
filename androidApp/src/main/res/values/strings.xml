@@ -2549,6 +2549,12 @@
     <string name="comp_table_climber">Climber</string>
     <string name="comp_table_tops">Tops</string>
     <string name="comp_table_zones">Zones</string>
+    <string name="comp_table_points">Points</string>
+    <string name="comp_scoring_title">How scoring works</string>
+    <string name="comp_scoring_ifsc">Most tops ranks first. Ties are broken by fewer attempts to top, then most zones, then fewer attempts to zone.</string>
+    <string name="comp_scoring_achievement">Each climb awards %1$d for its zone, %2$d additional for a top and %3$d additional for a first-attempt flash. Totals: Zone %1$d, Top %4$d, Flash %5$d. Highest score ranks first.</string>
+    <string name="comp_scoring_points_sum">Every topped climb awards the point value set by the organiser. The values are added together; highest total ranks first.</string>
+    <string name="comp_scoring_hardest_n">Only the highest-valued topped climbs up to the competition’s climb count are added. Highest total ranks first.</string>
     <string name="comp_table_attempts">Attempts</string>
     <string name="comp_fee">Entry: %1$s</string>
     <string name="comp_sats">%1$d sat</string>

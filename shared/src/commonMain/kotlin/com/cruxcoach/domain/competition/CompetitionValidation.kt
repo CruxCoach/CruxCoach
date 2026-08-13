@@ -28,7 +28,7 @@ object CompetitionValidation {
     private val CLIMB_SOURCES = listOf("organizer_set", "participant_choice")
     private val UNIQUENESS = listOf("none", "unique_per_competition")
     private val PROGRESSIONS = listOf("synchronous_rounds", "asynchronous_turns")
-    private val SCORINGS = listOf("tops_then_attempts", "points_sum", "hardest_n")
+    private val SCORINGS = listOf("tops_then_attempts", "achievement_points", "points_sum", "hardest_n")
     private val TIEBREAKS = listOf("fewest_attempts", "most_zones", "fewest_zone_attempts", "earliest_finish", "seed_order")
     private val VISIBILITIES = listOf("public", "unlisted")
 
@@ -129,6 +129,19 @@ object CompetitionValidation {
         if (rules.selectionUniqueness !in UNIQUENESS) fail("rules.selection_uniqueness", "must be one of: ${UNIQUENESS.joinToString(", ")}")
         if (rules.progression !in PROGRESSIONS) fail("rules.progression", "must be one of: ${PROGRESSIONS.joinToString(", ")}")
         if (rules.scoring !in SCORINGS) fail("rules.scoring", "must be one of: ${SCORINGS.joinToString(", ")}")
+        if (rules.scoring == "achievement_points") {
+            val points = rules.scorePoints
+            if (points == null) {
+                fail("rules.score_points", "is required for Zone / Top / Flash points")
+            } else {
+                for ((field, value) in listOf("zone" to points.zone, "top" to points.top, "flash" to points.flash)) {
+                    if (value !in 0..10_000) fail("rules.score_points.$field", "must be between 0 and 10000")
+                }
+                if (points.zone == 0 && points.top == 0 && points.flash == 0) {
+                    fail("rules.score_points", "at least one achievement must award points")
+                }
+            }
+        }
         if (rules.climbCount !in 1..40) fail("rules.climb_count", "must be between 1 and 40")
         if (rules.attemptsPerClimb !in 1..20) fail("rules.attempts_per_climb", "must be between 1 and 20")
         if (rules.turnDeadlineSec !in 30..1800) fail("rules.turn_deadline_sec", "must be between 30 and 1800")
