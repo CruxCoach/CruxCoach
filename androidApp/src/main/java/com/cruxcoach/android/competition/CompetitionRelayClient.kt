@@ -46,6 +46,8 @@ class CompetitionRelayClient @Inject constructor(
         val problem: Problem? = null,
         val entryCount: Int = 0,
         val usesDevelopmentRelay: Boolean = false,
+        /** Local receipt time, never part of the reduced competition state. */
+        val lastSyncedAt: Long = 0,
     ) {
         /** Whether the record is complete and unforked enough to show standings. */
         val trustworthy: Boolean
@@ -57,6 +59,7 @@ class CompetitionRelayClient @Inject constructor(
 
     private val _snapshot = MutableStateFlow(Snapshot())
     val snapshot: StateFlow<Snapshot> = _snapshot.asStateFlow()
+    val connectedRelayCount: StateFlow<Int> = relayPool.connectedRelayCount
 
     private val entries = linkedMapOf<String, CompetitionReducer.Chained>()
 
@@ -105,6 +108,7 @@ class CompetitionRelayClient @Inject constructor(
                         competitionEventId = parsed.eventId,
                         organizerPubkey = parsed.organizerPubkey,
                         usesDevelopmentRelay = CompetitionProtocol.usesDevelopmentRelay(parsed.competition.relays),
+                        lastSyncedAt = nowSeconds,
                     )
                 }
                 reduce()
@@ -180,6 +184,7 @@ class CompetitionRelayClient @Inject constructor(
                 chainBreakAt = reduction.chainBreakAt,
                 entryCount = entries.size,
                 loading = false,
+                lastSyncedAt = System.currentTimeMillis() / 1000,
             )
         }
     }
