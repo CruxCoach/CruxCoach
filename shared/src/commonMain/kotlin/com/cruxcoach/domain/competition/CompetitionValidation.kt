@@ -143,6 +143,11 @@ object CompetitionValidation {
             }
         }
         if (rules.climbCount !in 1..40) fail("rules.climb_count", "must be between 1 and 40")
+        if (rules.countedClimbCount !in 1..40) {
+            fail("rules.counted_climb_count", "must be between 1 and 40")
+        } else if (rules.countedClimbCount > rules.climbCount) {
+            fail("rules.counted_climb_count", "cannot exceed the available or selected climb count")
+        }
         if (rules.attemptsPerClimb !in 1..20) fail("rules.attempts_per_climb", "must be between 1 and 20")
         if (rules.turnDeadlineSec !in 30..1800) fail("rules.turn_deadline_sec", "must be between 30 and 1800")
         if (rules.attemptDeadlineSec !in 0..1800) fail("rules.attempt_deadline_sec", "must be between 0 and 1800")
@@ -196,7 +201,10 @@ object CompetitionValidation {
                     }
                 }
                 if (competition.climbs.size < rules.climbCount) {
-                    fail("climbs", "needs at least ${rules.climbCount} climbs for this format")
+                    fail("climbs", "needs at least ${rules.climbCount} climbs so that many results can count")
+                }
+                if (rules.countedClimbCount > competition.climbs.size) {
+                    fail("rules.counted_climb_count", "cannot exceed the organizer climb list")
                 }
             }
         } else {

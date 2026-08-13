@@ -28,6 +28,7 @@ class CompetitionValidationTest {
         climbSource: String = "organizer_set",
         uniqueness: String = "none",
         climbCount: Int = 1,
+        countedClimbCount: Int? = null,
         capacity: Int = 8,
         registrationClose: Long = 1789003600,
         checkinOpen: Long = 1789003600,
@@ -72,6 +73,7 @@ class CompetitionValidationTest {
           "rules": {
             "climb_source": "$climbSource",
             "climb_count": $climbCount,
+            ${if (countedClimbCount == null) "" else "\"counted_climb_count\": $countedClimbCount,"}
             "selection_uniqueness": "$uniqueness",
             "progression": "synchronous_rounds",
             "attempts_per_climb": 3,
@@ -180,6 +182,45 @@ class CompetitionValidationTest {
             participants = listOf(participant), order = listOf("p"),
         )
         assertEquals(65, CompetitionScoring.standings(state, competition).single().points)
+    }
+
+    @Test
+    fun `best N is explicit and old events still count M`() {
+        val climbs = """[
+          {"id":"a","climb_uuid":"$real","angle":40,"label":"A","points":500},
+          {"id":"b","climb_uuid":"2a9d3f57-6e28-4b04-9d75-2f8a1e63c0b8","angle":40,"label":"B","points":100},
+          {"id":"c","climb_uuid":"3a9d3f57-6e28-4b04-9d75-2f8a1e63c0b7","angle":40,"label":"C","points":300}
+        ]"""
+        val bestTwo = Competition.from(config(climbs = climbs, climbCount = 2, countedClimbCount = 2))
+        assertEquals(2, bestTwo.rules.countedClimbCount)
+        assertTrue(CompetitionValidation.validate(bestTwo).isEmpty())
+        assertTrue(problems(config(climbs = climbs, climbCount = 3, countedClimbCount = 4))
+            .any { it.field == "rules.counted_climb_count" })
+
+        val legacy = Competition.from(config(climbs = climbs, climbCount = 3))
+        assertEquals(3, legacy.rules.countedClimbCount)
+
+        val participant = Participant(
+            pubkey = "p", display = "Pat", division = "open",
+            registration = "accepted", checkin = "checked_in",
+            climbs = listOf(
+                ClimbProgress("a", 3, "top", 30),
+                ClimbProgress("b", 1, "top", 10),
+                ClimbProgress("c", 2, "top", 20),
+            ),
+        )
+        fun standing(competition: Competition) = CompetitionScoring.standings(
+            CompetitionState(
+                compId = competition.compId, authority = competition.authority,
+                epoch = 1, head = "head", status = "running",
+                participants = listOf(participant), order = listOf("p"),
+            ),
+            competition,
+        ).single()
+        val selected = standing(bestTwo)
+        assertEquals(2, selected.tops)
+        assertEquals(3, selected.attempts)
+        assertEquals(3, standing(legacy).tops)
     }
 
     @Test

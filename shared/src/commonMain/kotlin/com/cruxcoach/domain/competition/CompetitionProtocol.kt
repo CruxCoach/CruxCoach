@@ -378,6 +378,8 @@ data class LogEntry(
 data class CompetitionRules(
     val climbSource: String,
     val climbCount: Int,
+    /** Best N results. Absent v1 events default to [climbCount]. */
+    val countedClimbCount: Int,
     val selectionUniqueness: String,
     val progression: String,
     val attemptsPerClimb: Int,
@@ -524,6 +526,8 @@ data class Competition(
                 rules = CompetitionRules(
                     climbSource = rules.str("climb_source").orEmpty(),
                     climbCount = rules.int("climb_count") ?: 0,
+                    countedClimbCount = rules.int("counted_climb_count")
+                        ?: (rules.int("climb_count") ?: 0),
                     selectionUniqueness = rules.str("selection_uniqueness").orEmpty(),
                     progression = rules.str("progression").orEmpty(),
                     attemptsPerClimb = rules.int("attempts_per_climb") ?: 0,

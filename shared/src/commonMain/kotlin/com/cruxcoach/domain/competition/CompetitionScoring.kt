@@ -9,6 +9,15 @@ package com.cruxcoach.domain.competition
  */
 object CompetitionScoring {
 
+    private data class Contribution(
+        val climb: ClimbProgress,
+        val top: Int,
+        val zone: Int,
+        val topAttempts: Int,
+        val zoneAttempts: Int,
+        val points: Int,
+    )
+
     data class Standing(
         val rank: Int,
         val pubkey: String,
@@ -36,6 +45,37 @@ object CompetitionScoring {
         } else {
             participant.climbs
         }
+        val achievement = competition.rules.scorePoints ?: CompetitionScorePoints(0, 0, 0)
+        val pointScoring = competition.rules.scoring != "tops_then_attempts"
+        val contributions = climbs.map { climb ->
+            val top = if (climb.outcome == "top") 1 else 0
+            val zone = if (top == 1 || climb.outcome == "zone") 1 else 0
+            val points = when {
+                top == 1 && competition.rules.scoring == "achievement_points" ->
+                    achievement.zone + achievement.top + if (climb.attemptsUsed == 1) achievement.flash else 0
+                top == 1 -> competition.climb(climb.climbId)?.points ?: 0
+                climb.outcome == "zone" && competition.rules.scoring == "achievement_points" -> achievement.zone
+                else -> 0
+            }
+            Contribution(
+                climb = climb,
+                top = top,
+                zone = zone,
+                topAttempts = if (top == 1) climb.attemptsUsed else 0,
+                zoneAttempts = if (zone == 1) climb.attemptsUsed else 0,
+                points = points,
+            )
+        }.sortedWith(Comparator { a, b ->
+            when {
+                pointScoring && a.points != b.points -> b.points - a.points
+                a.top != b.top -> b.top - a.top
+                a.topAttempts != b.topAttempts -> a.topAttempts - b.topAttempts
+                a.zone != b.zone -> b.zone - a.zone
+                a.zoneAttempts != b.zoneAttempts -> a.zoneAttempts - b.zoneAttempts
+                a.climb.at != b.climb.at -> a.climb.at.compareTo(b.climb.at)
+                else -> a.climb.climbId.compareTo(b.climb.climbId)
+            }
+        }).take(competition.rules.countedClimbCount)
 
         var tops = 0
         var zones = 0
@@ -44,36 +84,25 @@ object CompetitionScoring {
         var totalAttempts = 0
         var points = 0
         var finishedAt = 0L
-        val toppedPoints = mutableListOf<Int>()
-        val achievement = competition.rules.scorePoints ?: CompetitionScorePoints(0, 0, 0)
 
-        for (climb in climbs) {
+        for (contribution in contributions) {
+            val climb = contribution.climb
             totalAttempts += climb.attemptsUsed
-            when (climb.outcome) {
-                "top" -> {
+            when {
+                contribution.top == 1 -> {
                     tops += 1
                     zones += 1 // a top implies its zone
                     attempts += climb.attemptsUsed
                     zoneAttempts += climb.attemptsUsed
-                    val value = competition.climb(climb.climbId)?.points ?: 0
-                    points += if (competition.rules.scoring == "achievement_points") {
-                        achievement.zone + achievement.top + if (climb.attemptsUsed == 1) achievement.flash else 0
-                    } else {
-                        value
-                    }
-                    toppedPoints += value
+                    points += contribution.points
                     if (climb.at > finishedAt) finishedAt = climb.at
                 }
-                "zone" -> {
+                contribution.zone == 1 -> {
                     zones += 1
                     zoneAttempts += climb.attemptsUsed
-                    if (competition.rules.scoring == "achievement_points") points += achievement.zone
+                    points += contribution.points
                 }
             }
-        }
-
-        if (competition.rules.scoring == "hardest_n") {
-            points = toppedPoints.sortedDescending().take(competition.rules.climbCount).sum()
         }
 
         return Standing(
