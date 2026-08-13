@@ -292,6 +292,10 @@ object PreferenceKeys {
     val SYNC_INTERVAL = stringPreferencesKey("sync_interval")
     val CLIMB_HISTORY_RETENTION_DAYS = intPreferencesKey("climb_history_retention_days")
     val LAST_SYNC_TIMESTAMP = stringPreferencesKey("last_sync_timestamp")
+    /** SHA-256 of the last peer snapshot successfully imported. Cleared by
+     * every other catalogue mutation so it is safe as a no-download gate. */
+    val LAST_LOCAL_SHARE_SNAPSHOT_SHA256 =
+        stringPreferencesKey("last_local_share_snapshot_sha256")
     val GRADE_SCALE = stringPreferencesKey("grade_scale")
     val LED_COLOR_START = intPreferencesKey("led_color_start")
     val LED_COLOR_HAND = intPreferencesKey("led_color_hand")
@@ -517,6 +521,10 @@ class UserPreferences(
 
     val lastSyncTimestamp: Flow<String?> = dataStore.data.map { prefs ->
         prefs[PreferenceKeys.LAST_SYNC_TIMESTAMP]
+    }
+
+    val lastLocalShareSnapshotSha256: Flow<String?> = dataStore.data.map { prefs ->
+        prefs[PreferenceKeys.LAST_LOCAL_SHARE_SNAPSHOT_SHA256]
     }
 
     val gradeScale: Flow<GradeScale> = dataStore.data.map { prefs ->
@@ -839,6 +847,16 @@ class UserPreferences(
                 prefs[PreferenceKeys.LAST_SYNC_TIMESTAMP] = timestamp
             } else {
                 prefs.remove(PreferenceKeys.LAST_SYNC_TIMESTAMP)
+            }
+        }
+    }
+
+    suspend fun setLastLocalShareSnapshotSha256(sha256: String?) {
+        dataStore.edit { prefs ->
+            if (sha256 != null) {
+                prefs[PreferenceKeys.LAST_LOCAL_SHARE_SNAPSHOT_SHA256] = sha256
+            } else {
+                prefs.remove(PreferenceKeys.LAST_LOCAL_SHARE_SNAPSHOT_SHA256)
             }
         }
     }

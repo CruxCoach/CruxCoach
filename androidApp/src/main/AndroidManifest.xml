@@ -25,6 +25,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <!-- Exact alarms for the rest timer. SCHEDULE_EXACT_ALARM (API 31)
          can be revoked on API 33+, silently degrading the timer to an
@@ -46,13 +47,14 @@
         android:usesPermissionFlags="neverForLocation" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
 
-    <!-- BLE scanning requires coarse location on Android 8-9 and fine
-         location on Android 10-11. Runtime requests are API-specific.
-         On Android 12+ BLUETOOTH_SCAN with neverForLocation is sufficient. -->
+    <!-- Wi-Fi Direct requires fine location through Android 12; Android 12
+         additionally requires coarse+fine to be requested as a pair. BLE
+         uses these declarations on older releases too. Android 13+ uses the
+         nearby-device permissions above instead. -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"
-        android:maxSdkVersion="28" />
+        android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"
-        android:maxSdkVersion="30" />
+        android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES"
@@ -109,6 +111,15 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="cruxcoach" android:host="import-board-db" />
             </intent-filter>
+            <!-- One-scan path when CruxCoach is already installed. The QR
+                 carries the ephemeral hotspot credentials and local server
+                 address; the receiving app requests that exact Wi-Fi. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="cruxcoach" android:host="offline-share" />
+            </intent-filter>
             <!-- Android App Link: https://${appLinkHost}/c/<naddr> opens the
                  climb directly in the app when installed (verified via
                  https://${appLinkHost}/.well-known/assetlinks.json).
@@ -161,6 +172,13 @@
              board + hosts the persistent sharing notification. -->
         <service
             android:name=".data.CruxRelayService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
+
+        <!-- Keeps the sender-side Wi-Fi hotspot and local HTTP server alive
+             while the share screen is backgrounded. -->
+        <service
+            android:name=".util.LocalShareService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
 

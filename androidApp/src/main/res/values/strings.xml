@@ -436,7 +436,7 @@
 
     <!-- Settings: App Sharing -->
     <string name="settings_share_title">Share app</string>
-    <string name="settings_share_desc">Share CruxCoach APK with others (without user data).</string>
+    <string name="settings_share_desc">Share CruxCoach and public board catalogues with others — never personal data.</string>
     <string name="board_filter_title">Filters</string>
     <string name="board_filter_selected_board">Selected board</string>
     <string name="settings_share_via_apps">Share via apps</string>
@@ -445,17 +445,31 @@
     <string name="settings_share_online_desc">Scan the QR code to download CruxCoach — always the current version, not the one on this phone.</string>
     <string name="settings_share_online_hint">Scan to download the current APK.</string>
     <string name="settings_share_local">Share offline</string>
-    <string name="settings_share_local_desc">Share the app locally via WiFi hotspot. No internet needed.</string>
+    <string name="settings_share_local_desc">Share the app and every board catalogue on this device over a local Wi-Fi hotspot. No internet needed.</string>
     <string name="settings_share_stop">Stop</string>
     <string name="settings_share_network">Network: %s</string>
     <string name="settings_share_password">Password: %s</string>
-    <string name="settings_share_mobile_data_warning">Important: Turn off VPN on both devices. Turn off mobile data on the other device so the download goes through the hotspot.</string>
     <string name="settings_share_step1">Step 1: Scan QR code to connect to the hotspot</string>
     <string name="settings_share_step2">Step 2: Scan this QR code or open the URL to download the app</string>
     <string name="settings_share_permissions_needed">Permissions needed: %s. Please allow in app settings.</string>
     <string name="settings_share_open_settings">Open app settings</string>
     <string name="settings_share_error">Error: %s</string>
     <string name="settings_share_server_error">Server error: %s</string>
+    <string name="settings_share_active_title">Offline share ready</string>
+    <string name="settings_share_install_step1">1. Connect to the share Wi-Fi</string>
+    <string name="settings_share_install_step2">2. Open the local page</string>
+    <string name="settings_share_install_step3">Scan the QR code. Install CruxCoach there or, if it is already installed, open it directly.</string>
+    <string name="settings_share_manual_show">Trouble scanning? Show manual connection details</string>
+    <string name="settings_share_manual_hide">Hide manual connection details</string>
+    <string name="settings_share_location_title">Turn on location</string>
+    <string name="settings_share_location_message">Android 8 and 9 require the location switch to be on for a local Wi-Fi hotspot. CruxCoach does not determine or store your location.</string>
+    <string name="settings_share_location_open">Open location settings</string>
+    <string name="local_share_notification_channel">Offline sharing</string>
+    <string name="local_share_notification_channel_desc">Keeps a local CruxCoach share session available</string>
+    <string name="local_share_notification_title">CruxCoach offline share</string>
+    <string name="local_share_notification_starting">Preparing share session…</string>
+    <string name="local_share_notification_active">Ready for nearby devices</string>
+    <string name="local_share_notification_complete">A device has finished — sharing remains available</string>
 
     <!-- Settings: Climb Sharing -->
     <string name="settings_sharing_title">Nearby sharing</string>
@@ -977,6 +991,13 @@
     <string name="board_sync_local_import_title">Import board database?</string>
     <string name="board_sync_local_import_message">A board database is being offered from %1$s. Only confirm if you deliberately connected to a CruxCoach-Share hotspot from someone you trust. The import replaces your current climb database.</string>
     <string name="board_sync_local_import_confirm">Import</string>
+    <string name="board_sync_offline_share_title">Receive offline share?</string>
+    <string name="board_sync_offline_share_message">CruxCoach will temporarily connect to %1$s, compare the offered app and board data, and download only what is missing. Android returns to your previous Wi-Fi afterwards.</string>
+    <string name="board_sync_offline_share_confirm">Connect and compare</string>
+    <string name="board_sync_local_update_title">App update ready</string>
+    <string name="board_sync_local_update_message">CruxCoach %1$s was transferred and verified. Install it now?</string>
+    <string name="board_sync_local_update_install">Install</string>
+    <string name="action_not_now">Not now</string>
 
     <!-- Kilter Account -->
     <string name="kilter_section_title">Kilter Board Account</string>
@@ -1030,13 +1051,21 @@
     <string name="kilter_no_new">No new ascents found</string>
 
     <string name="board_sync_step_prepare_db">Prepare database</string>
+    <string name="board_sync_step_discover_local_share">Looking for a nearby offline share…</string>
+    <string name="board_sync_step_sender_preparing">Preparing board data…</string>
     <string name="board_sync_step_check_update">Checking for update\u2026</string>
     <string name="board_sync_step_download_db">Download climb database</string>
+    <string name="board_sync_step_download_apk">Download app update</string>
+    <string name="board_sync_step_verify_db">Verify board data</string>
+    <string name="board_sync_step_verify_apk">Verify app update</string>
     <string name="board_sync_step_extract_db">Extract database</string>
     <string name="board_sync_step_import_climbs">Import climbs</string>
     <string name="board_sync_step_import_stats">Import statistics</string>
     <string name="board_sync_step_import_layout">Import layout data</string>
     <string name="board_sync_step_finalize">Finalize</string>
+    <string name="board_sync_local_progress_title">Loading board data from nearby device</string>
+    <string name="board_sync_local_catalogue_count">%d board catalogues included</string>
+    <string name="board_sync_local_complete">Local import complete</string>
     <string name="sync_finalizing">Finalizing…</string>
     <string name="board_sync_step_fetch_manifest">Fetching manifest\u2026</string>
     <string name="board_sync_step_download_chunk" formatted="false">Downloading %s (%d/%d)</string>
@@ -1974,12 +2003,6 @@
     <string name="settings_share_copied_password">Password copied.</string>
 
     <!-- Zapstore share -->
-    <string name="settings_share_zapstore">Share APK fallback</string>
-    <string name="settings_share_zapstore_hide">Hide fallback QR</string>
-    <string name="settings_share_zapstore_retry">Retry APK fallback</string>
-    <string name="settings_share_zapstore_desc">Same APK, downloaded directly from Zapstore’s content-addressed CDN if the usual download source is unavailable.</string>
-    <string name="settings_share_zapstore_hint">Scan to download the APK directly from the Zapstore CDN.</string>
-    <string name="cd_zapstore_share_qr">Zapstore share QR code</string>
 
     <!-- Sync interval enum labels (FilterChip text in Backup + Board settings) -->
     <string name="sync_interval_daily">Daily</string>

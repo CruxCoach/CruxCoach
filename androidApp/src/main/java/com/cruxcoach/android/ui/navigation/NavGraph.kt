@@ -247,6 +247,7 @@ fun CruxCoachNavHost(
             route == Routes.ANNOUNCEMENTS ||
             route == Routes.DEV_CHAT ||
             route == Routes.SETTINGS ||
+            route == Routes.APP_SHARE ||
             route.startsWith("message_thread/") ||
             route.startsWith("playlist_import/") ->
                 navController.navigate(route) { launchSingleTop = true }
@@ -259,6 +260,14 @@ fun CruxCoachNavHost(
                     // Stage — the actual download starts only after the user
                     // confirms in BoardSyncScreen's dialog. Never auto-import.
                     startViewModel.syncManager.stageLocalImport(localDbUrl)
+                }
+                val offlineShare = android.net.Uri.parse("nav://$route")
+                    .getQueryParameter("offlineShare")
+                    ?.let { android.net.Uri.decode(it) }
+                    ?.let { android.net.Uri.parse(it) }
+                    ?.let { com.cruxcoach.android.util.LocalShareProtocol.parseInvitation(it) }
+                if (offlineShare != null) {
+                    startViewModel.syncManager.stageOfflineShare(offlineShare)
                 }
                 navController.navigate(Routes.BOARD_SYNC) { launchSingleTop = true }
             }

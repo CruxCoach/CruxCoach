@@ -316,8 +316,20 @@ object AppModule {
         boardLocationRepository: BoardLocationRepository,
         moonBoardCatalogueSync: MoonBoardCatalogueSync,
         auroraCatalogueSync: AuroraCatalogueSync,
+        integrityVerifier: com.cruxcoach.android.updater.IntegrityVerifier,
     ): BoardSyncManager {
-        return BoardSyncManager(importer, blossomSyncManager, userPreferences, context, boardRepository, personalBoardRepo, boardLocationRepository, moonBoardCatalogueSync, auroraCatalogueSync)
+        return BoardSyncManager(
+            importer,
+            blossomSyncManager,
+            userPreferences,
+            context,
+            boardRepository,
+            personalBoardRepo,
+            boardLocationRepository,
+            moonBoardCatalogueSync,
+            auroraCatalogueSync,
+            integrityVerifier,
+        )
     }
 
     /** FEAT-049: the catalogue revision, for consumers that need nothing else
