@@ -63,6 +63,7 @@ class WifiDirectHotspot(context: Context) {
     private var hotspotReservation: WifiManager.LocalOnlyHotspotReservation? = null
     private var running = false
     private var usedStrategy = ""
+    private var staleCruxCoachGroupCleanupAttempted = false
     private val failureLog = mutableListOf<String>()
 
     data class HotspotInfo(val ssid: String, val password: String, val ip: String)
@@ -78,8 +79,20 @@ class WifiDirectHotspot(context: Context) {
         }
         running = true
         failureLog.clear()
+        staleCruxCoachGroupCleanupAttempted = false
         acquireLocks()
-        tryWifiDirect(1, onStarted, onError)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            tryWifiDirect(1, onStarted, onError)
+        } else {
+            // Android 8/9 cannot create a locally configured P2P group. On
+            // affected HTC-era stacks createGroup() can report success and
+            // expose an Android-named SSID while ordinary Wi-Fi clients never
+            // receive a usable route to the group owner. LocalOnlyHotspot is
+            // the platform-supported compatibility path on API 26-28 and is
+            // reachable by normal QR-joined Wi-Fi clients.
+            Log.d(TAG, "Using LocalOnlyHotspot compatibility path on API ${Build.VERSION.SDK_INT}")
+            tryLocalOnlyHotspot(onStarted, onError)
+        }
     }
 
     // ---- Strategy 1: WiFi Direct (Briar approach) ----
@@ -114,6 +127,20 @@ class WifiDirectHotspot(context: Context) {
             override fun onFailure(reason: Int) {
                 failureLog.add("P2P #$attempt: ${reasonToString(reason)}")
                 Log.w(TAG, "WiFi Direct failed: ${reasonToString(reason)}, attempt $attempt")
+
+                // A process kill can leave Android's P2P group alive after
+                // our HTTP server and service are gone. A new createGroup()
+                // then reports BUSY and would otherwise start a second,
+                // differently named LocalOnlyHotspot. Remove only a clearly
+                // CruxCoach-owned stale group; never disturb another app's or
+                // the user's unrelated Wi-Fi Direct session.
+                if (reason == WifiP2pManager.BUSY &&
+                    !staleCruxCoachGroupCleanupAttempted
+                ) {
+                    staleCruxCoachGroupCleanupAttempted = true
+                    recoverStaleCruxCoachGroup(ch, onStarted, onError)
+                    return
+                }
 
                 // Retry on both BUSY and ERROR — the P2P framework may need
                 // time to bring up its interface after initialize().
@@ -161,6 +188,41 @@ class WifiDirectHotspot(context: Context) {
                 tryLocalOnlyHotspot(onStarted, onError)
             }
         }, INIT_SETTLE_MS)
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun recoverStaleCruxCoachGroup(
+        ch: WifiP2pManager.Channel,
+        onStarted: (HotspotInfo) -> Unit,
+        onError: (String) -> Unit,
+    ) {
+        wifiP2pManager?.requestGroupInfo(ch) { group ->
+            if (!running) return@requestGroupInfo
+            if (group?.networkName?.contains("-CruxCoach") != true) {
+                handler.postDelayed(
+                    { if (running) tryWifiDirect(2, onStarted, onError) },
+                    RETRY_DELAY_MS,
+                )
+                return@requestGroupInfo
+            }
+            Log.w(TAG, "Removing stale CruxCoach P2P group ${group.networkName}")
+            wifiP2pManager.removeGroup(ch, object : WifiP2pManager.ActionListener {
+                override fun onSuccess() {
+                    handler.postDelayed(
+                        { if (running) tryWifiDirect(1, onStarted, onError) },
+                        RETRY_DELAY_MS,
+                    )
+                }
+
+                override fun onFailure(reason: Int) {
+                    failureLog.add("P2P stale cleanup: ${reasonToString(reason)}")
+                    handler.postDelayed(
+                        { if (running) tryWifiDirect(2, onStarted, onError) },
+                        RETRY_DELAY_MS,
+                    )
+                }
+            })
+        }
     }
 
     // Briar retries requestGroupInfo up to 5 times because on some devices

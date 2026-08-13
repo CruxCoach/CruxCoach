@@ -502,7 +502,11 @@ class BoardSyncManager(
     fun startInitialSyncIfNeeded() {
         val current = _state.value
         if (current.alreadyImported || current.isSyncing) return
-        if (!claimSyncSlot(ImportStep.DiscoveringLocalShare, localShare = true)) return
+        // Discovery is only a probe at this point. Do not advertise a nearby
+        // transfer in the UI until a valid peer manifest has actually been
+        // found; on an ordinary fresh install this probe simply falls through
+        // to the online catalogue sync.
+        if (!claimSyncSlot(ImportStep.CheckingUpdate)) return
 
         scope.launch {
             val found = runCatching { LocalShareDiscovery(appContext).discover() }
@@ -521,6 +525,10 @@ class BoardSyncManager(
                 return@launch
             }
             try {
+                updateLocalShareProgress(
+                    ImportStep.DiscoveringLocalShare,
+                    sharedBoardBrands(found.manifest.board),
+                )
                 runOfflineShare(
                     network = found.network,
                     baseUrl = found.baseUrl,

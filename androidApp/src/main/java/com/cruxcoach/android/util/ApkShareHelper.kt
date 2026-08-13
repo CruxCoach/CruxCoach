@@ -165,6 +165,10 @@ class LocalApkServer(
     private val snapshotDir: File? = null,
     private val apkVersionCode: Long = 1L,
     private val apkVersionName: String = "unknown",
+    /** Session-specific deep link attempted by a direct landing-page visit. */
+    private val openAppUri: String? = null,
+    /** Fixed lifetime of a share. Requests must never extend this deadline. */
+    private val autoShutdownMs: Long = AUTO_SHUTDOWN_MS,
 ) {
 
     private var serverSocket: ServerSocket? = null
@@ -205,10 +209,6 @@ class LocalApkServer(
     private val apkSha256: String by lazy { LocalShareProtocol.sha256(apkFile) }
     private val activeTransfers = AtomicInteger(0)
 
-    /** Wall-clock of the last handled HTTP request. Active file transfers
-     *  are tracked separately so the timeout is paused, rather than merely
-     *  hoping a periodic write refreshes this timestamp in time. */
-    @Volatile private var lastActivityMs = System.currentTimeMillis()
     var onAutoShutdown: (() -> Unit)? = null
     var onReceiverComplete: (() -> Unit)? = null
     /** Set after start() — used to build deep link URLs in the landing page. */
@@ -248,7 +248,7 @@ class LocalApkServer(
                 }
             }
         }
-        scheduleAutoShutdown()
+        scheduleAutoShutdown(autoShutdownMs)
 
         // Kick the scrubbed-snapshot build the moment the server starts, so
         // its (potentially minutes-long) VACUUM overlaps with the receiver
@@ -279,28 +279,23 @@ class LocalApkServer(
     }
 
     /**
-     * Idle-based auto-shutdown: fires only after [AUTO_SHUTDOWN_MS] with NO
-     * incoming request. A receiver polling for the snapshot (503 loop) or
-     * streaming the DB keeps [lastActivityMs] fresh, so an active transfer
-     * can never be cut mid-flight — the fixed 5-minute fuse could previously
-     * kill the server while the receiver was still waiting on the snapshot.
+     * Hard session deadline. Landing-page refreshes, browser probes and a
+     * receiver polling the manifest must not leave the hotspot reachable
+     * indefinitely. If an APK/DB file is actively streaming at the deadline,
+     * let that transfer finish and recheck shortly; ordinary HTTP requests do
+     * not extend the session.
      */
     @Synchronized
-    private fun scheduleAutoShutdown(delayMs: Long = AUTO_SHUTDOWN_MS) {
+    private fun scheduleAutoShutdown(delayMs: Long) {
         shutdownTimer?.cancel()
         shutdownTimer = java.util.Timer("apk-server-timeout", true).apply {
             schedule(object : java.util.TimerTask() {
                 override fun run() {
                     if (!running) return
-                    val idleMs = System.currentTimeMillis() - lastActivityMs
                     if (activeTransfers.get() > 0) {
                         scheduleAutoShutdown(ACTIVE_TRANSFER_RECHECK_MS)
-                    } else if (idleMs < AUTO_SHUTDOWN_MS) {
-                        // Someone talked to us since the fuse was lit — re-arm
-                        // for the remaining idle window.
-                        scheduleAutoShutdown(AUTO_SHUTDOWN_MS - idleMs)
                     } else {
-                        Log.d("LocalApkServer", "Auto-shutdown after ${idleMs / 1000}s idle")
+                        Log.d("LocalApkServer", "Auto-shutdown at fixed session deadline")
                         stop()
                         onAutoShutdown?.invoke()
                     }
@@ -310,7 +305,6 @@ class LocalApkServer(
     }
 
     private fun handleClient(socket: Socket) {
-        lastActivityMs = System.currentTimeMillis()
         thread(isDaemon = true, name = "apk-client") {
             try {
                 val reader = socket.getInputStream().bufferedReader()
@@ -424,6 +418,7 @@ class LocalApkServer(
         val html = LANDING_HTML
             .replace("{{VERSION_NAME}}", escapeHtml(apkVersionName))
             .replace("{{APK_SIZE_MB}}", apkSizeMb)
+            .replace("{{OPEN_APP_URI_HTML}}", escapeHtml(openAppUri.orEmpty()))
         val headers = "HTTP/1.1 200 OK\r\n" +
             "Content-Type: text/html; charset=utf-8\r\n" +
             "Content-Length: ${html.toByteArray().size}\r\n" +
@@ -551,7 +546,6 @@ class LocalApkServer(
             }
             out.flush()
         } finally {
-            lastActivityMs = System.currentTimeMillis()
             activeTransfers.decrementAndGet()
         }
     }
@@ -817,12 +811,7 @@ class LocalApkServer(
     }
     main { width:min(100% - 32px,460px); margin:0 auto; padding:34px 0 max(30px,env(safe-area-inset-bottom)); }
     header { text-align:center; margin-bottom:24px; }
-    .logo {
-      width:72px; height:72px; margin:0 auto 15px; display:grid; place-items:center;
-      border-radius:21px; color:#151008; font-size:38px; font-weight:900; letter-spacing:-3px;
-      background:linear-gradient(145deg,var(--orange2),var(--orange));
-      box-shadow:0 15px 42px rgba(255,149,0,.25),inset 0 1px rgba(255,255,255,.3);
-    }
+    .logo { width:82px; height:82px; margin:0 auto 15px; display:block; border-radius:22px; box-shadow:0 15px 42px rgba(255,149,0,.2); }
     h1 { margin:0; font-size:30px; line-height:1.15; letter-spacing:-.8px; }
     .subtitle { margin:8px auto 0; max-width:330px; color:var(--muted); font-size:15px; line-height:1.5; }
     .badge {
@@ -838,15 +827,20 @@ class LocalApkServer(
     }
     .version { display:flex; justify-content:space-between; gap:12px; color:var(--muted); font-size:13px; }
     .version strong { color:var(--text); font-weight:650; }
-    .download {
+    .action {
       display:flex; align-items:center; justify-content:center; gap:10px; width:100%;
-      margin:19px 0 8px; padding:16px 18px; border-radius:15px; color:#171006;
+      margin:19px 0 0; padding:16px 18px; border-radius:15px; color:#171006;
       background:linear-gradient(135deg,var(--orange2),var(--orange));
       box-shadow:0 10px 26px rgba(255,149,0,.22); text-decoration:none;
       font-size:17px; font-weight:800; transition:transform .12s ease,filter .12s ease;
     }
-    .download:active { transform:scale(.985); filter:brightness(.94); }
-    .download svg { width:21px; height:21px; fill:currentColor; }
+    .action:active { transform:scale(.985); filter:brightness(.94); }
+    .action svg { width:21px; height:21px; fill:currentColor; }
+    .action.secondary {
+      margin:18px 0 0; padding:10px 14px; border-radius:12px;
+      color:var(--muted); background:transparent; border:1px solid var(--line);
+      box-shadow:none; font-size:13px; font-weight:650;
+    }
     .hint { margin:10px 0 0; color:var(--muted); text-align:center; font-size:12px; }
     .steps { margin:21px 0 0; padding:0; list-style:none; }
     .steps li { display:grid; grid-template-columns:31px 1fr; gap:12px; position:relative; padding:0 0 19px; }
@@ -875,7 +869,17 @@ class LocalApkServer(
 <body>
   <main>
     <header>
-      <div class="logo" aria-hidden="true">C</div>
+      <svg class="logo" viewBox="0 0 512 512" role="img" aria-label="CruxCoach">
+        <defs>
+          <radialGradient id="gL" cx="256" cy="256" r="210" gradientUnits="userSpaceOnUse"><stop offset="40%" stop-color="#FF8C2A"/><stop offset="100%" stop-color="#B84400"/></radialGradient>
+          <radialGradient id="gR" cx="256" cy="256" r="210" gradientUnits="userSpaceOnUse"><stop offset="40%" stop-color="#E05800"/><stop offset="100%" stop-color="#8C3000"/></radialGradient>
+          <radialGradient id="gX" cx="256" cy="256" r="80" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#FFD080"/><stop offset="100%" stop-color="#E08A00"/></radialGradient>
+        </defs>
+        <rect width="512" height="512" rx="96" fill="#000"/>
+        <path d="M252 56A200 200 0 1 0 248 456L248 384A128 128 0 1 1 252 128Z" fill="url(#gL)"/>
+        <path d="M260 456A200 200 0 1 0 264 56L264 128A128 128 0 1 1 260 384Z" fill="url(#gR)"/>
+        <polygon points="192,214 214,192 256,234 298,192 320,214 274,256 320,298 298,320 256,278 214,320 192,298 238,256" fill="url(#gX)" stroke="#fff" stroke-width="1" stroke-opacity=".15"/>
+      </svg>
       <h1>CruxCoach</h1>
       <p class="subtitle" data-lang="de">Direkt vom Gerät neben dir installieren — ohne Internet.</p>
       <p class="subtitle" data-lang="en">Install directly from the nearby device — no internet needed.</p>
@@ -887,17 +891,19 @@ class LocalApkServer(
         <span><span data-lang="de">Version</span><span data-lang="en">Version</span> <strong>{{VERSION_NAME}}</strong></span>
         <span><strong>{{APK_SIZE_MB}} MB</strong></span>
       </div>
-      <a class="download" href="/CruxCoach.apk" download onclick="this.dataset.started='1'">
+      <a class="action" href="/CruxCoach.apk" download>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 3h2v10.17l3.59-3.58L18 11l-6 6-6-6 1.41-1.41L11 13.17V3zm-5 16h12v2H6v-2z"/></svg>
-        <span data-lang="de">CruxCoach herunterladen</span><span data-lang="en">Download CruxCoach</span>
+        <span data-lang="de">CruxCoach installieren</span><span data-lang="en">Install CruxCoach</span>
+      </a>
+      <a class="action secondary" href="{{OPEN_APP_URI_HTML}}">
+        <span data-lang="de">Schon installiert? CruxCoach öffnen</span><span data-lang="en">Already installed? Open CruxCoach</span>
       </a>
       <p class="hint" data-lang="de">APK · direkt über dieses WLAN</p>
       <p class="hint" data-lang="en">APK · transferred directly over this Wi-Fi</p>
 
       <ol class="steps">
-        <li><span class="num">1</span><div><h2 data-lang="de">Download öffnen</h2><h2 data-lang="en">Open the download</h2><p data-lang="de">Tippe oben auf Herunterladen und öffne anschließend die APK.</p><p data-lang="en">Tap download above, then open the APK.</p></div></li>
-        <li><span class="num">2</span><div><h2 data-lang="de">Installation bestätigen</h2><h2 data-lang="en">Confirm installation</h2><p data-lang="de">Falls gefragt, erlaube deinem Browser einmalig die Installation unbekannter Apps.</p><p data-lang="en">If prompted, allow your browser to install unknown apps once.</p></div></li>
-        <li><span class="num">3</span><div><h2 data-lang="de">Direkt CruxCoach öffnen</h2><h2 data-lang="en">Open CruxCoach directly</h2><p data-lang="de">Bleib in diesem WLAN. Die App erkennt die Freigabe und lädt die Board-Daten automatisch im ersten Schritt.</p><p data-lang="en">Stay on this Wi-Fi. The app detects the share and loads the board data automatically on its first screen.</p></div></li>
+        <li><span class="num">1</span><div><h2 data-lang="de">CruxCoach installieren</h2><h2 data-lang="en">Install CruxCoach</h2><p data-lang="de">Lade die APK herunter, bestätige die Installation und tippe danach auf Öffnen.</p><p data-lang="en">Download the APK, confirm installation, then tap Open.</p></div></li>
+        <li><span class="num">2</span><div><h2 data-lang="de">Board-Daten übernehmen</h2><h2 data-lang="en">Transfer board data</h2><p data-lang="de">Bleib in diesem WLAN. CruxCoach erkennt die Freigabe und übernimmt die verfügbaren Board-Kataloge.</p><p data-lang="en">Stay on this Wi-Fi. CruxCoach detects the share and transfers the available board catalogues.</p></div></li>
       </ol>
 
       <div class="auto"><span class="shield">✓</span><span data-lang="de"><b>Kein Zurückkehren zu dieser Seite nötig.</b> Download, Import und Finalisierung laufen mit sichtbarem Fortschritt direkt in CruxCoach.</span><span data-lang="en"><b>No need to return to this page.</b> Download, import and finalization continue with visible progress inside CruxCoach.</span></div>

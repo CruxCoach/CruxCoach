@@ -26,6 +26,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -485,6 +486,7 @@ private fun DatabaseImportSection(
                     boardSteps = state.boardSteps,
                     boardErrors = state.boardErrors,
                     syncing = state.isSyncing,
+                    localShareInProgress = state.localShareInProgress,
                     onLoadBoard = onLoadBoard,
                 )
 
@@ -683,6 +685,7 @@ private fun BoardCatalogueStatusList(
     boardSteps: Map<BoardBrand, ImportStep>,
     boardErrors: Map<BoardBrand, String>,
     syncing: Boolean,
+    localShareInProgress: Boolean,
     onLoadBoard: (BoardBrand) -> Unit,
 ) {
     val boards = remember {
@@ -691,11 +694,18 @@ private fun BoardCatalogueStatusList(
     }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         boards.forEach { brand ->
+            // Discovery, snapshot creation, download and verification are
+            // global share phases. LocalShareProgressSummary already renders
+            // them once above the list; repeating the same (potentially long)
+            // sentence in every board row made the onboarding layout explode.
+            val rowStep = boardSteps[brand]?.takeUnless {
+                localShareInProgress && it.isSharedLocalSharePhase()
+            }
             BoardStatusRow(
                 brand = brand,
                 count = boardCounts[brand.wireValue] ?: 0L,
                 isActive = brand == activeBrand,
-                step = boardSteps[brand],
+                step = rowStep,
                 hasError = boardErrors.containsKey(brand),
                 anySyncing = syncing,
                 onLoad = { onLoadBoard(brand) },
@@ -807,6 +817,9 @@ private fun BoardStatusRow(
                     progressLabel ?: stringResource(R.string.board_sync_step_fetch_manifest),
                     style = MaterialTheme.typography.labelSmall,
                     color = OrangeAccent,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.widthIn(max = 140.dp),
                 )
                 loaded -> Text(
                     "%,d".format(displayCount),
@@ -866,6 +879,25 @@ private fun BoardStatusRow(
             }
         }
     }
+}
+
+private fun ImportStep.isSharedLocalSharePhase(): Boolean = when (this) {
+    is ImportStep.DiscoveringLocalShare,
+    is ImportStep.PreparingSnapshot,
+    is ImportStep.CheckingUpdate,
+    is ImportStep.FetchingManifest,
+    is ImportStep.Download,
+    is ImportStep.DownloadApk,
+    is ImportStep.VerifyingSnapshot,
+    is ImportStep.VerifyingApk,
+    is ImportStep.Extract,
+    is ImportStep.Decompress -> true
+    is ImportStep.ImportClimbs,
+    is ImportStep.ImportStats,
+    is ImportStep.ImportLayout,
+    is ImportStep.Finalizing,
+    is ImportStep.DownloadChunk,
+    is ImportStep.Done -> false
 }
 
 /**

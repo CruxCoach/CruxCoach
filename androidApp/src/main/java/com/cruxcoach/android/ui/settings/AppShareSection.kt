@@ -4,8 +4,11 @@ import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
+import android.location.LocationManager
 import android.os.Build
+import android.provider.Settings
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.compose.LocalActivity
@@ -33,15 +36,14 @@ import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
-import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.core.location.LocationManagerCompat
 import com.cruxcoach.android.BuildConfig
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.common.ErrorCard
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.SuccessGreen
 import com.cruxcoach.android.util.ApkShareHelper
-import com.cruxcoach.android.util.LocalShareProtocol
 import com.cruxcoach.android.util.LocalShareService
 
 /**
@@ -119,7 +121,6 @@ private fun CopyableUrlRow(
 @Composable
 internal fun AppShareSection(
     onNavigateToBugReport: (title: String, description: String) -> Unit = { _, _ -> },
-    viewModel: AppShareViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
     val resources = LocalResources.current
@@ -127,8 +128,7 @@ internal fun AppShareSection(
     val shareState by LocalShareService.state.collectAsStateWithLifecycle()
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var showReleaseQr by remember { mutableStateOf(false) }
-    var showZapstoreQr by remember { mutableStateOf(false) }
-    val zapstoreApkState by viewModel.zapstoreApk.collectAsStateWithLifecycle()
+    var showLocationRequired by remember { mutableStateOf(false) }
 
     // The share QR points at the project's own download route — the same one
     // behind the website's "Download APK" button — not at a release asset on
@@ -155,14 +155,6 @@ internal fun AppShareSection(
         runCatching { ApkShareHelper.generateQrBitmap(shareDownloadUrl) }.getOrNull()
     }
 
-    val zapstoreApkUrl = (zapstoreApkState as? AppShareViewModel.ZapstoreApkState.Ready)?.url
-    val zapstoreQrBitmap = remember(zapstoreApkUrl) {
-        zapstoreApkUrl?.let { runCatching { ApkShareHelper.generateQrBitmap(it) }.getOrNull() }
-    }
-    LaunchedEffect(zapstoreApkUrl) {
-        if (zapstoreApkUrl == null) showZapstoreQr = false
-    }
-
     val startSharing: () -> Unit = {
         errorMessage = null
         LocalShareService.clearFailure()
@@ -174,18 +166,52 @@ internal fun AppShareSection(
                 )
             }
     }
+    val startSharingAfterPreflight: () -> Unit = {
+        val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
+            (locationManager == null || !LocationManagerCompat.isLocationEnabled(locationManager))
+        ) {
+            showLocationRequired = true
+        } else {
+            startSharing()
+        }
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { results ->
         if (results.values.all { it }) {
-            startSharing()
+            startSharingAfterPreflight()
         } else {
             val denied = results.filter { !it.value }.keys.joinToString(", ") {
                 it.substringAfterLast(".")
             }
             errorMessage = resources.getString(R.string.settings_share_permissions_needed, denied)
         }
+    }
+
+    if (showLocationRequired) {
+        AlertDialog(
+            onDismissRequest = { showLocationRequired = false },
+            title = { Text(stringResource(R.string.settings_share_location_title)) },
+            text = { Text(stringResource(R.string.settings_share_location_message)) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showLocationRequired = false
+                        context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
+                ) {
+                    Text(stringResource(R.string.settings_share_location_open))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLocationRequired = false }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            },
+        )
     }
 
     LaunchedEffect(shareState) {
@@ -264,9 +290,6 @@ internal fun AppShareSection(
     }
     val activeShare = shareState as? LocalShareService.State.Active
     if (activeShare != null) {
-        val invitationQr = remember(activeShare) {
-            ApkShareHelper.generateQrBitmap(LocalShareProtocol.invitationUri(activeShare.invitation))
-        }
         val wifiQr = remember(activeShare) {
             ApkShareHelper.generateWifiQrBitmap(activeShare.ssid, activeShare.password)
         }
@@ -274,13 +297,11 @@ internal fun AppShareSection(
             ApkShareHelper.generateQrBitmap(activeShare.baseUrl)
         }
         AppShareActiveCard(
-            invitationQr = invitationQr,
             wifiQr = wifiQr,
             landingQr = landingQr,
             hotspotSsid = activeShare.ssid,
             hotspotPassword = activeShare.password,
             landingUrl = activeShare.baseUrl,
-            automaticPortalAvailable = activeShare.automaticPortalAvailable,
             onStop = { LocalShareService.stop(context) },
         )
     } else if (errorMessage == null) {
@@ -312,56 +333,7 @@ internal fun AppShareSection(
             color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 
-    // 3. Zapstore fallback: same direct-APK UX as Codeberg, backed by a
-    //    publisher-signed, content-addressed NIP-82 asset event.
-    OutlinedButton(
-        onClick = {
-            when (zapstoreApkState) {
-                is AppShareViewModel.ZapstoreApkState.Ready -> showZapstoreQr = !showZapstoreQr
-                AppShareViewModel.ZapstoreApkState.Unavailable -> viewModel.refreshZapstoreApk()
-                AppShareViewModel.ZapstoreApkState.Loading -> Unit
-            }
-        },
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = OrangeAccent),
-        enabled = zapstoreApkState != AppShareViewModel.ZapstoreApkState.Loading,
-    ) {
-        if (zapstoreApkState == AppShareViewModel.ZapstoreApkState.Loading) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(16.dp),
-                strokeWidth = 2.dp,
-                color = OrangeAccent,
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-        }
-        Text(
-            stringResource(
-                when {
-                    showZapstoreQr -> R.string.settings_share_zapstore_hide
-                    zapstoreApkState == AppShareViewModel.ZapstoreApkState.Unavailable ->
-                        R.string.settings_share_zapstore_retry
-                    else -> R.string.settings_share_zapstore
-                },
-            ),
-        )
-    }
-    Text(
-        stringResource(R.string.settings_share_zapstore_desc),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-    if (showZapstoreQr && zapstoreQrBitmap != null && zapstoreApkUrl != null) {
-        DirectDownloadCard(
-            qrBitmap = zapstoreQrBitmap,
-            downloadUrl = zapstoreApkUrl,
-            hintRes = R.string.settings_share_zapstore_hint,
-            contentDescriptionRes = R.string.cd_zapstore_share_qr,
-            clipLabel = "CruxCoach Zapstore APK URL",
-        )
-    }
-
-    // 4. Via apps (system share sheet)
+    // 3. Via apps (system share sheet)
     OutlinedButton(
         onClick = { ApkShareHelper.shareViaIntent(context) },
         modifier = Modifier.fillMaxWidth(),
@@ -372,19 +344,14 @@ internal fun AppShareSection(
 
 @Composable
 private fun AppShareActiveCard(
-    invitationQr: Bitmap,
     wifiQr: Bitmap,
     landingQr: Bitmap,
     hotspotSsid: String,
     hotspotPassword: String,
     landingUrl: String,
-    automaticPortalAvailable: Boolean,
     onStop: () -> Unit
 ) {
-    var showInstalledShortcut by remember { mutableStateOf(false) }
-    var showLandingFallback by remember(automaticPortalAvailable) {
-        mutableStateOf(!automaticPortalAvailable)
-    }
+    var showManualDetails by remember(hotspotSsid) { mutableStateOf(false) }
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
@@ -395,7 +362,7 @@ private fun AppShareActiveCard(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(stringResource(R.string.settings_share_new_install_title),
+            Text(stringResource(R.string.settings_share_active_title),
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.Bold,
                 color = SuccessGreen)
@@ -410,116 +377,69 @@ private fun AppShareActiveCard(
                 contentDescription = stringResource(R.string.cd_wifi_qr_code),
                 modifier = Modifier.size(200.dp)
             )
-            val context = LocalContext.current
-            val copiedPasswordMessage = stringResource(R.string.settings_share_copied_password)
-            Text(
-                stringResource(R.string.settings_share_network, hotspotSsid),
-                style = MaterialTheme.typography.bodySmall,
-                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-            )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    stringResource(R.string.settings_share_password, hotspotPassword),
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                )
-                CopyIconButton(
-                    onClick = {
-                        copyToClipboard(
-                            context = context,
-                            label = "CruxCoach WiFi password",
-                            text = hotspotPassword,
-                            toastMessage = copiedPasswordMessage,
-                        )
-                    },
-                    contentDescription = stringResource(R.string.action_copy),
-                )
-            }
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
             Text(
-                stringResource(
-                    if (automaticPortalAvailable) {
-                        R.string.settings_share_install_step2_auto
-                    } else {
-                        R.string.settings_share_install_step2
-                    },
-                ),
+                stringResource(R.string.settings_share_install_step2),
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold,
             )
-            if (automaticPortalAvailable) {
-                Text(
-                    stringResource(R.string.settings_share_install_auto_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                OutlinedButton(
-                    onClick = { showLandingFallback = !showLandingFallback },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = OrangeAccent),
-                ) {
-                    Text(
-                        stringResource(
-                            if (showLandingFallback) {
-                                R.string.settings_share_install_fallback_hide
-                            } else {
-                                R.string.settings_share_install_fallback_show
-                            },
-                        ),
-                    )
-                }
-            } else {
-                Text(
-                    stringResource(R.string.settings_share_install_fallback_direct),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            if (showLandingFallback) {
-                Image(
-                    bitmap = landingQr.asImageBitmap(),
-                    contentDescription = stringResource(R.string.cd_download_qr_code),
-                    modifier = Modifier.size(200.dp),
-                )
-                CopyableUrlRow(
-                    url = landingUrl,
-                    clipLabel = "CruxCoach local install URL",
-                    toastMessage = stringResource(R.string.settings_share_copied_url),
-                )
-            }
+            Image(
+                bitmap = landingQr.asImageBitmap(),
+                contentDescription = stringResource(R.string.cd_download_qr_code),
+                modifier = Modifier.size(200.dp),
+            )
             Text(
                 stringResource(R.string.settings_share_install_step3),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            OutlinedButton(
-                onClick = { showInstalledShortcut = !showInstalledShortcut },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = OrangeAccent),
-            ) {
-                Text(stringResource(R.string.settings_share_already_installed))
+            TextButton(onClick = { showManualDetails = !showManualDetails }) {
+                Text(
+                    stringResource(
+                        if (showManualDetails) R.string.settings_share_manual_hide
+                        else R.string.settings_share_manual_show,
+                    ),
+                )
             }
-
-            if (showInstalledShortcut) {
-                Text(
-                    stringResource(R.string.settings_share_installed_step),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Image(
-                    bitmap = invitationQr.asImageBitmap(),
-                    contentDescription = stringResource(R.string.cd_download_qr_code),
-                    modifier = Modifier.size(180.dp),
-                )
-                Text(
-                    stringResource(R.string.settings_share_connection_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            if (showManualDetails) {
+                val context = LocalContext.current
+                val copiedPasswordMessage = stringResource(R.string.settings_share_copied_password)
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Text(
+                        stringResource(R.string.settings_share_network, hotspotSsid),
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            stringResource(R.string.settings_share_password, hotspotPassword),
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            modifier = Modifier.weight(1f),
+                        )
+                        CopyIconButton(
+                            onClick = {
+                                copyToClipboard(
+                                    context = context,
+                                    label = "CruxCoach WiFi password",
+                                    text = hotspotPassword,
+                                    toastMessage = copiedPasswordMessage,
+                                )
+                            },
+                            contentDescription = stringResource(R.string.action_copy),
+                        )
+                    }
+                    CopyableUrlRow(
+                        url = landingUrl,
+                        clipLabel = "CruxCoach local page URL",
+                        toastMessage = stringResource(R.string.settings_share_copied_url),
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(4.dp))

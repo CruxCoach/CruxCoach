@@ -40,18 +40,13 @@ class LocalShareService : Service() {
             val ssid: String,
             val password: String,
             val baseUrl: String,
-            val automaticPortalAvailable: Boolean,
-        ) : State {
-            val invitation: LocalShareProtocol.Invitation
-                get() = LocalShareProtocol.Invitation(baseUrl, ssid, password)
-        }
+        ) : State
         data class Failed(val message: String) : State
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var hotspot: WifiDirectHotspot? = null
     private var server: LocalApkServer? = null
-    private var captivePortal: LocalCaptivePortal? = null
     private var stopping = false
 
     override fun onCreate() {
@@ -84,42 +79,48 @@ class LocalShareService : Service() {
                 try {
                     val apk = File(applicationInfo.sourceDir)
                     val boardDb = getDatabasePath("cruxcoach.db")
+                    val baseUrl = "http://${info.ip}:${LocalApkServer.LOCAL_SHARE_PORT}"
+                    val invitation = LocalShareProtocol.Invitation(
+                        baseUrl = baseUrl,
+                        ssid = info.ssid,
+                        password = info.password,
+                    )
                     val localServer = LocalApkServer(
                         apkFile = apk,
                         boardDbFile = boardDb.takeIf { it.exists() },
                         snapshotDir = cacheDir,
                         apkVersionCode = BuildConfig.VERSION_CODE.toLong(),
                         apkVersionName = BuildConfig.VERSION_NAME,
+                        openAppUri = LocalShareProtocol.invitationUri(invitation),
                     )
                     localServer.onAutoShutdown = {
-                        mainHandler.post { stopSharing() }
+                        mainHandler.post {
+                            Log.d(TAG, "Stopping share at the fixed session deadline")
+                            stopSharing()
+                        }
                     }
                     localServer.onReceiverComplete = {
                         mainHandler.post {
+                            // A completion belongs to one receiver, not to the
+                            // whole share session. Other nearby devices may
+                            // still be downloading (or may join afterwards),
+                            // so keep the hotspot and server alive until the
+                            // fixed deadline or an explicit sender stop.
+                            Log.d(TAG, "Receiver completed; keeping 1:n share active")
                             updateNotification(
                                 getString(R.string.local_share_notification_complete),
                             )
-                            mainHandler.postDelayed({ stopSharing() }, COMPLETION_SHUTDOWN_DELAY_MS)
                         }
                     }
                     val port = localServer.start(hostIp = info.ip)
                     server = localServer
-                    val baseUrl = "http://${info.ip}:$port"
-                    val portal = LocalCaptivePortal(
-                        hostIp = info.ip,
-                        landingUrl = baseUrl,
-                    )
-                    captivePortal = portal
-                    val automaticPortalAvailable = runCatching {
-                        portal.start().automaticOpeningAvailable
-                    }.onFailure { error ->
-                        Log.w(TAG, "Captive portal could not be started", error)
-                    }.getOrDefault(false)
+                    check(port == LocalApkServer.LOCAL_SHARE_PORT) {
+                        "Local share started on unexpected port $port"
+                    }
                     val active = State.Active(
                         ssid = info.ssid,
                         password = info.password,
                         baseUrl = baseUrl,
-                        automaticPortalAvailable = automaticPortalAvailable,
                     )
                     _state.value = active
                     updateNotification(getString(R.string.local_share_notification_active))
@@ -159,8 +160,6 @@ class LocalShareService : Service() {
     }
 
     private fun releaseShareResources() {
-        captivePortal?.stop()
-        captivePortal = null
         server?.stop()
         server = null
         hotspot?.stop()
@@ -232,7 +231,6 @@ class LocalShareService : Service() {
         private const val TAG = "LocalShareService"
         private const val CHANNEL_ID = "offline_share"
         private const val NOTIFICATION_ID = 4949
-        private const val COMPLETION_SHUTDOWN_DELAY_MS = 1_500L
         private const val ACTION_START = "com.cruxcoach.android.share.ACTION_START"
         private const val ACTION_STOP = "com.cruxcoach.android.share.ACTION_STOP"
 

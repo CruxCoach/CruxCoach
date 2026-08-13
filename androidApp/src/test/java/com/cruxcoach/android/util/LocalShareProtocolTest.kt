@@ -97,6 +97,7 @@ class LocalShareProtocolTest {
             snapshotDir = tempDir,
             apkVersionCode = 8,
             apkVersionName = "0.2.2",
+            openAppUri = "cruxcoach://offline-share?base=http%3A%2F%2F127.0.0.1%3A4949&amp=x",
         )
         val port = server!!.start(port = 0, hostIp = "127.0.0.1")
 
@@ -126,6 +127,11 @@ class LocalShareProtocolTest {
         landingConnection.disconnect()
         assertTrue(landing.contains("Install directly from the nearby device"))
         assertTrue(landing.contains("/CruxCoach.apk"))
+        assertTrue(landing.contains("Install CruxCoach"))
+        assertTrue(landing.contains("Already installed? Open CruxCoach"))
+        assertTrue(landing.contains("aria-label=\"CruxCoach\""))
+        assertTrue(landing.contains("href=\"cruxcoach://offline-share"))
+        assertFalse(landing.contains("location.href=openAppUri"))
         assertTrue(landing.contains("No need to return to this page"))
         assertFalse(landing.contains("/board.db"))
         assertFalse(landing.contains("import-board-db"))
@@ -141,6 +147,37 @@ class LocalShareProtocolTest {
         assertTrue(completion.await(1, TimeUnit.SECONDS))
 
         assertTrue(LocalApkServer.AUTO_SHUTDOWN_MS >= 15 * 60_000L)
+    }
+
+    @Test
+    fun repeatedHttpRequestsDoNotExtendTheFixedShareDeadline() {
+        val apk = File(tempDir, "deadline.apk").apply { writeText("apk") }
+        val stopped = CountDownLatch(1)
+        server = LocalApkServer(
+            apkFile = apk,
+            autoShutdownMs = 150L,
+        ).also { it.onAutoShutdown = { stopped.countDown() } }
+        val port = server!!.start(port = 0, hostIp = "127.0.0.1")
+
+        var successfulRequests = 0
+        val requestThread = kotlin.concurrent.thread {
+            repeat(8) {
+                runCatching {
+                    val connection = URL("http://127.0.0.1:$port/")
+                        .openConnection() as HttpURLConnection
+                    connection.connectTimeout = 200
+                    connection.readTimeout = 200
+                    connection.inputStream.use { it.readBytes() }
+                    connection.disconnect()
+                    successfulRequests++
+                }
+                Thread.sleep(35)
+            }
+        }
+
+        assertTrue(stopped.await(1, TimeUnit.SECONDS))
+        requestThread.join(1_000)
+        assertTrue(successfulRequests >= 2)
     }
 
     @Test
