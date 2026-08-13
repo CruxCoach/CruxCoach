@@ -68,17 +68,21 @@ object CompetitionValidation {
             fail("waiver", "is required when a waiver must be accepted")
         }
 
-        val ordered = listOf(
-            "registration_opens_at" to competition.registrationOpensAt,
-            "registration_closes_at" to competition.registrationClosesAt,
-            "checkin_opens_at" to competition.checkinOpensAt,
-            "checkin_closes_at" to competition.checkinClosesAt,
-            "starts_at" to competition.startsAt,
-            "ends_at" to competition.endsAt,
+        val orderedPairs = mutableListOf(
+            Triple("registration_opens_at", competition.registrationOpensAt, "registration_closes_at" to competition.registrationClosesAt),
+            Triple("checkin_opens_at", competition.checkinOpensAt, "checkin_closes_at" to competition.checkinClosesAt),
+            Triple("registration_opens_at", competition.registrationOpensAt, "starts_at" to competition.startsAt),
+            Triple("checkin_opens_at", competition.checkinOpensAt, "starts_at" to competition.startsAt),
+            Triple("starts_at", competition.startsAt, "ends_at" to competition.endsAt),
+            Triple("registration_closes_at", competition.registrationClosesAt, "ends_at" to competition.endsAt),
+            Triple("checkin_closes_at", competition.checkinClosesAt, "ends_at" to competition.endsAt),
         )
-        for (index in 1 until ordered.size) {
-            val (earlierName, earlier) = ordered[index - 1]
-            val (laterName, later) = ordered[index]
+        if (!competition.rules.lateEntryAllowed) {
+            orderedPairs += Triple("registration_closes_at", competition.registrationClosesAt, "starts_at" to competition.startsAt)
+            orderedPairs += Triple("checkin_closes_at", competition.checkinClosesAt, "starts_at" to competition.startsAt)
+        }
+        for ((earlierName, earlier, laterPair) in orderedPairs) {
+            val (laterName, later) = laterPair
             if (earlier > 0 && later > 0 && earlier > later) {
                 fail(laterName, "must not be before ${earlierName.replace('_', ' ')}")
             }

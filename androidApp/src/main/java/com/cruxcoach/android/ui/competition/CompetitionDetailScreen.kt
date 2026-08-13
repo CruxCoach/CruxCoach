@@ -63,6 +63,7 @@ import com.cruxcoach.android.BuildConfig
 import com.cruxcoach.android.R
 import com.cruxcoach.android.competition.CompetitionClimbResolver
 import com.cruxcoach.android.competition.CompetitionRelayClient
+import com.cruxcoach.domain.competition.Competition
 import kotlinx.coroutines.delay
 import java.text.DateFormat
 import java.util.Date
@@ -426,6 +427,9 @@ private fun RegistrationPanel(
     val competition = ui.snapshot.competition ?: return
     val state = ui.snapshot.state ?: return
     val me = ui.me
+    val now = System.currentTimeMillis() / 1000
+    val registrationOpen = registrationWindowOpen(competition, state.status, now)
+    val checkinOpen = checkinWindowOpen(competition, state.status, now)
 
     Card(Modifier.fillMaxWidth().testTag("competition_registration")) {
         Column(Modifier.padding(16.dp)) {
@@ -460,9 +464,7 @@ private fun RegistrationPanel(
                     ClaimStatusSection(ui, viewModel, onOpenClimb)
                     Spacer(Modifier.height(8.dp))
                 }
-                if (me.registration == "accepted" && me.checkin == "none" &&
-                    state.status in listOf("checkin_open", "running")
-                ) {
+                if (me.registration == "accepted" && me.checkin == "none" && checkinOpen) {
                     Button(
                         onClick = { viewModel.requestCheckIn() },
                         modifier = Modifier.testTag("competition_checkin"),
@@ -497,9 +499,7 @@ private fun RegistrationPanel(
                 // Withdrawing is not meant to be a door that locks behind you.
                 // While registration is open, asking again replaces the
                 // withdrawal rather than adding a second request.
-                if (me.registration in listOf("withdrawn", "rejected") &&
-                    state.status == "registration_open"
-                ) {
+                if (me.registration in listOf("withdrawn", "rejected") && registrationOpen) {
                     Text(
                         stringResource(R.string.comp_register_again_hint),
                         style = MaterialTheme.typography.bodySmall,
@@ -527,7 +527,7 @@ private fun RegistrationPanel(
                 return@Column
             }
 
-            if (state.status != "registration_open") {
+            if (!registrationOpen) {
                 Text(stringResource(R.string.comp_registration_closed))
                 return@Column
             }
@@ -846,7 +846,7 @@ private fun ClaimStatusSection(
         Text(stringResource(R.string.comp_picks_confirmed), style = MaterialTheme.typography.bodySmall)
         return
     }
-    if (state.status != "registration_open") {
+    if (!registrationWindowOpen(competition, state.status, System.currentTimeMillis() / 1000)) {
         Text(stringResource(R.string.comp_picks_pending), style = MaterialTheme.typography.bodySmall)
         return
     }
@@ -892,6 +892,17 @@ private fun ClaimStatusSection(
         modifier = Modifier.fillMaxWidth().testTag("competition_repick"),
     ) { Text(stringResource(R.string.comp_pick_again)) }
 }
+
+private fun registrationWindowOpen(competition: Competition, status: String, at: Long): Boolean =
+    at <= competition.registrationClosesAt && (
+        status == "registration_open" || status == "checkin_open" ||
+            (status == "running" && competition.rules.lateEntryAllowed)
+        )
+
+private fun checkinWindowOpen(competition: Competition, status: String, at: Long): Boolean =
+    at <= competition.checkinClosesAt && (
+        status == "checkin_open" || (status == "running" && competition.rules.lateEntryAllowed)
+        )
 
 /**
  * Asynchronous turns: which of my climbs I go to next.

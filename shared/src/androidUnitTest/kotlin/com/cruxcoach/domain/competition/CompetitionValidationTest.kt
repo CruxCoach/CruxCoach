@@ -29,6 +29,11 @@ class CompetitionValidationTest {
         uniqueness: String = "none",
         climbCount: Int = 1,
         capacity: Int = 8,
+        registrationClose: Long = 1789003600,
+        checkinOpen: Long = 1789003600,
+        checkinClose: Long = 1789005400,
+        startsAt: Long = 1789005400,
+        lateEntryAllowed: Boolean = false,
     ) = json.parseToJsonElement(
         """
         {
@@ -43,10 +48,10 @@ class CompetitionValidationTest {
           "status": "draft",
           "timezone": "Europe/Berlin",
           "registration_opens_at": 1789000000,
-          "registration_closes_at": 1789003600,
-          "checkin_opens_at": 1789003600,
-          "checkin_closes_at": 1789005400,
-          "starts_at": 1789005400,
+          "registration_closes_at": $registrationClose,
+          "checkin_opens_at": $checkinOpen,
+          "checkin_closes_at": $checkinClose,
+          "starts_at": $startsAt,
           "ends_at": 1789012600,
           "capacity": $capacity,
           "waitlist_enabled": true,
@@ -76,7 +81,7 @@ class CompetitionValidationTest {
             "defer_slots": 2,
             "scoring": "tops_then_attempts",
             "tiebreaks": ["fewest_attempts"],
-            "late_entry_allowed": false
+            "late_entry_allowed": $lateEntryAllowed
           },
           ${if (climbs.isEmpty()) "" else "\"climbs\": $climbs,"}
           ${if (pool.isEmpty()) "" else "\"climb_pool\": $pool,"}
@@ -94,6 +99,27 @@ class CompetitionValidationTest {
     fun `a competition naming a real climb validates`() {
         val found = problems(config())
         assertTrue(found.isEmpty(), found.joinToString())
+    }
+
+    @Test
+    fun `registration and check-in may overlap`() {
+        val found = problems(config(registrationClose = 1789004200, checkinOpen = 1789003600))
+        assertTrue(found.isEmpty(), found.joinToString())
+    }
+
+    @Test
+    fun `times after the start require late arrivals to be enabled`() {
+        val blocked = problems(config(registrationClose = 1789005500, checkinClose = 1789005600))
+        assertFalse(blocked.isEmpty())
+
+        val allowed = problems(
+            config(
+                registrationClose = 1789005500,
+                checkinClose = 1789005600,
+                lateEntryAllowed = true,
+            ),
+        )
+        assertTrue(allowed.isEmpty(), allowed.joinToString())
     }
 
     @Test

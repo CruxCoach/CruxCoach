@@ -152,7 +152,7 @@ object CompetitionReducer {
         "registration_decision" -> applyRegistrationDecision(state, entry, competition)
         "payment_decision" -> applyPaymentDecision(state, entry, competition)
         "claim_decision" -> applyClaimDecision(state, entry, competition)
-        "checkin" -> applyCheckin(state, entry)
+        "checkin" -> applyCheckin(state, entry, competition)
         "queue" -> applyQueue(state, entry, competition)
         "defer_decision" -> applyDeferDecision(state, entry, competition)
         "attempt_result" -> applyAttemptResult(state, entry, competition)
@@ -204,7 +204,7 @@ object CompetitionReducer {
             if (state.status in listOf("finished", "cancelled")) {
                 return reject(state, entry, "wrong_status")
             }
-        } else if (state.status !in REGISTRATION_STATES) {
+        } else if (!registrationWindowOpen(competition, state.status, entry.at)) {
             return reject(state, entry, "wrong_status")
         }
         if (decision == "accepted" && competition.capacity > 0) {
@@ -273,10 +273,13 @@ object CompetitionReducer {
             .withParticipant(participant.copy(selections = selections))
     }
 
-    private fun applyCheckin(state: CompetitionState, entry: LogEntry): CompetitionState {
+    private fun applyCheckin(state: CompetitionState, entry: LogEntry, competition: Competition): CompetitionState {
         if (state.status !in CHECKIN_STATES) return reject(state, entry, "wrong_status")
         val checkinState = entry.data.str("state")
         if (checkinState !in listOf("checked_in", "no_show")) return reject(state, entry, "unknown_checkin_state")
+        if (checkinState == "checked_in" && !checkinWindowOpen(competition, state.status, entry.at)) {
+            return reject(state, entry, "wrong_status")
+        }
         val pubkey = entry.data.str("pubkey")
         val participant = pubkey?.let { state.participant(it) } ?: return reject(state, entry, "no_such_participant")
         if (participant.registration != "accepted") return reject(state, entry, "not_accepted_registration")
@@ -286,6 +289,17 @@ object CompetitionReducer {
         )
         return state.withParticipant(updated)
     }
+
+    private fun registrationWindowOpen(competition: Competition, status: String, at: Long): Boolean =
+        at <= competition.registrationClosesAt && (
+            status == "registration_open" || status == "checkin_open" ||
+                (status == "running" && competition.rules.lateEntryAllowed)
+            )
+
+    private fun checkinWindowOpen(competition: Competition, status: String, at: Long): Boolean =
+        at <= competition.checkinClosesAt && (
+            status == "checkin_open" || (status == "running" && competition.rules.lateEntryAllowed)
+            )
 
     private fun isEligible(
         state: CompetitionState,
