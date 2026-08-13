@@ -8,6 +8,7 @@ import com.cruxcoach.android.competition.CompetitionIntentPublisher
 import com.cruxcoach.android.competition.CompetitionPaymentFlow
 import com.cruxcoach.android.competition.CompetitionRelayClient
 import com.cruxcoach.android.nostr.NostrSigner
+import com.cruxcoach.android.payment.NostrProfileManager
 import com.cruxcoach.domain.competition.CompetitionClimb
 import com.cruxcoach.domain.competition.CompetitionProtocol
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -40,6 +41,7 @@ class CompetitionDetailViewModel @Inject constructor(
     private val climbs: CompetitionClimbResolver,
     private val payments: CompetitionPaymentFlow,
     private val signer: NostrSigner,
+    private val profiles: NostrProfileManager,
 ) : ViewModel() {
 
     private val organizerPubkey: String = savedStateHandle["organizerPubkey"] ?: ""
@@ -61,6 +63,7 @@ class CompetitionDetailViewModel @Inject constructor(
     data class Ui(
         val snapshot: CompetitionRelayClient.Snapshot,
         val myPubkey: String,
+        val suggestedDisplayName: String = "",
     ) {
         val me get() = snapshot.state?.participants?.firstOrNull { it.pubkey == myPubkey }
         val currentClimber: String?
@@ -195,8 +198,14 @@ class CompetitionDetailViewModel @Inject constructor(
         }
     }
 
-    val ui: StateFlow<Ui> = combine(client.snapshot, MutableStateFlow(myPubkey)) { snapshot, pubkey ->
-        Ui(snapshot, pubkey)
+    private val suggestedDisplayName = MutableStateFlow("")
+
+    val ui: StateFlow<Ui> = combine(
+        client.snapshot,
+        MutableStateFlow(myPubkey),
+        suggestedDisplayName,
+    ) { snapshot, pubkey, displayName ->
+        Ui(snapshot, pubkey, displayName)
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
@@ -204,6 +213,14 @@ class CompetitionDetailViewModel @Inject constructor(
     )
 
     init {
+        // The competition nickname remains editable, but starting with the
+        // user's cached Nostr profile avoids a leaderboard full of hex
+        // prefixes. Do not trigger an unrelated public-relay lookup merely
+        // because somebody opened a loopback competition.
+        viewModelScope.launch {
+            val profile = runCatching { profiles.getProfileFromCache(myPubkey) }.getOrNull()
+            suggestedDisplayName.value = profile?.displayName.orEmpty().take(48)
+        }
         viewModelScope.launch {
             val now = System.currentTimeMillis() / 1000
             if (client.load(organizerPubkey, compId, now)) {

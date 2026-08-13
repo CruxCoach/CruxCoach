@@ -192,11 +192,20 @@ object CompetitionReducer {
         entry: LogEntry,
         competition: Competition,
     ): CompetitionState {
-        if (state.status !in REGISTRATION_STATES) return reject(state, entry, "wrong_status")
         val pubkey = entry.data.str("pubkey") ?: return reject(state, entry, "no_such_participant")
         val decision = entry.data.str("decision")
-        if (decision !in listOf("accepted", "waitlisted", "rejected")) {
+        // The participant's withdraw intent is only a request. `withdrawn`
+        // becomes state when the authority records this decision, exactly as
+        // on the website reducer.
+        if (decision !in listOf("accepted", "waitlisted", "rejected", "withdrawn")) {
             return reject(state, entry, "unknown_decision")
+        }
+        if (decision == "withdrawn") {
+            if (state.status in listOf("finished", "cancelled")) {
+                return reject(state, entry, "wrong_status")
+            }
+        } else if (state.status !in REGISTRATION_STATES) {
+            return reject(state, entry, "wrong_status")
         }
         if (decision == "accepted" && competition.capacity > 0) {
             val alreadyAccepted = state.participants.count { it.registration == "accepted" && it.pubkey != pubkey }

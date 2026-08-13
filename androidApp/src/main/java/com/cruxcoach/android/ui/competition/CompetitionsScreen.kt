@@ -14,12 +14,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Card
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -116,14 +118,18 @@ fun CompetitionsScreen(
                                 .fillMaxWidth()
                                 .testTag("competition_link_input"),
                         )
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            TextButton(
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Button(
                                 onClick = { viewModel.openLink()?.let(onOpenCompetition) },
-                                modifier = Modifier.testTag("competition_link_open"),
+                                modifier = Modifier.weight(1f).testTag("competition_link_open"),
                             ) { Text(stringResource(R.string.comp_open_action)) }
-                            TextButton(
+                            OutlinedButton(
                                 onClick = onScan,
-                                modifier = Modifier.testTag("competition_scan_open"),
+                                modifier = Modifier.weight(1f).testTag("competition_scan_open"),
                             ) { Text(stringResource(R.string.comp_scan_action)) }
                         }
                     }
@@ -160,10 +166,22 @@ fun CompetitionsScreen(
                 // "Nothing is on" and "nothing answered" are different, and only
                 // one of them is news. `loaded` is what tells them apart.
                 item {
-                    Text(
-                        stringResource(if (state.loaded) R.string.comp_empty else R.string.comp_unreachable),
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
+                    Card(Modifier.fillMaxWidth()) {
+                        Column(
+                            Modifier.fillMaxWidth().padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Text(
+                                stringResource(if (state.loaded) R.string.comp_empty_title else R.string.comp_unreachable),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            if (state.loaded) Text(
+                                stringResource(R.string.comp_empty),
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
+                    }
                 }
             }
 
@@ -181,6 +199,15 @@ private fun CompetitionRow(
 ) {
     val competition = listing.competition
     Card(
+        onClick = {
+            onOpen(
+                CompetitionShareLink.Ref(
+                    organizerPubkey = listing.organizerPubkey,
+                    compId = competition.compId,
+                    naddr = CompetitionNaddr.encode(listing.organizerPubkey, competition.compId),
+                ),
+            )
+        },
         modifier = Modifier
             .fillMaxWidth()
             .testTag("competition_row"),
@@ -193,6 +220,18 @@ private fun CompetitionRow(
             Text(competition.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             if (competition.summary.isNotEmpty()) {
                 Text(competition.summary, style = MaterialTheme.typography.bodySmall)
+            }
+            val venue = (competition.raw["venue"] as? kotlinx.serialization.json.JsonObject)
+                ?.get("name")?.let { it as? kotlinx.serialization.json.JsonPrimitive }?.content.orEmpty()
+            val board = (competition.raw["board"] as? kotlinx.serialization.json.JsonObject)
+                ?.get("model")?.let { it as? kotlinx.serialization.json.JsonPrimitive }?.content.orEmpty()
+            if (venue.isNotBlank() || board.isNotBlank()) {
+                Text(
+                    listOfNotNull(venue.takeIf { it.isNotBlank() }, board.takeIf { it.isNotBlank() })
+                        .joinToString(" · "),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             Spacer(Modifier.height(6.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -209,17 +248,12 @@ private fun CompetitionRow(
                     style = MaterialTheme.typography.labelMedium,
                 )
             }
-            TextButton(
-                onClick = {
-                    onOpen(
-                        CompetitionShareLink.Ref(
-                            organizerPubkey = listing.organizerPubkey,
-                            compId = competition.compId,
-                            naddr = CompetitionNaddr.encode(listing.organizerPubkey, competition.compId),
-                        ),
-                    )
-                },
-            ) { Text(stringResource(R.string.comp_open_action)) }
+            Text(
+                stringResource(R.string.comp_open_details),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(top = 8.dp),
+            )
         }
     }
 }

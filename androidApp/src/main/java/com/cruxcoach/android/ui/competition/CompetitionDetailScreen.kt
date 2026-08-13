@@ -10,10 +10,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
@@ -53,6 +55,7 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -61,6 +64,9 @@ import com.cruxcoach.android.R
 import com.cruxcoach.android.competition.CompetitionClimbResolver
 import com.cruxcoach.android.competition.CompetitionRelayClient
 import kotlinx.coroutines.delay
+import java.text.DateFormat
+import java.util.Date
+import java.util.TimeZone
 
 /**
  * One competition, from a participant's side.
@@ -197,6 +203,14 @@ fun CompetitionDetailScreen(
                             stringResource(competitionStatusLabel(state?.status ?: competition.status)),
                             style = MaterialTheme.typography.labelLarge,
                         )
+                        Text(
+                            stringResource(
+                                R.string.comp_identity_active,
+                                ui.suggestedDisplayName.ifBlank { "${ui.myPubkey.take(12)}…" },
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                         val me = ui.me
                         if (me != null) {
                             Text(stringResource(registrationLabel(me.registration)))
@@ -206,6 +220,8 @@ fun CompetitionDetailScreen(
                     }
                 }
             }
+
+            item { CompetitionEssentials(competition) }
 
             // ── the four questions, in order ──
             if (state != null && state.status in listOf("running", "paused")) {
@@ -246,6 +262,57 @@ fun CompetitionDetailScreen(
             if (competition.raw["participant_instructions"] != null) {
                 item { TextSection(stringResource(R.string.comp_instructions), competition.rawText("participant_instructions")) }
             }
+        }
+    }
+}
+
+/** The wall and schedule belong before registration, not in small print. */
+@Composable
+private fun CompetitionEssentials(competition: com.cruxcoach.domain.competition.Competition) {
+    val board = listOfNotNull(
+        competition.rawNestedText("board", "model").takeIf { it.isNotBlank() }?.let(::boardModelLabel),
+        competition.rawNestedText("board", "size").takeIf { it.isNotBlank() },
+        competition.rawNestedInt("board", "angle")?.let { "$it°" },
+    ).joinToString(" · ").ifBlank { stringResource(R.string.comp_detail_not_set) }
+    val venue = competition.rawNestedText("venue", "name")
+        .ifBlank { stringResource(R.string.comp_detail_online) }
+    val formatter = remember(competition.timezone) {
+        DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
+            .apply { timeZone = TimeZone.getTimeZone(competition.timezone) }
+    }
+    val starts = remember(competition.startsAt, formatter) {
+        formatter.format(Date(competition.startsAt * 1000))
+    }
+    val registrationCloses = remember(competition.registrationClosesAt, formatter) {
+        formatter.format(Date(competition.registrationClosesAt * 1000))
+    }
+    Card(Modifier.fillMaxWidth().testTag("competition_essentials")) {
+        Column(Modifier.padding(16.dp)) {
+            Text(stringResource(R.string.comp_detail_essentials), fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(6.dp))
+            LabelledValue(
+                stringResource(R.string.comp_detail_starts),
+                stringResource(R.string.comp_detail_time_value, starts, competition.timezone),
+            )
+            LabelledValue(stringResource(R.string.comp_detail_registration_closes), registrationCloses)
+            LabelledValue(stringResource(R.string.comp_detail_venue), venue)
+            LabelledValue(stringResource(R.string.comp_detail_board), board)
+            LabelledValue(
+                stringResource(R.string.comp_detail_format),
+                stringResource(
+                    R.string.comp_detail_format_value,
+                    competition.rules.climbCount,
+                    competition.rules.attemptsPerClimb,
+                ),
+            )
+            LabelledValue(
+                stringResource(R.string.comp_detail_fee),
+                if (competition.feeMsat > 0) {
+                    stringResource(R.string.comp_pay_amount, competition.feeMsat / 1000)
+                } else {
+                    stringResource(R.string.comp_detail_free)
+                },
+            )
         }
     }
 }
@@ -380,6 +447,7 @@ private fun RegistrationPanel(
             }
 
             if (me != null) {
+                var confirmWithdraw by rememberSaveable { mutableStateOf(false) }
                 // Not only `pending`. A payment the organizer recorded as
                 // failed or expired is precisely the state somebody has to be
                 // able to leave, and showing the badge without the button
@@ -404,9 +472,27 @@ private fun RegistrationPanel(
                     state.status !in listOf("finished", "cancelled")
                 ) {
                     OutlinedButton(
-                        onClick = { viewModel.withdraw() },
+                        onClick = { confirmWithdraw = true },
                         modifier = Modifier.testTag("competition_withdraw"),
                     ) { Text(stringResource(R.string.comp_withdraw)) }
+                    if (confirmWithdraw) {
+                        AlertDialog(
+                            onDismissRequest = { confirmWithdraw = false },
+                            title = { Text(stringResource(R.string.comp_withdraw_confirm_title)) },
+                            text = { Text(stringResource(R.string.comp_withdraw_confirm_body)) },
+                            confirmButton = {
+                                TextButton(onClick = {
+                                    confirmWithdraw = false
+                                    viewModel.withdraw()
+                                }) { Text(stringResource(R.string.comp_withdraw_confirm_action)) }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { confirmWithdraw = false }) {
+                                    Text(stringResource(R.string.action_cancel))
+                                }
+                            },
+                        )
+                    }
                 }
                 // Withdrawing is not meant to be a door that locks behind you.
                 // While registration is open, asking again replaces the
@@ -452,8 +538,14 @@ private fun RegistrationPanel(
                 return@Column
             }
 
-            var display by rememberSaveable { mutableStateOf("") }
+            var display by rememberSaveable(ui.myPubkey) { mutableStateOf(ui.suggestedDisplayName) }
+            LaunchedEffect(ui.suggestedDisplayName) {
+                if (display.isBlank()) display = ui.suggestedDisplayName
+            }
             var waiver by rememberSaveable { mutableStateOf(false) }
+            var selectedDivision by rememberSaveable(competition.compId) {
+                mutableStateOf(competition.divisions.firstOrNull()?.id ?: "open")
+            }
             OutlinedTextField(
                 value = display,
                 onValueChange = { display = it.take(48) },
@@ -462,6 +554,30 @@ private fun RegistrationPanel(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth().testTag("competition_display_name"),
             )
+            if (competition.divisions.size > 1) {
+                Spacer(Modifier.height(12.dp))
+                Text(stringResource(R.string.comp_division_required), fontWeight = FontWeight.Bold)
+                Text(
+                    stringResource(R.string.comp_division_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                competition.divisions.forEach { division ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { selectedDivision = division.id }
+                            .testTag("competition_division_${division.id}"),
+                    ) {
+                        RadioButton(
+                            selected = selectedDivision == division.id,
+                            onClick = { selectedDivision = division.id },
+                        )
+                        Text(division.label)
+                    }
+                }
+            }
             if (competition.waiverRequired) {
                 Spacer(Modifier.height(8.dp))
                 Text(stringResource(R.string.comp_terms), fontWeight = FontWeight.Bold)
@@ -489,13 +605,13 @@ private fun RegistrationPanel(
             Button(
                 onClick = {
                     viewModel.register(
-                        division = competition.divisions.firstOrNull()?.id ?: "open",
-                        display = display.trim().ifEmpty { viewModel.myPubkey.take(8) },
+                        division = selectedDivision,
+                        display = display.trim(),
                         waiverAccepted = !competition.waiverRequired || waiver,
                         selections = picked.toList(),
                     )
                 },
-                enabled = (!competition.waiverRequired || waiver) && picksComplete,
+                enabled = display.isNotBlank() && (!competition.waiverRequired || waiver) && picksComplete,
                 modifier = Modifier.fillMaxWidth().testTag("competition_register"),
             ) { Text(stringResource(R.string.comp_register)) }
             if (!picksComplete) {
@@ -949,9 +1065,23 @@ private fun LeaderboardCard(ui: CompetitionDetailViewModel.Ui) {
 
 @Composable
 private fun LabelledValue(label: String, value: String) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, style = MaterialTheme.typography.bodyMedium)
-        Text(value, fontWeight = FontWeight.Bold)
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(0.38f),
+        )
+        Text(
+            value,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.End,
+            modifier = Modifier.weight(0.62f),
+        )
     }
 }
 
@@ -965,6 +1095,35 @@ private fun com.cruxcoach.domain.competition.Participant.displayOrShort(): Strin
 
 private fun com.cruxcoach.domain.competition.Competition.rawText(key: String): String =
     (raw[key] as? kotlinx.serialization.json.JsonPrimitive)?.content.orEmpty()
+
+private fun com.cruxcoach.domain.competition.Competition.rawNestedText(parent: String, key: String): String =
+    (raw[parent] as? kotlinx.serialization.json.JsonObject)
+        ?.get(key)?.let { it as? kotlinx.serialization.json.JsonPrimitive }?.content.orEmpty()
+
+private fun com.cruxcoach.domain.competition.Competition.rawNestedInt(parent: String, key: String): Int? =
+    rawNestedText(parent, key).toIntOrNull()
+
+/** Protocol model ids stay stable; people see the board names used in the picker. */
+private fun boardModelLabel(model: String): String = when (model) {
+    "kilterboard-og" -> "Kilter Board Original"
+    "kilterboard-homewall" -> "Kilter Board Homewall"
+    "moonboard-2016" -> "MoonBoard 2016"
+    "moonboard-masters-2017" -> "MoonBoard Masters 2017"
+    "moonboard-masters-2019" -> "MoonBoard Masters 2019"
+    "mini-moonboard-2020" -> "Mini MoonBoard 2020"
+    "moonboard-2024" -> "MoonBoard 2024"
+    "mini-moonboard-2025" -> "Mini MoonBoard 2025"
+    "moonboard-2010" -> "MoonBoard 2010"
+    "tension-board-1" -> "Tension Board"
+    "tension-board-2-mirror" -> "Tension Board 2 (Mirror)"
+    "tension-board-2-spray" -> "Tension Board 2 (Spray)"
+    "grasshopper-board" -> "Grasshopper Board"
+    "soill-board" -> "So iLL Board"
+    "touchstone-board" -> "Touchstone Board"
+    else -> model.split('-').joinToString(" ") { part ->
+        part.replaceFirstChar { character -> character.uppercase() }
+    }
+}
 
 fun registrationLabel(value: String): Int = when (value) {
     "accepted" -> R.string.comp_reg_accepted
