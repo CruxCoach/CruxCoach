@@ -32,6 +32,11 @@ object CompetitionPrizeClaim {
         data class Failed(val error: String) : Check
     }
 
+    sealed interface Verification {
+        data class Valid(val claim: JsonObject, val prize: CompetitionPrize) : Verification
+        data class Failed(val error: String) : Verification
+    }
+
     /** Build the plaintext a winner encrypts to the organizer. */
     fun buildClaimBody(
         compId: String,
@@ -118,6 +123,47 @@ object CompetitionPrizeClaim {
         return if (atRank.size == 1) atRank.single() else null
     }
 
+    /**
+     * Verify a decrypted organizer-side claim against the exact final state it
+     * names. Keep this in shared code: showing a private payout destination is
+     * already a trust decision, so Android must apply every Web check first.
+     */
+    fun verifyClaim(
+        plaintext: String,
+        compId: String,
+        claimantPubkey: String,
+        resultsHash: String,
+        standings: List<CompetitionScoring.Standing>,
+        prizes: List<CompetitionPrize>,
+        prizeStates: Map<String, PrizeStatus>,
+        nowSeconds: Long,
+        deadline: Long,
+    ): Verification {
+        val claim = parseClaimBody(plaintext) ?: return Verification.Failed("unreadable")
+        if (claim.str("comp_id") != compId) return Verification.Failed("wrong_competition")
+        val prizeId = claim.str("prize_id") ?: return Verification.Failed("unknown_prize")
+        val prize = prizes.firstOrNull { it.id == prizeId }
+            ?: return Verification.Failed("unknown_prize")
+        val claimedHash = claim.str("results_hash")
+        if (claimedHash == null || !HEX_32.matches(claimedHash) || claimedHash != resultsHash) {
+            return Verification.Failed("stale_results")
+        }
+        val held = prizeStates[prize.id]
+        if (held != null && held.state in listOf("approved", "paid") && held.pubkey != claimantPubkey) {
+            return Verification.Failed("already_awarded")
+        }
+        val winner = eligibleWinner(standings, prize)
+            ?: return Verification.Failed("nobody_is_eligible")
+        if (winner.pubkey != claimantPubkey) return Verification.Failed("not_the_winner")
+        if (nowSeconds > deadline) return Verification.Failed("deadline_passed")
+        val payoutKind = claim.str("payout_kind") ?: return Verification.Failed("unknown_payout_kind")
+        val destination = claim.str("destination") ?: return Verification.Failed("no_destination")
+        return when (val input = validateClaimInput(prize, payoutKind, destination, nowSeconds)) {
+            is Check.Failed -> Verification.Failed(input.error)
+            Check.Ok -> Verification.Valid(claim, prize)
+        }
+    }
+
     /** When claims close, in epoch seconds. */
     fun claimDeadline(resultsAt: Long, claimDays: Int): Long {
         val days = if (claimDays > 0) claimDays else CompetitionProtocol.DEFAULT_PRIZE_CLAIM_DAYS
@@ -129,4 +175,6 @@ object CompetitionPrizeClaim {
         val obj = json.parseToJsonElement(plaintext).jsonObject
         if (obj.str("schema") != CLAIM_SCHEMA) null else obj
     }.getOrNull()
+
+    private val HEX_32 = Regex("^[0-9a-f]{64}$")
 }

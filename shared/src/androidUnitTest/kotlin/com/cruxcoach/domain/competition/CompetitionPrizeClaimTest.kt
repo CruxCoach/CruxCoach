@@ -156,6 +156,56 @@ class CompetitionPrizeClaimTest {
         assertEquals(at + 30 * 86400, CompetitionPrizeClaim.claimDeadline(at, 0))
         assertEquals(at + 7 * 86400, CompetitionPrizeClaim.claimDeadline(at, 7))
     }
+
+    @Test
+    fun `organizer verification reveals only a current eligible winner claim`() {
+        val hash = "1234567890abcdef".repeat(4)
+        val body = CompetitionPrizeClaim.buildClaimBody(
+            compId = "aa00bb11cc22dd33",
+            prizeId = cash.id,
+            resultsHash = hash,
+            payoutKind = "lightning_address",
+            destination = "alice@example.org",
+        )
+        val valid = CompetitionPrizeClaim.verifyClaim(
+            body, "aa00bb11cc22dd33", alice, hash, standings, listOf(cash),
+            emptyMap(), 1_789_000_000, 1_789_000_001,
+        )
+        assertTrue(valid is CompetitionPrizeClaim.Verification.Valid)
+
+        fun refused(
+            claimant: String = alice,
+            expectedHash: String = hash,
+            states: Map<String, PrizeStatus> = emptyMap(),
+            now: Long = 1_789_000_000,
+        ) = CompetitionPrizeClaim.verifyClaim(
+            body, "aa00bb11cc22dd33", claimant, expectedHash, standings, listOf(cash),
+            states, now, 1_789_000_001,
+        ) as CompetitionPrizeClaim.Verification.Failed
+
+        assertEquals("not_the_winner", refused(claimant = bob).error)
+        assertEquals("stale_results", refused(expectedHash = "f".repeat(64)).error)
+        assertEquals(
+            "already_awarded",
+            refused(states = mapOf(cash.id to PrizeStatus(bob, "approved"))).error,
+        )
+        assertEquals("deadline_passed", refused(now = 1_789_000_002).error)
+    }
+
+    @Test
+    fun `organizer verification refuses malformed and cross-competition claims`() {
+        val hash = "1234567890abcdef".repeat(4)
+        fun verify(body: String) = CompetitionPrizeClaim.verifyClaim(
+            body, "aa00bb11cc22dd33", alice, hash, standings, listOf(cash),
+            emptyMap(), 1_789_000_000, 1_789_000_001,
+        ) as CompetitionPrizeClaim.Verification.Failed
+
+        assertEquals("unreadable", verify("not json").error)
+        val wrong = CompetitionPrizeClaim.buildClaimBody(
+            "different", cash.id, hash, "lightning_address", "alice@example.org",
+        )
+        assertEquals("wrong_competition", verify(wrong).error)
+    }
 }
 
 /**
