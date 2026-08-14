@@ -1033,6 +1033,13 @@ private fun HostCompetitionEditDialog(
     var summary by rememberSaveable(competition.revision) { mutableStateOf(competition.summary) }
     var venueName by rememberSaveable(competition.revision) { mutableStateOf(venue) }
     var capacity by rememberSaveable(competition.revision) { mutableStateOf(competition.capacity.toString()) }
+    var timezone by rememberSaveable(competition.revision) { mutableStateOf(competition.timezone) }
+    var registrationOpensAt by rememberSaveable(competition.revision) { mutableStateOf(CompetitionCreateDraftPolicy.formatLocalMinute(competition.registrationOpensAt, competition.timezone).orEmpty()) }
+    var registrationClosesAt by rememberSaveable(competition.revision) { mutableStateOf(CompetitionCreateDraftPolicy.formatLocalMinute(competition.registrationClosesAt, competition.timezone).orEmpty()) }
+    var checkinOpensAt by rememberSaveable(competition.revision) { mutableStateOf(CompetitionCreateDraftPolicy.formatLocalMinute(competition.checkinOpensAt, competition.timezone).orEmpty()) }
+    var checkinClosesAt by rememberSaveable(competition.revision) { mutableStateOf(CompetitionCreateDraftPolicy.formatLocalMinute(competition.checkinClosesAt, competition.timezone).orEmpty()) }
+    var startsAt by rememberSaveable(competition.revision) { mutableStateOf(CompetitionCreateDraftPolicy.formatLocalMinute(competition.startsAt, competition.timezone).orEmpty()) }
+    var endsAt by rememberSaveable(competition.revision) { mutableStateOf(CompetitionCreateDraftPolicy.formatLocalMinute(competition.endsAt, competition.timezone).orEmpty()) }
     var attempts by rememberSaveable(competition.revision) { mutableStateOf(competition.rules.attemptsPerClimb.toString()) }
     var climbCount by rememberSaveable(competition.revision) { mutableStateOf(competition.rules.climbCount.toString()) }
     var countedClimbCount by rememberSaveable(competition.revision) { mutableStateOf(competition.rules.countedClimbCount.toString()) }
@@ -1046,6 +1053,11 @@ private fun HostCompetitionEditDialog(
     var climbText by rememberSaveable(competition.revision) { mutableStateOf(initialClimbs) }
     var reason by rememberSaveable(competition.revision) { mutableStateOf("") }
 
+    val schedule = CompetitionCreateDraftPolicy.schedule(
+        timezone, registrationOpensAt, registrationClosesAt,
+        checkinOpensAt, checkinClosesAt, startsAt, endsAt,
+    )
+
     val climbPatch = if (climbText == initialClimbs) JsonObject(emptyMap())
     else competitionClimbsEditorPatch(
         competition, climbText, countedClimbCount.toIntOrNull() ?: competition.rules.countedClimbCount,
@@ -1058,6 +1070,27 @@ private fun HostCompetitionEditDialog(
             put("venue", JsonObject(mapOf("name" to JsonPrimitive(it))))
         }
         capacity.toIntOrNull()?.takeIf { it != competition.capacity }?.let { put("capacity", JsonPrimitive(it)) }
+        schedule?.let { value ->
+            value.timezone.takeIf { it != competition.timezone }?.let { put("timezone", JsonPrimitive(it)) }
+            listOf(
+                "registration_opens_at" to value.registrationOpensAt,
+                "registration_closes_at" to value.registrationClosesAt,
+                "checkin_opens_at" to value.checkinOpensAt,
+                "checkin_closes_at" to value.checkinClosesAt,
+                "starts_at" to value.startsAt,
+                "ends_at" to value.endsAt,
+            ).forEach { (field, epoch) ->
+                val previous = when (field) {
+                    "registration_opens_at" -> competition.registrationOpensAt
+                    "registration_closes_at" -> competition.registrationClosesAt
+                    "checkin_opens_at" -> competition.checkinOpensAt
+                    "checkin_closes_at" -> competition.checkinClosesAt
+                    "starts_at" -> competition.startsAt
+                    else -> competition.endsAt
+                }
+                if (epoch != previous) put(field, JsonPrimitive(epoch))
+            }
+        }
         if (waitlistEnabled != competition.waitlistEnabled) put("waitlist_enabled", JsonPrimitive(waitlistEnabled))
         attempts.toIntOrNull()?.takeIf { it != competition.rules.attemptsPerClimb }?.let {
             put("rules", JsonObject(mapOf("attempts_per_climb" to JsonPrimitive(it))))
@@ -1097,7 +1130,7 @@ private fun HostCompetitionEditDialog(
     val parsedClimbCount = climbCount.toIntOrNull()
     val parsedCounted = countedClimbCount.toIntOrNull()
     val parsedScorePoints = listOf(zonePoints, topPoints, flashPoints).map(String::toIntOrNull)
-    val valid = title.isNotBlank() && capacity.toIntOrNull() in 0..500 &&
+    val valid = title.isNotBlank() && schedule != null && capacity.toIntOrNull() in 0..500 &&
         attempts.toIntOrNull() in 1..20 && parsedClimbCount in 1..minOf(availableClimbs, 40) &&
         parsedCounted in 1..(parsedClimbCount ?: 0) &&
         !(competition.rules.climbSource == "participant_choice" && scoring in setOf("points_sum", "hardest_n")) &&
@@ -1121,6 +1154,14 @@ private fun HostCompetitionEditDialog(
                 OutlinedTextField(summary, { summary = it }, label = { Text(stringResource(R.string.comp_edit_field_summary)) })
                 OutlinedTextField(venueName, { venueName = it }, label = { Text(stringResource(R.string.comp_edit_field_venue)) }, singleLine = true)
                 OutlinedTextField(capacity, { capacity = it.filter(Char::isDigit) }, label = { Text(stringResource(R.string.comp_edit_field_capacity)) }, singleLine = true)
+                Text(stringResource(R.string.comp_create_schedule_hint), style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(timezone, { timezone = it }, label = { Text(stringResource(R.string.comp_create_field_timezone)) }, singleLine = true)
+                OutlinedTextField(registrationOpensAt, { registrationOpensAt = it }, label = { Text(stringResource(R.string.comp_create_field_registration_opens)) }, singleLine = true)
+                OutlinedTextField(registrationClosesAt, { registrationClosesAt = it }, label = { Text(stringResource(R.string.comp_create_field_registration_closes)) }, singleLine = true)
+                OutlinedTextField(checkinOpensAt, { checkinOpensAt = it }, label = { Text(stringResource(R.string.comp_create_field_checkin_opens)) }, singleLine = true)
+                OutlinedTextField(checkinClosesAt, { checkinClosesAt = it }, label = { Text(stringResource(R.string.comp_create_field_checkin_closes)) }, singleLine = true)
+                OutlinedTextField(startsAt, { startsAt = it }, label = { Text(stringResource(R.string.comp_create_field_starts_at)) }, singleLine = true)
+                OutlinedTextField(endsAt, { endsAt = it }, label = { Text(stringResource(R.string.comp_create_field_ends_at)) }, singleLine = true, isError = schedule == null)
                 OutlinedTextField(attempts, { attempts = it.filter(Char::isDigit) }, label = { Text(stringResource(R.string.comp_edit_field_attempts)) }, singleLine = true)
                 OutlinedTextField(climbCount, { climbCount = it.filter(Char::isDigit) }, label = { Text(stringResource(R.string.comp_create_field_climb_count)) }, singleLine = true)
                 OutlinedTextField(countedClimbCount, { countedClimbCount = it.filter(Char::isDigit) }, label = { Text(stringResource(R.string.comp_create_field_counted_climbs)) }, singleLine = true)

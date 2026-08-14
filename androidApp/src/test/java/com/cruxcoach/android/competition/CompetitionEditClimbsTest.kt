@@ -64,6 +64,9 @@ class CompetitionEditClimbsTest {
             "competition.rules.progression", "competition.rules.scoring",
             "competition.waitlistEnabled", "competition.rules.lateEntryAllowed",
             "score_points", "points_sum", "hardest_n",
+            "competition.registrationOpensAt", "competition.registrationClosesAt",
+            "competition.checkinOpensAt", "competition.checkinClosesAt",
+            "competition.startsAt", "competition.endsAt", "competition.timezone",
         ).forEach { assertContains(source, it) }
     }
 

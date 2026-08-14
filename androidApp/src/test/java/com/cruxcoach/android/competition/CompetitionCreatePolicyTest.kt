@@ -3,6 +3,8 @@ package com.cruxcoach.android.competition
 import com.cruxcoach.android.ui.competition.CompetitionCreateDraftPolicy
 import com.cruxcoach.android.ui.competition.CompetitionCreateViewModel
 import java.io.File
+import java.time.Instant
+import java.time.ZoneId
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.JsonArray
@@ -82,6 +84,52 @@ class CompetitionCreatePolicyTest {
     }
 
     @Test
+    fun `exact local schedule preserves timezone and overlapping automatic windows`() {
+        val draft = validDraft().copy(
+            timezone = "Europe/Berlin",
+            registrationOpensAt = "2026-10-24 09:00",
+            registrationClosesAt = "2026-10-25 11:00",
+            checkinOpensAt = "2026-10-25 09:00",
+            checkinClosesAt = "2026-10-25 11:30",
+            startsAt = "2026-10-25 10:00",
+            endsAt = "2026-10-25 14:00",
+        )
+
+        val schedule = requireNotNull(CompetitionCreateDraftPolicy.schedule(draft))
+        assertEquals("Europe/Berlin", schedule.timezone)
+        assertEquals(90 * 60, schedule.checkinClosesAt - schedule.startsAt)
+        assertEquals(4 * 3_600, schedule.endsAt - schedule.startsAt,
+            "local fields are interpreted in the organizer's timezone")
+        assertNull(CompetitionCreateDraftPolicy.validateStep(draft, 1))
+    }
+
+    @Test
+    fun `schedule defaults are explicit local minutes and invalid ordering fails closed`() {
+        val defaulted = CompetitionCreateDraftPolicy.withDefaultSchedule(
+            validDraft(), Instant.parse("2026-08-14T12:34:56Z"), ZoneId.of("UTC"),
+        )
+        assertEquals("2026-08-15 12:34", defaulted.startsAt)
+        assertEquals("2026-08-15 15:34", defaulted.endsAt)
+        assertEquals("UTC", defaulted.timezone)
+        val migrated = CompetitionCreateDraftPolicy.withDefaultSchedule(
+            validDraft().copy(startsInHours = "48", durationHours = "4"),
+            Instant.parse("2026-08-14T12:34:56Z"), ZoneId.of("UTC"),
+        )
+        assertEquals("2026-08-16 12:34", migrated.startsAt)
+        assertEquals("2026-08-16 16:34", migrated.endsAt)
+        assertEquals(
+            "invalid_schedule",
+            CompetitionCreateDraftPolicy.validateStep(
+                defaulted.copy(registrationClosesAt = "2026-08-16 12:34"), 1,
+            ),
+        )
+        assertEquals(
+            "invalid_schedule",
+            CompetitionCreateDraftPolicy.validateStep(defaulted.copy(timezone = "Mars/Olympus"), 1),
+        )
+    }
+
+    @Test
     fun `creation UI exposes the protocol format axes instead of hard coding them`() {
         val source = listOf(
             File("src/main/java/com/cruxcoach/android/ui/competition/CompetitionCreateScreen.kt"),
@@ -92,6 +140,8 @@ class CompetitionCreatePolicyTest {
             "participant_choice", "organizer_set", "asynchronous_turns", "synchronous_rounds",
             "tops_then_attempts", "achievement_points", "points_sum", "hardest_n",
             "waitlistEnabled", "lateEntryAllowed", "countedClimbCount",
+            "registrationOpensAt", "registrationClosesAt", "checkinOpensAt",
+            "checkinClosesAt", "startsAt", "endsAt", "timezone",
         ).forEach { assertContains(source, it) }
     }
 

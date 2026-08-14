@@ -10,6 +10,11 @@ import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.domain.competition.CompetitionProtocol
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.security.SecureRandom
+import java.time.Instant
+import java.time.LocalDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.ResolverStyle
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -42,6 +47,9 @@ class CompetitionCreateViewModel @Inject constructor(
         val boardBrand: String = "kilter", val boardModel: String = "Kilter Board",
         val boardSize: String = "", val layoutId: String = "1", val angle: String = "40",
         val startsInHours: String = "24", val durationHours: String = "3",
+        val timezone: String = "", val registrationOpensAt: String = "",
+        val registrationClosesAt: String = "", val checkinOpensAt: String = "",
+        val checkinClosesAt: String = "", val startsAt: String = "", val endsAt: String = "",
         val capacity: String = "20", val division: String = "Open",
         val attempts: String = "5", val turnSeconds: String = "180",
         val climbSource: String = "organizer_set", val climbCount: String = "1",
@@ -60,7 +68,9 @@ class CompetitionCreateViewModel @Inject constructor(
         data class Created(val organizerPubkey: String, val compId: String) : State
     }
     private val hadSavedDraft = savedStateHandle.get<String>(DRAFT_KEY) != null
-    private val _state = MutableStateFlow<State>(restoreEditing())
+    private val _state = MutableStateFlow<State>(restoreEditing().let { editing ->
+        editing.copy(draft = CompetitionCreateDraftPolicy.withDefaultSchedule(editing.draft))
+    })
     val state: StateFlow<State> = _state.asStateFlow()
 
     init {
@@ -131,8 +141,7 @@ class CompetitionCreateViewModel @Inject constructor(
         }
         val compId = ByteArray(8).also(SecureRandom()::nextBytes).joinToString("") { "%02x".format(it) }
         val now = System.currentTimeMillis() / 1000
-        val starts = now + (d.startsInHours.toLongOrNull() ?: 24) * 3600
-        val ends = starts + (d.durationHours.toLongOrNull() ?: 3) * 3600
+        val schedule = requireNotNull(CompetitionCreateDraftPolicy.schedule(d)) { "invalid_schedule" }
         val climbs = CompetitionCreateDraftPolicy.parseClimbs(d)
         val climbCount = d.climbCount.toInt()
         val countedClimbCount = d.countedClimbCount.toInt()
@@ -141,10 +150,10 @@ class CompetitionCreateViewModel @Inject constructor(
             "comp_id" to JsonPrimitive(compId), "authority" to JsonPrimitive(authority), "authority_epoch" to JsonPrimitive(1),
             "title" to JsonPrimitive(d.title.trim()), "summary" to JsonPrimitive(d.summary.trim()), "description" to JsonPrimitive(d.rulesText.trim()),
             "organizer" to JsonObject(mapOf("name" to JsonPrimitive(d.organizer.trim()), "contact" to JsonPrimitive(d.contact.trim()))),
-            "visibility" to JsonPrimitive(if (d.public) "public" else "unlisted"), "status" to JsonPrimitive("published"), "timezone" to JsonPrimitive("UTC"),
-            "registration_opens_at" to JsonPrimitive(now), "registration_closes_at" to JsonPrimitive(starts),
-            "checkin_opens_at" to JsonPrimitive((starts - 3600).coerceAtLeast(now)), "checkin_closes_at" to JsonPrimitive(starts),
-            "starts_at" to JsonPrimitive(starts), "ends_at" to JsonPrimitive(ends),
+            "visibility" to JsonPrimitive(if (d.public) "public" else "unlisted"), "status" to JsonPrimitive("published"), "timezone" to JsonPrimitive(schedule.timezone),
+            "registration_opens_at" to JsonPrimitive(schedule.registrationOpensAt), "registration_closes_at" to JsonPrimitive(schedule.registrationClosesAt),
+            "checkin_opens_at" to JsonPrimitive(schedule.checkinOpensAt), "checkin_closes_at" to JsonPrimitive(schedule.checkinClosesAt),
+            "starts_at" to JsonPrimitive(schedule.startsAt), "ends_at" to JsonPrimitive(schedule.endsAt),
             "capacity" to JsonPrimitive(d.capacity.toIntOrNull()?.coerceIn(0, 500) ?: 20), "waitlist_enabled" to JsonPrimitive(d.waitlistEnabled),
             "venue" to JsonObject(mapOf("kind" to JsonPrimitive("physical"), "name" to JsonPrimitive(d.venue.trim()), "address" to JsonPrimitive(d.address.trim()))),
             "board" to JsonObject(mapOf("brand" to JsonPrimitive(d.boardBrand), "model" to JsonPrimitive(d.boardModel.trim()), "size" to JsonPrimitive(d.boardSize.trim()), "angle" to JsonPrimitive(d.angle.toInt()), "layout_id" to JsonPrimitive(d.layoutId.toInt()))),
@@ -165,6 +174,75 @@ class CompetitionCreateViewModel @Inject constructor(
 }
 
 internal object CompetitionCreateDraftPolicy {
+    data class Schedule(
+        val timezone: String,
+        val registrationOpensAt: Long,
+        val registrationClosesAt: Long,
+        val checkinOpensAt: Long,
+        val checkinClosesAt: Long,
+        val startsAt: Long,
+        val endsAt: Long,
+    )
+
+    private val LOCAL_MINUTE = DateTimeFormatter.ofPattern("uuuu-MM-dd HH:mm")
+        .withResolverStyle(ResolverStyle.STRICT)
+
+    fun withDefaultSchedule(
+        draft: CompetitionCreateViewModel.Draft,
+        now: Instant = Instant.now(),
+        zone: ZoneId = ZoneId.systemDefault(),
+    ): CompetitionCreateViewModel.Draft {
+        if (draft.startsAt.isNotBlank()) return draft
+        val start = now.atZone(zone)
+            .plusHours(draft.startsInHours.toLongOrNull()?.coerceIn(1, 24 * 365) ?: 24)
+            .withSecond(0).withNano(0)
+        val duration = draft.durationHours.toLongOrNull()?.coerceIn(1, 24 * 30) ?: 3
+        return draft.copy(
+            timezone = zone.id,
+            registrationOpensAt = LOCAL_MINUTE.format(now.atZone(zone).withSecond(0).withNano(0)),
+            registrationClosesAt = LOCAL_MINUTE.format(start),
+            checkinOpensAt = LOCAL_MINUTE.format(start.minusHours(1)),
+            checkinClosesAt = LOCAL_MINUTE.format(start),
+            startsAt = LOCAL_MINUTE.format(start),
+            endsAt = LOCAL_MINUTE.format(start.plusHours(duration)),
+        )
+    }
+
+    fun schedule(d: CompetitionCreateViewModel.Draft): Schedule? = schedule(
+        d.timezone, d.registrationOpensAt, d.registrationClosesAt,
+        d.checkinOpensAt, d.checkinClosesAt, d.startsAt, d.endsAt,
+    )
+
+    fun schedule(
+        timezone: String,
+        registrationOpensAt: String,
+        registrationClosesAt: String,
+        checkinOpensAt: String,
+        checkinClosesAt: String,
+        startsAt: String,
+        endsAt: String,
+    ): Schedule? = runCatching {
+        val zone = ZoneId.of(timezone.trim())
+        fun epoch(value: String): Long = LocalDateTime.parse(value.trim(), LOCAL_MINUTE)
+            .atZone(zone).toEpochSecond()
+        Schedule(
+            zone.id,
+            epoch(registrationOpensAt), epoch(registrationClosesAt),
+            epoch(checkinOpensAt), epoch(checkinClosesAt),
+            epoch(startsAt), epoch(endsAt),
+        )
+    }.getOrNull()?.takeIf { s ->
+        s.registrationOpensAt <= s.registrationClosesAt &&
+            s.checkinOpensAt <= s.checkinClosesAt &&
+            s.registrationOpensAt <= s.startsAt && s.checkinOpensAt <= s.startsAt &&
+            s.startsAt <= s.endsAt && s.registrationClosesAt <= s.endsAt &&
+            s.checkinClosesAt <= s.endsAt
+    }
+
+    fun formatLocalMinute(epochSeconds: Long, timezone: String): String? = runCatching {
+        LOCAL_MINUTE.format(Instant.ofEpochSecond(epochSeconds).atZone(ZoneId.of(timezone)))
+    }.getOrNull()
+
     fun rules(d: CompetitionCreateViewModel.Draft, climbCount: Int, countedClimbCount: Int): JsonObject {
         val rules = linkedMapOf<String, kotlinx.serialization.json.JsonElement>(
             "climb_source" to JsonPrimitive(d.climbSource),
@@ -207,7 +285,11 @@ internal object CompetitionCreateDraftPolicy {
 
     fun validateStep(d: CompetitionCreateViewModel.Draft, step: Int): String? = when (step) {
         0 -> if (d.title.isBlank() || d.venue.isBlank()) "required_basics" else null
-        1 -> if (d.layoutId.toIntOrNull() == null || d.angle.toIntOrNull() == null || d.boardSize.isBlank()) "invalid_board" else null
+        1 -> when {
+            d.layoutId.toIntOrNull() == null || d.angle.toIntOrNull() == null || d.boardSize.isBlank() -> "invalid_board"
+            schedule(d) == null -> "invalid_schedule"
+            else -> null
+        }
         2 -> {
             val options = parseClimbs(d)
             val climbCount = d.climbCount.toIntOrNull()

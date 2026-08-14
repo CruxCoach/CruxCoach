@@ -100,8 +100,14 @@ fun CompetitionCreateScreen(
                         Field(stringResource(R.string.comp_create_field_size), d.boardSize) { viewModel.edit { x -> x.copy(boardSize = it) } }
                         Field(stringResource(R.string.comp_create_field_layout), d.layoutId, numeric = true) { viewModel.edit { x -> x.copy(layoutId = it) } }
                         Field(stringResource(R.string.comp_create_field_angle), d.angle, numeric = true) { viewModel.edit { x -> x.copy(angle = it) } }
-                        Field(stringResource(R.string.comp_create_field_starts), d.startsInHours, numeric = true) { viewModel.edit { x -> x.copy(startsInHours = it) } }
-                        Field(stringResource(R.string.comp_create_field_duration), d.durationHours, numeric = true) { viewModel.edit { x -> x.copy(durationHours = it) } }
+                        Text(stringResource(R.string.comp_create_schedule_hint))
+                        Field(stringResource(R.string.comp_create_field_timezone), d.timezone) { viewModel.edit { x -> x.copy(timezone = it) } }
+                        Field(stringResource(R.string.comp_create_field_registration_opens), d.registrationOpensAt) { viewModel.edit { x -> x.copy(registrationOpensAt = it) } }
+                        Field(stringResource(R.string.comp_create_field_registration_closes), d.registrationClosesAt) { viewModel.edit { x -> x.copy(registrationClosesAt = it) } }
+                        Field(stringResource(R.string.comp_create_field_checkin_opens), d.checkinOpensAt) { viewModel.edit { x -> x.copy(checkinOpensAt = it) } }
+                        Field(stringResource(R.string.comp_create_field_checkin_closes), d.checkinClosesAt) { viewModel.edit { x -> x.copy(checkinClosesAt = it) } }
+                        Field(stringResource(R.string.comp_create_field_starts_at), d.startsAt) { viewModel.edit { x -> x.copy(startsAt = it) } }
+                        Field(stringResource(R.string.comp_create_field_ends_at), d.endsAt) { viewModel.edit { x -> x.copy(endsAt = it) } }
                     }
                     2 -> {
                         Choice(
@@ -139,6 +145,12 @@ fun CompetitionCreateScreen(
                     else -> {
                         Text(stringResource(R.string.comp_create_review), fontWeight = FontWeight.Bold)
                         Text(stringResource(R.string.comp_create_review_summary, d.title, d.venue, d.boardModel, d.boardSize, d.angle))
+                        Text(stringResource(
+                            R.string.comp_create_review_schedule,
+                            d.registrationOpensAt, d.registrationClosesAt,
+                            d.checkinOpensAt, d.checkinClosesAt,
+                            d.startsAt, d.endsAt, d.timezone,
+                        ))
                         Choice(
                             stringResource(R.string.comp_create_field_progression), d.progression,
                             listOf(
@@ -187,6 +199,7 @@ fun CompetitionCreateScreen(
 private fun competitionCreateError(code: String): String = when (code) {
     "required_basics" -> stringResource(R.string.comp_create_error_basics)
     "invalid_board" -> stringResource(R.string.comp_create_error_board)
+    "invalid_schedule" -> stringResource(R.string.comp_create_error_schedule)
     "required_climb" -> stringResource(R.string.comp_create_error_climb)
     "invalid_climb_count" -> stringResource(R.string.comp_create_error_climb_count)
     "invalid_counted_climb_count" -> stringResource(R.string.comp_create_error_counted_climb_count)

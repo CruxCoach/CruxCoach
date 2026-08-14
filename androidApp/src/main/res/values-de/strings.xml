@@ -2388,8 +2388,14 @@
     <string name="comp_create_field_size">Boardgröße</string>
     <string name="comp_create_field_layout">Layout-ID</string>
     <string name="comp_create_field_angle">Winkel</string>
-    <string name="comp_create_field_starts">Start in Stunden</string>
-    <string name="comp_create_field_duration">Dauer in Stunden</string>
+    <string name="comp_create_schedule_hint">Lokales Datum und Uhrzeit im Format JJJJ-MM-TT HH:MM. Anmeldung, Check-in und Live-Zeitraum laufen automatisch und dürfen sich überschneiden.</string>
+    <string name="comp_create_field_timezone">Zeitzone (zum Beispiel Europe/Berlin)</string>
+    <string name="comp_create_field_registration_opens">Anmeldung öffnet</string>
+    <string name="comp_create_field_registration_closes">Anmeldung schließt</string>
+    <string name="comp_create_field_checkin_opens">Check-in öffnet</string>
+    <string name="comp_create_field_checkin_closes">Check-in schließt</string>
+    <string name="comp_create_field_starts_at">Wettkampf beginnt</string>
+    <string name="comp_create_field_ends_at">Wettkampf endet</string>
     <string name="comp_create_climbs_hint">Ein Boulder pro Zeile: CruxCoach-Link oder UUID | Name | Punkte | optionale Zone-Hold-ID</string>
     <string name="comp_create_pool_hint">Füge den vollständigen Pool hinzu, aus dem Teilnehmende während des Live-Wettkampfs wählen dürfen. Je eine Zeile: CruxCoach-Link oder UUID | Name | Punkte | optionale Zone-Hold-ID.</string>
     <string name="comp_create_field_climbs">Wettkampfboulder</string>
@@ -2405,6 +2411,7 @@
     <string name="comp_create_field_division">Division</string>
     <string name="comp_create_review">Prüfen</string>
     <string name="comp_create_review_summary">%1$s\n%2$s · %3$s %4$s bei %5$s°</string>
+    <string name="comp_create_review_schedule">Anmeldung %1$s – %2$s\nCheck-in %3$s – %4$s\nWettkampf %5$s – %6$s\n%7$s</string>
     <string name="comp_create_field_attempts">Versuche pro Boulder</string>
     <string name="comp_create_field_turn_seconds">Zeit pro Zug (Sekunden)</string>
     <string name="comp_create_field_progression">Zugfolge</string>
@@ -2430,6 +2437,7 @@
     <string name="comp_create_discard_confirm">Entwurf verwerfen</string>
     <string name="comp_create_error_basics">Titel und Ort sind erforderlich.</string>
     <string name="comp_create_error_board">Vervollständige die Board-Konfiguration.</string>
+    <string name="comp_create_error_schedule">Trage gültige lokale Zeiten als JJJJ-MM-TT HH:MM und eine gültige Zeitzone ein. Jede Öffnung muss vor ihrem Ende und dem Wettkampfende liegen.</string>
     <string name="comp_create_error_climb">Trage mindestens einen Boulder als UUID | Name ein.</string>
     <string name="comp_create_error_climb_count">Die Zahl verfügbarer Ergebnisse muss zwischen 1 und der Zahl gelisteter Boulder liegen.</string>
     <string name="comp_create_error_counted_climb_count">Best-N muss zwischen 1 und der Zahl verfügbarer Ergebnisse liegen.</string>

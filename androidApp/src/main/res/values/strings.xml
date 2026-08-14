@@ -2389,8 +2389,14 @@
     <string name="comp_create_field_size">Board size</string>
     <string name="comp_create_field_layout">Layout ID</string>
     <string name="comp_create_field_angle">Angle</string>
-    <string name="comp_create_field_starts">Starts in hours</string>
-    <string name="comp_create_field_duration">Duration in hours</string>
+    <string name="comp_create_schedule_hint">Local date and time use YYYY-MM-DD HH:MM. Registration, check-in, and live windows are automatic and may overlap.</string>
+    <string name="comp_create_field_timezone">Time zone (for example Europe/Berlin)</string>
+    <string name="comp_create_field_registration_opens">Registration opens</string>
+    <string name="comp_create_field_registration_closes">Registration closes</string>
+    <string name="comp_create_field_checkin_opens">Check-in opens</string>
+    <string name="comp_create_field_checkin_closes">Check-in closes</string>
+    <string name="comp_create_field_starts_at">Competition starts</string>
+    <string name="comp_create_field_ends_at">Competition ends</string>
     <string name="comp_create_climbs_hint">One boulder per line: CruxCoach link or UUID | name | points | optional zone-hold ID</string>
     <string name="comp_create_pool_hint">Add the full pool participants may choose from during the live competition. One line each: CruxCoach link or UUID | name | points | optional zone-hold ID.</string>
     <string name="comp_create_field_climbs">Competition boulders</string>
@@ -2406,6 +2412,7 @@
     <string name="comp_create_field_division">Division</string>
     <string name="comp_create_review">Review</string>
     <string name="comp_create_review_summary">%1$s\n%2$s · %3$s %4$s @ %5$s°</string>
+    <string name="comp_create_review_schedule">Registration %1$s – %2$s\nCheck-in %3$s – %4$s\nCompetition %5$s – %6$s\n%7$s</string>
     <string name="comp_create_field_attempts">Attempts per boulder</string>
     <string name="comp_create_field_turn_seconds">Turn time (seconds)</string>
     <string name="comp_create_field_progression">Turn progression</string>
@@ -2431,6 +2438,7 @@
     <string name="comp_create_discard_confirm">Discard draft</string>
     <string name="comp_create_error_basics">Enter a title and venue.</string>
     <string name="comp_create_error_board">Complete the board configuration.</string>
+    <string name="comp_create_error_schedule">Enter valid local dates as YYYY-MM-DD HH:MM, a valid time zone, and keep each opening before its close and the competition end.</string>
     <string name="comp_create_error_climb">Add at least one boulder as UUID | name.</string>
     <string name="comp_create_error_climb_count">The available result count must be between 1 and the number of listed boulders.</string>
     <string name="comp_create_error_counted_climb_count">Best-N must be between 1 and the available result count.</string>
