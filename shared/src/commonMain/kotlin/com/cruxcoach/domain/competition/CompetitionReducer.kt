@@ -33,7 +33,7 @@ object CompetitionReducer {
         "uniqueness_not_enforced", "prize_already_awarded", "results_not_final", "wrong_status",
         "config_bad_revision", "config_empty_patch", "config_immutable_field",
         "config_impact_mismatch", "config_invalid", "config_referenced_climb",
-        "config_referenced_division",
+        "config_referenced_division", "no_open_turn", "not_current_turn",
     )
 
     private val REGISTRATION_STATES = setOf("registration_open")
@@ -159,7 +159,7 @@ object CompetitionReducer {
      */
     private val HANDLED_OPS = setOf(
         "lifecycle", "registration_decision", "payment_decision", "claim_decision",
-        "prize_decision", "checkin", "queue", "defer_decision", "attempt_result",
+        "prize_decision", "checkin", "queue", "defer_decision", "attempt_result", "complete_turn",
         "disqualify", "announcement",
         "config_update",
     )
@@ -174,6 +174,7 @@ object CompetitionReducer {
         "queue" -> applyQueue(state, entry, competition)
         "defer_decision" -> applyDeferDecision(state, entry, competition)
         "attempt_result" -> applyAttemptResult(state, entry, competition)
+        "complete_turn" -> applyCompleteTurn(state, entry, competition)
         "disqualify" -> applyDisqualify(state, entry)
         "announcement" -> applyAnnouncement(state, entry)
         "config_update" -> applyConfigUpdate(state, entry, competition)
@@ -391,7 +392,7 @@ object CompetitionReducer {
             !checkinWindowOpen(competition, state.status, entry.at)
         ) return reject(state, entry, "wrong_status")
 
-        if (action == "seed" || action == "reorder") {
+        if (action == "seed" || action == "seed_open" || action == "reorder") {
             val orderArray = entry.data["order"] as? JsonArray ?: return reject(state, entry, "no_order")
             val order = orderArray.mapNotNull { (it as? JsonPrimitive)?.contentOrNullSafe() }
             if (order.size != orderArray.size) return reject(state, entry, "no_order")
@@ -400,14 +401,24 @@ object CompetitionReducer {
                 .map { it.pubkey }
             if (order.toSet().size != order.size) return reject(state, entry, "duplicate_in_order")
             if (order.any { it !in eligible }) return reject(state, entry, "ineligible_in_order")
-            if (action == "seed" && order.size != eligible.size) return reject(state, entry, "incomplete_seed_order")
-            return state.copy(
+            if (action != "reorder" && order.size != eligible.size) return reject(state, entry, "incomplete_seed_order")
+            val seeded = state.copy(
                 order = order,
                 cursor = -1,
                 round = if (state.round == 0) 1 else state.round,
                 currentClimbId = if (state.currentClimbId.isBlank() && competition.rules.climbSource == "organizer_set") {
                     competition.climbs.firstOrNull()?.id.orEmpty()
                 } else state.currentClimbId,
+            )
+            if (action != "seed_open") return seeded
+            val first = nextEligibleIndex(seeded, competition, -1, entry.at)
+            return if (first < 0) seeded.copy(
+                turnOpenedAt = 0,
+                turnDeadlineAt = 0,
+            ) else seeded.copy(
+                cursor = first,
+                turnOpenedAt = entry.at,
+                turnDeadlineAt = entry.at + competition.rules.turnDeadlineSec,
             )
         }
 
@@ -539,6 +550,53 @@ object CompetitionReducer {
             .withClimb(ClimbProgress(climbId, attemptsUsed, nextOutcome, entry.at))
             .copy(lastAttemptAt = entry.at, consecutiveDefers = 0)
         return state.withParticipant(updated)
+    }
+
+    /**
+     * Atomic authority operation used by current hosts. Legacy attempt_result
+     * remains replayable, but new hosts cannot leave a scored turn open or
+     * publish the queue movement without its result.
+     */
+    private fun applyCompleteTurn(
+        state: CompetitionState,
+        entry: LogEntry,
+        competition: Competition,
+    ): CompetitionState {
+        if (state.cursor !in state.order.indices || state.turnOpenedAt <= 0) {
+            return reject(state, entry, "no_open_turn")
+        }
+        val pubkey = entry.data.str("pubkey")
+        if (pubkey == null || state.order[state.cursor] != pubkey) {
+            return reject(state, entry, "not_current_turn")
+        }
+
+        val attempted = applyAttemptResult(state, entry, competition)
+        if (attempted.rejected.size > state.rejected.size) return attempted
+
+        val next = nextEligibleIndex(attempted, competition, state.cursor, entry.at)
+        if (next >= 0) {
+            return attempted.copy(
+                cursor = next,
+                turnOpenedAt = entry.at,
+                turnDeadlineAt = entry.at + competition.rules.turnDeadlineSec,
+            )
+        }
+
+        val nextRound = attempted.copy(
+            round = attempted.round + 1,
+            cursor = -1,
+            turnOpenedAt = 0,
+            turnDeadlineAt = 0,
+            participants = attempted.participants.map {
+                it.copy(defersUsedThisRound = 0, consecutiveDefers = 0)
+            },
+        )
+        val first = nextEligibleIndex(nextRound, competition, -1, entry.at)
+        return if (first < 0) nextRound else nextRound.copy(
+            cursor = first,
+            turnOpenedAt = entry.at,
+            turnDeadlineAt = entry.at + competition.rules.turnDeadlineSec,
+        )
     }
 
     private fun applyDisqualify(state: CompetitionState, entry: LogEntry): CompetitionState {

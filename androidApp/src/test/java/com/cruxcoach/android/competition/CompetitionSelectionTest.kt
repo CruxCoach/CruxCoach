@@ -210,6 +210,16 @@ class CompetitionSelectionTest {
     }
 
     @Test
+    fun `next person wraps to the first entrant for the next round`() {
+        val screen = ui(
+            participants = listOf(entrant()),
+            order = listOf(other, mine),
+            cursor = 1,
+        )
+        assertEquals(other, screen.nextClimber)
+    }
+
+    @Test
     fun `may act only when every rule the reducer applies is satisfied`() {
         assertTrue(ui(participants = listOf(entrant())).mayAct(1000), "their turn, checked in, active")
 

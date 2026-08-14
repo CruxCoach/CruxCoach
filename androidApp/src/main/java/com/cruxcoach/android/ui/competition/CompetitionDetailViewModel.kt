@@ -39,6 +39,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -81,6 +82,7 @@ class CompetitionDetailViewModel @Inject constructor(
 
     private val _action = MutableStateFlow<Action>(Action.Idle)
     val action: StateFlow<Action> = _action.asStateFlow()
+    private var climbChoiceGeneration = 0
 
     sealed interface Cleanup {
         data object Idle : Cleanup
@@ -111,7 +113,8 @@ class CompetitionDetailViewModel @Inject constructor(
         val isMyTurn: Boolean get() = me != null && currentClimber == me!!.pubkey
         val nextClimber: String?
             get() = snapshot.state?.let { state ->
-                if (state.cursor < 0) null else state.order.getOrNull(state.cursor + 1)
+                if (state.cursor < 0 || state.order.isEmpty()) null
+                else state.order[(state.cursor + 1) % state.order.size]
             }
         val personalCue get() = CompetitionLivePolicy.personalCue(snapshot.state, myPubkey)
         val queue get() = CompetitionLivePolicy.queue(snapshot.state)
@@ -425,7 +428,15 @@ class CompetitionDetailViewModel @Inject constructor(
     fun reportAttempt(climbId: String, outcome: String) = act {
         val snapshot = client.snapshot.value
         val competition = snapshot.competition ?: return@act null
+        val nowSeconds = System.currentTimeMillis() / 1000
+        if (!Ui(snapshot, myPubkey).mayAct(nowSeconds)) return@act null
         val mine = snapshot.state?.participants?.firstOrNull { it.pubkey == myPubkey } ?: return@act null
+        val allowed = competition.climbsFor(mine.selections).any { it.id == climbId }
+        val progress = mine.climb(climbId)
+        if (!allowed || progress?.outcome == "top" ||
+            (progress?.attemptsUsed ?: 0) >= competition.rules.attemptsPerClimb ||
+            outcome !in CompetitionProtocol.ATTEMPT_OUTCOMES
+        ) return@act null
         val used = mine.climb(climbId)?.attemptsUsed ?: 0
         intents.reportAttempt(competition, organizerPubkey, climbId, outcome, used + 1)
     }
@@ -438,6 +449,36 @@ class CompetitionDetailViewModel @Inject constructor(
     fun requestCheckIn() = act {
         val competition = client.snapshot.value.competition ?: return@act null
         intents.requestCheckIn(competition, organizerPubkey)
+    }
+
+    fun chooseClimb(climbId: String) {
+        // Rapid browsing should publish only the final prepared boulder. This
+        // also prevents two same-second replaceable events racing on relays.
+        val generation = ++climbChoiceGeneration
+        viewModelScope.launch {
+            delay(250)
+            if (generation != climbChoiceGeneration) return@launch
+            val snapshot = client.snapshot.value
+            val competition = snapshot.competition ?: return@launch
+            val mine = snapshot.state?.participant(myPubkey) ?: return@launch
+            if (competition.rules.climbSource != "participant_choice") return@launch
+            if (mine.registration != "accepted" || mine.checkin != "checked_in" || mine.result != "active" ||
+                (competition.feeMsat > 0 && mine.payment != "settled")
+            ) return@launch
+            val climb = competition.climbPool.firstOrNull { it.id == climbId } ?: return@launch
+            val progress = mine.climb(climb.id)
+            if (progress?.outcome == "top" || (progress?.attemptsUsed ?: 0) >= competition.rules.attemptsPerClimb) {
+                return@launch
+            }
+            when (val result = intents.chooseClimb(competition, organizerPubkey, climb.id)) {
+                is CompetitionIntentPublisher.Result.Published ->
+                    if (generation == climbChoiceGeneration) {
+                        _action.value = Action.Sent(result.accepted, result.attempted)
+                    }
+                is CompetitionIntentPublisher.Result.Failed ->
+                    if (generation == climbChoiceGeneration) _action.value = Action.Failed(result.reason)
+            }
+        }
     }
 
     fun requestDefer() = act {
@@ -505,8 +546,9 @@ class CompetitionDetailViewModel @Inject constructor(
     fun hostSeed() {
         val order = client.snapshot.value.state?.participants.orEmpty()
             .filter { it.registration == "accepted" && it.checkin == "checked_in" && it.result == "active" }
-            .map { it.pubkey }.sorted()
-        hostAct("queue", JsonObject(mapOf("action" to JsonPrimitive("seed"), "order" to kotlinx.serialization.json.JsonArray(order.map(::JsonPrimitive)))))
+            .map { it.pubkey }
+            .let { CompetitionProtocol.defaultQueueOrder(compId, it) }
+        hostAct("queue", JsonObject(mapOf("action" to JsonPrimitive("seed_open"), "order" to kotlinx.serialization.json.JsonArray(order.map(::JsonPrimitive)))))
     }
 
     fun hostQueue(action: String, index: Int? = null, climbId: String? = null) = hostAct("queue", JsonObject(buildMap {
@@ -514,8 +556,19 @@ class CompetitionDetailViewModel @Inject constructor(
     }))
 
     fun hostAttempt(pubkey: String, climbId: String, outcome: String, intentId: String? = null) {
-        val used = client.snapshot.value.state?.participant(pubkey)?.climb(climbId)?.attemptsUsed ?: 0
-        hostAct("attempt_result", JsonObject(buildMap {
+        if (_action.value is Action.Working) return
+        val state = client.snapshot.value.state
+        if (state == null || state.cursor !in state.order.indices || state.order[state.cursor] != pubkey) {
+            _action.value = Action.Failed("not_current_turn")
+            return
+        }
+        if (climbId.isBlank() || outcome !in CompetitionProtocol.ATTEMPT_OUTCOMES) {
+            _action.value = Action.Failed("invalid_attempt")
+            return
+        }
+
+        val used = state.participant(pubkey)?.climb(climbId)?.attemptsUsed ?: 0
+        hostAct("complete_turn", JsonObject(buildMap {
             put("pubkey", JsonPrimitive(pubkey)); put("climb_id", JsonPrimitive(climbId))
             put("outcome", JsonPrimitive(outcome)); put("attempt_no", JsonPrimitive(used + 1))
             intentId?.let { put("intent_id", JsonPrimitive(it)) }

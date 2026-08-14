@@ -99,6 +99,22 @@ class CompetitionIntentPublisher @Inject constructor(
         send(competition, organizerPubkey, "checkin_request", JsonObject(emptyMap()))
 
     /**
+     * Replaceable live preference, not registration state. Reusing the
+     * operation nonce means changing one's mind leaves the host exactly one
+     * current choice to display.
+     */
+    suspend fun chooseClimb(
+        competition: Competition,
+        organizerPubkey: String,
+        climbId: String,
+    ): Result = send(
+        competition,
+        organizerPubkey,
+        "climb_choice",
+        JsonObject(mapOf("climb_id" to JsonPrimitive(climbId))),
+    )
+
+    /**
      * A deferral request carries a NIP-40 expiration: it is meaningless once the
      * turn deadline has passed, and an expired request sitting on a relay is
      * something an organizer could act on by mistake ten minutes later.

@@ -108,6 +108,30 @@ class CompetitionLivePolicyTest {
     }
 
     @Test
+    fun `a passed position stays queued for the next round instead of becoming zero ahead`() {
+        val passed = state(cursor = 2)
+        val cue = CompetitionLivePolicy.personalCue(passed, mine)
+        assertEquals(CompetitionLivePolicy.Cue.QUEUED, cue.kind)
+        assertEquals(2, cue.ahead)
+        assertEquals(1, cue.roundOffset)
+
+        val queue = CompetitionLivePolicy.queue(passed, limit = 3)
+        assertEquals(listOf(third, other, mine), queue.entries.map { it.pubkey })
+        assertTrue(queue.entries.first().current)
+        assertEquals(listOf(0, 1, 1), queue.entries.map { it.roundOffset })
+    }
+
+    @Test
+    fun `eta is only estimated inside the currently open round`() {
+        val open = state(cursor = 0).copy(turnOpenedAt = 100, turnDeadlineAt = 220)
+        assertEquals(210, CompetitionLivePolicy.etaSeconds(open, third, 130))
+        assertEquals(0, CompetitionLivePolicy.etaSeconds(open, other, 130))
+        assertEquals(null, CompetitionLivePolicy.etaSeconds(open, mine, 221))
+        assertEquals(null, CompetitionLivePolicy.etaSeconds(open.copy(cursor = 2), mine, 130))
+        assertEquals(null, CompetitionLivePolicy.etaSeconds(open.copy(turnDeadlineAt = 0), mine, 130))
+    }
+
+    @Test
     fun `defer is offered only for the real current eligible request`() {
         assertTrue(CompetitionLivePolicy.defer(state(cursor = 1), competition, participant(mine), mine).allowed)
         assertEquals(

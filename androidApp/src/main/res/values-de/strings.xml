@@ -2435,6 +2435,7 @@
     <string name="comp_checkin_no_show">Nicht erschienen</string>
     <string name="comp_current_climber">Jetzt an der Wand</string>
     <string name="comp_next_climber">Als Nächstes</string>
+    <string name="comp_next_climber_next_round">Als Nächstes · nächste Runde</string>
     <string name="comp_before_you">Vor dir</string>
     <string name="comp_your_turn">Du bist dran</string>
     <string name="comp_your_turn_hint">Geh los, wenn die Ausrichtung dich aufruft.</string>
@@ -2472,6 +2473,19 @@
     <string name="comp_live_open_now">Diesen Boulder öffnen</string>
     <string name="comp_live_prepare">Boulder vorbereiten</string>
     <string name="comp_live_defer_consecutive">Du hast die erlaubte Anzahl aufeinanderfolgender Verschiebungen erreicht.</string>
+    <string name="comp_live_estimated_turn">Voraussichtlich dran</string>
+    <string name="comp_live_about_minutes">in etwa %1$d Min.</string>
+    <string name="comp_live_your_next_round">Dein nächster Zug</string>
+    <string name="comp_live_next_round_short">Nächste Runde</string>
+    <string name="comp_live_choose_required">Wähle jetzt deinen Boulder</string>
+    <string name="comp_live_choose_required_short">Boulder im Live-Dashboard wählen</string>
+    <string name="comp_live_choose_required_hint">Dein Zug ist offen. Wähle einen Boulder, bevor du diesen Versuch meldest.</string>
+    <string name="comp_live_prepare_hint">Du kannst deinen nächsten Boulder jetzt auswählen und öffnen. Die Auswahl bleibt bis zu deinem Zug vorbereitet.</string>
+    <string name="comp_live_prepared">Vorbereitet: %1$s</string>
+    <string name="comp_leaderboard_untrusted">Die Wertung kann gerade nicht verifiziert werden. Verbinde dich erneut mit einem Wettkampf-Relay, bevor du dich auf die Ergebnisse verlässt.</string>
+    <string name="comp_leaderboard_empty">Noch keine verifizierten Ergebnisse. Die Wertung aktualisiert sich, sobald Versuche eingetragen werden.</string>
+    <string name="comp_leaderboard_your_rank">Dein Platz: %1$d</string>
+    <string name="comp_leaderboard_your_rank_pending">Dein Platz erscheint nach dem ersten gewerteten Ergebnis.</string>
     <string name="comp_my_climbs">Deine Boulder</string>
     <string name="comp_pick_title">Wähle deine Boulder</string>
     <string name="comp_pick_hint">Wähle %1$d. Die Ausrichtung bestätigt sie bei der Annahme deiner Anmeldung.</string>
@@ -2679,5 +2693,7 @@
     <string name="comp_table_attempts">Versuche</string>
     <string name="comp_fee">Teilnahme: %1$s</string>
     <string name="comp_sats">%1$d sat</string>
+    <string name="comp_host_prepared_choice">Vorbereitet: %1$s</string>
+    <string name="comp_host_choice_unavailable">Diese Auswahl ist nicht mehr verfügbar</string>
     <string name="cd_back">Zurück</string>
 </resources>

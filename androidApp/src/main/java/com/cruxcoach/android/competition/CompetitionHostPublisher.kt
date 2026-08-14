@@ -67,15 +67,16 @@ class CompetitionHostPublisher @Inject constructor(
         if (!state.chainComplete) return Result.Failed("incomplete_chain")
         val seq = state.seq + 1
         val at = System.currentTimeMillis() / 1000
-        if (op == "config_update") {
-            val preview = CompetitionReducer.applyEntry(
-                state,
-                LogEntry(seq, state.head, state.epoch, at, op, "authority", reason, data),
-                competition,
-            )
-            if (preview.rejected.size > state.rejected.size) {
-                return Result.Failed(preview.rejected.last().code)
-            }
+        // Never publish an authority entry our own reducer will reject. In
+        // particular, an invalid attempt_result must not be followed by an
+        // otherwise valid queue advance that silently skips the climber.
+        val preview = CompetitionReducer.applyEntry(
+            state,
+            LogEntry(seq, state.head, state.epoch, at, op, "authority", reason, data),
+            competition,
+        )
+        if (preview.rejected.size > state.rejected.size) {
+            return Result.Failed(preview.rejected.last().code)
         }
         val event = runCatching {
             NostrPublicEventBuilder(signer).buildSignedEvent(

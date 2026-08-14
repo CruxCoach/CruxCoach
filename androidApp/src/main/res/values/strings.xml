@@ -2436,6 +2436,7 @@
     <string name="comp_checkin_no_show">No-show</string>
     <string name="comp_current_climber">On the wall now</string>
     <string name="comp_next_climber">Up next</string>
+    <string name="comp_next_climber_next_round">Up next · next round</string>
     <string name="comp_before_you">Climbers before you</string>
     <string name="comp_your_turn">Your turn</string>
     <string name="comp_your_turn_hint">Go when the organiser calls you.</string>
@@ -2473,6 +2474,19 @@
     <string name="comp_live_open_now">Open this boulder</string>
     <string name="comp_live_prepare">Prepare boulder</string>
     <string name="comp_live_defer_consecutive">You have reached the consecutive deferral limit.</string>
+    <string name="comp_live_estimated_turn">Estimated turn</string>
+    <string name="comp_live_about_minutes">about %1$d min</string>
+    <string name="comp_live_your_next_round">Your next turn</string>
+    <string name="comp_live_next_round_short">Next round</string>
+    <string name="comp_live_choose_required">Choose your boulder now</string>
+    <string name="comp_live_choose_required_short">Choose a boulder in the live dashboard</string>
+    <string name="comp_live_choose_required_hint">Your turn is open. Select one boulder before reporting this attempt.</string>
+    <string name="comp_live_prepare_hint">You can select and open your next boulder now. The selection stays prepared until your turn.</string>
+    <string name="comp_live_prepared">Prepared: %1$s</string>
+    <string name="comp_leaderboard_untrusted">The leaderboard cannot be verified right now. Reconnect to a competition relay before relying on these results.</string>
+    <string name="comp_leaderboard_empty">No verified results yet. The leaderboard will update as attempts are recorded.</string>
+    <string name="comp_leaderboard_your_rank">Your place: %1$d</string>
+    <string name="comp_leaderboard_your_rank_pending">Your place will appear after the first scored result.</string>
     <string name="comp_my_climbs">Your climbs</string>
     <string name="comp_pick_title">Choose your climbs</string>
     <string name="comp_pick_hint">Pick %1$d. The organiser confirms them when they accept your entry.</string>
@@ -2680,5 +2694,7 @@
     <string name="comp_table_attempts">Attempts</string>
     <string name="comp_fee">Entry: %1$s</string>
     <string name="comp_sats">%1$d sat</string>
+    <string name="comp_host_prepared_choice">Prepared: %1$s</string>
+    <string name="comp_host_choice_unavailable">This choice is no longer available</string>
     <string name="cd_back">Back</string>
 </resources>

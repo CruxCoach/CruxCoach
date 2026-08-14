@@ -14,7 +14,13 @@ import com.cruxcoach.domain.competition.Participant
 object CompetitionLivePolicy {
     enum class Cue { SPECTATOR, WAITING, NOT_QUEUED, CURRENT, NEXT, QUEUED, PAUSED, FINISHED, CANCELLED }
 
-    data class PersonalCue(val kind: Cue, val ahead: Int? = null, val index: Int = -1)
+    data class PersonalCue(
+        val kind: Cue,
+        val ahead: Int? = null,
+        val index: Int = -1,
+        /** 0 is this round, 1 is the next pass through the order. */
+        val roundOffset: Int = 0,
+    )
 
     fun personalCue(state: CompetitionState?, pubkey: String, running: Boolean = state?.status == "running"): PersonalCue {
         if (state == null || pubkey.isBlank()) return PersonalCue(Cue.SPECTATOR)
@@ -28,8 +34,14 @@ object CompetitionLivePolicy {
                 state.cursor == index -> PersonalCue(Cue.CURRENT, 0, index)
                 else -> {
                     val cursor = if (state.cursor < 0) 0 else state.cursor
-                    val ahead = (index - cursor).coerceAtLeast(0)
-                    PersonalCue(if (ahead == 1) Cue.NEXT else Cue.QUEUED, ahead, index)
+                    val passedThisRound = state.cursor >= 0 && index < cursor
+                    val ahead = if (passedThisRound) state.order.size - cursor + index else index - cursor
+                    PersonalCue(
+                        if (ahead == 1) Cue.NEXT else Cue.QUEUED,
+                        ahead.coerceAtLeast(0),
+                        index,
+                        if (passedThisRound) 1 else 0,
+                    )
                 }
             } else PersonalCue(Cue.WAITING, index = index)
         }
@@ -41,24 +53,44 @@ object CompetitionLivePolicy {
         val queuePosition: Int,
         val current: Boolean,
         val next: Boolean,
+        val roundOffset: Int,
     )
 
     data class QueuePreview(val entries: List<QueueEntry>, val hidden: Int)
 
     fun queue(state: CompetitionState?, limit: Int = 6): QueuePreview {
         if (state == null) return QueuePreview(emptyList(), 0)
-        val start = (if (state.cursor < 0) 0 else state.cursor).coerceAtLeast(0)
-        val remaining = state.order.drop(start)
-        val entries = remaining.take(limit).mapIndexed { offset, pubkey ->
+        val start = (if (state.cursor < 0) 0 else state.cursor).coerceIn(0, state.order.size.coerceAtLeast(1) - 1)
+        // Keep a complete rotation visible. Entries before the cursor have not
+        // vanished: their next turn is in the next round.
+        val rotation = if (state.cursor < 0) state.order else state.order.drop(start) + state.order.take(start)
+        val entries = rotation.take(limit).mapIndexed { offset, pubkey ->
             QueueEntry(
                 pubkey = pubkey,
                 participant = state.participant(pubkey),
                 queuePosition = offset,
                 current = state.cursor >= 0 && start + offset == state.cursor,
-                next = state.cursor >= 0 && start + offset == state.cursor + 1,
+                next = state.cursor >= 0 && offset == 1,
+                roundOffset = if (state.cursor >= 0 && start + offset >= state.order.size) 1 else 0,
             )
         }
-        return QueuePreview(entries, (remaining.size - entries.size).coerceAtLeast(0))
+        return QueuePreview(entries, (rotation.size - entries.size).coerceAtLeast(0))
+    }
+
+    /**
+     * A conservative queue estimate. We only show it while the entrant still
+     * has a turn in the open round; crossing a round boundary is organizer
+     * controlled and therefore cannot be estimated honestly.
+     */
+    fun etaSeconds(state: CompetitionState?, pubkey: String, nowSeconds: Long): Long? {
+        if (state == null || state.status != "running" || state.cursor < 0 || state.turnDeadlineAt <= nowSeconds) return null
+        val index = state.order.indexOf(pubkey)
+        if (index < state.cursor) return null
+        val ahead = index - state.cursor
+        if (ahead == 0) return 0
+        val turnLength = (state.turnDeadlineAt - state.turnOpenedAt).takeIf { it > 0 } ?: return null
+        val currentLeft = state.turnDeadlineAt - nowSeconds
+        return currentLeft + (ahead - 1L) * turnLength
     }
 
     data class RotationEntry(val climb: CompetitionClimb, val current: Boolean, val next: Boolean)

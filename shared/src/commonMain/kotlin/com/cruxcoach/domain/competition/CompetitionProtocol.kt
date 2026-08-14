@@ -52,18 +52,27 @@ object CompetitionProtocol {
 
     val LOG_OPS = listOf(
         "lifecycle", "registration_decision", "payment_decision", "claim_decision",
-        "checkin", "queue", "defer_decision", "attempt_result", "correction",
+        "checkin", "queue", "defer_decision", "attempt_result", "complete_turn", "correction",
         "override", "announcement", "disqualify", "prize_decision", "config_update",
     )
 
     val INTENT_OPS = listOf(
         "register", "withdraw", "checkin_request", "defer_request",
-        "attempt_report", "payment_claim", "prize_claim", "prize_receipt",
+        "attempt_report", "climb_choice", "payment_claim", "prize_claim", "prize_receipt",
     )
 
-    val QUEUE_ACTIONS = listOf("seed", "open_turn", "close_turn", "advance", "reorder", "next_climb", "next_round")
+    val QUEUE_ACTIONS = listOf(
+        "seed", "seed_open", "open_turn", "close_turn", "advance", "reorder", "next_climb", "next_round",
+    )
     val ATTEMPT_OUTCOMES = listOf("top", "zone", "fall", "pass", "timeout")
     val PAYMENT_STATES = listOf("not_required", "pending", "settled", "failed", "expired", "refunded")
+
+    /** Stable default seeding shared by every authority UI. */
+    fun defaultQueueOrder(compId: String, pubkeys: List<String>): List<String> =
+        pubkeys.map { pubkey ->
+            pubkey to ccjHash(JsonObject(mapOf("k" to JsonPrimitive(compId + pubkey))))
+        }.sortedWith(compareBy<Pair<String, String>> { it.second }.thenBy { it.first })
+            .map { it.first }
 
     /** What can happen to a prize in the public log — FEAT-058 §11.7. */
     val PRIZE_STATES = listOf("claimed", "approved", "paid", "rejected", "expired")
@@ -375,6 +384,13 @@ object CompetitionProtocol {
         val nonce = payload["nonce"]?.jsonPrimitive?.contentOrNullSafe()
         if (nonce != accepted.dTag.nonce) return ParsedIntent.Invalid("nonce does not match d-tag")
         val data = payload["data"] as? JsonObject ?: return ParsedIntent.Invalid("data is missing")
+        if (op == "climb_choice") {
+            val climbId = data["climb_id"]?.jsonPrimitive?.contentOrNullSafe()
+                ?: return ParsedIntent.Invalid("climb_choice is missing climb_id")
+            if (competition.rules.climbSource != "participant_choice" || competition.climbPool.none { it.id == climbId }) {
+                return ParsedIntent.Invalid("climb_choice does not reference the participant pool")
+            }
+        }
         val at = payload["at"]?.jsonPrimitive?.longOrNull ?: event.createdAt
         return ParsedIntent.Valid(op, data, event.pubkey, event.id, event.createdAt, at)
     }
