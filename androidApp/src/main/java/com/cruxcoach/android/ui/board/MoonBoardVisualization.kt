@@ -80,6 +80,8 @@ internal fun MoonBoardVisualization(
     modifier: Modifier = Modifier,
     editable: Boolean = false,
     onHoldTapped: ((holdId: Int) -> Unit)? = null,
+    /** Optional competition zone hold, emphasized with an orange outer ring. */
+    highlightedHoldId: Int? = null,
     /** Resolved MoonBoard variant — supplies the per-variant grid row count
      *  for the procedural (no-photo) fallback: Mini variants have 12 rows,
      *  standard variants 18. Null falls back to the standard 18-row grid. */
@@ -135,6 +137,7 @@ internal fun MoonBoardVisualization(
                     Canvas(modifier = Modifier.fillMaxSize()) {
                         if (showLattice) drawTappableLatticeMapped(asset)
                         drawClimbHoldsMapped(asset, climbHolds)
+                        highlightedHoldId?.let { drawHighlightedHoldMapped(asset, it) }
                     }
                 }
 
@@ -143,6 +146,7 @@ internal fun MoonBoardVisualization(
                         val grid = gridRect(size)
                         drawGenericRaster(grid, gridRows)
                         drawClimbHolds(grid, climbHolds, gridRows)
+                        highlightedHoldId?.let { drawHighlightedHold(grid, it, gridRows) }
                     }
                 }
 
@@ -300,4 +304,30 @@ private fun DrawScope.drawClimbHoldsMapped(
         val norm = asset.holdXy[holdId] ?: return@forEach
         drawHoldMarker(Offset(norm.x * size.width, norm.y * size.height), color, radius)
     }
+}
+
+private val ZoneHighlightColor = Color(0xFFFF8A3D)
+
+private fun DrawScope.drawHighlightedHold(grid: Rect, holdId: Int, gridRows: Int) {
+    if (holdId !in 1..(MoonBoardVariant.GRID_COLUMNS * gridRows)) return
+    val column = (holdId - 1) % MoonBoardVariant.GRID_COLUMNS
+    val rowIndex = (holdId - 1) / MoonBoardVariant.GRID_COLUMNS
+    val radius = cellSpacing(grid, gridRows) * 0.48f
+    drawCircle(
+        color = ZoneHighlightColor,
+        radius = radius,
+        center = holdCentre(grid, column, rowIndex, gridRows),
+        style = Stroke(width = radius * 0.22f),
+    )
+}
+
+private fun DrawScope.drawHighlightedHoldMapped(asset: MoonBoardRenderAsset, holdId: Int) {
+    val norm = asset.holdXy[holdId] ?: return
+    val radius = size.width * IMAGE_HOLD_RADIUS_FRACTION * 1.42f
+    drawCircle(
+        color = ZoneHighlightColor,
+        radius = radius,
+        center = Offset(norm.x * size.width, norm.y * size.height),
+        style = Stroke(width = radius * 0.22f),
+    )
 }

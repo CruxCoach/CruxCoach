@@ -149,6 +149,8 @@ class MainActivity : AppCompatActivity() {
                 ?: extractBoardDbDeepLink(intent)
                 ?: extractClimbAppLink(intent)
                 ?: extractPlaylistAppLink(intent)
+            ?: extractCompetitionAppLink(intent)
+                ?: extractCompetitionAppLink(intent)
             handleUpdaterExtras(intent)
         }
         // userPreferences injected via Hilt
@@ -322,6 +324,7 @@ class MainActivity : AppCompatActivity() {
             ?: extractBoardDbDeepLink(intent)
             ?: extractClimbAppLink(intent)
             ?: extractPlaylistAppLink(intent)
+            ?: extractCompetitionAppLink(intent)
         handleUpdaterExtras(intent)
     }
 
@@ -462,6 +465,30 @@ class MainActivity : AppCompatActivity() {
         // selector if the user wants a different angle.
         val angle = 40
         return "board_climb_detail/$uuid/$angle"
+    }
+
+    /**
+     * Extract a competition join link from `https://<APP_LINK_HOST>/comp/<naddr>`.
+     *
+     * The same URL the website serves and the same one a QR code carries, so
+     * scanning it with the phone's own camera lands here — no in-app scanner,
+     * no camera permission, and one link that works with or without the app.
+     *
+     * Parsing is strict (bech32 checksum, `kind == 30078`, a d-tag that is
+     * actually a competition) and a link that fails any of it falls through to
+     * the normal launcher path rather than opening a broken screen.
+     */
+    private fun extractCompetitionAppLink(intent: Intent?): String? {
+        val data = intent?.data ?: return null
+        if (data.scheme != "https" || data.host != BuildConfig.APP_LINK_HOST) return null
+        val segments = data.pathSegments
+        if (segments.size < 2 || segments[0] != "comp") return null
+        val ref = com.cruxcoach.android.competition.CompetitionShareLink.parse(segments[1])
+            ?: run {
+                android.util.Log.w("MainActivity", "App link does not address a competition")
+                return null
+            }
+        return com.cruxcoach.android.competition.CompetitionShareLink.route(ref)
     }
 
     /**

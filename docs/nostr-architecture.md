@@ -790,6 +790,54 @@ Aufgelöst in `MainActivity` mit Kind-Check (`nAddress.kind != 30078 → null`).
 
 ---
 
+## 13a. Feature: Wettkämpfe (FEAT-058)
+
+Der einzige Kanal mit einer **fortlaufenden, verketteten Historie** statt nur
+„neuestes gewinnt". Die vollständige Wire-Spezifikation steht in
+`docs/specs/0.2.3/FEAT-058-competition-protocol.md`; hier nur, wie er sich in
+das übrige Bild einfügt.
+
+| | |
+|---|---|
+| **Signierer** | Organizer-Key (Definition), Authority-Key (alles andere), User-Key (Intents) |
+| **Kind** | 30078 |
+| **Fach (d-Tag)** | `cruxcoach:comp:<compId>` und die abgeleiteten Fächer oben |
+| **Gefunden über** | `#d` (ein Wettkampf), `#a` (sein Log), `#t` (öffentliche Suche) |
+| **Neuestes** | **nicht** `max(created_at)` — die `seq`/`prev`-Kette bestimmt die Reihenfolge |
+
+Der wichtige Unterschied zu allem anderen hier: Zeit ist nur Anzeige. Ein
+Wettkampf wird über `seq` reduziert, und ein fehlender Eintrag stoppt die
+Reduktion, statt übersprungen zu werden — ein selbstbewusst falscher Zwischenstand
+ist schlimmer als ein sichtbarer Stillstand.
+
+Die Protokoll- und Reduktionslogik liegt in `:shared`
+(`domain/competition/`), nicht in `androidApp`, damit sie auf der JVM gegen
+dieselben Fixtures getestet werden kann, die cruxcoach.org abspielt. Beide Seiten
+müssen denselben `state_hash` erreichen.
+
+**Warum NIP-19 doppelt vorkommt:** Quartz liefert Class-Files für eine neuere JVM
+als die Unit-Tests laufen, deshalb hat `:shared` eine eigene bech32/NIP-19-
+Implementierung (`Nip19.kt`). Der Rest der App benutzt weiterhin Quartz.
+
+**Wettkampf-Boulder sind echte Board-Boulder.** Jeder Eintrag trägt eine
+`climb_uuid` aus dem Board-Katalog; Platzhalter werden von beiden Validatoren
+abgelehnt. `CompetitionClimbResolver` prüft vor jeder Navigation gegen das, was
+dieses Telefon tatsächlich hat: fehlender Katalog (mit Wiederholung), keine
+darstellbare Boardgröße, oder los. Ein leerer Board-Screen liest sich wie ein
+kaputtes Programm, nicht wie ein fehlendes Board.
+
+**Der QR-Scanner** nutzt CameraX plus den bereits vorhandenen ZXing-Core — nicht
+ML Kit, das Google Play Services braucht. Die Kameraberechtigung wird genau dann
+angefragt, wenn der Scanner geöffnet wird, und die drei anderen Wege hinein
+(App Link, Einfügen, Teilen) funktionieren ohne sie weiter.
+
+**Cleartext zu Loopback** ist ausschließlich im Debug-Build erlaubt
+(`src/debug/res/xml/network_security_config.xml`), damit die Entwicklungs-Relay
+über `adb reverse` erreichbar ist. Der Release-Build verbietet es, und
+`CompetitionDevRelayPolicyTest` hält den Unterschied fest.
+
+---
+
 ## 14. Querschnitt: Wie der aktuellste Stand bestimmt wird
 
 | Feature | Mechanismus |
@@ -802,6 +850,7 @@ Aufgelöst in `MainActivity` mit Kind-Check (`nAddress.kind != 30078 → null`).
 | **Relay-Liste** | 24-h-TTL, stale-while-revalidate |
 | **Updater** | SemVer auf dem `version`-Tag; `created_at` nur zur Notes-Auflösung |
 | **DMs** | nicht anwendbar — Dedup über Wrap-ID |
+| **Wettkampf** | `seq`/`prev`-Kette; `created_at` ist reine Anzeige |
 
 **Die monotone Klemme** (`CommunityEventTime.kt`) ist der subtilste Teil:
 
@@ -869,7 +918,8 @@ Weitere Deckel gegen feindliche Antworten:
 | 24242 | Blossom-Auth (BUD-02) | HTTP-Header, nie Relay |
 | 27777 | Amber-Hilfssignatur für d-Tag-Ableitung | nie publiziert |
 | 30063 | Zapstore-Release | read |
-| 30078 | Manifest, Community-Climb, Backup-Pointer, Backup-Key | publish + read |
+| 24133 | NIP-46 Remote-Signing (nur Website) | publish + read |
+| 30078 | Manifest, Community-Climb, Backup-Pointer, Backup-Key, Wettkampf | publish + read |
 
 ### NIP-32-Namespaces
 
@@ -880,6 +930,7 @@ Weitere Deckel gegen feindliche Antworten:
 | `com.cruxcoach.board` | Board-Label am Climb |
 | `com.cruxcoach.size` | Boardgrößen-Label am Climb |
 | `com.cruxcoach.ascent` | reserviert |
+| `com.cruxcoach.competition` | Wettkämpfe (FEAT-058) — Definition, Log, Snapshot, Ergebnis, Intent |
 | `com.cruxcoach.type` | DM-Typ (crash-report / bug-report / feature-request / chat) |
 | `com.cruxcoach.announce` | Announcement-Kategorie (release / issue / tip / general) |
 
@@ -893,6 +944,11 @@ Weitere Deckel gegen feindliche Antworten:
 | `cruxcoach:climb:<pubkey[0:8]>:<uuid>` | 30078 | User-Key |
 | `HMAC(nsec, "cruxcoach/backup/v1")` | 30078 | User-Key |
 | `HMAC(nsec, "cruxcoach/key/v1")` | 30078 | User-Key |
+| `cruxcoach:comp:<compId>` | 30078 | Organizer-Key |
+| `cruxcoach:comp:<compId>:log:<seq:06d>` | 30078 | Authority-Key |
+| `cruxcoach:comp:<compId>:snap:<seq:06d>` | 30078 | Authority-Key |
+| `cruxcoach:comp:<compId>:results` | 30078 | Authority-Key |
+| `cruxcoach:comp:<compId>:intent:<pubkey[0:8]>:<nonce>` | 30078 | User-Key |
 
 ---
 
@@ -913,6 +969,7 @@ Weitere Deckel gegen feindliche Antworten:
 | `nostr/relaydiscovery/` | NIP-65 (Fetcher, Resolver, Cache, Parser) |
 | `nostr/profile/` | NIP-05, LNURL, Bild-Upload |
 | `community/` | Climb-Publisher, -Subscriber, -Deleter, Retry-Worker, `CommunityEventTime` |
+| `competition/` | Wettkampf: Relay-Client, Discovery, Intent-Publisher, Share-Links, QR-Decoder, Climb-Auflösung |
 | `data/blossom/BlossomSyncManager.kt` | Manifest-Fetch + Chunk-Download |
 | `notification/` | Push-Coordinator, Poll-Worker, Ingestor, Announcement-Parser |
 | `payment/` | Kind-0-Profilverwaltung, Zaps |
@@ -925,6 +982,17 @@ Weitere Deckel gegen feindliche Antworten:
 | `NostrCommunityClimb.kt` | Event-Aufbau, d-Tag, Namespaces, Content-JSON |
 | `FramesHash.kt`, `ClimbBounds.kt`, `ClimbValidation.kt` | Hilfsberechnungen am Climb |
 | `AutoNoteTemplate.kt` | Template-Rendering für den Kind-1-Post |
+
+### Shared (`shared/src/commonMain/kotlin/com/cruxcoach/domain/competition/`)
+
+| Datei | Inhalt |
+|---|---|
+| `CompetitionProtocol.kt` | Kinds, d-Tags, Envelope-Gate, Parsing |
+| `CompetitionReducer.kt` | Deterministische Reduktion, Fork-Erkennung |
+| `CompetitionScoring.kt` | Wertung und Tiebreaks |
+| `CompetitionValidation.kt` | Konfigurationsprüfung (identisch zur Website) |
+| `Ccj.kt` | Kanonisches JSON + `state_hash` |
+| `Nip19.kt` | bech32 / naddr (Quartz-frei, damit testbar) |
 
 ### Pipeline (`cruxcoach-blossom-sync/`)
 

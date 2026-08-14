@@ -38,20 +38,11 @@ data class GymWallOption(
      *  used to seed the browse angle on apply. Null for adjustable walls and
      *  every non-Kilter board (their angle is per-climb / the user's choice). */
     val fixedAngle: Int? = null,
-    /** Marks the most-likely option in an unresolved multi-option list (e.g. the
-     *  modal MoonBoard variant) so the UI can flag it as the recommended pick. */
-    val isRecommended: Boolean = false,
 )
 
 /** Placeholder product size for MoonBoard options — MoonBoard variants are
  *  distinct boards, not sizes of one board, so there is nothing to carry. */
 const val MOONBOARD_NO_SIZE = 0
-
-/** Most-likely-first ordering for the unresolved MoonBoard variant list, keyed
- *  by layout_id: current full-size boards first, then Mini and legacy 2010.
- *  Drives the gym picker's variant order + recommended flag (FEAT-007). */
-private val MOONBOARD_VARIANT_RANK: Map<Long, Int> =
-    mapOf(2L to 0, 5L to 1, 4L to 2, 3L to 3, 7L to 4, 6L to 5, 1L to 6)
 
 data class GymBoardPickerState(
     /** False while no location data is on the device — drives the sheet's
@@ -294,17 +285,16 @@ class GymBoardPickerViewModel @Inject constructor(
                 ),
             )
         }
-        // Unresolved: offer every variant, most-likely first, with the modal
-        // 2016 set flagged recommended — a cold 1-of-7 becomes confirm/correct.
+        // Unresolved means unresolved: offer every variant as an equal explicit
+        // choice. Ordering or recommending one would turn missing data into a
+        // disguised default.
         return MoonBoardVariant.entries
-            .sortedBy { MOONBOARD_VARIANT_RANK[it.layoutId] ?: Int.MAX_VALUE }
-            .mapIndexed { index, variant ->
+            .map { variant ->
                 GymWallOption(
                     layoutId = variant.layoutId.toInt(),
                     productSizeId = MOONBOARD_NO_SIZE,
                     label = variant.displayName,
                     boardBrand = BoardBrand.MOONBOARD,
-                    isRecommended = index == 0,
                 )
             }
     }

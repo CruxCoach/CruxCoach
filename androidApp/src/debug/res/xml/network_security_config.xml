@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!--
+        DEBUG ONLY. This file replaces the one in `src/main` for debug builds
+        and never ships: a release APK keeps the strict policy, where the only
+        cleartext exceptions are the two fixed WiFi-share IPs.
+
+        The addition is loopback. The competition dev relay speaks ws:// and has
+        no certificate to present, and with `adb reverse tcp:7447 tcp:7447` the
+        phone reaches it at 127.0.0.1 — the same URL a browser on the host uses,
+        and the only kind of ws:// URL either client will accept at all
+        (CompetitionProtocol.isAllowedRelayUrl).
+
+        A test asserts the release config does not contain these entries, so
+        this cannot leak by being copied.
+    -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">192.168.49.1</domain>
+        <domain includeSubdomains="false">192.168.43.1</domain>
+    </domain-config>
+
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+</network-security-config>

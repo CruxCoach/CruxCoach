@@ -42,15 +42,15 @@ android {
 
     defaultConfig {
         applicationId = "com.cruxcoach.android"
-        minSdk = 26
+        minSdk = 28
         targetSdk = 35
-        versionCode = 8
-        versionName = "0.2.2"
+        versionCode = 9
+        versionName = "0.2.3"
 
         // Only bundle arm64 native libs. armeabi-v7a alone added ~10.7 MB
         // to the APK (libmaplibre 8 MB + sqlcipher + secp256k1 + sodium +
-        // a few small libs). minSdk=26 (Android 8.0+) already targets the
-        // 64-bit ARM era; 32-bit-only Android 8+ devices are <1% in DE
+        // a few small libs). minSdk=28 (Android 9+) already targets the
+        // 64-bit ARM era; 32-bit-only Android 9+ devices are <1% in DE
         // (mostly Android Go on entry-level SoCs, almost absent here).
         // Affected devices simply can't install (clean "incompatible"
         // message), no partial breakage. x86/MIPS were never targeted.
@@ -162,16 +162,19 @@ android {
         // minSdk of the NEXT release, so this build can tell a device that it
         // is about to fall out of support and say so while it still can.
         //
-        // 0.2.3 raises minSdk from 26 to 28: v3 signing — and with it the
-        // certificate lineage that makes a key rotation installable — does not
-        // exist before API 28, and a rotation that leaves the old key valid on
-        // 26/27 would not actually retire a compromised key. Android 8.0/8.1
-        // therefore stops at 0.2.2.
+        // 0.2.3 is the release that carries out the rise from 26 to 28 that
+        // 0.2.2 warned about: v3 signing — and with it the certificate lineage
+        // that makes a key rotation installable — does not exist before API 28,
+        // and a rotation that leaves the old key valid on 26/27 would not
+        // actually retire a compromised key. Android 8.0/8.1 stopped at 0.2.2,
+        // which is where the warning shipped.
         //
-        // Deliberately NOT equal to this build's own minSdk: the warning has to
-        // ship in a version that still installs on the devices being dropped,
-        // which is exactly the ones the next minSdk excludes. Bump this in the
-        // release BEFORE bumping minSdk, never in the same one.
+        // It is equal to this build's own minSdk now, and that is correct
+        // rather than an oversight: no device that can run 0.2.3 is being
+        // dropped by 0.2.4, so `receivesFutureUpdates()` is true for every
+        // device that can see this build and nobody is told a falsehood. Raise
+        // it again one release BEFORE the next minSdk rise, never in the same
+        // one — that is the invariant, not "never equal".
         buildConfigField("int", "MIN_SDK_NEXT_RELEASE",
             localProps.getProperty("MIN_SDK_NEXT_RELEASE", "28"))
 
@@ -310,7 +313,7 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
-        // Backport newer java.* APIs to the supported old-API range (minSdk 26).
+        // Backport newer java.* APIs to the supported old-API range (minSdk 28).
         // Immunizes the SequencedCollection/SequencedMap class of bug (old-API
         // audit C-1: .reversed()/removeFirst()/etc. on java.util receivers binding
         // to API-35 platform members) on Android < 15.
@@ -394,6 +397,10 @@ dependencies {
 
     // ZXing (QR code generation for APK sharing)
     implementation(libs.zxing.core)
+    implementation(libs.camera.core)
+    implementation(libs.camera.camera2)
+    implementation(libs.camera.lifecycle)
+    implementation(libs.camera.view)
 
     // Nostr NIP-17 crash reporting (quartz requires Jackson for event hashing/signing)
     implementation(libs.quartz.android)
@@ -440,6 +447,7 @@ dependencies {
     // here through the ASM-transformed test runtime).
     testImplementation(libs.okhttp)
     testImplementation(libs.okhttp.mockwebserver)
+    testImplementation(libs.okhttp.tls)
     // Robolectric: Android-framework shim on JVM. Activity lifecycle,
     // SharedPreferences, Resources, Context — needed for ViewModel tests
     // that pull anything from the Android side.
