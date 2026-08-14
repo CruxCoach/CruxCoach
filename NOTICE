@@ -71,6 +71,16 @@ mapbox-android-gestures — Copyright (c) Mapbox, Inc. Transitive dependency
     NOTICE file accompanying that dependency for the required attribution,
     mirrored in THIRD_PARTY_LICENSES.md.
 
+FIPS (Free Internetworking Peering System) — Copyright (c) Johnathan Corgan
+    and contributors. Android mesh transport is built from exact commit
+    967776079ba5ddc8fe118c3f289365b51eb03737. Licensed under MIT; full text:
+    native/fips-bridge/LICENSE-FIPS-MIT.
+
+Myco — Copyright (c) Origami74/Myco contributors. Its MIT-licensed Android
+    L2CAP reference implementation informed CruxCoach's independently
+    maintained radio bridge; no Myco runtime is bundled. Reference commit:
+    85316faf80fda48bfef8977584ab4ad68203de02.
+
 OpenFreeMap — © OpenFreeMap contributors. Used as the default vector-tile
     provider for the board-locations map. Tile data is delivered under
     the OpenFreeMap terms of use

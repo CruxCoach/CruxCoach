@@ -232,6 +232,25 @@ These images are **not** covered by the CruxCoach GPLv3 source license.
 
 ---
 
+### FIPS (Free Internetworking Peering System)
+
+- **Used in:** `native/fips-bridge`, compiled into `libcruxcoach_fips.so`.
+- **Upstream:** https://github.com/jmcorgan/fips
+- **Pinned revision:** `967776079ba5ddc8fe118c3f289365b51eb03737`
+- **License:** MIT. Full text: `native/fips-bridge/LICENSE-FIPS-MIT`.
+- **Distribution form:** Cargo source dependency and arm64 binary in the APK.
+
+### Myco Android BLE reference
+
+- **Used as:** build/protocol reference for Android L2CAP ownership and the
+  FIPS JNI bridge; CruxCoach maintains its implementation in its own package.
+- **Upstream:** https://github.com/Origami74/myco
+- **Reference revision:** `85316faf80fda48bfef8977584ab4ad68203de02`
+- **License:** MIT. Full text: `native/fips-bridge/LICENSE-MYCO-MIT`.
+  No Myco binary or asset is bundled.
+
+---
+
 ## Notes for Maintainers
 
 When vendoring a new third-party source tree:

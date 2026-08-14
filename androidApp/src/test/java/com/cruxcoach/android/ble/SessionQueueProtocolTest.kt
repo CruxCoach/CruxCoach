@@ -20,6 +20,14 @@ class SessionQueueProtocolTest {
     }
 
     @Test
+    fun `join optionally carries FIPS member identity`() {
+        val command = SessionQueueProtocol.decodeCommand(
+            SessionQueueProtocol.encodeJoin("Alice", "npub1example")) as SessionCommand.Join
+        assertEquals("Alice", command.displayName)
+        assertEquals("npub1example", command.memberNpub)
+    }
+
+    @Test
     fun `encodeRemove and decodeCommand roundtrip`() {
         val encoded = SessionQueueProtocol.encodeRemove(5)
         val cmd = SessionQueueProtocol.decodeCommand(encoded)
@@ -148,6 +156,17 @@ class SessionQueueProtocolTest {
         val info = SessionQueueProtocol.decodeSessionInfo(encoded)!!
         assertEquals("Host123", info.hostName)
         assertEquals(3, info.participantCount)
+    }
+
+    @Test
+    fun `session info carries board cell scope while legacy remains readable`() {
+        val scoped = SessionQueueProtocol.decodeSessionInfo(SessionQueueProtocol.encodeSessionInfo(
+            "Host", 4, "kilter:serial:abc", "cell-1"))!!
+        assertEquals("kilter:serial:abc", scoped.physicalBoardId)
+        assertEquals("cell-1", scoped.boardCellId)
+        val legacy = SessionQueueProtocol.decodeSessionInfo(SessionQueueProtocol.encodeSessionInfo("Host", 4))!!
+        assertNull(legacy.physicalBoardId)
+        assertNull(legacy.boardCellId)
     }
 
     // ===== Participant list roundtrip =====

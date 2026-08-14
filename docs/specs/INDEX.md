@@ -78,6 +78,7 @@ spec file so other branches see the reservation.
 | FEAT-050 | Survivable Database Downgrade | backlog | backlog | `backlog/FEAT-050-database-downgrade-safety.md` |
 | FEAT-051 | Blossom Manifest Rollback Guard | v0.2.3 | planned | `0.2.3/FEAT-051-blossom-manifest-rollback-guard.md` |
 | FEAT-058 | CruxCoach Competitions (app + web + protocol) | v0.2.3 | implementation | `0.2.3/FEAT-058-competitions.md` |
+| FEAT-059 | Offline BoardCell over FIPS | v0.2.3 | implementation | `0.2.3/FEAT-059-offline-board-cell-fips-mesh.md` |
 
 Implementation plan for FEAT-043/045/046:
 `0.2.2/IMPLEMENTATION-PLAN-convergence-player.md`.
@@ -139,7 +140,7 @@ renumbering those is likely cheaper than renumbering the shipped side.
 
 ## Next free
 
-**FEAT-059** is the next unallocated ID. Verify against unmerged branches
+**FEAT-060** is the next unallocated ID. Verify against unmerged branches
 before allocating — the reconciliation below closed the previously listed
 gaps, but a branch this worktree cannot see may still hold one.
 

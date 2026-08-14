@@ -289,9 +289,12 @@ class CompetitionConformanceTest {
             val (_, reduction) = replay(stream(name))
             reduction.state.rejected.forEach { seen.add(it.code) }
         }
-        // config_update has focused reducer coverage; legacy signed fixtures
-        // deliberately remain byte-for-byte compatible with older clients.
-        val uncovered = CompetitionReducer.REJECTION_CODES.filterNot { it in seen || it.startsWith("config_") }
+        // Config updates and complete-turn guards have focused reducer coverage;
+        // legacy signed fixtures deliberately remain byte-for-byte compatible.
+        val focusedCoverage = setOf("no_open_turn", "not_current_turn")
+        val uncovered = CompetitionReducer.REJECTION_CODES.filterNot {
+            it in seen || it in focusedCoverage || it.startsWith("config_")
+        }
         assertEquals(
             emptyList(),
             uncovered,
