@@ -632,6 +632,25 @@ class CompetitionDetailViewModel @Inject constructor(
 
     fun hostSkipTurn() = hostQueue("skip_turn")
 
+    fun hostConfirmPayment(pubkey: String, reason: String) {
+        if (reason.isBlank()) {
+            _action.value = Action.Failed("reason_required")
+            return
+        }
+        hostAct(
+            "override",
+            JsonObject(mapOf(
+                "op" to JsonPrimitive("payment_decision"),
+                "data" to JsonObject(mapOf(
+                    "pubkey" to JsonPrimitive(pubkey),
+                    "state" to JsonPrimitive("settled"),
+                )),
+            )),
+            subjects = listOf(pubkey),
+            reason = reason.trim(),
+        )
+    }
+
     fun hostRetire(pubkey: String, reason: String) {
         if (reason.isBlank()) {
             _action.value = Action.Failed("reason_required")

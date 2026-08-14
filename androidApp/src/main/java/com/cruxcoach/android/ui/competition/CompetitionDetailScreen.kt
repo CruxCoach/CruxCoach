@@ -625,6 +625,11 @@ private fun OrganizerConsole(
     val cleanup by viewModel.cleanup.collectAsStateWithLifecycle()
     var announcement by rememberSaveable { mutableStateOf("") }
     var confirmCancel by rememberSaveable { mutableStateOf(false) }
+    var confirmFinish by rememberSaveable { mutableStateOf(false) }
+    var confirmSkip by rememberSaveable { mutableStateOf(false) }
+    var confirmCleanup by rememberSaveable { mutableStateOf(false) }
+    var paymentPubkey by rememberSaveable { mutableStateOf<String?>(null) }
+    var paymentReason by rememberSaveable { mutableStateOf("") }
     var retirePubkey by rememberSaveable { mutableStateOf<String?>(null) }
     var retireReason by rememberSaveable { mutableStateOf("") }
     var disqualifyPubkey by rememberSaveable { mutableStateOf<String?>(null) }
@@ -665,6 +670,73 @@ private fun OrganizerConsole(
         },
         dismissButton = { TextButton({ confirmCancel = false }) { Text(stringResource(R.string.action_cancel)) } },
     )
+    if (confirmFinish) AlertDialog(
+        onDismissRequest = { confirmFinish = false },
+        title = { Text(stringResource(R.string.comp_host_finish_title)) },
+        text = { Text(stringResource(R.string.comp_host_finish_body)) },
+        confirmButton = {
+            Button({ confirmFinish = false; viewModel.hostLifecycle("finished") }) {
+                Text(stringResource(R.string.comp_host_finish_confirm))
+            }
+        },
+        dismissButton = { TextButton({ confirmFinish = false }) { Text(stringResource(R.string.action_cancel)) } },
+    )
+    if (confirmSkip) AlertDialog(
+        onDismissRequest = { confirmSkip = false },
+        title = { Text(stringResource(R.string.comp_host_skip_title)) },
+        text = { Text(stringResource(R.string.comp_host_skip_body)) },
+        confirmButton = {
+            Button({ confirmSkip = false; viewModel.hostSkipTurn() }) {
+                Text(stringResource(R.string.comp_host_skip_confirm))
+            }
+        },
+        dismissButton = { TextButton({ confirmSkip = false }) { Text(stringResource(R.string.action_cancel)) } },
+    )
+    if (confirmCleanup) AlertDialog(
+        onDismissRequest = { confirmCleanup = false },
+        title = { Text(stringResource(R.string.comp_host_cleanup_confirm_title)) },
+        text = { Text(stringResource(R.string.comp_host_cleanup_confirm_body)) },
+        confirmButton = {
+            Button({ confirmCleanup = false; viewModel.cleanupCompetition() }) {
+                Text(stringResource(R.string.comp_host_cleanup_confirm))
+            }
+        },
+        dismissButton = { TextButton({ confirmCleanup = false }) { Text(stringResource(R.string.action_cancel)) } },
+    )
+    paymentPubkey?.let { pubkey ->
+        val label = state.participant(pubkey)?.displayOrShort() ?: pubkey.take(12)
+        AlertDialog(
+            onDismissRequest = { paymentPubkey = null; paymentReason = "" },
+            title = { Text(stringResource(R.string.comp_host_payment_title, label)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(R.string.comp_host_payment_body))
+                    OutlinedTextField(
+                        paymentReason,
+                        { paymentReason = it },
+                        label = { Text(stringResource(R.string.comp_host_payment_reason)) },
+                        modifier = Modifier.fillMaxWidth().testTag("competition_host_payment_reason"),
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.hostConfirmPayment(pubkey, paymentReason)
+                        paymentPubkey = null
+                        paymentReason = ""
+                    },
+                    enabled = paymentReason.isNotBlank() && action !is CompetitionDetailViewModel.Action.Working,
+                    modifier = Modifier.testTag("competition_host_payment_confirm"),
+                ) { Text(stringResource(R.string.comp_host_payment_confirm)) }
+            },
+            dismissButton = {
+                TextButton({ paymentPubkey = null; paymentReason = "" }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            },
+        )
+    }
     retirePubkey?.let { pubkey ->
         val label = state.participant(pubkey)?.displayOrShort() ?: pubkey.take(12)
         AlertDialog(
@@ -773,7 +845,7 @@ private fun OrganizerConsole(
                     style = MaterialTheme.typography.bodySmall,
                 )
                 Button(
-                    onClick = viewModel::cleanupCompetition,
+                    onClick = { confirmCleanup = true },
                     enabled = cleanup !is CompetitionDetailViewModel.Cleanup.Working,
                     modifier = Modifier.fillMaxWidth().testTag("competition_host_cleanup"),
                 ) {
@@ -831,7 +903,7 @@ private fun OrganizerConsole(
                         Text(stringResource(R.string.comp_host_pause))
                     }
                     if (runningNow || state.status == "paused") {
-                        OutlinedButton({ viewModel.hostLifecycle("finished") }) {
+                        OutlinedButton({ confirmFinish = true }) {
                             Text(stringResource(R.string.comp_host_finish))
                         }
                     }
@@ -862,6 +934,12 @@ private fun OrganizerConsole(
                             stringResource(checkinLabel(participant.checkin)),
                         style = MaterialTheme.typography.bodySmall,
                     )
+                    if (competition.feeMsat > 0) {
+                        Text(
+                            stringResource(paymentLabel(participant.payment)),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         if (participant.registration in listOf("pending", "waitlisted")) {
                             Button({ viewModel.hostRegistration(participant.pubkey, "accepted") }) { Text(stringResource(R.string.comp_host_accept)) }
@@ -872,6 +950,12 @@ private fun OrganizerConsole(
                             OutlinedButton({ viewModel.hostCheckIn(participant.pubkey, false) }) { Text(stringResource(R.string.comp_host_no_show)) }
                         }
                         if (participant.result == "active" && participant.registration == "accepted") {
+                            if (competition.feeMsat > 0 && participant.payment != "settled") {
+                                OutlinedButton(
+                                    onClick = { paymentPubkey = participant.pubkey },
+                                    modifier = Modifier.testTag("competition_host_payment_${participant.pubkey.take(8)}"),
+                                ) { Text(stringResource(R.string.comp_host_payment_manual)) }
+                            }
                             OutlinedButton(
                                 onClick = { retirePubkey = participant.pubkey },
                                 modifier = Modifier.testTag("competition_host_retire_${participant.pubkey.take(8)}"),
@@ -964,10 +1048,9 @@ private fun OrganizerConsole(
                     )
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         if (state.cursor < 0) Button({ viewModel.hostQueue("open_turn", 0) }) { Text(stringResource(R.string.comp_host_open_first_turn)) }
-                        else Button(viewModel::hostSkipTurn, Modifier.testTag("competition_host_skip_turn")) {
+                        else Button({ confirmSkip = true }, Modifier.testTag("competition_host_skip_turn")) {
                             Text(stringResource(R.string.comp_host_skip_turn))
                         }
-                        if (state.cursor >= 0) OutlinedButton({ viewModel.hostQueue("close_turn") }) { Text(stringResource(R.string.comp_host_close_turn)) }
                     }
                     if (competition.rules.climbSource == "participant_choice") {
                         Text(
@@ -1344,8 +1427,9 @@ internal fun competitionClimbsEditorPatch(
     val entries = text.lineSequence().filter(String::isNotBlank).toList().map { line ->
         val parts = line.split('|').map(String::trim)
         val rawUuid = parts.getOrNull(0).orEmpty().lowercase()
-        val uuid = (Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
-            .find(rawUuid)?.value ?: rawUuid)
+        val uuidMatch = Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+            .find(rawUuid)?.value
+        val uuid = uuidMatch ?: rawUuid
         if (!CompetitionProtocol.isClimbUuid(uuid) || !seen.add(uuid)) return null
         val prior = existing.firstOrNull { it.climbUuid.equals(uuid, ignoreCase = true) }
         val label = parts.getOrNull(1)?.takeIf(String::isNotBlank) ?: prior?.label ?: uuid.take(8)
@@ -2201,11 +2285,12 @@ private fun RegistrationPanel(
                 competition.waiverRequired && !waiver -> stringResource(R.string.comp_waiver_required)
                 else -> null
             }
-            registerProblem?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-            }
-            if (competition.waiverRequired && !waiver) {
-                if (registerProblem == null) Text(stringResource(R.string.comp_waiver_required), style = MaterialTheme.typography.bodySmall)
+            if (registerProblem != null) {
+                Text(
+                    registerProblem,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
             }
         }
     }

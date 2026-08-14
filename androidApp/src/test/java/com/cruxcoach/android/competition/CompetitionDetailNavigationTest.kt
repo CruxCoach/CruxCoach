@@ -3,6 +3,7 @@ package com.cruxcoach.android.competition
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertContains
+import kotlin.test.assertFalse
 
 class CompetitionDetailNavigationTest {
 
@@ -37,5 +38,11 @@ class CompetitionDetailNavigationTest {
         assertContains(source, "it.op == \"climb_choice\" && it.pubkey == current")
         assertContains(source, "ui.secondsToDeadline(nowSeconds) == 0L")
         assertContains(source, "viewModel.hostAttempt(current, activeClimbId, \"timeout\", currentChoice?.eventId)")
+        assertContains(source, "if (confirmFinish) AlertDialog")
+        assertContains(source, "if (confirmSkip) AlertDialog")
+        assertContains(source, "if (confirmCleanup) AlertDialog")
+        assertContains(source, "viewModel.hostConfirmPayment(pubkey, paymentReason)")
+        assertContains(source, "competition_host_payment_confirm")
+        assertFalse(source.contains("viewModel.hostQueue(\"close_turn\")"))
     }
 }
