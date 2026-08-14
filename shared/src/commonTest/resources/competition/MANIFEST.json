@@ -5,11 +5,11 @@
     "streams/defer-and-timeout.json": "c9ebdb6e03dcab86c06ee622ce059342856c2a2e2e1598419047310b382f9cf9",
     "streams/fork-and-correction.json": "fdb27fac97772271a0015022471a7217138764f7b689c38b2e67bd6641a98919",
     "streams/happy-sync.json": "d46de985192c2841b97239f8271048dab42b6cbb3806ce4638f6a3467bc34651",
-    "streams/paid-unique-async.json": "5a07c30c155b5798b878b08e2e2e74fa373fcb07291e766320e593f8cebc2ba8",
+    "streams/paid-unique-async.json": "61e9fb82810e329c0a8535dad3c148dec5836dda5d85a11141b386d7105fafde",
     "streams/rejections-paid.json": "6096f849430cb7f96b3b00dcb86d594704980d7556609553ee72fbafc7fdf772",
     "streams/rejections.json": "fe00c50d39e3bb908951a97b50ce88b4b20ed4fc077bcc4e35ac663fd0d34582",
     "vectors/protocol.json": "d203780035d099dcc7fb3b7ec99cba671e0919a3831b6a1818b6a2ace9e81f6b",
     "vectors/zap.json": "665a98ebc26b0315899e26c62bb780e1570fc015d347585a6416db063feb826a"
   },
-  "manifest_sha256": "2bef82ed103b9ac879489f48f0a08ac0d436e1d4a0ab0636675dc48f637fd07b"
+  "manifest_sha256": "4ccdb7b324c0f047fac1fc851c03d62e472c09d791c40c78567f2d9aff3caf61"
 }
