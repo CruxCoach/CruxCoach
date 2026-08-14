@@ -130,5 +130,6 @@ object CompetitionShareLink {
     )
 
     /** The route this app uses internally once a link has been parsed. */
-    fun route(ref: Ref): String = "competition_detail/${ref.organizerPubkey}/${ref.compId}"
+    fun route(ref: Ref): String =
+        "competition_detail/${ref.organizerPubkey}/${ref.compId}?naddr=${ref.naddr}"
 }

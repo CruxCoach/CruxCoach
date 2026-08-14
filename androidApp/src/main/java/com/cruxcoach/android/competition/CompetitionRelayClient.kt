@@ -72,20 +72,29 @@ internal fun competitionRelayScope(
     userRelays: List<RelayConfig>,
     limit: Int = 8,
 ): List<RelayConfig> {
-    val merged = linkedMapOf<String, RelayConfig>()
-    requiredUrls.filter(CompetitionProtocol::isAllowedRelayUrl).forEach { url ->
-        merged[url] = RelayConfig(url = url, read = true, write = true)
-    }
-    userRelays.forEach { relay ->
-        if (!CompetitionProtocol.isAllowedRelayUrl(relay.url)) return@forEach
-        val prior = merged[relay.url]
-        merged[relay.url] = if (prior == null) relay else prior.copy(
-            read = prior.read || relay.read,
-            write = prior.write || relay.write,
-        )
-    }
-    return merged.values.take(limit)
+    if (requiredUrls.isNotEmpty()) return requiredUrls
+        .filter(CompetitionProtocol::isAllowedRelayUrl)
+        .distinct()
+        .take(limit)
+        .map { RelayConfig(url = it, read = true, write = true) }
+    return userRelays
+        .filter { CompetitionProtocol.isAllowedRelayUrl(it.url) }
+        .distinctBy { it.url }
+        .take(limit)
 }
+
+internal fun competitionDiscoveryRelayScope(
+    relayHints: List<String>,
+    userRelays: List<RelayConfig>,
+    limit: Int = 8,
+): List<RelayConfig> = buildList {
+    relayHints.filter(CompetitionProtocol::isAllowedRelayUrl).forEach { url ->
+        add(RelayConfig(url = url, read = true, write = false))
+    }
+    addAll(userRelays)
+}.filter { CompetitionProtocol.isAllowedRelayUrl(it.url) }
+    .distinctBy { it.url }
+    .take(limit)
 
 /**
  * Reads a competition off the relays and reduces it.
@@ -168,62 +177,100 @@ class CompetitionRelayClient internal constructor(
             """"authors":["$organizerPubkey"],""" +
             """"#d":["${CompetitionProtocol.compDTag(compId)}"],"limit":4}"""
 
-        var newest: Event? = null
-        val definitionHistoryComplete = runCatching {
-            // Discovery may have delivered this exact addressable event only
-            // moments ago. Its process-wide event-id cache is correct for live
-            // subscriptions, but an explicit address lookup must be allowed to
-            // read the same stored event again; otherwise tapping a competition
-            // from the discovery list deterministically turns it into NOT_FOUND.
-            relayPool.fetchStoredComplete(
-                filter,
-                scopeResolver(relayHints, relayPool.readRelays() + relayPool.writeRelays()),
-            ).collect { json ->
-                val event = runCatching { Event.fromJson(json) }.getOrNull() ?: return@collect
-                if (!accepts(event, organizerPubkey)) return@collect
-                if (newest == null || event.createdAt > newest!!.createdAt) newest = event
-            }
-        }.onFailure { Log.w(TAG, "competition fetch failed", it) }.isSuccess
+        suspend fun fetchNewest(scope: List<RelayConfig>, strict: Boolean): Pair<Event?, Boolean> {
+            var newest: Event? = null
+            val complete = runCatching {
+                // Discovery may have delivered this exact addressable event only
+                // moments ago. Explicit address lookup must bypass global dedup.
+                val events = if (strict) relayPool.fetchStoredComplete(filter, scope)
+                else relayPool.fetchStored(filter, scope)
+                events.collect { json ->
+                    val event = runCatching { Event.fromJson(json) }.getOrNull() ?: return@collect
+                    if (!accepts(event, organizerPubkey)) return@collect
+                    if (newest == null || event.createdAt > newest!!.createdAt) newest = event
+                }
+            }.onFailure { Log.w(TAG, "competition fetch failed", it) }.isSuccess && (
+                strict || scope.filter { it.read }.all { it.url in relayPool.connectedRelayUrls.value }
+            )
+            return newest to complete
+        }
 
-        val found = newest
-        if (found == null) {
+        val discoveryScope = competitionDiscoveryRelayScope(
+            relayHints,
+            relayPool.readRelays() + relayPool.writeRelays(),
+        )
+        val (discovered, discoveryComplete) = fetchNewest(discoveryScope, strict = false)
+
+        if (discovered == null) {
             _snapshot.update {
-                Snapshot(problem = if (definitionHistoryComplete) Problem.NOT_FOUND else Problem.UNREACHABLE)
+                Snapshot(problem = if (discoveryComplete) Problem.NOT_FOUND else Problem.UNREACHABLE)
             }
             return false
         }
 
-        return when (val parsed = CompetitionProtocol.parseCompetition(found.toCompetitionEvent(), nowSeconds)) {
+        var parsed = when (val candidate = CompetitionProtocol.parseCompetition(discovered.toCompetitionEvent(), nowSeconds)) {
             is CompetitionProtocol.ParsedCompetition.Invalid -> {
-                Log.w(TAG, "competition rejected: ${parsed.error}")
+                Log.w(TAG, "competition rejected: ${candidate.error}")
                 _snapshot.update {
-                    Snapshot(problem = if (parsed.needsUpgrade) Problem.NEEDS_UPGRADE else Problem.INVALID)
+                    Snapshot(problem = if (candidate.needsUpgrade) Problem.NEEDS_UPGRADE else Problem.INVALID)
                 }
-                false
+                return false
             }
-            is CompetitionProtocol.ParsedCompetition.Valid -> {
-                definitionCompetition = parsed.competition
-                relayScope = scopeResolver(
-                    parsed.competition.relays,
-                    relayPool.readRelays() + relayPool.writeRelays(),
-                )
-                _snapshot.update {
-                    Snapshot(
-                        competition = parsed.competition,
-                        competitionEventId = parsed.eventId,
-                        organizerPubkey = parsed.organizerPubkey,
-                        usesDevelopmentRelay = CompetitionProtocol.usesDevelopmentRelay(parsed.competition.relays),
-                        lastSyncedAt = nowSeconds,
-                    )
-                }
-                // The definition alone is not a usable participant snapshot.
-                // Keep the screen in its loading state until follow() has
-                // completed the explicit stored-log backfill; otherwise a
-                // cold client briefly looks unregistered at seq 0.
-                reduce(loading = true)
-                true
-            }
+            is CompetitionProtocol.ParsedCompetition.Valid -> candidate
         }
+
+        // A discovery result is only a candidate. Re-fetch the newest
+        // replacement from every relay named by that signed definition. If a
+        // replacement migrates the signed set, repeat until fetch scope and
+        // definition agree; optional/user relays never enter this barrier.
+        val visitedScopes = mutableSetOf<List<String>>()
+        while (true) {
+            val required = scopeResolver(
+                parsed.competition.relays,
+                relayPool.readRelays() + relayPool.writeRelays(),
+            )
+            val scopeUrls = required.map { it.url }
+            if (required.isEmpty() || !visitedScopes.add(scopeUrls) || visitedScopes.size > 8) {
+                _snapshot.update { Snapshot(problem = Problem.INVALID) }
+                return false
+            }
+            val (authoritative, complete) = fetchNewest(required, strict = true)
+            if (!complete || authoritative == null) {
+                _snapshot.update { Snapshot(problem = Problem.UNREACHABLE) }
+                return false
+            }
+            val refreshed = when (
+                val result = CompetitionProtocol.parseCompetition(authoritative.toCompetitionEvent(), nowSeconds)
+            ) {
+                is CompetitionProtocol.ParsedCompetition.Invalid -> {
+                    _snapshot.update {
+                        Snapshot(problem = if (result.needsUpgrade) Problem.NEEDS_UPGRADE else Problem.INVALID)
+                    }
+                    return false
+                }
+                is CompetitionProtocol.ParsedCompetition.Valid -> result
+            }
+            parsed = refreshed
+            val refreshedScope = scopeResolver(parsed.competition.relays, emptyList()).map { it.url }
+            if (refreshedScope == scopeUrls) break
+        }
+
+        definitionCompetition = parsed.competition
+        relayScope = scopeResolver(parsed.competition.relays, emptyList())
+        _snapshot.update {
+            Snapshot(
+                competition = parsed.competition,
+                competitionEventId = parsed.eventId,
+                organizerPubkey = parsed.organizerPubkey,
+                usesDevelopmentRelay = CompetitionProtocol.usesDevelopmentRelay(parsed.competition.relays),
+                lastSyncedAt = nowSeconds,
+            )
+        }
+        // The definition alone is not a usable participant snapshot.
+        // Keep the screen in its loading state until follow() has completed the
+        // exact stored-log backfill; otherwise cold start looks unregistered.
+        reduce(loading = true)
+        return true
     }
 
     /**

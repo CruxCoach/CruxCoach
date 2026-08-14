@@ -82,8 +82,9 @@ class CompetitionShareLinkTest {
 
     @Test
     fun `builds a route the navigation graph understands`() {
-        val ref = CompetitionShareLink.Ref(organizer, compId, naddr())
-        assertEquals("competition_detail/$organizer/$compId", CompetitionShareLink.route(ref))
+        val value = naddr()
+        val ref = CompetitionShareLink.Ref(organizer, compId, value)
+        assertEquals("competition_detail/$organizer/$compId?naddr=$value", CompetitionShareLink.route(ref))
     }
 
     @Test

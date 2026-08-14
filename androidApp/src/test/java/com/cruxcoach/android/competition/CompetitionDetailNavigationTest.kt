@@ -22,6 +22,12 @@ class CompetitionDetailNavigationTest {
     ).firstOrNull(File::isFile)?.readText()
         ?: error("CompetitionHostPrizePanel.kt not found (cwd=${File(".").absolutePath})")
 
+    private fun navSource(): String = listOf(
+        File("src/main/java/com/cruxcoach/android/ui/navigation/NavGraph.kt"),
+        File("androidApp/src/main/java/com/cruxcoach/android/ui/navigation/NavGraph.kt"),
+    ).firstOrNull(File::isFile)?.readText()
+        ?: error("NavGraph.kt not found (cwd=${File(".").absolutePath})")
+
     @Test
     fun `host work is split into focused restorable destinations`() {
         val source = detailSource()
@@ -84,5 +90,14 @@ class CompetitionDetailNavigationTest {
         assertEquals("ENTRANTS", routed.getValue("prize_claim"))
         assertEquals("ENTRANTS", routed.getValue("prize_receipt"))
         assertEquals("LIVE", routed.getValue("climb_choice"))
+    }
+
+    @Test
+    fun `navigation persists the canonical naddr instead of comma joined relay URLs`() {
+        val source = navSource()
+        assertContains(source, "?naddr={naddr}")
+        assertContains(source, "android.net.Uri.encode(naddr)")
+        assertContains(source, "ref.compId, ref.naddr")
+        assertFalse(source.contains("relayHints.joinToString"))
     }
 }

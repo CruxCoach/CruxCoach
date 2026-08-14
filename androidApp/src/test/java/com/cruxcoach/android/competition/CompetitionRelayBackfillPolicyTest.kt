@@ -34,7 +34,7 @@ class CompetitionRelayBackfillPolicyTest {
     }
 
     @Test
-    fun `competition relays are required and user relays remain additive`() {
+    fun `signed competition relays are the exact required scope`() {
         val scope = competitionRelayScope(
             listOf("wss://gym.example", "wss://shared.example"),
             listOf(
@@ -44,12 +44,24 @@ class CompetitionRelayBackfillPolicyTest {
         )
 
         assertEquals(
-            listOf("wss://gym.example", "wss://shared.example", "wss://user.example"),
+            listOf("wss://gym.example", "wss://shared.example"),
             scope.map { it.url },
         )
         assertTrue(scope.first().read && scope.first().write)
         assertTrue(scope[1].read && scope[1].write)
-        assertTrue(scope.last().read && !scope.last().write)
+    }
+
+    @Test
+    fun `untrusted hints and user relays are additive only during discovery`() {
+        val scope = competitionDiscoveryRelayScope(
+            listOf("wss://hint.example"),
+            listOf(
+                RelayConfig("wss://user.example", read = true, write = false),
+                RelayConfig("wss://hint.example", read = false, write = true),
+            ),
+        )
+        assertEquals(listOf("wss://hint.example", "wss://user.example"), scope.map { it.url })
+        assertTrue(scope.first().read && !scope.first().write)
     }
 
     @Test
@@ -89,6 +101,16 @@ class CompetitionRelayBackfillPolicyTest {
         assertTrue(follow.contains("CoroutineStart.UNDISPATCHED"))
         assertTrue(follow.contains("Channel<String>(capacity = LIVE_BUFFER_CAPACITY)"))
         assertTrue(follow.contains("failOnRelayError = true"))
+    }
+
+    @Test
+    fun `definition discovery is best effort but signed relay corroboration is strict`() {
+        val source = File("src/main/java/com/cruxcoach/android/competition/CompetitionRelayClient.kt").readText()
+        val load = source.substringAfter("suspend fun load(").substringBefore("fun follow(")
+        assertTrue(load.contains("fetchNewest(discoveryScope, strict = false)"))
+        assertTrue(load.contains("fetchNewest(required, strict = true)"))
+        assertTrue(load.contains("relayPool.fetchStoredComplete(filter, scope)"))
+        assertTrue(load.contains("else relayPool.fetchStored(filter, scope)"))
     }
 
     @Test

@@ -117,13 +117,12 @@ object Routes {
     const val COMPETITIONS = "competitions"
     const val COMPETITION_SCAN = "competition_scan"
     const val COMPETITION_CREATE = "competition_create"
-    const val COMPETITION_DETAIL = "competition_detail/{organizerPubkey}/{compId}?relayHints={relayHints}"
+    const val COMPETITION_DETAIL = "competition_detail/{organizerPubkey}/{compId}?naddr={naddr}"
     fun competitionDetail(
         organizerPubkey: String,
         compId: String,
-        relayHints: List<String> = emptyList(),
-    ) = "competition_detail/$organizerPubkey/$compId?relayHints=" +
-        android.net.Uri.encode(relayHints.joinToString(","))
+        naddr: String = "",
+    ) = "competition_detail/$organizerPubkey/$compId?naddr=${android.net.Uri.encode(naddr)}"
     const val BOARD_FILTER = "board_filter"
     const val BOARD_CLIMB_DETAIL = "board_climb_detail/{climbUuid}/{angle}"
     const val CLIMB_CREATOR = "climb_creator?forkUuid={forkUuid}&editUuid={editUuid}"
@@ -536,7 +535,7 @@ fun CruxCoachNavHost(
                     CompetitionsScreen(
                         onOpenCompetition = { ref ->
                             navController.navigate(
-                                Routes.competitionDetail(ref.organizerPubkey, ref.compId, ref.relays),
+                                Routes.competitionDetail(ref.organizerPubkey, ref.compId, ref.naddr),
                             )
                         },
                         onScan = { navController.navigate(Routes.COMPETITION_SCAN) },
@@ -574,7 +573,7 @@ fun CruxCoachNavHost(
                             // from a competition should return to the list, not
                             // to a camera pointed at the code just scanned.
                             navController.navigate(
-                                Routes.competitionDetail(ref.organizerPubkey, ref.compId, ref.relays),
+                                Routes.competitionDetail(ref.organizerPubkey, ref.compId, ref.naddr),
                             ) { popUpTo(Routes.COMPETITION_SCAN) { inclusive = true } }
                         },
                     )
@@ -586,7 +585,7 @@ fun CruxCoachNavHost(
                 arguments = listOf(
                     navArgument("organizerPubkey") { type = NavType.StringType },
                     navArgument("compId") { type = NavType.StringType },
-                    navArgument("relayHints") {
+                    navArgument("naddr") {
                         type = NavType.StringType
                         defaultValue = ""
                     },

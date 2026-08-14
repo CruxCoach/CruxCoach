@@ -51,7 +51,7 @@ class NostrRelayPool @Inject constructor(
     private data class SubscriptionSink(
         val failOnRelayError: Boolean,
         val event: (String) -> Boolean,
-        val eose: () -> Boolean,
+        val eose: (String) -> Boolean,
         val fail: (Throwable) -> Unit,
     )
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -126,10 +126,11 @@ class NostrRelayPool @Inject constructor(
                 }
 
                 override fun onMessage(ws: WebSocket, text: String) {
-                    handleMessage(text)
+                    handleMessage(text, ws)
                 }
 
                 override fun onFailure(ws: WebSocket, t: Throwable, response: Response?) {
+                    if (this@RelayConnection.ws !== ws) return
                     connected = false
                     this@RelayConnection.ws = null
                     updateConnectedRelayCount()
@@ -140,6 +141,7 @@ class NostrRelayPool @Inject constructor(
                 }
 
                 override fun onClosed(ws: WebSocket, code: Int, reason: String) {
+                    if (this@RelayConnection.ws !== ws) return
                     connected = false
                     this@RelayConnection.ws = null
                     updateConnectedRelayCount()
@@ -155,7 +157,10 @@ class NostrRelayPool @Inject constructor(
             withTimeout(NostrConfig.RELAY_TIMEOUT_MS) { deferred.await() }
         }
 
-        private fun handleMessage(text: String) {
+        private fun handleMessage(text: String, source: WebSocket) {
+            // Ignore a queued callback from a socket generation that has
+            // already been replaced; its EOSE cannot settle the new REQ.
+            if (ws !== source) return
             try {
                 val arr = Json.parseToJsonElement(text).jsonArray
                 when (arr[0].jsonPrimitive.content) {
@@ -204,7 +209,7 @@ class NostrRelayPool @Inject constructor(
                     "EOSE" -> {
                         val subId = arr[1].jsonPrimitive.content
                         val sink = subscriptionFlows[subId]
-                        if (sink != null && !sink.eose()) {
+                        if (sink != null && !sink.eose(url)) {
                             sink.fail(RelaySubscriptionIntegrityException(
                                 "Relay $url overflowed EOSE for subscription $subId",
                             ))
@@ -502,15 +507,19 @@ class NostrRelayPool @Inject constructor(
                 cancel(cancelled)
             }
         }
-        val eoseCount = java.util.concurrent.atomic.AtomicInteger(0)
+        // NIP-01 EOSE is per subscription and relay. A buggy relay may repeat
+        // it; scalar counting lets one relay impersonate a silent second one.
+        val settledRelayUrls = ConcurrentHashMap.newKeySet<String>()
         val relayCount = readRelays.size
         val sink = SubscriptionSink(
             failOnRelayError = failOnRelayError,
             event = { eventJson ->
                 !shouldDeliverEvent(extractEventId(eventJson), skipDedup) || trySend(eventJson).isSuccess
             },
-            eose = {
-                if (closeOnEose && eoseCount.incrementAndGet() >= relayCount) channel.close()
+            eose = { url ->
+                if (closeOnEose && settledRelayUrls.add(url) && settledRelayUrls.size >= relayCount) {
+                    channel.close()
+                }
                 true
             },
             fail = fail,
@@ -528,7 +537,7 @@ class NostrRelayPool @Inject constructor(
                     return@forEach
                 }
                 // Count failed relays as "EOSE received" so we don't hang forever
-                if (closeOnEose && eoseCount.incrementAndGet() >= relayCount) {
+                if (closeOnEose && settledRelayUrls.add(relay.url) && settledRelayUrls.size >= relayCount) {
                     channel.close()
                 }
             }

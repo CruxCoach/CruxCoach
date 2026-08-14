@@ -5,6 +5,7 @@ import com.cruxcoach.android.nostr.model.RelayConfig
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
@@ -25,6 +26,71 @@ import org.junit.Test
 
 /** Runtime transport evidence; CompetitionRelayBackfillPolicyTest pins client call ordering. */
 class CompetitionRelayHandoffIntegrationTest {
+    @Test
+    fun `duplicate EOSE from one relay cannot complete a strict two relay walk`() = runBlocking {
+        val firstArmed = CompletableDeferred<Unit>()
+        val secondArmed = CompletableDeferred<Unit>()
+        val firstSocket = AtomicReference<WebSocket>()
+        val secondSocket = AtomicReference<WebSocket>()
+        val secondSubId = AtomicReference<String>()
+
+        MockWebServer().use { firstServer ->
+            MockWebServer().use { secondServer ->
+                firstServer.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+                    override fun onOpen(webSocket: WebSocket, response: Response) {
+                        firstSocket.set(webSocket)
+                    }
+
+                    override fun onMessage(webSocket: WebSocket, text: String) {
+                        val request = Json.parseToJsonElement(text).jsonArray
+                        if (request[0].jsonPrimitive.content != "REQ") return
+                        val subId = request[1].jsonPrimitive.content
+                        webSocket.send("[\"EOSE\",\"$subId\"]")
+                        webSocket.send("[\"EOSE\",\"$subId\"]")
+                        firstArmed.complete(Unit)
+                    }
+                }))
+                secondServer.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+                    override fun onOpen(webSocket: WebSocket, response: Response) {
+                        secondSocket.set(webSocket)
+                    }
+
+                    override fun onMessage(webSocket: WebSocket, text: String) {
+                        val request = Json.parseToJsonElement(text).jsonArray
+                        if (request[0].jsonPrimitive.content != "REQ") return
+                        secondSubId.set(request[1].jsonPrimitive.content)
+                        secondArmed.complete(Unit)
+                    }
+                }))
+                firstServer.start()
+                secondServer.start()
+                val client = OkHttpClient()
+                val pool = NostrRelayPool(client)
+                val relays = listOf(firstServer, secondServer).map { server ->
+                    RelayConfig(server.url("/").toString().replaceFirst("http", "ws"), read = true, write = false)
+                }
+
+                val walk = async {
+                    pool.fetchStoredComplete("{\"kinds\":[30078]}", relays).toList()
+                }
+                withTimeout(5_000) {
+                    firstArmed.await()
+                    secondArmed.await()
+                }
+                delay(100)
+                assertTrue("the silent relay must still hold the barrier", !walk.isCompleted)
+                secondSocket.get().send("[\"EOSE\",\"${secondSubId.get()}\"]")
+                assertEquals(emptyList<String>(), withTimeout(5_000) { walk.await() })
+
+                pool.closeAll()
+                firstSocket.get()?.close(1000, "test complete")
+                secondSocket.get()?.close(1000, "test complete")
+                client.dispatcher.executorService.shutdown()
+                client.connectionPool.evictAll()
+            }
+        }
+    }
+
     @Test
     fun `live frame sent during exact EOSE handoff is retained`() = runBlocking {
         val liveSub = AtomicReference<String>()

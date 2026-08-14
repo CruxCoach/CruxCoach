@@ -1384,13 +1384,16 @@ subscription must complete exact recovery before actions resume. Automatic
 operation without every relay would require a future signed head/quorum
 protocol, not an unsigned client-side majority rule.
 
-After definition discovery, every competition read and write uses the signed
-`relays` list first and then adds the user's read/write relays, deduplicated and
-bounded to eight. This is an operation-local scope: opening a gym/private relay
-competition must not replace the account relay list or disturb unrelated live
-subscriptions. Definition discovery still begins on the user's/default relays;
-all log, intent, receipt, authority, and cleanup operations then use the merged
-competition scope.
+Definition discovery may use the naddr hints plus the user's/default relays, but
+that result is only a candidate. The client re-fetches the newest definition
+from **every relay in the candidate's signed `relays` list**; a replacement that
+migrates that list repeats the check until the fetched scope and newest signed
+definition agree. A failed required relay leaves the candidate non-actionable.
+After that point the signed list, deduplicated and bounded to eight, is the exact
+operation-local scope for every log, intent, receipt, authority write and
+cleanup. Optional account/discovery relays neither expand nor substitute the
+completeness barrier, and opening a private competition never mutates the
+account relay list or unrelated subscriptions.
 
 ---
 
@@ -1431,7 +1434,7 @@ and the screen has to be honest about that rather than looking identical to one.
 | T3 | **Clock manipulation** — an event dated far in the future | `created_at <= now + 1 h` rejection at the envelope, and reduction order comes from `seq`, not from time. Time is display-only. | An authority can misdate its own entries; the ordering is unaffected. |
 | T4 | **Malicious organizer** — rigs the standings | Not preventable, and the protocol says so. What it *does* give: every decision is signed, ordered, chained, permanently public, and carries a mandatory reason for every rejection and override. Rigging is visible, attributable and non-repudiable. | The organizer runs their event; entrants choose whether to trust them. |
 | T5 | **Double-granted unique claim** | The reducer rejects a second `granted` for a claimed `climb_id` (§8.1) rather than trusting the authority to be correct. Every client sees the same rejection. | A participant who claimed second sees a denial they must resolve with the organizer. |
-| T6 | **Relay outage / censorship** — a relay withholds entries | Multi-relay publish and read (`competition.relays` merged additively with NIP-65, never narrowed). A chain break stops reduction rather than skipping (§7.2), so withholding produces a visible stall, not a wrong leaderboard. | A total outage stops the live view; the organizer console keeps its local copy and republishes. |
+| T6 | **Relay outage / censorship** — a relay withholds entries | Multi-relay publish and exact reads across the signed `competition.relays` scope. Optional NIP-65/default relays are discovery-only. A missing EOSE or chain break stops reduction rather than skipping (§7.2), so withholding produces a visible stall, not a wrong leaderboard. | Any required-relay outage stops trusted actions; the last verified projection remains visibly stale until exact recovery. |
 | T7 | **Compromised signer** | Fork detection (§7.4) makes a second signing device or a thief visible immediately. `authority_epoch` (§5.3) is the recovery path. | An undetected compromise before any fork is indistinguishable from the real organizer. |
 | T8 | **Payment spoofing** | §11.3 — receipt must be signed by the zapper key the organizer fetched themselves, and must contain a valid participant-signed 9734 bound to this competition and intent. | A dishonest LNURL provider can lie to its own customer. |
 | T9 | **QR / deep-link injection** | The join path parses `naddr` strictly (bech32 checksum, TLV, `kind == 30078`, d-tag prefix `cruxcoach:comp:`), and only then fetches. No URL from a QR is ever navigated to directly, and no HTML from any event is ever inserted as markup. | None known. |

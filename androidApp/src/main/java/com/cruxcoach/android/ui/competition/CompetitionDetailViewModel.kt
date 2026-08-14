@@ -8,6 +8,7 @@ import com.cruxcoach.android.competition.CompetitionIntentPublisher
 import com.cruxcoach.android.competition.CompetitionPaymentFlow
 import com.cruxcoach.android.competition.CompetitionRelayClient
 import com.cruxcoach.android.competition.CompetitionHostPublisher
+import com.cruxcoach.android.competition.CompetitionShareLink
 import com.cruxcoach.domain.competition.CompetitionConfigUpdate
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.android.payment.NostrProfileManager
@@ -73,11 +74,11 @@ class CompetitionDetailViewModel @Inject constructor(
 
     private val organizerPubkey: String = savedStateHandle["organizerPubkey"] ?: ""
     private val compId: String = savedStateHandle["compId"] ?: ""
-    private val relayHints: List<String> = (savedStateHandle.get<String>("relayHints") ?: "")
-        .split(',')
-        .filter(CompetitionProtocol::isAllowedRelayUrl)
-        .distinct()
-        .take(8)
+    private val relayHints: List<String> = savedStateHandle.get<String>("naddr")
+        ?.let(CompetitionShareLink::parse)
+        ?.takeIf { it.organizerPubkey == organizerPubkey && it.compId == compId }
+        ?.relays
+        .orEmpty()
 
     /** What the last action did, so the screen can say so instead of guessing. */
     sealed interface Action {
