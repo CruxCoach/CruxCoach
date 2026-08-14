@@ -15,6 +15,9 @@ import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ble.GattConnectionEvent
 import com.cruxcoach.android.ble.RelayGattServer
+import com.cruxcoach.android.boardcell.BoardCellEvent
+import com.cruxcoach.android.boardcell.BoardCellManager
+import com.cruxcoach.android.boardcell.ProjectionResult
 import com.cruxcoach.domain.relay.RelayBoardName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -81,6 +84,7 @@ class CruxRelayManager(
     private val advertiser: ClimbBleAdvertiser,
     private val bleConnection: BoardBleConnection,
     private val projectionCoordinator: BoardProjectionCoordinator,
+    private val boardCellManager: BoardCellManager,
 ) {
     companion object {
         private const val TAG = "CruxRelay/Manager"
@@ -215,25 +219,23 @@ class CruxRelayManager(
         // write that arrives while there is no collector.
         forwardJob = scope.launch {
             relayServer.climbs.collect { inbound ->
-                val ok = bleConnection.sendRawChunks(inbound.climb.chunks)
-                if (ok) {
+                val result = boardCellManager.projectExternal(
+                    boardWrite = { bleConnection.sendRawChunks(inbound.climb.chunks) },
+                    identify = { projectionCoordinator.identifyExternal(inbound.climb) },
+                )
+                if (result is ProjectionResult.Committed) {
                     advertiser.clearActiveClimb()
-                    // Hand the raw climb along: it is the only thing that can
-                    // still name what an official app just put on the wall.
-                    //
-                    // Off the forwarding path, though. Identification reads the
-                    // catalogue and waits for the one-time index build, and
-                    // forwarding the NEXT climb to the board must not queue up
-                    // behind that — lighting the wall is the promise here,
-                    // naming the climb is a nicety. Cancelling the previous
-                    // attempt also keeps the banner on the newest write when
-                    // two arrive back to back.
+                    // Identification already ran inside BoardCell's projection mutex:
+                    // the next board write cannot overtake its canonical event. Keep
+                    // only the legacy UI/persistence projection off this collector;
+                    // cancellation prevents an older banner update winning later.
                     identifyJob?.cancel()
                     identifyJob = scope.launch {
-                        projectionCoordinator.onExternalBoardWrite(inbound.climb)
+                        val projection = (result.envelope.event as? BoardCellEvent.ProjectCommitted)?.projection
+                        projectionCoordinator.onCanonicalExternalBoardWrite(projection)
                     }
                 } else {
-                    Log.w(TAG, "sendRawChunks failed for a relayed climb")
+                    Log.w(TAG, "relayed climb was not canonically committed: $result")
                     // Say so. The guest's app got its write acknowledged by our
                     // GATT server and reports success; if we stay quiet too,
                     // both sides believe a climb is on a wall that is dark.

@@ -1,6 +1,7 @@
 package com.cruxcoach.android.data
 
 import android.util.Log
+import android.os.Build
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.BoardConnectionOwner
 import com.cruxcoach.android.ui.board.BoardSendModePolicy
@@ -10,6 +11,15 @@ import com.cruxcoach.android.data.BoardSendMode
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ble.QueueItem
 import com.cruxcoach.android.ble.SessionQueueProtocol
+import com.cruxcoach.android.boardcell.BoardCellScopeRegistry
+import com.cruxcoach.android.fips.FipsMeshRuntime
+import com.cruxcoach.android.boardcell.BoardCellManager
+import com.cruxcoach.android.boardcell.BoardPlaylistState
+import com.cruxcoach.android.boardcell.BoardProjection
+import com.cruxcoach.android.boardcell.ProjectionResult
+import com.cruxcoach.android.boardcell.PhysicalBoardId
+import com.cruxcoach.android.boardcell.BoardCellId
+import com.cruxcoach.android.ble.BoardProjectionPolicy
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.brand
 import com.cruxcoach.domain.board.BoardBrand
@@ -20,6 +30,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -70,6 +81,9 @@ data class SessionQueueState(
     val participantIndex: Int = -1,
     /** A compatible external board app last wrote the physical board through CruxRelay. */
     val externalBoardOverride: Boolean = false,
+    /** Physical scope; null only for a backwards-compatible unscoped session. */
+    val physicalBoardId: String? = null,
+    val boardCellId: String? = null,
 ) {
     val isActive: Boolean get() = role != SessionRole.NONE
     val currentClimb: QueueItem? get() = queue.getOrNull(currentIndex)
@@ -95,7 +109,9 @@ class SessionQueueManager(
     // launchers (including a `withContext(Dispatchers.IO)` inside `state.collect`)
     // outlive `Dispatchers.resetMain()` and surface as UncaughtExceptionsBeforeTest
     // in whichever test runs next in the same JVM.
-    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
+    private val fipsMeshRuntime: FipsMeshRuntime? = null,
+    private val boardCellManager: BoardCellManager? = null,
 ) {
     companion object {
         private const val TAG = "SessionQueueManager"
@@ -133,6 +149,32 @@ class SessionQueueManager(
                     sendCurrentClimbToBoard()
                 }
                 wasConnected = isConnected
+            }
+        }
+        boardCellManager?.let { manager ->
+            scope.launch {
+                state.distinctUntilChangedBy { Triple(it.role, it.queue, it.currentIndex) }.collect { value ->
+                    if (value.role == SessionRole.HOST && value.boardCellId != null) {
+                        manager.replacePlaylist(BoardPlaylistState(
+                            value.sessionId, value.currentIndex,
+                            value.queue.map { it.climbUuid to it.angle },
+                        ))
+                    }
+                }
+            }
+            scope.launch {
+                manager.snapshots.collect { snapshot ->
+                    val current = _state.value
+                    if (snapshot == null || current.role != SessionRole.PARTICIPANT ||
+                        current.boardCellId != snapshot.cellId.value ||
+                        current.physicalBoardId != snapshot.physicalBoardId.value) return@collect
+                    val playlist = snapshot.playlist
+                    _state.update { state -> state.copy(
+                        sessionId = playlist.sessionId ?: state.sessionId,
+                        queue = playlist.items.map { QueueItem(it.first, it.second) },
+                        currentIndex = playlist.currentIndex,
+                    ) }
+                }
             }
         }
     }
@@ -191,7 +233,10 @@ class SessionQueueManager(
             participantCount = 1,  // host counts as 1
             visibility = visibility,
             visibilityRequested = visibility,
+            physicalBoardId = BoardCellScopeRegistry.selected.value?.value,
+            boardCellId = BoardCellScopeRegistry.selectedCellId()?.value,
         ) }
+        fipsMeshRuntime?.acquire()
         bleConnection.acquireKeepAlive(BoardConnectionOwner.SESSION)
         Log.d(TAG, "Queue started (sessionId=$sessionId, hostName=$hostName)")
     }
@@ -199,6 +244,9 @@ class SessionQueueManager(
     fun endQueue() {
         lastSentClimbKey = null
         val prev = _state.value
+        if (prev.role == SessionRole.HOST && prev.boardCellId != null) {
+            boardCellManager?.requestOrderlyHandover()
+        }
         Log.d(TAG, "endQueue() called, role=${prev.role}, queue=${prev.queue.size}, " +
             "participants=${prev.participants.size}, " +
             "callbacks: onQueue=${onQueueChanged != null}, onParticipants=${onParticipantsChanged != null}")
@@ -211,6 +259,7 @@ class SessionQueueManager(
         onRestRequested = null
         isPlaylistQueue = false
         bleConnection.releaseKeepAlive(BoardConnectionOwner.SESSION)
+        fipsMeshRuntime?.release()
         Log.d(TAG, "endQueue(): complete, state reset to NONE")
     }
 
@@ -528,14 +577,36 @@ class SessionQueueManager(
         Log.d(TAG, "Promoted to host (sessionId=$newSessionId, queue=${_state.value.queue.size} items)")
     }
 
+    fun freezeForController() {
+        _state.update { it.copy(error = "board_cell_controller_unreachable", isConnecting = false) }
+    }
+
     /** Update session info from host notification (participant side).
      *  The count from the host already includes the host (+1). */
-    fun updateSessionInfo(hostName: String, participantCount: Int) {
+    fun updateSessionInfo(hostName: String, participantCount: Int,
+        physicalBoardId: String? = null, boardCellId: String? = null): Boolean {
+        val selected = BoardCellScopeRegistry.selected.value?.value
+        val current = _state.value
+        val mismatch = (physicalBoardId == null || boardCellId == null).let { unscoped ->
+            unscoped && !BoardCellScopeRegistry.acceptsLegacyUnscoped()
+        } || (selected != null && physicalBoardId != null && selected != physicalBoardId) ||
+            (current.physicalBoardId != null && physicalBoardId != null && current.physicalBoardId != physicalBoardId) ||
+            (current.boardCellId != null && boardCellId != null && current.boardCellId != boardCellId)
+        if (mismatch) {
+            Log.w(TAG, "Rejected session info for a different/ambiguous board cell")
+            return false
+        }
+        if (physicalBoardId != null && boardCellId != null) {
+            BoardCellScopeRegistry.joinCell(PhysicalBoardId(physicalBoardId), BoardCellId(boardCellId))
+        }
         Log.d(TAG, "updateSessionInfo: hostName=$hostName, participantCount=$participantCount")
         _state.update { it.copy(
             hostName = hostName,
-            participantCount = participantCount
+            participantCount = participantCount,
+            physicalBoardId = physicalBoardId ?: it.physicalBoardId,
+            boardCellId = boardCellId ?: it.boardCellId,
         ) }
+        return true
     }
 
     /** Apply participant list from host notification (participant side).
@@ -683,7 +754,13 @@ class SessionQueueManager(
                     if (climb.frames.isBlank()) return@withLock
                     val variant = com.cruxcoach.domain.board.MoonBoardVariant.fromLayoutId(climb.layoutId)
                         ?: com.cruxcoach.domain.board.MoonBoardVariant.MOONBOARD_2016
-                    val sent = bleConnection.sendMoonBoardClimb(climb.frames, variant)
+                    val manager = BoardCellManager.current
+                    val sent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && manager != null) {
+                        manager.project(BoardProjection(item.climbUuid, item.angle,
+                            BoardProjectionPolicy.projectionSurvivesDisconnect(climb.brand))) {
+                            bleConnection.sendMoonBoardClimb(climb.frames, variant)
+                        } is ProjectionResult.Committed
+                    } else bleConnection.sendMoonBoardClimb(climb.frames, variant)
                     if (sent) {
                         markCurrentClimbProjected(key)
                         Log.d(TAG, "sendCurrentClimbToBoard: sent MoonBoard ${item.climbUuid.take(8)} angle=${item.angle}")
@@ -703,7 +780,13 @@ class SessionQueueManager(
                     (if (climb.brand == BoardBrand.KILTER) userPreferences.ledHoldColors.first()
                      else LedHoldColors.standardFor(climb.brand)).toRoleColorMap()
                 }
-                val sent = bleConnection.sendClimb(holds, ledMap, roleColors)
+                val manager = BoardCellManager.current
+                val sent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && manager != null) {
+                    manager.project(BoardProjection(item.climbUuid, item.angle,
+                        BoardProjectionPolicy.projectionSurvivesDisconnect(climb.brand))) {
+                        bleConnection.sendClimb(holds, ledMap, roleColors)
+                    } is ProjectionResult.Committed
+                } else bleConnection.sendClimb(holds, ledMap, roleColors)
                 if (sent) {
                     markCurrentClimbProjected(key)
                     Log.d(TAG, "sendCurrentClimbToBoard: sent ${item.climbUuid.take(8)} angle=${item.angle}")
@@ -742,6 +825,14 @@ class SessionQueueManager(
 
     private fun markCurrentClimbProjected(key: String) {
         lastSentClimbKey = key
+        val snapshot = _state.value
+        scope.launch {
+            boardCellManager?.replacePlaylist(BoardPlaylistState(
+                sessionId = snapshot.sessionId,
+                currentIndex = snapshot.currentIndex,
+                items = snapshot.queue.map { it.climbUuid to it.angle },
+            ))
+        }
         _state.update { it.copy(awaitingExplicitSend = false) }
         val hadExternalOverride = _state.value.externalBoardOverride
         if (hadExternalOverride) {
@@ -790,7 +881,8 @@ class SessionQueueManager(
 
     fun encodeSessionInfo(): ByteArray {
         val s = _state.value
-        return SessionQueueProtocol.encodeSessionInfo(s.hostName, s.participantCount)
+        return SessionQueueProtocol.encodeSessionInfo(s.hostName, s.participantCount,
+            s.physicalBoardId, s.boardCellId)
     }
 
     fun encodeParticipantList(): ByteArray {

@@ -28,6 +28,8 @@ class CompetitionIntentPublisher @Inject constructor(
     @ApplicationContext context: Context,
     private val relayPool: NostrRelayPool,
     private val signer: NostrSigner,
+    private val mesh: CompetitionMeshTransport,
+    private val client: CompetitionRelayClient,
 ) {
 
     /**
@@ -251,15 +253,12 @@ class CompetitionIntentPublisher @Inject constructor(
         return try {
             val event = NostrPublicEventBuilder(signer)
                 .buildSignedEvent(CompetitionProtocol.KIND, payload, tags)
-            val (attempted, accepted) = relayPool.sendEventWithStats(event)
-            if (accepted == 0) {
-                // A publish no relay accepted has not happened. Saying otherwise
-                // leaves someone standing at a wall believing they are entered.
-                Log.w(TAG, "intent $op accepted by 0 of $attempted relays")
-                Result.Failed("no_relay")
-            } else {
-                Result.Published(event, attempted, accepted)
+            if (!mesh.isJoined(competition.compId) && !mesh.joinLocal(competition.compId)) {
+                return Result.Failed("board_cell_unavailable")
             }
+            val accepted = mesh.publish(competition.compId, event)
+            client.ingestMesh(event, System.currentTimeMillis() / 1_000)
+            Result.Published(event, accepted, accepted)
         } catch (e: Exception) {
             Log.w(TAG, "intent $op failed", e)
             Result.Failed(e.message ?: "unknown")

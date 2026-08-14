@@ -1,6 +1,8 @@
 package com.cruxcoach.android.data
 
 import android.util.Log
+import com.cruxcoach.android.boardcell.BoardCellScopeRegistry
+import com.cruxcoach.android.boardcell.PhysicalBoardId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -42,6 +44,21 @@ class BoardStateManager @Inject constructor(
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val _lastClimb = MutableStateFlow<LastBoardClimb?>(null)
+    private val climbsByBoard = mutableMapOf<PhysicalBoardId, LastBoardClimb>()
+    private val legacyBoardId = PhysicalBoardId("legacy:unscoped")
+
+    init {
+        scope.launch {
+            BoardCellScopeRegistry.selected.collect { selected ->
+                _lastClimb.value = climbsByBoard[selected ?: legacyBoardId]
+            }
+        }
+    }
+
+    private fun selectedBoardId(): PhysicalBoardId =
+        BoardCellScopeRegistry.selected.value ?: legacyBoardId
+
+    fun lastClimbFor(boardId: PhysicalBoardId): LastBoardClimb? = climbsByBoard[boardId]
 
     /**
      * The last climb on the physical board, cleared once it goes stale.
@@ -84,14 +101,14 @@ class BoardStateManager @Inject constructor(
             climbNameResolver.resolveName(uuid, angle)
         }
 
-        _lastClimb.update {
-            LastBoardClimb(
+        val updated = LastBoardClimb(
                 uuid = uuid,
                 angle = angle,
                 name = name,
                 projectionSurvivesDisconnect = projectionSurvivesDisconnect,
             )
-        }
+        climbsByBoard[selectedBoardId()] = updated
+        _lastClimb.value = updated
         userPreferences.setLastClimb(uuid, angle, projectionSurvivesDisconnect)
         scheduleStaleCleanup()
         Log.d(TAG, "SET uuid=${uuid.take(8)} angle=$angle name=${name ?: "unknown"}")
@@ -135,12 +152,14 @@ class BoardStateManager @Inject constructor(
         ) return
         // Keep existing name if same UUID (just angle changed), otherwise null
         val existingName = current?.name?.takeIf { current.uuid == uuid }
-        _lastClimb.value = LastBoardClimb(
+        val updated = LastBoardClimb(
             uuid = uuid,
             angle = angle,
             name = existingName,
             projectionSurvivesDisconnect = projectionSurvivesDisconnect,
         )
+        climbsByBoard[selectedBoardId()] = updated
+        _lastClimb.value = updated
         scheduleStaleCleanup()
         Log.d(TAG, "QUICK uuid=${uuid.take(8)} angle=$angle name=${existingName ?: "pending"}")
     }
@@ -150,6 +169,7 @@ class BoardStateManager @Inject constructor(
         staleJob?.cancel()
         staleJob = null
         _lastClimb.value = null
+        climbsByBoard.remove(selectedBoardId())
         userPreferences.clearLastClimb()
         Log.d(TAG, "CLEAR external board write")
     }
@@ -160,10 +180,12 @@ class BoardStateManager @Inject constructor(
      */
     private fun scheduleStaleCleanup() {
         staleJob?.cancel()
+        val boardId = selectedBoardId()
         staleJob = scope.launch {
             delay(STALE_THRESHOLD_MS)
             Log.d(TAG, "STALE — clearing last climb after ${STALE_THRESHOLD_MS / 60_000}min")
-            _lastClimb.value = null
+            climbsByBoard.remove(boardId)
+            if (selectedBoardId() == boardId) _lastClimb.value = null
         }
     }
 

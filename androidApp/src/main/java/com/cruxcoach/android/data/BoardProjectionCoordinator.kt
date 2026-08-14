@@ -2,6 +2,7 @@ package com.cruxcoach.android.data
 
 import android.util.Log
 import com.cruxcoach.domain.relay.CompleteClimb
+import com.cruxcoach.android.boardcell.BoardProjection
 
 /**
  * Reconciles writes whose climb identity is unavailable to CruxCoach.
@@ -27,15 +28,17 @@ class BoardProjectionCoordinator(
         climbIdentifier?.warmUp()
     }
 
-    suspend fun onExternalBoardWrite(climb: CompleteClimb? = null) {
+    suspend fun identifyExternal(climb: CompleteClimb): BoardProjection? =
+        climbIdentifier?.identify(climb)?.let { BoardProjection(it.uuid, it.angle) }
+
+    suspend fun onCanonicalExternalBoardWrite(projection: BoardProjection?) {
         if (sessionQueueManager.state.value.role == SessionRole.HOST) {
             sessionQueueManager.markExternalBoardWrite()
         }
-        val identified = climb?.let { climbIdentifier?.identify(it) }
-        if (identified != null) {
-            Log.d(TAG, "external write identified as ${identified.uuid.take(8)}")
+        if (projection != null) {
+            Log.d(TAG, "external write identified as ${projection.climbUuid.take(8)}")
             runCatching {
-                boardStateManager.setLastClimb(identified.uuid, identified.angle)
+                boardStateManager.setLastClimb(projection.climbUuid, projection.angle)
             }.onFailure { Log.w(TAG, "failed to persist the identified external climb", it) }
             return
         }

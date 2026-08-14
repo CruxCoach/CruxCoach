@@ -1,0 +1,15 @@
+[package]
+name = "cruxcoach-fips-bridge"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+
+[lib]
+name = "cruxcoach_fips"
+crate-type = ["lib", "cdylib"]
+
+[target.'cfg(target_os = "android")'.dependencies]
+fips = { git = "https://github.com/jmcorgan/fips", rev = "967776079ba5ddc8fe118c3f289365b51eb03737" }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
+jni = "0.21"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

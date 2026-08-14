@@ -497,6 +497,7 @@ object AppModule {
         advertiser: ClimbBleAdvertiser,
         bleConnection: BoardBleConnection,
         projectionCoordinator: BoardProjectionCoordinator,
+        boardCellManager: com.cruxcoach.android.boardcell.BoardCellManager,
     ): CruxRelayManager {
         return CruxRelayManager(
             context,
@@ -504,6 +505,7 @@ object AppModule {
             advertiser,
             bleConnection,
             projectionCoordinator,
+            boardCellManager,
         )
     }
 
@@ -522,9 +524,15 @@ object AppModule {
         bleConnection: BoardBleConnection,
         boardRepository: BoardRepository,
         climbNameResolver: ClimbNameResolver,
-        userPreferences: UserPreferences
+        userPreferences: UserPreferences,
+        fipsMeshRuntime: com.cruxcoach.android.fips.FipsMeshRuntime,
+        boardCellManager: com.cruxcoach.android.boardcell.BoardCellManager,
     ): SessionQueueManager {
-        return SessionQueueManager(bleConnection, boardRepository, climbNameResolver, userPreferences)
+        return SessionQueueManager(
+            bleConnection, boardRepository, climbNameResolver, userPreferences,
+            fipsMeshRuntime = fipsMeshRuntime,
+            boardCellManager = boardCellManager,
+        )
     }
 
     @Provides
@@ -540,6 +548,8 @@ object AppModule {
         boardStateManager: BoardStateManager,
         boardSessionManager: BoardSessionManager,
         sharingConfig: SharingConfig,
+        fipsMeshRuntime: com.cruxcoach.android.fips.FipsMeshRuntime,
+        boardCellManager: com.cruxcoach.android.boardcell.BoardCellManager,
     ): SessionGattBridge {
         return PerfLogger.trace("DI: SessionGattBridge") {
             SessionGattBridge(
@@ -553,6 +563,8 @@ object AppModule {
                 boardStateManager,
                 boardSessionManager,
                 shouldAdvertiseIndividualClimbs = { sharingConfig.sharingEnabled.value },
+                fipsMeshRuntime = fipsMeshRuntime,
+                boardCellManager = boardCellManager,
             )
         }
     }

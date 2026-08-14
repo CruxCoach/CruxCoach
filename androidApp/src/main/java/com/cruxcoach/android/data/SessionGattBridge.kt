@@ -16,6 +16,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.cruxcoach.android.ble.QueueItem
+import com.cruxcoach.android.fips.FipsMeshRuntime
+import com.cruxcoach.android.fips.FipsRealmContext
+import com.cruxcoach.android.boardcell.BoardCellManager
 
 /**
  * Bridges [SessionQueueManager] with BLE GATT for shared sessions.
@@ -42,6 +45,8 @@ class SessionGattBridge(
     private val boardSessionManager: BoardSessionManager,
     private val shouldAdvertiseIndividualClimbs: () -> Boolean = { true },
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
+    private val fipsMeshRuntime: FipsMeshRuntime? = null,
+    private val boardCellManager: BoardCellManager? = null,
 ) {
     companion object {
         private const val TAG = "CruxBLE/Session"
@@ -76,6 +81,7 @@ class SessionGattBridge(
     private var hostJob: Job? = null
     private var isSharing = false
     private var isRejoining = false
+    private var meshRealmHeldForJoin = false
     private val commandGate = SessionCommandGate()
     /** SessionId of the host we just left — used to ignore stale advertisements during migration. */
     private var lastHostSessionId: Int = 0
@@ -105,6 +111,13 @@ class SessionGattBridge(
             }
         }
         context.registerReceiver(btReceiver, IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED))
+        boardCellManager?.let { manager ->
+            scope.launch {
+                manager.sessionCommands.collect { (sender, payload) ->
+                    handleMeshCommand(sender, payload)
+                }
+            }
+        }
     }
 
     // ===== Host mode =====
@@ -471,6 +484,7 @@ class SessionGattBridge(
      * If not, restart our own GATT server and advertising.
      */
     private fun recoverAfterBluetoothRestart() {
+        fipsMeshRuntime?.restartAfterBluetoothAvailable()
         val state = queueManager.state.value
         if (state.role != SessionRole.HOST) return
         // Asked of the wish, not the state: a failed startSharing() sets the
@@ -551,7 +565,8 @@ class SessionGattBridge(
                         SessionClientState.CONNECTED -> {
                             migrationJob?.cancel()
                             Log.d(TAG, "Connected to host, sending JOIN command")
-                            val joinSent = gattClient.sendCommand(SessionQueueProtocol.encodeJoin(""))
+                            val joinSent = gattClient.sendCommand(SessionQueueProtocol.encodeJoin(
+                                "", fipsMeshRuntime?.localNpub?.takeIf { it.isNotBlank() }))
                             Log.d(TAG, "JOIN command sent: success=$joinSent")
                             gattClient.readInitialState()
                             // The host's id, not a literal 0. Without it a
@@ -619,7 +634,18 @@ class SessionGattBridge(
                         handleSessionEndedByHost()
                         return@collect
                     }
-                    queueManager.updateSessionInfo(info.hostName, info.participantCount)
+                    queueManager.updateSessionInfo(info.hostName, info.participantCount,
+                        info.physicalBoardId, info.boardCellId)
+                    info.boardCellId?.let { cellId ->
+                        val runtime = fipsMeshRuntime ?: return@let
+                        if (runtime.activateRealm(FipsRealmContext(cellId, cellId))) {
+                            if (!meshRealmHeldForJoin) {
+                                runtime.acquire()
+                                meshRealmHeldForJoin = true
+                            }
+                            gattClient.sendCommand(SessionQueueProtocol.encodeJoin("", runtime.localNpub))
+                        }
+                    }
                 }
             }
 
@@ -684,6 +710,7 @@ class SessionGattBridge(
             "role=${queueManager.state.value.role}")
         joinJob?.cancel()
         joinJob = null
+        meshRealmHeldForJoin = false // SessionQueueManager.endQueue releases the corresponding owner.
         // Re-enable individual climb advertising
         advertiser.suppressClimbAdvertising = false
         restartClimbAdvertisingIfConnected()
@@ -765,7 +792,8 @@ class SessionGattBridge(
      */
     private fun sendParticipantCommand(label: String, payload: ByteArray) {
         scope.launch {
-            if (gattClient.sendCommand(payload)) {
+            val sentByFips = boardCellManager?.sendSessionCommand(payload) == true
+            if (sentByFips || gattClient.sendCommand(payload)) {
                 // Logged on success too, not only on failure. Only logging the
                 // failure leaves the working path silent, and during the
                 // 2026-08-06 two-device test that made three candidate causes
@@ -776,6 +804,21 @@ class SessionGattBridge(
             } else {
                 Log.w(TAG, "event=transport_send_failed action=$label")
             }
+        }
+    }
+
+    /** FIPS has already authenticated membership and exact BoardCell epoch/sequence. */
+    private fun handleMeshCommand(senderNpub: String, data: ByteArray) {
+        if (queueManager.state.value.role != SessionRole.HOST) return
+        when (val cmd = SessionQueueProtocol.decodeCommand(data)) {
+            is SessionCommand.Add -> queueManager.addClimb(cmd.climbUuid, cmd.angle)
+            is SessionCommand.Remove -> queueManager.removeClimb(cmd.index)
+            is SessionCommand.SetCurrent -> queueManager.setCurrentClimb(cmd.index)
+            is SessionCommand.Next -> (onRemoteNext ?: queueManager::nextClimb).invoke()
+            is SessionCommand.Prev -> (onRemotePrev ?: queueManager::previousClimb).invoke()
+            is SessionCommand.Move -> queueManager.moveClimb(cmd.from, cmd.to)
+            is SessionCommand.Leave -> Log.i(TAG, "event=fips_participant_left npub=${senderNpub.take(16)}")
+            is SessionCommand.Join, null -> Unit // Admission remains explicit through JOIN/GATT.
         }
     }
 
@@ -804,6 +847,7 @@ class SessionGattBridge(
                 // what diagnosis needs, and the rest is the guest's.
                 Log.i(TAG, "event=participant_joined count=${count + 1}")
                 queueManager.addParticipant(deviceAddress, label)
+                cmd.memberNpub?.let { BoardCellManager.current?.approveMember(it) }
 
                 // Tell a late joiner that a rest is running.
                 //
@@ -939,6 +983,14 @@ class SessionGattBridge(
         Log.d(TAG, "attemptHostMigration() called, role=${queueState.role}, " +
             "queue=${queueState.queue.size}, participantIndex=${queueState.participantIndex}, " +
             "isConnecting=${queueState.isConnecting}, migrating=${migrationJob?.isActive}")
+        if (queueState.boardCellId != null) {
+            // A join-order timer can elect two hosts on opposite sides of a
+            // partition. Scoped sessions therefore freeze until the ordered
+            // BoardCell controller/lease stream is reachable again.
+            Log.w(TAG, "Scoped BoardCell host unreachable — freezing; no local host election")
+            queueManager.freezeForController()
+            return
+        }
         // Guard: avoid restarting migration if already in progress
         // (both sentinel + GATT disconnect can trigger this)
         if (migrationJob?.isActive == true) {

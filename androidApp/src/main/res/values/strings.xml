@@ -2720,4 +2720,7 @@
     <string name="comp_host_prepared_choice">Prepared: %1$s</string>
     <string name="comp_host_choice_unavailable">This choice is no longer available</string>
     <string name="cd_back">Back</string>
+    <string name="fips_mesh_channel">Local board mesh</string>
+    <string name="fips_mesh_title">Board group active</string>
+    <string name="fips_mesh_text">Synchronising the local board state with nearby participants</string>
 </resources>

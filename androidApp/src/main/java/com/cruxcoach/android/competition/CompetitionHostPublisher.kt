@@ -22,6 +22,7 @@ class CompetitionHostPublisher @Inject constructor(
     private val signer: NostrSigner,
     private val relayPool: NostrRelayPool,
     private val client: CompetitionRelayClient,
+    private val mesh: CompetitionMeshTransport,
 ) {
     sealed interface Result {
         data class Published(val accepted: Int, val attempted: Int) : Result
@@ -43,7 +44,9 @@ class CompetitionHostPublisher @Inject constructor(
             return Result.Failed("${it.field}: ${it.message}")
         }
         if (competition.authority != signer.getPublicKeyHex()) return Result.Failed("wrong_authority")
+        if (!mesh.joinLocal(competition.compId)) return Result.Failed("board_cell_unavailable")
         return publish(
+            competition.compId,
             CompetitionHostProtocol.competitionContent(config),
             CompetitionHostProtocol.competitionTags(config),
         )
@@ -89,10 +92,12 @@ class CompetitionHostPublisher @Inject constructor(
                 ),
             )
         }.getOrElse { return Result.Failed(it.message ?: "sign_failed") }
-        val (attempted, accepted) = relayPool.sendEventWithStats(event)
-        if (accepted == 0) return Result.Failed("no_relay")
+        if (!mesh.isJoined(competition.compId) && !mesh.joinLocal(competition.compId)) {
+            return Result.Failed("board_cell_unavailable")
+        }
+        val accepted = mesh.publish(competition.compId, event)
         client.ingestOwn(event, at)
-        Result.Published(accepted, attempted)
+        Result.Published(accepted, accepted)
     }
 
     /** Publish a permanent, reasoned edit without replacing the chain root. */
@@ -122,14 +127,7 @@ class CompetitionHostPublisher @Inject constructor(
         )
     }
 
-    /**
-     * Best-effort removal from the configured write relays.
-     *
-     * The addressable tombstone makes CruxCoach clients stop rendering the
-     * definition even on relays that ignore NIP-09. The kind-5 request points
-     * at the concrete original event id, not the address, so a compliant relay
-     * does not immediately delete the newer tombstone as well.
-     */
+    /** Broadcast signed local tombstone/deletion records through the joined cell. */
     suspend fun deleteCompetition(): kotlin.Result<CleanupResult> = runCatching {
         val snapshot = client.snapshot.value
         val competition = requireNotNull(snapshot.competition) { "not_loaded" }
@@ -151,18 +149,25 @@ class CompetitionHostPublisher @Inject constructor(
             "CruxCoach test competition cleanup",
             CompetitionHostProtocol.deletionTags(definitionId),
         )
-        val (tombstoneAttempted, tombstoneAccepted) = relayPool.sendEventWithStats(tombstone)
-        val (deletionAttempted, deletionAccepted) = relayPool.sendEventWithStats(deletion)
+        require(mesh.isJoined(competition.compId) || mesh.joinLocal(competition.compId)) {
+            "board_cell_unavailable"
+        }
+        val tombstoneAccepted = mesh.publish(competition.compId, tombstone)
+        val deletionAccepted = mesh.publish(competition.compId, deletion)
         CleanupResult(
             tombstoneAccepted = tombstoneAccepted,
             deletionAccepted = deletionAccepted,
-            attempted = maxOf(tombstoneAttempted, deletionAttempted),
+            attempted = maxOf(tombstoneAccepted, deletionAccepted),
         )
     }
 
-    private suspend fun publish(content: String, tags: List<List<String>>): Result = runCatching {
+    private suspend fun publish(compId: String, content: String, tags: List<List<String>>): Result = runCatching {
         val event = NostrPublicEventBuilder(signer).buildSignedEvent(CompetitionProtocol.KIND, content, tags)
-        val (attempted, accepted) = relayPool.sendEventWithStats(event)
-        if (accepted == 0) Result.Failed("no_relay") else Result.Published(accepted, attempted)
+        if (!mesh.isJoined(compId) && !mesh.joinLocal(compId)) {
+            return@runCatching Result.Failed("board_cell_unavailable")
+        }
+        val accepted = mesh.publish(compId, event)
+        client.ingestMesh(event, System.currentTimeMillis() / 1_000)
+        Result.Published(accepted, accepted)
     }.getOrElse { Result.Failed(it.message ?: "publish_failed") }
 }

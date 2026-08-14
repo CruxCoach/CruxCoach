@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import com.cruxcoach.android.boardcell.BoardCellScopeRegistry
 import com.cruxcoach.android.R
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardPacketEncoder
@@ -469,6 +470,7 @@ class BoardBleConnection(private val context: Context) {
      */
     @SuppressLint("MissingPermission")
     fun connect(board: DiscoveredBoard, maxAttempts: Int = MAX_CONNECT_ATTEMPTS) {
+        BoardCellScopeRegistry.select(board)
         if (_connectionState.value != ConnectionState.DISCONNECTED) return
 
         attemptBudget = maxAttempts.coerceIn(1, MAX_CONNECT_ATTEMPTS)
@@ -857,6 +859,7 @@ class BoardBleConnection(private val context: Context) {
         writeCharacteristic = null
         currentBoard = null
         _connectedBoardDescriptor.value = null
+        BoardCellScopeRegistry.clearSelection()
         _connectionState.value = ConnectionState.DISCONNECTED
         _connectedBoardName.value = null
         _connectedBoardBrand.value = null

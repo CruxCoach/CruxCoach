@@ -5,6 +5,7 @@ import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.NearbyClimb
 import com.cruxcoach.android.ble.NearbyClimbScanner
 import com.cruxcoach.android.ble.NearbySession
+import com.cruxcoach.android.boardcell.BoardCellScopeRegistry
 import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.android.util.PerfLogger
 import kotlinx.coroutines.CoroutineScope
@@ -102,19 +103,26 @@ class BleShareManager @Inject constructor(
                 // values[5] = SessionQueueState — triggers re-emit on queue changes
                 val gradeScale = values[6] as GradeScale
 
+                // v1 Nearby payloads contain no physical-board/cell scope. Preserve
+                // compatibility at a single wall, but never let them choose between
+                // two observed boards or overwrite the selected BoardCell.
+                val legacyUnscopedSafe = BoardCellScopeRegistry.acceptsLegacyUnscoped()
+                val scopedClimbs = if (legacyUnscopedSafe) nearbyClimbs else emptyList()
+                val scopedSessions = if (legacyUnscopedSafe) sessions else emptyList()
+
                 // Bridge remote climbs FIRST (side-effect: updates boardStateManager),
                 // then build UI state. No removeEntry() — filter locally instead.
-                bridgeRemoteClimbs(nearbyClimbs)
+                bridgeRemoteClimbs(scopedClimbs)
 
                 // Check disconnect request resolution inline (was a separate collector)
                 if (_uiState.value.isRequestingDisconnect) {
-                    val noActiveRemote = nearbyClimbs.none { !it.isLastClimb && !it.connectedOnly }
+                    val noActiveRemote = scopedClimbs.none { !it.isLastClimb && !it.connectedOnly }
                     if (noActiveRemote) {
                         cancelDisconnectRequest()
                     }
                 }
 
-                buildUiState(lastClimb, nearbyClimbs, climbInfos, sessions, sharingEnabled, gradeScale)
+                buildUiState(lastClimb, scopedClimbs, climbInfos, scopedSessions, sharingEnabled, gradeScale)
             }.distinctUntilChanged { old, new ->
                 // Structural comparison ignoring RSSI fluctuations that don't affect the UI.
                 // data class equals includes rssi fields in OnBoardClimbEntry and NearbySessionEntry,

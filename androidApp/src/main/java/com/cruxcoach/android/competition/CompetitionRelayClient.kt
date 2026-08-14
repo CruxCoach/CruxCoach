@@ -18,7 +18,10 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.delay
 
 /**
  * Reads a competition off the relays and reduces it.
@@ -80,6 +83,18 @@ class CompetitionRelayClient @Inject constructor(
         intents.clear()
         definitionCompetition = null
 
+        // Explicit open joins the local BoardCell first and requests complete
+        // signed history. No relay is contacted when the definition arrives.
+        if (CompetitionMeshTransport.current?.joinLocal(compId) == true) {
+            repeat(15) {
+                delay(100)
+                val local = _snapshot.value
+                if (local.competition?.compId == compId) return true
+            }
+            _snapshot.update { Snapshot(problem = Problem.NOT_FOUND) }
+            return false
+        }
+
         val filter = """{"kinds":[${CompetitionProtocol.KIND}],""" +
             """"authors":["$organizerPubkey"],""" +
             """"#d":["${CompetitionProtocol.compDTag(compId)}"],"limit":4}"""
@@ -140,6 +155,10 @@ class CompetitionRelayClient @Inject constructor(
         val current = _snapshot.value
         val competition = current.competition ?: return@flow
         val organizerPubkey = current.organizerPubkey ?: return@flow
+        if (CompetitionMeshTransport.current?.isJoined(competition.compId) == true) {
+            snapshot.map { it.state?.seq ?: -1L }.distinctUntilChanged().collect { emit(entries.size) }
+            return@flow
+        }
         val address = CompetitionProtocol.competitionAddress(organizerPubkey, competition.compId)
         val filter = """{"kinds":[${CompetitionProtocol.KIND}],"#a":["$address"]}"""
 
@@ -193,6 +212,40 @@ class CompetitionRelayClient @Inject constructor(
             entries[event.id] = CompetitionReducer.Chained(parsed.entry, parsed.eventId, parsed.createdAt)
             reduce()
         }
+    }
+
+    /** Ingest a signed event received from an authenticated, joined FIPS cell. */
+    fun ingestMesh(event: Event, nowSeconds: Long): Boolean {
+        if (!acceptsBody(event)) return false
+        val existing = definitionCompetition
+        if (existing == null) {
+            return when (val parsed = CompetitionProtocol.parseCompetition(event.toCompetitionEvent(), nowSeconds)) {
+                is CompetitionProtocol.ParsedCompetition.Invalid -> false
+                is CompetitionProtocol.ParsedCompetition.Valid -> {
+                    definitionCompetition = parsed.competition
+                    _snapshot.value = Snapshot(
+                        competition = parsed.competition,
+                        competitionEventId = parsed.eventId,
+                        organizerPubkey = parsed.organizerPubkey,
+                        lastSyncedAt = nowSeconds,
+                    )
+                    reduce(); true
+                }
+            }
+        }
+        val organizer = _snapshot.value.organizerPubkey ?: return false
+        val intent = CompetitionProtocol.parseIntent(event.toCompetitionEvent(), existing, organizer, nowSeconds)
+        if (intent is CompetitionProtocol.ParsedIntent.Valid) {
+            val key = "${intent.pubkey}:${intent.op}"
+            val old = intents[key]
+            if (old == null || intent.createdAt >= old.createdAt) intents[key] = intent
+            reduce(); return true
+        }
+        if (event.pubKey != existing.authority || entries.containsKey(event.id)) return false
+        val parsed = CompetitionProtocol.parseLogEntry(event.toCompetitionEvent(), existing, organizer, nowSeconds)
+        if (parsed !is CompetitionProtocol.ParsedLogEntry.Valid) return false
+        entries[event.id] = CompetitionReducer.Chained(parsed.entry, parsed.eventId, parsed.createdAt)
+        reduce(); return true
     }
 
     private fun reduce() {
