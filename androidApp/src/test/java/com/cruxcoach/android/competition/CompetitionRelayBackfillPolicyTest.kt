@@ -4,6 +4,7 @@ import com.cruxcoach.domain.competition.CompetitionProtocol
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class CompetitionRelayBackfillPolicyTest {
@@ -17,9 +18,9 @@ class CompetitionRelayBackfillPolicyTest {
     fun `initial history page starts at entry one and requests exact d tags`() {
         val tags = CompetitionRelayClient.logPageDTags(compId, 1)
 
-        assertEquals(100, tags.size)
+        assertEquals(20, tags.size)
         assertEquals("cruxcoach:comp:$compId:log:000001", tags.first())
-        assertEquals("cruxcoach:comp:$compId:log:000100", tags.last())
+        assertEquals("cruxcoach:comp:$compId:log:000020", tags.last())
 
         val filter = CompetitionRelayClient.logPageFilter(authority, address, tags)
         assertTrue(filter.contains("\"authors\":[\"$authority\"]"))
@@ -34,6 +35,27 @@ class CompetitionRelayBackfillPolicyTest {
         assertEquals(3, CompetitionRelayClient.boundedMissingSequence(setOf(1, 2, 4, 5)))
         assertNull(CompetitionRelayClient.boundedMissingSequence((1..21).toSet()))
         assertNull(CompetitionRelayClient.boundedMissingSequence(emptySet()))
+    }
+
+    @Test
+    fun `state cannot be trustworthy before stored history completes`() {
+        val state = com.cruxcoach.domain.competition.CompetitionState(
+            compId = compId,
+            authority = authority,
+            epoch = 1,
+            head = "cc".repeat(32),
+            status = "live",
+            chainComplete = true,
+        )
+
+        assertFalse(CompetitionRelayClient.Snapshot(state = state, historyComplete = false).trustworthy)
+        assertTrue(CompetitionRelayClient.Snapshot(state = state, historyComplete = true).trustworthy)
+        assertFalse(
+            CompetitionRelayClient.Snapshot(
+                state = state.copy(forkDetected = true),
+                historyComplete = true,
+            ).trustworthy,
+        )
     }
 
     @Test

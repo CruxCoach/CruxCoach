@@ -183,7 +183,7 @@ fun CompetitionDetailScreen(
             )
         },
         bottomBar = {
-            if (!viewModel.isAuthority && participantRoute == ParticipantRoute.LIVE) ParticipantActionBar(
+            if (ui.snapshot.trustworthy && !viewModel.isAuthority && participantRoute == ParticipantRoute.LIVE) ParticipantActionBar(
                 ui = ui,
                 nowSeconds = now,
                 viewModel = viewModel,
@@ -226,22 +226,28 @@ fun CompetitionDetailScreen(
         val competition = snapshot.competition
         val state = snapshot.state
 
-        // A definition without its authority chain is not evidence that this
-        // identity is unregistered. Hide participant actions until history is
-        // hydrated, and likewise while a real chain gap is being recovered.
-        if (!viewModel.isAuthority && (snapshot.loading || state?.chainComplete == false)) {
+        // A definition without its complete authority chain is not evidence of
+        // registration, queue position, results, or safe host state. Block all
+        // role-specific controls until exact-d-tag backfill is trustworthy.
+        if (snapshot.loading || !snapshot.trustworthy) {
             Column(
                 Modifier.fillMaxSize().padding(padding).padding(24.dp)
                     .testTag("competition_history_loading"),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
-                CircularProgressIndicator()
-                Spacer(Modifier.height(12.dp))
+                if (snapshot.loading) {
+                    CircularProgressIndicator()
+                    Spacer(Modifier.height(12.dp))
+                }
                 Text(
                     stringResource(
-                        if (state?.chainComplete == false) R.string.comp_history_gap_recovering
-                        else R.string.comp_history_loading,
+                        when {
+                            snapshot.loading -> R.string.comp_history_loading
+                            state?.forkDetected == true -> R.string.comp_fork
+                            state?.chainComplete == false -> R.string.comp_history_gap_recovering
+                            else -> R.string.comp_history_untrusted
+                        },
                     ),
                     textAlign = TextAlign.Center,
                     modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
@@ -1090,7 +1096,7 @@ private fun LivePanel(
                 if (nextTask != null) stringResource(R.string.comp_live_next_task, nextTask.label)
                 else stringResource(
                     if (ui.picksOwnClimbs) R.string.comp_live_no_prepared_boulder
-                    else R.string.comp_live_no_next_task,
+                    else R.string.comp_live_waiting_shared_boulder,
                 ),
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

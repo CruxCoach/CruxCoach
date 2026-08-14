@@ -43,6 +43,8 @@ class CompetitionRelayClient @Inject constructor(
         val state: CompetitionState? = null,
         val standings: List<CompetitionScoring.Standing> = emptyList(),
         val chainBreakAt: Int? = null,
+        /** True only after exact d-tag paging reached the first absent sequence. */
+        val historyComplete: Boolean = false,
         val loading: Boolean = false,
         val problem: Problem? = null,
         val entryCount: Int = 0,
@@ -53,7 +55,7 @@ class CompetitionRelayClient @Inject constructor(
     ) {
         /** Whether the record is complete and unforked enough to show standings. */
         val trustworthy: Boolean
-            get() = state != null && state.chainComplete && !state.forkDetected
+            get() = historyComplete && state != null && state.chainComplete && !state.forkDetected
     }
 
     /** Named so the UI can say something specific instead of "error". */
@@ -157,7 +159,7 @@ class CompetitionRelayClient @Inject constructor(
         // live subscription becomes the source of truth. Exact d-tags also
         // avoid a relay's silently clamped result limit dropping the beginning
         // of a long chain.
-        backfillLog(competition, organizerPubkey, address, nowSeconds)
+        var historyComplete = backfillLog(competition, organizerPubkey, address, nowSeconds)
         recoverBoundedGap(competition, organizerPubkey, address, nowSeconds)
 
         // Intents are not part of the authority chain, but restoring them makes
@@ -168,7 +170,7 @@ class CompetitionRelayClient @Inject constructor(
                 ingest(json, competition, organizerPubkey, nowSeconds())
             }
         }
-        reduce(loading = false)
+        reduce(loading = false, historyComplete = historyComplete)
         emit(entries.size)
 
         // Bypass the global cache here as well. This REQ first replays whatever
@@ -182,6 +184,10 @@ class CompetitionRelayClient @Inject constructor(
             // have exposed a hole, while the broad live REQ is now replaying
             // already-present entries above it.
             recoverBoundedGap(competition, organizerPubkey, address, nowSeconds)
+            if (!historyComplete) {
+                historyComplete = backfillLog(competition, organizerPubkey, address, nowSeconds)
+                reduce(loading = false, historyComplete = historyComplete)
+            }
             if (changed || entries.size != countBefore) {
                 emit(entries.size)
             }
@@ -193,7 +199,7 @@ class CompetitionRelayClient @Inject constructor(
         organizerPubkey: String,
         address: String,
         nowSeconds: () -> Long,
-    ) {
+    ): Boolean {
         var firstSeq = 1
         while (firstSeq <= MAX_LOG_SEQUENCE) {
             val wanted = logPageDTags(competition.compId, firstSeq)
@@ -205,15 +211,16 @@ class CompetitionRelayClient @Inject constructor(
             } ?: false
             if (!completed) {
                 Log.w(TAG, "stored log backfill timed out at seq $firstSeq; live REQ will continue recovery")
-                break
+                return false
             }
             val present = entrySequences()
             val firstMissing = wanted.indices.firstOrNull { wantedIndex ->
                 firstSeq + wantedIndex !in present
             }
-            if (firstMissing != null) break
+            if (firstMissing != null) return true
             firstSeq += wanted.size
         }
+        return false
     }
 
     /** Fetch a known internal hole without mistaking an absent next head for a gap. */
@@ -303,7 +310,10 @@ class CompetitionRelayClient @Inject constructor(
         }
     }
 
-    private fun reduce(loading: Boolean = false) {
+    private fun reduce(
+        loading: Boolean = false,
+        historyComplete: Boolean = _snapshot.value.historyComplete,
+    ) {
         val current = _snapshot.value
         val competition = definitionCompetition ?: return
         val rootId = current.competitionEventId ?: return
@@ -314,6 +324,7 @@ class CompetitionRelayClient @Inject constructor(
                 competition = reduction.effectiveCompetition,
                 standings = CompetitionScoring.standings(reduction.state, reduction.effectiveCompetition),
                 chainBreakAt = reduction.chainBreakAt,
+                historyComplete = historyComplete,
                 entryCount = entries.size,
                 loading = loading,
                 lastSyncedAt = System.currentTimeMillis() / 1000,
@@ -357,7 +368,10 @@ class CompetitionRelayClient @Inject constructor(
 
     companion object {
         private const val TAG = "CompetitionRelay"
-        private const val LOG_PAGE_SIZE = 100
+        // A relay that clamps every response to twenty events can still return
+        // one event for every exact d-tag in the page. The larger filter limit
+        // below leaves room for fork evidence at a sequence.
+        private const val LOG_PAGE_SIZE = 20
         private const val MAX_LOG_SEQUENCE = 999_999
         private const val MAX_GAP_RECOVERY_PER_EVENT = LOG_PAGE_SIZE
         private const val BACKFILL_TIMEOUT_MS = 12_000L
@@ -367,7 +381,7 @@ class CompetitionRelayClient @Inject constructor(
                 .map { CompetitionProtocol.logDTag(compId, it) }
 
         internal fun logPageFilter(authority: String, address: String, dTags: List<String>): String =
-            """{"kinds":[${CompetitionProtocol.KIND}],"authors":["$authority"],"#a":["$address"],"#d":[${dTags.joinToString(",") { "\"$it\"" }}],"limit":${dTags.size}}"""
+            """{"kinds":[${CompetitionProtocol.KIND}],"authors":["$authority"],"#a":["$address"],"#d":[${dTags.joinToString(",") { "\"$it\"" }}],"limit":100}"""
 
         internal fun intentFilter(address: String): String =
             """{"kinds":[${CompetitionProtocol.KIND}],"#a":["$address"],"#l":["intent"],"limit":1000}"""
