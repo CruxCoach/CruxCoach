@@ -5,9 +5,11 @@ import com.cruxcoach.android.ui.competition.competitionClimbsEditorText
 import com.cruxcoach.domain.competition.Competition
 import com.cruxcoach.domain.competition.CompetitionClimb
 import com.cruxcoach.domain.competition.CompetitionRules
+import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertContains
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -19,13 +21,14 @@ class CompetitionEditClimbsTest {
     @Test
     fun `editor prefill round trips stable climb fields`() {
         val competition = competition(participantChoice = false, counted = 1)
-        assertEquals("$firstUuid | First | 7", competitionClimbsEditorText(competition.climbs))
+        assertEquals("$firstUuid | First | 10 | 7", competitionClimbsEditorText(competition.climbs))
 
-        val patch = competitionClimbsEditorPatch(competition, "$firstUuid | Renamed")!!
+        val patch = competitionClimbsEditorPatch(competition, "$firstUuid | Renamed | 99")!!
         val row = (patch["climbs"] as JsonArray).single() as JsonObject
         assertEquals("b1", (row["id"] as JsonPrimitive).content)
         assertEquals("Renamed", (row["label"] as JsonPrimitive).content)
         assertEquals("keep-me", (row["naddr"] as JsonPrimitive).content)
+        assertEquals("99", (row["points"] as JsonPrimitive).content)
         assertEquals(null, row["zone_hold"])
     }
 
@@ -34,11 +37,11 @@ class CompetitionEditClimbsTest {
         val competition = competition(participantChoice = true, counted = 1)
         val patch = competitionClimbsEditorPatch(
             competition,
-            "$firstUuid | First | 7\n$secondUuid | Second",
+            "$firstUuid | First | 10 | 7\n$secondUuid | Second | 20",
         )!!
         val pool = patch["climb_pool"] as JsonObject
         assertEquals(2, (pool["options"] as JsonArray).size)
-        assertEquals(2, ((patch["rules"] as JsonObject)["climb_count"] as JsonPrimitive).content.toInt())
+        assertEquals(null, patch["rules"])
     }
 
     @Test
@@ -46,7 +49,22 @@ class CompetitionEditClimbsTest {
         val competition = competition(participantChoice = true, counted = 2)
         assertNull(competitionClimbsEditorPatch(competition, "$firstUuid | First"))
         assertNull(competitionClimbsEditorPatch(competition, "$firstUuid | A\n$firstUuid | B"))
-        assertNull(competitionClimbsEditorPatch(competition, "$firstUuid | A | zero\n$secondUuid | B"))
+        assertNull(competitionClimbsEditorPatch(competition, "$firstUuid | A | 10 | zero\n$secondUuid | B"))
+    }
+
+    @Test
+    fun `edit dialog exposes effective scoring format controls`() {
+        val source = listOf(
+            File("src/main/java/com/cruxcoach/android/ui/competition/CompetitionDetailScreen.kt"),
+            File("androidApp/src/main/java/com/cruxcoach/android/ui/competition/CompetitionDetailScreen.kt"),
+        ).first(File::isFile).readText()
+
+        listOf(
+            "competition.rules.climbCount", "competition.rules.countedClimbCount",
+            "competition.rules.progression", "competition.rules.scoring",
+            "competition.waitlistEnabled", "competition.rules.lateEntryAllowed",
+            "score_points", "points_sum", "hardest_n",
+        ).forEach { assertContains(source, it) }
     }
 
     private fun competition(participantChoice: Boolean, counted: Int): Competition {

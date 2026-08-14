@@ -31,6 +31,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -999,11 +1000,22 @@ private fun HostCompetitionEditDialog(
     var venueName by rememberSaveable(competition.revision) { mutableStateOf(venue) }
     var capacity by rememberSaveable(competition.revision) { mutableStateOf(competition.capacity.toString()) }
     var attempts by rememberSaveable(competition.revision) { mutableStateOf(competition.rules.attemptsPerClimb.toString()) }
+    var climbCount by rememberSaveable(competition.revision) { mutableStateOf(competition.rules.climbCount.toString()) }
+    var countedClimbCount by rememberSaveable(competition.revision) { mutableStateOf(competition.rules.countedClimbCount.toString()) }
+    var progression by rememberSaveable(competition.revision) { mutableStateOf(competition.rules.progression) }
+    var scoring by rememberSaveable(competition.revision) { mutableStateOf(competition.rules.scoring) }
+    var zonePoints by rememberSaveable(competition.revision) { mutableStateOf((competition.rules.scorePoints?.zone ?: 10).toString()) }
+    var topPoints by rememberSaveable(competition.revision) { mutableStateOf((competition.rules.scorePoints?.top ?: 25).toString()) }
+    var flashPoints by rememberSaveable(competition.revision) { mutableStateOf((competition.rules.scorePoints?.flash ?: 5).toString()) }
+    var waitlistEnabled by rememberSaveable(competition.revision) { mutableStateOf(competition.waitlistEnabled) }
+    var lateEntryAllowed by rememberSaveable(competition.revision) { mutableStateOf(competition.rules.lateEntryAllowed) }
     var climbText by rememberSaveable(competition.revision) { mutableStateOf(initialClimbs) }
     var reason by rememberSaveable(competition.revision) { mutableStateOf("") }
 
     val climbPatch = if (climbText == initialClimbs) JsonObject(emptyMap())
-    else competitionClimbsEditorPatch(competition, climbText)
+    else competitionClimbsEditorPatch(
+        competition, climbText, countedClimbCount.toIntOrNull() ?: competition.rules.countedClimbCount,
+    )
 
     val patch = JsonObject(buildMap {
         title.trim().takeIf { it != competition.title }?.let { put("title", JsonPrimitive(it)) }
@@ -1012,9 +1024,31 @@ private fun HostCompetitionEditDialog(
             put("venue", JsonObject(mapOf("name" to JsonPrimitive(it))))
         }
         capacity.toIntOrNull()?.takeIf { it != competition.capacity }?.let { put("capacity", JsonPrimitive(it)) }
+        if (waitlistEnabled != competition.waitlistEnabled) put("waitlist_enabled", JsonPrimitive(waitlistEnabled))
         attempts.toIntOrNull()?.takeIf { it != competition.rules.attemptsPerClimb }?.let {
             put("rules", JsonObject(mapOf("attempts_per_climb" to JsonPrimitive(it))))
         }
+        val rules = (get("rules") as? JsonObject).orEmpty().toMutableMap()
+        climbCount.toIntOrNull()?.takeIf { it != competition.rules.climbCount }
+            ?.let { rules["climb_count"] = JsonPrimitive(it) }
+        countedClimbCount.toIntOrNull()?.takeIf { it != competition.rules.countedClimbCount }
+            ?.let { rules["counted_climb_count"] = JsonPrimitive(it) }
+        progression.takeIf { it != competition.rules.progression }
+            ?.let { rules["progression"] = JsonPrimitive(it) }
+        scoring.takeIf { it != competition.rules.scoring }
+            ?.let { rules["scoring"] = JsonPrimitive(it) }
+        if (scoring == "achievement_points") {
+            val points = JsonObject(mapOf(
+                "zone" to JsonPrimitive(zonePoints.toIntOrNull() ?: -1),
+                "top" to JsonPrimitive(topPoints.toIntOrNull() ?: -1),
+                "flash" to JsonPrimitive(flashPoints.toIntOrNull() ?: -1),
+            ))
+            val previous = competition.raw["rules"]?.let { it as? JsonObject }?.get("score_points")
+            if (points != previous) rules["score_points"] = points
+        }
+        lateEntryAllowed.takeIf { it != competition.rules.lateEntryAllowed }
+            ?.let { rules["late_entry_allowed"] = JsonPrimitive(it) }
+        if (rules.isNotEmpty()) put("rules", JsonObject(rules))
         climbPatch?.forEach { (key, value) ->
             if (key == "rules" && value is JsonObject) {
                 val current = get("rules") as? JsonObject
@@ -1025,8 +1059,17 @@ private fun HostCompetitionEditDialog(
         }
     })
     val impact = impactOf(patch)
+    val availableClimbs = climbText.lineSequence().count(String::isNotBlank)
+    val parsedClimbCount = climbCount.toIntOrNull()
+    val parsedCounted = countedClimbCount.toIntOrNull()
+    val parsedScorePoints = listOf(zonePoints, topPoints, flashPoints).map(String::toIntOrNull)
     val valid = title.isNotBlank() && capacity.toIntOrNull() in 0..500 &&
-        attempts.toIntOrNull() in 1..20 && reason.isNotBlank() && impact != null && climbPatch != null
+        attempts.toIntOrNull() in 1..20 && parsedClimbCount in 1..minOf(availableClimbs, 40) &&
+        parsedCounted in 1..(parsedClimbCount ?: 0) &&
+        !(competition.rules.climbSource == "participant_choice" && scoring in setOf("points_sum", "hardest_n")) &&
+        (scoring != "achievement_points" || (parsedScorePoints.all { it != null && it in 0..10_000 } &&
+            parsedScorePoints.filterNotNull().any { it > 0 })) &&
+        reason.isNotBlank() && impact != null && climbPatch != null
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1045,6 +1088,39 @@ private fun HostCompetitionEditDialog(
                 OutlinedTextField(venueName, { venueName = it }, label = { Text(stringResource(R.string.comp_edit_field_venue)) }, singleLine = true)
                 OutlinedTextField(capacity, { capacity = it.filter(Char::isDigit) }, label = { Text(stringResource(R.string.comp_edit_field_capacity)) }, singleLine = true)
                 OutlinedTextField(attempts, { attempts = it.filter(Char::isDigit) }, label = { Text(stringResource(R.string.comp_edit_field_attempts)) }, singleLine = true)
+                OutlinedTextField(climbCount, { climbCount = it.filter(Char::isDigit) }, label = { Text(stringResource(R.string.comp_create_field_climb_count)) }, singleLine = true)
+                OutlinedTextField(countedClimbCount, { countedClimbCount = it.filter(Char::isDigit) }, label = { Text(stringResource(R.string.comp_create_field_counted_climbs)) }, singleLine = true)
+                EditChoice(
+                    stringResource(R.string.comp_create_field_progression), progression,
+                    listOf(
+                        "asynchronous_turns" to stringResource(R.string.comp_create_progression_async),
+                        "synchronous_rounds" to stringResource(R.string.comp_create_progression_sync),
+                    ),
+                ) { progression = it }
+                EditChoice(
+                    stringResource(R.string.comp_create_field_scoring), scoring,
+                    buildList {
+                        add("tops_then_attempts" to stringResource(R.string.comp_create_scoring_tops))
+                        add("achievement_points" to stringResource(R.string.comp_create_scoring_achievement))
+                        if (competition.rules.climbSource == "organizer_set") {
+                            add("points_sum" to stringResource(R.string.comp_create_scoring_points))
+                            add("hardest_n" to stringResource(R.string.comp_create_scoring_hardest))
+                        }
+                    },
+                ) { scoring = it }
+                if (scoring == "achievement_points") {
+                    OutlinedTextField(zonePoints, { zonePoints = it.filter(Char::isDigit) }, label = { Text(stringResource(R.string.comp_create_field_zone_points)) }, singleLine = true)
+                    OutlinedTextField(topPoints, { topPoints = it.filter(Char::isDigit) }, label = { Text(stringResource(R.string.comp_create_field_top_points)) }, singleLine = true)
+                    OutlinedTextField(flashPoints, { flashPoints = it.filter(Char::isDigit) }, label = { Text(stringResource(R.string.comp_create_field_flash_points)) }, singleLine = true)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(R.string.comp_create_waitlist), Modifier.weight(1f))
+                    Checkbox(waitlistEnabled, { waitlistEnabled = it })
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(R.string.comp_create_late_entry), Modifier.weight(1f))
+                    Checkbox(lateEntryAllowed, { lateEntryAllowed = it })
+                }
                 OutlinedTextField(
                     climbText, { climbText = it },
                     label = { Text(stringResource(R.string.comp_edit_field_climbs)) },
@@ -1096,11 +1172,15 @@ private fun HostCompetitionEditDialog(
 }
 
 internal fun competitionClimbsEditorText(climbs: List<CompetitionClimb>): String = climbs.joinToString("\n") { climb ->
-    listOfNotNull(climb.climbUuid, climb.label, climb.zoneHold?.toString()).joinToString(" | ")
+    listOfNotNull(climb.climbUuid, climb.label, climb.points.toString(), climb.zoneHold?.toString()).joinToString(" | ")
 }
 
 /** Parse the compact editor while retaining stable IDs and unknown signed metadata for existing rows. */
-internal fun competitionClimbsEditorPatch(competition: Competition, text: String): JsonObject? {
+internal fun competitionClimbsEditorPatch(
+    competition: Competition,
+    text: String,
+    countedClimbCount: Int = competition.rules.countedClimbCount,
+): JsonObject? {
     val participantChoice = competition.rules.climbSource == "participant_choice"
     val existing = if (participantChoice) competition.climbPool else competition.climbs
     val rawEntries = if (participantChoice) {
@@ -1125,7 +1205,10 @@ internal fun competitionClimbsEditorPatch(competition: Competition, text: String
         if (!CompetitionProtocol.isClimbUuid(uuid) || !seen.add(uuid)) return null
         val prior = existing.firstOrNull { it.climbUuid.equals(uuid, ignoreCase = true) }
         val label = parts.getOrNull(1)?.takeIf(String::isNotBlank) ?: prior?.label ?: uuid.take(8)
-        val zoneText = parts.getOrNull(2).orEmpty()
+        val pointsText = parts.getOrNull(2).orEmpty()
+        val points = pointsText.takeIf(String::isNotBlank)?.toIntOrNull()
+        if (pointsText.isNotBlank() && (points == null || points < 0)) return null
+        val zoneText = parts.getOrNull(3).orEmpty()
         val zone = zoneText.takeIf(String::isNotBlank)?.toIntOrNull()
         if (zoneText.isNotBlank() && (zone == null || zone <= 0)) return null
         val raw = rawEntries.firstOrNull { entry ->
@@ -1135,19 +1218,31 @@ internal fun competitionClimbsEditorPatch(competition: Competition, text: String
         raw["climb_uuid"] = JsonPrimitive(uuid)
         raw["angle"] = JsonPrimitive(prior?.angle ?: boardAngle)
         raw["label"] = JsonPrimitive(label)
-        raw["points"] = JsonPrimitive(prior?.points ?: 0)
+        raw["points"] = JsonPrimitive(points ?: prior?.points ?: 0)
         if (zone == null) raw.remove("zone_hold") else raw["zone_hold"] = JsonPrimitive(zone)
         JsonObject(raw)
     }.toList()
-    if (entries.isEmpty() || entries.size > 40 || entries.size < competition.rules.countedClimbCount) return null
+    if (entries.isEmpty() || entries.size > 40 || entries.size < countedClimbCount) return null
 
     return if (participantChoice) {
-        JsonObject(mapOf(
-            "climb_pool" to JsonObject(mapOf("options" to JsonArray(entries))),
-            "rules" to JsonObject(mapOf("climb_count" to JsonPrimitive(entries.size))),
-        ))
+        JsonObject(mapOf("climb_pool" to JsonObject(mapOf("options" to JsonArray(entries)))))
     } else {
         JsonObject(mapOf("climbs" to JsonArray(entries)))
+    }
+}
+
+@Composable
+private fun EditChoice(
+    label: String,
+    selected: String,
+    options: List<Pair<String, String>>,
+    onSelect: (String) -> Unit,
+) = Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Text(label, fontWeight = FontWeight.SemiBold)
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        options.forEach { (value, text) ->
+            FilterChip(selected == value, { onSelect(value) }, label = { Text(text) })
+        }
     }
 }
 

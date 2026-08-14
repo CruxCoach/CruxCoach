@@ -2477,7 +2477,7 @@
     <string name="comp_edit_field_capacity">Capacity</string>
     <string name="comp_edit_field_attempts">Attempts per boulder</string>
     <string name="comp_edit_field_climbs">Selected competition boulders</string>
-    <string name="comp_edit_climbs_hint">One per line: CruxCoach link or UUID | name | optional zone-hold ID. Existing stable IDs are preserved.</string>
+    <string name="comp_edit_climbs_hint">One per line: CruxCoach link or UUID | name | points | optional zone-hold ID. Existing stable IDs and metadata are preserved.</string>
     <string name="comp_edit_climbs_invalid">Add 1–40 unique valid climb UUIDs. The list cannot be shorter than the number of counted results.</string>
     <string name="comp_edit_impact_none">No changes yet — edit a field before publishing.</string>
     <string name="comp_edit_impact_safe">Operational update — information changes, scores stay unchanged.</string>
