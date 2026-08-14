@@ -160,7 +160,7 @@ object CompetitionReducer {
     private val HANDLED_OPS = setOf(
         "lifecycle", "registration_decision", "payment_decision", "claim_decision",
         "prize_decision", "checkin", "queue", "defer_decision", "attempt_result", "complete_turn",
-        "disqualify", "announcement",
+        "disqualify", "retire", "announcement",
         "config_update",
     )
 
@@ -176,6 +176,7 @@ object CompetitionReducer {
         "attempt_result" -> applyAttemptResult(state, entry, competition)
         "complete_turn" -> applyCompleteTurn(state, entry, competition)
         "disqualify" -> applyDisqualify(state, entry)
+        "retire" -> applyRetire(state, entry, competition)
         "announcement" -> applyAnnouncement(state, entry)
         "config_update" -> applyConfigUpdate(state, entry, competition)
         else -> reject(state, entry, "unknown_op")
@@ -437,6 +438,13 @@ object CompetitionReducer {
 
         if (action == "close_turn") return state.copy(cursor = -1, turnDeadlineAt = 0)
 
+        if (action == "skip_turn") {
+            if (state.cursor !in state.order.indices || state.turnOpenedAt <= 0) {
+                return reject(state, entry, "no_open_turn")
+            }
+            return openNextOrRound(state, competition, state.cursor, entry.at)
+        }
+
         if (action == "advance") {
             val next = nextEligibleIndex(state, competition, state.cursor, entry.at)
             if (next == -1) return state.copy(cursor = -1, turnDeadlineAt = 0)
@@ -573,29 +581,39 @@ object CompetitionReducer {
         val attempted = applyAttemptResult(state, entry, competition)
         if (attempted.rejected.size > state.rejected.size) return attempted
 
-        val next = nextEligibleIndex(attempted, competition, state.cursor, entry.at)
+        return openNextOrRound(attempted, competition, state.cursor, entry.at)
+    }
+
+    /** Open the next eligible turn, wrapping atomically into a fresh round. */
+    private fun openNextOrRound(
+        state: CompetitionState,
+        competition: Competition,
+        from: Int,
+        at: Long,
+    ): CompetitionState {
+        val next = nextEligibleIndex(state, competition, from, at)
         if (next >= 0) {
-            return attempted.copy(
+            return state.copy(
                 cursor = next,
-                turnOpenedAt = entry.at,
-                turnDeadlineAt = entry.at + competition.rules.turnDeadlineSec,
+                turnOpenedAt = at,
+                turnDeadlineAt = at + competition.rules.turnDeadlineSec,
             )
         }
 
-        val nextRound = attempted.copy(
-            round = attempted.round + 1,
+        val nextRound = state.copy(
+            round = state.round + 1,
             cursor = -1,
             turnOpenedAt = 0,
             turnDeadlineAt = 0,
-            participants = attempted.participants.map {
+            participants = state.participants.map {
                 it.copy(defersUsedThisRound = 0, consecutiveDefers = 0)
             },
         )
-        val first = nextEligibleIndex(nextRound, competition, -1, entry.at)
+        val first = nextEligibleIndex(nextRound, competition, -1, at)
         return if (first < 0) nextRound else nextRound.copy(
             cursor = first,
-            turnOpenedAt = entry.at,
-            turnDeadlineAt = entry.at + competition.rules.turnDeadlineSec,
+            turnOpenedAt = at,
+            turnDeadlineAt = at + competition.rules.turnDeadlineSec,
         )
     }
 
@@ -605,6 +623,26 @@ object CompetitionReducer {
         val order = state.order.filterNot { it == pubkey }
         var updated = state.withParticipant(participant.copy(result = "disqualified")).copy(order = order)
         if (updated.cursor >= order.size) updated = updated.copy(cursor = -1, turnDeadlineAt = 0)
+        return updated
+    }
+
+    private fun applyRetire(
+        state: CompetitionState,
+        entry: LogEntry,
+        competition: Competition,
+    ): CompetitionState {
+        val pubkey = entry.data.str("pubkey")
+        val participant = pubkey?.let { state.participant(it) } ?: return reject(state, entry, "no_such_participant")
+        if (participant.result != "active") return reject(state, entry, "participant_inactive")
+        val removedAt = state.order.indexOf(pubkey)
+        val wasCurrent = removedAt >= 0 && state.cursor == removedAt
+        val order = state.order.filterNot { it == pubkey }
+        var updated = state.withParticipant(participant.copy(result = "finished")).copy(order = order)
+        updated = when {
+            wasCurrent -> openNextOrRound(updated, competition, removedAt - 1, entry.at)
+            removedAt >= 0 && removedAt < state.cursor -> updated.copy(cursor = state.cursor - 1)
+            else -> updated
+        }
         return updated
     }
 

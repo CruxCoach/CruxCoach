@@ -2395,6 +2395,8 @@
     <string name="comp_empty_title">Nothing scheduled yet</string>
     <string name="comp_empty">No public competitions are listed right now.</string>
     <string name="comp_loading">Loading…</string>
+    <string name="comp_history_loading">Loading your verified competition status…</string>
+    <string name="comp_history_gap_recovering">Competition history is incomplete. Recovering the missing entry before participant actions are enabled…</string>
     <string name="comp_refresh">Refresh</string>
     <string name="comp_discover_title">Public competitions</string>
     <string name="comp_organised_by">by %1$s</string>
@@ -2462,6 +2464,7 @@
     <string name="comp_live_cancelled">The competition was cancelled</string>
     <string name="comp_live_next_task">Next: %1$s</string>
     <string name="comp_live_no_next_task">Your next boulder has not been assigned yet.</string>
+    <string name="comp_live_no_prepared_boulder">You have not chosen your next boulder yet.</string>
     <string name="comp_live_queue">Climber queue</string>
     <string name="comp_live_now_short">Now</string>
     <string name="comp_live_more">+ %1$d more</string>
@@ -2704,5 +2707,10 @@
     <string name="comp_sats">%1$d sat</string>
     <string name="comp_host_prepared_choice">Prepared: %1$s</string>
     <string name="comp_host_choice_unavailable">This choice is no longer available</string>
+    <string name="comp_host_skip_turn">Skip turn</string>
+    <string name="comp_host_retire">Finish participation</string>
+    <string name="comp_host_retire_title">Finish %1$s’s participation?</string>
+    <string name="comp_host_retire_reason">Reason (required)</string>
+    <string name="comp_host_retire_confirm">Finish</string>
     <string name="cd_back">Back</string>
 </resources>

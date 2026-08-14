@@ -2394,6 +2394,8 @@
     <string name="comp_empty_title">Noch nichts geplant</string>
     <string name="comp_empty">Zurzeit sind keine öffentlichen Wettkämpfe gelistet.</string>
     <string name="comp_loading">Wird geladen…</string>
+    <string name="comp_history_loading">Dein verifizierter Wettkampfstatus wird geladen…</string>
+    <string name="comp_history_gap_recovering">Die Wettkampfhistorie ist unvollständig. Der fehlende Eintrag wird geladen, bevor Teilnehmeraktionen freigegeben werden…</string>
     <string name="comp_refresh">Aktualisieren</string>
     <string name="comp_discover_title">Öffentliche Wettkämpfe</string>
     <string name="comp_organised_by">von %1$s</string>
@@ -2461,6 +2463,7 @@
     <string name="comp_live_cancelled">Der Wettkampf wurde abgesagt</string>
     <string name="comp_live_next_task">Als Nächstes: %1$s</string>
     <string name="comp_live_no_next_task">Dein nächster Boulder wurde noch nicht zugeteilt.</string>
+    <string name="comp_live_no_prepared_boulder">Du hast deinen nächsten Boulder noch nicht gewählt.</string>
     <string name="comp_live_queue">Teilnehmerreihenfolge</string>
     <string name="comp_live_now_short">Jetzt</string>
     <string name="comp_live_more">+ %1$d weitere</string>
@@ -2703,5 +2706,10 @@
     <string name="comp_sats">%1$d sat</string>
     <string name="comp_host_prepared_choice">Vorbereitet: %1$s</string>
     <string name="comp_host_choice_unavailable">Diese Auswahl ist nicht mehr verfügbar</string>
+    <string name="comp_host_skip_turn">Zug überspringen</string>
+    <string name="comp_host_retire">Teilnahme beenden</string>
+    <string name="comp_host_retire_title">Teilnahme von %1$s beenden?</string>
+    <string name="comp_host_retire_reason">Begründung (Pflicht)</string>
+    <string name="comp_host_retire_confirm">Beenden</string>
     <string name="cd_back">Zurück</string>
 </resources>

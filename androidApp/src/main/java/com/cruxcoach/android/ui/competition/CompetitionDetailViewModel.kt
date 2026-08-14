@@ -555,6 +555,21 @@ class CompetitionDetailViewModel @Inject constructor(
         put("action", JsonPrimitive(action)); index?.let { put("index", JsonPrimitive(it)) }; climbId?.let { put("climb_id", JsonPrimitive(it)) }
     }))
 
+    fun hostSkipTurn() = hostQueue("skip_turn")
+
+    fun hostRetire(pubkey: String, reason: String) {
+        if (reason.isBlank()) {
+            _action.value = Action.Failed("reason_required")
+            return
+        }
+        hostAct(
+            "retire",
+            JsonObject(mapOf("pubkey" to JsonPrimitive(pubkey))),
+            subjects = listOf(pubkey),
+            reason = reason.trim(),
+        )
+    }
+
     fun hostAttempt(pubkey: String, climbId: String, outcome: String, intentId: String? = null) {
         if (_action.value is Action.Working) return
         val state = client.snapshot.value.state
@@ -600,11 +615,16 @@ class CompetitionDetailViewModel @Inject constructor(
         }
     }
 
-    private fun hostAct(op: String, data: JsonObject, subjects: List<String> = emptyList()) {
+    private fun hostAct(
+        op: String,
+        data: JsonObject,
+        subjects: List<String> = emptyList(),
+        reason: String? = null,
+    ) {
         if (_action.value is Action.Working) return
         _action.value = Action.Working
         viewModelScope.launch {
-            _action.value = when (val result = hostPublisher.append(op, data, subjects = subjects)) {
+            _action.value = when (val result = hostPublisher.append(op, data, reason = reason, subjects = subjects)) {
                 is CompetitionHostPublisher.Result.Published -> Action.Sent(result.accepted, result.attempted)
                 is CompetitionHostPublisher.Result.Failed -> Action.Failed(result.reason)
             }

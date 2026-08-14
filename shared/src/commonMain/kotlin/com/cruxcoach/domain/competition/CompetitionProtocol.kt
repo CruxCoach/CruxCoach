@@ -53,7 +53,7 @@ object CompetitionProtocol {
     val LOG_OPS = listOf(
         "lifecycle", "registration_decision", "payment_decision", "claim_decision",
         "checkin", "queue", "defer_decision", "attempt_result", "complete_turn", "correction",
-        "override", "announcement", "disqualify", "prize_decision", "config_update",
+        "override", "announcement", "disqualify", "retire", "prize_decision", "config_update",
     )
 
     val INTENT_OPS = listOf(
@@ -62,7 +62,7 @@ object CompetitionProtocol {
     )
 
     val QUEUE_ACTIONS = listOf(
-        "seed", "seed_open", "open_turn", "close_turn", "advance", "reorder", "next_climb", "next_round",
+        "seed", "seed_open", "open_turn", "close_turn", "advance", "skip_turn", "reorder", "next_climb", "next_round",
     )
     val ATTEMPT_OUTCOMES = listOf("top", "zone", "fall", "pass", "timeout")
     val PAYMENT_STATES = listOf("not_required", "pending", "settled", "failed", "expired", "refunded")
@@ -93,7 +93,7 @@ object CompetitionProtocol {
             at >= competition.startsAt && at <= competition.endsAt
 
     /** An audit trail whose entries do not say why is a log, not an audit trail. */
-    val REASON_REQUIRED_OPS = setOf("correction", "override", "disqualify", "config_update")
+    val REASON_REQUIRED_OPS = setOf("correction", "override", "disqualify", "retire", "config_update")
 
     private val COMP_ID = Regex("^[0-9a-f]{16}$")
     private val HEX32 = Regex("^[0-9a-f]{64}$")

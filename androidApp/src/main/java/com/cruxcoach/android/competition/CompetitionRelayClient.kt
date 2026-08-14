@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Reads a competition off the relays and reduces it.
@@ -123,7 +124,11 @@ class CompetitionRelayClient @Inject constructor(
                         lastSyncedAt = nowSeconds,
                     )
                 }
-                reduce()
+                // The definition alone is not a usable participant snapshot.
+                // Keep the screen in its loading state until follow() has
+                // completed the explicit stored-log backfill; otherwise a
+                // cold client briefly looks unregistered at seq 0.
+                reduce(loading = true)
                 true
             }
         }
@@ -143,40 +148,143 @@ class CompetitionRelayClient @Inject constructor(
         val address = CompetitionProtocol.competitionAddress(organizerPubkey, competition.compId)
         val filter = """{"kinds":[${CompetitionProtocol.KIND}],"#a":["$address"]}"""
 
-        relayPool.subscribe(filter).collect { json ->
-            val event = runCatching { Event.fromJson(json) }.getOrNull() ?: return@collect
-            if (!acceptsBody(event)) return@collect
-            if (entries.containsKey(event.id)) return@collect
-            val parsedIntent = CompetitionProtocol.parseIntent(
-                event.toCompetitionEvent(), competition, organizerPubkey, nowSeconds(),
-            )
-            if (parsedIntent is CompetitionProtocol.ParsedIntent.Valid) {
-                val key = "${parsedIntent.pubkey}:${parsedIntent.op}"
-                val old = intents[key]
-                if (old == null || parsedIntent.createdAt >= old.createdAt) intents[key] = parsedIntent
-                reduce()
-                emit(entries.size)
-                return@collect
+        // A normal live subscription goes through NostrRelayPool's process-wide
+        // event-id cache. That cache is desirable for feeds, but is not durable
+        // competition state: after load() clears this client's in-memory log,
+        // a restarted collector would suppress every event observed by the old
+        // collector and leave the reducer at "waiting for entry 1". Always
+        // hydrate the authority chain explicitly, in d-tag pages, before the
+        // live subscription becomes the source of truth. Exact d-tags also
+        // avoid a relay's silently clamped result limit dropping the beginning
+        // of a long chain.
+        backfillLog(competition, organizerPubkey, address, nowSeconds)
+        recoverBoundedGap(competition, organizerPubkey, address, nowSeconds)
+
+        // Intents are not part of the authority chain, but restoring them makes
+        // the organizer view complete after a screen/process restart. The live
+        // subscription below closes the EOSE-to-follow race.
+        withTimeoutOrNull(BACKFILL_TIMEOUT_MS) {
+            relayPool.fetchStored(intentFilter(address)).collect { json ->
+                ingest(json, competition, organizerPubkey, nowSeconds())
             }
-            if (event.pubKey != competition.authority) return@collect
-            when (
-                val parsed = CompetitionProtocol.parseLogEntry(
-                    event.toCompetitionEvent(), competition, organizerPubkey, nowSeconds(),
-                )
-            ) {
-                is CompetitionProtocol.ParsedLogEntry.Invalid -> {
-                    // Recorded, not swallowed. An entry we cannot read is
-                    // exactly the thing a competition screen must not hide.
-                    Log.w(TAG, "log entry rejected: ${parsed.error}")
-                    if (parsed.needsUpgrade) _snapshot.update { it.copy(problem = Problem.NEEDS_UPGRADE) }
+        }
+        reduce(loading = false)
+        emit(entries.size)
+
+        // Bypass the global cache here as well. This REQ first replays whatever
+        // was published between the final backfill EOSE and this subscription,
+        // then remains open for genuinely live events. Local maps dedupe relay
+        // duplicates without confusing transport history with client state.
+        relayPool.subscribe(filter, skipDedup = true).collect { json ->
+            val countBefore = entries.size
+            val changed = ingest(json, competition, organizerPubkey, nowSeconds())
+            // Run this even for a duplicate replay: the initial exact page may
+            // have exposed a hole, while the broad live REQ is now replaying
+            // already-present entries above it.
+            recoverBoundedGap(competition, organizerPubkey, address, nowSeconds)
+            if (changed || entries.size != countBefore) {
+                emit(entries.size)
+            }
+        }
+    }
+
+    private suspend fun backfillLog(
+        competition: Competition,
+        organizerPubkey: String,
+        address: String,
+        nowSeconds: () -> Long,
+    ) {
+        var firstSeq = 1
+        while (firstSeq <= MAX_LOG_SEQUENCE) {
+            val wanted = logPageDTags(competition.compId, firstSeq)
+            val completed = withTimeoutOrNull(BACKFILL_TIMEOUT_MS) {
+                relayPool.fetchStored(logPageFilter(competition.authority, address, wanted)).collect { json ->
+                    ingest(json, competition, organizerPubkey, nowSeconds())
                 }
-                is CompetitionProtocol.ParsedLogEntry.Valid -> {
-                    entries[event.id] = CompetitionReducer.Chained(
-                        parsed.entry, parsed.eventId, parsed.createdAt,
-                    )
-                    reduce()
-                    emit(entries.size)
-                }
+                true
+            } ?: false
+            if (!completed) {
+                Log.w(TAG, "stored log backfill timed out at seq $firstSeq; live REQ will continue recovery")
+                break
+            }
+            val present = entrySequences()
+            val firstMissing = wanted.indices.firstOrNull { wantedIndex ->
+                firstSeq + wantedIndex !in present
+            }
+            if (firstMissing != null) break
+            firstSeq += wanted.size
+        }
+    }
+
+    /** Fetch a known internal hole without mistaking an absent next head for a gap. */
+    private suspend fun recoverBoundedGap(
+        competition: Competition,
+        organizerPubkey: String,
+        address: String,
+        nowSeconds: () -> Long,
+    ) {
+        var attempts = 0
+        while (attempts < MAX_GAP_RECOVERY_PER_EVENT) {
+            val missing = boundedMissingSequence(entrySequences()) ?: return
+            val completed = withTimeoutOrNull(BACKFILL_TIMEOUT_MS) {
+                relayPool.fetchStored(
+                    logPageFilter(
+                        competition.authority,
+                        address,
+                        listOf(CompetitionProtocol.logDTag(competition.compId, missing)),
+                    ),
+                ).collect { json -> ingest(json, competition, organizerPubkey, nowSeconds()) }
+                true
+            } ?: false
+            if (!completed || missing !in entrySequences()) return
+            attempts++
+        }
+    }
+
+    /**
+     * Parse one already signature-checked competition event by its d-tag type.
+     * Snapshots/results intentionally do not fall through to log parsing: they
+     * are optional documents, not evidence that the participant is absent.
+     */
+    private fun ingest(
+        json: String,
+        competition: Competition,
+        organizerPubkey: String,
+        nowSeconds: Long,
+    ): Boolean {
+        val event = runCatching { Event.fromJson(json) }.getOrNull() ?: return false
+        if (!acceptsBody(event)) return false
+        val dTag = event.tags.firstOrNull { it.firstOrNull() == "d" }?.getOrNull(1)
+        val classified = CompetitionProtocol.parseDTag(dTag) ?: return false
+        if (classified.compId != competition.compId) return false
+
+        if (classified.kind == "intent") {
+            val parsed = CompetitionProtocol.parseIntent(
+                event.toCompetitionEvent(), competition, organizerPubkey, nowSeconds,
+            )
+            if (parsed !is CompetitionProtocol.ParsedIntent.Valid) return false
+            val key = "${parsed.pubkey}:${parsed.op}"
+            val old = intents[key]
+            if (old == null || parsed.createdAt >= old.createdAt) intents[key] = parsed
+            reduce(loading = _snapshot.value.loading)
+            return true
+        }
+        if (classified.kind != "log" || event.pubKey != competition.authority) return false
+        if (entries.containsKey(event.id)) return false
+        return when (
+            val parsed = CompetitionProtocol.parseLogEntry(
+                event.toCompetitionEvent(), competition, organizerPubkey, nowSeconds,
+            )
+        ) {
+            is CompetitionProtocol.ParsedLogEntry.Invalid -> {
+                Log.w(TAG, "log entry rejected: ${parsed.error}")
+                if (parsed.needsUpgrade) _snapshot.update { it.copy(problem = Problem.NEEDS_UPGRADE) }
+                false
+            }
+            is CompetitionProtocol.ParsedLogEntry.Valid -> {
+                entries[event.id] = CompetitionReducer.Chained(parsed.entry, parsed.eventId, parsed.createdAt)
+                reduce(loading = _snapshot.value.loading)
+                true
             }
         }
     }
@@ -195,7 +303,7 @@ class CompetitionRelayClient @Inject constructor(
         }
     }
 
-    private fun reduce() {
+    private fun reduce(loading: Boolean = false) {
         val current = _snapshot.value
         val competition = definitionCompetition ?: return
         val rootId = current.competitionEventId ?: return
@@ -207,7 +315,7 @@ class CompetitionRelayClient @Inject constructor(
                 standings = CompetitionScoring.standings(reduction.state, reduction.effectiveCompetition),
                 chainBreakAt = reduction.chainBreakAt,
                 entryCount = entries.size,
-                loading = false,
+                loading = loading,
                 lastSyncedAt = System.currentTimeMillis() / 1000,
                 pendingIntents = unansweredIntents(),
             )
@@ -249,7 +357,28 @@ class CompetitionRelayClient @Inject constructor(
 
     companion object {
         private const val TAG = "CompetitionRelay"
+        private const val LOG_PAGE_SIZE = 100
+        private const val MAX_LOG_SEQUENCE = 999_999
+        private const val MAX_GAP_RECOVERY_PER_EVENT = LOG_PAGE_SIZE
+        private const val BACKFILL_TIMEOUT_MS = 12_000L
+
+        internal fun logPageDTags(compId: String, firstSeq: Int): List<String> =
+            (firstSeq until minOf(firstSeq + LOG_PAGE_SIZE, MAX_LOG_SEQUENCE + 1))
+                .map { CompetitionProtocol.logDTag(compId, it) }
+
+        internal fun logPageFilter(authority: String, address: String, dTags: List<String>): String =
+            """{"kinds":[${CompetitionProtocol.KIND}],"authors":["$authority"],"#a":["$address"],"#d":[${dTags.joinToString(",") { "\"$it\"" }}],"limit":${dTags.size}}"""
+
+        internal fun intentFilter(address: String): String =
+            """{"kinds":[${CompetitionProtocol.KIND}],"#a":["$address"],"#l":["intent"],"limit":1000}"""
+
+        internal fun boundedMissingSequence(sequences: Set<Int>): Int? {
+            val max = sequences.maxOrNull() ?: return null
+            return (1..max).firstOrNull { it !in sequences }
+        }
     }
+
+    private fun entrySequences(): Set<Int> = entries.values.mapTo(linkedSetOf()) { it.entry.seq }
 }
 
 /** Quartz's event, reduced to the shape the shared protocol layer speaks. */

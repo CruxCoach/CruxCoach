@@ -226,6 +226,30 @@ fun CompetitionDetailScreen(
         val competition = snapshot.competition
         val state = snapshot.state
 
+        // A definition without its authority chain is not evidence that this
+        // identity is unregistered. Hide participant actions until history is
+        // hydrated, and likewise while a real chain gap is being recovered.
+        if (!viewModel.isAuthority && (snapshot.loading || state?.chainComplete == false)) {
+            Column(
+                Modifier.fillMaxSize().padding(padding).padding(24.dp)
+                    .testTag("competition_history_loading"),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                CircularProgressIndicator()
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    stringResource(
+                        if (state?.chainComplete == false) R.string.comp_history_gap_recovering
+                        else R.string.comp_history_loading,
+                    ),
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                )
+            }
+            return@Scaffold
+        }
+
         if (!viewModel.isAuthority && state != null) {
             val runningNow = CompetitionProtocol.competitionRunning(competition, state.status, now)
             val terminal = state.status in listOf("finished", "cancelled")
@@ -410,14 +434,6 @@ private fun ParticipantPhaseScreen(
             ParticipantRoute.REGISTRATION -> item { RegistrationPanel(ui, viewModel, action) }
             ParticipantRoute.CHECKIN -> item { CheckInPanel(ui, viewModel, action, nowSeconds) }
             ParticipantRoute.LIVE -> {
-                item {
-                    LivePanel(
-                        ui = ui,
-                        nowSeconds = nowSeconds,
-                        action = action,
-                        preparedClimbId = preparedClimbId,
-                    )
-                }
                 if (ui.picksOwnClimbs && ui.me != null) item {
                     Button(
                         onClick = { onRoute(ParticipantRoute.CHOOSER) },
@@ -432,6 +448,14 @@ private fun ParticipantPhaseScreen(
                             ),
                         )
                     }
+                }
+                item {
+                    LivePanel(
+                        ui = ui,
+                        nowSeconds = nowSeconds,
+                        action = action,
+                        preparedClimbId = preparedClimbId,
+                    )
                 }
                 item {
                     OutlinedButton(
@@ -506,6 +530,8 @@ private fun OrganizerConsole(
     val cleanup by viewModel.cleanup.collectAsStateWithLifecycle()
     var announcement by rememberSaveable { mutableStateOf("") }
     var confirmCancel by rememberSaveable { mutableStateOf(false) }
+    var retirePubkey by rememberSaveable { mutableStateOf<String?>(null) }
+    var retireReason by rememberSaveable { mutableStateOf("") }
     var editCompetition by rememberSaveable { mutableStateOf(false) }
     var editSubmitted by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(editCompetition, editSubmitted, action) {
@@ -538,6 +564,37 @@ private fun OrganizerConsole(
         confirmButton = { Button({ confirmCancel = false; viewModel.hostLifecycle("cancelled") }) { Text("Endgültig absagen") } },
         dismissButton = { TextButton({ confirmCancel = false }) { Text("Zurück") } },
     )
+    retirePubkey?.let { pubkey ->
+        val label = state.participant(pubkey)?.displayOrShort() ?: pubkey.take(12)
+        AlertDialog(
+            onDismissRequest = { retirePubkey = null; retireReason = "" },
+            title = { Text(stringResource(R.string.comp_host_retire_title, label)) },
+            text = {
+                OutlinedTextField(
+                    value = retireReason,
+                    onValueChange = { retireReason = it },
+                    label = { Text(stringResource(R.string.comp_host_retire_reason)) },
+                    modifier = Modifier.fillMaxWidth().testTag("competition_host_retire_reason"),
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.hostRetire(pubkey, retireReason)
+                        retirePubkey = null
+                        retireReason = ""
+                    },
+                    enabled = retireReason.isNotBlank() && action !is CompetitionDetailViewModel.Action.Working,
+                    modifier = Modifier.testTag("competition_host_retire_confirm"),
+                ) { Text(stringResource(R.string.comp_host_retire_confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { retirePubkey = null; retireReason = "" }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            },
+        )
+    }
     Card(Modifier.fillMaxWidth().testTag("competition_host_console")) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(stringResource(R.string.comp_host_manage), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
@@ -632,6 +689,12 @@ private fun OrganizerConsole(
                             Button({ viewModel.hostCheckIn(participant.pubkey, true) }) { Text("Check-in") }
                             OutlinedButton({ viewModel.hostCheckIn(participant.pubkey, false) }) { Text("No-show") }
                         }
+                        if (participant.result == "active" && participant.registration == "accepted") {
+                            OutlinedButton(
+                                onClick = { retirePubkey = participant.pubkey },
+                                modifier = Modifier.testTag("competition_host_retire_${participant.pubkey.take(8)}"),
+                            ) { Text(stringResource(R.string.comp_host_retire)) }
+                        }
                     }
                 }
             }
@@ -681,7 +744,9 @@ private fun OrganizerConsole(
                     Text("Zug: ${current?.let { key -> state.participant(key)?.display?.ifBlank { key.take(12) } } ?: "noch nicht geöffnet"}")
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         if (state.cursor < 0) Button({ viewModel.hostQueue("open_turn", 0) }) { Text("Ersten Zug öffnen") }
-                        else Button({ viewModel.hostQueue("advance") }, Modifier.testTag("competition_host_advance")) { Text("Weiter") }
+                        else Button(viewModel::hostSkipTurn, Modifier.testTag("competition_host_skip_turn")) {
+                            Text(stringResource(R.string.comp_host_skip_turn))
+                        }
                         if (state.cursor >= 0) OutlinedButton({ viewModel.hostQueue("close_turn") }) { Text("Zug schließen") }
                     }
                     if (runningNow && current != null && state.currentClimbId.isNotBlank()) {
@@ -1023,7 +1088,10 @@ private fun LivePanel(
                 ?: if (!ui.picksOwnClimbs) ui.rotation.entries.firstOrNull()?.climb else null
             Text(
                 if (nextTask != null) stringResource(R.string.comp_live_next_task, nextTask.label)
-                else stringResource(R.string.comp_live_no_next_task),
+                else stringResource(
+                    if (ui.picksOwnClimbs) R.string.comp_live_no_prepared_boulder
+                    else R.string.comp_live_no_next_task,
+                ),
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -1032,7 +1100,9 @@ private fun LivePanel(
                 stringResource(R.string.comp_current_climber),
                 currentName ?: stringResource(R.string.comp_nobody_climbing),
             )
-            LabelledValue(stringResource(R.string.comp_current_climb), climbLabel(ui, state.currentClimbId))
+            if (!ui.picksOwnClimbs) {
+                LabelledValue(stringResource(R.string.comp_current_climb), climbLabel(ui, state.currentClimbId))
+            }
             LabelledValue(
                 stringResource(
                     if (state.cursor == state.order.lastIndex && state.cursor >= 0) R.string.comp_next_climber_next_round
@@ -1068,7 +1138,7 @@ private fun LivePanel(
                     Modifier.weight(1f),
                 )
                 LiveMetric(
-                    ui.attemptsLeftFor(nextTask?.id ?: state.currentClimbId).toString(),
+                    nextTask?.let { ui.attemptsLeftFor(it.id).toString() } ?: "—",
                     stringResource(R.string.comp_attempts_left),
                     Modifier.weight(1f),
                 )

@@ -119,4 +119,51 @@ class CompetitionCompleteTurnTest {
         assertEquals(at, result.turnOpenedAt)
         assertEquals(at + competition.rules.turnDeadlineSec, result.turnDeadlineAt)
     }
+
+    @Test fun `skip turn advances without consuming an attempt and wraps the round`() {
+        fun skip(before: CompetitionState) = CompetitionReducer.applyEntry(
+            before,
+            LogEntry(
+                seq = 1, prev = before.head, epoch = before.epoch, at = competition.startsAt + 1,
+                op = "queue", actor = "authority", reason = null,
+                data = JsonObject(mapOf("action" to JsonPrimitive("skip_turn"))),
+            ),
+            competition,
+        )
+
+        val next = skip(state(cursor = 0))
+        assertEquals(1, next.cursor)
+        assertEquals(3, next.round)
+        assertTrue(next.participants.all { it.climbs.isEmpty() })
+
+        val wrapped = skip(state(cursor = 1))
+        assertEquals(0, wrapped.cursor)
+        assertEquals(4, wrapped.round)
+        assertTrue(wrapped.participants.all { it.defersUsedThisRound == 0 })
+
+        val rejected = skip(state(cursor = -1).copy(turnOpenedAt = 0, turnDeadlineAt = 0))
+        assertEquals("no_open_turn", rejected.rejected.single().code)
+    }
+
+    @Test fun `retire preserves scores and atomically removes the current climber`() {
+        val scored = state(cursor = 0).withParticipant(
+            state(cursor = 0).participant(alice)!!.withClimb(ClimbProgress(climbId, 1, "top")),
+        )
+        val result = CompetitionReducer.applyEntry(
+            scored,
+            LogEntry(
+                seq = 1, prev = scored.head, epoch = scored.epoch, at = competition.startsAt + 1,
+                op = "retire", actor = "authority", reason = "Participant is done",
+                data = JsonObject(mapOf("pubkey" to JsonPrimitive(alice))),
+            ),
+            competition,
+        )
+        assertTrue(result.rejected.isEmpty())
+        assertEquals("finished", result.participant(alice)?.result)
+        assertEquals("top", result.participant(alice)?.climb(climbId)?.outcome)
+        assertEquals(listOf(bob), result.order)
+        assertEquals(0, result.cursor)
+        assertEquals(bob, result.order[result.cursor])
+        assertTrue("retire" in CompetitionProtocol.REASON_REQUIRED_OPS)
+    }
 }
