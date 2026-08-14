@@ -35,40 +35,60 @@ phones after every recovery step.
    receives snapshot/history and never displays the later delta without the
    missing sequence. Repeat after force-stopping/restarting B and after toggling
    Bluetooth on B.
-5. Isolate the controller A without requesting handover. Verify B/C freeze and
-   cannot write. Restore A and verify convergence. Then repeat with an orderly
-   handover to B and verify only B can commit.
-6. Arrange A—B—C so A and C have no direct BLE reachability. Join explicitly
+5. Isolate controller A without requesting handover. Verify B/C freeze and
+   cannot write. Skew A/B wall clocks by at least 24 hours and verify neither
+   transfers authority; restore A and verify convergence.
+6. Explicitly select B for handover. Capture PREPARED, B acquiring HOST and a
+   live board connection, TARGET_READY, COMMITTED and COMPLETED. At each phase,
+   separately force-stop A and B and restart it. Before commit verify A can
+   abort an unready/disconnected B; after commit verify A cannot resume writes,
+   B resumes heartbeat/write authority, and A ends its old session only after
+   COMPLETED. Repeat READY and COMMIT frames to verify idempotence.
+7. Arrange A—B—C so A and C have no direct BLE reachability. Join explicitly
    while adjacent, restore the line topology, then update the queue and a local
    competition. Verify BoardCell and signed competition events traverse B, but
    C never sees a discovery/claim advertisement originating only at A.
-7. During a local competition, isolate the current authority and submit an
+8. During a local competition, isolate the current authority and submit an
    intent. Verify it remains pending (no alternate authority chain), then heals
    from history after reconnection.
-8. Run a 40-member logical fan-out (real devices plus the JVM transport harness
+9. Run a 40-member logical fan-out (real devices plus the JVM transport harness
    where hardware count is unavailable), update a 38-item playlist repeatedly,
    and reconnect one lagging member. Verify bounded memory, full snapshot
    recovery and no silent sequence skip.
-9. Keep the session active for 30 minutes through screen-off/Doze and app
+10. Keep the session active for 30 minutes through screen-off/Doze and app
    backgrounding. Verify the connected-device foreground service remains and
    Bluetooth/process restarts recover without changing the FIPS npub.
-10. Introduce a legacy unscoped advertiser beside both boards. Verify it cannot
+11. Introduce a legacy unscoped advertiser beside both boards. Verify it cannot
     overwrite either selected cell; repeat with only one known board to confirm
     backwards-compatible display.
-11. Record the account npub and active FIPS npub. Verify they differ; repeat a
+12. Record the account npub and active FIPS npub. Verify they differ; repeat a
     BLE reconnect, process restart and Bluetooth restart and verify the FIPS npub
     is stable. End/switch the realm and verify it rotates. Repeat a competition
     reconnect and verify the separate local participant credential preserves the
     participant stream within that competition.
-12. Advertise two adjacent Cells/realms and inspect raw advertisements. Verify
+13. Advertise two adjacent Cells/realms and inspect raw advertisements. Verify
     only short unequal tags are present, a foreign realm never forms a durable
     link, and replaying CCJ1 through phone B does not admit B's non-direct peer.
-13. Enable FEAT-044 relay sharing and send one identifiable and one deliberately
+14. Enable FEAT-044 relay sharing and send one identifiable and one deliberately
     unknown LED payload from the official app. Verify ordered
     `PROJECT_COMMITTED`, then `PROJECT_UNKNOWN`; isolate/expire the controller and
     verify the external GATT write is refused and never reaches the board.
+15. Inject process death at WAL PREPARED, after the board reports write success,
+    after durable canonical commit, and before event broadcast. PREPARED must be
+    discarded without a board write; physical-success without commit must show
+    UNKNOWN/FROZEN and require operator reproject; durable commit must recover
+    without a second physical write.
+16. While radio-isolated, let A and B independently settle the same physical
+    board and confirm different histories, then heal. Verify fork detection,
+    UNKNOWN/FROZEN on both, no further write or silent merge, and explicit
+    operator lineage selection followed by controlled reproject.
+17. Send concurrent Next, SetCurrent and Climb commands with the same base
+    sequence, then duplicate and reorder them. Verify correlated ACK status,
+    physical/write-log order, stale rejection and idempotent retry.
 
-API 28 is a separate compatibility pass: repeat join/queue basics over GATT and
-verify FIPS is not started. OEM L2CAP connection count, Doze behavior and BLE
+API 28 is a separate compatibility pass: repeat join/queue and CruxRelay writes
+over GATT, verify FIPS is not started, and verify every physical write still
+creates WAL plus canonical commit (or UNKNOWN), never a direct bypass. OEM
+L2CAP connection count, Doze behavior and BLE
 address randomization are hardware gates; a JVM or emulator result cannot close
 them.

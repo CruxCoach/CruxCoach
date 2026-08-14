@@ -80,6 +80,9 @@ spec file so other branches see the reservation.
 | FEAT-058 | CruxCoach Competitions (app + web + protocol) | v0.2.3 | implementation | `0.2.3/FEAT-058-competitions.md` |
 | FEAT-059 | Offline BoardCell over FIPS | v0.2.3 | implementation | `0.2.3/FEAT-059-offline-board-cell-fips-mesh.md` |
 
+The architecture guide for FEAT-059 is
+[`0.2.3/OFFLINE-BOARDCELL-FIPS-ARCHITECTURE.md`](0.2.3/OFFLINE-BOARDCELL-FIPS-ARCHITECTURE.md).
+
 Implementation plan for FEAT-043/045/046:
 `0.2.2/IMPLEMENTATION-PLAN-convergence-player.md`.
 
