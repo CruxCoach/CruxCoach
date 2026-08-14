@@ -35,6 +35,23 @@ class CompetitionStringsTest {
     private val english by lazy { strings("values") }
     private val german by lazy { strings("values-de") }
 
+    private fun pluralItems(dir: String, name: String): Map<String, String> {
+        val file = listOf(
+            File("src/main/res/$dir/strings.xml"),
+            File("androidApp/src/main/res/$dir/strings.xml"),
+        ).firstOrNull { it.isFile } ?: error("strings.xml not found")
+        val document = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(file)
+        val plurals = document.getElementsByTagName("plurals")
+        val element = (0 until plurals.length)
+            .map { plurals.item(it) as Element }
+            .single { it.getAttribute("name") == name }
+        val items = element.getElementsByTagName("item")
+        return (0 until items.length).associate { index ->
+            val item = items.item(index) as Element
+            item.getAttribute("quantity") to item.textContent
+        }
+    }
+
     @Test
     fun `every string exists in both languages`() {
         assertEquals(
@@ -102,5 +119,17 @@ class CompetitionStringsTest {
             assertTrue(english.containsKey(key), "$key is missing from values")
             assertTrue(german.containsKey(key), "$key is missing from values-de")
         }
+    }
+
+    @Test
+    fun `attempt count has singular and plural copy in both languages`() {
+        assertEquals(
+            mapOf("one" to "%1\$d attempt", "other" to "%1\$d attempts"),
+            pluralItems("values", "comp_attempt_count"),
+        )
+        assertEquals(
+            mapOf("one" to "%1\$d Versuch", "other" to "%1\$d Versuche"),
+            pluralItems("values-de", "comp_attempt_count"),
+        )
     }
 }

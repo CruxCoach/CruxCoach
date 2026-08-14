@@ -95,11 +95,17 @@ fun CompetitionsScreen(
                 Button(
                     onClick = onCreateCompetition,
                     modifier = Modifier.fillMaxWidth().testTag("competition_create_open"),
-                ) { Text("Wettkampf veranstalten") }
+                ) { Text(stringResource(R.string.comp_create_open)) }
             }
 
             if (state.owned.isNotEmpty()) {
-                item { Text("Meine Wettkämpfe", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+                item {
+                    Text(
+                        stringResource(R.string.comp_owned_title),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
                 items(state.owned, key = { "owned_${it.eventId}" }) { listing -> CompetitionRow(listing, onOpenCompetition) }
             }
 

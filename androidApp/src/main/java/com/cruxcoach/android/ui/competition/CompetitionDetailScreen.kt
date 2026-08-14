@@ -60,6 +60,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -2026,7 +2027,16 @@ private fun LivePanel(
                 Spacer(Modifier.height(8.dp))
                 Text(stringResource(R.string.comp_my_results), fontWeight = FontWeight.Bold)
                 myClimbs.forEach { climb ->
-                    Text("${climbLabel(ui, climb.climbId)} — ${climb.outcome} (${climb.attemptsUsed})")
+                    Text(stringResource(
+                        R.string.comp_result_summary,
+                        climbLabel(ui, climb.climbId),
+                        stringResource(attemptOutcomeLabel(climb.outcome)),
+                        pluralStringResource(
+                            R.plurals.comp_attempt_count,
+                            climb.attemptsUsed,
+                            climb.attemptsUsed,
+                        ),
+                    ))
                 }
             }
 

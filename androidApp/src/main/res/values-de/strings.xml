@@ -2476,6 +2476,8 @@
     <string name="comp_detail_online">Online</string>
     <string name="comp_search_hint">Nach Name, Halle oder Board suchen</string>
     <string name="comp_open_link_title">Link oder Code vorhanden?</string>
+    <string name="comp_create_open">Wettkampf veranstalten</string>
+    <string name="comp_owned_title">Meine Wettkämpfe</string>
     <string name="comp_open_link_hint">Füge den Link der Ausrichtung ein oder scanne den QR-Code mit deiner Kamera-App.</string>
     <string name="comp_open_link_label">Beitrittslink oder naddr</string>
     <string name="comp_open_link_error">Dieser Link zeigt nicht auf einen CruxCoach-Wettkampf.</string>
@@ -2589,6 +2591,11 @@
     <string name="comp_leaderboard_your_rank">Dein Platz: %1$d</string>
     <string name="comp_leaderboard_your_rank_pending">Dein Platz erscheint nach dem ersten gewerteten Ergebnis.</string>
     <string name="comp_my_results">Deine Versuche und Ergebnisse</string>
+    <string name="comp_result_summary">%1$s – %2$s (%3$s)</string>
+    <plurals name="comp_attempt_count">
+        <item quantity="one">%1$d Versuch</item>
+        <item quantity="other">%1$d Versuche</item>
+    </plurals>
     <string name="comp_pick_taken">Schon vergeben</string>
     <string name="comp_climb_angle">%1$d Grad</string>
     <string name="comp_catalog_loading">Passenden Board-Katalog laden…</string>
@@ -2756,9 +2763,9 @@
     <string name="comp_host_counts">%1$d angenommen · %2$d eingecheckt · %3$d offene Anfragen</string>
     <string name="comp_host_pause">Pausieren</string>
     <string name="comp_host_finish">Beenden</string>
-    <string name="comp_host_finish_title">Competition beenden?</string>
+    <string name="comp_host_finish_title">Wettkampf beenden?</string>
     <string name="comp_host_finish_body">Die Live-Aktionen schließen und der aktuelle Stand wird endgültig. Dies kann nicht fortgesetzt werden.</string>
-    <string name="comp_host_finish_confirm">Competition beenden</string>
+    <string name="comp_host_finish_confirm">Wettkampf beenden</string>
     <string name="comp_host_cancel_action">Wettkampf absagen…</string>
     <string name="comp_host_cleanup_explanation">Die Absage bleibt im Audit-Log. Du kannst die öffentliche Definition zusätzlich durch einen Tombstone ersetzen und eine NIP-09-Löschanfrage senden. Nostr kann die Löschung aus allen Kopien nicht beweisen.</string>
     <string name="comp_host_cleanup_action">Von Relays entfernen</string>

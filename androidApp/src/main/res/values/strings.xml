@@ -2477,6 +2477,8 @@
     <string name="comp_detail_online">Online</string>
     <string name="comp_search_hint">Search by name, gym or board</string>
     <string name="comp_open_link_title">Have a link or a code?</string>
+    <string name="comp_create_open">Host a competition</string>
+    <string name="comp_owned_title">My competitions</string>
     <string name="comp_open_link_hint">Paste the link the organiser shared, or scan its QR code with your camera app.</string>
     <string name="comp_open_link_label">Join link or naddr</string>
     <string name="comp_open_link_error">That link does not point at a CruxCoach competition.</string>
@@ -2590,6 +2592,11 @@
     <string name="comp_leaderboard_your_rank">Your place: %1$d</string>
     <string name="comp_leaderboard_your_rank_pending">Your place will appear after the first scored result.</string>
     <string name="comp_my_results">Your attempts and results</string>
+    <string name="comp_result_summary">%1$s — %2$s (%3$s)</string>
+    <plurals name="comp_attempt_count">
+        <item quantity="one">%1$d attempt</item>
+        <item quantity="other">%1$d attempts</item>
+    </plurals>
     <string name="comp_pick_taken">Already taken</string>
     <string name="comp_climb_angle">%1$d degrees</string>
     <string name="comp_catalog_loading">Loading the matching board catalogue…</string>
