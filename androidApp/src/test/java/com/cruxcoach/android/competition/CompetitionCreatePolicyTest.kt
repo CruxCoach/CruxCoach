@@ -134,16 +134,22 @@ class CompetitionCreatePolicyTest {
         val draft = CompetitionCreateDraftPolicy.withDefaultSchedule(validDraft()).copy(
             divisions = "open | Open\nwomen | Women",
             feeSats = "250", feeLnurl = "climber@example.com",
+            prizes = "open_first | 1 | cash | First place | 50000 | open\nwomen_goods | 1 | non_cash | Shoes | 0 | women",
+            prizeClaimDays = "21",
             eligibility = "Age 16+", participantInstructions = "Arrive early",
             spectatorInfo = "Balcony", refundPolicy = "Until Friday",
             waiverRequired = true, waiver = "I accept the risks.",
         )
         val divisions = requireNotNull(CompetitionCreateDraftPolicy.parseDivisions(draft))
         assertEquals(listOf("open", "women"), divisions.map { it.getValue("id").jsonPrimitive.content })
+        val prizes = requireNotNull(CompetitionCreateDraftPolicy.parsePrizes(draft, divisions))
+        assertEquals(50_000_000L, prizes.first().getValue("value_msat").jsonPrimitive.content.toLong())
+        assertEquals(false, prizes.last().containsKey("value_msat"))
         assertNull(CompetitionCreateDraftPolicy.validateStep(draft, 3))
         assertEquals("invalid_fee", CompetitionCreateDraftPolicy.validateStep(draft.copy(feeLnurl = ""), 3))
         assertEquals("required_waiver", CompetitionCreateDraftPolicy.validateStep(draft.copy(waiver = ""), 3))
         assertEquals("invalid_divisions", CompetitionCreateDraftPolicy.validateStep(draft.copy(divisions = "bad id | A"), 3))
+        assertEquals("invalid_prizes", CompetitionCreateDraftPolicy.validateStep(draft.copy(prizes = "p | 0 | cash | Bad | 1 | open"), 3))
     }
 
     @Test
@@ -161,6 +167,7 @@ class CompetitionCreatePolicyTest {
             "checkinClosesAt", "startsAt", "endsAt", "timezone",
             "divisions", "feeSats", "feeLnurl", "eligibility", "waiver",
             "participantInstructions", "spectatorInfo", "refundPolicy",
+            "prizes", "prizeClaimDays",
         ).forEach { assertContains(source, it) }
     }
 

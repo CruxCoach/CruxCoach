@@ -2419,6 +2419,10 @@
     <string name="comp_create_field_spectator">Infos für Zuschauende</string>
     <string name="comp_create_field_refund">Rückerstattungsregeln</string>
     <string name="comp_create_field_waiver">Teilnahmeerklärung zur Zustimmung</string>
+    <string name="comp_create_field_prizes">Preise</string>
+    <string name="comp_create_prizes_hint">Einer pro Zeile: feste_id | Platz | cash oder non_cash | Beschreibung | Wert in Sats | optionale Kategorie-ID.</string>
+    <string name="comp_create_field_prize_claim_days">Tage zum Beanspruchen</string>
+    <string name="comp_prize_not_funded">Ein Geldpreis ist das Versprechen der Ausrichtung, aus der eigenen Wallet zu zahlen. Er wird nicht aus Startgeldern, einem Topf oder Treuhandvermögen finanziert.</string>
     <string name="comp_create_review">Prüfen</string>
     <string name="comp_create_review_summary">%1$s\n%2$s · %3$s %4$s bei %5$s°</string>
     <string name="comp_create_review_schedule">Anmeldung %1$s – %2$s\nCheck-in %3$s – %4$s\nWettkampf %5$s – %6$s\n%7$s</string>
@@ -2455,6 +2459,7 @@
     <string name="comp_create_error_divisions">Füge 1–8 eindeutige Kategorien als feste_id | angezeigter Name hinzu. IDs nutzen Kleinbuchstaben, Ziffern und Unterstriche.</string>
     <string name="comp_create_error_fee">Trage 0 für kostenlos oder ein ganzzahliges Startgeld mit Lightning-Adresse beziehungsweise LNURL der Ausrichtung ein.</string>
     <string name="comp_create_error_waiver">Trage die Teilnahmeerklärung ein, der Teilnehmende zustimmen müssen.</string>
+    <string name="comp_create_error_prizes">Prüfe Preis-IDs, Plätze, Art, Beschreibung, Wert, Kategorie und eine Frist von 1 bis 365 Tagen.</string>
     <string name="comp_create_error_text_too_long">Informationsfelder dürfen jeweils höchstens 2.000 Zeichen enthalten.</string>
     <string name="comp_create_error_publish">Der Entwurf konnte nicht veröffentlicht werden: %1$s</string>
     <string name="comp_detail_essentials">Auf einen Blick</string>

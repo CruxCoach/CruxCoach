@@ -2420,6 +2420,10 @@
     <string name="comp_create_field_spectator">Information for spectators</string>
     <string name="comp_create_field_refund">Refund policy</string>
     <string name="comp_create_field_waiver">Waiver text participants accept</string>
+    <string name="comp_create_field_prizes">Prizes</string>
+    <string name="comp_create_prizes_hint">One per line: stable_id | rank | cash or non_cash | description | value in sats | optional division ID.</string>
+    <string name="comp_create_field_prize_claim_days">Days winners have to claim</string>
+    <string name="comp_prize_not_funded">A cash prize is the organizer’s promise to pay from their own wallet. It is not funded from entry fees, a pot, or escrow.</string>
     <string name="comp_create_review">Review</string>
     <string name="comp_create_review_summary">%1$s\n%2$s · %3$s %4$s @ %5$s°</string>
     <string name="comp_create_review_schedule">Registration %1$s – %2$s\nCheck-in %3$s – %4$s\nCompetition %5$s – %6$s\n%7$s</string>
@@ -2456,6 +2460,7 @@
     <string name="comp_create_error_divisions">Add 1–8 unique divisions as stable_id | visible name. IDs use lowercase letters, numbers, and underscores.</string>
     <string name="comp_create_error_fee">Enter 0 for free, or a whole-sat fee with the organizer’s Lightning address or LNURL.</string>
     <string name="comp_create_error_waiver">Enter the waiver text participants must accept.</string>
+    <string name="comp_create_error_prizes">Check prize IDs, ranks, type, description, value, division, and a claim period from 1 to 365 days.</string>
     <string name="comp_create_error_text_too_long">Competition information fields may contain at most 2,000 characters each.</string>
     <string name="comp_create_error_publish">Could not publish the draft: %1$s</string>
     <string name="comp_detail_essentials">At a glance</string>

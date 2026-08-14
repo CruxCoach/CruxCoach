@@ -53,6 +53,7 @@ class CompetitionCreateViewModel @Inject constructor(
         val checkinClosesAt: String = "", val startsAt: String = "", val endsAt: String = "",
         val capacity: String = "20", val division: String = "Open",
         val divisions: String = "", val feeSats: String = "0", val feeLnurl: String = "",
+        val prizes: String = "", val prizeClaimDays: String = "30",
         val attempts: String = "5", val turnSeconds: String = "180",
         val climbSource: String = "organizer_set", val climbCount: String = "1",
         val countedClimbCount: String = "1", val scoring: String = "tops_then_attempts",
@@ -148,6 +149,7 @@ class CompetitionCreateViewModel @Inject constructor(
         val schedule = requireNotNull(CompetitionCreateDraftPolicy.schedule(d)) { "invalid_schedule" }
         val climbs = CompetitionCreateDraftPolicy.parseClimbs(d)
         val divisions = requireNotNull(CompetitionCreateDraftPolicy.parseDivisions(d)) { "invalid_divisions" }
+        val prizes = requireNotNull(CompetitionCreateDraftPolicy.parsePrizes(d, divisions)) { "invalid_prizes" }
         val feeMsat = (d.feeSats.toLongOrNull() ?: 0L) * 1_000L
         val climbCount = d.climbCount.toInt()
         val countedClimbCount = d.countedClimbCount.toInt()
@@ -166,7 +168,8 @@ class CompetitionCreateViewModel @Inject constructor(
             "divisions" to JsonArray(divisions),
             "eligibility" to JsonPrimitive(d.eligibility.trim()), "waiver" to JsonPrimitive(d.waiver.trim()), "waiver_required" to JsonPrimitive(d.waiverRequired),
             "participant_instructions" to JsonPrimitive(d.participantInstructions.trim()), "spectator_info" to JsonPrimitive(d.spectatorInfo.trim()), "refund_policy" to JsonPrimitive(d.refundPolicy.trim()),
-            "fee_msat" to JsonPrimitive(feeMsat), "prizes" to JsonArray(emptyList()),
+            "fee_msat" to JsonPrimitive(feeMsat), "prizes" to JsonArray(prizes),
+            "prize_claim_days" to JsonPrimitive(d.prizeClaimDays.toInt()),
             "rules" to CompetitionCreateDraftPolicy.rules(d, climbCount, countedClimbCount),
             "climbs" to JsonArray(climbs), "relays" to JsonArray(d.relays.lineSequence().map(String::trim).filter(String::isNotBlank).map(::JsonPrimitive).toList()),
             "created_at" to JsonPrimitive(now), "revision" to JsonPrimitive(1),
@@ -267,6 +270,38 @@ internal object CompetitionCreateDraftPolicy {
         }
     }
 
+    fun parsePrizes(d: CompetitionCreateViewModel.Draft): List<JsonObject>? =
+        parseDivisions(d)?.let { parsePrizes(d, it) }
+
+    fun parsePrizes(
+        d: CompetitionCreateViewModel.Draft,
+        divisions: List<JsonObject>,
+    ): List<JsonObject>? {
+        val divisionIds = divisions.mapTo(mutableSetOf()) { (it["id"] as JsonPrimitive).content }
+        val seen = mutableSetOf<String>()
+        val lines = d.prizes.lineSequence().map(String::trim).filter(String::isNotBlank).toList()
+        if (lines.size > 50) return null
+        return lines.map { line ->
+            val parts = line.split('|').map(String::trim)
+            val id = parts.getOrNull(0).orEmpty()
+            val rank = parts.getOrNull(1)?.toIntOrNull()
+            val kind = parts.getOrNull(2)
+            val label = parts.getOrNull(3).orEmpty()
+            val valueSats = parts.getOrNull(4)?.toLongOrNull() ?: 0L
+            val division = parts.getOrNull(5)?.takeIf(String::isNotBlank)
+            if (!DIVISION_ID.matches(id) || !seen.add(id) || rank !in 1..50 ||
+                kind !in setOf("cash", "non_cash") || label.isBlank() || label.length > 80 ||
+                valueSats !in 0L..100_000_000L || (division != null && division !in divisionIds)
+            ) return null
+            JsonObject(buildMap {
+                put("id", JsonPrimitive(id)); put("rank", JsonPrimitive(rank!!))
+                put("kind", JsonPrimitive(kind!!)); put("label", JsonPrimitive(label))
+                if (kind == "cash") put("value_msat", JsonPrimitive(valueSats * 1_000L))
+                division?.let { put("division", JsonPrimitive(it)) }
+            })
+        }
+    }
+
     fun rules(d: CompetitionCreateViewModel.Draft, climbCount: Int, countedClimbCount: Int): JsonObject {
         val rules = linkedMapOf<String, kotlinx.serialization.json.JsonElement>(
             "climb_source" to JsonPrimitive(d.climbSource),
@@ -328,6 +363,7 @@ internal object CompetitionCreateDraftPolicy {
         }
         3 -> when {
             parseDivisions(d) == null -> "invalid_divisions"
+            parsePrizes(d) == null || d.prizeClaimDays.toIntOrNull() !in 1..365 -> "invalid_prizes"
             d.feeSats.toLongOrNull() !in 0L..1_000_000L -> "invalid_fee"
             d.feeSats.toLongOrNull()!! > 0 && d.feeLnurl.isBlank() -> "invalid_fee"
             d.waiverRequired && d.waiver.isBlank() -> "required_waiver"

@@ -185,6 +185,14 @@ fun CompetitionCreateScreen(
                             Field(stringResource(R.string.comp_create_field_fee_lnurl), d.feeLnurl) { viewModel.edit { x -> x.copy(feeLnurl = it) } }
                             Text(stringResource(R.string.comp_money_no_custody_organizer))
                         }
+                        OutlinedTextField(
+                            d.prizes, { value -> viewModel.edit { it.copy(prizes = value) } },
+                            label = { Text(stringResource(R.string.comp_create_field_prizes)) },
+                            supportingText = { Text(stringResource(R.string.comp_create_prizes_hint)) },
+                            minLines = 3, modifier = Modifier.fillMaxWidth(),
+                        )
+                        Field(stringResource(R.string.comp_create_field_prize_claim_days), d.prizeClaimDays, numeric = true) { viewModel.edit { x -> x.copy(prizeClaimDays = it) } }
+                        if (d.prizes.isNotBlank()) Text(stringResource(R.string.comp_prize_not_funded))
                         OutlinedTextField(d.eligibility, { value -> viewModel.edit { it.copy(eligibility = value) } }, label = { Text(stringResource(R.string.comp_create_field_eligibility)) }, modifier = Modifier.fillMaxWidth())
                         OutlinedTextField(d.participantInstructions, { value -> viewModel.edit { it.copy(participantInstructions = value) } }, label = { Text(stringResource(R.string.comp_create_field_instructions)) }, modifier = Modifier.fillMaxWidth())
                         OutlinedTextField(d.spectatorInfo, { value -> viewModel.edit { it.copy(spectatorInfo = value) } }, label = { Text(stringResource(R.string.comp_create_field_spectator)) }, modifier = Modifier.fillMaxWidth())
@@ -222,6 +230,7 @@ private fun competitionCreateError(code: String): String = when (code) {
     "invalid_divisions" -> stringResource(R.string.comp_create_error_divisions)
     "invalid_fee" -> stringResource(R.string.comp_create_error_fee)
     "required_waiver" -> stringResource(R.string.comp_create_error_waiver)
+    "invalid_prizes" -> stringResource(R.string.comp_create_error_prizes)
     "text_too_long" -> stringResource(R.string.comp_create_error_text_too_long)
     else -> stringResource(R.string.comp_create_error_publish, code)
 }

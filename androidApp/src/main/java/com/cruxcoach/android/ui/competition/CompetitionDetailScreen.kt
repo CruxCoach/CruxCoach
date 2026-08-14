@@ -1041,6 +1041,10 @@ private fun HostCompetitionEditDialog(
     var participantInstructions by rememberSaveable(competition.revision) { mutableStateOf((competition.raw["participant_instructions"] as? JsonPrimitive)?.content.orEmpty()) }
     var spectatorInfo by rememberSaveable(competition.revision) { mutableStateOf((competition.raw["spectator_info"] as? JsonPrimitive)?.content.orEmpty()) }
     var refundPolicy by rememberSaveable(competition.revision) { mutableStateOf((competition.raw["refund_policy"] as? JsonPrimitive)?.content.orEmpty()) }
+    var prizes by rememberSaveable(competition.revision) { mutableStateOf(competition.prizes.joinToString("\n") {
+        listOf(it.id, it.rank.toString(), it.kind, it.label, (it.valueMsat / 1_000L).toString(), it.division.orEmpty()).joinToString(" | ")
+    }) }
+    var prizeClaimDays by rememberSaveable(competition.revision) { mutableStateOf(competition.prizeClaimDays.toString()) }
     var timezone by rememberSaveable(competition.revision) { mutableStateOf(competition.timezone) }
     var registrationOpensAt by rememberSaveable(competition.revision) { mutableStateOf(CompetitionCreateDraftPolicy.formatLocalMinute(competition.registrationOpensAt, competition.timezone).orEmpty()) }
     var registrationClosesAt by rememberSaveable(competition.revision) { mutableStateOf(CompetitionCreateDraftPolicy.formatLocalMinute(competition.registrationClosesAt, competition.timezone).orEmpty()) }
@@ -1069,6 +1073,17 @@ private fun HostCompetitionEditDialog(
         CompetitionCreateViewModel.Draft(divisions = divisions),
     )
     val parsedFeeSats = feeSats.toLongOrNull()
+    val parsedPrizes = CompetitionCreateDraftPolicy.parsePrizes(
+        CompetitionCreateViewModel.Draft(divisions = divisions, prizes = prizes),
+        parsedDivisions.orEmpty(),
+    )?.map { candidate ->
+        val id = (candidate["id"] as JsonPrimitive).content
+        val previous = (competition.raw["prizes"] as? JsonArray)
+            ?.mapNotNull { it as? JsonObject }
+            ?.firstOrNull { (it["id"] as? JsonPrimitive)?.content == id }
+        JsonObject(previous.orEmpty() + candidate)
+    }
+    val parsedPrizeClaimDays = prizeClaimDays.toIntOrNull()
 
     val climbPatch = if (climbText == initialClimbs) JsonObject(emptyMap())
     else competitionClimbsEditorPatch(
@@ -1093,6 +1108,10 @@ private fun HostCompetitionEditDialog(
         if ((parsedFeeSats ?: 0L) > 0 && feeLnurl.trim() != competition.feeLnurl.orEmpty()) {
             put("fee_lnurl", JsonPrimitive(feeLnurl.trim()))
         }
+        parsedPrizes?.takeIf { it != (competition.raw["prizes"] as? JsonArray)?.toList().orEmpty() }
+            ?.let { put("prizes", JsonArray(it)) }
+        parsedPrizeClaimDays?.takeIf { it != competition.prizeClaimDays }
+            ?.let { put("prize_claim_days", JsonPrimitive(it)) }
         listOf(
             "eligibility" to eligibility, "waiver" to waiver,
             "participant_instructions" to participantInstructions,
@@ -1161,7 +1180,8 @@ private fun HostCompetitionEditDialog(
     val parsedClimbCount = climbCount.toIntOrNull()
     val parsedCounted = countedClimbCount.toIntOrNull()
     val parsedScorePoints = listOf(zonePoints, topPoints, flashPoints).map(String::toIntOrNull)
-    val valid = title.isNotBlank() && schedule != null && parsedDivisions != null &&
+    val valid = title.isNotBlank() && schedule != null && parsedDivisions != null && parsedPrizes != null &&
+        parsedPrizeClaimDays in 1..365 &&
         parsedFeeSats in 0L..1_000_000L && (parsedFeeSats == 0L || feeLnurl.isNotBlank()) &&
         (!competition.waiverRequired || waiver.isNotBlank()) &&
         listOf(eligibility, waiver, participantInstructions, spectatorInfo, refundPolicy).none { it.length > 2_000 } &&
@@ -1195,6 +1215,9 @@ private fun HostCompetitionEditDialog(
                     OutlinedTextField(feeLnurl, { feeLnurl = it }, label = { Text(stringResource(R.string.comp_create_field_fee_lnurl)) }, singleLine = true)
                     Text(stringResource(R.string.comp_money_no_custody_organizer), style = MaterialTheme.typography.bodySmall)
                 }
+                OutlinedTextField(prizes, { prizes = it }, label = { Text(stringResource(R.string.comp_create_field_prizes)) }, supportingText = { Text(stringResource(R.string.comp_create_prizes_hint)) }, minLines = 3)
+                OutlinedTextField(prizeClaimDays, { prizeClaimDays = it.filter(Char::isDigit) }, label = { Text(stringResource(R.string.comp_create_field_prize_claim_days)) }, singleLine = true)
+                if (prizes.isNotBlank()) Text(stringResource(R.string.comp_prize_not_funded), style = MaterialTheme.typography.bodySmall)
                 OutlinedTextField(eligibility, { eligibility = it }, label = { Text(stringResource(R.string.comp_create_field_eligibility)) })
                 OutlinedTextField(participantInstructions, { participantInstructions = it }, label = { Text(stringResource(R.string.comp_create_field_instructions)) })
                 OutlinedTextField(spectatorInfo, { spectatorInfo = it }, label = { Text(stringResource(R.string.comp_create_field_spectator)) })
