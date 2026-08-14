@@ -43,6 +43,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -86,6 +87,8 @@ import java.text.DateFormat
 import java.util.Date
 import java.util.TimeZone
 
+private enum class ParticipantRoute { REGISTRATION, CHECKIN, LIVE, CHOOSER, LEADERBOARD }
+
 /**
  * One competition, from a participant's side.
  *
@@ -104,6 +107,9 @@ fun CompetitionDetailScreen(
     val action by viewModel.action.collectAsStateWithLifecycle()
     val climbOpen by viewModel.climbOpen.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    var participantRouteName by rememberSaveable { mutableStateOf("") }
+    var participantPrimaryName by rememberSaveable { mutableStateOf("") }
+    val participantRoute = ParticipantRoute.entries.firstOrNull { it.name == participantRouteName }
 
     // The board screen is only reached once the climb resolves against what
     // this phone actually holds; everything else stays here with a reason.
@@ -136,7 +142,14 @@ fun CompetitionDetailScreen(
             TopAppBar(
                 title = { Text(ui.snapshot.competition?.title ?: stringResource(R.string.comp_title)) },
                 navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
+                    IconButton(onClick = {
+                        if (!viewModel.isAuthority && participantRoute in listOf(
+                                ParticipantRoute.CHOOSER,
+                                ParticipantRoute.LEADERBOARD,
+                            )
+                        ) participantRouteName = ParticipantRoute.LIVE.name
+                        else onNavigateBack()
+                    }) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = stringResource(R.string.cd_back),
@@ -170,7 +183,7 @@ fun CompetitionDetailScreen(
             )
         },
         bottomBar = {
-            if (!viewModel.isAuthority) ParticipantActionBar(
+            if (!viewModel.isAuthority && participantRoute == ParticipantRoute.LIVE) ParticipantActionBar(
                 ui = ui,
                 nowSeconds = now,
                 viewModel = viewModel,
@@ -212,6 +225,55 @@ fun CompetitionDetailScreen(
 
         val competition = snapshot.competition
         val state = snapshot.state
+
+        if (!viewModel.isAuthority && state != null) {
+            val runningNow = CompetitionProtocol.competitionRunning(competition, state.status, now)
+            val terminal = state.status in listOf("finished", "cancelled")
+            val primaryRoute = when {
+                runningNow || state.status == "paused" || terminal -> ParticipantRoute.LIVE
+                ui.me?.registration == "accepted" -> ParticipantRoute.CHECKIN
+                else -> ParticipantRoute.REGISTRATION
+            }
+            val allowedRoutes = buildSet {
+                add(ParticipantRoute.REGISTRATION)
+                if (ui.me?.registration == "accepted") add(ParticipantRoute.CHECKIN)
+                if (primaryRoute == ParticipantRoute.LIVE) {
+                    add(ParticipantRoute.LIVE)
+                    add(ParticipantRoute.LEADERBOARD)
+                    if (ui.picksOwnClimbs) add(ParticipantRoute.CHOOSER)
+                }
+            }
+            LaunchedEffect(primaryRoute, participantRouteName) {
+                val followedPreviousPrimary = participantRouteName.isBlank() ||
+                    participantRouteName == participantPrimaryName
+                if (participantRoute !in allowedRoutes ||
+                    (participantPrimaryName != primaryRoute.name && followedPreviousPrimary)
+                ) participantRouteName = primaryRoute.name
+                participantPrimaryName = primaryRoute.name
+            }
+            val effectiveRoute = participantRoute?.takeIf { it in allowedRoutes } ?: primaryRoute
+            BackHandler(effectiveRoute in listOf(ParticipantRoute.CHOOSER, ParticipantRoute.LEADERBOARD)) {
+                participantRouteName = ParticipantRoute.LIVE.name
+            }
+            ParticipantPhaseScreen(
+                route = effectiveRoute,
+                ui = ui,
+                action = action,
+                climbOpen = climbOpen,
+                lastAsked = lastAsked,
+                nowSeconds = now,
+                preparedClimbId = preparedClimbId,
+                viewModel = viewModel,
+                contentPadding = padding,
+                onRoute = { participantRouteName = it.name },
+                onPreparedClimb = { id ->
+                    preparedClimbId = id
+                    if (id != null && ui.picksOwnClimbs) viewModel.chooseClimb(id)
+                },
+                onOpenClimb = { id -> lastAsked = id; viewModel.openClimb(id) },
+            )
+            return@Scaffold
+        }
 
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding).testTag("competition_detail"),
@@ -268,49 +330,13 @@ fun CompetitionDetailScreen(
                 }
             }
 
-            if (!viewModel.isAuthority && state != null) {
-                val runningNow = CompetitionProtocol.competitionRunning(competition, state.status, now)
-                val terminal = state.status in listOf("finished", "cancelled")
-                val me = ui.me
-                val pendingRegistration = ui.snapshot.pendingIntents.any {
-                    it.pubkey == ui.myPubkey && it.op == "register"
-                }
-                val livePrimary = runningNow || state.status == "paused" || terminal
-                if (livePrimary) {
-                    item {
-                        LivePanel(
-                            ui,
-                            now,
-                            viewModel,
-                            action,
-                            preparedClimbId,
-                            onPreparedClimb = { id ->
-                                preparedClimbId = id
-                                if (id != null && ui.picksOwnClimbs) viewModel.chooseClimb(id)
-                            },
-                        ) { id, _ -> lastAsked = id; viewModel.openClimb(id) }
-                    }
-                    item { LeaderboardCard(ui) }
-                } else {
-                    item { ParticipantJourneyCard(ui, now) }
-                    val registrationPrimary = me == null || pendingRegistration ||
-                        me.registration in listOf("rejected", "withdrawn") ||
-                        (competition.feeMsat > 0 && me.payment in PAYABLE_STATES)
-                    if (registrationPrimary) item { RegistrationPanel(ui, viewModel, action) }
-                    else if (me.registration == "accepted") item { CheckInPanel(ui, viewModel, action, now) }
-                }
-                item { PrizeClaimPanel(ui, viewModel) }
-            }
             item { ClimbOpenProblem(climbOpen, lastAsked, viewModel) }
 
             item { CompetitionEssentials(competition) }
             item { CompetitionScoringCard(competition) }
             item { CompetitionCatalogueOverview(ui) { id, _ -> lastAsked = id; viewModel.openClimb(id) } }
 
-            val participantLive = !viewModel.isAuthority && state != null &&
-                (CompetitionProtocol.competitionRunning(competition, state.status, now) ||
-                    state.status in listOf("paused", "finished", "cancelled"))
-            if (!participantLive && snapshot.trustworthy && snapshot.standings.isNotEmpty()) {
+            if (snapshot.trustworthy && snapshot.standings.isNotEmpty()) {
                 item { LeaderboardCard(ui) }
             }
 
@@ -332,6 +358,138 @@ fun CompetitionDetailScreen(
             if (competition.raw["participant_instructions"] != null) {
                 item { TextSection(stringResource(R.string.comp_instructions), competition.rawText("participant_instructions")) }
             }
+        }
+    }
+}
+
+/** Focused participant destinations; host management deliberately stays on the detail console. */
+@Composable
+private fun ParticipantPhaseScreen(
+    route: ParticipantRoute,
+    ui: CompetitionDetailViewModel.Ui,
+    action: CompetitionDetailViewModel.Action,
+    climbOpen: CompetitionClimbResolver.Result?,
+    lastAsked: String,
+    nowSeconds: Long,
+    preparedClimbId: String?,
+    viewModel: CompetitionDetailViewModel,
+    contentPadding: androidx.compose.foundation.layout.PaddingValues,
+    onRoute: (ParticipantRoute) -> Unit,
+    onPreparedClimb: (String?) -> Unit,
+    onOpenClimb: (String) -> Unit,
+) {
+    val competition = ui.snapshot.competition ?: return
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(contentPadding)
+            .testTag("competition_participant_${route.name.lowercase()}"),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        if (ui.snapshot.usesDevelopmentRelay) item { WarningCard(stringResource(R.string.comp_dev_relay)) }
+        ui.snapshot.chainBreakAt?.let { seq -> item { WarningCard(stringResource(R.string.comp_chain_break, seq)) } }
+        if (ui.snapshot.state?.forkDetected == true) item { WarningCard(stringResource(R.string.comp_fork)) }
+
+        item {
+            Text(
+                stringResource(
+                    when (route) {
+                        ParticipantRoute.REGISTRATION -> R.string.comp_participant_screen_registration
+                        ParticipantRoute.CHECKIN -> R.string.comp_participant_screen_checkin
+                        ParticipantRoute.LIVE -> R.string.comp_participant_screen_live
+                        ParticipantRoute.CHOOSER -> R.string.comp_participant_screen_chooser
+                        ParticipantRoute.LEADERBOARD -> R.string.comp_leaderboard
+                    },
+                ),
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+        item { ParticipantPhaseNavigation(route, ui, nowSeconds, onRoute) }
+
+        when (route) {
+            ParticipantRoute.REGISTRATION -> item { RegistrationPanel(ui, viewModel, action) }
+            ParticipantRoute.CHECKIN -> item { CheckInPanel(ui, viewModel, action, nowSeconds) }
+            ParticipantRoute.LIVE -> {
+                item {
+                    LivePanel(
+                        ui = ui,
+                        nowSeconds = nowSeconds,
+                        action = action,
+                        preparedClimbId = preparedClimbId,
+                    )
+                }
+                if (ui.picksOwnClimbs && ui.me != null) item {
+                    Button(
+                        onClick = { onRoute(ParticipantRoute.CHOOSER) },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)
+                            .testTag("competition_choose_next_boulder"),
+                    ) {
+                        Text(
+                            if (preparedClimbId == null) stringResource(R.string.comp_choose_next_boulder)
+                            else stringResource(
+                                R.string.comp_change_prepared_boulder,
+                                climbLabel(ui, preparedClimbId),
+                            ),
+                        )
+                    }
+                }
+                item {
+                    OutlinedButton(
+                        onClick = { onRoute(ParticipantRoute.LEADERBOARD) },
+                        modifier = Modifier.fillMaxWidth().testTag("competition_open_leaderboard"),
+                    ) { Text(stringResource(R.string.comp_open_leaderboard)) }
+                }
+                item { PrizeClaimPanel(ui, viewModel) }
+            }
+            ParticipantRoute.CHOOSER -> {
+                item {
+                    Text(
+                        stringResource(
+                            R.string.comp_journey_pool_best,
+                            competition.rules.countedClimbCount,
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                item {
+                    NextClimbSection(
+                        ui,
+                        nowSeconds,
+                        viewModel,
+                        preparedClimbId,
+                        onPreparedClimb,
+                    ) { id, _ -> onOpenClimb(id) }
+                }
+            }
+            ParticipantRoute.LEADERBOARD -> item { LeaderboardCard(ui) }
+        }
+        item { ClimbOpenProblem(climbOpen, lastAsked, viewModel) }
+    }
+}
+
+@Composable
+private fun ParticipantPhaseNavigation(
+    route: ParticipantRoute,
+    ui: CompetitionDetailViewModel.Ui,
+    nowSeconds: Long,
+    onRoute: (ParticipantRoute) -> Unit,
+) {
+    val competition = ui.snapshot.competition ?: return
+    val state = ui.snapshot.state ?: return
+    val live = CompetitionProtocol.competitionRunning(competition, state.status, nowSeconds) ||
+        state.status in listOf("paused", "finished", "cancelled")
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        listOfNotNull(
+            ParticipantRoute.REGISTRATION to R.string.comp_journey_registration,
+            (ParticipantRoute.CHECKIN to R.string.comp_journey_checkin)
+                .takeIf { ui.me?.registration == "accepted" },
+            (ParticipantRoute.LIVE to R.string.comp_journey_live).takeIf { live },
+        ).forEach { (target, label) ->
+            OutlinedButton(
+                onClick = { onRoute(target) },
+                enabled = route != target,
+                modifier = Modifier.weight(1f).testTag("competition_phase_${target.name.lowercase()}"),
+            ) { Text(stringResource(label), textAlign = TextAlign.Center) }
         }
     }
 }
@@ -800,11 +958,8 @@ private fun TextSection(title: String, body: String) {
 private fun LivePanel(
     ui: CompetitionDetailViewModel.Ui,
     nowSeconds: Long,
-    viewModel: CompetitionDetailViewModel,
     action: CompetitionDetailViewModel.Action,
     preparedClimbId: String?,
-    onPreparedClimb: (String?) -> Unit,
-    onOpenClimb: (String, Int) -> Unit,
 ) {
     val state = ui.snapshot.state ?: return
     val competition = ui.snapshot.competition ?: return
@@ -952,27 +1107,6 @@ private fun LivePanel(
                 }
             }
 
-            if (ui.rotation.entries.isNotEmpty()) {
-                Spacer(Modifier.height(16.dp))
-                Text(stringResource(R.string.comp_live_your_rotation), fontWeight = FontWeight.Bold)
-                ui.rotation.entries.forEachIndexed { index, entry ->
-                    Row(
-                        Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Text(
-                            entry.climb.label,
-                            fontWeight = if (index == 0) FontWeight.Bold else FontWeight.Normal,
-                        )
-                        Text("${entry.climb.angle}°", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-                if (ui.rotation.hidden > 0) Text(
-                    stringResource(R.string.comp_live_more, ui.rotation.hidden),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-
             if (sync.kind != CompetitionLivePolicy.Sync.LIVE) {
                 Spacer(Modifier.height(12.dp))
                 Text(
@@ -987,22 +1121,10 @@ private fun LivePanel(
             val myClimbs = ui.me?.climbs.orEmpty()
             if (myClimbs.isNotEmpty()) {
                 Spacer(Modifier.height(8.dp))
-                Text(stringResource(R.string.comp_my_climbs), fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.comp_my_results), fontWeight = FontWeight.Bold)
                 myClimbs.forEach { climb ->
                     Text("${climbLabel(ui, climb.climbId)} — ${climb.outcome} (${climb.attemptsUsed})")
                 }
-            }
-
-            if (competition.rules.progression == "asynchronous_turns" && ui.me != null) {
-                Spacer(Modifier.height(12.dp))
-                NextClimbSection(
-                    ui,
-                    nowSeconds,
-                    viewModel,
-                    preparedClimbId,
-                    onPreparedClimb,
-                    onOpenClimb,
-                )
             }
 
         }
@@ -1289,6 +1411,12 @@ private fun RegistrationPanel(
 
             if (me != null) {
                 var confirmWithdraw by rememberSaveable { mutableStateOf(false) }
+                Text(
+                    stringResource(registrationLabel(me.registration)),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(Modifier.height(8.dp))
                 // Not only `pending`. A payment the organizer recorded as
                 // failed or expired is precisely the state somebody has to be
                 // able to leave, and showing the badge without the button
