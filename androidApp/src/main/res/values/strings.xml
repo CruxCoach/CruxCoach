@@ -2432,6 +2432,8 @@
     <string name="comp_history_loading">Loading your verified competition status…</string>
     <string name="comp_history_gap_recovering">Competition history is incomplete. Recovering the missing entry before participant actions are enabled…</string>
     <string name="comp_history_untrusted">The relays did not complete the signed history backfill. Registration, turns, results, and host controls stay hidden rather than being guessed. Check your connection, then go back and reopen this competition.</string>
+    <string name="comp_intents_untrusted_title">Requests are not yet trustworthy</string>
+    <string name="comp_intents_untrusted">Not every competition relay completed the participant-request history. Requests and prepared boulders stay hidden until a full reload succeeds.</string>
     <string name="comp_refresh">Refresh</string>
     <string name="comp_discover_title">Public competitions</string>
     <string name="comp_organised_by">by %1$s</string>

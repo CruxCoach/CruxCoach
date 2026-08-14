@@ -2431,6 +2431,8 @@
     <string name="comp_history_loading">Dein verifizierter Wettkampfstatus wird geladen…</string>
     <string name="comp_history_gap_recovering">Die Wettkampfhistorie ist unvollständig. Der fehlende Eintrag wird geladen, bevor Teilnehmeraktionen freigegeben werden…</string>
     <string name="comp_history_untrusted">Die Relays haben den signierten Verlauf nicht vollständig geladen. Anmeldung, Züge, Ergebnisse und Ausrichtungsfunktionen bleiben verborgen, statt erraten zu werden. Prüfe die Verbindung, gehe zurück und öffne diesen Wettkampf erneut.</string>
+    <string name="comp_intents_untrusted_title">Anfragen sind noch nicht vertrauenswürdig</string>
+    <string name="comp_intents_untrusted">Nicht jedes Wettkampf-Relay hat den Verlauf der Teilnehmendenanfragen vollständig geliefert. Anfragen und vorbereitete Boulder bleiben verborgen, bis ein vollständiges Neuladen gelingt.</string>
     <string name="comp_refresh">Aktualisieren</string>
     <string name="comp_discover_title">Öffentliche Wettkämpfe</string>
     <string name="comp_organised_by">von %1$s</string>

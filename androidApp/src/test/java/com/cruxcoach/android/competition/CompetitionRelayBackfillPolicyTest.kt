@@ -61,11 +61,15 @@ class CompetitionRelayBackfillPolicyTest {
 
     @Test
     fun `intent history is separate from snapshots and results`() {
-        val filter = CompetitionRelayClient.intentFilter(address)
+        val filters = CompetitionRelayClient.intentFilters(address)
 
-        assertTrue(filter.contains("\"#a\":[\"$address\"]"))
-        assertTrue(filter.contains("\"#l\":[\"intent\"]"))
-        assertTrue(filter.contains("\"limit\":1000"))
+        assertEquals(CompetitionProtocol.INTENT_OPS.size, filters.size)
+        assertTrue(filters.all { it.contains("\"#a\":[\"$address\"]") })
+        assertTrue(filters.all { it.contains("\"#l\":[\"intent\"]") })
+        assertTrue(filters.all { it.contains("\"limit\":1000") })
+        CompetitionProtocol.INTENT_OPS.forEach { op ->
+            assertTrue(filters.any { it.contains("\"#op\":[\"$op\"]") })
+        }
     }
 
     @Test

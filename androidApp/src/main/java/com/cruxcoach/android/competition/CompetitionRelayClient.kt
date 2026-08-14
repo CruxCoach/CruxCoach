@@ -14,6 +14,9 @@ import com.vitorpamplona.quartz.nip01Core.crypto.verifyId
 import com.vitorpamplona.quartz.nip01Core.crypto.verifySignature
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -45,6 +48,8 @@ class CompetitionRelayClient @Inject constructor(
         val chainBreakAt: Int? = null,
         /** True only after exact d-tag paging reached the first absent sequence. */
         val historyComplete: Boolean = false,
+        /** True only after every configured relay completed every intent lane. */
+        val intentHistoryComplete: Boolean = false,
         val loading: Boolean = false,
         val problem: Problem? = null,
         val entryCount: Int = 0,
@@ -169,12 +174,25 @@ class CompetitionRelayClient @Inject constructor(
         // Intents are not part of the authority chain, but restoring them makes
         // the organizer view complete after a screen/process restart. The live
         // subscription below closes the EOSE-to-follow race.
-        withTimeoutOrNull(BACKFILL_TIMEOUT_MS) {
-            relayPool.fetchStored(intentFilter(address)).collect { json ->
-                ingest(json, competition, organizerPubkey, nowSeconds())
-            }
-        }
-        reduce(loading = false, historyComplete = historyComplete)
+        val intentHistoryComplete = runCatching {
+            withTimeoutOrNull(BACKFILL_TIMEOUT_MS) {
+                coroutineScope {
+                    intentFilters(address).map { intentFilter ->
+                        async {
+                            relayPool.fetchStoredComplete(intentFilter).collect { json ->
+                                ingest(json, competition, organizerPubkey, nowSeconds())
+                            }
+                        }
+                    }.awaitAll()
+                }
+                true
+            } ?: false
+        }.onFailure { Log.w(TAG, "stored intent backfill failed", it) }.getOrDefault(false)
+        reduce(
+            loading = false,
+            historyComplete = historyComplete,
+            intentHistoryComplete = intentHistoryComplete,
+        )
         emit(entries.size)
 
         // Bypass the global cache here as well. This REQ first replays whatever
@@ -347,6 +365,7 @@ class CompetitionRelayClient @Inject constructor(
     private fun reduce(
         loading: Boolean = false,
         historyComplete: Boolean = _snapshot.value.historyComplete,
+        intentHistoryComplete: Boolean = _snapshot.value.intentHistoryComplete,
     ) {
         val current = _snapshot.value
         val competition = definitionCompetition ?: return
@@ -359,10 +378,11 @@ class CompetitionRelayClient @Inject constructor(
                 standings = CompetitionScoring.standings(reduction.state, reduction.effectiveCompetition),
                 chainBreakAt = reduction.chainBreakAt,
                 historyComplete = historyComplete,
+                intentHistoryComplete = intentHistoryComplete,
                 entryCount = entries.size,
                 loading = loading,
                 lastSyncedAt = System.currentTimeMillis() / 1000,
-                pendingIntents = unansweredIntents(),
+                pendingIntents = if (intentHistoryComplete) unansweredIntents() else emptyList(),
             )
         }
     }
@@ -417,8 +437,9 @@ class CompetitionRelayClient @Inject constructor(
         internal fun logPageFilter(authority: String, address: String, dTags: List<String>): String =
             """{"kinds":[${CompetitionProtocol.KIND}],"authors":["$authority"],"#a":["$address"],"#d":[${dTags.joinToString(",") { "\"$it\"" }}],"limit":100}"""
 
-        internal fun intentFilter(address: String): String =
-            """{"kinds":[${CompetitionProtocol.KIND}],"#a":["$address"],"#l":["intent"],"limit":1000}"""
+        internal fun intentFilters(address: String): List<String> = CompetitionProtocol.INTENT_OPS.map { op ->
+            """{"kinds":[${CompetitionProtocol.KIND}],"#a":["$address"],"#l":["intent"],"#op":["$op"],"limit":1000}"""
+        }
 
         internal fun ownIntentFilter(
             compId: String,

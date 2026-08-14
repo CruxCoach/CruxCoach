@@ -798,6 +798,20 @@ private fun OrganizerConsole(
             }
             }
 
+            if (route != HostRoute.SETUP && !ui.snapshot.intentHistoryComplete) {
+                Text(
+                    stringResource(R.string.comp_intents_untrusted_title),
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.error,
+                )
+                Text(stringResource(R.string.comp_intents_untrusted))
+                Button(
+                    onClick = viewModel::reload,
+                    modifier = Modifier.fillMaxWidth().testTag("competition_host_retry_intents"),
+                ) { Text(stringResource(R.string.action_retry)) }
+                return@Column
+            }
+
             if (route == HostRoute.LIVE) {
                 val next = if (state.status == "paused") "running" else null
                 FlowRow(

@@ -31,5 +31,8 @@ class CompetitionDetailNavigationTest {
         assertContains(source, "ui.preparedClimbId")
         assertContains(source, "PreparedChoice.Untrusted")
         assertContains(source, "viewModel::retryPreparedChoice")
+        assertContains(source, "!ui.snapshot.intentHistoryComplete")
+        assertContains(source, "competition_host_retry_intents")
+        assertContains(source, "return@Column")
     }
 }
