@@ -94,9 +94,9 @@ class CompetitionCreateViewModel @Inject constructor(
     }
 
     private fun validateStep(d: Draft, step: Int): String? = when (step) {
-        0 -> if (d.title.isBlank() || d.venue.isBlank()) "Titel und Ort sind erforderlich." else null
-        1 -> if (d.layoutId.toIntOrNull() == null || d.angle.toIntOrNull() == null || d.boardSize.isBlank()) "Board-Konfiguration vervollständigen." else null
-        2 -> if (parseClimbs(d).isEmpty()) "Mindestens einen Boulder als UUID | Name eintragen." else null
+        0 -> if (d.title.isBlank() || d.venue.isBlank()) "required_basics" else null
+        1 -> if (d.layoutId.toIntOrNull() == null || d.angle.toIntOrNull() == null || d.boardSize.isBlank()) "invalid_board" else null
+        2 -> if (parseClimbs(d).isEmpty()) "required_climb" else null
         else -> null
     }
 

@@ -81,8 +81,10 @@ import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.MoonBoardVariant
 import com.cruxcoach.domain.competition.Competition
+import com.cruxcoach.domain.competition.CompetitionClimb
 import com.cruxcoach.domain.competition.CompetitionProtocol
 import kotlinx.coroutines.delay
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import java.text.DateFormat
@@ -983,12 +985,19 @@ private fun HostCompetitionEditDialog(
 ) {
     val venue = (competition.raw["venue"] as? JsonObject)
         ?.get("name")?.let { it as? JsonPrimitive }?.content.orEmpty()
+    val initialClimbs = competitionClimbsEditorText(
+        if (competition.rules.climbSource == "participant_choice") competition.climbPool else competition.climbs,
+    )
     var title by rememberSaveable(competition.revision) { mutableStateOf(competition.title) }
     var summary by rememberSaveable(competition.revision) { mutableStateOf(competition.summary) }
     var venueName by rememberSaveable(competition.revision) { mutableStateOf(venue) }
     var capacity by rememberSaveable(competition.revision) { mutableStateOf(competition.capacity.toString()) }
     var attempts by rememberSaveable(competition.revision) { mutableStateOf(competition.rules.attemptsPerClimb.toString()) }
+    var climbText by rememberSaveable(competition.revision) { mutableStateOf(initialClimbs) }
     var reason by rememberSaveable(competition.revision) { mutableStateOf("") }
+
+    val climbPatch = if (climbText == initialClimbs) JsonObject(emptyMap())
+    else competitionClimbsEditorPatch(competition, climbText)
 
     val patch = JsonObject(buildMap {
         title.trim().takeIf { it != competition.title }?.let { put("title", JsonPrimitive(it)) }
@@ -1000,10 +1009,18 @@ private fun HostCompetitionEditDialog(
         attempts.toIntOrNull()?.takeIf { it != competition.rules.attemptsPerClimb }?.let {
             put("rules", JsonObject(mapOf("attempts_per_climb" to JsonPrimitive(it))))
         }
+        climbPatch?.forEach { (key, value) ->
+            if (key == "rules" && value is JsonObject) {
+                val current = get("rules") as? JsonObject
+                put("rules", JsonObject(current.orEmpty() + value))
+            } else {
+                put(key, value)
+            }
+        }
     })
     val impact = impactOf(patch)
     val valid = title.isNotBlank() && capacity.toIntOrNull() in 0..500 &&
-        attempts.toIntOrNull() in 1..20 && reason.isNotBlank() && impact != null
+        attempts.toIntOrNull() in 1..20 && reason.isNotBlank() && impact != null && climbPatch != null
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1022,12 +1039,26 @@ private fun HostCompetitionEditDialog(
                 OutlinedTextField(venueName, { venueName = it }, label = { Text(stringResource(R.string.comp_edit_field_venue)) }, singleLine = true)
                 OutlinedTextField(capacity, { capacity = it.filter(Char::isDigit) }, label = { Text(stringResource(R.string.comp_edit_field_capacity)) }, singleLine = true)
                 OutlinedTextField(attempts, { attempts = it.filter(Char::isDigit) }, label = { Text(stringResource(R.string.comp_edit_field_attempts)) }, singleLine = true)
+                OutlinedTextField(
+                    climbText, { climbText = it },
+                    label = { Text(stringResource(R.string.comp_edit_field_climbs)) },
+                    supportingText = {
+                        Text(stringResource(if (climbPatch == null) R.string.comp_edit_climbs_invalid else R.string.comp_edit_climbs_hint))
+                    },
+                    minLines = 5,
+                    isError = climbPatch == null,
+                    modifier = Modifier.fillMaxWidth().testTag("competition_edit_climbs"),
+                )
                 Card(colors = CardDefaults.cardColors(
                     containerColor = if (impact == "scoring") MaterialTheme.colorScheme.errorContainer
                     else MaterialTheme.colorScheme.secondaryContainer,
                 )) {
                     Text(
-                        stringResource(if (impact == "scoring") R.string.comp_edit_impact_scoring else R.string.comp_edit_impact_safe),
+                        stringResource(when (impact) {
+                            "scoring" -> R.string.comp_edit_impact_scoring
+                            "safe" -> R.string.comp_edit_impact_safe
+                            else -> R.string.comp_edit_impact_none
+                        }),
                         Modifier.padding(10.dp), style = MaterialTheme.typography.bodySmall,
                     )
                 }
@@ -1056,6 +1087,62 @@ private fun HostCompetitionEditDialog(
             }
         },
     )
+}
+
+internal fun competitionClimbsEditorText(climbs: List<CompetitionClimb>): String = climbs.joinToString("\n") { climb ->
+    listOfNotNull(climb.climbUuid, climb.label, climb.zoneHold?.toString()).joinToString(" | ")
+}
+
+/** Parse the compact editor while retaining stable IDs and unknown signed metadata for existing rows. */
+internal fun competitionClimbsEditorPatch(competition: Competition, text: String): JsonObject? {
+    val participantChoice = competition.rules.climbSource == "participant_choice"
+    val existing = if (participantChoice) competition.climbPool else competition.climbs
+    val rawEntries = if (participantChoice) {
+        ((competition.raw["climb_pool"] as? JsonObject)?.get("options") as? JsonArray).orEmpty()
+    } else {
+        (competition.raw["climbs"] as? JsonArray).orEmpty()
+    }.mapNotNull { it as? JsonObject }
+    val boardAngle = ((competition.raw["board"] as? JsonObject)?.get("angle") as? JsonPrimitive)
+        ?.content?.toIntOrNull() ?: return null
+    val usedIds = existing.mapTo(mutableSetOf()) { it.id }
+    var nextId = 1
+    fun freshId(): String {
+        while ("edit$nextId" in usedIds) nextId += 1
+        return "edit${nextId++}".also(usedIds::add)
+    }
+    val seen = mutableSetOf<String>()
+    val entries = text.lineSequence().filter(String::isNotBlank).toList().map { line ->
+        val parts = line.split('|').map(String::trim)
+        val rawUuid = parts.getOrNull(0).orEmpty().lowercase()
+        val uuid = (Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+            .find(rawUuid)?.value ?: rawUuid)
+        if (!CompetitionProtocol.isClimbUuid(uuid) || !seen.add(uuid)) return null
+        val prior = existing.firstOrNull { it.climbUuid.equals(uuid, ignoreCase = true) }
+        val label = parts.getOrNull(1)?.takeIf(String::isNotBlank) ?: prior?.label ?: uuid.take(8)
+        val zoneText = parts.getOrNull(2).orEmpty()
+        val zone = zoneText.takeIf(String::isNotBlank)?.toIntOrNull()
+        if (zoneText.isNotBlank() && (zone == null || zone <= 0)) return null
+        val raw = rawEntries.firstOrNull { entry ->
+            (entry["id"] as? JsonPrimitive)?.content == prior?.id
+        }?.toMutableMap() ?: mutableMapOf()
+        raw["id"] = JsonPrimitive(prior?.id ?: freshId())
+        raw["climb_uuid"] = JsonPrimitive(uuid)
+        raw["angle"] = JsonPrimitive(prior?.angle ?: boardAngle)
+        raw["label"] = JsonPrimitive(label)
+        raw["points"] = JsonPrimitive(prior?.points ?: 0)
+        if (zone == null) raw.remove("zone_hold") else raw["zone_hold"] = JsonPrimitive(zone)
+        JsonObject(raw)
+    }.toList()
+    if (entries.isEmpty() || entries.size > 40 || entries.size < competition.rules.countedClimbCount) return null
+
+    return if (participantChoice) {
+        JsonObject(mapOf(
+            "climb_pool" to JsonObject(mapOf("options" to JsonArray(entries))),
+            "rules" to JsonObject(mapOf("climb_count" to JsonPrimitive(entries.size))),
+        ))
+    } else {
+        JsonObject(mapOf("climbs" to JsonArray(entries)))
+    }
 }
 
 @Composable
