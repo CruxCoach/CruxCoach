@@ -2820,7 +2820,7 @@
     <string name="comp_host_error_division_used">A division with entrants cannot be removed.</string>
     <string name="comp_host_error_invalid">This change would make the competition configuration invalid.</string>
     <string name="comp_host_error_revision">The competition changed elsewhere. Reload it and try again.</string>
-    <string name="comp_host_error_correction_target">That signed entry is unavailable or already corrected. Reload and choose another attempt.</string>
+    <string name="comp_host_error_correction_target">That signed original entry is unavailable. Reload and choose another attempt.</string>
     <string name="comp_host_error_correction_invalid">That replacement would have been invalid at the original turn. The recorded result was kept.</string>
     <string name="comp_host_error_correction_no_change">Choose a different outcome before publishing a correction.</string>
     <string name="comp_host_error_immutable">Identity, authority, status, and relay assignment cannot be edited here.</string>

@@ -89,4 +89,22 @@ class NostrRelayPoolContractTest {
         assertFalse(p.shouldDeliverEvent(eventId, skipDedup = false))
         assertTrue(p.shouldDeliverEvent(eventId, skipDedup = true))
     }
+
+    @Test
+    fun `same count wrong relay cannot satisfy scoped completeness`() {
+        val p = pool()
+        val required = listOf(
+            RelayConfig("wss://gym-a.example", read = true, write = true),
+            RelayConfig("wss://gym-b.example", read = true, write = true),
+        )
+
+        assertFalse(p.allReadRelaysConnected(
+            required,
+            setOf("wss://gym-a.example", "wss://unrelated.example"),
+        ))
+        assertTrue(p.allReadRelaysConnected(
+            required,
+            setOf("wss://gym-a.example", "wss://gym-b.example"),
+        ))
+    }
 }

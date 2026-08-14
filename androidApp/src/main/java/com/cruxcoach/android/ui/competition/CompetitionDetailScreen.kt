@@ -63,6 +63,9 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -96,6 +99,14 @@ import java.util.TimeZone
 private enum class ParticipantRoute { REGISTRATION, CHECKIN, LIVE, CHOOSER, LEADERBOARD }
 private enum class HostRoute { SETUP, ENTRANTS, LIVE }
 
+/** Closed routing table: a new protocol intent cannot silently disappear. */
+internal fun hostIntentDestination(op: String): String? = when (op) {
+    "register", "checkin_request", "withdraw", "payment_claim", "prize_claim", "prize_receipt" ->
+        HostRoute.ENTRANTS.name
+    "defer_request", "attempt_report", "climb_choice" -> HostRoute.LIVE.name
+    else -> null
+}
+
 /**
  * One competition, with focused participant and host destinations.
  *
@@ -119,6 +130,7 @@ fun CompetitionDetailScreen(
     var participantPrimaryName by rememberSaveable(competitionKey) { mutableStateOf("") }
     val participantRoute = ParticipantRoute.entries.firstOrNull { it.name == participantRouteName }
     var hostRouteName by rememberSaveable(competitionKey) { mutableStateOf("") }
+    var hostPrimaryName by rememberSaveable(competitionKey) { mutableStateOf("") }
     val hostRoute = HostRoute.entries.firstOrNull { it.name == hostRouteName }
 
     // The board screen is only reached once the climb resolves against what
@@ -322,7 +334,7 @@ fun CompetitionDetailScreen(
         }
 
         if (viewModel.isAuthority && state != null) {
-            val initialRoute = when {
+            val primaryRoute = when {
                 CompetitionProtocol.competitionRunning(competition, state.status, now) ||
                     state.status == "paused" -> HostRoute.LIVE
                 CompetitionProtocol.registrationWindowOpen(competition, state.status, now) ||
@@ -330,10 +342,14 @@ fun CompetitionDetailScreen(
                     ui.snapshot.pendingIntents.isNotEmpty() -> HostRoute.ENTRANTS
                 else -> HostRoute.SETUP
             }
-            LaunchedEffect(competition.compId) {
-                if (hostRouteName.isBlank()) hostRouteName = initialRoute.name
+            LaunchedEffect(primaryRoute, hostRouteName) {
+                val followedPreviousPrimary = hostRouteName.isBlank() || hostRouteName == hostPrimaryName
+                if (hostPrimaryName != primaryRoute.name && followedPreviousPrimary) {
+                    hostRouteName = primaryRoute.name
+                }
+                hostPrimaryName = primaryRoute.name
             }
-            val effectiveRoute = hostRoute ?: initialRoute
+            val effectiveRoute = hostRoute ?: primaryRoute
             BackHandler(effectiveRoute != HostRoute.SETUP) { hostRouteName = HostRoute.SETUP.name }
             OrganizerPhaseScreen(
                 route = effectiveRoute,
@@ -535,6 +551,7 @@ private fun ParticipantPhaseScreen(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ParticipantPhaseNavigation(
     route: ParticipantRoute,
@@ -546,7 +563,12 @@ private fun ParticipantPhaseNavigation(
     val state = ui.snapshot.state ?: return
     val live = CompetitionProtocol.competitionRunning(competition, state.status, nowSeconds) ||
         state.status in listOf("paused", "finished", "cancelled")
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    FlowRow(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        maxItemsInEachRow = 3,
+    ) {
         listOfNotNull(
             ParticipantRoute.REGISTRATION to R.string.comp_journey_registration,
             (ParticipantRoute.CHECKIN to R.string.comp_journey_checkin)
@@ -555,13 +577,15 @@ private fun ParticipantPhaseNavigation(
         ).forEach { (target, label) ->
             OutlinedButton(
                 onClick = { onRoute(target) },
-                enabled = route != target,
-                modifier = Modifier.weight(1f).testTag("competition_phase_${target.name.lowercase()}"),
+                modifier = Modifier.weight(1f).heightIn(min = 48.dp)
+                    .semantics { selected = route == target; role = Role.Tab }
+                    .testTag("competition_phase_${target.name.lowercase()}"),
             ) { Text(stringResource(label), textAlign = TextAlign.Center) }
         }
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun OrganizerPhaseScreen(
     route: HostRoute,
@@ -593,7 +617,12 @@ private fun OrganizerPhaseScreen(
             )
         }
         item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                maxItemsInEachRow = 3,
+            ) {
                 listOf(
                     HostRoute.SETUP to R.string.comp_host_nav_setup,
                     HostRoute.ENTRANTS to R.string.comp_host_nav_entrants,
@@ -601,8 +630,8 @@ private fun OrganizerPhaseScreen(
                 ).forEach { (target, label) ->
                     OutlinedButton(
                         onClick = { onRoute(target) },
-                        enabled = route != target,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp)
+                            .semantics { selected = route == target; role = Role.Tab }
                             .testTag("competition_host_nav_${target.name.lowercase()}"),
                     ) { Text(stringResource(label), textAlign = TextAlign.Center) }
                 }
@@ -1121,11 +1150,9 @@ private fun OrganizerConsole(
             }
 
             if (route != HostRoute.SETUP) ui.snapshot.pendingIntents.filter { intent ->
-                intent.op in if (route == HostRoute.ENTRANTS) {
-                    setOf("checkin_request", "withdraw")
-                } else {
-                    setOf("defer_request", "attempt_report", "climb_choice")
-                }
+                hostIntentDestination(intent.op) == route.name && intent.op !in setOf(
+                    "register", "payment_claim", "prize_claim", "prize_receipt",
+                )
             }.forEach { intent ->
                 val participant = state.participant(intent.pubkey)
                 val label = participant?.display?.ifBlank { null } ?: "${intent.pubkey.take(12)}…"

@@ -217,7 +217,10 @@ private fun CompetitionRow(
                 CompetitionShareLink.Ref(
                     organizerPubkey = listing.organizerPubkey,
                     compId = competition.compId,
-                    naddr = CompetitionNaddr.encode(listing.organizerPubkey, competition.compId),
+                    naddr = CompetitionNaddr.encode(
+                        listing.organizerPubkey, competition.compId, competition.relays,
+                    ),
+                    relays = competition.relays,
                 ),
             )
         },

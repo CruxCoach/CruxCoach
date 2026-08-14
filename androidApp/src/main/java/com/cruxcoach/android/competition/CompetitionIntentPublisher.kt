@@ -257,7 +257,13 @@ class CompetitionIntentPublisher @Inject constructor(
         return try {
             val event = NostrPublicEventBuilder(signer)
                 .buildSignedEvent(CompetitionProtocol.KIND, payload, tags)
-            val (attempted, accepted) = relayPool.sendEventWithStats(event)
+            val (attempted, accepted) = relayPool.sendEventWithStats(
+                event,
+                competitionRelayScope(
+                    competition.relays,
+                    relayPool.readRelays() + relayPool.writeRelays(),
+                ),
+            )
             if (accepted == 0) {
                 // A publish no relay accepted has not happened. Saying otherwise
                 // leaves someone standing at a wall believing they are entered.

@@ -73,6 +73,11 @@ class CompetitionDetailViewModel @Inject constructor(
 
     private val organizerPubkey: String = savedStateHandle["organizerPubkey"] ?: ""
     private val compId: String = savedStateHandle["compId"] ?: ""
+    private val relayHints: List<String> = (savedStateHandle.get<String>("relayHints") ?: "")
+        .split(',')
+        .filter(CompetitionProtocol::isAllowedRelayUrl)
+        .distinct()
+        .take(8)
 
     /** What the last action did, so the screen can say so instead of guessing. */
     sealed interface Action {
@@ -321,9 +326,9 @@ class CompetitionDetailViewModel @Inject constructor(
     private val catalogue = MutableStateFlow<CatalogueState>(CatalogueState.Loading)
 
     private val transportSnapshot = combine(
-        client.snapshot, client.connectedRelayCount, preparedChoice,
-    ) { snapshot, connected, choice ->
-        Triple(snapshot, connected, choice)
+        client.snapshot, client.connectedRelayUrls, preparedChoice,
+    ) { snapshot, connectedUrls, choice ->
+        Triple(snapshot, client.connectedCompetitionRelayCount(connectedUrls), choice)
     }
 
     val ui: StateFlow<Ui> = combine(
@@ -342,7 +347,7 @@ class CompetitionDetailViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            client.connectedRelayCount.collect { client.connectionChanged() }
+            client.connectedRelayUrls.collect { client.connectionChanged(it) }
         }
         // The competition nickname remains editable, but starting with the
         // user's cached Nostr profile avoids a leaderboard full of hex
@@ -384,7 +389,7 @@ class CompetitionDetailViewModel @Inject constructor(
         followJob?.cancel()
         followJob = viewModelScope.launch {
             val now = System.currentTimeMillis() / 1000
-            if (client.load(organizerPubkey, compId, now)) {
+            if (client.load(organizerPubkey, compId, now, relayHints)) {
                 client.follow { System.currentTimeMillis() / 1000 }
                     .collect { /* state flows out via snapshot */ }
             }
@@ -1087,7 +1092,7 @@ class CompetitionDetailViewModel @Inject constructor(
         val competition = snapshot.competition ?: return null
         val organizer = snapshot.organizerPubkey ?: return null
         return com.cruxcoach.android.competition.CompetitionShareLink.httpsLink(
-            naddr = CompetitionNaddr.encode(organizer, competition.compId),
+            naddr = CompetitionNaddr.encode(organizer, competition.compId, competition.relays),
             host = host,
         )
     }
@@ -1100,6 +1105,6 @@ class CompetitionDetailViewModel @Inject constructor(
  * test and is pinned by the cross-client vectors.
  */
 object CompetitionNaddr {
-    fun encode(organizerPubkey: String, compId: String): String =
-        com.cruxcoach.android.competition.CompetitionShareLink.naddr(organizerPubkey, compId)
+    fun encode(organizerPubkey: String, compId: String, relays: List<String> = emptyList()): String =
+        com.cruxcoach.android.competition.CompetitionShareLink.naddr(organizerPubkey, compId, relays)
 }

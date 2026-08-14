@@ -1,11 +1,13 @@
 package com.cruxcoach.android.competition
 
 import com.cruxcoach.domain.competition.CompetitionProtocol
+import com.cruxcoach.android.nostr.model.RelayConfig
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertFalse
 import org.junit.Test
+import java.io.File
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
@@ -32,11 +34,61 @@ class CompetitionRelayBackfillPolicyTest {
     }
 
     @Test
+    fun `competition relays are required and user relays remain additive`() {
+        val scope = competitionRelayScope(
+            listOf("wss://gym.example", "wss://shared.example"),
+            listOf(
+                RelayConfig("wss://user.example", read = true, write = false),
+                RelayConfig("wss://shared.example", read = false, write = true),
+            ),
+        )
+
+        assertEquals(
+            listOf("wss://gym.example", "wss://shared.example", "wss://user.example"),
+            scope.map { it.url },
+        )
+        assertTrue(scope.first().read && scope.first().write)
+        assertTrue(scope[1].read && scope[1].write)
+        assertTrue(scope.last().read && !scope.last().write)
+    }
+
+    @Test
     fun `bounded gap recovery asks only for a hole with later entries behind it`() {
         assertEquals(1, CompetitionRelayClient.boundedMissingSequence((2..21).toSet()))
         assertEquals(3, CompetitionRelayClient.boundedMissingSequence(setOf(1, 2, 4, 5)))
         assertNull(CompetitionRelayClient.boundedMissingSequence((1..21).toSet()))
         assertNull(CompetitionRelayClient.boundedMissingSequence(emptySet()))
+    }
+
+    @Test
+    fun `replayed live bursts cannot trigger an unbounded full history walk`() {
+        var elapsed = 1_000L
+        val gate = CompetitionBackfillRetryGate(intervalMs = 15_000L) { elapsed }
+        gate.recordAttempt()
+
+        repeat(100) {
+            elapsed += 1
+            assertFalse(gate.claim())
+        }
+        elapsed = 16_000L
+        assertTrue(gate.claim())
+        elapsed = 16_001L
+        assertFalse(gate.claim())
+        elapsed = 31_000L
+        assertTrue(gate.claim())
+    }
+
+    @Test
+    fun `live replay is armed before the exact history walk`() {
+        val source = File("src/main/java/com/cruxcoach/android/competition/CompetitionRelayClient.kt").readText()
+        val follow = source.substringAfter("fun follow(nowSeconds: () -> Long)")
+            .substringBefore("private suspend fun backfillLog")
+
+        assertTrue(follow.indexOf("relayPool.subscribe(") in
+            0 until follow.indexOf("backfillLog(competition, organizerPubkey, address, nowSeconds)"))
+        assertTrue(follow.contains("CoroutineStart.UNDISPATCHED"))
+        assertTrue(follow.contains("Channel<String>(capacity = LIVE_BUFFER_CAPACITY)"))
+        assertTrue(follow.contains("failOnRelayError = true"))
     }
 
     @Test
@@ -75,6 +127,18 @@ class CompetitionRelayBackfillPolicyTest {
                 CompetitionRelayClient.Snapshot(state = state.copy(status = "cancelled"), historyComplete = true),
             ),
         )
+
+        val stale = staleAfterRelayLoss(
+            CompetitionRelayClient.Snapshot(
+                state = state,
+                historyComplete = true,
+                intentHistoryComplete = true,
+            ),
+            allReadRelaysConnected = false,
+        )
+        assertFalse(stale.historyComplete)
+        assertFalse(stale.intentHistoryComplete)
+        assertFalse(stale.trustworthy)
     }
 
     @Test

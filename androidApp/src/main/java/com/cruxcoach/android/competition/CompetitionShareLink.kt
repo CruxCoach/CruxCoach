@@ -19,7 +19,12 @@ import com.cruxcoach.domain.competition.Nip19
 object CompetitionShareLink {
 
     /** Reference to one competition, already checked for shape. */
-    data class Ref(val organizerPubkey: String, val compId: String, val naddr: String)
+    data class Ref(
+        val organizerPubkey: String,
+        val compId: String,
+        val naddr: String,
+        val relays: List<String> = emptyList(),
+    )
 
     private val NADDR = Regex("^naddr1[0-9a-z]+$", RegexOption.IGNORE_CASE)
     private val IN_URL = Regex("(?:^|/)(?:comp|competitions)/?(?:[^#]*#)?(naddr1[0-9a-z]+)", RegexOption.IGNORE_CASE)
@@ -56,6 +61,7 @@ object CompetitionShareLink {
             organizerPubkey = address.pubkey,
             compId = dTag.compId,
             naddr = extracted.lowercase(),
+            relays = address.relays.filter(CompetitionProtocol::isAllowedRelayUrl).distinct().take(8),
         )
     }
 
@@ -110,11 +116,16 @@ object CompetitionShareLink {
     fun httpsLink(naddr: String, host: String): String = "https://$host/comp/$naddr"
 
     /** The `naddr` for a competition. */
-    fun naddr(organizerPubkey: String, compId: String): String = Nip19.encodeNaddr(
+    fun naddr(
+        organizerPubkey: String,
+        compId: String,
+        relays: List<String> = emptyList(),
+    ): String = Nip19.encodeNaddr(
         Nip19.NAddr(
             identifier = CompetitionProtocol.compDTag(compId),
             pubkey = organizerPubkey,
             kind = CompetitionProtocol.KIND,
+            relays = relays.filter(CompetitionProtocol::isAllowedRelayUrl).distinct().take(8),
         ),
     )
 

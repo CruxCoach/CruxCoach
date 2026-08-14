@@ -2819,7 +2819,7 @@
     <string name="comp_host_error_division_used">Eine Kategorie mit Teilnehmenden darf nicht entfernt werden.</string>
     <string name="comp_host_error_invalid">Diese Änderung würde die Wettkampf-Konfiguration ungültig machen.</string>
     <string name="comp_host_error_revision">Der Wettkampf wurde andernorts geändert. Lade ihn neu und versuche es noch einmal.</string>
-    <string name="comp_host_error_correction_target">Dieser signierte Eintrag ist nicht verfügbar oder wurde schon korrigiert. Lade neu und wähle einen anderen Versuch.</string>
+    <string name="comp_host_error_correction_target">Dieser signierte Originaleintrag ist nicht verfügbar. Lade neu und wähle einen anderen Versuch.</string>
     <string name="comp_host_error_correction_invalid">Der Ersatz wäre im ursprünglichen Zug ungültig gewesen. Das eingetragene Ergebnis blieb erhalten.</string>
     <string name="comp_host_error_correction_no_change">Wähle vor dem Veröffentlichen ein anderes Ergebnis.</string>
     <string name="comp_host_error_immutable">Identität, Authority, Status und Relay-Zuordnung können hier nicht geändert werden.</string>

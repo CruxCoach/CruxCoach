@@ -1,8 +1,11 @@
 package com.cruxcoach.android.competition
 
+import android.os.SystemClock
 import android.util.Log
 import com.cruxcoach.android.nostr.NostrEventPolicy
 import com.cruxcoach.android.nostr.NostrRelayPool
+import com.cruxcoach.android.nostr.RelaySubscriptionIntegrityException
+import com.cruxcoach.android.nostr.model.RelayConfig
 import com.cruxcoach.domain.competition.Competition
 import com.cruxcoach.domain.competition.CompetitionEvent
 import com.cruxcoach.domain.competition.CompetitionProtocol
@@ -15,16 +18,74 @@ import com.vitorpamplona.quartz.nip01Core.crypto.verifyId
 import com.vitorpamplona.quartz.nip01Core.crypto.verifySignature
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonPrimitive
+
+internal class CompetitionBackfillRetryGate(
+    private val intervalMs: Long,
+    private val elapsedRealtimeMs: () -> Long = SystemClock::elapsedRealtime,
+) {
+    private var nextAttemptAt = Long.MIN_VALUE
+
+    fun recordAttempt() {
+        val nowMs = elapsedRealtimeMs()
+        nextAttemptAt = if (nowMs > Long.MAX_VALUE - intervalMs) Long.MAX_VALUE else nowMs + intervalMs
+    }
+
+    fun claim(): Boolean {
+        val nowMs = elapsedRealtimeMs()
+        if (nowMs < nextAttemptAt) return false
+        recordAttempt()
+        return true
+    }
+}
+
+internal fun staleAfterRelayLoss(
+    snapshot: CompetitionRelayClient.Snapshot,
+    allReadRelaysConnected: Boolean,
+): CompetitionRelayClient.Snapshot = if (
+    allReadRelaysConnected || (!snapshot.historyComplete && !snapshot.intentHistoryComplete)
+) snapshot else snapshot.copy(
+    historyComplete = false,
+    intentHistoryComplete = false,
+    pendingIntents = emptyList(),
+)
+
+internal fun competitionRelayScope(
+    requiredUrls: List<String>,
+    userRelays: List<RelayConfig>,
+    limit: Int = 8,
+): List<RelayConfig> {
+    val merged = linkedMapOf<String, RelayConfig>()
+    requiredUrls.filter(CompetitionProtocol::isAllowedRelayUrl).forEach { url ->
+        merged[url] = RelayConfig(url = url, read = true, write = true)
+    }
+    userRelays.forEach { relay ->
+        if (!CompetitionProtocol.isAllowedRelayUrl(relay.url)) return@forEach
+        val prior = merged[relay.url]
+        merged[relay.url] = if (prior == null) relay else prior.copy(
+            read = prior.read || relay.read,
+            write = prior.write || relay.write,
+        )
+    }
+    return merged.values.take(limit)
+}
 
 /**
  * Reads a competition off the relays and reduces it.
@@ -36,9 +97,11 @@ import kotlinx.serialization.json.JsonPrimitive
  * reducer, which the website runs too.
  */
 @Singleton
-class CompetitionRelayClient @Inject constructor(
+class CompetitionRelayClient internal constructor(
     private val relayPool: NostrRelayPool,
+    private val scopeResolver: (List<String>, List<RelayConfig>) -> List<RelayConfig>,
 ) {
+    @Inject constructor(relayPool: NostrRelayPool) : this(relayPool, ::competitionRelayScope)
 
     /** What a screen needs, all of it derived, none of it stored twice. */
     data class Snapshot(
@@ -74,12 +137,13 @@ class CompetitionRelayClient @Inject constructor(
 
     private val _snapshot = MutableStateFlow(Snapshot())
     val snapshot: StateFlow<Snapshot> = _snapshot.asStateFlow()
-    val connectedRelayCount: StateFlow<Int> = relayPool.connectedRelayCount
+    val connectedRelayUrls: StateFlow<Set<String>> = relayPool.connectedRelayUrls
 
     private val entries = linkedMapOf<String, CompetitionReducer.Chained>()
     private val intents = linkedMapOf<String, CompetitionProtocol.ParsedIntent.Valid>()
     /** Immutable signed definition used as the log chain's root. */
     private var definitionCompetition: Competition? = null
+    private var relayScope: List<RelayConfig>? = null
 
     /**
      * Fetch the competition definition.
@@ -88,11 +152,17 @@ class CompetitionRelayClient @Inject constructor(
      * last edit still replies, and replying first does not make it current.
      * That is the same rule the manifest path learned the hard way.
      */
-    suspend fun load(organizerPubkey: String, compId: String, nowSeconds: Long): Boolean {
+    suspend fun load(
+        organizerPubkey: String,
+        compId: String,
+        nowSeconds: Long,
+        relayHints: List<String> = emptyList(),
+    ): Boolean {
         _snapshot.update { Snapshot(loading = true) }
         entries.clear()
         intents.clear()
         definitionCompetition = null
+        relayScope = null
 
         val filter = """{"kinds":[${CompetitionProtocol.KIND}],""" +
             """"authors":["$organizerPubkey"],""" +
@@ -105,7 +175,10 @@ class CompetitionRelayClient @Inject constructor(
             // subscriptions, but an explicit address lookup must be allowed to
             // read the same stored event again; otherwise tapping a competition
             // from the discovery list deterministically turns it into NOT_FOUND.
-            relayPool.fetchStoredComplete(filter).collect { json ->
+            relayPool.fetchStoredComplete(
+                filter,
+                scopeResolver(relayHints, relayPool.readRelays() + relayPool.writeRelays()),
+            ).collect { json ->
                 val event = runCatching { Event.fromJson(json) }.getOrNull() ?: return@collect
                 if (!accepts(event, organizerPubkey)) return@collect
                 if (newest == null || event.createdAt > newest!!.createdAt) newest = event
@@ -130,6 +203,10 @@ class CompetitionRelayClient @Inject constructor(
             }
             is CompetitionProtocol.ParsedCompetition.Valid -> {
                 definitionCompetition = parsed.competition
+                relayScope = scopeResolver(
+                    parsed.competition.relays,
+                    relayPool.readRelays() + relayPool.writeRelays(),
+                )
                 _snapshot.update {
                     Snapshot(
                         competition = parsed.competition,
@@ -163,60 +240,90 @@ class CompetitionRelayClient @Inject constructor(
         val address = CompetitionProtocol.competitionAddress(organizerPubkey, competition.compId)
         val filter = """{"kinds":[${CompetitionProtocol.KIND}],"#a":["$address"]}"""
 
-        // A normal live subscription goes through NostrRelayPool's process-wide
-        // event-id cache. That cache is desirable for feeds, but is not durable
-        // competition state: after load() clears this client's in-memory log,
-        // a restarted collector would suppress every event observed by the old
-        // collector and leave the reducer at "waiting for entry 1". Always
-        // hydrate the authority chain explicitly, in d-tag pages, before the
-        // live subscription becomes the source of truth. Exact d-tags also
-        // avoid a relay's silently clamped result limit dropping the beginning
-        // of a long chain.
-        var historyComplete = backfillLog(competition, organizerPubkey, address, nowSeconds)
-        recoverBoundedGap(competition, organizerPubkey, address, nowSeconds)
-
-        // Intents are not part of the authority chain, but restoring them makes
-        // the organizer view complete after a screen/process restart. The live
-        // subscription below closes the EOSE-to-follow race.
-        val intentHistoryComplete = runCatching {
-            withTimeoutOrNull(BACKFILL_TIMEOUT_MS) {
-                coroutineScope {
-                    intentFilters(address).map { intentFilter ->
-                        async {
-                            relayPool.fetchStoredComplete(intentFilter).collect { json ->
-                                ingest(json, competition, organizerPubkey, nowSeconds())
-                            }
-                        }
-                    }.awaitAll()
+        while (currentCoroutineContext().isActive) try {
+            coroutineScope {
+            // Start collecting the cache-bypassing stored+live REQ
+            // undispatched, before any exact history query can reach EOSE.
+            // Its replay is buffered and reduced after hydration, closing the
+            // EOSE-to-follow race without concurrently mutating reducer maps.
+            val liveEvents = Channel<String>(capacity = LIVE_BUFFER_CAPACITY)
+            val liveJob = launch(start = CoroutineStart.UNDISPATCHED) {
+                try {
+                    relayPool.subscribe(
+                        filter,
+                        skipDedup = true,
+                        failOnRelayError = true,
+                        relays = relayScope,
+                    ).collect(liveEvents::send)
+                } catch (cancelled: CancellationException) {
+                    val integrity = generateSequence<Throwable>(cancelled) { it.cause }
+                        .filterIsInstance<RelaySubscriptionIntegrityException>()
+                        .firstOrNull()
+                    if (integrity == null) throw cancelled
+                    liveEvents.close(integrity)
+                    return@launch
+                } catch (failure: Throwable) {
+                    liveEvents.close(failure)
+                    return@launch
+                } finally {
+                    liveEvents.close()
                 }
-                true
-            } ?: false
-        }.onFailure { Log.w(TAG, "stored intent backfill failed", it) }.getOrDefault(false)
-        reduce(
-            loading = false,
-            historyComplete = historyComplete,
-            intentHistoryComplete = intentHistoryComplete,
-        )
-        emit(entries.size)
+            }
+            try {
+                reduce(loading = true, historyComplete = false, intentHistoryComplete = false)
+                val retryGate = CompetitionBackfillRetryGate(RECOVERY_RETRY_INTERVAL_MS)
+                retryGate.recordAttempt()
+                var historyComplete = backfillLog(competition, organizerPubkey, address, nowSeconds)
+                recoverBoundedGap(competition, organizerPubkey, address, nowSeconds)
 
-        // Bypass the global cache here as well. This REQ first replays whatever
-        // was published between the final backfill EOSE and this subscription,
-        // then remains open for genuinely live events. Local maps dedupe relay
-        // duplicates without confusing transport history with client state.
-        relayPool.subscribe(filter, skipDedup = true).collect { json ->
-            val countBefore = entries.size
-            val changed = ingest(json, competition, organizerPubkey, nowSeconds())
-            // Run this even for a duplicate replay: the initial exact page may
-            // have exposed a hole, while the broad live REQ is now replaying
-            // already-present entries above it.
-            recoverBoundedGap(competition, organizerPubkey, address, nowSeconds)
-            if (!historyComplete) {
-                historyComplete = backfillLog(competition, organizerPubkey, address, nowSeconds)
-                reduce(loading = false, historyComplete = historyComplete)
-            }
-            if (changed || entries.size != countBefore) {
+                // Intents are not authority state, but a complete inbox is
+                // needed before organizer/public request projections are used.
+                val intentHistoryComplete = runCatching {
+                    withTimeoutOrNull(BACKFILL_TIMEOUT_MS) {
+                        coroutineScope {
+                            intentFilters(address).map { intentFilter ->
+                                async {
+                                    relayPool.fetchStoredComplete(intentFilter, relayScope).collect { json ->
+                                        ingest(json, competition, organizerPubkey, nowSeconds())
+                                    }
+                                }
+                            }.awaitAll()
+                        }
+                        true
+                    } ?: false
+                }.onFailure { Log.w(TAG, "stored intent backfill failed", it) }.getOrDefault(false)
+                reduce(
+                    loading = false,
+                    historyComplete = historyComplete,
+                    intentHistoryComplete = intentHistoryComplete,
+                )
                 emit(entries.size)
+
+                for (json in liveEvents) {
+                    val countBefore = entries.size
+                    val changed = ingest(json, competition, organizerPubkey, nowSeconds())
+                    // A broad replay may expose an internal hole. Exact
+                    // one-sequence recovery is bounded independently.
+                    recoverBoundedGap(competition, organizerPubkey, address, nowSeconds)
+                    // A failed full walk is expensive. At most one collector
+                    // can run here, and replay bursts may request only one retry
+                    // per interval; Reload remains an immediate manual retry.
+                    if (!historyComplete && retryGate.claim()) {
+                        historyComplete = backfillLog(competition, organizerPubkey, address, nowSeconds)
+                        reduce(loading = false, historyComplete = historyComplete)
+                    }
+                    if (changed || entries.size != countBefore) emit(entries.size)
+                }
+            } finally {
+                liveJob.cancelAndJoin()
+                liveEvents.cancel()
             }
+            }
+            return@flow
+        } catch (failure: RelaySubscriptionIntegrityException) {
+            Log.w(TAG, "strict live subscription lost integrity; recovering", failure)
+            reduce(loading = false, historyComplete = false, intentHistoryComplete = false)
+            delay(RECOVERY_RESTART_DELAY_MS)
         }
     }
 
@@ -230,7 +337,9 @@ class CompetitionRelayClient @Inject constructor(
         while (firstSeq <= MAX_LOG_SEQUENCE) {
             val wanted = logPageDTags(competition.compId, firstSeq)
             val completed = withTimeoutOrNull(BACKFILL_TIMEOUT_MS) {
-                relayPool.fetchStoredComplete(logPageFilter(competition.authority, address, wanted)).collect { json ->
+                relayPool.fetchStoredComplete(
+                    logPageFilter(competition.authority, address, wanted), relayScope,
+                ).collect { json ->
                     ingest(json, competition, organizerPubkey, nowSeconds())
                 }
                 true
@@ -265,7 +374,7 @@ class CompetitionRelayClient @Inject constructor(
                         competition.authority,
                         address,
                         listOf(CompetitionProtocol.logDTag(competition.compId, missing)),
-                    ),
+                    ), relayScope,
                 ).collect { json -> ingest(json, competition, organizerPubkey, nowSeconds()) }
                 true
             } ?: false
@@ -336,12 +445,20 @@ class CompetitionRelayClient @Inject constructor(
         }
     }
 
-    /** A dropped read relay makes a previously complete request inbox stale. */
-    fun connectionChanged() {
-        if (_snapshot.value.intentHistoryComplete && !relayPool.allReadRelaysConnected()) {
-            _snapshot.update { it.copy(intentHistoryComplete = false, pendingIntents = emptyList()) }
+    /** A dropped read relay invalidates every projection until exact recovery. */
+    fun connectionChanged(connectedUrls: Set<String> = relayPool.connectedRelayUrls.value) {
+        _snapshot.update {
+            staleAfterRelayLoss(
+                it,
+                relayPool.allReadRelaysConnected(
+                    relayScope ?: relayPool.readRelays(), connectedUrls,
+                ),
+            )
         }
     }
+
+    fun connectedCompetitionRelayCount(connectedUrls: Set<String>): Int =
+        (relayScope ?: relayPool.readRelays()).count { it.read && it.url in connectedUrls }
 
     /** Restore one replaceable personal request without relying on a capped broad history query. */
     suspend fun loadOwnIntent(
@@ -355,9 +472,15 @@ class CompetitionRelayClient @Inject constructor(
         var newest: CompetitionProtocol.ParsedIntent.Valid? = null
         val complete = runCatching {
             withTimeoutOrNull(BACKFILL_TIMEOUT_MS) {
-                relayPool.fetchStoredComplete(ownIntentFilter(
-                    competition.compId, competition.authority, organizerPubkey, pubkey, op, nonce,
-                ))
+                relayPool.fetchStoredComplete(
+                    ownIntentFilter(
+                        competition.compId, competition.authority, organizerPubkey, pubkey, op, nonce,
+                    ),
+                    scopeResolver(
+                        competition.relays,
+                        relayPool.readRelays() + relayPool.writeRelays(),
+                    ),
+                )
                     .collect { json ->
                         val event = runCatching { Event.fromJson(json) }.getOrNull() ?: return@collect
                         if (!acceptsBody(event) || event.pubKey != pubkey) return@collect
@@ -457,6 +580,9 @@ class CompetitionRelayClient @Inject constructor(
         private const val MAX_LOG_SEQUENCE = 999_999
         private const val MAX_GAP_RECOVERY_PER_EVENT = LOG_PAGE_SIZE
         private const val BACKFILL_TIMEOUT_MS = 12_000L
+        private const val RECOVERY_RETRY_INTERVAL_MS = 15_000L
+        private const val RECOVERY_RESTART_DELAY_MS = 1_000L
+        internal const val LIVE_BUFFER_CAPACITY = 256
 
         internal fun logPageDTags(compId: String, firstSeq: Int): List<String> =
             (firstSeq until minOf(firstSeq + LOG_PAGE_SIZE, MAX_LOG_SEQUENCE + 1))

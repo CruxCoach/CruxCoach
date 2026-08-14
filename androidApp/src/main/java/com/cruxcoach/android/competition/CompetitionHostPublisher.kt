@@ -46,6 +46,7 @@ class CompetitionHostPublisher @Inject constructor(
         return publish(
             CompetitionHostProtocol.competitionContent(config),
             CompetitionHostProtocol.competitionTags(config),
+            competition,
         )
     }
 
@@ -88,7 +89,7 @@ class CompetitionHostPublisher @Inject constructor(
                 ),
             )
         }.getOrElse { return Result.Failed(it.message ?: "sign_failed") }
-        val (attempted, accepted) = relayPool.sendEventWithStats(event)
+        val (attempted, accepted) = relayPool.sendEventWithStats(event, relayScope(competition))
         if (accepted == 0) return Result.Failed("no_relay")
         client.ingestOwn(event, at)
         Result.Published(accepted, attempted)
@@ -150,8 +151,9 @@ class CompetitionHostPublisher @Inject constructor(
             "CruxCoach test competition cleanup",
             CompetitionHostProtocol.deletionTags(definitionId),
         )
-        val (tombstoneAttempted, tombstoneAccepted) = relayPool.sendEventWithStats(tombstone)
-        val (deletionAttempted, deletionAccepted) = relayPool.sendEventWithStats(deletion)
+        val scopedRelays = relayScope(competition)
+        val (tombstoneAttempted, tombstoneAccepted) = relayPool.sendEventWithStats(tombstone, scopedRelays)
+        val (deletionAttempted, deletionAccepted) = relayPool.sendEventWithStats(deletion, scopedRelays)
         CleanupResult(
             tombstoneAccepted = tombstoneAccepted,
             deletionAccepted = deletionAccepted,
@@ -159,11 +161,21 @@ class CompetitionHostPublisher @Inject constructor(
         )
     }
 
-    private suspend fun publish(content: String, tags: List<List<String>>): Result = runCatching {
+    private suspend fun publish(
+        content: String,
+        tags: List<List<String>>,
+        competition: com.cruxcoach.domain.competition.Competition,
+    ): Result = runCatching {
         val event = NostrPublicEventBuilder(signer).buildSignedEvent(CompetitionProtocol.KIND, content, tags)
-        val (attempted, accepted) = relayPool.sendEventWithStats(event)
+        val (attempted, accepted) = relayPool.sendEventWithStats(event, relayScope(competition))
         if (accepted == 0) Result.Failed("no_relay") else Result.Published(accepted, attempted)
     }.getOrElse { Result.Failed(it.message ?: "publish_failed") }
+
+    private fun relayScope(competition: com.cruxcoach.domain.competition.Competition) =
+        competitionRelayScope(
+            competition.relays,
+            relayPool.readRelays() + relayPool.writeRelays(),
+        )
 
     companion object {
         internal fun cleanupTrustError(snapshot: CompetitionRelayClient.Snapshot): String? = when {

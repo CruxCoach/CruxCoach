@@ -154,11 +154,17 @@ class CompetitionPaymentFlow @Inject constructor(
         fun decode(raw: String): DecodedReceipt?
     }
 
-    private val defaultReceiptFetcher = ReceiptFetcher { filter ->
+    private fun defaultReceiptFetcher(competition: Competition) = ReceiptFetcher { filter ->
         val events = mutableListOf<String>()
         val complete = runCatching {
             withTimeoutOrNull(RECEIPT_TIMEOUT_MS) {
-                relayPool.fetchStoredComplete(filter).collect(events::add)
+                relayPool.fetchStoredComplete(
+                    filter,
+                    competitionRelayScope(
+                        competition.relays,
+                        relayPool.readRelays() + relayPool.writeRelays(),
+                    ),
+                ).collect(events::add)
                 true
             } ?: false
         }.getOrDefault(false)
@@ -189,7 +195,7 @@ class CompetitionPaymentFlow @Inject constructor(
         organizerPubkey: String,
         payerPubkey: String,
         receiptId: String,
-        receiptFetcher: ReceiptFetcher = defaultReceiptFetcher,
+        receiptFetcher: ReceiptFetcher? = null,
         receiptDecoder: ReceiptDecoder = defaultReceiptDecoder,
     ): ReceiptResult {
         if (!CompetitionProtocol.isHex32(receiptId)) return ReceiptResult.Failed("no_receipt")
@@ -205,7 +211,7 @@ class CompetitionPaymentFlow @Inject constructor(
         }
         val provider = pay.nostrPubkey ?: return ReceiptResult.Failed("no_provider_key")
         val history = runCatching {
-            receiptFetcher.fetch(
+            (receiptFetcher ?: defaultReceiptFetcher(competition)).fetch(
                 """{"ids":["$receiptId"],"kinds":[${CompetitionZap.RECEIPT_KIND}],"limit":4}""",
             )
         }.getOrElse { return ReceiptResult.Failed("incomplete_receipt_history") }

@@ -255,7 +255,12 @@ nonce and is therefore idempotent under the addressable-replacement rule.
 
 - **Nostr:** `naddr` (NIP-19) over `(30078, organizerPubkey, cruxcoach:comp:<compId>)`.
   This is *the* identifier. It survives every edit of the competition document
-  because it addresses the slot, not the event.
+  because it addresses the slot, not the event. Canonical links also include
+  the competition's relay URLs as standard NIP-19 relay-hint TLVs. Hints are
+  additive discovery locations, never trust anchors: the definition still has
+  to match the naddr author/d-tag and pass id/signature validation. This lets a
+  competition hosted only on a gym/private relay be discovered before its
+  signed definition supplies the authoritative relay list.
 - **HTTPS:** `https://<APP_LINK_HOST>/comp/<naddr>`.
   - On Android with the app installed, an App Link intent filter on
     `pathPrefix="/comp/"` opens the app.
@@ -1357,6 +1362,35 @@ Relays are not trusted to have applied the filter they were given. Every
 consumer re-checks kind, author, `L` namespace, `d`-tag shape, `a`-tag target
 and clock skew locally — the same defence the manifest path already needed when
 a relay could answer a Kilter query with the MoonBoard manifest.
+
+### 16.5 Configured-relay completeness and degraded operation
+
+Version 1 has no signed head or quorum certificate. Consequently, an answering
+relay cannot prove that a configured but unavailable relay does not hold the
+next valid authority entry. A history or intent inbox is complete only after
+**every configured read relay** reaches EOSE for the exact query. A timeout,
+disconnect, or relay error immediately makes personal projections, standings,
+host decisions, final publication, and cleanup non-actionable.
+
+This deliberately prefers an explicit degraded state over operating on a
+plausible prefix. Both clients retain already verified events for convergence,
+identify the relay-history problem, keep navigation/back usable, and offer an
+immediate full Reload. Web coalesces overlapping recovery walks; Android arms
+live replay before exact hydration, bounds every transport and handoff buffer,
+turns overflow into an observable trust failure, and rate-limits expensive
+full-walk retries against monotonic elapsed time during replay bursts. A relay
+disconnect immediately marks the retained projection stale; a reconnected
+subscription must complete exact recovery before actions resume. Automatic
+operation without every relay would require a future signed head/quorum
+protocol, not an unsigned client-side majority rule.
+
+After definition discovery, every competition read and write uses the signed
+`relays` list first and then adds the user's read/write relays, deduplicated and
+bounded to eight. This is an operation-local scope: opening a gym/private relay
+competition must not replace the account relay list or disturb unrelated live
+subscriptions. Definition discovery still begins on the user's/default relays;
+all log, intent, receipt, authority, and cleanup operations then use the merged
+competition scope.
 
 ---
 

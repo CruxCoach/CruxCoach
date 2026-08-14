@@ -93,4 +93,14 @@ class CompetitionShareLinkTest {
         assertEquals(organizer, parsed?.organizerPubkey)
         assertEquals(compId, parsed?.compId)
     }
+
+    @Test
+    fun `relay hints survive the canonical join link for private relay discovery`() {
+        val relays = listOf("wss://gym.example", "ws://127.0.0.1:7447")
+        val encoded = com.cruxcoach.android.ui.competition.CompetitionNaddr.encode(
+            organizer, compId, relays,
+        )
+
+        assertEquals(relays, CompetitionShareLink.parse(encoded)?.relays)
+    }
 }

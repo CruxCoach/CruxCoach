@@ -4,19 +4,21 @@ import android.util.Log
 import com.cruxcoach.android.nostr.model.RelayConfig
 import com.vitorpamplona.quartz.nip01Core.core.Event
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -35,22 +37,35 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 import javax.inject.Named
 import javax.inject.Singleton
+
+class RelaySubscriptionIntegrityException(message: String, cause: Throwable? = null) : Exception(message, cause)
 
 @Singleton
 class NostrRelayPool @Inject constructor(
     @Named("nostr") private val okHttpClient: OkHttpClient
 ) {
+    private data class SubscriptionSink(
+        val failOnRelayError: Boolean,
+        val event: (String) -> Boolean,
+        val eose: () -> Boolean,
+        val fail: (Throwable) -> Unit,
+    )
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val connections = ConcurrentHashMap<String, RelayConnection>()
     private val _connectedRelayCount = MutableStateFlow(0)
+    private val _connectedRelayUrls = MutableStateFlow<Set<String>>(emptySet())
     /** Transport health only; competition truth still comes from signed events. */
     val connectedRelayCount: StateFlow<Int> = _connectedRelayCount.asStateFlow()
+    val connectedRelayUrls: StateFlow<Set<String>> = _connectedRelayUrls.asStateFlow()
 
     private fun updateConnectedRelayCount() {
-        _connectedRelayCount.value = connections.values.count { it.isConnected }
+        val urls = connections.values.filter { it.isConnected }.map { it.url }.toSet()
+        _connectedRelayUrls.value = urls
+        _connectedRelayCount.value = urls.size
     }
     private val seenEventIds: MutableMap<String, Boolean> = Collections.synchronizedMap(
         object : LinkedHashMap<String, Boolean>(100, 0.75f, true) {
@@ -77,7 +92,7 @@ class NostrRelayPool @Inject constructor(
         @Volatile
         private var ws: WebSocket? = null
         private val pendingOks = ConcurrentHashMap<String, CompletableDeferred<Boolean>>()
-        private val subscriptionFlows = ConcurrentHashMap<String, MutableSharedFlow<String>>()
+        private val subscriptionFlows = ConcurrentHashMap<String, SubscriptionSink>()
         private val activeFilters = ConcurrentHashMap<String, String>()
         private val connectLock = Mutex()
 
@@ -120,6 +135,7 @@ class NostrRelayPool @Inject constructor(
                     updateConnectedRelayCount()
                     deferred.completeExceptionally(t)
                     failAllPending(t)
+                    failStrictSubscriptions(t)
                     scheduleReconnect()
                 }
 
@@ -132,6 +148,7 @@ class NostrRelayPool @Inject constructor(
                     // sendEvent hangs and the pendingOks map piles up while
                     // reconnect is pending.
                     failAllPending(Exception("Relay $url closed: $code $reason"))
+                    failStrictSubscriptions(Exception("Relay $url closed: $code $reason"))
                     if (activeFilters.isNotEmpty()) scheduleReconnect()
                 }
             })
@@ -175,12 +192,23 @@ class NostrRelayPool @Inject constructor(
                     "EVENT" -> {
                         val subId = arr[1].jsonPrimitive.content
                         val eventJson = arr[2].toString()
-                        val emitted = subscriptionFlows[subId]?.tryEmit(eventJson) ?: false
-                        if (!emitted) Log.w(TAG, "EVENT not emitted from $url subId=$subId (flow missing or full)")
+                        val sink = subscriptionFlows[subId]
+                        val emitted = sink?.event?.invoke(eventJson) ?: false
+                        if (!emitted) {
+                            Log.w(TAG, "EVENT not emitted from $url subId=$subId (flow missing or full)")
+                            sink?.fail?.invoke(RelaySubscriptionIntegrityException(
+                                "Relay $url overflowed subscription $subId",
+                            ))
+                        }
                     }
                     "EOSE" -> {
                         val subId = arr[1].jsonPrimitive.content
-                        subscriptionFlows[subId]?.tryEmit(EOSE_SENTINEL)
+                        val sink = subscriptionFlows[subId]
+                        if (sink != null && !sink.eose()) {
+                            sink.fail(RelaySubscriptionIntegrityException(
+                                "Relay $url overflowed EOSE for subscription $subId",
+                            ))
+                        }
                     }
                     "NOTICE" -> Log.w(TAG, "Relay $url: ${arr[1].jsonPrimitive.content}")
                 }
@@ -218,8 +246,8 @@ class NostrRelayPool @Inject constructor(
             }
         }
 
-        fun addSubscription(subId: String, filter: String, flow: MutableSharedFlow<String>) {
-            subscriptionFlows[subId] = flow
+        fun addSubscription(subId: String, filter: String, sink: SubscriptionSink) {
+            subscriptionFlows[subId] = sink
             activeFilters[subId] = filter
             val msg = "[\"REQ\",\"$subId\",$filter]"
             ws?.send(msg)
@@ -234,6 +262,12 @@ class NostrRelayPool @Inject constructor(
         private fun failAllPending(t: Throwable) {
             pendingOks.values.forEach { it.completeExceptionally(t) }
             pendingOks.clear()
+        }
+
+        private fun failStrictSubscriptions(t: Throwable) {
+            subscriptionFlows.values
+                .filter { it.failOnRelayError }
+                .forEach { it.fail(t) }
         }
 
         private fun scheduleReconnect() {
@@ -333,8 +367,12 @@ class NostrRelayPool @Inject constructor(
     fun readRelays(): List<RelayConfig> = resolvedRelays.filter { it.read }
 
     /** Whether every relay whose history can affect a read is connected now. */
-    fun allReadRelaysConnected(): Boolean = readRelays().all { relay ->
-        connections[relay.url]?.isConnected == true
+    fun allReadRelaysConnected(
+        relays: List<RelayConfig> = readRelays(),
+        connectedUrls: Set<String> = connectedRelayUrls.value,
+    ): Boolean =
+        relays.filter { it.read }.all { relay ->
+        relay.url in connectedUrls
     }
 
     /**
@@ -378,12 +416,15 @@ class NostrRelayPool @Inject constructor(
      * hides a 1-of-5 outcome from the user when they explicitly asked
      * for full removal.
      */
-    suspend fun sendEventWithStats(event: Event): Pair<Int, Int> {
+    suspend fun sendEventWithStats(
+        event: Event,
+        relays: List<RelayConfig> = writeRelays(),
+    ): Pair<Int, Int> {
         val eventJson = event.toJson()
         val eventId = extractEventId(eventJson) ?: return 0 to 0
-        val relays = writeRelays()
+        val writeRelays = relays.filter { it.write }
         val results = coroutineScope {
-            relays.map { relay ->
+            writeRelays.map { relay ->
                 async {
                     try {
                         getOrCreateConnection(relay.url).sendEvent(eventJson, eventId)
@@ -394,7 +435,7 @@ class NostrRelayPool @Inject constructor(
                 }
             }.map { it.await() }
         }
-        return relays.size to results.count { it }
+        return writeRelays.size to results.count { it }
     }
 
     /**
@@ -404,10 +445,11 @@ class NostrRelayPool @Inject constructor(
      * duplicate delivery across relays. It must not turn an explicit historical
      * lookup into an empty result merely because discovery saw the event first.
      */
-    fun fetchStored(filter: String): Flow<String> = subscribe(
+    fun fetchStored(filter: String, relays: List<RelayConfig>? = null): Flow<String> = subscribe(
         filter = filter,
         skipDedup = true,
         closeOnEose = true,
+        relays = relays,
     )
 
     /**
@@ -418,11 +460,12 @@ class NostrRelayPool @Inject constructor(
      * configured relay failed, so that caller needs stricter semantics than a
      * best-effort feed or discovery query.
      */
-    fun fetchStoredComplete(filter: String): Flow<String> = subscribe(
+    fun fetchStoredComplete(filter: String, relays: List<RelayConfig>? = null): Flow<String> = subscribe(
         filter = filter,
         skipDedup = true,
         closeOnEose = true,
         failOnRelayError = true,
+        relays = relays,
     )
 
     internal fun shouldDeliverEvent(eventId: String?, skipDedup: Boolean): Boolean =
@@ -445,34 +488,43 @@ class NostrRelayPool @Inject constructor(
         skipDedup: Boolean = false,
         closeOnEose: Boolean = false,
         failOnRelayError: Boolean = false,
+        relays: List<RelayConfig>? = null,
     ): Flow<String> = callbackFlow {
         val subId = java.util.UUID.randomUUID().toString()
-        val readRelays = readRelays()
-        val flow = MutableSharedFlow<String>(extraBufferCapacity = 256)
-        val eoseCount = java.util.concurrent.atomic.AtomicInteger(0)
-        val relayCount = readRelays.size
-
-        val job = scope.launch {
-            flow.collect { eventJson ->
-                if (eventJson == EOSE_SENTINEL) {
-                    if (closeOnEose && eoseCount.incrementAndGet() >= relayCount) {
-                        channel.close()
-                    }
-                    return@collect
-                }
-                if (shouldDeliverEvent(extractEventId(eventJson), skipDedup)) trySend(eventJson)
+        val readRelays = (relays ?: readRelays()).filter { it.read }
+        val failed = AtomicBoolean(false)
+        val fail: (Throwable) -> Unit = { cause ->
+            val integrityFailure = cause as? RelaySubscriptionIntegrityException
+                ?: RelaySubscriptionIntegrityException("Strict relay subscription failed", cause)
+            if (failed.compareAndSet(false, true)) {
+                val cancelled = CancellationException("Relay subscription lost integrity")
+                cancelled.initCause(integrityFailure)
+                cancel(cancelled)
             }
         }
+        val eoseCount = java.util.concurrent.atomic.AtomicInteger(0)
+        val relayCount = readRelays.size
+        val sink = SubscriptionSink(
+            failOnRelayError = failOnRelayError,
+            event = { eventJson ->
+                !shouldDeliverEvent(extractEventId(eventJson), skipDedup) || trySend(eventJson).isSuccess
+            },
+            eose = {
+                if (closeOnEose && eoseCount.incrementAndGet() >= relayCount) channel.close()
+                true
+            },
+            fail = fail,
+        )
 
         readRelays.forEach { relay ->
             try {
                 val conn = getOrCreateConnection(relay.url)
                 conn.ensureConnected()
-                conn.addSubscription(subId, filter, flow)
+                conn.addSubscription(subId, filter, sink)
             } catch (e: Exception) {
                 Log.w(TAG, "Subscribe to ${relay.url} failed", e)
                 if (failOnRelayError) {
-                    channel.close(e)
+                    fail(e)
                     return@forEach
                 }
                 // Count failed relays as "EOSE received" so we don't hang forever
@@ -483,12 +535,11 @@ class NostrRelayPool @Inject constructor(
         }
 
         awaitClose {
-            job.cancel()
             readRelays.forEach { relay ->
                 connections[relay.url]?.removeSubscription(subId)
             }
         }
-    }
+    }.buffer(SUBSCRIPTION_BUFFER_CAPACITY)
 
     fun closeAll() {
         connections.values.forEach { it.close() }
@@ -529,7 +580,6 @@ class NostrRelayPool @Inject constructor(
     companion object {
         private const val TAG = "NostrRelayPool"
         private const val MAX_SEEN_IDS = 10_000
-        /** Sentinel value emitted by EOSE handler — never valid JSON. */
-        internal const val EOSE_SENTINEL = "__EOSE__"
+        internal const val SUBSCRIPTION_BUFFER_CAPACITY = 256
     }
 }
