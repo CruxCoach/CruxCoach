@@ -3,6 +3,8 @@ package com.cruxcoach.android.ui.competition
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -88,9 +90,10 @@ import java.util.Date
 import java.util.TimeZone
 
 private enum class ParticipantRoute { REGISTRATION, CHECKIN, LIVE, CHOOSER, LEADERBOARD }
+private enum class HostRoute { SETUP, ENTRANTS, LIVE }
 
 /**
- * One competition, from a participant's side.
+ * One competition, with focused participant and host destinations.
  *
  * Ordered by what someone standing at a wall needs first: is it my turn, how
  * many people are ahead of me, how many attempts have I left, and only then the
@@ -107,9 +110,12 @@ fun CompetitionDetailScreen(
     val action by viewModel.action.collectAsStateWithLifecycle()
     val climbOpen by viewModel.climbOpen.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    var participantRouteName by rememberSaveable { mutableStateOf("") }
-    var participantPrimaryName by rememberSaveable { mutableStateOf("") }
+    val competitionKey = ui.snapshot.competition?.compId
+    var participantRouteName by rememberSaveable(competitionKey) { mutableStateOf("") }
+    var participantPrimaryName by rememberSaveable(competitionKey) { mutableStateOf("") }
     val participantRoute = ParticipantRoute.entries.firstOrNull { it.name == participantRouteName }
+    var hostRouteName by rememberSaveable(competitionKey) { mutableStateOf("") }
+    val hostRoute = HostRoute.entries.firstOrNull { it.name == hostRouteName }
 
     // The board screen is only reached once the climb resolves against what
     // this phone actually holds; everything else stays here with a reason.
@@ -143,7 +149,11 @@ fun CompetitionDetailScreen(
                 title = { Text(ui.snapshot.competition?.title ?: stringResource(R.string.comp_title)) },
                 navigationIcon = {
                     IconButton(onClick = {
-                        if (!viewModel.isAuthority && participantRoute in listOf(
+                        if (viewModel.isAuthority && hostRouteName != HostRoute.SETUP.name &&
+                            ui.snapshot.state != null
+                        ) {
+                            hostRouteName = HostRoute.SETUP.name
+                        } else if (!viewModel.isAuthority && participantRoute in listOf(
                                 ParticipantRoute.CHOOSER,
                                 ParticipantRoute.LEADERBOARD,
                             )
@@ -219,6 +229,11 @@ fun CompetitionDetailScreen(
                         },
                     ),
                 )
+                Spacer(Modifier.height(12.dp))
+                Button(
+                    onClick = viewModel::reload,
+                    modifier = Modifier.testTag("competition_retry_load"),
+                ) { Text(stringResource(R.string.action_retry)) }
             }
             return@Scaffold
         }
@@ -252,6 +267,11 @@ fun CompetitionDetailScreen(
                     textAlign = TextAlign.Center,
                     modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                 )
+                Spacer(Modifier.height(12.dp))
+                Button(
+                    onClick = viewModel::reload,
+                    modifier = Modifier.testTag("competition_retry_history"),
+                ) { Text(stringResource(R.string.action_retry)) }
             }
             return@Scaffold
         }
@@ -305,6 +325,32 @@ fun CompetitionDetailScreen(
             return@Scaffold
         }
 
+        if (viewModel.isAuthority && state != null) {
+            val initialRoute = when {
+                CompetitionProtocol.competitionRunning(competition, state.status, now) ||
+                    state.status == "paused" -> HostRoute.LIVE
+                CompetitionProtocol.registrationWindowOpen(competition, state.status, now) ||
+                    CompetitionProtocol.checkinWindowOpen(competition, state.status, now) ||
+                    ui.snapshot.pendingIntents.isNotEmpty() -> HostRoute.ENTRANTS
+                else -> HostRoute.SETUP
+            }
+            LaunchedEffect(competition.compId) {
+                if (hostRouteName.isBlank()) hostRouteName = initialRoute.name
+            }
+            val effectiveRoute = hostRoute ?: initialRoute
+            BackHandler(effectiveRoute != HostRoute.SETUP) { hostRouteName = HostRoute.SETUP.name }
+            OrganizerPhaseScreen(
+                route = effectiveRoute,
+                ui = ui,
+                viewModel = viewModel,
+                action = action,
+                nowSeconds = now,
+                contentPadding = padding,
+                onRoute = { hostRouteName = it.name },
+            )
+            return@Scaffold
+        }
+
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding).testTag("competition_detail"),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
@@ -318,10 +364,6 @@ fun CompetitionDetailScreen(
             }
             if (state?.forkDetected == true) {
                 item { WarningCard(stringResource(R.string.comp_fork)) }
-            }
-
-            if (viewModel.isAuthority && state != null) item {
-                OrganizerConsole(ui, viewModel, action, now)
             }
 
             item {
@@ -392,7 +434,7 @@ fun CompetitionDetailScreen(
     }
 }
 
-/** Focused participant destinations; host management deliberately stays on the detail console. */
+/** Focused participant destinations. */
 @Composable
 private fun ParticipantPhaseScreen(
     route: ParticipantRoute,
@@ -525,7 +567,59 @@ private fun ParticipantPhaseNavigation(
 }
 
 @Composable
+private fun OrganizerPhaseScreen(
+    route: HostRoute,
+    ui: CompetitionDetailViewModel.Ui,
+    viewModel: CompetitionDetailViewModel,
+    action: CompetitionDetailViewModel.Action,
+    nowSeconds: Long,
+    contentPadding: androidx.compose.foundation.layout.PaddingValues,
+    onRoute: (HostRoute) -> Unit,
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(contentPadding)
+            .testTag("competition_host_${route.name.lowercase()}"),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        if (ui.snapshot.usesDevelopmentRelay) item { WarningCard(stringResource(R.string.comp_dev_relay)) }
+        item {
+            Text(
+                stringResource(
+                    when (route) {
+                        HostRoute.SETUP -> R.string.comp_host_screen_setup
+                        HostRoute.ENTRANTS -> R.string.comp_host_screen_entrants
+                        HostRoute.LIVE -> R.string.comp_host_screen_live
+                    },
+                ),
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+        item {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(
+                    HostRoute.SETUP to R.string.comp_host_nav_setup,
+                    HostRoute.ENTRANTS to R.string.comp_host_nav_entrants,
+                    HostRoute.LIVE to R.string.comp_host_nav_live,
+                ).forEach { (target, label) ->
+                    OutlinedButton(
+                        onClick = { onRoute(target) },
+                        enabled = route != target,
+                        modifier = Modifier.weight(1f)
+                            .testTag("competition_host_nav_${target.name.lowercase()}"),
+                    ) { Text(stringResource(label), textAlign = TextAlign.Center) }
+                }
+            }
+        }
+        item { OrganizerConsole(route, ui, viewModel, action, nowSeconds) }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
 private fun OrganizerConsole(
+    route: HostRoute,
     ui: CompetitionDetailViewModel.Ui,
     viewModel: CompetitionDetailViewModel,
     action: CompetitionDetailViewModel.Action,
@@ -538,6 +632,8 @@ private fun OrganizerConsole(
     var confirmCancel by rememberSaveable { mutableStateOf(false) }
     var retirePubkey by rememberSaveable { mutableStateOf<String?>(null) }
     var retireReason by rememberSaveable { mutableStateOf("") }
+    var disqualifyPubkey by rememberSaveable { mutableStateOf<String?>(null) }
+    var disqualifyReason by rememberSaveable { mutableStateOf("") }
     var editCompetition by rememberSaveable { mutableStateOf(false) }
     var editSubmitted by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(editCompetition, editSubmitted, action) {
@@ -565,10 +661,14 @@ private fun OrganizerConsole(
     )
     if (confirmCancel) AlertDialog(
         onDismissRequest = { confirmCancel = false },
-        title = { Text("Wettkampf wirklich absagen?") },
-        text = { Text("Die Absage wird öffentlich und kann nicht rückgängig gemacht werden.") },
-        confirmButton = { Button({ confirmCancel = false; viewModel.hostLifecycle("cancelled") }) { Text("Endgültig absagen") } },
-        dismissButton = { TextButton({ confirmCancel = false }) { Text("Zurück") } },
+        title = { Text(stringResource(R.string.comp_host_cancel_title)) },
+        text = { Text(stringResource(R.string.comp_host_cancel_body)) },
+        confirmButton = {
+            Button({ confirmCancel = false; viewModel.hostLifecycle("cancelled") }) {
+                Text(stringResource(R.string.comp_host_cancel_confirm))
+            }
+        },
+        dismissButton = { TextButton({ confirmCancel = false }) { Text(stringResource(R.string.action_cancel)) } },
     )
     retirePubkey?.let { pubkey ->
         val label = state.participant(pubkey)?.displayOrShort() ?: pubkey.take(12)
@@ -601,9 +701,44 @@ private fun OrganizerConsole(
             },
         )
     }
+    disqualifyPubkey?.let { pubkey ->
+        val label = state.participant(pubkey)?.displayOrShort() ?: pubkey.take(12)
+        AlertDialog(
+            onDismissRequest = { disqualifyPubkey = null; disqualifyReason = "" },
+            title = { Text(stringResource(R.string.comp_host_disqualify_title, label)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(R.string.comp_host_disqualify_hint))
+                    OutlinedTextField(
+                        value = disqualifyReason,
+                        onValueChange = { disqualifyReason = it },
+                        label = { Text(stringResource(R.string.comp_host_disqualify_reason)) },
+                        modifier = Modifier.fillMaxWidth().testTag("competition_host_disqualify_reason"),
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.hostDisqualify(pubkey, disqualifyReason)
+                        disqualifyPubkey = null
+                        disqualifyReason = ""
+                    },
+                    enabled = disqualifyReason.isNotBlank() && action !is CompetitionDetailViewModel.Action.Working,
+                    modifier = Modifier.testTag("competition_host_disqualify_confirm"),
+                ) { Text(stringResource(R.string.comp_host_disqualify_confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { disqualifyPubkey = null; disqualifyReason = "" }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            },
+        )
+    }
+    val runningNow = CompetitionProtocol.competitionRunning(competition, state.status, nowSeconds)
     Card(Modifier.fillMaxWidth().testTag("competition_host_console")) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(stringResource(R.string.comp_host_manage), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            if (route == HostRoute.SETUP) {
             HostScheduleOverview(competition, state.status, nowSeconds)
             Text(
                 stringResource(R.string.comp_host_automatic_hint),
@@ -611,13 +746,18 @@ private fun OrganizerConsole(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
-                "${if (ui.connectedRelays > 0) "Live · ${ui.connectedRelays} Relays" else "Offline"} · Log #${state.seq}",
+                if (ui.connectedRelays > 0) {
+                    stringResource(R.string.comp_host_transport_live, ui.connectedRelays, state.seq)
+                } else stringResource(R.string.comp_host_transport_offline, state.seq),
                 style = MaterialTheme.typography.bodySmall,
             )
             Text(
-                "${state.participants.count { it.registration == "accepted" }} angenommen · " +
-                    "${state.participants.count { it.checkin == "checked_in" }} eingecheckt · " +
-                    "${ui.snapshot.pendingIntents.size} offene Anfragen",
+                stringResource(
+                    R.string.comp_host_counts,
+                    state.participants.count { it.registration == "accepted" },
+                    state.participants.count { it.checkin == "checked_in" },
+                    ui.snapshot.pendingIntents.size,
+                ),
                 style = MaterialTheme.typography.bodySmall,
             )
             OutlinedButton(
@@ -629,97 +769,136 @@ private fun OrganizerConsole(
                 enabled = action !is CompetitionDetailViewModel.Action.Working,
                 modifier = Modifier.fillMaxWidth().testTag("competition_host_edit"),
             ) { Text(stringResource(R.string.comp_edit_action)) }
-            val runningNow = CompetitionProtocol.competitionRunning(competition, state.status, nowSeconds)
-            val next = if (state.status == "paused") "running" else null
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                next?.let { target -> Button({ viewModel.hostLifecycle(target) }, Modifier.weight(1f).testTag("competition_host_lifecycle"), enabled = action !is CompetitionDetailViewModel.Action.Working) { Text(hostLifecycleLabel(target)) } }
-                if (runningNow) OutlinedButton({ viewModel.hostLifecycle("paused") }, Modifier.weight(1f)) { Text("Pausieren") }
-                if (runningNow || state.status == "paused") OutlinedButton({ viewModel.hostLifecycle("finished") }, Modifier.weight(1f)) { Text("Beenden") }
-            }
             if (state.status !in listOf("finished", "cancelled")) {
-                TextButton({ confirmCancel = true }) { Text("Wettkampf absagen …") }
+                TextButton({ confirmCancel = true }) { Text(stringResource(R.string.comp_host_cancel_action)) }
             }
             if (state.status == "cancelled") {
                 Text(
-                    "Die Absage bleibt im Audit-Log. Zusätzlich kannst du die öffentliche Definition " +
-                        "durch einen Tombstone ersetzen und eine NIP-09-Löschanfrage senden. Vollständige " +
-                        "Löschung aus allen Kopien lässt sich bei Nostr nicht beweisen.",
+                    stringResource(R.string.comp_host_cleanup_explanation),
                     style = MaterialTheme.typography.bodySmall,
                 )
                 Button(
                     onClick = viewModel::cleanupCompetition,
                     enabled = cleanup !is CompetitionDetailViewModel.Cleanup.Working,
                     modifier = Modifier.fillMaxWidth().testTag("competition_host_cleanup"),
-                ) { Text(if (cleanup is CompetitionDetailViewModel.Cleanup.Idle) "Von Relays entfernen" else "Löschung erneut senden") }
+                ) {
+                    Text(stringResource(if (cleanup is CompetitionDetailViewModel.Cleanup.Idle) R.string.comp_host_cleanup_action else R.string.comp_host_cleanup_retry))
+                }
                 when (val result = cleanup) {
                     CompetitionDetailViewModel.Cleanup.Working -> LinearProgressIndicator(Modifier.fillMaxWidth())
                     is CompetitionDetailViewModel.Cleanup.Sent -> Text(
-                        "Tombstone ${result.tombstoneAccepted}/${result.attempted}, " +
-                            "Löschanfrage ${result.deletionAccepted}/${result.attempted} Relays bestätigt. " +
-                            "Der Button bleibt für erneute Zustellung verfügbar.",
+                        stringResource(
+                            R.string.comp_host_cleanup_result,
+                            result.tombstoneAccepted,
+                            result.deletionAccepted,
+                            result.attempted,
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                     )
                     is CompetitionDetailViewModel.Cleanup.Failed -> Text(
-                        "Relay-Löschung fehlgeschlagen: ${result.reason}",
+                        stringResource(R.string.comp_host_cleanup_failed, result.reason),
                         color = MaterialTheme.colorScheme.error,
                     )
                     CompetitionDetailViewModel.Cleanup.Idle -> Unit
                 }
             }
+            }
 
-            Text("Teilnehmende", fontWeight = FontWeight.Bold)
+            if (route == HostRoute.LIVE) {
+                val next = if (state.status == "paused") "running" else null
+                FlowRow(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    next?.let { target ->
+                        Button(
+                            { viewModel.hostLifecycle(target) },
+                            Modifier.testTag("competition_host_lifecycle"),
+                            enabled = action !is CompetitionDetailViewModel.Action.Working,
+                        ) { Text(hostLifecycleLabel(target)) }
+                    }
+                    if (runningNow) OutlinedButton({ viewModel.hostLifecycle("paused") }) {
+                        Text(stringResource(R.string.comp_host_pause))
+                    }
+                    if (runningNow || state.status == "paused") {
+                        OutlinedButton({ viewModel.hostLifecycle("finished") }) {
+                            Text(stringResource(R.string.comp_host_finish))
+                        }
+                    }
+                }
+            }
+
+            if (route == HostRoute.ENTRANTS) {
+            Text(stringResource(R.string.comp_host_entrants_title), fontWeight = FontWeight.Bold)
             ui.snapshot.pendingIntents.filter { it.op == "register" }.forEach { intent ->
                 val display = (intent.data["display"] as? kotlinx.serialization.json.JsonPrimitive)?.content.orEmpty()
                 val division = (intent.data["division"] as? kotlinx.serialization.json.JsonPrimitive)?.content.orEmpty()
                 Column(Modifier.fillMaxWidth()) {
                     Text(display.ifBlank { "${intent.pubkey.take(12)}…" }, fontWeight = FontWeight.SemiBold)
-                    Text("Neue Anmeldung · $division", style = MaterialTheme.typography.bodySmall)
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Button({ viewModel.hostRegistration(intent.pubkey, "accepted", intent.eventId, division, display) }) { Text("Annehmen") }
-                        OutlinedButton({ viewModel.hostRegistration(intent.pubkey, "waitlisted", intent.eventId, division, display) }) { Text("Warteliste") }
-                        OutlinedButton({ viewModel.hostRegistration(intent.pubkey, "rejected", intent.eventId, division, display) }) { Text("Ablehnen") }
+                    Text(stringResource(R.string.comp_host_new_registration, division), style = MaterialTheme.typography.bodySmall)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Button({ viewModel.hostRegistration(intent.pubkey, "accepted", intent.eventId, division, display) }) { Text(stringResource(R.string.comp_host_accept)) }
+                        OutlinedButton({ viewModel.hostRegistration(intent.pubkey, "waitlisted", intent.eventId, division, display) }) { Text(stringResource(R.string.comp_host_waitlist)) }
+                        OutlinedButton({ viewModel.hostRegistration(intent.pubkey, "rejected", intent.eventId, division, display) }) { Text(stringResource(R.string.comp_host_reject)) }
                     }
                 }
             }
-            if (state.participants.isEmpty()) Text("Noch keine bestätigten Teilnehmenden.")
+            if (state.participants.isEmpty()) Text(stringResource(R.string.comp_host_no_entrants))
             state.participants.forEach { participant ->
                 Column(Modifier.fillMaxWidth()) {
                     Text(participant.display.ifBlank { "${participant.pubkey.take(12)}…" }, fontWeight = FontWeight.SemiBold)
-                    Text("${participant.registration} · ${participant.checkin}", style = MaterialTheme.typography.bodySmall)
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        "${stringResource(registrationLabel(participant.registration))} · " +
+                            stringResource(checkinLabel(participant.checkin)),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         if (participant.registration in listOf("pending", "waitlisted")) {
-                            Button({ viewModel.hostRegistration(participant.pubkey, "accepted") }) { Text("Annehmen") }
-                            OutlinedButton({ viewModel.hostRegistration(participant.pubkey, "rejected") }) { Text("Ablehnen") }
+                            Button({ viewModel.hostRegistration(participant.pubkey, "accepted") }) { Text(stringResource(R.string.comp_host_accept)) }
+                            OutlinedButton({ viewModel.hostRegistration(participant.pubkey, "rejected") }) { Text(stringResource(R.string.comp_host_reject)) }
                         }
                         if (participant.registration == "accepted" && participant.checkin == "none") {
-                            Button({ viewModel.hostCheckIn(participant.pubkey, true) }) { Text("Check-in") }
-                            OutlinedButton({ viewModel.hostCheckIn(participant.pubkey, false) }) { Text("No-show") }
+                            Button({ viewModel.hostCheckIn(participant.pubkey, true) }) { Text(stringResource(R.string.comp_host_check_in)) }
+                            OutlinedButton({ viewModel.hostCheckIn(participant.pubkey, false) }) { Text(stringResource(R.string.comp_host_no_show)) }
                         }
                         if (participant.result == "active" && participant.registration == "accepted") {
                             OutlinedButton(
                                 onClick = { retirePubkey = participant.pubkey },
                                 modifier = Modifier.testTag("competition_host_retire_${participant.pubkey.take(8)}"),
                             ) { Text(stringResource(R.string.comp_host_retire)) }
+                            OutlinedButton(
+                                onClick = { disqualifyPubkey = participant.pubkey },
+                                modifier = Modifier.testTag("competition_host_disqualify_${participant.pubkey.take(8)}"),
+                            ) { Text(stringResource(R.string.comp_host_disqualify)) }
                         }
                     }
                 }
             }
-            ui.snapshot.pendingIntents.filter { it.op != "register" }.forEach { intent ->
+            }
+
+            if (route != HostRoute.SETUP) ui.snapshot.pendingIntents.filter { intent ->
+                intent.op in if (route == HostRoute.ENTRANTS) {
+                    setOf("checkin_request", "withdraw")
+                } else {
+                    setOf("defer_request", "attempt_report", "climb_choice")
+                }
+            }.forEach { intent ->
                 val participant = state.participant(intent.pubkey)
                 val label = participant?.display?.ifBlank { null } ?: "${intent.pubkey.take(12)}…"
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("$label · ${intent.op}", Modifier.weight(1f))
+                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("$label · ${hostRequestLabel(intent.op)}")
                     when (intent.op) {
-                        "checkin_request" -> Button({ viewModel.hostCheckIn(intent.pubkey, true, intent.eventId) }) { Text("Bestätigen") }
-                        "withdraw" -> Button({ viewModel.hostWithdraw(intent.pubkey, intent.eventId) }) { Text("Abmeldung bestätigen") }
-                        "defer_request" -> Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Button({ viewModel.hostDefer(intent.pubkey, "granted", intent.eventId) }) { Text("Gewähren") }
-                            OutlinedButton({ viewModel.hostDefer(intent.pubkey, "denied", intent.eventId) }) { Text("Ablehnen") }
+                        "checkin_request" -> Button({ viewModel.hostCheckIn(intent.pubkey, true, intent.eventId) }) { Text(stringResource(R.string.comp_host_confirm)) }
+                        "withdraw" -> Button({ viewModel.hostWithdraw(intent.pubkey, intent.eventId) }) { Text(stringResource(R.string.comp_host_confirm_withdrawal)) }
+                        "defer_request" -> FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Button({ viewModel.hostDefer(intent.pubkey, "granted", intent.eventId) }) { Text(stringResource(R.string.comp_host_grant)) }
+                            OutlinedButton({ viewModel.hostDefer(intent.pubkey, "denied", intent.eventId) }) { Text(stringResource(R.string.comp_host_reject)) }
                         }
                         "attempt_report" -> {
                             val climbId = (intent.data["climb_id"] as? kotlinx.serialization.json.JsonPrimitive)?.content.orEmpty()
                             val outcome = (intent.data["outcome"] as? kotlinx.serialization.json.JsonPrimitive)?.content.orEmpty()
-                            Button({ viewModel.hostAttempt(intent.pubkey, climbId, outcome, intent.eventId) }) { Text("Eintragen") }
+                            Button({ viewModel.hostAttempt(intent.pubkey, climbId, outcome, intent.eventId) }) { Text(stringResource(R.string.comp_host_record)) }
                         }
                         "climb_choice" -> {
                             val climbId = (intent.data["climb_id"] as? kotlinx.serialization.json.JsonPrimitive)?.content.orEmpty()
@@ -742,39 +921,49 @@ private fun OrganizerConsole(
                 }
             }
 
+            if (route == HostRoute.LIVE) {
             if (CompetitionProtocol.checkinWindowOpen(competition, state.status, nowSeconds) || runningNow || state.status == "paused") {
-                Text("Live-Steuerung", fontWeight = FontWeight.Bold)
-                if (state.order.isEmpty()) Button(viewModel::hostSeed, Modifier.testTag("competition_host_seed")) { Text("Queue aus Check-ins erstellen") }
+                Text(stringResource(R.string.comp_host_live_controls), fontWeight = FontWeight.Bold)
+                if (state.order.isEmpty()) Button(viewModel::hostSeed, Modifier.testTag("competition_host_seed")) { Text(stringResource(R.string.comp_host_seed_queue)) }
                 else {
                     val current = state.order.getOrNull(state.cursor)
-                    Text("Zug: ${current?.let { key -> state.participant(key)?.display?.ifBlank { key.take(12) } } ?: "noch nicht geöffnet"}")
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        if (state.cursor < 0) Button({ viewModel.hostQueue("open_turn", 0) }) { Text("Ersten Zug öffnen") }
+                    Text(
+                        stringResource(
+                            R.string.comp_host_turn,
+                            current?.let { key -> state.participant(key)?.display?.ifBlank { key.take(12) } }
+                                ?: stringResource(R.string.comp_host_turn_not_open),
+                        ),
+                    )
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        if (state.cursor < 0) Button({ viewModel.hostQueue("open_turn", 0) }) { Text(stringResource(R.string.comp_host_open_first_turn)) }
                         else Button(viewModel::hostSkipTurn, Modifier.testTag("competition_host_skip_turn")) {
                             Text(stringResource(R.string.comp_host_skip_turn))
                         }
-                        if (state.cursor >= 0) OutlinedButton({ viewModel.hostQueue("close_turn") }) { Text("Zug schließen") }
+                        if (state.cursor >= 0) OutlinedButton({ viewModel.hostQueue("close_turn") }) { Text(stringResource(R.string.comp_host_close_turn)) }
                     }
                     if (runningNow && current != null && state.currentClimbId.isNotBlank()) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Button({ viewModel.hostAttempt(current, state.currentClimbId, "top") }) { Text("Top") }
-                            OutlinedButton({ viewModel.hostAttempt(current, state.currentClimbId, "zone") }) { Text("Zone") }
-                            OutlinedButton({ viewModel.hostAttempt(current, state.currentClimbId, "fall") }) { Text("Fall") }
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Button({ viewModel.hostAttempt(current, state.currentClimbId, "top") }) { Text(stringResource(R.string.comp_host_result_top)) }
+                            OutlinedButton({ viewModel.hostAttempt(current, state.currentClimbId, "zone") }) { Text(stringResource(R.string.comp_host_result_zone)) }
+                            OutlinedButton({ viewModel.hostAttempt(current, state.currentClimbId, "fall") }) { Text(stringResource(R.string.comp_host_result_fall)) }
                         }
                     }
                     if (state.currentClimbId.isBlank() && competition.climbs.isNotEmpty()) {
-                        Button({ viewModel.hostQueue("next_climb", climbId = competition.climbs.first().id) }) { Text("${competition.climbs.first().label} starten") }
+                        Button({ viewModel.hostQueue("next_climb", climbId = competition.climbs.first().id) }) {
+                            Text(stringResource(R.string.comp_host_start_climb, competition.climbs.first().label))
+                        }
                     }
                 }
             }
 
-            OutlinedTextField(announcement, { announcement = it }, label = { Text("Durchsage") }, modifier = Modifier.fillMaxWidth())
-            OutlinedButton({ viewModel.hostAnnounce(announcement); announcement = "" }, enabled = announcement.isNotBlank()) { Text("Veröffentlichen") }
+            OutlinedTextField(announcement, { announcement = it }, label = { Text(stringResource(R.string.comp_host_announcement)) }, modifier = Modifier.fillMaxWidth())
+            OutlinedButton({ viewModel.hostAnnounce(announcement); announcement = "" }, enabled = announcement.isNotBlank()) { Text(stringResource(R.string.comp_host_publish)) }
+            }
             when (action) {
                 is CompetitionDetailViewModel.Action.Failed -> Text(
                     competitionActionError(action.reason), color = MaterialTheme.colorScheme.error,
                 )
-                is CompetitionDetailViewModel.Action.Sent -> Text("Auf ${action.accepted} Relay(s) veröffentlicht.")
+                is CompetitionDetailViewModel.Action.Sent -> Text(stringResource(R.string.comp_host_published_relays, action.accepted))
                 is CompetitionDetailViewModel.Action.Working -> LinearProgressIndicator(Modifier.fillMaxWidth())
                 else -> Unit
             }
@@ -869,23 +1058,34 @@ private fun HostCompetitionEditDialog(
     )
 }
 
+@Composable
 private fun competitionActionError(reason: String): String = when (reason) {
-    "reason_required" -> "Eine Begründung ist Pflicht."
-    "immutable_or_empty_patch" -> "Es gibt keine veröffentlichbare Änderung."
-    "config_referenced_climb" -> "Ein bereits verwendeter Boulder darf nicht entfernt werden."
-    "config_referenced_division" -> "Eine bereits verwendete Division darf nicht entfernt werden."
-    "config_invalid" -> "Die Änderung ergibt keine gültige Wettkampf-Konfiguration."
-    "config_bad_revision" -> "Die Competition wurde inzwischen geändert. Bitte neu laden und erneut versuchen."
-    "config_empty_patch" -> "Es wurden keine Änderungen erkannt."
-    "config_immutable_field" -> "Identität, Authority, Status und Relay-Zuordnung können hier nicht geändert werden."
-    "config_impact_mismatch" -> "Die Änderungsauswirkung konnte nicht eindeutig geprüft werden. Bitte neu laden."
-    "no_relay" -> "Kein Relay hat die Änderung angenommen. Es wurde nichts veröffentlicht."
-    else -> "Aktion fehlgeschlagen: $reason"
+    "reason_required" -> stringResource(R.string.comp_host_error_reason)
+    "immutable_or_empty_patch", "config_empty_patch" -> stringResource(R.string.comp_host_error_empty)
+    "config_referenced_climb" -> stringResource(R.string.comp_host_error_climb_used)
+    "config_referenced_division" -> stringResource(R.string.comp_host_error_division_used)
+    "config_invalid" -> stringResource(R.string.comp_host_error_invalid)
+    "config_bad_revision" -> stringResource(R.string.comp_host_error_revision)
+    "config_immutable_field" -> stringResource(R.string.comp_host_error_immutable)
+    "config_impact_mismatch" -> stringResource(R.string.comp_host_error_impact)
+    "no_relay" -> stringResource(R.string.comp_host_error_no_relay)
+    else -> stringResource(R.string.comp_host_error_generic, reason)
 }
 
+@Composable
+private fun hostRequestLabel(op: String): String = when (op) {
+    "checkin_request" -> stringResource(R.string.comp_host_request_checkin)
+    "withdraw" -> stringResource(R.string.comp_host_request_withdraw)
+    "defer_request" -> stringResource(R.string.comp_host_request_defer)
+    "attempt_report" -> stringResource(R.string.comp_host_request_attempt)
+    "climb_choice" -> stringResource(R.string.comp_host_request_choice)
+    else -> op
+}
+
+@Composable
 private fun hostLifecycleLabel(status: String) = when (status) {
-    "running" -> "Wettkampf fortsetzen"
-    "finished" -> "Wettkampf beenden"
+    "running" -> stringResource(R.string.comp_host_resume)
+    "finished" -> stringResource(R.string.comp_host_finish)
     else -> status
 }
 

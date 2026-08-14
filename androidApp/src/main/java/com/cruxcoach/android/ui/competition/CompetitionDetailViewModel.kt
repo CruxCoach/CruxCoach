@@ -39,6 +39,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
@@ -83,6 +84,7 @@ class CompetitionDetailViewModel @Inject constructor(
     private val _action = MutableStateFlow<Action>(Action.Idle)
     val action: StateFlow<Action> = _action.asStateFlow()
     private var climbChoiceGeneration = 0
+    private var followJob: Job? = null
 
     sealed interface Cleanup {
         data object Idle : Cleanup
@@ -303,12 +305,7 @@ class CompetitionDetailViewModel @Inject constructor(
             val profile = runCatching { profiles.getProfileFromCache(myPubkey) }.getOrNull()
             suggestedDisplayName.value = profile?.displayName.orEmpty().take(48)
         }
-        viewModelScope.launch {
-            val now = System.currentTimeMillis() / 1000
-            if (client.load(organizerPubkey, compId, now)) {
-                client.follow { System.currentTimeMillis() / 1000 }.collect { /* state flows out via snapshot */ }
-            }
-        }
+        reload()
         viewModelScope.launch {
             client.snapshot
                 .map { snapshot -> snapshot.competition?.let { "${it.compId}:${it.revision}" to it } }
@@ -321,6 +318,18 @@ class CompetitionDetailViewModel @Inject constructor(
                         catalogue.value = loadCatalogue(competition)
                     }
                 }
+        }
+    }
+
+    /** Restart definition lookup, exact history backfill, and the live subscription. */
+    fun reload() {
+        followJob?.cancel()
+        followJob = viewModelScope.launch {
+            val now = System.currentTimeMillis() / 1000
+            if (client.load(organizerPubkey, compId, now)) {
+                client.follow { System.currentTimeMillis() / 1000 }
+                    .collect { /* state flows out via snapshot */ }
+            }
         }
     }
 
@@ -564,6 +573,19 @@ class CompetitionDetailViewModel @Inject constructor(
         }
         hostAct(
             "retire",
+            JsonObject(mapOf("pubkey" to JsonPrimitive(pubkey))),
+            subjects = listOf(pubkey),
+            reason = reason.trim(),
+        )
+    }
+
+    fun hostDisqualify(pubkey: String, reason: String) {
+        if (reason.isBlank()) {
+            _action.value = Action.Failed("reason_required")
+            return
+        }
+        hostAct(
+            "disqualify",
             JsonObject(mapOf("pubkey" to JsonPrimitive(pubkey))),
             subjects = listOf(pubkey),
             reason = reason.trim(),
