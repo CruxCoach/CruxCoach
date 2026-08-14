@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
@@ -51,7 +52,9 @@ fun CompetitionCreateScreen(
     viewModel: CompetitionCreateViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val catalogueSearch by viewModel.catalogueSearch.collectAsStateWithLifecycle()
     var confirmDiscard by remember { mutableStateOf(false) }
+    var catalogueQuery by remember { mutableStateOf("") }
     val created = state as? CompetitionCreateViewModel.State.Created
     androidx.compose.runtime.LaunchedEffect(created) {
         if (created != null) onCreated(created.organizerPubkey, created.compId)
@@ -126,6 +129,50 @@ fun CompetitionCreateScreen(
                             }
                         }
                         Text(stringResource(if (d.climbSource == "participant_choice") R.string.comp_create_pool_hint else R.string.comp_create_climbs_hint))
+                        OutlinedTextField(
+                            value = catalogueQuery,
+                            onValueChange = { catalogueQuery = it },
+                            label = { Text(stringResource(R.string.comp_create_catalogue_search)) },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                            keyboardActions = KeyboardActions(onSearch = { viewModel.searchCatalogue(catalogueQuery) }),
+                            modifier = Modifier.fillMaxWidth().testTag("competition_create_catalogue_query"),
+                        )
+                        Button(
+                            onClick = { viewModel.searchCatalogue(catalogueQuery) },
+                            modifier = Modifier.fillMaxWidth().testTag("competition_create_catalogue_search"),
+                        ) { Text(stringResource(R.string.comp_create_catalogue_search_action)) }
+                        when (val search = catalogueSearch) {
+                            CompetitionCreateViewModel.CatalogueSearch.Idle ->
+                                Text(stringResource(R.string.comp_create_catalogue_hint))
+                            CompetitionCreateViewModel.CatalogueSearch.Loading ->
+                                CircularProgressIndicator(Modifier.testTag("competition_create_catalogue_loading"))
+                            CompetitionCreateViewModel.CatalogueSearch.InvalidBoard ->
+                                Text(stringResource(R.string.comp_create_catalogue_invalid_board))
+                            CompetitionCreateViewModel.CatalogueSearch.Failed ->
+                                Text(stringResource(R.string.comp_create_catalogue_failed))
+                            is CompetitionCreateViewModel.CatalogueSearch.Ready -> if (search.results.isEmpty()) {
+                                Text(stringResource(R.string.comp_create_catalogue_empty))
+                            } else search.results.forEach { result ->
+                                val added = d.climbs.lineSequence().any {
+                                    it.substringBefore('|').trim().equals(result.uuid, ignoreCase = true)
+                                }
+                                OutlinedButton(
+                                    onClick = { viewModel.addCatalogueClimb(result) },
+                                    enabled = !added,
+                                    modifier = Modifier.fillMaxWidth().testTag("competition_create_catalogue_${result.uuid}"),
+                                ) {
+                                    Column(Modifier.fillMaxWidth()) {
+                                        Text(result.name, fontWeight = FontWeight.SemiBold)
+                                        Text(
+                                            if (added) stringResource(R.string.comp_create_catalogue_added)
+                                            else result.setter?.let { stringResource(R.string.comp_catalog_setter, it) }
+                                                ?: stringResource(R.string.comp_create_catalogue_add),
+                                        )
+                                    }
+                                }
+                            }
+                        }
                         OutlinedTextField(d.climbs, { value -> viewModel.edit { it.copy(climbs = value) } }, label = { Text(stringResource(R.string.comp_create_field_climbs)) }, minLines = 7, modifier = Modifier.fillMaxWidth().testTag("competition_create_climbs"))
                         Field(stringResource(R.string.comp_create_field_climb_count), d.climbCount, numeric = true) { viewModel.edit { x -> x.copy(climbCount = it) } }
                         Field(stringResource(R.string.comp_create_field_counted_climbs), d.countedClimbCount, numeric = true) { viewModel.edit { x -> x.copy(countedClimbCount = it) } }

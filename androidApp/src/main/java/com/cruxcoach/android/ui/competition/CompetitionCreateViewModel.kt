@@ -18,6 +18,8 @@ import java.time.format.ResolverStyle
 import java.util.Locale
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -41,6 +43,14 @@ class CompetitionCreateViewModel @Inject constructor(
     private val preferences: UserPreferences,
     private val boards: BoardRepository,
 ) : ViewModel() {
+    data class CatalogueResult(val uuid: String, val name: String, val setter: String?)
+    sealed interface CatalogueSearch {
+        data object Idle : CatalogueSearch
+        data object Loading : CatalogueSearch
+        data class Ready(val results: List<CatalogueResult>) : CatalogueSearch
+        data object InvalidBoard : CatalogueSearch
+        data object Failed : CatalogueSearch
+    }
     @Serializable
     data class Draft(
         val title: String = "", val summary: String = "", val venue: String = "",
@@ -77,6 +87,9 @@ class CompetitionCreateViewModel @Inject constructor(
         editing.copy(draft = CompetitionCreateDraftPolicy.withDefaultSchedule(editing.draft))
     })
     val state: StateFlow<State> = _state.asStateFlow()
+    private val _catalogueSearch = MutableStateFlow<CatalogueSearch>(CatalogueSearch.Idle)
+    val catalogueSearch: StateFlow<CatalogueSearch> = _catalogueSearch.asStateFlow()
+    private var catalogueSearchJob: Job? = null
 
     init {
         if (!hadSavedDraft) viewModelScope.launch {
@@ -92,9 +105,16 @@ class CompetitionCreateViewModel @Inject constructor(
         }
     }
 
-    fun edit(change: (Draft) -> Draft) = updateEditing {
-        val editing = it as? State.Editing ?: return@updateEditing it
-        editing.copy(draft = change(editing.draft), error = null)
+    fun edit(change: (Draft) -> Draft) {
+        val editing = _state.value as? State.Editing ?: return
+        val nextDraft = change(editing.draft)
+        if (listOf(editing.draft.boardBrand, editing.draft.layoutId, editing.draft.angle) !=
+            listOf(nextDraft.boardBrand, nextDraft.layoutId, nextDraft.angle)
+        ) {
+            catalogueSearchJob?.cancel()
+            _catalogueSearch.value = CatalogueSearch.Idle
+        }
+        updateEditing { editing.copy(draft = nextDraft, error = null) }
     }
     fun next() = updateEditing {
         val editing = it as? State.Editing ?: return@updateEditing it
@@ -104,6 +124,39 @@ class CompetitionCreateViewModel @Inject constructor(
     fun back() = updateEditing {
         val editing = it as? State.Editing ?: return@updateEditing it
         editing.copy(step = (editing.step - 1).coerceAtLeast(0), error = null)
+    }
+
+    fun searchCatalogue(query: String) {
+        val draft = (_state.value as? State.Editing)?.draft ?: return
+        val angle = draft.angle.toIntOrNull()
+        val layoutId = draft.layoutId.toIntOrNull()
+        if (angle == null || layoutId == null || draft.boardBrand.isBlank()) {
+            _catalogueSearch.value = CatalogueSearch.InvalidBoard
+            return
+        }
+        _catalogueSearch.value = CatalogueSearch.Loading
+        catalogueSearchJob?.cancel()
+        catalogueSearchJob = viewModelScope.launch {
+            val found = try {
+                withContext(Dispatchers.IO) {
+                    boards.searchClimbsByName(
+                        query = query.trim(), angle = angle, layoutId = layoutId,
+                        boardBrand = draft.boardBrand, limit = 30,
+                    ).map { CatalogueResult(it.uuid, it.name, it.setterUsername) }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                null
+            }
+            _catalogueSearch.value = found?.let(CatalogueSearch::Ready) ?: CatalogueSearch.Failed
+        }
+    }
+
+    fun addCatalogueClimb(result: CatalogueResult) = edit { draft ->
+        draft.copy(climbs = CompetitionCreateDraftPolicy.appendCatalogueClimb(
+            draft.climbs, result.uuid, result.name,
+        ))
     }
 
     fun discardDraft() {
@@ -393,4 +446,16 @@ internal object CompetitionCreateDraftPolicy {
         }.toList().mapIndexed { index, climb -> JsonObject(climb.toMutableMap().apply {
             put("id", JsonPrimitive("b${index + 1}"))
         }) }
+
+    fun appendCatalogueClimb(rows: String, uuid: String, label: String): String {
+        val normalized = uuid.lowercase()
+        if (!CompetitionProtocol.isClimbUuid(normalized)) return rows
+        val alreadyAdded = rows.lineSequence().any { line ->
+            line.substringBefore('|').trim().lowercase() == normalized
+        }
+        if (alreadyAdded) return rows
+        val safeLabel = label.replace('|', ' ').replace('\n', ' ').trim().ifBlank { normalized.take(8) }
+        return listOf(rows.trim(), "$normalized | $safeLabel")
+            .filter(String::isNotBlank).joinToString("\n")
+    }
 }

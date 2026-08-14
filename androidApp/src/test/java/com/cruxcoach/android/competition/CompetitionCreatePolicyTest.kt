@@ -169,6 +169,16 @@ class CompetitionCreatePolicyTest {
             "participantInstructions", "spectatorInfo", "refundPolicy",
             "prizes", "prizeClaimDays",
         ).forEach { assertContains(source, it) }
+        assertContains(source, "searchCatalogue")
+        assertContains(source, "addCatalogueClimb")
+    }
+
+    @Test
+    fun `catalogue picks append safe unique advanced rows`() {
+        val first = CompetitionCreateDraftPolicy.appendCatalogueClimb("", uuid, "Blue | slab\nleft")
+        assertEquals("$uuid | Blue   slab left", first)
+        assertEquals(first, CompetitionCreateDraftPolicy.appendCatalogueClimb(first, uuid.uppercase(), "Duplicate"))
+        assertEquals(first, CompetitionCreateDraftPolicy.appendCatalogueClimb(first, "not-a-uuid", "Invalid"))
     }
 
     @Test

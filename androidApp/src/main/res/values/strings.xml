@@ -2596,6 +2596,14 @@
     <string name="comp_catalog_missing">This board catalogue is not downloaded yet. Sync the competition board before choosing climbs; registration stays disabled so you cannot submit a blind or incompatible choice.</string>
     <string name="comp_catalog_bad_board">The competition board configuration cannot be matched exactly on this device. No climbs are shown because a different board, size, layout, or angle would be unsafe.</string>
     <string name="comp_catalog_search">Search name or setter</string>
+    <string name="comp_create_catalogue_search">Find climbs in this board catalogue</string>
+    <string name="comp_create_catalogue_search_action">Search catalogue</string>
+    <string name="comp_create_catalogue_hint">Search by climb name or setter, then add real climbs. The advanced list below remains available for points and zone holds.</string>
+    <string name="comp_create_catalogue_invalid_board">Enter a valid board brand, layout and angle before searching.</string>
+    <string name="comp_create_catalogue_empty">No matching climbs in the downloaded catalogue.</string>
+    <string name="comp_create_catalogue_failed">The catalogue could not be read. Check that board data is downloaded, then retry.</string>
+    <string name="comp_create_catalogue_add">Add to competition</string>
+    <string name="comp_create_catalogue_added">Added</string>
     <string name="comp_catalog_grade">Difficulty</string>
     <string name="comp_catalog_all">All</string>
     <string name="comp_catalog_easy">Up to V4</string>

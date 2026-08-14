@@ -2595,6 +2595,14 @@
     <string name="comp_catalog_missing">Der Katalog dieses Boards ist noch nicht heruntergeladen. Synchronisiere das Competition-Board vor der Auswahl; die Anmeldung bleibt deaktiviert, damit du nicht blind oder inkompatibel auswählst.</string>
     <string name="comp_catalog_bad_board">Die Board-Konfiguration der Competition lässt sich auf diesem Gerät nicht exakt zuordnen. Es werden keine Boulder eines anderen Boards, Formats, Layouts oder Winkels angezeigt.</string>
     <string name="comp_catalog_search">Name oder Setter suchen</string>
+    <string name="comp_create_catalogue_search">Boulder in diesem Board-Katalog finden</string>
+    <string name="comp_create_catalogue_search_action">Katalog durchsuchen</string>
+    <string name="comp_create_catalogue_hint">Suche nach Bouldername oder Setter und füge echte Boulder hinzu. Die erweiterte Liste darunter bleibt für Punkte und Zonen-Holds verfügbar.</string>
+    <string name="comp_create_catalogue_invalid_board">Gib vor der Suche Board-Marke, Layout und Winkel gültig ein.</string>
+    <string name="comp_create_catalogue_empty">Keine passenden Boulder im heruntergeladenen Katalog.</string>
+    <string name="comp_create_catalogue_failed">Der Katalog konnte nicht gelesen werden. Prüfe, ob die Board-Daten heruntergeladen sind, und versuche es erneut.</string>
+    <string name="comp_create_catalogue_add">Zur Competition hinzufügen</string>
+    <string name="comp_create_catalogue_added">Hinzugefügt</string>
     <string name="comp_catalog_grade">Schwierigkeit</string>
     <string name="comp_catalog_all">Alle</string>
     <string name="comp_catalog_easy">Bis V4</string>
