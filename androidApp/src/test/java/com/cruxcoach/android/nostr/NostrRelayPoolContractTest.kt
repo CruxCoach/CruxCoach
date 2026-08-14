@@ -29,6 +29,7 @@ class NostrRelayPoolContractTest {
         val read = pool().readRelays().map { it.url }.toSet()
         val expected = NostrConfig.DEFAULT_RELAYS.filter { it.read }.map { it.url }.toSet()
         assertEquals(expected, read)
+        assertFalse(pool().allReadRelaysConnected())
     }
 
     @Test

@@ -332,6 +332,11 @@ class NostrRelayPool @Inject constructor(
     /** Relays marked read-enabled in the current resolved list. */
     fun readRelays(): List<RelayConfig> = resolvedRelays.filter { it.read }
 
+    /** Whether every relay whose history can affect a read is connected now. */
+    fun allReadRelaysConnected(): Boolean = readRelays().all { relay ->
+        connections[relay.url]?.isConnected == true
+    }
+
     /**
      * Called by the relay-list resolver when the resolved set changes.
      *

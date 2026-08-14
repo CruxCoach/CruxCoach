@@ -315,6 +315,9 @@ class CompetitionDetailViewModel @Inject constructor(
     )
 
     init {
+        viewModelScope.launch {
+            client.connectedRelayCount.collect { client.connectionChanged() }
+        }
         // The competition nickname remains editable, but starting with the
         // user's cached Nostr profile avoids a leaderboard full of hex
         // prefixes. Do not trigger an unrelated public-relay lookup merely

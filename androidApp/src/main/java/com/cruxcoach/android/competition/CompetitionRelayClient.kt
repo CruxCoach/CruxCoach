@@ -332,6 +332,13 @@ class CompetitionRelayClient @Inject constructor(
         }
     }
 
+    /** A dropped read relay makes a previously complete request inbox stale. */
+    fun connectionChanged() {
+        if (_snapshot.value.intentHistoryComplete && !relayPool.allReadRelaysConnected()) {
+            _snapshot.update { it.copy(intentHistoryComplete = false, pendingIntents = emptyList()) }
+        }
+    }
+
     /** Restore one replaceable personal request without relying on a capped broad history query. */
     suspend fun loadOwnIntent(
         competition: Competition,
