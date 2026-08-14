@@ -15,6 +15,7 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.ResolverStyle
+import java.util.Locale
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -51,12 +52,15 @@ class CompetitionCreateViewModel @Inject constructor(
         val registrationClosesAt: String = "", val checkinOpensAt: String = "",
         val checkinClosesAt: String = "", val startsAt: String = "", val endsAt: String = "",
         val capacity: String = "20", val division: String = "Open",
+        val divisions: String = "", val feeSats: String = "0", val feeLnurl: String = "",
         val attempts: String = "5", val turnSeconds: String = "180",
         val climbSource: String = "organizer_set", val climbCount: String = "1",
         val countedClimbCount: String = "1", val scoring: String = "tops_then_attempts",
         val progression: String = "asynchronous_turns", val selectionUniqueness: String = "none",
         val zonePoints: String = "10", val topPoints: String = "25", val flashPoints: String = "5",
-        val climbs: String = "", val rulesText: String = "",
+        val climbs: String = "", val rulesText: String = "", val eligibility: String = "",
+        val waiver: String = "", val participantInstructions: String = "",
+        val spectatorInfo: String = "", val refundPolicy: String = "",
         val relays: String = "wss://relay.damus.io\nwss://nos.lol",
         val public: Boolean = true, val waiverRequired: Boolean = false,
         val waitlistEnabled: Boolean = true, val lateEntryAllowed: Boolean = false,
@@ -136,13 +140,15 @@ class CompetitionCreateViewModel @Inject constructor(
         ?: State.Editing()
 
     private fun buildConfig(d: Draft): Pair<String, JsonObject> {
-        for (step in 0..2) require(CompetitionCreateDraftPolicy.validateStep(d, step) == null) {
+        for (step in 0..3) require(CompetitionCreateDraftPolicy.validateStep(d, step) == null) {
             CompetitionCreateDraftPolicy.validateStep(d, step).orEmpty()
         }
         val compId = ByteArray(8).also(SecureRandom()::nextBytes).joinToString("") { "%02x".format(it) }
         val now = System.currentTimeMillis() / 1000
         val schedule = requireNotNull(CompetitionCreateDraftPolicy.schedule(d)) { "invalid_schedule" }
         val climbs = CompetitionCreateDraftPolicy.parseClimbs(d)
+        val divisions = requireNotNull(CompetitionCreateDraftPolicy.parseDivisions(d)) { "invalid_divisions" }
+        val feeMsat = (d.feeSats.toLongOrNull() ?: 0L) * 1_000L
         val climbCount = d.climbCount.toInt()
         val countedClimbCount = d.countedClimbCount.toInt()
         val authority = signer.getPublicKeyHex()
@@ -157,15 +163,16 @@ class CompetitionCreateViewModel @Inject constructor(
             "capacity" to JsonPrimitive(d.capacity.toIntOrNull()?.coerceIn(0, 500) ?: 20), "waitlist_enabled" to JsonPrimitive(d.waitlistEnabled),
             "venue" to JsonObject(mapOf("kind" to JsonPrimitive("physical"), "name" to JsonPrimitive(d.venue.trim()), "address" to JsonPrimitive(d.address.trim()))),
             "board" to JsonObject(mapOf("brand" to JsonPrimitive(d.boardBrand), "model" to JsonPrimitive(d.boardModel.trim()), "size" to JsonPrimitive(d.boardSize.trim()), "angle" to JsonPrimitive(d.angle.toInt()), "layout_id" to JsonPrimitive(d.layoutId.toInt()))),
-            "divisions" to JsonArray(listOf(JsonObject(mapOf("id" to JsonPrimitive("open"), "label" to JsonPrimitive(d.division.trim().ifBlank { "Open" }))))),
-            "eligibility" to JsonPrimitive(""), "waiver" to JsonPrimitive(if (d.waiverRequired) d.rulesText.trim() else ""), "waiver_required" to JsonPrimitive(d.waiverRequired),
-            "participant_instructions" to JsonPrimitive(""), "spectator_info" to JsonPrimitive(""), "refund_policy" to JsonPrimitive(""),
-            "fee_msat" to JsonPrimitive(0), "prizes" to JsonArray(emptyList()),
+            "divisions" to JsonArray(divisions),
+            "eligibility" to JsonPrimitive(d.eligibility.trim()), "waiver" to JsonPrimitive(d.waiver.trim()), "waiver_required" to JsonPrimitive(d.waiverRequired),
+            "participant_instructions" to JsonPrimitive(d.participantInstructions.trim()), "spectator_info" to JsonPrimitive(d.spectatorInfo.trim()), "refund_policy" to JsonPrimitive(d.refundPolicy.trim()),
+            "fee_msat" to JsonPrimitive(feeMsat), "prizes" to JsonArray(emptyList()),
             "rules" to CompetitionCreateDraftPolicy.rules(d, climbCount, countedClimbCount),
             "climbs" to JsonArray(climbs), "relays" to JsonArray(d.relays.lineSequence().map(String::trim).filter(String::isNotBlank).map(::JsonPrimitive).toList()),
             "created_at" to JsonPrimitive(now), "revision" to JsonPrimitive(1),
         ))
-        return compId to CompetitionCreateDraftPolicy.placeClimbs(config, d.climbSource, climbs)
+        val paid = if (feeMsat > 0) JsonObject(config + ("fee_lnurl" to JsonPrimitive(d.feeLnurl.trim()))) else config
+        return compId to CompetitionCreateDraftPolicy.placeClimbs(paid, d.climbSource, climbs)
     }
 
     private companion object {
@@ -174,6 +181,7 @@ class CompetitionCreateViewModel @Inject constructor(
 }
 
 internal object CompetitionCreateDraftPolicy {
+    private val DIVISION_ID = Regex("^[a-z0-9_]{1,24}$")
     data class Schedule(
         val timezone: String,
         val registrationOpensAt: Long,
@@ -243,6 +251,22 @@ internal object CompetitionCreateDraftPolicy {
         LOCAL_MINUTE.format(Instant.ofEpochSecond(epochSeconds).atZone(ZoneId.of(timezone)))
     }.getOrNull()
 
+    fun parseDivisions(d: CompetitionCreateViewModel.Draft): List<JsonObject>? {
+        val lines = d.divisions.lineSequence().map(String::trim).filter(String::isNotBlank).toList()
+        val source = if (lines.isEmpty()) listOf(d.division.trim().ifBlank { "Open" }) else lines
+        if (source.size !in 1..8) return null
+        val seen = mutableSetOf<String>()
+        return source.mapIndexed { index, line ->
+            val parts = line.split('|', limit = 2).map(String::trim)
+            val label = (parts.getOrNull(1) ?: parts[0]).takeIf(String::isNotBlank) ?: return null
+            val id = if (parts.size == 2) parts[0] else label.lowercase(Locale.ROOT)
+                .replace(Regex("[^a-z0-9]+"), "_").trim('_').take(24)
+                .ifBlank { "division_${index + 1}" }
+            if (!DIVISION_ID.matches(id) || !seen.add(id)) return null
+            JsonObject(mapOf("id" to JsonPrimitive(id), "label" to JsonPrimitive(label)))
+        }
+    }
+
     fun rules(d: CompetitionCreateViewModel.Draft, climbCount: Int, countedClimbCount: Int): JsonObject {
         val rules = linkedMapOf<String, kotlinx.serialization.json.JsonElement>(
             "climb_source" to JsonPrimitive(d.climbSource),
@@ -301,6 +325,15 @@ internal object CompetitionCreateDraftPolicy {
                 d.climbSource == "participant_choice" && d.scoring in setOf("points_sum", "hardest_n") -> "invalid_choice_scoring"
                 else -> null
             }
+        }
+        3 -> when {
+            parseDivisions(d) == null -> "invalid_divisions"
+            d.feeSats.toLongOrNull() !in 0L..1_000_000L -> "invalid_fee"
+            d.feeSats.toLongOrNull()!! > 0 && d.feeLnurl.isBlank() -> "invalid_fee"
+            d.waiverRequired && d.waiver.isBlank() -> "required_waiver"
+            listOf(d.rulesText, d.eligibility, d.waiver, d.participantInstructions, d.spectatorInfo, d.refundPolicy)
+                .any { it.length > 2_000 } -> "text_too_long"
+            else -> null
         }
         else -> null
     }

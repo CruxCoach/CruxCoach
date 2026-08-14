@@ -2409,6 +2409,16 @@
     <string name="comp_create_uniqueness_exclusive">Exklusive Auswahl (älter)</string>
     <string name="comp_create_field_capacity">Teilnehmerlimit</string>
     <string name="comp_create_field_division">Division</string>
+    <string name="comp_create_field_divisions">Kategorien</string>
+    <string name="comp_create_divisions_hint">Eine pro Zeile: feste_id | angezeigter Name. Höchstens 8.</string>
+    <string name="comp_create_field_fee">Startgeld in Sats</string>
+    <string name="comp_create_field_fee_lnurl">Lightning-Adresse oder LNURL der Ausrichtung</string>
+    <string name="comp_money_no_custody_organizer">Startgelder gehen direkt an die Ausrichtung. CruxCoach verwahrt kein Geld und kann nichts erstatten.</string>
+    <string name="comp_create_field_eligibility">Wer teilnehmen kann</string>
+    <string name="comp_create_field_instructions">Hinweise für Teilnehmende</string>
+    <string name="comp_create_field_spectator">Infos für Zuschauende</string>
+    <string name="comp_create_field_refund">Rückerstattungsregeln</string>
+    <string name="comp_create_field_waiver">Teilnahmeerklärung zur Zustimmung</string>
     <string name="comp_create_review">Prüfen</string>
     <string name="comp_create_review_summary">%1$s\n%2$s · %3$s %4$s bei %5$s°</string>
     <string name="comp_create_review_schedule">Anmeldung %1$s – %2$s\nCheck-in %3$s – %4$s\nWettkampf %5$s – %6$s\n%7$s</string>
@@ -2442,6 +2452,10 @@
     <string name="comp_create_error_climb_count">Die Zahl verfügbarer Ergebnisse muss zwischen 1 und der Zahl gelisteter Boulder liegen.</string>
     <string name="comp_create_error_counted_climb_count">Best-N muss zwischen 1 und der Zahl verfügbarer Ergebnisse liegen.</string>
     <string name="comp_create_error_choice_scoring">Bei Teilnehmendenwahl sind Tops/Versuche oder Leistungspunkte möglich; Punktwerte pro Boulder brauchen ein festes Set der Ausrichtung.</string>
+    <string name="comp_create_error_divisions">Füge 1–8 eindeutige Kategorien als feste_id | angezeigter Name hinzu. IDs nutzen Kleinbuchstaben, Ziffern und Unterstriche.</string>
+    <string name="comp_create_error_fee">Trage 0 für kostenlos oder ein ganzzahliges Startgeld mit Lightning-Adresse beziehungsweise LNURL der Ausrichtung ein.</string>
+    <string name="comp_create_error_waiver">Trage die Teilnahmeerklärung ein, der Teilnehmende zustimmen müssen.</string>
+    <string name="comp_create_error_text_too_long">Informationsfelder dürfen jeweils höchstens 2.000 Zeichen enthalten.</string>
     <string name="comp_create_error_publish">Der Entwurf konnte nicht veröffentlicht werden: %1$s</string>
     <string name="comp_detail_essentials">Auf einen Blick</string>
     <string name="comp_detail_starts">Beginn</string>

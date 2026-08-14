@@ -130,6 +130,23 @@ class CompetitionCreatePolicyTest {
     }
 
     @Test
+    fun `divisions fees and participant policy validate as authored`() {
+        val draft = CompetitionCreateDraftPolicy.withDefaultSchedule(validDraft()).copy(
+            divisions = "open | Open\nwomen | Women",
+            feeSats = "250", feeLnurl = "climber@example.com",
+            eligibility = "Age 16+", participantInstructions = "Arrive early",
+            spectatorInfo = "Balcony", refundPolicy = "Until Friday",
+            waiverRequired = true, waiver = "I accept the risks.",
+        )
+        val divisions = requireNotNull(CompetitionCreateDraftPolicy.parseDivisions(draft))
+        assertEquals(listOf("open", "women"), divisions.map { it.getValue("id").jsonPrimitive.content })
+        assertNull(CompetitionCreateDraftPolicy.validateStep(draft, 3))
+        assertEquals("invalid_fee", CompetitionCreateDraftPolicy.validateStep(draft.copy(feeLnurl = ""), 3))
+        assertEquals("required_waiver", CompetitionCreateDraftPolicy.validateStep(draft.copy(waiver = ""), 3))
+        assertEquals("invalid_divisions", CompetitionCreateDraftPolicy.validateStep(draft.copy(divisions = "bad id | A"), 3))
+    }
+
+    @Test
     fun `creation UI exposes the protocol format axes instead of hard coding them`() {
         val source = listOf(
             File("src/main/java/com/cruxcoach/android/ui/competition/CompetitionCreateScreen.kt"),
@@ -142,6 +159,8 @@ class CompetitionCreatePolicyTest {
             "waitlistEnabled", "lateEntryAllowed", "countedClimbCount",
             "registrationOpensAt", "registrationClosesAt", "checkinOpensAt",
             "checkinClosesAt", "startsAt", "endsAt", "timezone",
+            "divisions", "feeSats", "feeLnurl", "eligibility", "waiver",
+            "participantInstructions", "spectatorInfo", "refundPolicy",
         ).forEach { assertContains(source, it) }
     }
 

@@ -67,6 +67,8 @@ class CompetitionEditClimbsTest {
             "competition.registrationOpensAt", "competition.registrationClosesAt",
             "competition.checkinOpensAt", "competition.checkinClosesAt",
             "competition.startsAt", "competition.endsAt", "competition.timezone",
+            "competition.divisions", "competition.feeMsat", "competition.feeLnurl",
+            "participant_instructions", "spectator_info", "refund_policy", "eligibility", "waiver",
         ).forEach { assertContains(source, it) }
     }
 

@@ -1033,6 +1033,14 @@ private fun HostCompetitionEditDialog(
     var summary by rememberSaveable(competition.revision) { mutableStateOf(competition.summary) }
     var venueName by rememberSaveable(competition.revision) { mutableStateOf(venue) }
     var capacity by rememberSaveable(competition.revision) { mutableStateOf(competition.capacity.toString()) }
+    var divisions by rememberSaveable(competition.revision) { mutableStateOf(competition.divisions.joinToString("\n") { "${it.id} | ${it.label}" }) }
+    var feeSats by rememberSaveable(competition.revision) { mutableStateOf((competition.feeMsat / 1_000L).toString()) }
+    var feeLnurl by rememberSaveable(competition.revision) { mutableStateOf(competition.feeLnurl.orEmpty()) }
+    var eligibility by rememberSaveable(competition.revision) { mutableStateOf((competition.raw["eligibility"] as? JsonPrimitive)?.content.orEmpty()) }
+    var waiver by rememberSaveable(competition.revision) { mutableStateOf((competition.raw["waiver"] as? JsonPrimitive)?.content.orEmpty()) }
+    var participantInstructions by rememberSaveable(competition.revision) { mutableStateOf((competition.raw["participant_instructions"] as? JsonPrimitive)?.content.orEmpty()) }
+    var spectatorInfo by rememberSaveable(competition.revision) { mutableStateOf((competition.raw["spectator_info"] as? JsonPrimitive)?.content.orEmpty()) }
+    var refundPolicy by rememberSaveable(competition.revision) { mutableStateOf((competition.raw["refund_policy"] as? JsonPrimitive)?.content.orEmpty()) }
     var timezone by rememberSaveable(competition.revision) { mutableStateOf(competition.timezone) }
     var registrationOpensAt by rememberSaveable(competition.revision) { mutableStateOf(CompetitionCreateDraftPolicy.formatLocalMinute(competition.registrationOpensAt, competition.timezone).orEmpty()) }
     var registrationClosesAt by rememberSaveable(competition.revision) { mutableStateOf(CompetitionCreateDraftPolicy.formatLocalMinute(competition.registrationClosesAt, competition.timezone).orEmpty()) }
@@ -1057,6 +1065,10 @@ private fun HostCompetitionEditDialog(
         timezone, registrationOpensAt, registrationClosesAt,
         checkinOpensAt, checkinClosesAt, startsAt, endsAt,
     )
+    val parsedDivisions = CompetitionCreateDraftPolicy.parseDivisions(
+        CompetitionCreateViewModel.Draft(divisions = divisions),
+    )
+    val parsedFeeSats = feeSats.toLongOrNull()
 
     val climbPatch = if (climbText == initialClimbs) JsonObject(emptyMap())
     else competitionClimbsEditorPatch(
@@ -1070,6 +1082,25 @@ private fun HostCompetitionEditDialog(
             put("venue", JsonObject(mapOf("name" to JsonPrimitive(it))))
         }
         capacity.toIntOrNull()?.takeIf { it != competition.capacity }?.let { put("capacity", JsonPrimitive(it)) }
+        parsedDivisions?.takeIf { candidate ->
+            candidate.map { (it["id"] as JsonPrimitive).content to (it["label"] as JsonPrimitive).content } !=
+                competition.divisions.map { it.id to it.label }
+        }?.let { put("divisions", JsonArray(it)) }
+        parsedFeeSats?.times(1_000L)?.takeIf { it != competition.feeMsat }?.let {
+            put("fee_msat", JsonPrimitive(it))
+            if (it == 0L) put("fee_lnurl", kotlinx.serialization.json.JsonNull)
+        }
+        if ((parsedFeeSats ?: 0L) > 0 && feeLnurl.trim() != competition.feeLnurl.orEmpty()) {
+            put("fee_lnurl", JsonPrimitive(feeLnurl.trim()))
+        }
+        listOf(
+            "eligibility" to eligibility, "waiver" to waiver,
+            "participant_instructions" to participantInstructions,
+            "spectator_info" to spectatorInfo, "refund_policy" to refundPolicy,
+        ).forEach { (field, value) ->
+            val previous = (competition.raw[field] as? JsonPrimitive)?.content.orEmpty()
+            value.trim().takeIf { it != previous }?.let { put(field, JsonPrimitive(it)) }
+        }
         schedule?.let { value ->
             value.timezone.takeIf { it != competition.timezone }?.let { put("timezone", JsonPrimitive(it)) }
             listOf(
@@ -1130,7 +1161,11 @@ private fun HostCompetitionEditDialog(
     val parsedClimbCount = climbCount.toIntOrNull()
     val parsedCounted = countedClimbCount.toIntOrNull()
     val parsedScorePoints = listOf(zonePoints, topPoints, flashPoints).map(String::toIntOrNull)
-    val valid = title.isNotBlank() && schedule != null && capacity.toIntOrNull() in 0..500 &&
+    val valid = title.isNotBlank() && schedule != null && parsedDivisions != null &&
+        parsedFeeSats in 0L..1_000_000L && (parsedFeeSats == 0L || feeLnurl.isNotBlank()) &&
+        (!competition.waiverRequired || waiver.isNotBlank()) &&
+        listOf(eligibility, waiver, participantInstructions, spectatorInfo, refundPolicy).none { it.length > 2_000 } &&
+        capacity.toIntOrNull() in 0..500 &&
         attempts.toIntOrNull() in 1..20 && parsedClimbCount in 1..minOf(availableClimbs, 40) &&
         parsedCounted in 1..(parsedClimbCount ?: 0) &&
         !(competition.rules.climbSource == "participant_choice" && scoring in setOf("points_sum", "hardest_n")) &&
@@ -1154,6 +1189,17 @@ private fun HostCompetitionEditDialog(
                 OutlinedTextField(summary, { summary = it }, label = { Text(stringResource(R.string.comp_edit_field_summary)) })
                 OutlinedTextField(venueName, { venueName = it }, label = { Text(stringResource(R.string.comp_edit_field_venue)) }, singleLine = true)
                 OutlinedTextField(capacity, { capacity = it.filter(Char::isDigit) }, label = { Text(stringResource(R.string.comp_edit_field_capacity)) }, singleLine = true)
+                OutlinedTextField(divisions, { divisions = it }, label = { Text(stringResource(R.string.comp_create_field_divisions)) }, supportingText = { Text(stringResource(R.string.comp_create_divisions_hint)) }, minLines = 2)
+                OutlinedTextField(feeSats, { feeSats = it.filter(Char::isDigit) }, label = { Text(stringResource(R.string.comp_create_field_fee)) }, singleLine = true)
+                if ((parsedFeeSats ?: 0L) > 0) {
+                    OutlinedTextField(feeLnurl, { feeLnurl = it }, label = { Text(stringResource(R.string.comp_create_field_fee_lnurl)) }, singleLine = true)
+                    Text(stringResource(R.string.comp_money_no_custody_organizer), style = MaterialTheme.typography.bodySmall)
+                }
+                OutlinedTextField(eligibility, { eligibility = it }, label = { Text(stringResource(R.string.comp_create_field_eligibility)) })
+                OutlinedTextField(participantInstructions, { participantInstructions = it }, label = { Text(stringResource(R.string.comp_create_field_instructions)) })
+                OutlinedTextField(spectatorInfo, { spectatorInfo = it }, label = { Text(stringResource(R.string.comp_create_field_spectator)) })
+                OutlinedTextField(refundPolicy, { refundPolicy = it }, label = { Text(stringResource(R.string.comp_create_field_refund)) })
+                if (competition.waiverRequired) OutlinedTextField(waiver, { waiver = it }, label = { Text(stringResource(R.string.comp_create_field_waiver)) })
                 Text(stringResource(R.string.comp_create_schedule_hint), style = MaterialTheme.typography.bodySmall)
                 OutlinedTextField(timezone, { timezone = it }, label = { Text(stringResource(R.string.comp_create_field_timezone)) }, singleLine = true)
                 OutlinedTextField(registrationOpensAt, { registrationOpensAt = it }, label = { Text(stringResource(R.string.comp_create_field_registration_opens)) }, singleLine = true)

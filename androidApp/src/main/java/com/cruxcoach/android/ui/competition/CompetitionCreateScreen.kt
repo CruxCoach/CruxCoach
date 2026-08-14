@@ -138,7 +138,12 @@ fun CompetitionCreateScreen(
                             ),
                         ) { value -> viewModel.edit { it.copy(selectionUniqueness = value) } }
                         Field(stringResource(R.string.comp_create_field_capacity), d.capacity, numeric = true) { viewModel.edit { x -> x.copy(capacity = it) } }
-                        Field(stringResource(R.string.comp_create_field_division), d.division) { viewModel.edit { x -> x.copy(division = it) } }
+                        OutlinedTextField(
+                            d.divisions, { value -> viewModel.edit { it.copy(divisions = value) } },
+                            label = { Text(stringResource(R.string.comp_create_field_divisions)) },
+                            supportingText = { Text(stringResource(R.string.comp_create_divisions_hint)) },
+                            minLines = 2, modifier = Modifier.fillMaxWidth(),
+                        )
                         Row(verticalAlignment = Alignment.CenterVertically) { Text(stringResource(R.string.comp_create_waitlist), Modifier.weight(1f)); Switch(d.waitlistEnabled, { value -> viewModel.edit { it.copy(waitlistEnabled = value) } }) }
                         Row(verticalAlignment = Alignment.CenterVertically) { Text(stringResource(R.string.comp_create_late_entry), Modifier.weight(1f)); Switch(d.lateEntryAllowed, { value -> viewModel.edit { it.copy(lateEntryAllowed = value) } }) }
                     }
@@ -175,8 +180,18 @@ fun CompetitionCreateScreen(
                         Field(stringResource(R.string.comp_create_field_attempts), d.attempts, numeric = true) { viewModel.edit { x -> x.copy(attempts = it) } }
                         Field(stringResource(R.string.comp_create_field_turn_seconds), d.turnSeconds, numeric = true) { viewModel.edit { x -> x.copy(turnSeconds = it) } }
                         OutlinedTextField(d.rulesText, { value -> viewModel.edit { it.copy(rulesText = value) } }, label = { Text(stringResource(R.string.comp_create_field_rules)) }, minLines = 4, modifier = Modifier.fillMaxWidth())
+                        Field(stringResource(R.string.comp_create_field_fee), d.feeSats, numeric = true) { viewModel.edit { x -> x.copy(feeSats = it) } }
+                        if (d.feeSats.toLongOrNull()?.let { it > 0 } == true) {
+                            Field(stringResource(R.string.comp_create_field_fee_lnurl), d.feeLnurl) { viewModel.edit { x -> x.copy(feeLnurl = it) } }
+                            Text(stringResource(R.string.comp_money_no_custody_organizer))
+                        }
+                        OutlinedTextField(d.eligibility, { value -> viewModel.edit { it.copy(eligibility = value) } }, label = { Text(stringResource(R.string.comp_create_field_eligibility)) }, modifier = Modifier.fillMaxWidth())
+                        OutlinedTextField(d.participantInstructions, { value -> viewModel.edit { it.copy(participantInstructions = value) } }, label = { Text(stringResource(R.string.comp_create_field_instructions)) }, modifier = Modifier.fillMaxWidth())
+                        OutlinedTextField(d.spectatorInfo, { value -> viewModel.edit { it.copy(spectatorInfo = value) } }, label = { Text(stringResource(R.string.comp_create_field_spectator)) }, modifier = Modifier.fillMaxWidth())
+                        OutlinedTextField(d.refundPolicy, { value -> viewModel.edit { it.copy(refundPolicy = value) } }, label = { Text(stringResource(R.string.comp_create_field_refund)) }, modifier = Modifier.fillMaxWidth())
                         OutlinedTextField(d.relays, { value -> viewModel.edit { it.copy(relays = value) } }, label = { Text(stringResource(R.string.comp_create_field_relays)) }, minLines = 2, modifier = Modifier.fillMaxWidth())
                         Row(verticalAlignment = Alignment.CenterVertically) { Text(stringResource(R.string.comp_create_waiver), Modifier.weight(1f)); Switch(d.waiverRequired, { value -> viewModel.edit { it.copy(waiverRequired = value) } }) }
+                        if (d.waiverRequired) OutlinedTextField(d.waiver, { value -> viewModel.edit { it.copy(waiver = value) } }, label = { Text(stringResource(R.string.comp_create_field_waiver)) }, modifier = Modifier.fillMaxWidth())
                     }
                 }
                 editing.error?.let { Text(competitionCreateError(it)) }
@@ -204,6 +219,10 @@ private fun competitionCreateError(code: String): String = when (code) {
     "invalid_climb_count" -> stringResource(R.string.comp_create_error_climb_count)
     "invalid_counted_climb_count" -> stringResource(R.string.comp_create_error_counted_climb_count)
     "invalid_choice_scoring" -> stringResource(R.string.comp_create_error_choice_scoring)
+    "invalid_divisions" -> stringResource(R.string.comp_create_error_divisions)
+    "invalid_fee" -> stringResource(R.string.comp_create_error_fee)
+    "required_waiver" -> stringResource(R.string.comp_create_error_waiver)
+    "text_too_long" -> stringResource(R.string.comp_create_error_text_too_long)
     else -> stringResource(R.string.comp_create_error_publish, code)
 }
 
