@@ -10,119 +10,297 @@ class BoardCellCoordinatorTest {
     private class RecordingTransport : BoardCellTransport {
         val events = mutableListOf<BoardCellEnvelope>()
         val snapshots = mutableListOf<BoardCellSnapshot>()
-        val requests = mutableListOf<Pair<BoardCellId, Long>>()
+        val ready = mutableListOf<Pair<String, HandoverReady>>()
         override suspend fun publishClaim(claim: BoardCellClaim) = Unit
         override suspend fun publishEvent(envelope: BoardCellEnvelope) { events += envelope }
         override suspend fun publishSnapshot(snapshot: BoardCellSnapshot) { snapshots += snapshot }
-        override suspend fun requestSnapshot(cellId: BoardCellId, afterSequence: Long) {
-            requests += cellId to afterSequence
+        override suspend fun requestSnapshot(cellId: BoardCellId, afterSequence: Long) = Unit
+        override suspend fun sendHandoverReady(target: String, ready: HandoverReady) { this.ready += target to ready }
+    }
+
+    private class MemoryStore(var crashAfterPhysicalSuccess: Boolean = false) : BoardCellDurableStore {
+        val snapshots = mutableMapOf<PhysicalBoardId, BoardCellSnapshot>()
+        val intents = mutableMapOf<PhysicalBoardId, BoardWriteIntent>()
+        val acks = mutableMapOf<String, BoardCommandAck>()
+        override fun persistSnapshot(snapshot: BoardCellSnapshot) { snapshots[snapshot.physicalBoardId] = snapshot }
+        override fun persistSnapshotWithAck(snapshot: BoardCellSnapshot, ack: BoardCommandAck) {
+            snapshots[snapshot.physicalBoardId] = snapshot; acks[ack.commandId] = ack
         }
+        override fun persistIntent(intent: BoardWriteIntent) { intents[intent.physicalBoardId] = intent }
+        override fun markPhysicalWriteSucceeded(intent: BoardWriteIntent) {
+            intents[intent.physicalBoardId] = intent.copy(state = BoardWriteIntentState.PHYSICAL_WRITE_SUCCEEDED)
+            if (crashAfterPhysicalSuccess) throw SimulatedCrash()
+        }
+        override fun commit(snapshot: BoardCellSnapshot, intent: BoardWriteIntent, ack: BoardCommandAck) {
+            snapshots[snapshot.physicalBoardId] = snapshot; intents.remove(intent.physicalBoardId); acks[ack.commandId] = ack
+        }
+        override fun recordAck(ack: BoardCommandAck) { acks[ack.commandId] = ack }
+        override fun discardIntent(boardId: PhysicalBoardId, commandId: String) { if (intents[boardId]?.commandId == commandId) intents.remove(boardId) }
+        override fun pendingIntent(boardId: PhysicalBoardId) = intents[boardId]
+        override fun commandAck(commandId: String) = acks[commandId]
+    }
+    private class SimulatedCrash : RuntimeException()
+
+    private suspend fun settled(node: String, board: PhysicalBoardId = PhysicalBoardId("board"),
+        transport: RecordingTransport = RecordingTransport(), store: MemoryStore = MemoryStore(),
+        now: Long = 100): Triple<BoardCellCoordinator, RecordingTransport, MemoryStore> {
+        val coordinator = BoardCellCoordinator(node, transport, store, settleMs = 0,
+            heartbeatTimeoutMs = 100, handoverTimeoutMs = 50)
+        coordinator.beginClaim(board, BoardCellId.forPhysical(board), now)
+        coordinator.settle(board, now)
+        return Triple(coordinator, transport, store)
     }
 
     @Test fun `simultaneous claims settle deterministically before first write`() = runTest {
         val transport = RecordingTransport()
-        val coordinator = BoardCellCoordinator("node-b", transport, settleMs = 100)
+        val c = BoardCellCoordinator("node-b", transport, settleMs = 10)
         val board = PhysicalBoardId("kilter:serial:1")
-        coordinator.beginClaim(board, BoardCellId("cell-b"), 1_000)
-        coordinator.observeClaim(BoardCellClaim(board, BoardCellId("cell-a"), "node-a", 1_000, 1_000))
-        assertNull(coordinator.settle(board, 1_099))
-        val settled = coordinator.settle(board, 1_100)!!
-        assertEquals(BoardCellId("cell-a"), settled.cellId)
-        assertEquals("node-a", settled.controllerId)
-        assertEquals(setOf("node-a", "node-b"), settled.members)
-        assertEquals(settled.stateHash, transport.snapshots.single().stateHash)
+        c.beginClaim(board, BoardCellId.forPhysical(board), 1_000)
+        c.observeClaim(BoardCellClaim(board, BoardCellId.forPhysical(board), "node-a", 1, "lineage-a"), 1_000)
+        assertNull(c.settle(board, 1_009))
+        assertEquals("node-a", c.settle(board, 1_010)!!.controllerId)
+        assertEquals(setOf("node-a", "node-b"), c.snapshot(board)!!.members)
     }
 
-    @Test fun `two adjacent boards never share projection state`() = runTest {
-        val coordinator = BoardCellCoordinator("n", settleMs = 0)
-        val a = PhysicalBoardId("kilter:serial:a")
-        val b = PhysicalBoardId("kilter:serial:b")
-        coordinator.beginClaim(a, BoardCellId("a"), 10); coordinator.settle(a, 10)
-        coordinator.beginClaim(b, BoardCellId("b"), 20); coordinator.settle(b, 20)
-        coordinator.project(a, BoardProjection("climb-a", 40), 11) { true }
-        assertEquals("climb-a", coordinator.snapshot(a)?.projection?.climbUuid)
-        assertNull(coordinator.snapshot(b)?.projection)
-    }
-
-    @Test fun `multi connect projections serialize board write then ordered commits`() = runTest {
+    @Test fun `two adjacent boards and concurrent commands retain exact physical commit order`() = runTest {
         val transport = RecordingTransport()
-        val coordinator = BoardCellCoordinator("n", transport, settleMs = 0)
-        val board = PhysicalBoardId("kilter:serial:multi")
-        coordinator.beginClaim(board, BoardCellId("cell"), 100); coordinator.settle(board, 100)
-        val physicalWrites = mutableListOf<String>()
-        val one = async { coordinator.project(board, BoardProjection("one", 40), 101) {
-            delay(10); physicalWrites += "one"; true
-        } }
-        val two = async { coordinator.project(board, BoardProjection("two", 45), 102) {
-            physicalWrites += "two"; true
-        } }
-        one.await(); two.await()
-        assertEquals(listOf("one", "two"), physicalWrites)
-        assertEquals(listOf(1L, 2L), transport.events.map { it.sequence })
-        assertEquals("two", coordinator.snapshot(board)?.projection?.climbUuid)
+        val c = BoardCellCoordinator("n", transport, settleMs = 0)
+        val a = PhysicalBoardId("kilter:serial:a"); val b = PhysicalBoardId("kilter:serial:b")
+        c.beginClaim(a, BoardCellId.forPhysical(a), 10); c.settle(a, 10)
+        c.beginClaim(b, BoardCellId.forPhysical(b), 10); c.settle(b, 10)
+        val writes = mutableListOf<String>()
+        val one = async { c.project(a, BoardProjection("one", 40), 11, "one", 0) { delay(5); writes += "one"; true } }
+        val two = async { c.project(a, BoardProjection("two", 45), 11, "two", 0) { writes += "two"; true } }
+        val results = listOf(one.await(), two.await())
+        assertEquals(1, results.count { it is ProjectionResult.Committed })
+        assertEquals(1, results.count { (it as? ProjectionResult.Refused)?.ack?.status == BoardCommandStatus.REJECTED_STALE })
+        assertEquals(1, writes.size)
+        assertNull(c.snapshot(b)!!.projection)
+        assertEquals(writes.single(), c.snapshot(a)!!.projection!!.climbUuid)
     }
 
-    @Test fun `lease loss freezes and cannot elect through partition`() = runTest {
-        val coordinator = BoardCellCoordinator("controller", settleMs = 0, leaseMs = 10)
-        val board = PhysicalBoardId("moon:ble:AA")
-        coordinator.beginClaim(board, BoardCellId("cell"), 1); coordinator.settle(board, 1)
-        coordinator.freezeExpiredControllers(12)
-        val result = coordinator.project(board, BoardProjection("unsafe", 25), 12) { true }
-        assertTrue(result is ProjectionResult.Refused)
-        assertEquals(BoardCellAvailability.FROZEN_NEEDS_CONTROLLER,
-            coordinator.snapshot(board)?.availability)
+    @Test fun `monotonic heartbeat deadlines ignore remote wall clock skew and never elect`() = runTest {
+        val board = PhysicalBoardId("moon:serial:clock")
+        val (source) = settled("source", board, now = 5)
+        source.joinMember(board, "replica")
+        val snapshot = source.snapshot(board)!!
+        val replica = BoardCellCoordinator("replica", settleMs = 0, heartbeatTimeoutMs = 100)
+        assertTrue(replica.restoreTrustedSnapshot(snapshot, 1_000_000) is BoardCellApplyResult.Applied)
+        replica.expireLocalDeadlines(1_000_099)
+        assertEquals(BoardCellAvailability.ACTIVE, replica.snapshot(board)!!.availability)
+        replica.expireLocalDeadlines(1_000_101)
+        assertEquals(BoardCellAvailability.FROZEN_NEEDS_CONTROLLER, replica.snapshot(board)!!.availability)
+        assertEquals("source", replica.snapshot(board)!!.controllerId)
     }
 
-    @Test fun `reachable controller orders handover before successor writes`() = runTest {
-        val transport = RecordingTransport()
-        val controller = BoardCellCoordinator("old", transport, settleMs = 0, leaseMs = 100)
-        val board = PhysicalBoardId("board")
-        controller.beginClaim(board, BoardCellId("cell"), 1)
-        controller.settle(board, 1)
-        controller.joinMember(board, "new")
-        val transfer = controller.transferController(board, "new", 2)
-        assertNotNull(transfer)
-        assertEquals("new", controller.snapshot(board)?.controllerId)
-        assertTrue(controller.project(board, BoardProjection("old-write", 40), 3) { true }
+    @Test fun `handover requires prepared target readiness commit and completion across two coordinators`() = runTest {
+        val board = PhysicalBoardId("kilter:serial:handover")
+        val sourceTransport = RecordingTransport(); val targetTransport = RecordingTransport()
+        val (source) = settled("source", board, sourceTransport, now = 100)
+        source.joinMember(board, "target")
+        val target = BoardCellCoordinator("target", targetTransport, settleMs = 0, heartbeatTimeoutMs = 100)
+        target.restoreTrustedSnapshot(source.snapshot(board)!!, 100)
+
+        val prepared = source.prepareHandover(board, "target", 101, "tx")!!
+        assertTrue(target.acceptEvent("source", prepared, 101) is BoardCellApplyResult.Applied)
+        target.targetReady(board, "board-and-host-ready")
+        val ready = targetTransport.ready.single().second
+        assertTrue(source.acceptTargetReady("target", ready, 102))
+        val readyEvent = sourceTransport.events.last()
+        assertTrue(target.acceptEvent("source", readyEvent, 102) is BoardCellApplyResult.Applied)
+        val committed = source.commitHandover(board, "tx", 103)!!
+        assertTrue(target.acceptEvent("source", committed, 103) is BoardCellApplyResult.Applied)
+        assertEquals(2, target.snapshot(board)!!.controllerTerm)
+        assertTrue(source.project(board, BoardProjection("old", 40), 104) { true } is ProjectionResult.Refused)
+        val completed = target.completeHandover(board, "tx", 104)!!
+        assertTrue(source.acceptEvent("target", completed, 104) is BoardCellApplyResult.Applied)
+        assertEquals(HandoverPhase.COMPLETED, source.snapshot(board)!!.handover!!.phase)
+        assertTrue(target.project(board, BoardProjection("new", 40), 105) { true } is ProjectionResult.Committed)
+    }
+
+    @Test fun `unready target times out and aborts only before commit`() = runTest {
+        val board = PhysicalBoardId("board-timeout")
+        val (source) = settled("source", board, now = 100)
+        source.joinMember(board, "target")
+        source.prepareHandover(board, "target", 101, "timeout")
+        source.expireLocalDeadlines(152)
+        assertEquals(HandoverPhase.ABORTED, source.snapshot(board)!!.handover!!.phase)
+        assertEquals("source", source.snapshot(board)!!.controllerId)
+    }
+
+    @Test fun `source and target restart safely at every persisted handover boundary`() = runTest {
+        val board = PhysicalBoardId("board-phase-crash")
+        val sourceStore = MemoryStore(); val targetStore = MemoryStore()
+        val sourceTransport = RecordingTransport(); val targetTransport = RecordingTransport()
+        val (source) = settled("source", board, sourceTransport, sourceStore, 100)
+        source.joinMember(board, "target")
+        val target = BoardCellCoordinator("target", targetTransport, targetStore, heartbeatTimeoutMs = 100)
+        target.restoreTrustedSnapshot(source.snapshot(board)!!, 100)
+
+        val prepared = source.prepareHandover(board, "target", 101, "phase-crash")!!
+        target.acceptEvent("source", prepared, 101)
+
+        // Source crash in PREPARED: the local monotonic timeout is rebuilt,
+        // never inferred from a remote wall clock.
+        val sourceAfterPrepare = BoardCellCoordinator("source", sourceTransport, sourceStore,
+            heartbeatTimeoutMs = 100, handoverTimeoutMs = 50)
+        sourceAfterPrepare.restoreTrustedSnapshot(sourceStore.snapshots.getValue(board), 1_000)
+        sourceAfterPrepare.expireLocalDeadlines(1_049)
+        assertEquals(HandoverPhase.PREPARED, sourceAfterPrepare.snapshot(board)!!.handover!!.phase)
+
+        // Target crash in PREPARED resumes readiness rather than self-electing.
+        val targetAfterPrepare = BoardCellCoordinator("target", targetTransport, targetStore,
+            heartbeatTimeoutMs = 100)
+        targetAfterPrepare.restoreTrustedSnapshot(targetStore.snapshots.getValue(board), 2_000)
+        targetTransport.ready.clear()
+        targetAfterPrepare.targetReady(board, "ready-after-restart")
+        val ready = targetTransport.ready.single().second
+        assertTrue(sourceAfterPrepare.acceptTargetReady("target", ready, 1_050))
+        targetAfterPrepare.acceptEvent("source", sourceTransport.events.last(), 2_001)
+
+        // Source crash in TARGET_READY accepts an idempotent READY retry and commits once.
+        val sourceAfterReady = BoardCellCoordinator("source", sourceTransport, sourceStore,
+            heartbeatTimeoutMs = 100, handoverTimeoutMs = 50)
+        sourceAfterReady.restoreTrustedSnapshot(sourceStore.snapshots.getValue(board), 3_000)
+        assertTrue(sourceAfterReady.acceptTargetReady("target", ready, 3_001))
+        val commit = sourceAfterReady.commitHandover(board, "phase-crash", 3_002)!!
+        targetAfterPrepare.acceptEvent("source", commit, 2_002)
+
+        // Target crash in COMMITTED resumes as the persisted new term/controller and completes.
+        val targetAfterCommit = BoardCellCoordinator("target", targetTransport, targetStore,
+            heartbeatTimeoutMs = 100)
+        targetAfterCommit.restoreTrustedSnapshot(targetStore.snapshots.getValue(board), 4_000)
+        val complete = targetAfterCommit.completeHandover(board, "phase-crash", 4_001)!!
+
+        // Source crash after COMMIT cannot regain authority; it only observes completion.
+        val sourceAfterCommit = BoardCellCoordinator("source", sourceTransport, sourceStore,
+            heartbeatTimeoutMs = 100)
+        sourceAfterCommit.restoreTrustedSnapshot(sourceStore.snapshots.getValue(board), 5_000)
+        assertTrue(sourceAfterCommit.project(board, BoardProjection("forbidden", 40), 5_001) { true }
             is ProjectionResult.Refused)
+        assertTrue(sourceAfterCommit.acceptEvent("target", complete, 5_001) is BoardCellApplyResult.Applied)
+        assertEquals(HandoverPhase.COMPLETED, sourceAfterCommit.snapshot(board)!!.handover!!.phase)
     }
 
-    @Test fun `explicit joined participant receives canonical membership snapshot`() = runTest {
-        val transport = RecordingTransport()
-        val coordinator = BoardCellCoordinator("host", transport, settleMs = 0)
-        val board = PhysicalBoardId("board")
-        coordinator.beginClaim(board, BoardCellId("cell"), 1); coordinator.settle(board, 1)
-        assertNotNull(coordinator.joinMember(board, "participant"))
-        assertTrue("participant" in coordinator.snapshot(board)!!.members)
-        assertTrue("participant" in transport.snapshots.last().members)
-    }
-
-    @Test fun `external relay writes are serialized and become committed or unknown`() = runTest {
-        val transport = RecordingTransport()
-        val coordinator = BoardCellCoordinator("controller", transport, settleMs = 0)
-        val board = PhysicalBoardId("kilter:serial:relay")
-        coordinator.beginClaim(board, BoardCellId("cell"), 100); coordinator.settle(board, 100)
-        val identified = coordinator.projectExternal(board, 101, boardWrite = { true }) {
-            BoardProjection("catalogue-climb", 40)
+    @Test fun `write success then crash before commit restores unknown frozen and requires reproject`() = runTest {
+        val board = PhysicalBoardId("board-crash")
+        val store = MemoryStore(crashAfterPhysicalSuccess = true)
+        val (first) = settled("controller", board, store = store, now = 100)
+        var writes = 0
+        assertThrows(SimulatedCrash::class.java) {
+            kotlinx.coroutines.test.runTest { first.project(board, BoardProjection("maybe", 40), 101, "cmd") { writes++; true } }
         }
-        val unknown = coordinator.projectExternal(board, 102, boardWrite = { true }) { null }
-        assertTrue(identified is ProjectionResult.Committed)
-        assertTrue(unknown is ProjectionResult.Committed)
-        assertTrue(transport.events[0].event is BoardCellEvent.ProjectCommitted)
-        assertTrue(transport.events[1].event is BoardCellEvent.ProjectUnknown)
-        assertEquals(listOf(1L, 2L), transport.events.map { it.sequence })
-        assertFalse(coordinator.snapshot(board)!!.projectionKnown)
-        assertNull(coordinator.snapshot(board)!!.projection)
+        assertEquals(1, writes)
+        store.crashAfterPhysicalSuccess = false
+        val recovered = BoardCellCoordinator("controller", durableStore = store, settleMs = 0)
+        recovered.restoreTrustedSnapshot(store.snapshots.getValue(board), 200)
+        recovered.recoverPendingWrite(board)
+        assertEquals(BoardCellAvailability.FROZEN_WRITE_RECOVERY, recovered.snapshot(board)!!.availability)
+        assertFalse(recovered.snapshot(board)!!.projectionKnown)
+        assertTrue(recovered.project(board, BoardProjection("unsafe", 40), 201) { true } is ProjectionResult.Refused)
+        assertTrue(recovered.reprojectAfterRecovery(board, BoardProjection("operator", 40), 201) { true }
+            is ProjectionResult.Committed)
+        assertEquals(BoardCellAvailability.ACTIVE, recovered.snapshot(board)!!.availability)
     }
 
-    @Test fun `failed external relay write never becomes canonical`() = runTest {
-        val transport = RecordingTransport()
-        val coordinator = BoardCellCoordinator("controller", transport, settleMs = 0)
-        val board = PhysicalBoardId("moon:relay")
-        coordinator.beginClaim(board, BoardCellId("cell"), 1); coordinator.settle(board, 1)
-        assertTrue(coordinator.projectExternal(board, 2, boardWrite = { false }) { null }
-            is ProjectionResult.BoardWriteFailed)
-        assertTrue(transport.events.isEmpty())
-        assertEquals(0, coordinator.snapshot(board)!!.sequence)
+    @Test fun `failed and duplicate commands are durable and never repeat physical write`() = runTest {
+        val board = PhysicalBoardId("board-idempotent"); val store = MemoryStore()
+        val (c) = settled("controller", board, store = store, now = 100)
+        var writes = 0
+        val failed = c.project(board, BoardProjection("x", 40), 101, "failed") { writes++; false }
+        assertEquals(BoardCommandStatus.BOARD_WRITE_FAILED, (failed as ProjectionResult.BoardWriteFailed).ack.status)
+        val retryFailed = c.project(board, BoardProjection("x", 40), 102, "failed") { writes++; true }
+        assertTrue(retryFailed is ProjectionResult.Refused)
+        val committed = c.project(board, BoardProjection("y", 40), 103, "ok") { writes++; true }
+        assertTrue(committed is ProjectionResult.Committed)
+        assertTrue(c.project(board, BoardProjection("y", 40), 104, "ok") { writes++; true } is ProjectionResult.Duplicate)
+        assertEquals(2, writes)
+    }
+
+    @Test fun `playlist command and terminal rejections remain idempotent across restart`() = runTest {
+        val board = PhysicalBoardId("board-playlist-acks"); val store = MemoryStore()
+        val (first) = settled("controller", board, store = store, now = 100)
+        val playlist = BoardPlaylistState(42, 0, listOf("climb" to 40))
+
+        assertNotNull(first.replacePlaylist(board, playlist, 101, "playlist-ok", 0))
+        assertEquals(BoardCommandStatus.COMMITTED, store.acks.getValue("playlist-ok").status)
+        assertNull(first.replacePlaylist(board, playlist, 102, "playlist-ok", 0))
+        assertEquals(1, first.snapshot(board)!!.sequence)
+
+        val restarted = BoardCellCoordinator("controller", durableStore = store, heartbeatTimeoutMs = 100)
+        restarted.restoreTrustedSnapshot(store.snapshots.getValue(board), 1_000)
+        assertNull(restarted.replacePlaylist(board, playlist, 1_001, "playlist-ok", 0))
+        assertNull(restarted.replacePlaylist(board, playlist, 1_001, "playlist-stale", 0))
+        assertEquals(BoardCommandStatus.REJECTED_STALE, store.acks.getValue("playlist-stale").status)
+        assertNull(restarted.replacePlaylist(board, playlist, 1_002, "playlist-stale", 1))
+        assertEquals(1, restarted.snapshot(board)!!.sequence)
+
+        val participantStore = MemoryStore()
+        val participant = BoardCellCoordinator("participant", durableStore = participantStore,
+            heartbeatTimeoutMs = 100)
+        val participantSnapshot = restarted.snapshot(board)!!.copy(
+            members = setOf("controller", "participant"),
+        ).withComputedHash()
+        participant.restoreTrustedSnapshot(participantSnapshot, 2_000)
+        var writes = 0
+        val refused = participant.project(board, BoardProjection("forbidden", 40), 2_001,
+            "participant-command", participantSnapshot.sequence) { writes++; true }
+        assertEquals(BoardCommandStatus.NOT_CONTROLLER, (refused as ProjectionResult.Refused).ack!!.status)
+        assertEquals(BoardCommandStatus.NOT_CONTROLLER,
+            participantStore.acks.getValue("participant-command").status)
+        assertEquals(0, writes)
+    }
+
+    @Test fun `concurrent playlist commands validate before mutating local session state`() = runTest {
+        val board = PhysicalBoardId("board-command-order"); val store = MemoryStore()
+        val (coordinator) = settled("controller", board, store = store, now = 100)
+        val mutations = mutableListOf<String>()
+
+        assertNotNull(coordinator.replacePlaylistAfterValidation(
+            board, 101, "command-first", 0) {
+            mutations += "first"
+            BoardPlaylistState(7, 0, listOf("first" to 40))
+        })
+        assertNull(coordinator.replacePlaylistAfterValidation(
+            board, 101, "command-second", 0) {
+            mutations += "second"
+            BoardPlaylistState(7, 0, listOf("second" to 40))
+        })
+
+        assertEquals(listOf("first"), mutations)
+        assertEquals(listOf("first" to 40), coordinator.snapshot(board)!!.playlist.items)
+        assertEquals(BoardCommandStatus.REJECTED_STALE, store.acks.getValue("command-second").status)
+    }
+
+    @Test fun `participant can never write physical board directly`() = runTest {
+        val board = PhysicalBoardId("board-participant")
+        val (source) = settled("source", board, now = 100)
+        source.joinMember(board, "participant")
+        val participant = BoardCellCoordinator("participant", heartbeatTimeoutMs = 100)
+        participant.restoreTrustedSnapshot(source.snapshot(board)!!, 100)
+        var writes = 0
+        assertTrue(participant.project(board, BoardProjection("x", 40), 101) { writes++; true } is ProjectionResult.Refused)
+        assertEquals(0, writes)
+    }
+
+    @Test fun `late meeting of independently settled controllers freezes both histories`() = runTest {
+        val board = PhysicalBoardId("board-fork")
+        val at = RecordingTransport(); val bt = RecordingTransport()
+        val (a) = settled("a", board, transport = at, now = 100)
+        val (b) = settled("b", board, transport = bt, now = 100)
+        a.joinMember(board, "b"); b.joinMember(board, "a")
+        a.project(board, BoardProjection("a-climb", 40), 101) { true }
+        b.project(board, BoardProjection("b-climb", 40), 101) { true }
+        assertTrue(a.acceptSnapshot("b", b.snapshot(board)!!, 102) is BoardCellApplyResult.Fork)
+        assertTrue(b.acceptSnapshot("a", a.snapshot(board)!!, 102) is BoardCellApplyResult.Fork)
+        assertEquals(BoardCellAvailability.FROZEN_FORK, a.snapshot(board)!!.availability)
+        assertEquals(BoardCellAvailability.FROZEN_FORK, b.snapshot(board)!!.availability)
+        val (winner, loser, winnerTransport) = if (a.snapshot(board)!!.lineageId < b.snapshot(board)!!.lineageId)
+            Triple(a, b, at) else Triple(b, a, bt)
+        assertNotNull(winner.operatorRecoverFork(board, 103))
+        val resolution = winnerTransport.snapshots.last()
+        assertTrue(loser.acceptSnapshot(resolution.controllerId, resolution, 104) is BoardCellApplyResult.Applied)
+        assertEquals(BoardCellAvailability.FROZEN_WRITE_RECOVERY, loser.snapshot(board)!!.availability)
+        assertFalse(loser.snapshot(board)!!.projectionKnown)
     }
 }

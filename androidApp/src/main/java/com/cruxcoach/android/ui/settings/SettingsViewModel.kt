@@ -543,7 +543,10 @@ class SettingsViewModel @Inject constructor(
                     finish = if (roleId == HoldRole.FINISH) colorByte else current.finish,
                     foot = if (roleId == HoldRole.FOOT) colorByte else current.foot
                 )
-                bleConnection.resendWithColors(updated.toRoleColorMap())
+                com.cruxcoach.android.boardcell.BoardCellManager.current?.projectExternal(
+                    boardWrite = { bleConnection.resendWithColors(updated.toRoleColorMap()) },
+                    identify = { com.cruxcoach.android.boardcell.BoardCellManager.current?.snapshot()?.projection },
+                )
             }
         }
     }
@@ -552,7 +555,10 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             userPreferences.resetLedColors()
             if (bleConnection.isConnected()) {
-                bleConnection.resendWithColors(LedHoldColors().toRoleColorMap())
+                com.cruxcoach.android.boardcell.BoardCellManager.current?.projectExternal(
+                    boardWrite = { bleConnection.resendWithColors(LedHoldColors().toRoleColorMap()) },
+                    identify = { com.cruxcoach.android.boardcell.BoardCellManager.current?.snapshot()?.projection },
+                )
             }
         }
     }
@@ -561,7 +567,10 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             userPreferences.setKilterColors()
             if (bleConnection.isConnected()) {
-                bleConnection.resendWithColors(LedHoldColors.kilterStandard().toRoleColorMap())
+                com.cruxcoach.android.boardcell.BoardCellManager.current?.projectExternal(
+                    boardWrite = { bleConnection.resendWithColors(LedHoldColors.kilterStandard().toRoleColorMap()) },
+                    identify = { com.cruxcoach.android.boardcell.BoardCellManager.current?.snapshot()?.projection },
+                )
             }
         }
     }
@@ -697,15 +706,18 @@ class SettingsViewModel @Inject constructor(
                 if (grid.isEmpty()) return@launch
                 val frames = BoardEasterAnimations.easterEgg(grid)
                 if (frames.isEmpty() || frames.all { it.leds.isEmpty() }) return@launch
-                repeat(3) {
-                    for (frame in frames) {
-                        // sendRawLeds encodes with the CONNECTED board's
-                        // encoder (correct apiLevel), not a hardcoded @3 one.
-                        bleConnection.sendRawLeds(frame.leds)
-                        delay(250)
-                    }
-                }
-                bleConnection.clearBoard()
+                com.cruxcoach.android.boardcell.BoardCellManager.current?.projectExternal(
+                    boardWrite = {
+                        repeat(3) {
+                            for (frame in frames) {
+                                if (!bleConnection.sendRawLeds(frame.leds)) return@projectExternal false
+                                delay(250)
+                            }
+                        }
+                        bleConnection.clearBoard()
+                    },
+                    identify = { null },
+                ) ?: return@launch
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -723,7 +735,10 @@ class SettingsViewModel @Inject constructor(
         animationJob?.cancel()
         animationJob = null
         _state.update { it.copy(isAnimating = false) }
-        viewModelScope.launch { bleConnection.clearBoard() }
+        viewModelScope.launch {
+            com.cruxcoach.android.boardcell.BoardCellManager.current?.projectExternal(
+                boardWrite = { bleConnection.clearBoard() }, identify = { null })
+        }
     }
 
     // ── Data management ──────────────────────────────────────────

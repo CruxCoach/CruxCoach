@@ -5,13 +5,10 @@ sealed interface BoardCellApplyResult {
     data object IgnoredStale : BoardCellApplyResult
     data class Rejected(val reason: String) : BoardCellApplyResult
     data class NeedSnapshot(val expectedSequence: Long, val receivedSequence: Long) : BoardCellApplyResult
+    data class Fork(val localLineage: String, val remoteLineage: String) : BoardCellApplyResult
 }
 
-/** Transport-agnostic reducer. FIPS and BLE/GATT must feed this exact boundary. */
-class BoardCellReplica(
-    val localMemberId: String,
-    initial: BoardCellSnapshot? = null,
-) {
+class BoardCellReplica(val localMemberId: String, initial: BoardCellSnapshot? = null) {
     var snapshot: BoardCellSnapshot? = initial
         private set
 
@@ -19,52 +16,63 @@ class BoardCellReplica(
         if (!incoming.hasValidHash()) return BoardCellApplyResult.Rejected("invalid state hash")
         val current = snapshot
         if (current != null) {
-            if (incoming.physicalBoardId != current.physicalBoardId) {
-                return BoardCellApplyResult.Rejected("physical board mismatch")
+            if (incoming.physicalBoardId != current.physicalBoardId || incoming.cellId != current.cellId)
+                return BoardCellApplyResult.Rejected("board/cell mismatch")
+            if (incoming.lineageId != current.lineageId) {
+                val validResolution = current.lineageId in incoming.resolvedLineages &&
+                    incoming.lineageId == BoardCellLineage.resolvedId(incoming.cellId, incoming.resolvedLineages) &&
+                    incoming.availability == BoardCellAvailability.FROZEN_WRITE_RECOVERY
+                if (validResolution) {
+                    if (localMemberId !in incoming.members) return BoardCellApplyResult.Rejected("local node is not a cell member")
+                    snapshot = incoming
+                    return BoardCellApplyResult.Applied(incoming)
+                }
+                freeze(BoardCellAvailability.FROZEN_FORK)
+                return BoardCellApplyResult.Fork(current.lineageId, incoming.lineageId)
             }
-            if (incoming.cellId != current.cellId) {
-                return BoardCellApplyResult.Rejected("cell id mismatch")
+            if (incoming.controllerTerm < current.controllerTerm ||
+                (incoming.controllerTerm == current.controllerTerm && incoming.epoch < current.epoch) ||
+                (incoming.controllerTerm == current.controllerTerm && incoming.epoch == current.epoch && incoming.sequence < current.sequence))
+                return BoardCellApplyResult.IgnoredStale
+            if (incoming.controllerTerm == current.controllerTerm && incoming.epoch == current.epoch &&
+                incoming.sequence == current.sequence && incoming.stateHash != current.stateHash) {
+                if (current.availability == BoardCellAvailability.ACTIVE ||
+                    current.availability == BoardCellAvailability.FROZEN_FORK) {
+                    freeze(BoardCellAvailability.FROZEN_FORK)
+                    return BoardCellApplyResult.Fork(current.lineageId, incoming.lineageId)
+                }
             }
-            if (incoming.epoch == current.epoch && incoming.sequence == current.sequence &&
-                incoming.stateHash != current.stateHash &&
-                current.availability == BoardCellAvailability.ACTIVE) {
-                return BoardCellApplyResult.Rejected("conflicting snapshot at same sequence")
-            }
-            if (incoming.epoch < current.epoch ||
-                (incoming.epoch == current.epoch && incoming.sequence < current.sequence)
-            ) return BoardCellApplyResult.IgnoredStale
         }
-        if (localMemberId !in incoming.members) {
-            return BoardCellApplyResult.Rejected("local node is not a cell member")
-        }
+        if (localMemberId !in incoming.members) return BoardCellApplyResult.Rejected("local node is not a cell member")
         snapshot = incoming
         return BoardCellApplyResult.Applied(incoming)
     }
 
     fun applyEvent(envelope: BoardCellEnvelope): BoardCellApplyResult {
         val current = snapshot ?: return BoardCellApplyResult.NeedSnapshot(0, envelope.sequence)
-        if (envelope.physicalBoardId != current.physicalBoardId || envelope.cellId != current.cellId) {
+        if (envelope.physicalBoardId != current.physicalBoardId || envelope.cellId != current.cellId)
             return BoardCellApplyResult.Rejected("board/cell mismatch")
-        }
         if (localMemberId !in current.members) return BoardCellApplyResult.Rejected("not a member")
-        if (envelope.epoch != current.epoch) {
-            return if (envelope.epoch > current.epoch) {
-                freezeForSnapshot(current)
+        if (envelope.controllerTerm != current.controllerTerm) {
+            if (envelope.controllerTerm > current.controllerTerm) freeze(BoardCellAvailability.FROZEN_NEEDS_SNAPSHOT)
+            return if (envelope.controllerTerm > current.controllerTerm)
                 BoardCellApplyResult.NeedSnapshot(current.sequence + 1, envelope.sequence)
-            } else BoardCellApplyResult.IgnoredStale
+            else BoardCellApplyResult.IgnoredStale
+        }
+        if (envelope.epoch != current.epoch) {
+            if (envelope.epoch > current.epoch) freeze(BoardCellAvailability.FROZEN_NEEDS_SNAPSHOT)
+            return if (envelope.epoch > current.epoch)
+                BoardCellApplyResult.NeedSnapshot(current.sequence + 1, envelope.sequence)
+            else BoardCellApplyResult.IgnoredStale
         }
         if (envelope.sequence <= current.sequence) return BoardCellApplyResult.IgnoredStale
-        if (envelope.sequence != current.sequence + 1) {
-            freezeForSnapshot(current)
-            return BoardCellApplyResult.NeedSnapshot(current.sequence + 1, envelope.sequence)
-        }
-        if (envelope.previousHash != current.stateHash) {
-            freezeForSnapshot(current)
+        if (envelope.sequence != current.sequence + 1 || envelope.previousHash != current.stateHash) {
+            freeze(BoardCellAvailability.FROZEN_NEEDS_SNAPSHOT)
             return BoardCellApplyResult.NeedSnapshot(current.sequence + 1, envelope.sequence)
         }
         val reduced = reduce(current, envelope.event, envelope.sequence)
         if (reduced.stateHash != envelope.resultingHash) {
-            freezeForSnapshot(current)
+            freeze(BoardCellAvailability.FROZEN_NEEDS_SNAPSHOT)
             return BoardCellApplyResult.Rejected("resulting hash mismatch")
         }
         snapshot = reduced
@@ -72,33 +80,49 @@ class BoardCellReplica(
     }
 
     internal fun freeze(availability: BoardCellAvailability) {
-        require(availability == BoardCellAvailability.FROZEN_NEEDS_CONTROLLER ||
-            availability == BoardCellAvailability.FROZEN_NEEDS_SNAPSHOT)
+        require(availability != BoardCellAvailability.ACTIVE && availability != BoardCellAvailability.SETTLING)
         snapshot = snapshot?.copy(availability = availability)?.withComputedHash()
-    }
-
-    private fun freezeForSnapshot(current: BoardCellSnapshot) {
-        snapshot = current
-        freeze(BoardCellAvailability.FROZEN_NEEDS_SNAPSHOT)
     }
 
     companion object {
         fun reduce(current: BoardCellSnapshot, event: BoardCellEvent, sequence: Long): BoardCellSnapshot {
             val next = when (event) {
                 is BoardCellEvent.ProjectCommitted -> current.copy(
-                    projection = event.projection, projectionKnown = true,
+                    projection = event.projection,
+                    projectionKnown = true,
+                    availability = if (event.recoversUnknownProjection &&
+                        current.availability == BoardCellAvailability.FROZEN_WRITE_RECOVERY)
+                        BoardCellAvailability.ACTIVE else current.availability,
                 )
-                is BoardCellEvent.ProjectUnknown -> current.copy(
-                    projection = null, projectionKnown = false,
-                )
+                is BoardCellEvent.ProjectUnknown -> current.copy(projection = null, projectionKnown = false)
                 is BoardCellEvent.PlaylistReplaced -> current.copy(playlist = event.playlist)
                 is BoardCellEvent.MemberJoined -> current.copy(members = current.members + event.memberId)
-                is BoardCellEvent.LeaseRenewed -> current.copy(leaseUntilMs = event.leaseUntilMs)
-                is BoardCellEvent.ControllerTransferred -> current.copy(
-                    controllerId = event.controllerId,
-                    leaseUntilMs = event.leaseUntilMs,
+                is BoardCellEvent.ControllerHeartbeat -> current.copy(controllerHeartbeat = event.heartbeat)
+                is BoardCellEvent.HandoverPrepared -> current.copy(handover = event.value)
+                is BoardCellEvent.HandoverTargetReady -> current.copy(
+                    handover = current.handover?.takeIf { it.transferId == event.transferId }?.copy(
+                        phase = HandoverPhase.TARGET_READY, readinessProof = event.readinessProof))
+                is BoardCellEvent.HandoverCommitted -> current.copy(
+                    controllerId = event.targetControllerId,
+                    controllerTerm = event.targetTerm,
+                    controllerHeartbeat = 0,
+                    handover = current.handover?.copy(phase = HandoverPhase.COMMITTED),
                 )
-            }.copy(sequence = sequence, availability = BoardCellAvailability.ACTIVE, stateHash = "")
+                is BoardCellEvent.HandoverCompleted -> current.copy(
+                    handover = current.handover?.copy(phase = HandoverPhase.COMPLETED))
+                is BoardCellEvent.HandoverAborted -> current.copy(
+                    handover = current.handover?.copy(phase = HandoverPhase.ABORTED))
+                is BoardCellEvent.ProjectionRecoveryRequired -> current.copy(
+                    projection = null, projectionKnown = false,
+                    availability = BoardCellAvailability.FROZEN_WRITE_RECOVERY)
+                is BoardCellEvent.ForkDetected -> current.copy(availability = BoardCellAvailability.FROZEN_FORK)
+                is BoardCellEvent.OperatorRecovered -> current.copy(
+                    lineageId = event.newLineageId, epoch = event.newEpoch,
+                    resolvedLineages = event.resolvedLineages,
+                    members = current.members + event.resolvedMembers,
+                    projection = null, projectionKnown = false,
+                    availability = BoardCellAvailability.FROZEN_WRITE_RECOVERY, handover = null)
+            }.copy(sequence = sequence, stateHash = "")
             return next.withComputedHash()
         }
     }

@@ -1,7 +1,8 @@
 package com.cruxcoach.android.boardcell
 
 import android.content.Context
-import android.util.Base64
+import android.os.Build
+import android.os.SystemClock
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.fips.FipsMeshRuntime
 import com.cruxcoach.android.fips.FipsRealmContext
@@ -14,14 +15,22 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
-/** Productive binding between board connection lifecycle and the BoardCell reducer. */
+data class BoardCellHandoverLifecycle(
+    /** Must acquire the target HOST role, board keep-alive and prove the board is connected. */
+    val prepareTarget: suspend (BoardCellSnapshot) -> Boolean,
+    /** Called on the old controller only after canonical HANDOVER_COMPLETED. */
+    val completeSource: suspend (BoardCellSnapshot) -> Unit,
+    /** Rolls back a target that prepared local HOST resources before source abort. */
+    val abortTarget: suspend (BoardCellSnapshot) -> Unit,
+)
+
 @Singleton
 class BoardCellManager @Inject constructor(
     @ApplicationContext context: Context,
@@ -29,23 +38,35 @@ class BoardCellManager @Inject constructor(
     private val runtime: FipsMeshRuntime,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val transport = BoardCellMeshTransport(runtime)
+    private val meshTransport = BoardCellMeshTransport(runtime)
+    private val durableStore = AndroidBoardCellDurableStore(context)
     private lateinit var coordinator: BoardCellCoordinator
-    private val store = context.getSharedPreferences("board_cells_v1", Context.MODE_PRIVATE)
     private val boardBindings = PhysicalBoardBindingStore(context)
     private var heldRuntime = false
+    private var activeNodeId = durableStore.localFallbackNodeId()
     private val boardRealmAvailable = AtomicBoolean(false)
     private val _snapshots = MutableStateFlow<BoardCellSnapshot?>(null)
     val snapshots = _snapshots.asStateFlow()
-    private val _sessionCommands = MutableSharedFlow<Pair<String, ByteArray>>(extraBufferCapacity = 64)
+    private val _sessionCommands = MutableSharedFlow<InboundSessionCommand>(extraBufferCapacity = 64)
     val sessionCommands = _sessionCommands.asSharedFlow()
+    private val _commandAcks = MutableSharedFlow<BoardCommandAck>(extraBufferCapacity = 64)
+    val commandAcks = _commandAcks.asSharedFlow()
+    @Volatile private var handoverLifecycle: BoardCellHandoverLifecycle? = null
+    private val handledHandoverPhase = mutableSetOf<String>()
 
     init {
         current = this
-        scope.launch { runtime.messages.collect { transport.receive(it.senderNpub, it.payload); persistSelected() } }
+        meshTransport.onSessionCommand = { _sessionCommands.tryEmit(it) }
+        meshTransport.onCommandAck = { _, ack -> _commandAcks.tryEmit(ack) }
+        scope.launch {
+            runtime.messages.collect { message ->
+                meshTransport.receive(message.senderNpub, message.payload, monotonicNow())
+                refreshSelected()
+                processHandover()
+            }
+        }
         scope.launch { maintenanceLoop() }
         scope.launch {
-            transport.onSessionCommand = { sender, payload -> _sessionCommands.tryEmit(sender to payload) }
             boardConnection.connectedBoardDescriptor.collectLatest { board ->
                 if (board == null) {
                     boardRealmAvailable.set(false)
@@ -54,98 +75,187 @@ class BoardCellManager @Inject constructor(
                 }
                 val physical = PhysicalBoardIdentity.resolve(board, boardBindings.bindingFor(board.address))
                 BoardCellScopeRegistry.replaceProvisionalSelection(physical)
-                val restored = restore(physical)
+                val restored = durableStore.snapshot(physical)
                 val cellId = restored?.cellId ?: BoardCellId.forPhysical(physical)
-                if (!runtime.activateRealm(FipsRealmContext(cellId.value, cellId.value))) return@collectLatest
+                val fipsActive = BoardCellPlatformPolicy.meshAvailable(Build.VERSION.SDK_INT) &&
+                    runtime.activateRealm(FipsRealmContext(cellId.value, cellId.value))
+                activeNodeId = if (fipsActive) runtime.localNpub else durableStore.localFallbackNodeId()
+                val activeTransport: BoardCellTransport = if (fipsActive) meshTransport else NoOpBoardCellTransport
                 boardRealmAvailable.set(true)
-                if (!heldRuntime) { runtime.acquire(); heldRuntime = true }
-                coordinator = BoardCellCoordinator(runtime.localNpub, transport, settleMs = 2_000)
-                transport.attach(coordinator)
-                if (restored != null && coordinator.restoreTrustedSnapshot(restored) is BoardCellApplyResult.Applied) {
-                    transport.rememberSnapshot(restored)
-                    if (System.currentTimeMillis() > restored.leaseUntilMs &&
-                        restored.controllerId == runtime.localNpub) {
-                        val settled = claimAndSettle(physical, restored.cellId)
-                        if (settled?.cellId == restored.cellId && settled.controllerId == runtime.localNpub) {
-                            coordinator.resumeOwnController(physical, System.currentTimeMillis())
+                if (fipsActive && !heldRuntime) { runtime.acquire(); heldRuntime = true }
+                coordinator = BoardCellCoordinator(activeNodeId, activeTransport, durableStore, settleMs = 2_000)
+                if (fipsActive) meshTransport.attach(coordinator)
+                val restoredForNode = restored?.takeIf { activeNodeId in it.members }
+                if (restoredForNode != null && coordinator.restoreTrustedSnapshot(restoredForNode, monotonicNow()) is BoardCellApplyResult.Applied) {
+                    if (fipsActive) {
+                        meshTransport.rememberSnapshot(restoredForNode)
+                        if (restoredForNode.controllerId == activeNodeId ||
+                            (restoredForNode.handover?.phase == HandoverPhase.COMMITTED &&
+                                restoredForNode.handover.sourceControllerId == activeNodeId)) {
+                            meshTransport.publishSnapshot(restoredForNode)
                         }
-                    } else if (restored.controllerId == runtime.localNpub) {
-                        transport.publishSnapshot(restored)
-                    } else {
-                        transport.requestSnapshot(restored.cellId, restored.sequence)
+                        else meshTransport.requestSnapshot(restoredForNode.cellId, restoredForNode.sequence)
                     }
+                    coordinator.recoverPendingWrite(physical)
                 } else {
                     claimAndSettle(physical, cellId)
+                    coordinator.recoverPendingWrite(physical)
                 }
-                persist(physical)
+                refreshSelected()
+                processHandover()
             }
         }
     }
 
-    suspend fun project(projection: BoardProjection, boardWrite: suspend () -> Boolean): ProjectionResult {
-        if (!boardRealmAvailable.get()) return ProjectionResult.Refused("board realm unavailable")
-        if (!::coordinator.isInitialized) return ProjectionResult.Refused("FIPS/BoardCell unavailable")
-        val board = BoardCellScopeRegistry.selected.value
-            ?: return ProjectionResult.Refused("physical board not selected")
-        return coordinator.project(board, projection, System.currentTimeMillis(), boardWrite).also { persist(board) }
+    suspend fun project(
+        projection: BoardProjection,
+        commandId: String = UUID.randomUUID().toString(),
+        baseSequence: Long? = null,
+        boardWrite: suspend () -> Boolean,
+    ): ProjectionResult {
+        val board = writableBoard() ?: return ProjectionResult.Refused("BoardCell unavailable")
+        return coordinator.project(board, projection, monotonicNow(), commandId, baseSequence, boardWrite).also {
+            refreshSelected()
+        }
     }
 
     suspend fun projectExternal(
         boardWrite: suspend () -> Boolean,
         identify: suspend () -> BoardProjection?,
+        commandId: String = UUID.randomUUID().toString(),
+        baseSequence: Long? = null,
     ): ProjectionResult {
-        if (!boardRealmAvailable.get()) return ProjectionResult.Refused("board realm unavailable")
-        if (!::coordinator.isInitialized) return ProjectionResult.Refused("FIPS/BoardCell unavailable")
-        val board = BoardCellScopeRegistry.selected.value
-            ?: return ProjectionResult.Refused("physical board not selected")
-        return coordinator.projectExternal(board, System.currentTimeMillis(), boardWrite, identify)
-            .also { persist(board) }
+        val board = writableBoard() ?: return ProjectionResult.Refused("BoardCell unavailable")
+        return coordinator.projectExternal(board, monotonicNow(), commandId, baseSequence, boardWrite, identify).also {
+            refreshSelected()
+        }
     }
 
-    suspend fun replacePlaylist(state: BoardPlaylistState): Boolean {
-        if (!::coordinator.isInitialized) return false
-        val board = BoardCellScopeRegistry.selected.value ?: return false
-        return (coordinator.replacePlaylist(board, state, System.currentTimeMillis()) != null).also { persist(board) }
+    suspend fun replacePlaylist(state: BoardPlaylistState, commandId: String = UUID.randomUUID().toString(),
+        baseSequence: Long? = null): Boolean {
+        val board = writableBoard() ?: return false
+        return (coordinator.replacePlaylist(board, state, monotonicNow(), commandId, baseSequence) != null).also {
+            refreshSelected()
+        }
     }
 
-    fun sendSessionCommand(payload: ByteArray): Boolean {
-        if (!::coordinator.isInitialized) return false
+    fun sendSessionCommand(payload: ByteArray, commandId: String = UUID.randomUUID().toString()): Boolean {
+        if (!::coordinator.isInitialized || !BoardCellPlatformPolicy.meshAvailable(Build.VERSION.SDK_INT)) return false
         val snapshot = snapshot() ?: return false
-        return transport.sendSessionCommand(snapshot, UUID.randomUUID().toString(), payload)
+        return meshTransport.sendSessionCommand(snapshot, commandId, payload)
     }
 
-    /** Entry point for the explicit QR/manual fallback when a controller rotates addresses. */
+    suspend fun commitSessionCommand(
+        command: InboundSessionCommand,
+        applyCommand: () -> BoardPlaylistState?,
+    ) {
+        val board = BoardCellScopeRegistry.selected.value ?: return
+        val committed = coordinator.replacePlaylistAfterValidation(
+            board, monotonicNow(), command.commandId, command.baseSequence, applyCommand)
+        val snapshot = coordinator.snapshot(board) ?: return
+        val ack = durableStore.commandAck(command.commandId) ?: BoardCommandAck(
+            commandId = command.commandId,
+            status = if (committed != null) BoardCommandStatus.COMMITTED else
+                if (snapshot.controllerId != activeNodeId) BoardCommandStatus.NOT_CONTROLLER
+                else BoardCommandStatus.REJECTED_STALE,
+            cellId = snapshot.cellId,
+            epoch = snapshot.epoch,
+            controllerTerm = snapshot.controllerTerm,
+            resultingSequence = snapshot.sequence,
+            resultingHash = snapshot.stateHash,
+        )
+        if (durableStore.commandAck(command.commandId) == null) durableStore.recordAck(ack)
+        meshTransport.publishCommandAck(command.senderId, ack)
+        refreshSelected()
+    }
+
     fun bindPhysicalBoardFallback(observedAddress: String, durableBindingId: String) {
         boardBindings.bind(observedAddress, durableBindingId)
     }
 
-    fun requestOrderlyHandover() {
-        if (!::coordinator.isInitialized) return
-        val board = BoardCellScopeRegistry.selected.value ?: return
-        val snapshot = coordinator.snapshot(board) ?: return
-        if (BoardCellScopeRegistry.selected.value == board) _snapshots.value = snapshot
-        val successor = snapshot.members.filter { it != runtime.localNpub }.minOrNull() ?: return
-        scope.launch {
-            coordinator.transferController(board, successor, System.currentTimeMillis())
-            persist(board)
+    /**
+     * GATT admission supplies the full scope before a participant has a board
+     * connection. This must exist before JOIN publishes the participant npub,
+     * otherwise the first canonical membership snapshot would be dropped.
+     */
+    suspend fun prepareParticipantScope(physicalBoardId: String, boardCellId: String): Boolean {
+        if (!BoardCellPlatformPolicy.meshAvailable(Build.VERSION.SDK_INT)) return false
+        val physical = runCatching { PhysicalBoardId(physicalBoardId) }.getOrNull() ?: return false
+        val cell = runCatching { BoardCellId(boardCellId) }.getOrNull() ?: return false
+        if (BoardCellId.forPhysical(physical) != cell) return false
+        BoardCellScopeRegistry.replaceProvisionalSelection(physical)
+        if (!runtime.activateRealm(FipsRealmContext(cell.value, cell.value))) return false
+        activeNodeId = runtime.localNpub
+        val existing = if (::coordinator.isInitialized) coordinator.snapshot(physical) else null
+        if (existing?.cellId != cell || activeNodeId !in existing.members) {
+            coordinator = BoardCellCoordinator(activeNodeId, meshTransport, durableStore, settleMs = 2_000)
+            meshTransport.attach(coordinator)
+            durableStore.snapshot(physical)?.takeIf { it.cellId == cell && activeNodeId in it.members }?.let {
+                coordinator.restoreTrustedSnapshot(it, monotonicNow())
+                meshTransport.rememberSnapshot(it)
+            }
         }
+        // A participant can replicate and issue scoped commands, but cannot
+        // physically write until a committed handover plus board connection.
+        boardRealmAvailable.set(false)
+        refreshSelected()
+        return true
     }
 
-    /** Competition realm changes identity/routes; board writes wait for an explicit cell reconnect. */
+    fun installHandoverLifecycle(value: BoardCellHandoverLifecycle?) { handoverLifecycle = value }
+
+    /** No implicit election: caller must identify the intended, user-visible target. */
+    fun requestOrderlyHandover(targetControllerId: String): Boolean {
+        if (!::coordinator.isInitialized || targetControllerId.isBlank()) return false
+        val board = BoardCellScopeRegistry.selected.value ?: return false
+        val snapshot = coordinator.snapshot(board) ?: return false
+        if (snapshot.controllerId != activeNodeId || targetControllerId !in snapshot.members) return false
+        scope.launch {
+            coordinator.prepareHandover(board, targetControllerId, monotonicNow())
+            refreshSelected()
+        }
+        return true
+    }
+
+    /** Safe convenience only when membership proves there is exactly one explicit successor. */
+    fun soleSuccessor(): String? = snapshot()?.members?.filter { it != activeNodeId }?.singleOrNull()
+
     fun freezeForTransportRealmSwitch() {
         boardRealmAvailable.set(false)
         if (!::coordinator.isInitialized) return
-        val board = BoardCellScopeRegistry.selected.value ?: return
-        scope.launch {
+        BoardCellScopeRegistry.selected.value?.let { board -> scope.launch {
+            coordinator.freezeForTransportRealmSwitch(board); refreshSelected()
+        } }
+    }
+
+    /** API 28 GATT participants have no authenticated distributed term transfer. */
+    fun freezeLegacyParticipantWrites() {
+        if (BoardCellPlatformPolicy.meshAvailable(Build.VERSION.SDK_INT) || !::coordinator.isInitialized) return
+        BoardCellScopeRegistry.selected.value?.let { board -> scope.launch {
             coordinator.freezeForTransportRealmSwitch(board)
-            persist(board)
-        }
+            refreshSelected()
+        } }
     }
 
     fun approveMember(memberNpub: String) {
         if (!::coordinator.isInitialized) return
-        val board = BoardCellScopeRegistry.selected.value ?: return
-        scope.launch { coordinator.joinMember(board, memberNpub); persist(board) }
+        BoardCellScopeRegistry.selected.value?.let { board -> scope.launch {
+            coordinator.joinMember(board, memberNpub); refreshSelected()
+        } }
+    }
+
+    suspend fun operatorRecoverFork(): Boolean {
+        val board = BoardCellScopeRegistry.selected.value ?: return false
+        return coordinator.operatorRecoverFork(board, monotonicNow()) != null
+    }
+
+    suspend fun reprojectAfterRecovery(
+        projection: BoardProjection,
+        boardWrite: suspend () -> Boolean,
+    ): ProjectionResult {
+        val board = writableBoard() ?: return ProjectionResult.Refused("BoardCell unavailable")
+        return coordinator.reprojectAfterRecovery(board, projection, monotonicNow(), boardWrite = boardWrite)
+            .also { refreshSelected() }
     }
 
     fun snapshot(): BoardCellSnapshot? = if (::coordinator.isInitialized)
@@ -155,44 +265,62 @@ class BoardCellManager @Inject constructor(
         while (true) {
             delay(5_000)
             if (!::coordinator.isInitialized) continue
-            val now = System.currentTimeMillis()
             BoardCellScopeRegistry.selected.value?.let { board ->
-                coordinator.renewLease(board, now)
-                coordinator.freezeExpiredControllers(now)
-                persist(board)
+                coordinator.heartbeat(board, monotonicNow())
+                coordinator.expireLocalDeadlines(monotonicNow())
+                refreshSelected()
+                processHandover()
             }
-            transport.retryOutbox()
-            transport.antiEntropy()
+            meshTransport.retryOutbox()
+            meshTransport.antiEntropy()
         }
     }
 
-    private suspend fun claimAndSettle(
-        board: PhysicalBoardId,
-        cellId: BoardCellId,
-    ): BoardCellSnapshot? {
-        val claim = coordinator.beginClaim(board, cellId, System.currentTimeMillis())
-        // Direct FIPS neighbors can appear during radio/Noise setup. Repeating
-        // one idempotent claim covers that setup window; the additional settle
-        // loop also honors a deadline extended by a competing late claim.
-        repeat(8) { delay(250); transport.publishClaim(claim) }
-        repeat(9) {
-            coordinator.settle(board, System.currentTimeMillis())?.let { return it }
-            delay(250)
-        }
-        return coordinator.settle(board, System.currentTimeMillis())
-    }
-
-    private fun persistSelected() { BoardCellScopeRegistry.selected.value?.let(::persist) }
-    private fun persist(board: PhysicalBoardId) {
-        if (!::coordinator.isInitialized) return
+    private suspend fun processHandover() {
+        val board = BoardCellScopeRegistry.selected.value ?: return
         val snapshot = coordinator.snapshot(board) ?: return
-        val bytes = BoardCellWireCodec.encode(BoardCellWireMessage.Snapshot(snapshot))
-        store.edit().putString(board.value, Base64.encodeToString(bytes, Base64.NO_WRAP)).apply()
+        val h = snapshot.handover ?: return
+        val phaseKey = "${h.transferId}:${h.phase}"
+        if (!handledHandoverPhase.add(phaseKey)) return
+        val lifecycle = handoverLifecycle
+        when {
+            h.targetControllerId == activeNodeId && h.phase == HandoverPhase.PREPARED -> {
+                val ready = lifecycle?.prepareTarget?.invoke(snapshot) == true && boardRealmAvailable.get()
+                if (ready) coordinator.targetReady(board, "host-board-ready:${h.transferId}")
+                else handledHandoverPhase.remove(phaseKey)
+            }
+            h.targetControllerId == activeNodeId && h.phase == HandoverPhase.COMMITTED -> {
+                val ready = lifecycle?.prepareTarget?.invoke(snapshot) == true && boardRealmAvailable.get()
+                if (ready) coordinator.completeHandover(board, h.transferId, monotonicNow())
+                else handledHandoverPhase.remove(phaseKey)
+            }
+            h.sourceControllerId == activeNodeId && h.phase == HandoverPhase.COMPLETED -> {
+                lifecycle?.completeSource?.invoke(snapshot)
+            }
+            h.targetControllerId == activeNodeId && h.phase == HandoverPhase.ABORTED -> {
+                lifecycle?.abortTarget?.invoke(snapshot)
+            }
+        }
+        refreshSelected()
     }
-    private fun restore(board: PhysicalBoardId): BoardCellSnapshot? = runCatching {
-        val encoded = store.getString(board.value, null) ?: return null
-        (BoardCellWireCodec.decode(Base64.decode(encoded, Base64.NO_WRAP)) as BoardCellWireMessage.Snapshot).value
-    }.getOrNull()
+
+    private suspend fun claimAndSettle(board: PhysicalBoardId, cellId: BoardCellId): BoardCellSnapshot? {
+        val claim = coordinator.beginClaim(board, cellId, monotonicNow())
+        repeat(8) { delay(250); if (BoardCellPlatformPolicy.meshAvailable(Build.VERSION.SDK_INT)) meshTransport.publishClaim(claim) }
+        repeat(9) { coordinator.settle(board, monotonicNow())?.let { return it }; delay(250) }
+        return coordinator.settle(board, monotonicNow())
+    }
+
+    private fun writableBoard(): PhysicalBoardId? {
+        if (!boardRealmAvailable.get() || !::coordinator.isInitialized) return null
+        return BoardCellScopeRegistry.selected.value
+    }
+
+    private fun refreshSelected() {
+        _snapshots.value = snapshot()
+    }
+
+    private fun monotonicNow(): Long = SystemClock.elapsedRealtime()
 
     companion object {
         @Volatile internal var current: BoardCellManager? = null

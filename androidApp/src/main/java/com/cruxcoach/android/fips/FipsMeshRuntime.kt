@@ -112,6 +112,8 @@ class FipsMeshRuntime @Inject constructor(
             validatedDirectPeers.toSet()
         } }.map { it.npub }.toSet()
 
+    override fun activeRealmId(): String? = realm?.realmId
+
     @Synchronized
     fun shutdown() {
         receiveJob?.cancel(); receiveJob = null

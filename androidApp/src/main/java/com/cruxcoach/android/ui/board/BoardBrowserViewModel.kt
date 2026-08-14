@@ -1837,15 +1837,20 @@ class BoardBrowserViewModel @Inject constructor(
                 if (frames.isEmpty() || frames.all { it.leds.isEmpty() }) {
                     return@safeLaunch
                 }
-                repeat(3) {
-                    for (frame in frames) {
-                        // sendRawLeds encodes with the CONNECTED board's
-                        // encoder (correct apiLevel), not a hardcoded @3 one.
-                        bleConnection.sendRawLeds(frame.leds)
-                        delay(250)
-                    }
-                }
-                bleConnection.clearBoard()
+                com.cruxcoach.android.boardcell.BoardCellManager.current?.projectExternal(
+                    boardWrite = {
+                        repeat(3) {
+                            for (frame in frames) {
+                                // One WAL intent covers the complete animation;
+                                // a mid-animation crash recovers as UNKNOWN.
+                                if (!bleConnection.sendRawLeds(frame.leds)) return@projectExternal false
+                                delay(250)
+                            }
+                        }
+                        bleConnection.clearBoard()
+                    },
+                    identify = { null },
+                ) ?: return@safeLaunch
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -1866,7 +1871,10 @@ class BoardBrowserViewModel @Inject constructor(
         animationJob = null
         _isAnimating.value = false
         viewModelScope.safeLaunch(TAG) {
-            runCatching { bleConnection.clearBoard() }
+            runCatching {
+                com.cruxcoach.android.boardcell.BoardCellManager.current?.projectExternal(
+                    boardWrite = { bleConnection.clearBoard() }, identify = { null })
+            }
                 .onFailure { android.util.Log.w("BoardBrowserVM", "stopAnimation clearBoard failed", it) }
         }
     }

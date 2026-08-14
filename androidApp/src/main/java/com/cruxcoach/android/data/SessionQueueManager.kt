@@ -1,7 +1,6 @@
 package com.cruxcoach.android.data
 
 import android.util.Log
-import android.os.Build
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.BoardConnectionOwner
 import com.cruxcoach.android.ui.board.BoardSendModePolicy
@@ -16,7 +15,8 @@ import com.cruxcoach.android.fips.FipsMeshRuntime
 import com.cruxcoach.android.boardcell.BoardCellManager
 import com.cruxcoach.android.boardcell.BoardPlaylistState
 import com.cruxcoach.android.boardcell.BoardProjection
-import com.cruxcoach.android.boardcell.ProjectionResult
+import com.cruxcoach.android.boardcell.ActiveBoardCellWriteGateway
+import com.cruxcoach.android.boardcell.BoardCellWriteGateway
 import com.cruxcoach.android.boardcell.PhysicalBoardId
 import com.cruxcoach.android.boardcell.BoardCellId
 import com.cruxcoach.android.ble.BoardProjectionPolicy
@@ -112,6 +112,7 @@ class SessionQueueManager(
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
     private val fipsMeshRuntime: FipsMeshRuntime? = null,
     private val boardCellManager: BoardCellManager? = null,
+    private val boardCellWriteGateway: BoardCellWriteGateway = ActiveBoardCellWriteGateway,
 ) {
     companion object {
         private const val TAG = "SessionQueueManager"
@@ -165,9 +166,14 @@ class SessionQueueManager(
             scope.launch {
                 manager.snapshots.collect { snapshot ->
                     val current = _state.value
-                    if (snapshot == null || current.role != SessionRole.PARTICIPANT ||
+                    if (snapshot == null ||
                         current.boardCellId != snapshot.cellId.value ||
                         current.physicalBoardId != snapshot.physicalBoardId.value) return@collect
+                    if (snapshot.availability != com.cruxcoach.android.boardcell.BoardCellAvailability.ACTIVE) {
+                        freezeForController()
+                        return@collect
+                    }
+                    if (current.role != SessionRole.PARTICIPANT) return@collect
                     val playlist = snapshot.playlist
                     _state.update { state -> state.copy(
                         sessionId = playlist.sessionId ?: state.sessionId,
@@ -241,12 +247,31 @@ class SessionQueueManager(
         Log.d(TAG, "Queue started (sessionId=$sessionId, hostName=$hostName)")
     }
 
-    fun endQueue() {
+    fun endQueue(force: Boolean = false): Boolean {
         lastSentClimbKey = null
         val prev = _state.value
-        if (prev.role == SessionRole.HOST && prev.boardCellId != null) {
-            boardCellManager?.requestOrderlyHandover()
+        if (!force && prev.role == SessionRole.HOST && prev.boardCellId != null && prev.participantCount > 1) {
+            val successor = boardCellManager?.soleSuccessor()
+            if (successor == null || boardCellManager.requestOrderlyHandover(successor).not()) {
+                Log.w(TAG, "endQueue refused: no unique explicit BoardCell successor is ready for handover")
+                return false
+            }
+            // The canonical completion callback ends the old host. Until then
+            // the source must keep GATT, board keep-alive and write authority.
+            return false
         }
+        finishQueue()
+        return true
+    }
+
+    /** Invoked only after the new controller canonically completed takeover. */
+    fun completeTransferredQueue() {
+        finishQueue()
+    }
+
+    private fun finishQueue() {
+        lastSentClimbKey = null
+        val prev = _state.value
         Log.d(TAG, "endQueue() called, role=${prev.role}, queue=${prev.queue.size}, " +
             "participants=${prev.participants.size}, " +
             "callbacks: onQueue=${onQueueChanged != null}, onParticipants=${onParticipantsChanged != null}")
@@ -541,6 +566,7 @@ class SessionQueueManager(
             isConnecting = false,
             visibility = SessionVisibility.JOINABLE,
         ) }
+        boardCellManager?.freezeLegacyParticipantWrites()
     }
 
     /** The state in force. Does not touch [SessionQueueState.visibilityRequested]. */
@@ -575,6 +601,19 @@ class SessionQueueManager(
         ) }
         bleConnection.acquireKeepAlive(BoardConnectionOwner.SESSION)
         Log.d(TAG, "Promoted to host (sessionId=$newSessionId, queue=${_state.value.queue.size} items)")
+    }
+
+    /** BoardCell handover keeps the canonical session id and complete queue. */
+    fun promoteToHostForBoardCell(hostName: String) {
+        _state.update { it.copy(
+            role = SessionRole.HOST,
+            hostName = hostName,
+            participants = emptyList(),
+            participantCount = 1,
+            isConnecting = false,
+            error = null,
+        ) }
+        bleConnection.acquireKeepAlive(BoardConnectionOwner.SESSION)
     }
 
     fun freezeForController() {
@@ -754,13 +793,11 @@ class SessionQueueManager(
                     if (climb.frames.isBlank()) return@withLock
                     val variant = com.cruxcoach.domain.board.MoonBoardVariant.fromLayoutId(climb.layoutId)
                         ?: com.cruxcoach.domain.board.MoonBoardVariant.MOONBOARD_2016
-                    val manager = BoardCellManager.current
-                    val sent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && manager != null) {
-                        manager.project(BoardProjection(item.climbUuid, item.angle,
+                    val sent = boardCellWriteGateway.project(
+                        BoardProjection(item.climbUuid, item.angle,
                             BoardProjectionPolicy.projectionSurvivesDisconnect(climb.brand))) {
                             bleConnection.sendMoonBoardClimb(climb.frames, variant)
-                        } is ProjectionResult.Committed
-                    } else bleConnection.sendMoonBoardClimb(climb.frames, variant)
+                        }
                     if (sent) {
                         markCurrentClimbProjected(key)
                         Log.d(TAG, "sendCurrentClimbToBoard: sent MoonBoard ${item.climbUuid.take(8)} angle=${item.angle}")
@@ -780,13 +817,11 @@ class SessionQueueManager(
                     (if (climb.brand == BoardBrand.KILTER) userPreferences.ledHoldColors.first()
                      else LedHoldColors.standardFor(climb.brand)).toRoleColorMap()
                 }
-                val manager = BoardCellManager.current
-                val sent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && manager != null) {
-                    manager.project(BoardProjection(item.climbUuid, item.angle,
+                val sent = boardCellWriteGateway.project(
+                    BoardProjection(item.climbUuid, item.angle,
                         BoardProjectionPolicy.projectionSurvivesDisconnect(climb.brand))) {
                         bleConnection.sendClimb(holds, ledMap, roleColors)
-                    } is ProjectionResult.Committed
-                } else bleConnection.sendClimb(holds, ledMap, roleColors)
+                    }
                 if (sent) {
                     markCurrentClimbProjected(key)
                     Log.d(TAG, "sendCurrentClimbToBoard: sent ${item.climbUuid.take(8)} angle=${item.angle}")

@@ -19,6 +19,7 @@ import com.cruxcoach.android.ble.QueueItem
 import com.cruxcoach.android.fips.FipsMeshRuntime
 import com.cruxcoach.android.fips.FipsRealmContext
 import com.cruxcoach.android.boardcell.BoardCellManager
+import com.cruxcoach.android.boardcell.BoardCellHandoverLifecycle
 
 /**
  * Bridges [SessionQueueManager] with BLE GATT for shared sessions.
@@ -95,6 +96,29 @@ class SessionGattBridge(
         BoardControllerProfiles.forBoard(bleConnection.connectedBoard).connectionCapacity
 
     init {
+        boardCellManager?.installHandoverLifecycle(BoardCellHandoverLifecycle(
+            prepareTarget = {
+                if (queueManager.state.value.role != SessionRole.HOST) {
+                    queueManager.promoteToHostForBoardCell(context.getString(R.string.ble_session_name_promoted))
+                }
+                val hostReady = ensureHostSharing()
+                hostReady && bleConnection.connectionState.value == ConnectionState.CONNECTED
+            },
+            completeSource = {
+                // Only HANDOVER_COMPLETED reaches this callback. The target has
+                // already assumed HOST, board keep-alive and write authority.
+                stopSharing(allowBoardRelease = true, endForEveryone = false)
+                queueManager.completeTransferredQueue()
+                boardSessionManager.endSession()
+            },
+            abortTarget = { snapshot ->
+                stopSharing(allowBoardRelease = false, endForEveryone = true)
+                queueManager.setParticipantRole(
+                    snapshot.playlist.sessionId ?: queueManager.state.value.sessionId,
+                    queueManager.state.value.hostName,
+                )
+            },
+        ))
         // Auto-recover BLE when Bluetooth is toggled off/on.
         // Intentionally never unregistered: this class is a @Singleton, so the receiver
         // lives for the entire process lifetime — no leak.
@@ -113,8 +137,8 @@ class SessionGattBridge(
         context.registerReceiver(btReceiver, IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED))
         boardCellManager?.let { manager ->
             scope.launch {
-                manager.sessionCommands.collect { (sender, payload) ->
-                    handleMeshCommand(sender, payload)
+                manager.sessionCommands.collect { command ->
+                    handleMeshCommand(command)
                 }
             }
         }
@@ -638,6 +662,8 @@ class SessionGattBridge(
                         info.physicalBoardId, info.boardCellId)
                     info.boardCellId?.let { cellId ->
                         val runtime = fipsMeshRuntime ?: return@let
+                        val physical = info.physicalBoardId ?: return@let
+                        if (boardCellManager?.prepareParticipantScope(physical, cellId) == false) return@let
                         if (runtime.activateRealm(FipsRealmContext(cellId, cellId))) {
                             if (!meshRealmHeldForJoin) {
                                 runtime.acquire()
@@ -808,17 +834,23 @@ class SessionGattBridge(
     }
 
     /** FIPS has already authenticated membership and exact BoardCell epoch/sequence. */
-    private fun handleMeshCommand(senderNpub: String, data: ByteArray) {
-        if (queueManager.state.value.role != SessionRole.HOST) return
-        when (val cmd = SessionQueueProtocol.decodeCommand(data)) {
-            is SessionCommand.Add -> queueManager.addClimb(cmd.climbUuid, cmd.angle)
-            is SessionCommand.Remove -> queueManager.removeClimb(cmd.index)
-            is SessionCommand.SetCurrent -> queueManager.setCurrentClimb(cmd.index)
-            is SessionCommand.Next -> (onRemoteNext ?: queueManager::nextClimb).invoke()
-            is SessionCommand.Prev -> (onRemotePrev ?: queueManager::previousClimb).invoke()
-            is SessionCommand.Move -> queueManager.moveClimb(cmd.from, cmd.to)
-            is SessionCommand.Leave -> Log.i(TAG, "event=fips_participant_left npub=${senderNpub.take(16)}")
-            is SessionCommand.Join, null -> Unit // Admission remains explicit through JOIN/GATT.
+    private suspend fun handleMeshCommand(command: com.cruxcoach.android.boardcell.InboundSessionCommand) {
+        boardCellManager?.commitSessionCommand(command) {
+            if (queueManager.state.value.role != SessionRole.HOST) return@commitSessionCommand null
+            when (val cmd = SessionQueueProtocol.decodeCommand(command.payload)) {
+                is SessionCommand.Add -> queueManager.addClimb(cmd.climbUuid, cmd.angle)
+                is SessionCommand.Remove -> queueManager.removeClimb(cmd.index)
+                is SessionCommand.SetCurrent -> queueManager.setCurrentClimb(cmd.index)
+                is SessionCommand.Next -> (onRemoteNext ?: queueManager::nextClimb).invoke()
+                is SessionCommand.Prev -> (onRemotePrev ?: queueManager::previousClimb).invoke()
+                is SessionCommand.Move -> queueManager.moveClimb(cmd.from, cmd.to)
+                is SessionCommand.Leave -> Log.i(TAG,
+                    "event=fips_participant_left npub=${command.senderId.take(16)}")
+                is SessionCommand.Join, null -> return@commitSessionCommand null
+            }
+            val state = queueManager.state.value
+            com.cruxcoach.android.boardcell.BoardPlaylistState(
+                state.sessionId, state.currentIndex, state.queue.map { it.climbUuid to it.angle })
         }
     }
 

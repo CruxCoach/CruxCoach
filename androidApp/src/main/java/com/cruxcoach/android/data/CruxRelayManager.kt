@@ -223,7 +223,7 @@ class CruxRelayManager(
                     boardWrite = { bleConnection.sendRawChunks(inbound.climb.chunks) },
                     identify = { projectionCoordinator.identifyExternal(inbound.climb) },
                 )
-                if (result is ProjectionResult.Committed) {
+                if (result is ProjectionResult.Committed || result is ProjectionResult.Duplicate) {
                     advertiser.clearActiveClimb()
                     // Identification already ran inside BoardCell's projection mutex:
                     // the next board write cannot overtake its canonical event. Keep
@@ -231,7 +231,9 @@ class CruxRelayManager(
                     // cancellation prevents an older banner update winning later.
                     identifyJob?.cancel()
                     identifyJob = scope.launch {
-                        val projection = (result.envelope.event as? BoardCellEvent.ProjectCommitted)?.projection
+                        val projection = if (result is ProjectionResult.Committed) {
+                            (result.envelope.event as? BoardCellEvent.ProjectCommitted)?.projection
+                        } else boardCellManager.snapshot()?.projection
                         projectionCoordinator.onCanonicalExternalBoardWrite(projection)
                     }
                 } else {

@@ -5,16 +5,16 @@ import org.junit.Test
 
 class BoardCellReplicaTest {
     private fun initial() = BoardCellSnapshot(BoardCellId("cell"), PhysicalBoardId("board"),
-        epoch = 7, sequence = 0, controllerId = "controller", leaseUntilMs = 100,
+        epoch = 7, sequence = 0, controllerId = "controller", lineageId = "lineage",
         members = setOf("controller", "member")).withComputedHash()
 
     @Test fun `sequence gap freezes until full snapshot`() {
         val replica = BoardCellReplica("member", initial())
         val current = replica.snapshot!!
-        val event = BoardCellEvent.ProjectCommitted(BoardProjection("later", 40))
+        val event = BoardCellEvent.ProjectCommitted(BoardProjection("later", 40), "command")
         val fakeNext = BoardCellReplica.reduce(current, event, 2)
         val result = replica.applyEvent(BoardCellEnvelope(current.cellId, current.physicalBoardId,
-            current.epoch, 2, current.stateHash, event, fakeNext.stateHash))
+            current.epoch, current.controllerTerm, 2, current.stateHash, event, fakeNext.stateHash))
         assertTrue(result is BoardCellApplyResult.NeedSnapshot)
         assertEquals(BoardCellAvailability.FROZEN_NEEDS_SNAPSHOT, replica.snapshot?.availability)
         val recovered = fakeNext.copy(members = setOf("controller", "member")).withComputedHash()

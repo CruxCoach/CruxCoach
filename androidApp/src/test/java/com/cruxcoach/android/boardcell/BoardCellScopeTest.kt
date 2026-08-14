@@ -47,8 +47,10 @@ class BoardCellScopeTest {
         val link = Link()
         val transport = BoardCellMeshTransport(link)
         val members = (0 until 40).map { "n%02d".format(it) }.toSet()
-        transport.publishSnapshot(BoardCellSnapshot(BoardCellId("cell"), PhysicalBoardId("board"),
-            1, 0, "n00", 100, members).withComputedHash())
+        transport.publishSnapshot(BoardCellSnapshot(
+            cellId = BoardCellId("cell"), physicalBoardId = PhysicalBoardId("board"),
+            epoch = 1, sequence = 0, controllerId = "n00", lineageId = "lineage", members = members,
+        ).withComputedHash())
         assertEquals(39, link.sent.distinct().size)
     }
 }

@@ -1,15 +1,14 @@
 package com.cruxcoach.android.ui.board
 
 import android.util.Log
-import android.os.Build
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.BoardProjectionPolicy
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.ConnectionState
-import com.cruxcoach.android.boardcell.BoardCellManager
 import com.cruxcoach.android.boardcell.BoardProjection
-import com.cruxcoach.android.boardcell.ProjectionResult
+import com.cruxcoach.android.boardcell.ActiveBoardCellWriteGateway
+import com.cruxcoach.android.boardcell.BoardCellWriteGateway
 import com.cruxcoach.android.data.LedHoldColors
 import com.cruxcoach.android.data.SessionQueueManager
 import com.cruxcoach.android.data.UserPreferences
@@ -43,7 +42,8 @@ internal class BoardSendController(
     private val userPreferences: UserPreferences,
     private val climbAdvertiser: ClimbBleAdvertiser,
     private val sessionQueueManager: SessionQueueManager,
-    private val isSharingEnabled: () -> Boolean
+    private val isSharingEnabled: () -> Boolean,
+    private val boardCellWriteGateway: BoardCellWriteGateway = ActiveBoardCellWriteGateway,
 ) {
 
     private var sendJob: Job? = null
@@ -199,15 +199,11 @@ internal class BoardSendController(
                     ) }
                     return@launch
                 }
-                val manager = BoardCellManager.current
-                val success = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && manager != null) {
-                    manager.project(BoardProjection(s.climb!!.uuid, s.angle,
+                val success = boardCellWriteGateway.project(
+                    BoardProjection(s.climb!!.uuid, s.angle,
                         BoardProjectionPolicy.projectionSurvivesDisconnect(s.climb.brand))) {
                         bleConnection.sendClimb(s.holds, placementToLed, roleColorMap)
-                    } is ProjectionResult.Committed
-                } else {
-                    bleConnection.sendClimb(s.holds, placementToLed, roleColorMap)
-                }
+                    }
                 Log.i(TAG, "sendToBoard: writes done success=$success unmapped=$unmappedHolds")
                 state.update { it.copy(
                     ble = it.ble.copy(
@@ -322,15 +318,11 @@ internal class BoardSendController(
                 val variant = com.cruxcoach.domain.board.MoonBoardVariant
                     .fromLayoutId(layoutId)
                     ?: com.cruxcoach.domain.board.MoonBoardVariant.MOONBOARD_2016
-                val manager = BoardCellManager.current
-                val success = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && manager != null) {
-                    manager.project(BoardProjection(climb.uuid, s.angle,
+                val success = boardCellWriteGateway.project(
+                    BoardProjection(climb.uuid, s.angle,
                         BoardProjectionPolicy.projectionSurvivesDisconnect(climb.brand))) {
                         bleConnection.sendMoonBoardClimb(frames, variant)
-                    } is ProjectionResult.Committed
-                } else {
-                    bleConnection.sendMoonBoardClimb(frames, variant)
-                }
+                    }
                 Log.i(TAG, "sendMoonBoardToBoard: writes done success=$success variant=$variant")
                 state.update { it.copy(
                     ble = it.ble.copy(

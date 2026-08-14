@@ -1243,7 +1243,13 @@ class ClimbEditorViewModel @Inject constructor(
             // MoonBoardFrameEncoder.encode (inside sendMoonBoardClimb) reads.
             val variant = MoonBoardVariant.fromLayoutId(cur.layoutId) ?: return
             val frames = cur.editor.encodeFrames()
-            val result = runCatching { bleConnection.sendMoonBoardClimb(frames, variant) }
+            val result = runCatching {
+                com.cruxcoach.android.boardcell.BoardCellManager.current?.projectExternal(
+                    boardWrite = { bleConnection.sendMoonBoardClimb(frames, variant) },
+                    identify = { null },
+                ).let { it is com.cruxcoach.android.boardcell.ProjectionResult.Committed ||
+                    it is com.cruxcoach.android.boardcell.ProjectionResult.Duplicate }
+            }
             result.fold(
                 onSuccess = { Log.i(TAG, "syncLeds(moonboard): sendMoonBoardClimb ok=$it holds=${cur.editor.selectedHolds.size}") },
                 onFailure = { Log.w(TAG, "syncLeds(moonboard): sendMoonBoardClimb threw", it) },
@@ -1267,7 +1273,13 @@ class ClimbEditorViewModel @Inject constructor(
         // the unchanged factory palette. Same pattern as
         // BoardSendController.kt:83.
         val roleColors = cur.ledColors.toRoleColorMap()
-        val result = runCatching { bleConnection.sendClimb(holds, ledMap, roleColors) }
+        val result = runCatching {
+            com.cruxcoach.android.boardcell.BoardCellManager.current?.projectExternal(
+                boardWrite = { bleConnection.sendClimb(holds, ledMap, roleColors) },
+                identify = { null },
+            ).let { it is com.cruxcoach.android.boardcell.ProjectionResult.Committed ||
+                it is com.cruxcoach.android.boardcell.ProjectionResult.Duplicate }
+        }
         result.fold(
             onSuccess = { Log.i(TAG, "syncLeds: sendClimb returned ok=$it holds=${holds.size}") },
             onFailure = { Log.w(TAG, "syncLeds: sendClimb threw holds=${holds.size}", it) },

@@ -391,10 +391,17 @@ class PlaylistPlaybackCoordinator(
         val queueState = queueManager.state.value
         val lastClimb = queueState.currentClimb
         if (queueState.role == SessionRole.HOST) {
+            if (!endForEveryone && queueState.participantCount > 1) {
+                // Keep the old host/session/board alive until the target emits
+                // canonical HANDOVER_COMPLETED. The lifecycle callback performs
+                // teardown and ends recording afterwards.
+                queueManager.endQueue()
+                return null
+            }
             if (queueState.visibility == SessionVisibility.JOINABLE) {
                 gattBridge.stopSharing(allowBoardRelease = true, endForEveryone = endForEveryone)
             }
-            queueManager.endQueue()
+            queueManager.endQueue(force = endForEveryone)
         } else {
             gattBridge.leaveSession()
         }

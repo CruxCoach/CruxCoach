@@ -3,6 +3,7 @@ package com.cruxcoach.android.data
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ble.QueueItem
+import com.cruxcoach.android.boardcell.BoardCellWriteGateway
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.ClimbWithStats
 import com.cruxcoach.domain.board.BoardBrand
@@ -59,7 +60,8 @@ class SessionQueueManagerTest {
         every { bleConnection.connectionState } returns MutableStateFlow(ConnectionState.DISCONNECTED)
         managerScope = CoroutineScope(SupervisorJob() + testDispatcher)
         queueManager = SessionQueueManager(
-            bleConnection, boardRepository, climbNameResolver, userPreferences, managerScope
+            bleConnection, boardRepository, climbNameResolver, userPreferences, managerScope,
+            boardCellWriteGateway = BoardCellWriteGateway { _, write -> write() },
         )
     }
 
