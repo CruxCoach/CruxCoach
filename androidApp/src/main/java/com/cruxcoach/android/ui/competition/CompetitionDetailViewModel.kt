@@ -419,6 +419,7 @@ class CompetitionDetailViewModel @Inject constructor(
             System.currentTimeMillis() / 1000,
         )
         preparedChoice.value = if (restored.trustworthy) {
+            restored.intent?.let { intents.observeIntent(competition.compId, "climb_choice", it.createdAt) }
             val id = restored.intent?.data?.get("climb_id")?.let { it as? JsonPrimitive }?.content
             PreparedChoice.Ready(id)
         } else PreparedChoice.Untrusted

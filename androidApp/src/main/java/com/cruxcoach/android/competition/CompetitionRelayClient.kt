@@ -88,7 +88,7 @@ internal fun competitionDiscoveryRelayScope(
     userRelays: List<RelayConfig>,
     limit: Int = 8,
 ): List<RelayConfig> = buildList {
-    relayHints.filter(CompetitionProtocol::isAllowedRelayUrl).forEach { url ->
+    relayHints.filter(CompetitionProtocol::isAllowedRelayUrl).distinct().take(3).forEach { url ->
         add(RelayConfig(url = url, read = true, write = false))
     }
     addAll(userRelays)
@@ -116,6 +116,7 @@ class CompetitionRelayClient internal constructor(
     data class Snapshot(
         val competition: Competition? = null,
         val competitionEventId: String? = null,
+        val competitionCreatedAt: Long = 0,
         val organizerPubkey: String? = null,
         val state: CompetitionState? = null,
         val standings: List<CompetitionScoring.Standing> = emptyList(),
@@ -179,17 +180,23 @@ class CompetitionRelayClient internal constructor(
 
         suspend fun fetchNewest(scope: List<RelayConfig>, strict: Boolean): Pair<Event?, Boolean> {
             var newest: Event? = null
-            val complete = runCatching {
+            val completedWithoutFailure = runCatching {
                 // Discovery may have delivered this exact addressable event only
                 // moments ago. Explicit address lookup must bypass global dedup.
                 val events = if (strict) relayPool.fetchStoredComplete(filter, scope)
                 else relayPool.fetchStored(filter, scope)
-                events.collect { json ->
-                    val event = runCatching { Event.fromJson(json) }.getOrNull() ?: return@collect
-                    if (!accepts(event, organizerPubkey)) return@collect
-                    if (newest == null || event.createdAt > newest!!.createdAt) newest = event
-                }
-            }.onFailure { Log.w(TAG, "competition fetch failed", it) }.isSuccess && (
+                withTimeoutOrNull(BACKFILL_TIMEOUT_MS) {
+                    events.collect { json ->
+                        val event = runCatching { Event.fromJson(json) }.getOrNull() ?: return@collect
+                        if (!accepts(event, organizerPubkey)) return@collect
+                        if (newest == null || CompetitionProtocol.isNewerReplaceable(
+                            event.createdAt, event.id, newest!!.createdAt, newest!!.id,
+                        )) newest = event
+                    }
+                    true
+                } ?: false
+            }.onFailure { Log.w(TAG, "competition fetch failed", it) }.getOrDefault(false)
+            val complete = completedWithoutFailure && (
                 strict || scope.filter { it.read }.all { it.url in relayPool.connectedRelayUrls.value }
             )
             return newest to complete
@@ -218,6 +225,7 @@ class CompetitionRelayClient internal constructor(
             }
             is CompetitionProtocol.ParsedCompetition.Valid -> candidate
         }
+        var parsedCreatedAt = discovered.createdAt
 
         // A discovery result is only a candidate. Re-fetch the newest
         // replacement from every relay named by that signed definition. If a
@@ -251,6 +259,7 @@ class CompetitionRelayClient internal constructor(
                 is CompetitionProtocol.ParsedCompetition.Valid -> result
             }
             parsed = refreshed
+            parsedCreatedAt = authoritative.createdAt
             val refreshedScope = scopeResolver(parsed.competition.relays, emptyList()).map { it.url }
             if (refreshedScope == scopeUrls) break
         }
@@ -261,6 +270,7 @@ class CompetitionRelayClient internal constructor(
             Snapshot(
                 competition = parsed.competition,
                 competitionEventId = parsed.eventId,
+                competitionCreatedAt = parsedCreatedAt,
                 organizerPubkey = parsed.organizerPubkey,
                 usesDevelopmentRelay = CompetitionProtocol.usesDevelopmentRelay(parsed.competition.relays),
                 lastSyncedAt = nowSeconds,
@@ -663,8 +673,9 @@ class CompetitionRelayClient internal constructor(
         internal fun shouldReplaceIntent(
             old: CompetitionProtocol.ParsedIntent.Valid?,
             candidate: CompetitionProtocol.ParsedIntent.Valid,
-        ): Boolean = old == null || candidate.createdAt > old.createdAt ||
-            (candidate.createdAt == old.createdAt && candidate.eventId > old.eventId)
+        ): Boolean = old == null || CompetitionProtocol.isNewerReplaceable(
+            candidate.createdAt, candidate.eventId, old.createdAt, old.eventId,
+        )
 
         /** Prize requests are independently replaceable; one winner may hold several prizes. */
         internal fun intentLaneKey(intent: CompetitionProtocol.ParsedIntent.Valid): String {

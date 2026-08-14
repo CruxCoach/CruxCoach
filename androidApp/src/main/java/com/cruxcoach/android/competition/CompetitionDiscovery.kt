@@ -65,7 +65,9 @@ class CompetitionDiscovery @Inject constructor(
 
                 val key = parsed.address
                 val existing = newest[key]
-                if (existing == null || event.createdAt > existing.first.createdAt) {
+                if (existing == null || CompetitionProtocol.isNewerReplaceable(
+                    event.createdAt, event.id, existing.first.createdAt, existing.first.id,
+                )) {
                     newest[key] = event to parsed.competition
                 }
             }
@@ -92,7 +94,9 @@ class CompetitionDiscovery @Inject constructor(
                 val parsed = CompetitionProtocol.parseCompetition(event.toCompetitionEvent(), nowSeconds)
                 if (parsed !is CompetitionProtocol.ParsedCompetition.Valid || event.pubKey != pubkey) return@collect
                 val old = newest[parsed.address]
-                if (old == null || event.createdAt > old.createdAt) newest[parsed.address] = Listing(parsed.competition, pubkey, event.id, event.createdAt)
+                if (old == null || CompetitionProtocol.isNewerReplaceable(
+                    event.createdAt, event.id, old.createdAt, old.eventId,
+                )) newest[parsed.address] = Listing(parsed.competition, pubkey, event.id, event.createdAt)
             }
         }.onFailure { Log.w(TAG, "owned competition fetch failed", it) }
         return newest.values.sortedByDescending { it.createdAt }

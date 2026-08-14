@@ -4,7 +4,9 @@ import com.cruxcoach.android.nostr.model.RelayConfig
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
@@ -20,6 +22,49 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NostrRelayPoolOverflowTest {
+    @Test
+    fun `best effort feed remains live when its bounded buffer sheds a burst`() = runBlocking {
+        val blasted = AtomicBoolean(false)
+        val serverSocket = AtomicReference<WebSocket>()
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+                override fun onOpen(webSocket: WebSocket, response: Response) {
+                    serverSocket.set(webSocket)
+                }
+
+                override fun onMessage(webSocket: WebSocket, text: String) {
+                    val request = Json.parseToJsonElement(text).jsonArray
+                    if (request[0].jsonPrimitive.content != "REQ" || !blasted.compareAndSet(false, true)) return
+                    val subId = request[1].jsonPrimitive.content
+                    repeat(2_000) { index ->
+                        val id = index.toString(16).padStart(64, '0')
+                        webSocket.send("[\"EVENT\",\"$subId\",{\"id\":\"$id\"}]")
+                    }
+                }
+            }))
+            server.start()
+            val client = OkHttpClient()
+            val pool = NostrRelayPool(client)
+            val relay = RelayConfig(
+                server.url("/").toString().replaceFirst("http", "ws"),
+                read = true,
+                write = false,
+            )
+            val collecting = launch {
+                pool.subscribe("{\"kinds\":[1]}", relays = listOf(relay)).collect { delay(100) }
+            }
+
+            withTimeout(5_000) { while (!blasted.get()) delay(10) }
+            delay(500)
+            assertTrue("ordinary best-effort subscriptions must remain active", collecting.isActive)
+            collecting.cancelAndJoin()
+            pool.closeAll()
+            serverSocket.get()?.close(1000, "test complete")
+            client.dispatcher.executorService.shutdown()
+            client.connectionPool.evictAll()
+        }
+    }
+
     @Test
     fun `a final live event cannot disappear silently when buffers fill`() = runBlocking {
         val blasted = AtomicBoolean(false)

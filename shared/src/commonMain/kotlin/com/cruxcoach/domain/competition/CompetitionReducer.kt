@@ -782,6 +782,21 @@ object CompetitionReducer {
         if (referencedClimbs.any { it !in nextClimbs }) {
             return reject(state, entry, "config_referenced_climb")
         }
+        fun rawClimbs(config: JsonObject): Map<String, JsonObject> =
+            listOf("climbs", "climb_pool").flatMap { key ->
+                (config[key] as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }
+            }.mapNotNull { climb -> climb.str("id")?.let { it to climb } }.toMap()
+        val beforeById = rawClimbs(current)
+        val afterById = rawClimbs(merged)
+        if (referencedClimbs.any { id ->
+                val before = beforeById[id]
+                val after = afterById[id]
+                before != null && after != null && (
+                    before["climb_uuid"] != after["climb_uuid"] || before["angle"] != after["angle"] ||
+                        before["board_cell_id"] != after["board_cell_id"]
+                    )
+            }
+        ) return reject(state, entry, "config_referenced_climb")
         val nextDivisions = next.divisions.map { it.id }.toSet()
         if (state.participants.any { it.division.isNotEmpty() && it.division !in nextDivisions }) {
             return reject(state, entry, "config_referenced_division")

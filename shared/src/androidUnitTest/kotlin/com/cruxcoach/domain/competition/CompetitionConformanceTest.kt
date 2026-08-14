@@ -8,6 +8,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -61,6 +62,40 @@ class CompetitionConformanceTest {
             null,
             CompetitionConfigUpdate.impact(JsonObject(mapOf("authority" to JsonPrimitive("00".repeat(32))))),
         )
+    }
+
+    @Test
+    fun `config update cannot retarget a historically referenced logical climb id`() {
+        val fixture = stream("happy-sync.json")
+        val parsed = CompetitionProtocol.parseCompetition(fixture.competitionEvent, now)
+            as CompetitionProtocol.ParsedCompetition.Valid
+        val competition = parsed.competition
+        val first = competition.climbs.first()
+        val root = CompetitionFixtures.json.parseToJsonElement(fixture.competitionEvent.content).jsonObject
+        val rawClimbs = root["climbs"] as JsonArray
+        val changed = rawClimbs.first().jsonObject.toMutableMap().also {
+            it["climb_uuid"] = JsonPrimitive("b6d0428e-1f75-4c93-a208-7e35d1b49c60")
+        }.let(::JsonObject)
+        val patch = JsonObject(mapOf(
+            "climbs" to JsonArray(listOf(changed) + rawClimbs.drop(1)),
+        ))
+        val entry = LogEntry(
+            seq = 1, prev = fixture.competitionEvent.id, epoch = 1, at = now,
+            op = "config_update", actor = "authority", reason = "Unsafe retarget",
+            data = JsonObject(mapOf(
+                "revision" to JsonPrimitive(2), "impact" to JsonPrimitive("scoring"),
+                "patch" to patch,
+            )),
+        )
+        val initial = CompetitionReducer.initialState(competition, fixture.competitionEvent.id)
+            .copy(currentClimbId = first.id)
+        val reduction = CompetitionReducer.reduce(
+            competition, fixture.competitionEvent.id,
+            listOf(CompetitionReducer.Chained(entry, "ef".repeat(32), now)),
+            snapshot = initial, snapshotHead = fixture.competitionEvent.id,
+        )
+        assertEquals(1, reduction.state.configRevision)
+        assertEquals("config_referenced_climb", reduction.state.rejected.last().code)
     }
 
     @Test

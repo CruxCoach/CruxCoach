@@ -141,10 +141,12 @@ class CompetitionHostPublisher @Inject constructor(
         cleanupTrustError(snapshot)?.let { error(it) }
 
         val now = System.currentTimeMillis() / 1000
+        val tombstoneAt = CompetitionProtocol.nextReplaceableCreatedAt(now, snapshot.competitionCreatedAt)
         val tombstone = NostrPublicEventBuilder(signer).buildSignedEvent(
             CompetitionProtocol.KIND,
-            CompetitionHostProtocol.tombstoneContent(competition.compId, now),
+            CompetitionHostProtocol.tombstoneContent(competition.compId, tombstoneAt),
             CompetitionHostProtocol.tombstoneTags(competition.compId),
+            createdAt = tombstoneAt,
         )
         val deletion = NostrPublicEventBuilder(signer).buildSignedEvent(
             5,

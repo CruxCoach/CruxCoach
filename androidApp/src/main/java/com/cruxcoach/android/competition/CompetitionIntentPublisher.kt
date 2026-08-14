@@ -12,8 +12,16 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.random.Random
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+
+internal fun competitionIntentLaneKey(pubkey: String, compId: String, scope: String): String =
+    "$pubkey:$compId:$scope"
+
+internal fun legacyCompetitionIntentLaneKey(pubkey: String, compId: String, scope: String): String =
+    "${pubkey.take(8)}:$compId:$scope"
 
 /**
  * A participant's requests — FEAT-058 §6.5, §8.2.
@@ -56,13 +64,42 @@ class CompetitionIntentPublisher @Inject constructor(
      * us, so a flaky network cannot turn one registration into three.
      */
     private val nonces = mutableMapOf<String, String>()
+    private val createdAtFloors = mutableMapOf<String, Long>()
+    private val laneMutexes = mutableMapOf<String, Mutex>()
+
+    private fun laneKey(compId: String, scope: String): String =
+        competitionIntentLaneKey(signer.getPublicKeyHex(), compId, scope)
+
+    private fun legacyLaneKey(compId: String, scope: String): String =
+        legacyCompetitionIntentLaneKey(signer.getPublicKeyHex(), compId, scope)
+
+    private fun laneMutex(compId: String, scope: String): Mutex = synchronized(laneMutexes) {
+        laneMutexes.getOrPut(laneKey(compId, scope)) { Mutex() }
+    }
+
+    private fun migratedNonce(key: String, legacyKey: String): String? {
+        store.getString(key, null)?.let { return it }
+        val legacy = store.getString(legacyKey, null) ?: return null
+        store.edit().putString(key, legacy).remove(legacyKey).apply()
+        return legacy
+    }
+
+    private fun migratedCreatedAt(key: String, legacyKey: String): Long {
+        val field = "$key:created_at"
+        if (store.contains(field)) return store.getLong(field, 0)
+        val legacyField = "$legacyKey:created_at"
+        if (!store.contains(legacyField)) return 0
+        return store.getLong(legacyField, 0).also {
+            store.edit().putLong(field, it).remove(legacyField).apply()
+        }
+    }
 
     private fun nonceFor(compId: String, op: String): String = synchronized(nonces) {
         // Keyed by the signer too: two identities on one device must not share
         // a nonce, or one would replace the other's request.
-        val key = "${signer.getPublicKeyHex().take(8)}:$compId:$op"
+        val key = laneKey(compId, op)
         nonces.getOrPut(key) {
-            store.getString(key, null) ?: run {
+            migratedNonce(key, legacyLaneKey(compId, op)) ?: run {
                 val fresh = (0 until 4).joinToString("") { "%02x".format(Random.nextInt(256)) }
                 store.edit().putString(key, fresh).apply()
                 fresh
@@ -229,6 +266,23 @@ class CompetitionIntentPublisher @Inject constructor(
     /** Stable address component used to restore one of this signer's replaceable requests. */
     fun operationNonce(compId: String, op: String): String = nonceFor(compId, op)
 
+    /** Seed a lane from an exact, trusted relay restoration after restart. */
+    fun observeIntent(compId: String, scope: String, createdAt: Long) = synchronized(createdAtFloors) {
+        val key = laneKey(compId, scope)
+        val prior = createdAtFloors[key] ?: migratedCreatedAt(key, legacyLaneKey(compId, scope))
+        if (createdAt > prior) {
+            createdAtFloors[key] = createdAt
+            store.edit().putLong("$key:created_at", createdAt).apply()
+        }
+    }
+
+    private fun nextCreatedAt(compId: String, scope: String, now: Long): Long =
+        synchronized(createdAtFloors) {
+            val key = laneKey(compId, scope)
+            val prior = createdAtFloors[key] ?: migratedCreatedAt(key, legacyLaneKey(compId, scope))
+            CompetitionProtocol.nextReplaceableCreatedAt(now, prior)
+        }
+
     private suspend fun send(
         competition: Competition,
         organizerPubkey: String,
@@ -236,10 +290,11 @@ class CompetitionIntentPublisher @Inject constructor(
         data: JsonObject,
         expiration: Long? = null,
         nonceScope: String = op,
-    ): Result {
+    ): Result = laneMutex(competition.compId, nonceScope).withLock {
         val pubkey = signer.getPublicKeyHex()
         val nonce = nonceFor(competition.compId, nonceScope)
-        val at = System.currentTimeMillis() / 1000
+        val now = System.currentTimeMillis() / 1000
+        val at = nextCreatedAt(competition.compId, nonceScope, now)
         val payload = CompetitionIntentCodec.content(competition.compId, op, at, nonce, data)
 
         val tags = mutableListOf(
@@ -254,9 +309,9 @@ class CompetitionIntentPublisher @Inject constructor(
         )
         expiration?.let { tags += listOf("expiration", it.toString()) }
 
-        return try {
+        try {
             val event = NostrPublicEventBuilder(signer)
-                .buildSignedEvent(CompetitionProtocol.KIND, payload, tags)
+                .buildSignedEvent(CompetitionProtocol.KIND, payload, tags, createdAt = at)
             val (attempted, accepted) = relayPool.sendEventWithStats(
                 event,
                 competitionRelayScope(
@@ -270,6 +325,7 @@ class CompetitionIntentPublisher @Inject constructor(
                 Log.w(TAG, "intent $op accepted by 0 of $attempted relays")
                 Result.Failed("no_relay")
             } else {
+                observeIntent(competition.compId, nonceScope, at)
                 Result.Published(event, attempted, accepted)
             }
         } catch (e: Exception) {

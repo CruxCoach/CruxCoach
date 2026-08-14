@@ -33,6 +33,21 @@ object CompetitionProtocol {
     /** FEAT-058 §16.2 — half the tightest observed relay frame limit. */
     const val MAX_EVENT_BYTES = 65536
 
+    /** NIP-01 replaceable ordering: later timestamp, then lexicographically lower id. */
+    fun isNewerReplaceable(
+        candidateCreatedAt: Long,
+        candidateId: String,
+        currentCreatedAt: Long,
+        currentId: String,
+    ): Boolean = candidateCreatedAt > currentCreatedAt ||
+        (candidateCreatedAt == currentCreatedAt && candidateId < currentId)
+
+    fun nextReplaceableCreatedAt(nowSeconds: Long, previousCreatedAt: Long): Long {
+        require(previousCreatedAt < nowSeconds + MAX_FUTURE_SKEW_SECONDS) { "too_many_replacements" }
+        val next = maxOf(nowSeconds, previousCreatedAt + 1)
+        return next
+    }
+
     val LIFECYCLE = listOf(
         "draft", "published", "registration_open", "registration_closed",
         "checkin_open", "running", "paused", "finished", "cancelled",

@@ -201,9 +201,11 @@ class NostrRelayPool @Inject constructor(
                         val emitted = sink?.event?.invoke(eventJson) ?: false
                         if (!emitted) {
                             Log.w(TAG, "EVENT not emitted from $url subId=$subId (flow missing or full)")
-                            sink?.fail?.invoke(RelaySubscriptionIntegrityException(
-                                "Relay $url overflowed subscription $subId",
-                            ))
+                            if (sink?.failOnRelayError == true) {
+                                sink.fail(RelaySubscriptionIntegrityException(
+                                    "Relay $url overflowed subscription $subId",
+                                ))
+                            }
                         }
                     }
                     "EOSE" -> {

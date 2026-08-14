@@ -62,6 +62,18 @@ class CompetitionRelayBackfillPolicyTest {
         )
         assertEquals(listOf("wss://hint.example", "wss://user.example"), scope.map { it.url })
         assertTrue(scope.first().read && !scope.first().write)
+
+        val crowded = competitionDiscoveryRelayScope(
+            listOf("bad", "wss://hint.example", "wss://hint.example") +
+                (2..9).map { "wss://hint-$it.example" },
+            (1..5).map { RelayConfig("wss://default-$it.example", read = true, write = true) },
+        )
+        assertEquals(8, crowded.size)
+        assertEquals(
+            listOf("wss://hint.example", "wss://hint-2.example", "wss://hint-3.example"),
+            crowded.take(3).map { it.url },
+        )
+        assertTrue(crowded.any { it.url == "wss://default-1.example" })
     }
 
     @Test
@@ -198,9 +210,28 @@ class CompetitionRelayBackfillPolicyTest {
         val lower = intent("11".repeat(32), 100)
         val higher = intent("22".repeat(32), 100)
 
-        assertTrue(CompetitionRelayClient.shouldReplaceIntent(lower, higher))
-        assertFalse(CompetitionRelayClient.shouldReplaceIntent(higher, lower))
+        assertFalse(CompetitionRelayClient.shouldReplaceIntent(lower, higher))
+        assertTrue(CompetitionRelayClient.shouldReplaceIntent(higher, lower))
         assertTrue(CompetitionRelayClient.shouldReplaceIntent(higher, intent("00".repeat(32), 101)))
+        assertTrue(CompetitionProtocol.isNewerReplaceable(100, lower.eventId, 100, higher.eventId))
+        assertFalse(CompetitionProtocol.isNewerReplaceable(100, higher.eventId, 100, lower.eventId))
+        assertEquals(100, CompetitionProtocol.nextReplaceableCreatedAt(100, 0))
+        assertEquals(101, CompetitionProtocol.nextReplaceableCreatedAt(100, 100))
+    }
+
+    @Test
+    fun `persisted participant lanes use the full identity not its old prefix`() {
+        val first = "12345678" + "aa".repeat(28)
+        val second = "12345678" + "bb".repeat(28)
+
+        assertEquals(
+            legacyCompetitionIntentLaneKey(first, compId, "climb_choice"),
+            legacyCompetitionIntentLaneKey(second, compId, "climb_choice"),
+        )
+        assertFalse(
+            competitionIntentLaneKey(first, compId, "climb_choice") ==
+                competitionIntentLaneKey(second, compId, "climb_choice"),
+        )
     }
 
     @Test

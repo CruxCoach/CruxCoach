@@ -8,10 +8,10 @@ class NostrPublicEventBuilder(
     suspend fun buildSignedEvent(
         kind: Int,
         content: String,
-        tags: List<List<String>>
+        tags: List<List<String>>,
+        createdAt: Long = System.currentTimeMillis() / 1000,
     ): Event {
         val tagsArray = tags.map { it.toTypedArray() }.toTypedArray()
-        val createdAt = System.currentTimeMillis() / 1000
 
         return nostrSigner.signer.sign<Event>(
             createdAt = createdAt,
