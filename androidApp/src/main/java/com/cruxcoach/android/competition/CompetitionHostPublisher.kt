@@ -64,7 +64,7 @@ class CompetitionHostPublisher @Inject constructor(
         val state = snapshot.state ?: return Result.Failed("not_loaded")
         val organizer = snapshot.organizerPubkey ?: return Result.Failed("not_loaded")
         if (competition.authority != signer.getPublicKeyHex()) return Result.Failed("not_authority")
-        if (!state.chainComplete) return Result.Failed("incomplete_chain")
+        if (!snapshot.trustworthy) return Result.Failed("incomplete_chain")
         val seq = state.seq + 1
         val at = System.currentTimeMillis() / 1000
         // Never publish an authority entry our own reducer will reject. In

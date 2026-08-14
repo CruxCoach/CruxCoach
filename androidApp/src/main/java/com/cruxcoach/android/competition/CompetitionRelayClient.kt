@@ -88,22 +88,24 @@ class CompetitionRelayClient @Inject constructor(
             """"#d":["${CompetitionProtocol.compDTag(compId)}"],"limit":4}"""
 
         var newest: Event? = null
-        runCatching {
+        val definitionHistoryComplete = runCatching {
             // Discovery may have delivered this exact addressable event only
             // moments ago. Its process-wide event-id cache is correct for live
             // subscriptions, but an explicit address lookup must be allowed to
             // read the same stored event again; otherwise tapping a competition
             // from the discovery list deterministically turns it into NOT_FOUND.
-            relayPool.fetchStored(filter).collect { json ->
+            relayPool.fetchStoredComplete(filter).collect { json ->
                 val event = runCatching { Event.fromJson(json) }.getOrNull() ?: return@collect
                 if (!accepts(event, organizerPubkey)) return@collect
                 if (newest == null || event.createdAt > newest!!.createdAt) newest = event
             }
-        }.onFailure { Log.w(TAG, "competition fetch failed", it) }
+        }.onFailure { Log.w(TAG, "competition fetch failed", it) }.isSuccess
 
         val found = newest
         if (found == null) {
-            _snapshot.update { Snapshot(problem = Problem.NOT_FOUND) }
+            _snapshot.update {
+                Snapshot(problem = if (definitionHistoryComplete) Problem.NOT_FOUND else Problem.UNREACHABLE)
+            }
             return false
         }
 
@@ -204,7 +206,7 @@ class CompetitionRelayClient @Inject constructor(
         while (firstSeq <= MAX_LOG_SEQUENCE) {
             val wanted = logPageDTags(competition.compId, firstSeq)
             val completed = withTimeoutOrNull(BACKFILL_TIMEOUT_MS) {
-                relayPool.fetchStored(logPageFilter(competition.authority, address, wanted)).collect { json ->
+                relayPool.fetchStoredComplete(logPageFilter(competition.authority, address, wanted)).collect { json ->
                     ingest(json, competition, organizerPubkey, nowSeconds())
                 }
                 true
@@ -234,7 +236,7 @@ class CompetitionRelayClient @Inject constructor(
         while (attempts < MAX_GAP_RECOVERY_PER_EVENT) {
             val missing = boundedMissingSequence(entrySequences()) ?: return
             val completed = withTimeoutOrNull(BACKFILL_TIMEOUT_MS) {
-                relayPool.fetchStored(
+                relayPool.fetchStoredComplete(
                     logPageFilter(
                         competition.authority,
                         address,

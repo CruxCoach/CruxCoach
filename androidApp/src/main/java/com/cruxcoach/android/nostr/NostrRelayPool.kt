@@ -405,6 +405,21 @@ class NostrRelayPool @Inject constructor(
         closeOnEose = true,
     )
 
+    /**
+     * Fetch stored events only when every configured read relay can complete.
+     *
+     * Competition authority history uses absence as evidence that the signed
+     * chain has ended. One stale responder cannot prove absence while another
+     * configured relay failed, so that caller needs stricter semantics than a
+     * best-effort feed or discovery query.
+     */
+    fun fetchStoredComplete(filter: String): Flow<String> = subscribe(
+        filter = filter,
+        skipDedup = true,
+        closeOnEose = true,
+        failOnRelayError = true,
+    )
+
     internal fun shouldDeliverEvent(eventId: String?, skipDedup: Boolean): Boolean =
         skipDedup || (eventId != null && seenEventIds.putIfAbsent(eventId, true) == null)
 
@@ -417,11 +432,14 @@ class NostrRelayPool @Inject constructor(
      * @param closeOnEose If true, the flow completes after all relays have sent
      *   EOSE (End of Stored Events), instead of staying open for real-time events.
      *   Use this for one-shot historical queries (e.g., poll workers).
+     * @param failOnRelayError If true, failure to connect any configured relay
+     *   fails the flow instead of treating that failure as EOSE.
      */
     fun subscribe(
         filter: String,
         skipDedup: Boolean = false,
-        closeOnEose: Boolean = false
+        closeOnEose: Boolean = false,
+        failOnRelayError: Boolean = false,
     ): Flow<String> = callbackFlow {
         val subId = java.util.UUID.randomUUID().toString()
         val readRelays = readRelays()
@@ -448,6 +466,10 @@ class NostrRelayPool @Inject constructor(
                 conn.addSubscription(subId, filter, flow)
             } catch (e: Exception) {
                 Log.w(TAG, "Subscribe to ${relay.url} failed", e)
+                if (failOnRelayError) {
+                    channel.close(e)
+                    return@forEach
+                }
                 // Count failed relays as "EOSE received" so we don't hang forever
                 if (closeOnEose && eoseCount.incrementAndGet() >= relayCount) {
                     channel.close()
