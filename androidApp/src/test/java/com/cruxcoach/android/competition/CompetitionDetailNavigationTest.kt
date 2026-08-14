@@ -34,5 +34,8 @@ class CompetitionDetailNavigationTest {
         assertContains(source, "!ui.snapshot.intentHistoryComplete")
         assertContains(source, "competition_host_retry_intents")
         assertContains(source, "return@Column")
+        assertContains(source, "it.op == \"climb_choice\" && it.pubkey == current")
+        assertContains(source, "ui.secondsToDeadline(nowSeconds) == 0L")
+        assertContains(source, "viewModel.hostAttempt(current, activeClimbId, \"timeout\", currentChoice?.eventId)")
     }
 }

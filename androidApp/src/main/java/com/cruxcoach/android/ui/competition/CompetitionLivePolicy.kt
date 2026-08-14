@@ -82,8 +82,13 @@ object CompetitionLivePolicy {
      * has a turn in the open round; crossing a round boundary is organizer
      * controlled and therefore cannot be estimated honestly.
      */
-    fun etaSeconds(state: CompetitionState?, pubkey: String, nowSeconds: Long): Long? {
-        if (state == null || state.status != "running" || state.cursor < 0 || state.turnDeadlineAt <= nowSeconds) return null
+    fun etaSeconds(
+        state: CompetitionState?,
+        pubkey: String,
+        nowSeconds: Long,
+        running: Boolean = state?.status == "running",
+    ): Long? {
+        if (state == null || !running || state.cursor < 0 || state.turnDeadlineAt <= nowSeconds) return null
         val index = state.order.indexOf(pubkey)
         if (index < state.cursor) return null
         val ahead = index - state.cursor

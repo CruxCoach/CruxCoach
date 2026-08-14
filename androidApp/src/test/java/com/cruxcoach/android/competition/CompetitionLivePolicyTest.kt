@@ -3,6 +3,7 @@ package com.cruxcoach.android.competition
 import com.cruxcoach.android.ui.competition.CompetitionLivePolicy
 import com.cruxcoach.domain.competition.ClimbProgress
 import com.cruxcoach.domain.competition.Competition
+import com.cruxcoach.domain.competition.CompetitionProtocol
 import com.cruxcoach.domain.competition.CompetitionState
 import com.cruxcoach.domain.competition.Participant
 import kotlin.test.Test
@@ -64,6 +65,30 @@ class CompetitionLivePolicyTest {
         order = listOf(other, mine, third),
         participants = listOf(participant(mine), participant(other), participant(third)),
     )
+
+    @Test
+    fun `registration check-in and live windows overlap and follow the clock`() {
+        val scheduled = competition.copy(
+            startsAt = 1_000,
+            endsAt = 2_000,
+            registrationOpensAt = 800,
+            registrationClosesAt = 1_100,
+            checkinOpensAt = 900,
+            checkinClosesAt = 1_200,
+        )
+        assertTrue(CompetitionProtocol.registrationWindowOpen(scheduled, "checkin_open", 900))
+        assertTrue(CompetitionProtocol.checkinWindowOpen(scheduled, "registration_open", 900))
+        assertTrue(CompetitionProtocol.registrationWindowOpen(scheduled, "running", 1_050))
+        assertTrue(CompetitionProtocol.checkinWindowOpen(scheduled, "running", 1_050))
+        assertTrue(CompetitionProtocol.competitionRunning(scheduled, "published", 1_000))
+        assertTrue(CompetitionProtocol.competitionRunning(scheduled, "registration_open", 2_000))
+        assertFalse(CompetitionProtocol.registrationWindowOpen(scheduled, "running", 1_101))
+        assertFalse(CompetitionProtocol.checkinWindowOpen(scheduled, "running", 1_201))
+        assertFalse(CompetitionProtocol.competitionRunning(scheduled, "paused", 1_100))
+        assertFalse(CompetitionProtocol.competitionRunning(scheduled, "finished", 1_100))
+        assertFalse(CompetitionProtocol.competitionRunning(scheduled, "cancelled", 1_100))
+        assertFalse(CompetitionProtocol.competitionRunning(scheduled, "running", 2_001))
+    }
 
     @Test
     fun `lifecycle and queue matrix produces one personal cue`() {
@@ -129,6 +154,7 @@ class CompetitionLivePolicyTest {
         assertEquals(null, CompetitionLivePolicy.etaSeconds(open, mine, 221))
         assertEquals(null, CompetitionLivePolicy.etaSeconds(open.copy(cursor = 2), mine, 130))
         assertEquals(null, CompetitionLivePolicy.etaSeconds(open.copy(turnDeadlineAt = 0), mine, 130))
+        assertEquals(null, CompetitionLivePolicy.etaSeconds(open, third, 130, running = false))
     }
 
     @Test

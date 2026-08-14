@@ -2753,6 +2753,8 @@
     <string name="comp_host_result_top">Top</string>
     <string name="comp_host_result_zone">Zone</string>
     <string name="comp_host_result_fall">Fall</string>
+    <string name="comp_host_result_timeout">Zeit um</string>
+    <string name="comp_host_awaiting_current_choice">Diese Person muss noch einen Boulder vorbereiten.</string>
     <string name="comp_host_start_climb">%1$s starten</string>
     <string name="comp_host_announcement">Durchsage</string>
     <string name="comp_host_publish">Veröffentlichen</string>

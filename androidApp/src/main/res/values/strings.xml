@@ -2754,6 +2754,8 @@
     <string name="comp_host_result_top">Top</string>
     <string name="comp_host_result_zone">Zone</string>
     <string name="comp_host_result_fall">Fall</string>
+    <string name="comp_host_result_timeout">Time up</string>
+    <string name="comp_host_awaiting_current_choice">Waiting for this participant to prepare a boulder.</string>
     <string name="comp_host_start_climb">Start %1$s</string>
     <string name="comp_host_announcement">Announcement</string>
     <string name="comp_host_publish">Publish</string>

@@ -936,6 +936,25 @@ private fun OrganizerConsole(
                 if (state.order.isEmpty()) Button(viewModel::hostSeed, Modifier.testTag("competition_host_seed")) { Text(stringResource(R.string.comp_host_seed_queue)) }
                 else {
                     val current = state.order.getOrNull(state.cursor)
+                    val currentParticipant = current?.let(state::participant)
+                    val currentChoice = ui.snapshot.pendingIntents.firstOrNull {
+                        it.op == "climb_choice" && it.pubkey == current
+                    }
+                    val chosenClimbId =
+                        (currentChoice?.data?.get("climb_id") as? kotlinx.serialization.json.JsonPrimitive)
+                            ?.content.orEmpty()
+                    val chosenClimb = chosenClimbId.takeIf(String::isNotBlank)?.let(competition::climb)
+                    val chosenProgress = chosenClimbId.takeIf(String::isNotBlank)
+                        ?.let { currentParticipant?.climb(it) }
+                    val choiceAvailable = chosenClimb != null && currentParticipant?.registration == "accepted" &&
+                        currentParticipant.checkin == "checked_in" && currentParticipant.result == "active" &&
+                        (competition.feeMsat == 0L || currentParticipant.payment == "settled") &&
+                        chosenProgress?.outcome != "top" &&
+                        (chosenProgress?.attemptsUsed ?: 0) < competition.rules.attemptsPerClimb
+                    val activeClimbId = if (competition.rules.climbSource == "participant_choice") {
+                        chosenClimbId.takeIf { choiceAvailable }.orEmpty()
+                    } else state.currentClimbId
+                    val activeClimb = activeClimbId.takeIf(String::isNotBlank)?.let(competition::climb)
                     Text(
                         stringResource(
                             R.string.comp_host_turn,
@@ -950,11 +969,26 @@ private fun OrganizerConsole(
                         }
                         if (state.cursor >= 0) OutlinedButton({ viewModel.hostQueue("close_turn") }) { Text(stringResource(R.string.comp_host_close_turn)) }
                     }
-                    if (runningNow && current != null && state.currentClimbId.isNotBlank()) {
+                    if (competition.rules.climbSource == "participant_choice") {
+                        Text(
+                            when {
+                                activeClimb != null -> stringResource(R.string.comp_host_prepared_choice, activeClimb.label)
+                                currentChoice != null -> stringResource(R.string.comp_host_choice_unavailable)
+                                else -> stringResource(R.string.comp_host_awaiting_current_choice)
+                            },
+                            color = if (activeClimb == null) MaterialTheme.colorScheme.error
+                                else MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                    if (runningNow && current != null && activeClimbId.isNotBlank()) {
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Button({ viewModel.hostAttempt(current, state.currentClimbId, "top") }) { Text(stringResource(R.string.comp_host_result_top)) }
-                            OutlinedButton({ viewModel.hostAttempt(current, state.currentClimbId, "zone") }) { Text(stringResource(R.string.comp_host_result_zone)) }
-                            OutlinedButton({ viewModel.hostAttempt(current, state.currentClimbId, "fall") }) { Text(stringResource(R.string.comp_host_result_fall)) }
+                            Button({ viewModel.hostAttempt(current, activeClimbId, "top", currentChoice?.eventId) }) { Text(stringResource(R.string.comp_host_result_top)) }
+                            OutlinedButton({ viewModel.hostAttempt(current, activeClimbId, "zone", currentChoice?.eventId) }) { Text(stringResource(R.string.comp_host_result_zone)) }
+                            OutlinedButton({ viewModel.hostAttempt(current, activeClimbId, "fall", currentChoice?.eventId) }) { Text(stringResource(R.string.comp_host_result_fall)) }
+                            if (ui.secondsToDeadline(nowSeconds) == 0L) {
+                                OutlinedButton({ viewModel.hostAttempt(current, activeClimbId, "timeout", currentChoice?.eventId) }) { Text(stringResource(R.string.comp_host_result_timeout)) }
+                            }
                         }
                     }
                     if (state.currentClimbId.isBlank() && competition.climbs.isNotEmpty()) {
@@ -1511,7 +1545,12 @@ private fun LivePanel(
                     "%d:%02d".format(seconds / 60, seconds % 60),
                 )
             }
-            CompetitionLivePolicy.etaSeconds(state, ui.myPubkey, nowSeconds)?.takeIf { it > 0 }?.let { seconds ->
+            CompetitionLivePolicy.etaSeconds(
+                state,
+                ui.myPubkey,
+                nowSeconds,
+                CompetitionProtocol.competitionRunning(competition, state.status, nowSeconds),
+            )?.takeIf { it > 0 }?.let { seconds ->
                 LabelledValue(
                     stringResource(R.string.comp_live_estimated_turn),
                     stringResource(R.string.comp_live_about_minutes, ((seconds + 59) / 60).coerceAtLeast(1)),
