@@ -158,6 +158,52 @@ class CompetitionIntentPublisher @Inject constructor(
         ),
     )
 
+    /**
+     * Ask for a prize.
+     *
+     * `ciphertext` is already NIP-44 encrypted to the organizer by the caller,
+     * so neither this publisher nor any relay sees a payout destination.
+     */
+    suspend fun claimPrize(
+        competition: Competition,
+        organizerPubkey: String,
+        prizeId: String,
+        ciphertext: String,
+    ): Result = send(
+        competition,
+        organizerPubkey,
+        "prize_claim",
+        JsonObject(
+            mapOf(
+                "prize_id" to JsonPrimitive(prizeId),
+                "enc" to JsonPrimitive(ciphertext),
+            ),
+        ),
+    )
+
+    /**
+     * Say the money arrived.
+     *
+     * The only evidence about a payout that comes from the side that was paid,
+     * and optional by nature — a winner who sends nothing is not evidence of
+     * anything either way.
+     */
+    suspend fun acknowledgePrize(
+        competition: Competition,
+        organizerPubkey: String,
+        prizeId: String,
+    ): Result = send(
+        competition,
+        organizerPubkey,
+        "prize_receipt",
+        JsonObject(
+            mapOf(
+                "prize_id" to JsonPrimitive(prizeId),
+                "received" to JsonPrimitive(true),
+            ),
+        ),
+    )
+
     /** The stable nonce for this competition's registration, for zap binding. */
     fun registrationNonce(compId: String): String = nonceFor(compId, "register")
 

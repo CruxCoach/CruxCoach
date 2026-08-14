@@ -341,6 +341,39 @@ object CompetitionProtocol {
         data class Valid(val entry: LogEntry, val eventId: String, val createdAt: Long) : ParsedLogEntry
         data class Invalid(val error: String, val needsUpgrade: Boolean = false) : ParsedLogEntry
     }
+
+    fun parseIntent(
+        event: CompetitionEvent,
+        competition: Competition,
+        organizerPubkey: String,
+        nowSeconds: Long,
+    ): ParsedIntent {
+        val classified = classify(event, nowSeconds)
+        if (classified is Classified.Rejected) return ParsedIntent.Invalid(classified.error, classified.needsUpgrade)
+        val accepted = classified as Classified.Accepted
+        if (accepted.type != "intent") return ParsedIntent.Invalid("not an intent")
+        if (accepted.dTag.pubkeyPrefix != event.pubkey.take(8)) return ParsedIntent.Invalid("d-tag does not match the signer")
+        if (event.tagValue("a") != competitionAddress(organizerPubkey, competition.compId)) {
+            return ParsedIntent.Invalid("a-tag does not reference this competition")
+        }
+        if (event.tagValue("p") != competition.authority) return ParsedIntent.Invalid("p-tag does not reference the authority")
+        val payload = accepted.payload
+        val op = payload["op"]?.jsonPrimitive?.contentOrNullSafe() ?: return ParsedIntent.Invalid("missing op")
+        if (op !in INTENT_OPS) return ParsedIntent.Invalid("unknown request \"$op\"", needsUpgrade = true)
+        val nonce = payload["nonce"]?.jsonPrimitive?.contentOrNullSafe()
+        if (nonce != accepted.dTag.nonce) return ParsedIntent.Invalid("nonce does not match d-tag")
+        val data = payload["data"] as? JsonObject ?: return ParsedIntent.Invalid("data is missing")
+        val at = payload["at"]?.jsonPrimitive?.longOrNull ?: event.createdAt
+        return ParsedIntent.Valid(op, data, event.pubkey, event.id, event.createdAt, at)
+    }
+
+    sealed interface ParsedIntent {
+        data class Valid(
+            val op: String, val data: JsonObject, val pubkey: String,
+            val eventId: String, val createdAt: Long, val at: Long,
+        ) : ParsedIntent
+        data class Invalid(val error: String, val needsUpgrade: Boolean = false) : ParsedIntent
+    }
 }
 
 /**

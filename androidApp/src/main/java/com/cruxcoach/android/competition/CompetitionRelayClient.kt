@@ -46,6 +46,7 @@ class CompetitionRelayClient @Inject constructor(
         val problem: Problem? = null,
         val entryCount: Int = 0,
         val usesDevelopmentRelay: Boolean = false,
+        val pendingIntents: List<CompetitionProtocol.ParsedIntent.Valid> = emptyList(),
         /** Local receipt time, never part of the reduced competition state. */
         val lastSyncedAt: Long = 0,
     ) {
@@ -62,6 +63,7 @@ class CompetitionRelayClient @Inject constructor(
     val connectedRelayCount: StateFlow<Int> = relayPool.connectedRelayCount
 
     private val entries = linkedMapOf<String, CompetitionReducer.Chained>()
+    private val intents = linkedMapOf<String, CompetitionProtocol.ParsedIntent.Valid>()
 
     /**
      * Fetch the competition definition.
@@ -73,6 +75,7 @@ class CompetitionRelayClient @Inject constructor(
     suspend fun load(organizerPubkey: String, compId: String, nowSeconds: Long): Boolean {
         _snapshot.update { Snapshot(loading = true) }
         entries.clear()
+        intents.clear()
 
         val filter = """{"kinds":[${CompetitionProtocol.KIND}],""" +
             """"authors":["$organizerPubkey"],""" +
@@ -80,7 +83,12 @@ class CompetitionRelayClient @Inject constructor(
 
         var newest: Event? = null
         runCatching {
-            relayPool.subscribe(filter, closeOnEose = true).collect { json ->
+            // Discovery may have delivered this exact addressable event only
+            // moments ago. Its process-wide event-id cache is correct for live
+            // subscriptions, but an explicit address lookup must be allowed to
+            // read the same stored event again; otherwise tapping a competition
+            // from the discovery list deterministically turns it into NOT_FOUND.
+            relayPool.fetchStored(filter).collect { json ->
                 val event = runCatching { Event.fromJson(json) }.getOrNull() ?: return@collect
                 if (!accepts(event, organizerPubkey)) return@collect
                 if (newest == null || event.createdAt > newest!!.createdAt) newest = event
@@ -129,13 +137,24 @@ class CompetitionRelayClient @Inject constructor(
         val competition = current.competition ?: return@flow
         val organizerPubkey = current.organizerPubkey ?: return@flow
         val address = CompetitionProtocol.competitionAddress(organizerPubkey, competition.compId)
-        val filter = """{"kinds":[${CompetitionProtocol.KIND}],""" +
-            """"authors":["${competition.authority}"],"#a":["$address"]}"""
+        val filter = """{"kinds":[${CompetitionProtocol.KIND}],"#a":["$address"]}"""
 
         relayPool.subscribe(filter).collect { json ->
             val event = runCatching { Event.fromJson(json) }.getOrNull() ?: return@collect
-            if (!accepts(event, competition.authority)) return@collect
+            if (!acceptsBody(event)) return@collect
             if (entries.containsKey(event.id)) return@collect
+            val parsedIntent = CompetitionProtocol.parseIntent(
+                event.toCompetitionEvent(), competition, organizerPubkey, nowSeconds(),
+            )
+            if (parsedIntent is CompetitionProtocol.ParsedIntent.Valid) {
+                val key = "${parsedIntent.pubkey}:${parsedIntent.op}"
+                val old = intents[key]
+                if (old == null || parsedIntent.createdAt >= old.createdAt) intents[key] = parsedIntent
+                reduce()
+                emit(entries.size)
+                return@collect
+            }
+            if (event.pubKey != competition.authority) return@collect
             when (
                 val parsed = CompetitionProtocol.parseLogEntry(
                     event.toCompetitionEvent(), competition, organizerPubkey, nowSeconds(),
@@ -185,6 +204,7 @@ class CompetitionRelayClient @Inject constructor(
                 entryCount = entries.size,
                 loading = false,
                 lastSyncedAt = System.currentTimeMillis() / 1000,
+                pendingIntents = unansweredIntents(),
             )
         }
     }
@@ -207,6 +227,19 @@ class CompetitionRelayClient @Inject constructor(
             signatureValid = signatureValid,
             idValid = idValid,
         )
+    }
+
+    private fun acceptsBody(event: Event): Boolean {
+        val signatureValid = runCatching { event.verifySignature() }.getOrDefault(false)
+        return signatureValid && runCatching { event.verifyId() }.getOrDefault(false) &&
+            event.kind == CompetitionProtocol.KIND
+    }
+
+    private fun unansweredIntents(): List<CompetitionProtocol.ParsedIntent.Valid> {
+        val answeredIds = entries.values.mapNotNull { chained ->
+            (chained.entry.data["intent_id"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+        }.toSet()
+        return intents.values.filter { it.eventId !in answeredIds }.sortedBy { it.createdAt }
     }
 
     companion object {

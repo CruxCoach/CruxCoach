@@ -66,6 +66,7 @@ import kotlinx.coroutines.launch
 import com.cruxcoach.android.ui.competition.CompetitionDetailScreen
 import com.cruxcoach.android.ui.competition.CompetitionScannerScreen
 import com.cruxcoach.android.ui.competition.CompetitionsScreen
+import com.cruxcoach.android.ui.competition.CompetitionCreateScreen
 import com.cruxcoach.android.competition.CompetitionShareLink
 import com.cruxcoach.android.ui.board.BoardBrowserScreen
 import com.cruxcoach.android.ui.board.BoardBrowserViewModel
@@ -115,6 +116,7 @@ object Routes {
     const val BOARD_BROWSER = "board_browser"
     const val COMPETITIONS = "competitions"
     const val COMPETITION_SCAN = "competition_scan"
+    const val COMPETITION_CREATE = "competition_create"
     const val COMPETITION_DETAIL = "competition_detail/{organizerPubkey}/{compId}"
     fun competitionDetail(organizerPubkey: String, compId: String) =
         "competition_detail/$organizerPubkey/$compId"
@@ -534,7 +536,24 @@ fun CruxCoachNavHost(
                             )
                         },
                         onScan = { navController.navigate(Routes.COMPETITION_SCAN) },
+                        onCreateCompetition = { navController.navigate(Routes.COMPETITION_CREATE) },
                         onNavigateBack = { navController.popBackStack() },
+                    )
+                }
+            }
+
+            composable(Routes.COMPETITION_CREATE) {
+                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
+                    screenName = "CompetitionCreate",
+                    onNavigateBack = { navController.popBackStack() },
+                ) {
+                    CompetitionCreateScreen(
+                        onNavigateBack = { navController.popBackStack() },
+                        onCreated = { organizer, compId ->
+                            navController.navigate(Routes.competitionDetail(organizer, compId)) {
+                                popUpTo(Routes.COMPETITION_CREATE) { inclusive = true }
+                            }
+                        },
                     )
                 }
             }

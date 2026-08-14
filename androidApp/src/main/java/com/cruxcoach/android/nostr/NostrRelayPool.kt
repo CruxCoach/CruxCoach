@@ -393,6 +393,22 @@ class NostrRelayPool @Inject constructor(
     }
 
     /**
+     * Fetch stored events even when another screen already observed their ids.
+     *
+     * The process-wide dedup cache protects long-lived live subscriptions from
+     * duplicate delivery across relays. It must not turn an explicit historical
+     * lookup into an empty result merely because discovery saw the event first.
+     */
+    fun fetchStored(filter: String): Flow<String> = subscribe(
+        filter = filter,
+        skipDedup = true,
+        closeOnEose = true,
+    )
+
+    internal fun shouldDeliverEvent(eventId: String?, skipDedup: Boolean): Boolean =
+        skipDedup || (eventId != null && seenEventIds.putIfAbsent(eventId, true) == null)
+
+    /**
      * Subscribe to events matching [filter].
      *
      * @param skipDedup If true, bypass the [seenEventIds] cache. Use this for
@@ -421,14 +437,7 @@ class NostrRelayPool @Inject constructor(
                     }
                     return@collect
                 }
-                if (skipDedup) {
-                    trySend(eventJson)
-                } else {
-                    val eventId = extractEventId(eventJson)
-                    if (eventId != null && seenEventIds.putIfAbsent(eventId, true) == null) {
-                        trySend(eventJson)
-                    }
-                }
+                if (shouldDeliverEvent(extractEventId(eventJson), skipDedup)) trySend(eventJson)
             }
         }
 

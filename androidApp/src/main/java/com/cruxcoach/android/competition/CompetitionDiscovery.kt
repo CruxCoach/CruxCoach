@@ -80,6 +80,24 @@ class CompetitionDiscovery @Inject constructor(
             .sortedWith(compareBy({ it.competition.startsAt }, { it.competition.title }))
     }
 
+    /** Organizer overview, including unlisted drafts that discovery must hide. */
+    suspend fun owned(pubkey: String, nowSeconds: Long, limit: Int = 100): List<Listing> {
+        val filter = """{"kinds":[${CompetitionProtocol.KIND}],"authors":["$pubkey"],"#l":["competition"],"limit":$limit}"""
+        val newest = linkedMapOf<String, Listing>()
+        runCatching {
+            relayPool.fetchStored(filter).collect { raw ->
+                val event = runCatching { Event.fromJson(raw) }.getOrNull() ?: return@collect
+                val signatureValid = runCatching { event.verifySignature() }.getOrDefault(false)
+                if (!signatureValid || !runCatching { event.verifyId() }.getOrDefault(false)) return@collect
+                val parsed = CompetitionProtocol.parseCompetition(event.toCompetitionEvent(), nowSeconds)
+                if (parsed !is CompetitionProtocol.ParsedCompetition.Valid || event.pubKey != pubkey) return@collect
+                val old = newest[parsed.address]
+                if (old == null || event.createdAt > old.createdAt) newest[parsed.address] = Listing(parsed.competition, pubkey, event.id, event.createdAt)
+            }
+        }.onFailure { Log.w(TAG, "owned competition fetch failed", it) }
+        return newest.values.sortedByDescending { it.createdAt }
+    }
+
     /**
      * Local, case-insensitive filtering over an already-fetched list.
      *

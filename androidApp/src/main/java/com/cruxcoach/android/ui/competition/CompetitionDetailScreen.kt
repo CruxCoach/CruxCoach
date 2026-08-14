@@ -161,7 +161,7 @@ fun CompetitionDetailScreen(
             )
         },
         bottomBar = {
-            ParticipantActionBar(
+            if (!viewModel.isAuthority) ParticipantActionBar(
                 ui = ui,
                 nowSeconds = now,
                 viewModel = viewModel,
@@ -218,6 +218,10 @@ fun CompetitionDetailScreen(
                 item { WarningCard(stringResource(R.string.comp_fork)) }
             }
 
+            if (viewModel.isAuthority && state != null) {
+                item { OrganizerConsole(ui, viewModel, action) }
+            }
+
             item {
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp)) {
@@ -252,6 +256,7 @@ fun CompetitionDetailScreen(
             }
 
             // ── registration ──
+            item { PrizeClaimPanel(ui, viewModel) }
             item { RegistrationPanel(ui, viewModel, action) { id, _ -> lastAsked = id; viewModel.openClimb(id) } }
             item { ClimbOpenProblem(climbOpen, lastAsked, viewModel) }
 
@@ -285,6 +290,173 @@ fun CompetitionDetailScreen(
             }
         }
     }
+}
+
+@Composable
+private fun OrganizerConsole(
+    ui: CompetitionDetailViewModel.Ui,
+    viewModel: CompetitionDetailViewModel,
+    action: CompetitionDetailViewModel.Action,
+) {
+    val competition = ui.snapshot.competition ?: return
+    val state = ui.snapshot.state ?: return
+    val cleanup by viewModel.cleanup.collectAsStateWithLifecycle()
+    var announcement by rememberSaveable { mutableStateOf("") }
+    var confirmCancel by rememberSaveable { mutableStateOf(false) }
+    if (confirmCancel) AlertDialog(
+        onDismissRequest = { confirmCancel = false },
+        title = { Text("Wettkampf wirklich absagen?") },
+        text = { Text("Die Absage wird öffentlich und kann nicht rückgängig gemacht werden.") },
+        confirmButton = { Button({ confirmCancel = false; viewModel.hostLifecycle("cancelled") }) { Text("Endgültig absagen") } },
+        dismissButton = { TextButton({ confirmCancel = false }) { Text("Zurück") } },
+    )
+    Card(Modifier.fillMaxWidth().testTag("competition_host_console")) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Organizer-Konsole", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text("Authority ${ui.myPubkey.take(12)}… · Log #${state.seq}", style = MaterialTheme.typography.bodySmall)
+            Text(
+                "Status: ${state.status} · Verbindung: ${if (ui.connectedRelays > 0) "live (${ui.connectedRelays})" else "offline"}",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Text(
+                "${state.participants.count { it.registration == "accepted" }} angenommen · " +
+                    "${state.participants.count { it.checkin == "checked_in" }} eingecheckt · " +
+                    "${ui.snapshot.pendingIntents.size} offene Anfragen",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            val next = when (state.status) {
+                "draft" -> "published"; "published" -> "registration_open"
+                "registration_open" -> "registration_closed"; "registration_closed" -> "checkin_open"
+                "checkin_open" -> "running"; "paused" -> "running"; "running" -> "finished"
+                else -> null
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                next?.let { target -> Button({ viewModel.hostLifecycle(target) }, Modifier.weight(1f).testTag("competition_host_lifecycle"), enabled = action !is CompetitionDetailViewModel.Action.Working) { Text(hostLifecycleLabel(target)) } }
+                if (state.status == "running") OutlinedButton({ viewModel.hostLifecycle("paused") }, Modifier.weight(1f)) { Text("Pausieren") }
+            }
+            if (state.status !in listOf("finished", "cancelled")) {
+                TextButton({ confirmCancel = true }) { Text("Wettkampf absagen …") }
+            }
+            if (state.status == "cancelled") {
+                Text(
+                    "Die Absage bleibt im Audit-Log. Zusätzlich kannst du die öffentliche Definition " +
+                        "durch einen Tombstone ersetzen und eine NIP-09-Löschanfrage senden. Vollständige " +
+                        "Löschung aus allen Kopien lässt sich bei Nostr nicht beweisen.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Button(
+                    onClick = viewModel::cleanupCompetition,
+                    enabled = cleanup !is CompetitionDetailViewModel.Cleanup.Working,
+                    modifier = Modifier.fillMaxWidth().testTag("competition_host_cleanup"),
+                ) { Text(if (cleanup is CompetitionDetailViewModel.Cleanup.Idle) "Von Relays entfernen" else "Löschung erneut senden") }
+                when (val result = cleanup) {
+                    CompetitionDetailViewModel.Cleanup.Working -> LinearProgressIndicator(Modifier.fillMaxWidth())
+                    is CompetitionDetailViewModel.Cleanup.Sent -> Text(
+                        "Tombstone ${result.tombstoneAccepted}/${result.attempted}, " +
+                            "Löschanfrage ${result.deletionAccepted}/${result.attempted} Relays bestätigt. " +
+                            "Der Button bleibt für erneute Zustellung verfügbar.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    is CompetitionDetailViewModel.Cleanup.Failed -> Text(
+                        "Relay-Löschung fehlgeschlagen: ${result.reason}",
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    CompetitionDetailViewModel.Cleanup.Idle -> Unit
+                }
+            }
+
+            Text("Teilnehmende", fontWeight = FontWeight.Bold)
+            ui.snapshot.pendingIntents.filter { it.op == "register" }.forEach { intent ->
+                val display = (intent.data["display"] as? kotlinx.serialization.json.JsonPrimitive)?.content.orEmpty()
+                val division = (intent.data["division"] as? kotlinx.serialization.json.JsonPrimitive)?.content.orEmpty()
+                Column(Modifier.fillMaxWidth()) {
+                    Text(display.ifBlank { "${intent.pubkey.take(12)}…" }, fontWeight = FontWeight.SemiBold)
+                    Text("Neue Anmeldung · $division", style = MaterialTheme.typography.bodySmall)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Button({ viewModel.hostRegistration(intent.pubkey, "accepted", intent.eventId, division, display) }) { Text("Annehmen") }
+                        OutlinedButton({ viewModel.hostRegistration(intent.pubkey, "waitlisted", intent.eventId, division, display) }) { Text("Warteliste") }
+                        OutlinedButton({ viewModel.hostRegistration(intent.pubkey, "rejected", intent.eventId, division, display) }) { Text("Ablehnen") }
+                    }
+                }
+            }
+            if (state.participants.isEmpty()) Text("Noch keine bestätigten Teilnehmenden.")
+            state.participants.forEach { participant ->
+                Column(Modifier.fillMaxWidth()) {
+                    Text(participant.display.ifBlank { "${participant.pubkey.take(12)}…" }, fontWeight = FontWeight.SemiBold)
+                    Text("${participant.registration} · ${participant.checkin}", style = MaterialTheme.typography.bodySmall)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        if (participant.registration in listOf("pending", "waitlisted")) {
+                            Button({ viewModel.hostRegistration(participant.pubkey, "accepted") }) { Text("Annehmen") }
+                            OutlinedButton({ viewModel.hostRegistration(participant.pubkey, "rejected") }) { Text("Ablehnen") }
+                        }
+                        if (participant.registration == "accepted" && participant.checkin == "none") {
+                            Button({ viewModel.hostCheckIn(participant.pubkey, true) }) { Text("Check-in") }
+                            OutlinedButton({ viewModel.hostCheckIn(participant.pubkey, false) }) { Text("No-show") }
+                        }
+                    }
+                }
+            }
+            ui.snapshot.pendingIntents.filter { it.op != "register" }.forEach { intent ->
+                val participant = state.participant(intent.pubkey)
+                val label = participant?.display?.ifBlank { null } ?: "${intent.pubkey.take(12)}…"
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text("$label · ${intent.op}", Modifier.weight(1f))
+                    when (intent.op) {
+                        "checkin_request" -> Button({ viewModel.hostCheckIn(intent.pubkey, true, intent.eventId) }) { Text("Bestätigen") }
+                        "withdraw" -> Button({ viewModel.hostWithdraw(intent.pubkey, intent.eventId) }) { Text("Abmeldung bestätigen") }
+                        "defer_request" -> Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Button({ viewModel.hostDefer(intent.pubkey, "granted", intent.eventId) }) { Text("Gewähren") }
+                            OutlinedButton({ viewModel.hostDefer(intent.pubkey, "denied", intent.eventId) }) { Text("Ablehnen") }
+                        }
+                        "attempt_report" -> {
+                            val climbId = (intent.data["climb_id"] as? kotlinx.serialization.json.JsonPrimitive)?.content.orEmpty()
+                            val outcome = (intent.data["outcome"] as? kotlinx.serialization.json.JsonPrimitive)?.content.orEmpty()
+                            Button({ viewModel.hostAttempt(intent.pubkey, climbId, outcome, intent.eventId) }) { Text("Eintragen") }
+                        }
+                    }
+                }
+            }
+
+            if (state.status in listOf("checkin_open", "running")) {
+                Text("Live-Steuerung", fontWeight = FontWeight.Bold)
+                if (state.order.isEmpty()) Button(viewModel::hostSeed, Modifier.testTag("competition_host_seed")) { Text("Queue aus Check-ins erstellen") }
+                else {
+                    val current = state.order.getOrNull(state.cursor)
+                    Text("Zug: ${current?.let { key -> state.participant(key)?.display?.ifBlank { key.take(12) } } ?: "noch nicht geöffnet"}")
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        if (state.cursor < 0) Button({ viewModel.hostQueue("open_turn", 0) }) { Text("Ersten Zug öffnen") }
+                        else Button({ viewModel.hostQueue("advance") }, Modifier.testTag("competition_host_advance")) { Text("Weiter") }
+                        if (state.cursor >= 0) OutlinedButton({ viewModel.hostQueue("close_turn") }) { Text("Zug schließen") }
+                    }
+                    if (state.status == "running" && current != null && state.currentClimbId.isNotBlank()) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Button({ viewModel.hostAttempt(current, state.currentClimbId, "top") }) { Text("Top") }
+                            OutlinedButton({ viewModel.hostAttempt(current, state.currentClimbId, "zone") }) { Text("Zone") }
+                            OutlinedButton({ viewModel.hostAttempt(current, state.currentClimbId, "fall") }) { Text("Fall") }
+                        }
+                    }
+                    if (state.currentClimbId.isBlank() && competition.climbs.isNotEmpty()) {
+                        Button({ viewModel.hostQueue("next_climb", climbId = competition.climbs.first().id) }) { Text("${competition.climbs.first().label} starten") }
+                    }
+                }
+            }
+
+            OutlinedTextField(announcement, { announcement = it }, label = { Text("Durchsage") }, modifier = Modifier.fillMaxWidth())
+            OutlinedButton({ viewModel.hostAnnounce(announcement); announcement = "" }, enabled = announcement.isNotBlank()) { Text("Veröffentlichen") }
+            when (action) {
+                is CompetitionDetailViewModel.Action.Failed -> Text("Aktion fehlgeschlagen: ${action.reason}", color = MaterialTheme.colorScheme.error)
+                is CompetitionDetailViewModel.Action.Sent -> Text("Auf ${action.accepted} Relay(s) veröffentlicht.")
+                is CompetitionDetailViewModel.Action.Working -> LinearProgressIndicator(Modifier.fillMaxWidth())
+                else -> Unit
+            }
+        }
+    }
+}
+
+private fun hostLifecycleLabel(status: String) = when (status) {
+    "published" -> "Entwurf veröffentlichen"; "registration_open" -> "Anmeldung öffnen"
+    "registration_closed" -> "Anmeldung schließen"; "checkin_open" -> "Check-in öffnen"
+    "running" -> "Wettkampf starten / fortsetzen"; "finished" -> "Wettkampf beenden"; else -> status
 }
 
 /** The wall and schedule belong before registration, not in small print. */
@@ -899,6 +1071,149 @@ private fun RegistrationPanel(
             }
         }
     }
+}
+
+/**
+ * Claiming a prize you won.
+ *
+ * Only after the results are final, only for the prize the standings put you
+ * at, and only through an encrypted channel — the payout destination goes to
+ * the organizer and nowhere else. It says whose money this is before asking
+ * for a wallet address: the organizer's, paid from their own wallet, with
+ * CruxCoach holding nothing and guaranteeing nothing.
+ */
+@Composable
+private fun PrizeClaimPanel(
+    ui: CompetitionDetailViewModel.Ui,
+    viewModel: CompetitionDetailViewModel,
+) {
+    val competition = ui.snapshot.competition ?: return
+    val state = ui.snapshot.state ?: return
+    if (state.status != "finished") return
+
+    val claimable = remember(state.seq, ui.myPubkey) { viewModel.claimablePrizes() }
+    if (claimable.isEmpty()) return
+
+    val claim by viewModel.prizeClaim.collectAsStateWithLifecycle()
+
+    Card(Modifier.fillMaxWidth().testTag("competition_prizes")) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(stringResource(R.string.comp_prize_title), fontWeight = FontWeight.Bold)
+            Text(
+                stringResource(R.string.comp_money_prize_not_funded),
+                style = MaterialTheme.typography.bodySmall,
+            )
+
+            for (prize in claimable) {
+                val status = state.prizes[prize.id]
+                Text(
+                    if (prize.isCash) {
+                        stringResource(R.string.comp_prize_won_cash, prize.label, prize.valueMsat / 1000)
+                    } else {
+                        prize.label
+                    },
+                    fontWeight = FontWeight.Bold,
+                )
+
+                if (status != null && status.pubkey == ui.myPubkey &&
+                    status.state in listOf("approved", "paid")
+                ) {
+                    Text(prizeStateText(status.state))
+                    if (status.state == "paid") {
+                        // The only word about a payout that comes from the side
+                        // that was paid. Optional, and the organizer's screen
+                        // says its absence proves nothing.
+                        Button(
+                            onClick = { viewModel.acknowledgePrize(prize.id) },
+                            modifier = Modifier.testTag("competition_prize_ack_${prize.id}"),
+                        ) { Text(stringResource(R.string.comp_prize_acknowledge)) }
+                    }
+                    continue
+                }
+                if (status != null && status.state == "expired") {
+                    Text(prizeStateText("expired"))
+                    continue
+                }
+                if (status != null) Text(prizeStateText(status.state))
+
+                var payoutKind by rememberSaveable(prize.id) {
+                    mutableStateOf(if (prize.isCash) "lightning_address" else "non_cash")
+                }
+                var destination by rememberSaveable(prize.id) { mutableStateOf("") }
+
+                if (prize.isCash) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        listOf(
+                            "lightning_address" to R.string.comp_prize_kind_address,
+                            "bolt11" to R.string.comp_prize_kind_invoice,
+                        ).forEach { (kind, label) ->
+                            RadioButton(
+                                selected = payoutKind == kind,
+                                onClick = { payoutKind = kind },
+                                modifier = Modifier.testTag("competition_prize_kind_$kind"),
+                            )
+                            Text(stringResource(label))
+                        }
+                    }
+                }
+
+                OutlinedTextField(
+                    value = destination,
+                    onValueChange = { destination = it.take(600) },
+                    label = { Text(stringResource(R.string.comp_prize_dest)) },
+                    supportingText = { Text(stringResource(R.string.comp_prize_dest_hint)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("competition_prize_dest_${prize.id}"),
+                )
+
+                when (val current = claim) {
+                    CompetitionDetailViewModel.PrizeClaim.Working -> CircularProgressIndicator()
+                    CompetitionDetailViewModel.PrizeClaim.Sent -> Text(
+                        stringResource(R.string.comp_prize_sent),
+                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                    )
+                    is CompetitionDetailViewModel.PrizeClaim.Failed -> Text(
+                        prizeErrorText(current.code),
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier
+                            .testTag("competition_prize_error")
+                            .semantics { liveRegion = LiveRegionMode.Assertive },
+                    )
+                    CompetitionDetailViewModel.PrizeClaim.Idle -> Unit
+                }
+
+                Button(
+                    onClick = { viewModel.claimPrize(prize.id, payoutKind, destination) },
+                    enabled = destination.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth().testTag("competition_prize_claim_${prize.id}"),
+                ) { Text(stringResource(R.string.comp_prize_claim)) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun prizeStateText(state: String): String = when (state) {
+    "claimed" -> stringResource(R.string.comp_prize_state_claimed)
+    "approved" -> stringResource(R.string.comp_prize_state_approved)
+    "paid" -> stringResource(R.string.comp_prize_state_paid)
+    "rejected" -> stringResource(R.string.comp_prize_state_rejected)
+    else -> stringResource(R.string.comp_prize_state_expired)
+}
+
+/** One sentence per way a claim can be refused, rather than a code on screen. */
+@Composable
+private fun prizeErrorText(code: String): String = when (code) {
+    "no_destination" -> stringResource(R.string.comp_prize_err_no_destination)
+    "not_a_cash_prize" -> stringResource(R.string.comp_prize_err_not_cash)
+    "cash_prize_needs_a_wallet" -> stringResource(R.string.comp_prize_err_needs_wallet)
+    "destination_wrong_amount" -> stringResource(R.string.comp_prize_err_wrong_amount)
+    "destination_expired" -> stringResource(R.string.comp_prize_err_expired)
+    "destination_unreadable_invoice" -> stringResource(R.string.comp_prize_err_unreadable)
+    "destination_onion" -> stringResource(R.string.comp_prize_err_onion)
+    "destination_not_https" -> stringResource(R.string.comp_prize_err_not_https)
+    "no_encryption" -> stringResource(R.string.comp_prize_err_no_encryption)
+    else -> stringResource(R.string.comp_prize_err_bad_destination)
 }
 
 /** Payment states an entrant can still act on. */

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.competition.CompetitionDiscovery
 import com.cruxcoach.android.competition.CompetitionShareLink
+import com.cruxcoach.android.nostr.NostrSigner
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
@@ -24,6 +25,7 @@ import kotlinx.coroutines.withContext
 @HiltViewModel
 class CompetitionsViewModel @Inject constructor(
     private val discovery: CompetitionDiscovery,
+    private val signer: NostrSigner,
 ) : ViewModel() {
 
     data class State(
@@ -33,6 +35,7 @@ class CompetitionsViewModel @Inject constructor(
         val loaded: Boolean = false,
         val linkInput: String = "",
         val linkError: Boolean = false,
+        val owned: List<CompetitionDiscovery.Listing> = emptyList(),
     ) {
         val visible: List<CompetitionDiscovery.Listing>
             get() = listings
@@ -51,11 +54,13 @@ class CompetitionsViewModel @Inject constructor(
         viewModelScope.launch {
             val now = System.currentTimeMillis() / 1000
             val found = withContext(Dispatchers.IO) { discovery.search(now) }
+            val mine = withContext(Dispatchers.IO) { discovery.owned(signer.getPublicKeyHex(), now) }
             _state.update {
                 it.copy(
                     listings = discovery.filter(found, it.query),
                     loading = false,
                     loaded = true,
+                    owned = mine,
                 )
             }
             allListings = found

@@ -982,6 +982,17 @@ portable today.
 
 ### 11.3 The privacy-first default: a direct invoice and an encrypted preimage
 
+> **Implementation status, 2026-08-13: specified and agreed, not yet built.**
+> The shipped entry-fee path is still §11.4's zap flow, and until this section
+> is implemented it describes the intended default rather than the current one.
+> The encrypted channel it depends on now exists — NIP-44 across all four web
+> signer paths and on Android — and is already carrying prize claims (§11.7),
+> so what remains is the payment path itself: skip the zap request, capture the
+> preimage, and verify it in the organizer console. Recorded here rather than
+> written as though it were done, because a spec that describes an unbuilt
+> default is how a privacy claim gets made on a user's behalf without any code
+> behind it.
+
 The default path publishes **nothing at all** about the payment.
 
 1. The participant's client resolves the organizer's LNURL-pay endpoint (§11.5)
@@ -1017,6 +1028,13 @@ obtain a valid preimage is for the invoice to have been settled, which is what
 the organizer is being asked to believe.
 
 ### 11.4 The fallback: an ephemeral zap key and a one-time token
+
+> **Implementation status, 2026-08-13:** the zap flow below is shipped and is
+> currently the *only* automatic path, but **without** the ephemeral key and the
+> one-time token. What ships today signs the zap request with the participant's
+> own identity key and carries the competition's `a` coordinate, which is what
+> §11.2 describes as the leak. Both halves of the fix — the throwaway key and
+> the omitted coordinate — are specified here and unbuilt.
 
 For a wallet that cannot produce a preimage, an automatic path still exists, and
 it still does not publish the participant's identity.

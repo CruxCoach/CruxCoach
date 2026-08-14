@@ -7,6 +7,7 @@ import com.cruxcoach.android.competition.CompetitionClimbResolver
 import com.cruxcoach.android.competition.CompetitionIntentPublisher
 import com.cruxcoach.android.competition.CompetitionPaymentFlow
 import com.cruxcoach.android.competition.CompetitionRelayClient
+import com.cruxcoach.android.competition.CompetitionHostPublisher
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.android.payment.NostrProfileManager
 import com.cruxcoach.android.data.GradeScale
@@ -20,6 +21,8 @@ import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardClimbParser
 import com.cruxcoach.domain.board.BoardHold
 import com.cruxcoach.domain.competition.CompetitionClimb
+import com.cruxcoach.domain.competition.CompetitionPrize
+import com.cruxcoach.domain.competition.CompetitionPrizeClaim
 import com.cruxcoach.domain.competition.CompetitionProtocol
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -61,6 +64,7 @@ class CompetitionDetailViewModel @Inject constructor(
     private val profiles: NostrProfileManager,
     private val boardRepository: BoardRepository,
     private val preferences: UserPreferences,
+    private val hostPublisher: CompetitionHostPublisher,
 ) : ViewModel() {
 
     private val organizerPubkey: String = savedStateHandle["organizerPubkey"] ?: ""
@@ -77,7 +81,18 @@ class CompetitionDetailViewModel @Inject constructor(
     private val _action = MutableStateFlow<Action>(Action.Idle)
     val action: StateFlow<Action> = _action.asStateFlow()
 
+    sealed interface Cleanup {
+        data object Idle : Cleanup
+        data object Working : Cleanup
+        data class Sent(val tombstoneAccepted: Int, val deletionAccepted: Int, val attempted: Int) : Cleanup
+        data class Failed(val reason: String) : Cleanup
+    }
+
+    private val _cleanup = MutableStateFlow<Cleanup>(Cleanup.Idle)
+    val cleanup: StateFlow<Cleanup> = _cleanup.asStateFlow()
+
     val myPubkey: String get() = signer.getPublicKeyHex()
+    val isAuthority: Boolean get() = client.snapshot.value.competition?.authority == myPubkey
 
     data class Ui(
         val snapshot: CompetitionRelayClient.Snapshot,
@@ -446,6 +461,80 @@ class CompetitionDetailViewModel @Inject constructor(
 
     fun clearAction() = _action.update { Action.Idle }
 
+    // ── organizer decisions ──
+
+    fun hostLifecycle(status: String) = hostAct("lifecycle", JsonObject(mapOf(
+        "status" to JsonPrimitive(status), "at" to JsonPrimitive(System.currentTimeMillis() / 1000),
+    )))
+
+    fun cleanupCompetition() {
+        if (_cleanup.value is Cleanup.Working) return
+        _cleanup.value = Cleanup.Working
+        viewModelScope.launch {
+            _cleanup.value = hostPublisher.deleteCompetition().fold(
+                onSuccess = { Cleanup.Sent(it.tombstoneAccepted, it.deletionAccepted, it.attempted) },
+                onFailure = { Cleanup.Failed(it.message ?: "cleanup_failed") },
+            )
+        }
+    }
+
+    fun hostRegistration(pubkey: String, decision: String, intentId: String? = null, division: String? = null, display: String? = null) {
+        val participant = client.snapshot.value.state?.participant(pubkey)
+        hostAct("registration_decision", JsonObject(buildMap {
+            put("pubkey", JsonPrimitive(pubkey)); put("decision", JsonPrimitive(decision))
+            (division ?: participant?.division)?.takeIf(String::isNotBlank)?.let { put("division", JsonPrimitive(it)) }
+            (display ?: participant?.display)?.takeIf(String::isNotBlank)?.let { put("display", JsonPrimitive(it)) }
+            intentId?.let { put("intent_id", JsonPrimitive(it)) }
+        }), subjects = listOf(pubkey))
+    }
+
+    fun hostCheckIn(pubkey: String, checkedIn: Boolean, intentId: String? = null) = hostAct("checkin", JsonObject(buildMap {
+        put("pubkey", JsonPrimitive(pubkey)); put("state", JsonPrimitive(if (checkedIn) "checked_in" else "no_show"))
+        intentId?.let { put("intent_id", JsonPrimitive(it)) }
+    }), subjects = listOf(pubkey))
+
+    fun hostWithdraw(pubkey: String, intentId: String) = hostRegistration(pubkey, "withdrawn", intentId)
+
+    fun hostDefer(pubkey: String, decision: String, intentId: String) = hostAct("defer_decision", JsonObject(mapOf(
+        "pubkey" to JsonPrimitive(pubkey), "decision" to JsonPrimitive(decision),
+        "intent_id" to JsonPrimitive(intentId),
+    )), subjects = listOf(pubkey))
+
+    fun hostSeed() {
+        val order = client.snapshot.value.state?.participants.orEmpty()
+            .filter { it.registration == "accepted" && it.checkin == "checked_in" && it.result == "active" }
+            .map { it.pubkey }.sorted()
+        hostAct("queue", JsonObject(mapOf("action" to JsonPrimitive("seed"), "order" to kotlinx.serialization.json.JsonArray(order.map(::JsonPrimitive)))))
+    }
+
+    fun hostQueue(action: String, index: Int? = null, climbId: String? = null) = hostAct("queue", JsonObject(buildMap {
+        put("action", JsonPrimitive(action)); index?.let { put("index", JsonPrimitive(it)) }; climbId?.let { put("climb_id", JsonPrimitive(it)) }
+    }))
+
+    fun hostAttempt(pubkey: String, climbId: String, outcome: String, intentId: String? = null) {
+        val used = client.snapshot.value.state?.participant(pubkey)?.climb(climbId)?.attemptsUsed ?: 0
+        hostAct("attempt_result", JsonObject(buildMap {
+            put("pubkey", JsonPrimitive(pubkey)); put("climb_id", JsonPrimitive(climbId))
+            put("outcome", JsonPrimitive(outcome)); put("attempt_no", JsonPrimitive(used + 1))
+            intentId?.let { put("intent_id", JsonPrimitive(it)) }
+        }), subjects = listOf(pubkey))
+    }
+
+    fun hostAnnounce(text: String) {
+        if (text.isNotBlank()) hostAct("announcement", JsonObject(mapOf("text" to JsonPrimitive(text.trim()))))
+    }
+
+    private fun hostAct(op: String, data: JsonObject, subjects: List<String> = emptyList()) {
+        if (_action.value is Action.Working) return
+        _action.value = Action.Working
+        viewModelScope.launch {
+            _action.value = when (val result = hostPublisher.append(op, data, subjects = subjects)) {
+                is CompetitionHostPublisher.Result.Published -> Action.Sent(result.accepted, result.attempted)
+                is CompetitionHostPublisher.Result.Failed -> Action.Failed(result.reason)
+            }
+        }
+    }
+
     // ── paying the entry fee ──
 
     /** Where the payment attempt has got to. Nothing here is a payment itself. */
@@ -491,6 +580,97 @@ class CompetitionDetailViewModel @Inject constructor(
     }
 
     fun clearPayment() = _payment.update { Payment.Idle }
+
+    // ── claiming a prize ──
+
+    /** Where a prize claim has got to. Nothing here moves money. */
+    sealed interface PrizeClaim {
+        data object Idle : PrizeClaim
+        data object Working : PrizeClaim
+        data object Sent : PrizeClaim
+        data class Failed(val code: String) : PrizeClaim
+    }
+
+    private val _prizeClaim = MutableStateFlow<PrizeClaim>(PrizeClaim.Idle)
+    val prizeClaim: StateFlow<PrizeClaim> = _prizeClaim.asStateFlow()
+
+    /**
+     * Claim a prize the standings say is yours.
+     *
+     * Checked here before anything is sent — the winner is holding the phone
+     * and can fix a bad destination, where an organizer refusing it later is a
+     * message they may never see. The body is encrypted to the organizer, so
+     * the destination reaches them and nobody else.
+     */
+    fun claimPrize(prizeId: String, payoutKind: String, destination: String) {
+        if (_prizeClaim.value is PrizeClaim.Working) return
+        _prizeClaim.update { PrizeClaim.Working }
+        viewModelScope.launch {
+            val snapshot = client.snapshot.value
+            val competition = snapshot.competition
+            val prize = competition?.prizes?.firstOrNull { it.id == prizeId }
+            // The same hash the website binds a claim to: the reduced state's
+            // own, so a correction that moves the standings invalidates claims
+            // made against the old ones.
+            val resultsHash = snapshot.state?.stateHash()
+            if (competition == null || prize == null || resultsHash == null) {
+                _prizeClaim.update { PrizeClaim.Failed("not_loaded") }
+                return@launch
+            }
+
+            val now = System.currentTimeMillis() / 1000
+            when (val check = CompetitionPrizeClaim.validateClaimInput(prize, payoutKind, destination, now)) {
+                is CompetitionPrizeClaim.Check.Failed -> {
+                    _prizeClaim.update { PrizeClaim.Failed(check.error) }
+                    return@launch
+                }
+                CompetitionPrizeClaim.Check.Ok -> Unit
+            }
+
+            val body = CompetitionPrizeClaim.buildClaimBody(
+                compId = competition.compId,
+                prizeId = prizeId,
+                resultsHash = resultsHash,
+                payoutKind = payoutKind,
+                destination = destination,
+            )
+            val ciphertext: String? = runCatching {
+                signer.signer.nip44Encrypt(body, competition.authority)
+            }.getOrNull()
+            if (ciphertext == null) {
+                // A signer that cannot encrypt cannot send a claim privately,
+                // and sending it in the clear is not an acceptable fallback.
+                _prizeClaim.update { PrizeClaim.Failed("no_encryption") }
+                return@launch
+            }
+
+            val result = intents.claimPrize(competition, organizerPubkey, prizeId, ciphertext)
+            _prizeClaim.update {
+                when (result) {
+                    is CompetitionIntentPublisher.Result.Published -> PrizeClaim.Sent
+                    is CompetitionIntentPublisher.Result.Failed -> PrizeClaim.Failed(result.reason)
+                }
+            }
+        }
+    }
+
+    /** Tell the organizer the money arrived. Optional, and says so. */
+    fun acknowledgePrize(prizeId: String) = act {
+        val competition = client.snapshot.value.competition ?: return@act null
+        intents.acknowledgePrize(competition, organizerPubkey, prizeId)
+    }
+
+    fun clearPrizeClaim() = _prizeClaim.update { PrizeClaim.Idle }
+
+    /** The prizes this person is standing at, once the results are final. */
+    fun claimablePrizes(): List<CompetitionPrize> {
+        val snapshot = client.snapshot.value
+        val competition = snapshot.competition ?: return emptyList()
+        if (snapshot.state?.status != "finished") return emptyList()
+        return competition.prizes.filter { prize ->
+            CompetitionPrizeClaim.eligibleWinner(snapshot.standings, prize)?.pubkey == myPubkey
+        }
+    }
 
     /** What happened the last time somebody asked to see a climb on the board. */
     private val _climbOpen = MutableStateFlow<CompetitionClimbResolver.Result?>(null)

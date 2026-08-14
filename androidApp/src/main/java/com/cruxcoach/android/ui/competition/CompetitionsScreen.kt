@@ -53,6 +53,7 @@ import com.cruxcoach.android.competition.CompetitionShareLink
 @Composable
 fun CompetitionsScreen(
     onOpenCompetition: (CompetitionShareLink.Ref) -> Unit,
+    onCreateCompetition: () -> Unit,
     onScan: () -> Unit,
     onNavigateBack: () -> Unit,
     viewModel: CompetitionsViewModel = hiltViewModel(),
@@ -90,6 +91,18 @@ fun CompetitionsScreen(
             contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            item {
+                Button(
+                    onClick = onCreateCompetition,
+                    modifier = Modifier.fillMaxWidth().testTag("competition_create_open"),
+                ) { Text("Wettkampf veranstalten") }
+            }
+
+            if (state.owned.isNotEmpty()) {
+                item { Text("Meine Wettkämpfe", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+                items(state.owned, key = { "owned_${it.eventId}" }) { listing -> CompetitionRow(listing, onOpenCompetition) }
+            }
+
             item {
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp)) {

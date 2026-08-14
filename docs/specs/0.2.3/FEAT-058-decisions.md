@@ -111,10 +111,17 @@ and the moment there is a pot somebody has to be liable for it.
 
 ## 5b. Payment privacy: a direct invoice by default, an ephemeral zap as fallback
 
-**Shipped.** The default path publishes nothing about the payment. The client
-asks the organizer's endpoint for an invoice with no `nostr` parameter, the
-participant pays it, and the preimage travels to the organizer NIP-44 encrypted.
-The organizer verifies `sha256(preimage) == payment_hash` locally.
+**Decided, and not yet built (2026-08-13).** The chosen default is that the
+client asks the organizer's endpoint for an invoice with no `nostr` parameter,
+the participant pays it, and the preimage travels to the organizer NIP-44
+encrypted, who verifies `sha256(preimage) == payment_hash` locally.
+
+What exists today is the zap path, with the participant's own key and the
+competition coordinate in a public receipt — the leak this decision exists to
+close. The encrypted channel the default needs is built and already carries
+prize claims; the payment path itself is not. Written down as a decision rather
+than as an accomplishment, because the difference matters to anybody reading
+this to find out what their payment discloses.
 
 **Why this and not a zap.** BOLT11 says the preimage "provides proof of
 payment"; NIP-57 says its receipt "is not a proof of payment". The private path
