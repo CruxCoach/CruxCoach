@@ -38,6 +38,21 @@ object CompetitionValidation {
     fun validate(competition: Competition): List<Problem> {
         val problems = mutableListOf<Problem>()
         fun fail(field: String, message: String) = problems.add(Problem(field, message))
+        fun isInteger(obj: kotlinx.serialization.json.JsonObject, field: String): Boolean =
+            (obj[field] as? kotlinx.serialization.json.JsonPrimitive)
+                ?.takeUnless { it.isString }?.content?.toLongOrNull() != null
+        fun requireInteger(
+            obj: kotlinx.serialization.json.JsonObject,
+            field: String,
+            required: Boolean = true,
+            message: String = "must be a whole number",
+        ) {
+            if (!obj.containsKey(field)) {
+                if (required) fail(field, "is required")
+            } else if (!isInteger(obj, field)) {
+                fail(field, message)
+            }
+        }
 
         if (!CompetitionProtocol.isCompId(competition.compId)) {
             fail("comp_id", "must be 16 lowercase hex characters")
@@ -45,9 +60,15 @@ object CompetitionValidation {
         if (!CompetitionProtocol.isHex32(competition.authority)) {
             fail("authority", "must be a 32-byte hex public key")
         }
+        requireInteger(competition.raw, "authority_epoch")
         if (competition.authorityEpoch < 1) fail("authority_epoch", "must be a whole number of at least 1")
 
         for ((field, bounds) in TEXT_LIMITS) {
+            val raw = competition.raw[field]
+            if (raw != null && (raw as? kotlinx.serialization.json.JsonPrimitive)?.isString != true) {
+                fail(field, "must be text")
+                continue
+            }
             val value = competition.raw.str(field)
             val (min, max) = bounds
             if (value.isNullOrEmpty()) {
@@ -61,11 +82,22 @@ object CompetitionValidation {
 
         if (competition.visibility !in VISIBILITIES) fail("visibility", "must be one of: ${VISIBILITIES.joinToString(", ")}")
         if (competition.status !in CompetitionProtocol.LIFECYCLE) fail("status", "must be a known lifecycle state")
+        requireInteger(competition.raw, "capacity")
         if (competition.capacity !in 0..500) fail("capacity", "must be between 0 and 500")
         if (competition.timezone.isEmpty()) fail("timezone", "is required")
 
         if (competition.waiverRequired && competition.raw.str("waiver").isNullOrEmpty()) {
             fail("waiver", "is required when a waiver must be accepted")
+        }
+
+        for (field in listOf(
+            "starts_at", "ends_at", "registration_opens_at", "registration_closes_at",
+            "checkin_opens_at", "checkin_closes_at",
+        )) {
+            requireInteger(
+                competition.raw, field, required = false,
+                message = "must be a whole number of seconds since the epoch",
+            )
         }
 
         val orderedPairs = mutableListOf(
@@ -102,6 +134,8 @@ object CompetitionValidation {
             for (field in listOf("brand", "model", "size")) {
                 if (board.str(field).isNullOrEmpty()) fail("board.$field", "is required")
             }
+            if (!isInteger(board, "angle")) fail("board.angle", "is required")
+            if (!isInteger(board, "layout_id")) fail("board.layout_id", "is required")
             if (board.int("angle") == null) fail("board.angle", "is required")
             if (board.int("layout_id") == null) fail("board.layout_id", "is required")
         }
@@ -121,6 +155,14 @@ object CompetitionValidation {
         }
 
         val rules = competition.rules
+        val rawRules = competition.raw["rules"] as kotlinx.serialization.json.JsonObject
+        for (field in listOf(
+            "climb_count", "attempts_per_climb", "turn_deadline_sec", "min_rest_sec",
+            "defer_budget_per_round", "max_consecutive_defers", "defer_slots",
+        )) requireInteger(rawRules, field)
+        for (field in listOf("counted_climb_count", "attempt_deadline_sec")) {
+            requireInteger(rawRules, field, required = false)
+        }
         if (rules.climbSource !in CLIMB_SOURCES) fail("rules.climb_source", "must be one of: ${CLIMB_SOURCES.joinToString(", ")}")
         if (rules.selectionUniqueness !in UNIQUENESS) fail("rules.selection_uniqueness", "must be one of: ${UNIQUENESS.joinToString(", ")}")
         if (rules.progression !in PROGRESSIONS) fail("rules.progression", "must be one of: ${PROGRESSIONS.joinToString(", ")}")
@@ -130,7 +172,11 @@ object CompetitionValidation {
             if (points == null) {
                 fail("rules.score_points", "is required for Zone / Top / Flash points")
             } else {
+                val rawPoints = rawRules["score_points"] as? kotlinx.serialization.json.JsonObject
                 for ((field, value) in listOf("zone" to points.zone, "top" to points.top, "flash" to points.flash)) {
+                    if (rawPoints == null || !isInteger(rawPoints, field)) {
+                        fail("rules.score_points.$field", "must be a whole number from 0 to 10000")
+                    }
                     if (value !in 0..10_000) fail("rules.score_points.$field", "must be between 0 and 10000")
                 }
                 if (points.zone == 0 && points.top == 0 && points.flash == 0) {
@@ -192,6 +238,14 @@ object CompetitionValidation {
                         fail("climbs", "lists the same climb twice")
                     }
                     if (climb.label.isBlank()) fail("climbs", "each climb needs a label")
+                    val rawClimb = (competition.raw["climbs"] as kotlinx.serialization.json.JsonArray)[competition.climbs.indexOf(climb)]
+                        as? kotlinx.serialization.json.JsonObject
+                    if (rawClimb == null || !isInteger(rawClimb, "angle")) {
+                        fail("climbs", "each climb needs an angle")
+                    }
+                    if (rawClimb?.containsKey("zone_hold") == true && !isInteger(rawClimb, "zone_hold")) {
+                        fail("climbs", "zone_hold must be a positive placement id")
+                    }
                     if (climb.zoneHold != null && climb.zoneHold <= 0) {
                         fail("climbs", "zone_hold must be a positive placement id")
                     }
@@ -237,6 +291,10 @@ object CompetitionValidation {
                     if (option.int("angle") == null) fail("climb_pool", "each option needs an angle")
                     if (option.str("label").isNullOrBlank()) fail("climb_pool", "each option needs a label")
                     val zoneHold = option.int("zone_hold")
+                    if (!isInteger(option, "angle")) fail("climb_pool", "each option needs an angle")
+                    if (option.containsKey("zone_hold") && !isInteger(option, "zone_hold")) {
+                        fail("climb_pool", "zone_hold must be a positive placement id")
+                    }
                     if (zoneHold != null && zoneHold <= 0) {
                         fail("climb_pool", "zone_hold must be a positive placement id")
                     }
@@ -249,6 +307,7 @@ object CompetitionValidation {
             }
         }
 
+        requireInteger(competition.raw, "fee_msat")
         if (competition.feeMsat < 0) {
             fail("fee_msat", "must be 0 or a whole number of millisatoshis")
         } else if (competition.feeMsat > 0 && competition.feeLnurl.isNullOrEmpty()) {
@@ -274,12 +333,18 @@ object CompetitionValidation {
                 }
 
                 val rank = prize?.int("rank")
+                if (prize == null || !isInteger(prize, "rank")) {
+                    fail("prizes", "each prize needs a rank from 1 to 100")
+                }
                 if (rank !in 1..100) fail("prizes", "each prize needs a rank from 1 to 100")
                 val kind = prize?.str("kind")
                 if (kind !in listOf("cash", "non_cash")) {
                     fail("prizes", "each prize is cash or non_cash")
                 }
-                if (kind == "cash" && (prize.long("value_msat") ?: 0L) <= 0L) {
+                if (kind == "cash" && (prize?.long("value_msat") ?: 0L) <= 0L) {
+                    fail("prizes", "a cash prize needs a value in millisatoshis")
+                }
+                if (kind == "cash" && !isInteger(prize, "value_msat")) {
                     fail("prizes", "a cash prize needs a value in millisatoshis")
                 }
 
@@ -301,8 +366,10 @@ object CompetitionValidation {
             }
         }
 
-        if (competition.raw.containsKey("prize_claim_days") && competition.prizeClaimDays !in 1..365) {
-            fail("prize_claim_days", "must be a whole number of days from 1 to 365")
+        if (competition.raw.containsKey("prize_claim_days")) {
+            if (!isInteger(competition.raw, "prize_claim_days") || competition.prizeClaimDays !in 1..365) {
+                fail("prize_claim_days", "must be a whole number of days from 1 to 365")
+            }
         }
 
         if (competition.relays.isEmpty() || competition.relays.size > 8) {

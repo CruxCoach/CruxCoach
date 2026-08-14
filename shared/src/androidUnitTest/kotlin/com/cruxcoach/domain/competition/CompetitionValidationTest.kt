@@ -352,4 +352,27 @@ class CompetitionValidationTest {
             assertTrue(problems(config(prizeClaimDays = bad)).any { it.field == "prize_claim_days" })
         }
     }
+
+    @Test
+    fun `quoted numbers and non-text strings are not coerced`() {
+        fun changed(from: String, to: String) = json.parseToJsonElement(
+            config().toString().replace(from, to),
+        ).jsonObject
+
+        assertTrue(problems(changed("\"capacity\":8", "\"capacity\":\"8\""))
+            .any { it.field == "capacity" && "whole number" in it.message })
+        assertTrue(problems(changed("\"starts_at\":1789005400", "\"starts_at\":\"1789005400\""))
+            .any { it.field == "starts_at" })
+        assertTrue(problems(changed("\"angle\":40", "\"angle\":\"40\""))
+            .any { it.field == "board.angle" })
+        assertTrue(problems(changed("\"attempts_per_climb\":3", "\"attempts_per_climb\":\"3\""))
+            .any { it.field == "attempts_per_climb" })
+        assertTrue(problems(changed("\"summary\":\"x\"", "\"summary\":7"))
+            .any { it.field == "summary" && it.message == "must be text" })
+
+        val quotedPrize = problems(config(
+            prizes = """[{"id":"place_1","rank":"1","kind":"cash","label":"First","value_msat":"1000"}]""",
+        ))
+        assertTrue(quotedPrize.count { it.field == "prizes" } >= 2)
+    }
 }
