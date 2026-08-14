@@ -280,7 +280,7 @@ internal object CompetitionCreateDraftPolicy {
         val divisionIds = divisions.mapTo(mutableSetOf()) { (it["id"] as JsonPrimitive).content }
         val seen = mutableSetOf<String>()
         val lines = d.prizes.lineSequence().map(String::trim).filter(String::isNotBlank).toList()
-        if (lines.size > 50) return null
+        if (lines.size > 10) return null
         return lines.map { line ->
             val parts = line.split('|').map(String::trim)
             val id = parts.getOrNull(0).orEmpty()
@@ -289,7 +289,7 @@ internal object CompetitionCreateDraftPolicy {
             val label = parts.getOrNull(3).orEmpty()
             val valueSats = parts.getOrNull(4)?.toLongOrNull() ?: 0L
             val division = parts.getOrNull(5)?.takeIf(String::isNotBlank)
-            if (!DIVISION_ID.matches(id) || !seen.add(id) || rank !in 1..50 ||
+            if (!DIVISION_ID.matches(id) || !seen.add(id) || rank !in 1..100 ||
                 kind !in setOf("cash", "non_cash") || label.isBlank() || label.length > 80 ||
                 valueSats !in 0L..100_000_000L || (division != null && division !in divisionIds)
             ) return null

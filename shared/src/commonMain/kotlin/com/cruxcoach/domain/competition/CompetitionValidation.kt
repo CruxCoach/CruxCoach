@@ -257,6 +257,54 @@ object CompetitionValidation {
             fail("fee_lnurl", "must be absent for a free competition")
         }
 
+        val prizes = competition.raw["prizes"] as? kotlinx.serialization.json.JsonArray
+        if (prizes != null) {
+            if (prizes.size > 10) fail("prizes", "must have at most 10 entries")
+            val prizeIds = mutableSetOf<String>()
+            val slots = mutableSetOf<String>()
+            val divisionIds = competition.divisions.mapTo(mutableSetOf()) { it.id }
+            val multiDivision = divisionIds.size > 1
+            for (element in prizes) {
+                val prize = element as? kotlinx.serialization.json.JsonObject
+                val id = prize?.str("id").orEmpty()
+                if (!ID_PATTERN.matches(id)) {
+                    fail("prizes", "each prize needs an id of [a-z0-9_], max 24 characters")
+                } else if (!prizeIds.add(id)) {
+                    fail("prizes", "duplicate prize id \"$id\"")
+                }
+
+                val rank = prize?.int("rank")
+                if (rank !in 1..100) fail("prizes", "each prize needs a rank from 1 to 100")
+                val kind = prize?.str("kind")
+                if (kind !in listOf("cash", "non_cash")) {
+                    fail("prizes", "each prize is cash or non_cash")
+                }
+                if (kind == "cash" && (prize.long("value_msat") ?: 0L) <= 0L) {
+                    fail("prizes", "a cash prize needs a value in millisatoshis")
+                }
+
+                val division = prize?.str("division")
+                if (multiDivision) {
+                    if (division.isNullOrEmpty()) {
+                        fail("prizes", "with several divisions each prize needs a division")
+                    } else if (division !in divisionIds) {
+                        fail("prizes", "prize division \"$division\" is not a division of this competition")
+                    }
+                } else if (!division.isNullOrEmpty() && division !in divisionIds) {
+                    fail("prizes", "prize division \"$division\" is not a division of this competition")
+                }
+
+                val slot = "${division.orEmpty()}#$rank"
+                if (!slots.add(slot)) {
+                    fail("prizes", "two prizes cannot be for the same place in the same division")
+                }
+            }
+        }
+
+        if (competition.raw.containsKey("prize_claim_days") && competition.prizeClaimDays !in 1..365) {
+            fail("prize_claim_days", "must be a whole number of days from 1 to 365")
+        }
+
         if (competition.relays.isEmpty() || competition.relays.size > 8) {
             fail("relays", "must list between 1 and 8 relays")
         } else if (competition.relays.any { !CompetitionProtocol.isAllowedRelayUrl(it) }) {

@@ -37,6 +37,9 @@ class CompetitionValidationTest {
         lateEntryAllowed: Boolean = false,
         scoring: String = "tops_then_attempts",
         scorePoints: String = "",
+        divisions: String = """[{"id":"open","label":"Open"}]""",
+        prizes: String = "[]",
+        prizeClaimDays: Int? = null,
     ) = json.parseToJsonElement(
         """
         {
@@ -61,7 +64,7 @@ class CompetitionValidationTest {
           "venue": {"kind": "physical", "name": "Test wall", "address": "Loopback 1"},
           "board": {"brand": "kilter", "model": "kilterboard-og", "layout_id": 1,
                     "size": "12x12", "angle": 40},
-          "divisions": [{"id": "open", "label": "Open"}],
+          "divisions": $divisions,
           "eligibility": "x",
           "waiver": "x",
           "waiver_required": false,
@@ -69,7 +72,8 @@ class CompetitionValidationTest {
           "spectator_info": "x",
           "refund_policy": "x",
           "fee_msat": 0,
-          "prizes": [],
+          "prizes": $prizes,
+          ${if (prizeClaimDays == null) "" else "\"prize_claim_days\": $prizeClaimDays,"}
           "rules": {
             "climb_source": "$climbSource",
             "climb_count": $climbCount,
@@ -316,5 +320,36 @@ class CompetitionValidationTest {
         assertEquals(45, competition.climbPool[1].angle)
         assertEquals("Red roof", competition.climb("p2")?.label)
         assertEquals(listOf("p1", "p2"), competition.climbsFor(listOf("p2")).map { it.id })
+    }
+
+    @Test
+    fun `prize rules match the website validator`() {
+        val valid = problems(config(
+            prizes = """[{"id":"place_1","rank":1,"kind":"cash","label":"First","value_msat":1000}]""",
+            prizeClaimDays = 30,
+        ))
+        assertTrue(valid.isEmpty(), valid.joinToString())
+
+        val duplicateSlot = problems(config(prizes = """[
+            {"id":"cash","rank":1,"kind":"cash","label":"Cash","value_msat":1000},
+            {"id":"goods","rank":1,"kind":"non_cash","label":"Shoes"}
+        ]"""))
+        assertTrue(duplicateSlot.any { it.field == "prizes" && "same place" in it.message })
+
+        val divisions = """[{"id":"open","label":"Open"},{"id":"women","label":"Women"}]"""
+        val ambiguous = problems(config(
+            divisions = divisions,
+            prizes = """[{"id":"first","rank":1,"kind":"non_cash","label":"Shoes"}]""",
+        ))
+        assertTrue(ambiguous.any { it.field == "prizes" && "needs a division" in it.message })
+        val unknown = problems(config(
+            divisions = divisions,
+            prizes = """[{"id":"first","rank":1,"kind":"non_cash","label":"Shoes","division":"youth"}]""",
+        ))
+        assertTrue(unknown.any { it.field == "prizes" && "not a division" in it.message })
+
+        for (bad in listOf(0, 366)) {
+            assertTrue(problems(config(prizeClaimDays = bad)).any { it.field == "prize_claim_days" })
+        }
     }
 }
