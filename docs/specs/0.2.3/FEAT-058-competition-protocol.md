@@ -585,8 +585,18 @@ Published once, after `status == finished`.
 Immutable means: no second results event is ever accepted at this address by a
 conformant reducer once one has been seen with a valid chain. A genuine
 correction after publication is a **new competition-scoped erratum** — a log
-entry with `op: "correction"` and `data.supersedes_results: true` — which
-clients render as "results amended", never as a silent replacement.
+entry with `op: "correction"`. Reducers derive `audit.supersedes_results: true`
+when the correction is reached after `finished`; they never trust an advisory
+flag from the writer. Clients render that as "results amended", never as a
+silent replacement.
+
+The correction's replacement is reduced at the superseded entry's original
+sequence and `at` time, followed by a deterministic replay of every later log
+entry. Applying it at the erratum's later sequence is non-conformant: an old
+`attempt_no` would no longer be next and the finished lifecycle would reject a
+valid result amendment. A client starting from a snapshot cannot correct an
+entry at or before that snapshot; it must fetch and replay the full authority
+chain first.
 
 ### 6.5 `intent` — participant-signed requests
 
@@ -760,7 +770,7 @@ Conformant behaviour:
 | `queue` | `{ "action": "seed"\|"open_turn"\|"close_turn"\|"advance"\|"reorder"\|"next_climb"\|"next_round", …}` | §9. |
 | `defer_decision` | `{ "pubkey", "decision": "granted"\|"denied", "reason"?, "new_index"? }` | §9.3. |
 | `attempt_result` | `{ "pubkey", "climb_id", "outcome": "top"\|"zone"\|"fall"\|"pass"\|"timeout", "attempt_no": int }` | Appends to the participant's climb record and increments `attempts_used`. |
-| `correction` | `{ "supersedes_seq": int, "replacement": { …a full op body… } }` + `reason` | Re-applies the named entry's effect with the replacement body. The original stays in the log forever; only the reduced state changes. |
+| `correction` | `{ "supersedes_seq": int, "replacement": { …a full op body… } }` + `reason` | Replaces the named earlier entry's effect at its original sequence/time, then replays every later entry. The original stays in the log forever; only the reduced state changes. Reducers mark amendments reached after `finished` as superseding results. |
 | `override` | `{ …any op body… }` with `actor: "organizer_override"` + `reason` | Same effect as the wrapped op, but always appended to `audit`. |
 | `announcement` | `{ "text": "…" }` | Appends to `announcements`. |
 | `disqualify` | `{ "pubkey" }` + `reason` | Sets `result: "disqualified"`; the participant is removed from `order` at the next queue action. |
@@ -768,6 +778,16 @@ Conformant behaviour:
 `reason` is **mandatory** on `correction`, `override`, `disqualify`, and on any
 `decision: "rejected" | "denied"`. A reducer rejects the entry without one. An
 audit trail whose entries do not say why is a log, not an audit trail.
+
+`supersedes_seq` must name an available earlier non-correction entry. Invalid
+targets are rejected as `correction_bad_target`. More than one correction may
+name the same original entry: each candidate is evaluated independently in the
+original context and the latest valid signed correction wins. The replacement
+must be a complete supported authority operation and must itself be valid in
+that context; otherwise the correction is rejected as
+`correction_invalid_replacement` and the preceding valid correction (or, if
+none, the original effect) is retained. These rejections are hashed like every
+other rejection.
 
 ### 8.2 Participant intent operations
 

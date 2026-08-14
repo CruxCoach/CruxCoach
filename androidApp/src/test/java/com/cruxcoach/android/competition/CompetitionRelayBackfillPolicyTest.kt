@@ -58,6 +58,23 @@ class CompetitionRelayBackfillPolicyTest {
                 historyComplete = true,
             ).trustworthy,
         )
+        assertEquals(
+            "history_incomplete",
+            CompetitionHostPublisher.cleanupTrustError(
+                CompetitionRelayClient.Snapshot(state = state.copy(status = "cancelled"), historyComplete = false),
+            ),
+        )
+        assertEquals(
+            "cancel_first",
+            CompetitionHostPublisher.cleanupTrustError(
+                CompetitionRelayClient.Snapshot(state = state, historyComplete = true),
+            ),
+        )
+        assertNull(
+            CompetitionHostPublisher.cleanupTrustError(
+                CompetitionRelayClient.Snapshot(state = state.copy(status = "cancelled"), historyComplete = true),
+            ),
+        )
     }
 
     @Test

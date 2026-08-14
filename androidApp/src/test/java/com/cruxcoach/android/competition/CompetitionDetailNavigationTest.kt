@@ -51,6 +51,11 @@ class CompetitionDetailNavigationTest {
         assertContains(source, "competition_host_payment_confirm")
         assertContains(source, "viewModel.hostVerifyPayment(paymentClaim)")
         assertContains(source, "competition_host_payment_verify_")
+        assertContains(source, "viewModel.hostCorrectResult(selected!!.seq, chosenOutcome, correctionReason)")
+        assertContains(source, "competition_host_correction_open")
+        assertContains(source, "it.supersedesResults")
+        assertContains(source, "latestCorrections.containsKey(entry.seq)")
+        assertContains(source, "comp_host_correction_amended")
         assertFalse(source.contains("viewModel.hostQueue(\"close_turn\")"))
 
         val prizePanel = prizePanelSource()

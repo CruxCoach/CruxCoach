@@ -9,6 +9,7 @@ import com.cruxcoach.domain.competition.CompetitionProtocol
 import com.cruxcoach.domain.competition.CompetitionReducer
 import com.cruxcoach.domain.competition.CompetitionScoring
 import com.cruxcoach.domain.competition.CompetitionState
+import com.cruxcoach.domain.competition.LogEntry
 import com.vitorpamplona.quartz.nip01Core.core.Event
 import com.vitorpamplona.quartz.nip01Core.crypto.verifyId
 import com.vitorpamplona.quartz.nip01Core.crypto.verifySignature
@@ -56,6 +57,8 @@ class CompetitionRelayClient @Inject constructor(
         val entryCount: Int = 0,
         val usesDevelopmentRelay: Boolean = false,
         val pendingIntents: List<CompetitionProtocol.ParsedIntent.Valid> = emptyList(),
+        /** Parsed authority entries for correction/audit UI; state still comes only from the reducer. */
+        val logEntries: List<LogEntry> = emptyList(),
         /** Local receipt time, never part of the reduced competition state. */
         val lastSyncedAt: Long = 0,
     ) {
@@ -391,8 +394,25 @@ class CompetitionRelayClient @Inject constructor(
                 loading = loading,
                 lastSyncedAt = System.currentTimeMillis() / 1000,
                 pendingIntents = if (intentHistoryComplete) unansweredIntents() else emptyList(),
+                logEntries = reduction.chosenEntries,
             )
         }
+    }
+
+    /** Full-history preview for operations such as corrections that rewrite an earlier effect. */
+    internal fun previewAuthorityEntry(entry: LogEntry): CompetitionState? {
+        val competition = definitionCompetition ?: return null
+        val rootId = _snapshot.value.competitionEventId ?: return null
+        val candidate = CompetitionReducer.Chained(
+            entry = entry,
+            eventId = "preview-${entry.seq}",
+            createdAt = entry.at,
+        )
+        return CompetitionReducer.reduce(
+            competition,
+            rootId,
+            entries.values.toList() + candidate,
+        ).state
     }
 
     /**

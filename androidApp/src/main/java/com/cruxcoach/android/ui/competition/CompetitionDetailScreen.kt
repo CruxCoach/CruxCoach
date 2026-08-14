@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.verticalScroll
@@ -637,10 +638,38 @@ private fun OrganizerConsole(
     var disqualifyReason by rememberSaveable { mutableStateOf("") }
     var editCompetition by rememberSaveable { mutableStateOf(false) }
     var editSubmitted by rememberSaveable { mutableStateOf(false) }
+    var correctionOpen by rememberSaveable { mutableStateOf(false) }
+    var correctionSeq by rememberSaveable { mutableStateOf<Int?>(null) }
+    var correctionOutcome by rememberSaveable { mutableStateOf("") }
+    var correctionReason by rememberSaveable { mutableStateOf("") }
+    var correctionSubmitted by rememberSaveable { mutableStateOf(false) }
+    val rejectedCorrections = state.rejected.filter { it.op == "correction" }.mapTo(mutableSetOf()) { it.seq }
+    val latestCorrections = ui.snapshot.logEntries.filter {
+        it.op == "correction" && it.seq !in rejectedCorrections
+    }.mapNotNull { correction ->
+        val target = (correction.data["supersedes_seq"] as? JsonPrimitive)?.content?.toIntOrNull()
+        val replacement = correction.data["replacement"] as? JsonObject
+        target?.let { it to replacement }
+    }.toMap()
+    val correctableAttempts = ui.snapshot.logEntries.filter {
+        it.op in setOf("attempt_result", "complete_turn")
+    }.map { entry ->
+        val replacement = latestCorrections[entry.seq]
+        if ((replacement?.get("op") as? JsonPrimitive)?.content == entry.op) {
+            entry.copy(data = replacement.get("data") as? JsonObject ?: entry.data)
+        } else entry
+    }.sortedByDescending { it.seq }
     LaunchedEffect(editCompetition, editSubmitted, action) {
         if (editCompetition && editSubmitted && action is CompetitionDetailViewModel.Action.Sent) {
             editCompetition = false
             editSubmitted = false
+        }
+    }
+    LaunchedEffect(correctionOpen, correctionSubmitted, action) {
+        if (correctionOpen && correctionSubmitted && action is CompetitionDetailViewModel.Action.Sent) {
+            correctionOpen = false
+            correctionSubmitted = false
+            correctionReason = ""
         }
     }
     if (editCompetition) HostCompetitionEditDialog(
@@ -704,6 +733,94 @@ private fun OrganizerConsole(
         },
         dismissButton = { TextButton({ confirmCleanup = false }) { Text(stringResource(R.string.action_cancel)) } },
     )
+    if (correctionOpen) {
+        val selected = correctableAttempts.firstOrNull { it.seq == correctionSeq }
+            ?: correctableAttempts.firstOrNull()
+        val originalOutcome = (selected?.data?.get("outcome") as? JsonPrimitive)?.content.orEmpty()
+        val chosenOutcome = correctionOutcome.ifBlank { originalOutcome }
+        AlertDialog(
+            onDismissRequest = {
+                if (action !is CompetitionDetailViewModel.Action.Working) {
+                    correctionOpen = false
+                    correctionSubmitted = false
+                    correctionReason = ""
+                }
+            },
+            title = { Text(stringResource(R.string.comp_host_correction_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(R.string.comp_host_correction_body))
+                    LazyColumn(Modifier.fillMaxWidth().heightIn(max = 180.dp)) {
+                        items(correctableAttempts, key = { it.seq }) { entry ->
+                            val pubkey = (entry.data["pubkey"] as? JsonPrimitive)?.content.orEmpty()
+                            val climbId = (entry.data["climb_id"] as? JsonPrimitive)?.content.orEmpty()
+                            val attemptNo = (entry.data["attempt_no"] as? JsonPrimitive)?.content.orEmpty()
+                            val entryOutcome = (entry.data["outcome"] as? JsonPrimitive)?.content.orEmpty()
+                            val outcomeLabel = stringResource(attemptOutcomeLabel(entryOutcome))
+                            val displayedOutcome = if (latestCorrections.containsKey(entry.seq)) {
+                                stringResource(R.string.comp_host_correction_amended, outcomeLabel)
+                            } else outcomeLabel
+                            FilterChip(
+                                selected = entry.seq == selected?.seq,
+                                onClick = {
+                                    correctionSeq = entry.seq
+                                    correctionOutcome = entryOutcome
+                                },
+                                label = {
+                                    Text(stringResource(
+                                        R.string.comp_host_correction_attempt,
+                                        state.participant(pubkey)?.displayOrShort() ?: pubkey.take(8),
+                                        competition.climb(climbId)?.label ?: climbId,
+                                        attemptNo,
+                                        displayedOutcome,
+                                    ))
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                    }
+                    Text(stringResource(R.string.comp_host_correction_outcome), fontWeight = FontWeight.SemiBold)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        CompetitionProtocol.ATTEMPT_OUTCOMES.forEach { outcome ->
+                            FilterChip(
+                                selected = chosenOutcome == outcome,
+                                onClick = { correctionOutcome = outcome },
+                                label = { Text(stringResource(attemptOutcomeLabel(outcome))) },
+                            )
+                        }
+                    }
+                    OutlinedTextField(
+                        correctionReason,
+                        { correctionReason = it },
+                        label = { Text(stringResource(R.string.comp_host_correction_reason)) },
+                        modifier = Modifier.fillMaxWidth().testTag("competition_host_correction_reason"),
+                    )
+                    if (state.status == "finished") Text(
+                        stringResource(R.string.comp_host_correction_final_warning),
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        correctionSubmitted = true
+                        viewModel.hostCorrectResult(selected!!.seq, chosenOutcome, correctionReason)
+                    },
+                    enabled = selected != null && correctionReason.isNotBlank() &&
+                        chosenOutcome != originalOutcome &&
+                        action !is CompetitionDetailViewModel.Action.Working,
+                    modifier = Modifier.testTag("competition_host_correction_publish"),
+                ) { Text(stringResource(R.string.comp_host_correction_publish)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { correctionOpen = false; correctionReason = "" }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            },
+        )
+    }
     paymentPubkey?.let { pubkey ->
         val label = state.participant(pubkey)?.displayOrShort() ?: pubkey.take(12)
         AlertDialog(
@@ -1121,6 +1238,18 @@ private fun OrganizerConsole(
 
             OutlinedTextField(announcement, { announcement = it }, label = { Text(stringResource(R.string.comp_host_announcement)) }, modifier = Modifier.fillMaxWidth())
             OutlinedButton({ viewModel.hostAnnounce(announcement); announcement = "" }, enabled = announcement.isNotBlank()) { Text(stringResource(R.string.comp_host_publish)) }
+            if (state.audit.any { it.supersedesResults }) WarningCard(stringResource(R.string.comp_results_amended))
+            if (correctableAttempts.isNotEmpty()) {
+                OutlinedButton(
+                    onClick = {
+                        correctionSeq = correctableAttempts.first().seq
+                        correctionOutcome = (correctableAttempts.first().data["outcome"] as? JsonPrimitive)
+                            ?.content.orEmpty()
+                        correctionOpen = true
+                    },
+                    modifier = Modifier.fillMaxWidth().testTag("competition_host_correction_open"),
+                ) { Text(stringResource(R.string.comp_host_correction_open)) }
+            }
             }
             when (action) {
                 is CompetitionDetailViewModel.Action.Failed -> Text(
@@ -1519,6 +1648,9 @@ private fun competitionActionError(reason: String): String = when (reason) {
     "config_referenced_division" -> stringResource(R.string.comp_host_error_division_used)
     "config_invalid" -> stringResource(R.string.comp_host_error_invalid)
     "config_bad_revision" -> stringResource(R.string.comp_host_error_revision)
+    "correction_bad_target" -> stringResource(R.string.comp_host_error_correction_target)
+    "correction_invalid_replacement" -> stringResource(R.string.comp_host_error_correction_invalid)
+    "correction_no_change" -> stringResource(R.string.comp_host_error_correction_no_change)
     "config_immutable_field" -> stringResource(R.string.comp_host_error_immutable)
     "config_impact_mismatch" -> stringResource(R.string.comp_host_error_impact)
     "no_relay" -> stringResource(R.string.comp_host_error_no_relay)
@@ -3027,6 +3159,9 @@ private fun LeaderboardCard(ui: CompetitionDetailViewModel.Ui) {
                 )
                 return@Column
             }
+            if (ui.snapshot.state?.audit?.any { it.supersedesResults } == true) {
+                WarningCard(stringResource(R.string.comp_results_amended))
+            }
             ui.snapshot.standings.firstOrNull { it.pubkey == ui.myPubkey }?.let { mine ->
                 Text(
                     if (mine.rank > 0) stringResource(R.string.comp_leaderboard_your_rank, mine.rank)
@@ -3073,6 +3208,15 @@ private fun LeaderboardCard(ui: CompetitionDetailViewModel.Ui) {
             }
         }
     }
+}
+
+private fun attemptOutcomeLabel(outcome: String): Int = when (outcome) {
+    "top" -> R.string.comp_host_result_top
+    "zone" -> R.string.comp_host_result_zone
+    "fall" -> R.string.comp_host_result_fall
+    "pass" -> R.string.comp_host_result_pass
+    "timeout" -> R.string.comp_host_result_timeout
+    else -> R.string.comp_host_result_unknown
 }
 
 private inline fun <T> List<T>.anyIndexed(predicate: (Int, T) -> Boolean): Boolean {

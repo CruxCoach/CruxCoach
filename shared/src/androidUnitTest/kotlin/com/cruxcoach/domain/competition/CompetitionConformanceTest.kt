@@ -279,6 +279,7 @@ class CompetitionConformanceTest {
         assertFalse(reduction.state.chainComplete)
         assertEquals(2, reduction.state.seq, "nothing past the gap may be applied")
         assertEquals(0, reduction.state.participants.size)
+        assertEquals(listOf(1, 2), reduction.chosenEntries.map { it.seq })
     }
 
     @Test
@@ -307,6 +308,28 @@ class CompetitionConformanceTest {
         assertTrue(forwards.state.forkDetected)
         assertTrue(backwards.state.forkDetected)
         assertEquals(forwards.state.head, backwards.state.head)
+        assertEquals(forwards.chosenEntries, backwards.chosenEntries)
+    }
+
+    @Test
+    fun `post-finish corrections replay at the original turn and retain the latest valid amendment`() {
+        val fixture = stream("result-correction.json")
+        val (_, reduction) = replay(fixture)
+        val alice = reduction.state.participants.single { it.display == "alice" }
+        val bob = reduction.state.participants.single { it.display == "bob" }
+
+        assertEquals("zone", alice.climbs.single { it.climbId == "c1" }.outcome)
+        assertEquals("zone", bob.climbs.single { it.climbId == "c1" }.outcome)
+        assertTrue(reduction.state.audit.any { it.op == "correction" && it.supersedesResults })
+        assertTrue(reduction.state.rejected.any { it.code == "correction_bad_target" })
+        assertTrue(reduction.state.rejected.any { it.code == "correction_invalid_replacement" })
+        val rejectedSeqs = reduction.state.rejected.filter { it.op == "correction" }.map { it.seq }.toSet()
+        assertTrue(reduction.state.audit.filter { it.seq in rejectedSeqs }.none { it.supersedesResults })
+        val firstCorrection = fixture.logEvents.first { event ->
+            event.tags.any { tag -> tag.getOrNull(0) == "op" && tag.getOrNull(1) == "correction" }
+        }
+        val body = CompetitionFixtures.json.parseToJsonElement(firstCorrection.content).jsonObject
+        assertFalse("supersedes_results" in body.getValue("data").jsonObject)
     }
 
     @Test

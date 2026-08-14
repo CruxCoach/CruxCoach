@@ -70,14 +70,13 @@ class CompetitionHostPublisher @Inject constructor(
         // Never publish an authority entry our own reducer will reject. In
         // particular, an invalid attempt_result must not be followed by an
         // otherwise valid queue advance that silently skips the climber.
-        val preview = CompetitionReducer.applyEntry(
-            state,
-            LogEntry(seq, state.head, state.epoch, at, op, "authority", reason, data),
-            competition,
-        )
-        if (preview.rejected.size > state.rejected.size) {
-            return Result.Failed(preview.rejected.last().code)
+        val entry = LogEntry(seq, state.head, state.epoch, at, op, "authority", reason, data)
+        val preview = if (op == "correction") {
+            client.previewAuthorityEntry(entry) ?: return Result.Failed("not_loaded")
+        } else {
+            CompetitionReducer.applyEntry(state, entry, competition)
         }
+        preview.rejected.lastOrNull { it.seq == seq }?.let { return Result.Failed(it.code) }
         val event = runCatching {
             NostrPublicEventBuilder(signer).buildSignedEvent(
                 CompetitionProtocol.KIND,
@@ -138,7 +137,7 @@ class CompetitionHostPublisher @Inject constructor(
         require(competition.authority == signer.getPublicKeyHex() && organizer == signer.getPublicKeyHex()) {
             "not_authority"
         }
-        require(snapshot.state?.status == "cancelled") { "cancel_first" }
+        cleanupTrustError(snapshot)?.let { error(it) }
 
         val now = System.currentTimeMillis() / 1000
         val tombstone = NostrPublicEventBuilder(signer).buildSignedEvent(
@@ -165,4 +164,12 @@ class CompetitionHostPublisher @Inject constructor(
         val (attempted, accepted) = relayPool.sendEventWithStats(event)
         if (accepted == 0) Result.Failed("no_relay") else Result.Published(accepted, attempted)
     }.getOrElse { Result.Failed(it.message ?: "publish_failed") }
+
+    companion object {
+        internal fun cleanupTrustError(snapshot: CompetitionRelayClient.Snapshot): String? = when {
+            !snapshot.trustworthy -> "history_incomplete"
+            snapshot.state?.status != "cancelled" -> "cancel_first"
+            else -> null
+        }
+    }
 }

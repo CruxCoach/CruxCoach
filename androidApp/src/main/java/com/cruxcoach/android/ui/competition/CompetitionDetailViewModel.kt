@@ -853,6 +853,38 @@ class CompetitionDetailViewModel @Inject constructor(
         if (text.isNotBlank()) hostAct("announcement", JsonObject(mapOf("text" to JsonPrimitive(text.trim()))))
     }
 
+    fun hostCorrectResult(seq: Int, outcome: String, reason: String) {
+        val snapshot = client.snapshot.value
+        val original = snapshot.logEntries.firstOrNull {
+            it.seq == seq && it.op in setOf("attempt_result", "complete_turn")
+        }
+        if (original == null) {
+            _action.value = Action.Failed("correction_bad_target")
+            return
+        }
+        val originalOutcome = (original.data["outcome"] as? JsonPrimitive)?.content
+        if (outcome !in CompetitionProtocol.ATTEMPT_OUTCOMES || outcome == originalOutcome) {
+            _action.value = Action.Failed("correction_no_change")
+            return
+        }
+        if (reason.isBlank()) {
+            _action.value = Action.Failed("reason_required")
+            return
+        }
+        hostAct(
+            "correction",
+            JsonObject(buildMap {
+                put("supersedes_seq", JsonPrimitive(seq))
+                put("replacement", JsonObject(mapOf(
+                    "op" to JsonPrimitive(original.op),
+                    "data" to JsonObject(original.data + ("outcome" to JsonPrimitive(outcome))),
+                )))
+            }),
+            subjects = (original.data["pubkey"] as? JsonPrimitive)?.content?.let(::listOf).orEmpty(),
+            reason = reason.trim(),
+        )
+    }
+
     fun configUpdateImpact(patch: JsonObject): String? = CompetitionConfigUpdate.impact(patch)
 
     fun hostUpdateConfig(patch: JsonObject, reason: String) {

@@ -23,7 +23,8 @@ object CompetitionReducer {
      */
     val REJECTION_CODES = listOf(
         "already_topped", "attempt_out_of_order", "capacity_full", "climb_already_claimed",
-        "correction_missing_replacement", "defer_budget_exhausted", "defer_consecutive_limit",
+        "correction_bad_target", "correction_invalid_replacement", "correction_missing_replacement",
+        "defer_budget_exhausted", "defer_consecutive_limit",
         "duplicate_in_order", "empty_announcement", "epoch_mismatch", "illegal_transition",
         "incomplete_seed_order", "index_out_of_range", "ineligible_in_order", "no_attempts_left",
         "no_fee", "no_order", "no_such_participant", "not_accepted_registration", "not_eligible",
@@ -44,6 +45,7 @@ object CompetitionReducer {
         val state: CompetitionState,
         val chainBreakAt: Int?,
         val effectiveCompetition: Competition,
+        val chosenEntries: List<LogEntry>,
     )
 
     fun initialState(competition: Competition, competitionEventId: String) = CompetitionState(
@@ -67,7 +69,7 @@ object CompetitionReducer {
         snapshot: CompetitionState? = null,
         snapshotHead: String? = null,
     ): Reduction {
-        var state = snapshot?.copy(fromSnapshot = true)
+        val baseState = snapshot?.copy(fromSnapshot = true)
             ?: initialState(competition, competitionEventId)
 
         val bySeq = mutableMapOf<Int, MutableList<Chained>>()
@@ -81,6 +83,8 @@ object CompetitionReducer {
         var expectedPrev = snapshotHead ?: competitionEventId
         var seq = if (snapshot != null) snapshot.seq + 1 else 1
         var chainBreakAt: Int? = null
+        var forkDetected = baseState.forkDetected
+        val chosenChain = mutableListOf<Chained>()
 
         while (true) {
             val bucket = bySeq[seq]
@@ -95,14 +99,97 @@ object CompetitionReducer {
             } else {
                 // Which branch is "right" is unknowable; that every client picks
                 // the same one is not. Lower created_at wins, ties by lower id.
-                state = state.copy(forkDetected = true)
+                forkDetected = true
                 linked.sortedWith(compareBy({ it.createdAt }, { it.eventId })).first()
             }
-            val effective = state.effectiveConfig?.let(Competition::from) ?: competition
-            state = applyEntry(state, chosen.entry, effective)
-            state = state.copy(seq = chosen.entry.seq, head = chosen.eventId)
+            chosenChain += chosen
             expectedPrev = chosen.eventId
             seq += 1
+        }
+
+        /*
+         * Corrections replace an earlier effect in its original context. If a
+         * corrected attempt were instead appended at the correction's later
+         * sequence, attempt numbering and the finished-state window would make
+         * a legitimate result amendment impossible. Plan from the complete
+         * chosen prefix, then replay once with the replacement at its target.
+         */
+        data class CorrectionPlan(
+            val target: Int?,
+            val replacement: JsonObject?,
+            var error: String?,
+        )
+        val corrections = mutableMapOf<Int, CorrectionPlan>()
+        val replacements = mutableMapOf<Int, MutableList<CorrectionPlan>>()
+        val available = chosenChain.associateBy { it.entry.seq }
+        for (item in chosenChain) {
+            val entry = item.entry
+            if (entry.op != "correction") continue
+            val target = entry.data.int("supersedes_seq")
+            val replacement = entry.data["replacement"] as? JsonObject
+            val replacementData = replacement?.get("data") as? JsonObject
+            val replacementOp = replacement?.str("op")
+            val error = when {
+                replacement == null || replacementData == null -> "correction_missing_replacement"
+                target == null || target < 1 || target >= entry.seq -> "correction_bad_target"
+                snapshot != null && target <= snapshot.seq -> "correction_bad_target"
+                available[target]?.entry?.op == null || available[target]?.entry?.op == "correction" ->
+                    "correction_bad_target"
+                replacementOp !in HANDLED_OPS -> "unknown_op"
+                else -> null
+            }
+            val plan = CorrectionPlan(target, replacement, error)
+            corrections[entry.seq] = plan
+            if (error == null) {
+                replacements.getOrPut(target!!) { mutableListOf() } += plan
+            }
+        }
+
+        var state = baseState.copy(forkDetected = forkDetected)
+        for (item in chosenChain) {
+            val entry = item.entry
+            if (entry.op == "correction") {
+                val plan = corrections.getValue(entry.seq)
+                state = state.copy(
+                    audit = state.audit + AuditEntry(
+                        entry.seq,
+                        "correction",
+                        entry.reason,
+                        entry.at,
+                        supersedesSeq = entry.data.int("supersedes_seq"),
+                        supersedesResults = plan.error == null && state.status == "finished",
+                    ),
+                )
+                if (plan.error != null) state = reject(state, entry, plan.error!!)
+            } else {
+                val plans = replacements[entry.seq]
+                if (plans == null) {
+                    val effective = state.effectiveConfig?.let(Competition::from) ?: competition
+                    state = applyEntry(state, entry, effective)
+                } else {
+                    val before = state
+                    var latestValid: CompetitionState? = null
+                    for (plan in plans) {
+                        val replacement = plan.replacement!!
+                        val wrapped = entry.copy(
+                            op = replacement.str("op")!!,
+                            data = replacement["data"] as JsonObject,
+                        )
+                        val effective = before.effectiveConfig?.let(Competition::from) ?: competition
+                        val attempted = applyEntry(before, wrapped, effective)
+                        if (attempted.rejected.size > before.rejected.size) {
+                            plan.error = "correction_invalid_replacement"
+                        } else {
+                            latestValid = attempted
+                        }
+                    }
+                    state = latestValid ?: run {
+                        val effective = before.effectiveConfig?.let(Competition::from) ?: competition
+                        applyEntry(before, entry, effective)
+                    }
+                }
+            }
+            state = state.copy(seq = entry.seq, head = item.eventId)
         }
 
         // "We have reached the end" and "there is a hole and more entries behind
@@ -114,7 +201,7 @@ object CompetitionReducer {
         }
         state = state.copy(chainComplete = chainBreakAt == null)
         val effective = state.effectiveConfig?.let(Competition::from) ?: competition
-        return Reduction(state, chainBreakAt, effective)
+        return Reduction(state, chainBreakAt, effective, chosenChain.map { it.entry })
     }
 
     fun applyEntry(state: CompetitionState, entry: LogEntry, competition: Competition): CompetitionState {
@@ -139,10 +226,13 @@ object CompetitionReducer {
             )
             val replacement = entry.data["replacement"] as? JsonObject
                 ?: return reject(audited, entry, "correction_missing_replacement")
-            val wrappedOp = replacement.str("op") ?: return reject(audited, entry, "unknown_op")
-            val wrappedData = replacement["data"] as? JsonObject ?: return reject(audited, entry, "unknown_op")
-            if (wrappedOp !in HANDLED_OPS) return reject(audited, entry, "unknown_op")
-            return dispatch(audited, entry.copy(op = wrappedOp, data = wrappedData), competition)
+            if (replacement["data"] !is JsonObject) {
+                return reject(audited, entry, "correction_missing_replacement")
+            }
+            // A lone state has no earlier entry to replace. Full-history
+            // reduce() handles corrections; applying this body at its later
+            // sequence would be a different and unsafe operation.
+            return reject(audited, entry, "correction_bad_target")
         }
 
         if (entry.op !in HANDLED_OPS) return reject(state, entry, "unknown_op")
