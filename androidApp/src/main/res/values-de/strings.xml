@@ -2524,6 +2524,8 @@
     <string name="comp_live_choose_required_hint">Dein Zug ist offen. Wähle einen Boulder, bevor du diesen Versuch meldest.</string>
     <string name="comp_live_prepare_hint">Du kannst deinen nächsten Boulder jetzt auswählen und öffnen. Die Auswahl bleibt bis zu deinem Zug vorbereitet.</string>
     <string name="comp_live_prepared">Vorbereitet: %1$s</string>
+    <string name="comp_choice_loading">Dein signierter vorbereiteter Boulder wird von allen Wettkampf-Relays wiederhergestellt …</string>
+    <string name="comp_choice_untrusted">Dein zuvor vorbereiteter Boulder konnte nicht über alle Wettkampf-Relays verifiziert werden. Die Auswahl bleibt gesperrt, damit ein unvollständiger Verlauf nie als fehlende Auswahl gilt.</string>
     <string name="comp_leaderboard_untrusted">Die Wertung kann gerade nicht verifiziert werden. Verbinde dich erneut mit einem Wettkampf-Relay, bevor du dich auf die Ergebnisse verlässt.</string>
     <string name="comp_leaderboard_empty">Noch keine verifizierten Ergebnisse. Die Wertung aktualisiert sich, sobald Versuche eingetragen werden.</string>
     <string name="comp_leaderboard_your_rank">Dein Platz: %1$d</string>

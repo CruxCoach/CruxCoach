@@ -28,5 +28,8 @@ class CompetitionDetailNavigationTest {
         assertContains(source, "if (route == HostRoute.LIVE)")
         assertContains(source, "viewModel.hostDisqualify(pubkey, disqualifyReason)")
         assertContains(source, "comp_host_disqualify_hint")
+        assertContains(source, "ui.preparedClimbId")
+        assertContains(source, "PreparedChoice.Untrusted")
+        assertContains(source, "viewModel::retryPreparedChoice")
     }
 }

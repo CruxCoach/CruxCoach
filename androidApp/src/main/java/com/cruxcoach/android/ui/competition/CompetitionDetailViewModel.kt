@@ -21,6 +21,7 @@ import com.cruxcoach.data.repository.ClimbWithStats
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardClimbParser
 import com.cruxcoach.domain.board.BoardHold
+import com.cruxcoach.domain.competition.Competition
 import com.cruxcoach.domain.competition.CompetitionClimb
 import com.cruxcoach.domain.competition.CompetitionPrize
 import com.cruxcoach.domain.competition.CompetitionPrizeClaim
@@ -81,10 +82,18 @@ class CompetitionDetailViewModel @Inject constructor(
         data class Failed(val reason: String) : Action
     }
 
+    sealed interface PreparedChoice {
+        data object Loading : PreparedChoice
+        data object Untrusted : PreparedChoice
+        data class Ready(val climbId: String?) : PreparedChoice
+        data class Working(val climbId: String) : PreparedChoice
+    }
+
     private val _action = MutableStateFlow<Action>(Action.Idle)
     val action: StateFlow<Action> = _action.asStateFlow()
     private var climbChoiceGeneration = 0
     private var followJob: Job? = null
+    private val preparedChoice = MutableStateFlow<PreparedChoice>(PreparedChoice.Loading)
 
     sealed interface Cleanup {
         data object Idle : Cleanup
@@ -106,6 +115,7 @@ class CompetitionDetailViewModel @Inject constructor(
         val catalogue: CatalogueState = CatalogueState.Loading,
         val gradeScale: GradeScale = GradeScale.FRENCH,
         val connectedRelays: Int = 0,
+        val preparedChoice: PreparedChoice = PreparedChoice.Loading,
     ) {
         val me get() = snapshot.state?.participants?.firstOrNull { it.pubkey == myPubkey }
         val currentClimber: String?
@@ -243,6 +253,12 @@ class CompetitionDetailViewModel @Inject constructor(
 
         val picksOwnClimbs: Boolean
             get() = snapshot.competition?.rules?.climbSource == "participant_choice"
+        val preparedClimbId: String?
+            get() = when (val choice = preparedChoice) {
+                is PreparedChoice.Ready -> choice.climbId
+                is PreparedChoice.Working -> choice.climbId
+                else -> null
+            }
 
         fun secondsToDeadline(nowSeconds: Long): Long? {
             val state = snapshot.state ?: return null
@@ -278,8 +294,10 @@ class CompetitionDetailViewModel @Inject constructor(
 
     private val catalogue = MutableStateFlow<CatalogueState>(CatalogueState.Loading)
 
-    private val transportSnapshot = combine(client.snapshot, client.connectedRelayCount) { snapshot, connected ->
-        snapshot to connected
+    private val transportSnapshot = combine(
+        client.snapshot, client.connectedRelayCount, preparedChoice,
+    ) { snapshot, connected, choice ->
+        Triple(snapshot, connected, choice)
     }
 
     val ui: StateFlow<Ui> = combine(
@@ -289,7 +307,7 @@ class CompetitionDetailViewModel @Inject constructor(
         catalogue,
         preferences.gradeScale,
     ) { transported, pubkey, displayName, localCatalogue, gradeScale ->
-        Ui(transported.first, pubkey, displayName, localCatalogue, gradeScale, transported.second)
+        Ui(transported.first, pubkey, displayName, localCatalogue, gradeScale, transported.second, transported.third)
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
@@ -308,6 +326,16 @@ class CompetitionDetailViewModel @Inject constructor(
         reload()
         viewModelScope.launch {
             client.snapshot
+                .map { snapshot ->
+                    snapshot.competition?.takeIf { snapshot.trustworthy }?.let {
+                        "${it.compId}:${it.revision}" to it
+                    }
+                }
+                .distinctUntilChanged { old, new -> old?.first == new?.first }
+                .collectLatest { keyed -> restorePreparedChoice(keyed?.second) }
+        }
+        viewModelScope.launch {
+            client.snapshot
                 .map { snapshot -> snapshot.competition?.let { "${it.compId}:${it.revision}" to it } }
                 .distinctUntilChanged { old, new -> old?.first == new?.first }
                 .collectLatest { keyed ->
@@ -323,6 +351,7 @@ class CompetitionDetailViewModel @Inject constructor(
 
     /** Restart definition lookup, exact history backfill, and the live subscription. */
     fun reload() {
+        preparedChoice.value = PreparedChoice.Loading
         followJob?.cancel()
         followJob = viewModelScope.launch {
             val now = System.currentTimeMillis() / 1000
@@ -331,6 +360,33 @@ class CompetitionDetailViewModel @Inject constructor(
                     .collect { /* state flows out via snapshot */ }
             }
         }
+    }
+
+    fun retryPreparedChoice() {
+        viewModelScope.launch { restorePreparedChoice(client.snapshot.value.competition) }
+    }
+
+    private suspend fun restorePreparedChoice(competition: Competition?) {
+        val snapshot = client.snapshot.value
+        val mine = snapshot.state?.participant(myPubkey)
+        if (competition == null || !snapshot.trustworthy) {
+            preparedChoice.value = PreparedChoice.Loading
+            return
+        }
+        if (competition.rules.climbSource != "participant_choice" || mine == null) {
+            preparedChoice.value = PreparedChoice.Ready(null)
+            return
+        }
+        preparedChoice.value = PreparedChoice.Loading
+        val nonce = intents.operationNonce(competition.compId, "climb_choice")
+        val restored = client.loadOwnIntent(
+            competition, organizerPubkey, myPubkey, "climb_choice", nonce,
+            System.currentTimeMillis() / 1000,
+        )
+        preparedChoice.value = if (restored.trustworthy) {
+            val id = restored.intent?.data?.get("climb_id")?.let { it as? JsonPrimitive }?.content
+            PreparedChoice.Ready(id)
+        } else PreparedChoice.Untrusted
     }
 
     /**
@@ -479,13 +535,20 @@ class CompetitionDetailViewModel @Inject constructor(
             if (progress?.outcome == "top" || (progress?.attemptsUsed ?: 0) >= competition.rules.attemptsPerClimb) {
                 return@launch
             }
+            if (preparedChoice.value is PreparedChoice.Loading || preparedChoice.value is PreparedChoice.Untrusted) return@launch
+            val previous = (preparedChoice.value as? PreparedChoice.Ready)?.climbId
+            preparedChoice.value = PreparedChoice.Working(climb.id)
             when (val result = intents.chooseClimb(competition, organizerPubkey, climb.id)) {
                 is CompetitionIntentPublisher.Result.Published ->
                     if (generation == climbChoiceGeneration) {
+                        preparedChoice.value = PreparedChoice.Ready(climb.id)
                         _action.value = Action.Sent(result.accepted, result.attempted)
                     }
                 is CompetitionIntentPublisher.Result.Failed ->
-                    if (generation == climbChoiceGeneration) _action.value = Action.Failed(result.reason)
+                    if (generation == climbChoiceGeneration) {
+                        preparedChoice.value = PreparedChoice.Ready(previous)
+                        _action.value = Action.Failed(result.reason)
+                    }
             }
         }
     }

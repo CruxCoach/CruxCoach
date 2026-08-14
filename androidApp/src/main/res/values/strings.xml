@@ -2525,6 +2525,8 @@
     <string name="comp_live_choose_required_hint">Your turn is open. Select one boulder before reporting this attempt.</string>
     <string name="comp_live_prepare_hint">You can select and open your next boulder now. The selection stays prepared until your turn.</string>
     <string name="comp_live_prepared">Prepared: %1$s</string>
+    <string name="comp_choice_loading">Restoring your signed prepared boulder from every competition relay…</string>
+    <string name="comp_choice_untrusted">Your previous prepared boulder could not be verified from every competition relay. Choosing stays locked so incomplete history is never mistaken for no choice.</string>
     <string name="comp_leaderboard_untrusted">The leaderboard cannot be verified right now. Reconnect to a competition relay before relying on these results.</string>
     <string name="comp_leaderboard_empty">No verified results yet. The leaderboard will update as attempts are recorded.</string>
     <string name="comp_leaderboard_your_rank">Your place: %1$d</string>

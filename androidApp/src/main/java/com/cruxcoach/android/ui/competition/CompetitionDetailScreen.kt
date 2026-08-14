@@ -130,14 +130,7 @@ fun CompetitionDetailScreen(
 
     // The countdown is the one thing that has to move without an event arriving.
     var now by remember { mutableLongStateOf(System.currentTimeMillis() / 1000) }
-    var preparedClimbId by rememberSaveable(ui.snapshot.competition?.compId, ui.myPubkey) {
-        mutableStateOf<String?>(null)
-    }
-    LaunchedEffect(ui.remainingClimbs.map { it.climb.id }) {
-        if (preparedClimbId != null && ui.remainingClimbs.none { it.climb.id == preparedClimbId }) {
-            preparedClimbId = null
-        }
-    }
+    val preparedClimbId = ui.preparedClimbId
     LaunchedEffect(Unit) {
         while (true) {
             delay(1000)
@@ -319,7 +312,6 @@ fun CompetitionDetailScreen(
                 contentPadding = padding,
                 onRoute = { participantRouteName = it.name },
                 onPreparedClimb = { id ->
-                    preparedClimbId = id
                     if (id != null && ui.picksOwnClimbs) viewModel.chooseClimb(id)
                 },
                 onOpenClimb = { id -> lastAsked = id; viewModel.openClimb(id) },
@@ -2443,6 +2435,22 @@ private fun NextClimbSection(
 ) {
     val remaining = ui.remainingClimbs
     Text(stringResource(R.string.comp_next_title), fontWeight = FontWeight.Bold)
+    when (ui.preparedChoice) {
+        CompetitionDetailViewModel.PreparedChoice.Loading -> {
+            LinearProgressIndicator(Modifier.fillMaxWidth())
+            Text(stringResource(R.string.comp_choice_loading), style = MaterialTheme.typography.bodySmall)
+            return
+        }
+        CompetitionDetailViewModel.PreparedChoice.Untrusted -> {
+            WarningCard(stringResource(R.string.comp_choice_untrusted))
+            OutlinedButton(
+                onClick = viewModel::retryPreparedChoice,
+                modifier = Modifier.fillMaxWidth().testTag("competition_choice_retry"),
+            ) { Text(stringResource(R.string.action_retry)) }
+            return
+        }
+        else -> Unit
+    }
     if (remaining.isEmpty()) {
         Text(stringResource(R.string.comp_next_none_left), style = MaterialTheme.typography.bodySmall)
         return
@@ -2477,12 +2485,15 @@ private fun NextClimbSection(
     remaining.forEach { entry ->
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth().clickable { onPreparedClimb(entry.climb.id) }
+            modifier = Modifier.fillMaxWidth().clickable(
+                enabled = ui.preparedChoice !is CompetitionDetailViewModel.PreparedChoice.Working,
+            ) { onPreparedClimb(entry.climb.id) }
                 .testTag("competition_choice_${entry.climb.id}"),
         ) {
             RadioButton(
                 selected = chosen == entry.climb.id,
                 onClick = { onPreparedClimb(entry.climb.id) },
+                enabled = ui.preparedChoice !is CompetitionDetailViewModel.PreparedChoice.Working,
                 modifier = Modifier.testTag("competition_next_${entry.climb.id}"),
             )
             Column(Modifier.weight(1f)) {
@@ -2502,6 +2513,9 @@ private fun NextClimbSection(
             color = MaterialTheme.colorScheme.primary,
             modifier = Modifier.testTag("competition_prepared_climb"),
         )
+    }
+    if (ui.preparedChoice is CompetitionDetailViewModel.PreparedChoice.Working) {
+        LinearProgressIndicator(Modifier.fillMaxWidth())
     }
     if (mayAct && chosen != null) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         listOf("top" to R.string.comp_outcome_top, "zone" to R.string.comp_outcome_zone,

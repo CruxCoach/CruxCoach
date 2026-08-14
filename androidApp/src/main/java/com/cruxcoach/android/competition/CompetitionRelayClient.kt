@@ -61,6 +61,8 @@ class CompetitionRelayClient @Inject constructor(
     /** Named so the UI can say something specific instead of "error". */
     enum class Problem { NOT_FOUND, UNREACHABLE, INVALID, NEEDS_UPGRADE }
 
+    data class OwnIntent(val trustworthy: Boolean, val intent: CompetitionProtocol.ParsedIntent.Valid? = null)
+
     private val _snapshot = MutableStateFlow(Snapshot())
     val snapshot: StateFlow<Snapshot> = _snapshot.asStateFlow()
     val connectedRelayCount: StateFlow<Int> = relayPool.connectedRelayCount
@@ -274,7 +276,7 @@ class CompetitionRelayClient @Inject constructor(
             if (parsed !is CompetitionProtocol.ParsedIntent.Valid) return false
             val key = "${parsed.pubkey}:${parsed.op}"
             val old = intents[key]
-            if (old == null || parsed.createdAt >= old.createdAt) intents[key] = parsed
+            if (shouldReplaceIntent(old, parsed)) intents[key] = parsed
             reduce(loading = _snapshot.value.loading)
             return true
         }
@@ -310,6 +312,36 @@ class CompetitionRelayClient @Inject constructor(
             entries[event.id] = CompetitionReducer.Chained(parsed.entry, parsed.eventId, parsed.createdAt)
             reduce()
         }
+    }
+
+    /** Restore one replaceable personal request without relying on a capped broad history query. */
+    suspend fun loadOwnIntent(
+        competition: Competition,
+        organizerPubkey: String,
+        pubkey: String,
+        op: String,
+        nonce: String,
+        nowSeconds: Long,
+    ): OwnIntent {
+        var newest: CompetitionProtocol.ParsedIntent.Valid? = null
+        val complete = runCatching {
+            withTimeoutOrNull(BACKFILL_TIMEOUT_MS) {
+                relayPool.fetchStoredComplete(ownIntentFilter(
+                    competition.compId, competition.authority, organizerPubkey, pubkey, op, nonce,
+                ))
+                    .collect { json ->
+                        val event = runCatching { Event.fromJson(json) }.getOrNull() ?: return@collect
+                        if (!acceptsBody(event) || event.pubKey != pubkey) return@collect
+                        val parsed = CompetitionProtocol.parseIntent(
+                            event.toCompetitionEvent(), competition, organizerPubkey, nowSeconds,
+                        ) as? CompetitionProtocol.ParsedIntent.Valid ?: return@collect
+                        if (parsed.op != op) return@collect
+                        if (shouldReplaceIntent(newest, parsed)) newest = parsed
+                    }
+                true
+            } ?: false
+        }.getOrDefault(false)
+        return OwnIntent(complete, newest.takeIf { complete })
     }
 
     private fun reduce(
@@ -388,10 +420,29 @@ class CompetitionRelayClient @Inject constructor(
         internal fun intentFilter(address: String): String =
             """{"kinds":[${CompetitionProtocol.KIND}],"#a":["$address"],"#l":["intent"],"limit":1000}"""
 
+        internal fun ownIntentFilter(
+            compId: String,
+            authority: String,
+            organizerPubkey: String,
+            pubkey: String,
+            op: String,
+            nonce: String,
+        ): String {
+            val address = CompetitionProtocol.competitionAddress(organizerPubkey, compId)
+            val dTag = CompetitionProtocol.intentDTag(compId, pubkey, nonce)
+            return """{"kinds":[${CompetitionProtocol.KIND}],"authors":["$pubkey"],"#d":["$dTag"],"#a":["$address"],"#p":["$authority"],"#op":["$op"],"limit":8}"""
+        }
+
         internal fun boundedMissingSequence(sequences: Set<Int>): Int? {
             val max = sequences.maxOrNull() ?: return null
             return (1..max).firstOrNull { it !in sequences }
         }
+
+        internal fun shouldReplaceIntent(
+            old: CompetitionProtocol.ParsedIntent.Valid?,
+            candidate: CompetitionProtocol.ParsedIntent.Valid,
+        ): Boolean = old == null || candidate.createdAt > old.createdAt ||
+            (candidate.createdAt == old.createdAt && candidate.eventId > old.eventId)
     }
 
     private fun entrySequences(): Set<Int> = entries.values.mapTo(linkedSetOf()) { it.entry.seq }

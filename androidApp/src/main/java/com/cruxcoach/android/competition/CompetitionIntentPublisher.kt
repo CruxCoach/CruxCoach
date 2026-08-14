@@ -224,6 +224,9 @@ class CompetitionIntentPublisher @Inject constructor(
     /** The stable nonce for this competition's registration, for zap binding. */
     fun registrationNonce(compId: String): String = nonceFor(compId, "register")
 
+    /** Stable address component used to restore one of this signer's replaceable requests. */
+    fun operationNonce(compId: String, op: String): String = nonceFor(compId, op)
+
     private suspend fun send(
         competition: Competition,
         organizerPubkey: String,
