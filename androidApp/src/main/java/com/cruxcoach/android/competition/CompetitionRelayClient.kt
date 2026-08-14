@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.json.JsonPrimitive
 
 /**
  * Reads a competition off the relays and reduces it.
@@ -292,7 +293,7 @@ class CompetitionRelayClient @Inject constructor(
                 event.toCompetitionEvent(), competition, organizerPubkey, nowSeconds,
             )
             if (parsed !is CompetitionProtocol.ParsedIntent.Valid) return false
-            val key = "${parsed.pubkey}:${parsed.op}"
+            val key = intentLaneKey(parsed)
             val old = intents[key]
             if (shouldReplaceIntent(old, parsed)) intents[key] = parsed
             reduce(loading = _snapshot.value.loading)
@@ -471,6 +472,14 @@ class CompetitionRelayClient @Inject constructor(
             candidate: CompetitionProtocol.ParsedIntent.Valid,
         ): Boolean = old == null || candidate.createdAt > old.createdAt ||
             (candidate.createdAt == old.createdAt && candidate.eventId > old.eventId)
+
+        /** Prize requests are independently replaceable; one winner may hold several prizes. */
+        internal fun intentLaneKey(intent: CompetitionProtocol.ParsedIntent.Valid): String {
+            val prizeLane = if (intent.op in listOf("prize_claim", "prize_receipt")) {
+                ":${(intent.data["prize_id"] as? JsonPrimitive)?.content.orEmpty()}"
+            } else ""
+            return "${intent.pubkey}:${intent.op}$prizeLane"
+        }
     }
 
     private fun entrySequences(): Set<Int> = entries.values.mapTo(linkedSetOf()) { it.entry.seq }

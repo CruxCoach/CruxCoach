@@ -7,6 +7,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.assertFalse
 import org.junit.Test
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
 class CompetitionRelayBackfillPolicyTest {
 
@@ -97,5 +98,30 @@ class CompetitionRelayBackfillPolicyTest {
         assertTrue(CompetitionRelayClient.shouldReplaceIntent(lower, higher))
         assertFalse(CompetitionRelayClient.shouldReplaceIntent(higher, lower))
         assertTrue(CompetitionRelayClient.shouldReplaceIntent(higher, intent("00".repeat(32), 101)))
+    }
+
+    @Test
+    fun `each prize has an independent claim and receipt lane`() {
+        fun intent(op: String, prizeId: String) = CompetitionProtocol.ParsedIntent.Valid(
+            op,
+            JsonObject(mapOf("prize_id" to JsonPrimitive(prizeId))),
+            "cc".repeat(32),
+            "11".repeat(32),
+            100,
+            100,
+        )
+
+        assertEquals(
+            "${"cc".repeat(32)}:prize_claim:place_1",
+            CompetitionRelayClient.intentLaneKey(intent("prize_claim", "place_1")),
+        )
+        assertEquals(
+            "${"cc".repeat(32)}:prize_claim:place_2",
+            CompetitionRelayClient.intentLaneKey(intent("prize_claim", "place_2")),
+        )
+        assertEquals(
+            "${"cc".repeat(32)}:prize_receipt:place_1",
+            CompetitionRelayClient.intentLaneKey(intent("prize_receipt", "place_1")),
+        )
     }
 }

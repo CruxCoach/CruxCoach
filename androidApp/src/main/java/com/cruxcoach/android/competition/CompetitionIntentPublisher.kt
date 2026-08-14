@@ -49,7 +49,7 @@ class CompetitionIntentPublisher @Inject constructor(
     }
 
     /**
-     * A nonce per (competition, operation, signer), persisted across restarts.
+     * A nonce per (competition, operation lane, signer), persisted across restarts.
      *
      * Reusing it means a retry REPLACES the earlier request rather than adding a
      * second one — the addressable-replacement rule doing the deduplication for
@@ -196,6 +196,7 @@ class CompetitionIntentPublisher @Inject constructor(
                 "enc" to JsonPrimitive(ciphertext),
             ),
         ),
+        nonceScope = "prize_claim:$prizeId",
     )
 
     /**
@@ -219,6 +220,7 @@ class CompetitionIntentPublisher @Inject constructor(
                 "received" to JsonPrimitive(true),
             ),
         ),
+        nonceScope = "prize_receipt:$prizeId",
     )
 
     /** The stable nonce for this competition's registration, for zap binding. */
@@ -233,9 +235,10 @@ class CompetitionIntentPublisher @Inject constructor(
         op: String,
         data: JsonObject,
         expiration: Long? = null,
+        nonceScope: String = op,
     ): Result {
         val pubkey = signer.getPublicKeyHex()
-        val nonce = nonceFor(competition.compId, op)
+        val nonce = nonceFor(competition.compId, nonceScope)
         val at = System.currentTimeMillis() / 1000
         val payload = CompetitionIntentCodec.content(competition.compId, op, at, nonce, data)
 
