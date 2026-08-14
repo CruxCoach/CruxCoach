@@ -2880,6 +2880,14 @@
     <string name="comp_host_payment_body">Only do this after independently confirming the full entry fee arrived. This is an organizer override in the permanent audit log; CruxCoach cannot verify or move the money.</string>
     <string name="comp_host_payment_reason">How was payment verified?</string>
     <string name="comp_host_payment_confirm">Record as paid</string>
+    <string name="comp_host_payment_verify">Verify claimed receipt</string>
+    <string name="comp_host_payment_verified">Receipt verified and payment recorded.</string>
+    <string name="comp_host_payment_verified_weak">Receipt verified and payment recorded. The provider’s invoice did not cryptographically bind its description.</string>
+    <string name="comp_host_payment_receipt_missing">No matching receipt was found after all configured relays responded. Retry, or confirm independently.</string>
+    <string name="comp_host_payment_receipt_unavailable">The endpoint or complete relay history could not be checked. Nothing was marked paid; retry when the connection recovers.</string>
+    <string name="comp_host_payment_receipt_unverifiable">This provider did not name a receipt-signing key. Confirm independently and use the audited manual override.</string>
+    <string name="comp_host_payment_receipt_record_failed">The receipt verified, but no relay accepted the payment decision. Retry before admitting the entrant.</string>
+    <string name="comp_host_payment_receipt_invalid">This receipt does not match the provider, entrant, competition, or full fee. Confirm independently before using the audited manual override.</string>
     <string name="comp_host_prize_title">Prize claims</string>
     <string name="comp_host_prize_not_final">Claims can be reviewed after the standings are final.</string>
     <string name="comp_host_prize_no_winner">No single eligible winner is determined for this prize.</string>

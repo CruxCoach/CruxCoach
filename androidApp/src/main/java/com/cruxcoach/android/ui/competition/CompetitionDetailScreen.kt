@@ -623,6 +623,7 @@ private fun OrganizerConsole(
     val competition = ui.snapshot.competition ?: return
     val state = ui.snapshot.state ?: return
     val cleanup by viewModel.cleanup.collectAsStateWithLifecycle()
+    val paymentReviews by viewModel.hostPaymentReviews.collectAsStateWithLifecycle()
     var announcement by rememberSaveable { mutableStateOf("") }
     var confirmCancel by rememberSaveable { mutableStateOf(false) }
     var confirmFinish by rememberSaveable { mutableStateOf(false) }
@@ -951,10 +952,42 @@ private fun OrganizerConsole(
                         }
                         if (participant.result == "active" && participant.registration == "accepted") {
                             if (competition.feeMsat > 0 && participant.payment != "settled") {
+                                val paymentClaim = ui.snapshot.pendingIntents.firstOrNull { intent ->
+                                    intent.op == "payment_claim" && intent.pubkey == participant.pubkey
+                                }
+                                val receiptId = (paymentClaim?.data?.get("zap_receipt_id") as? JsonPrimitive)
+                                    ?.content.orEmpty()
+                                if (paymentClaim != null && receiptId.isNotBlank()) {
+                                    Button(
+                                        onClick = { viewModel.hostVerifyPayment(paymentClaim) },
+                                        enabled = paymentReviews[participant.pubkey] !is
+                                            CompetitionDetailViewModel.HostPaymentReview.Working,
+                                        modifier = Modifier.testTag(
+                                            "competition_host_payment_verify_${participant.pubkey.take(8)}",
+                                        ),
+                                    ) { Text(stringResource(R.string.comp_host_payment_verify)) }
+                                }
                                 OutlinedButton(
                                     onClick = { paymentPubkey = participant.pubkey },
                                     modifier = Modifier.testTag("competition_host_payment_${participant.pubkey.take(8)}"),
                                 ) { Text(stringResource(R.string.comp_host_payment_manual)) }
+                                when (val review = paymentReviews[participant.pubkey]) {
+                                    CompetitionDetailViewModel.HostPaymentReview.Working ->
+                                        CircularProgressIndicator(Modifier.size(24.dp))
+                                    is CompetitionDetailViewModel.HostPaymentReview.Verified -> Text(
+                                        stringResource(
+                                            if (review.weaklyBound) R.string.comp_host_payment_verified_weak
+                                            else R.string.comp_host_payment_verified,
+                                        ),
+                                        style = MaterialTheme.typography.bodySmall,
+                                    )
+                                    is CompetitionDetailViewModel.HostPaymentReview.Failed -> Text(
+                                        paymentReceiptErrorText(review.error),
+                                        color = MaterialTheme.colorScheme.error,
+                                        style = MaterialTheme.typography.bodySmall,
+                                    )
+                                    null -> Unit
+                                }
                             }
                             OutlinedButton(
                                 onClick = { retirePubkey = participant.pubkey },
@@ -1490,6 +1523,16 @@ private fun competitionActionError(reason: String): String = when (reason) {
     "config_impact_mismatch" -> stringResource(R.string.comp_host_error_impact)
     "no_relay" -> stringResource(R.string.comp_host_error_no_relay)
     else -> stringResource(R.string.comp_host_error_generic, reason)
+}
+
+@Composable
+private fun paymentReceiptErrorText(code: String): String = when (code) {
+    "no_receipt", "receipt_not_found" -> stringResource(R.string.comp_host_payment_receipt_missing)
+    "incomplete_receipt_history", "unreachable", "not_loaded" ->
+        stringResource(R.string.comp_host_payment_receipt_unavailable)
+    "no_provider_key" -> stringResource(R.string.comp_host_payment_receipt_unverifiable)
+    "no_relay" -> stringResource(R.string.comp_host_payment_receipt_record_failed)
+    else -> stringResource(R.string.comp_host_payment_receipt_invalid)
 }
 
 @Composable

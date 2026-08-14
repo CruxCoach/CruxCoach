@@ -49,6 +49,8 @@ class CompetitionDetailNavigationTest {
         assertContains(source, "if (confirmCleanup) AlertDialog")
         assertContains(source, "viewModel.hostConfirmPayment(pubkey, paymentReason)")
         assertContains(source, "competition_host_payment_confirm")
+        assertContains(source, "viewModel.hostVerifyPayment(paymentClaim)")
+        assertContains(source, "competition_host_payment_verify_")
         assertFalse(source.contains("viewModel.hostQueue(\"close_turn\")"))
 
         val prizePanel = prizePanelSource()

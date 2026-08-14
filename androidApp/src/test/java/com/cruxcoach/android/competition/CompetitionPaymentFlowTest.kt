@@ -3,9 +3,10 @@ package com.cruxcoach.android.competition
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.domain.competition.Competition
 import com.cruxcoach.domain.competition.CompetitionBolt11
+import com.cruxcoach.domain.competition.CompetitionZap
 import io.mockk.coEvery
-import io.mockk.every
 import io.mockk.mockk
+import java.io.File
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -13,6 +14,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
@@ -154,7 +156,20 @@ class CompetitionPaymentFlowTest {
      * are never called: everything this test exercises goes through the seams.
      */
     private fun flow(): CompetitionPaymentFlow =
-        CompetitionPaymentFlow(client, mockk(relaxed = true), mockk(relaxed = true))
+        CompetitionPaymentFlow(
+            client,
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+        )
+
+    private fun zapFixture(): JsonObject {
+        val file = listOf(
+            File("../shared/src/commonTest/resources/competition/vectors/zap.json"),
+            File("shared/src/commonTest/resources/competition/vectors/zap.json"),
+        ).firstOrNull(File::isFile) ?: error("zap fixture not found")
+        return json.parseToJsonElement(file.readText()).jsonObject
+    }
 
     private suspend fun request(
         competition: Competition,
@@ -191,6 +206,67 @@ class CompetitionPaymentFlowTest {
         val callback = server.takeRequest()
         assertTrue(callback.path!!.contains("amount=2000000"), callback.path!!)
         assertTrue(callback.path!!.contains("nostr="), callback.path!!)
+    }
+
+    @Test
+    fun `organizer verifies the exact claimed receipt before recording payment`() = runBlocking {
+        val fixture = zapFixture()
+        val receipt = fixture["valid_receipt"]!!.jsonObject
+        val requestEvent = CompetitionZap.eventFrom(fixture["zap_request"]!!.jsonObject)!!
+        val receiptEvent = CompetitionZap.eventFrom(receipt)!!
+        var requestedFilter = ""
+        server.enqueue(MockResponse().setBody(payResponse(server.url("/cb").toString())))
+        val verifier = CompetitionPaymentFlow(
+            client,
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+        )
+
+        val result = verifier.verifyClaimedReceipt(
+            competition(lnurl = server.url("/lnurlp").toString()),
+            organizer,
+            payer,
+            receipt["id"]!!.toString().trim('"'),
+            CompetitionPaymentFlow.ReceiptFetcher { filter ->
+                requestedFilter = filter
+                CompetitionPaymentFlow.ReceiptHistory(listOf(receipt.toString()), complete = true)
+            },
+            CompetitionPaymentFlow.ReceiptDecoder {
+                CompetitionPaymentFlow.DecodedReceipt(
+                    receiptEvent,
+                    setOf(receiptEvent.id, requestEvent.id),
+                )
+            },
+        ) as CompetitionPaymentFlow.ReceiptResult.Verified
+
+        assertEquals(receipt["id"]!!.toString().trim('"'), result.receiptId)
+        assertEquals(2_000_000L, result.amountMsat)
+        assertEquals(provider, result.zapperPubkey)
+        assertTrue(requestedFilter.contains("\"ids\":[\"${receiptEvent.id}\"]"), requestedFilter)
+        assertTrue(requestedFilter.contains("\"kinds\":[9735]"), requestedFilter)
+    }
+
+    @Test
+    fun `organizer never settles from partial receipt history`() = runBlocking {
+        val fixture = zapFixture()
+        val receipt = fixture["valid_receipt"]!!.jsonObject
+        server.enqueue(MockResponse().setBody(payResponse(server.url("/cb").toString())))
+
+        val result = flow().verifyClaimedReceipt(
+            competition(lnurl = server.url("/lnurlp").toString()),
+            organizer,
+            payer,
+            receipt["id"]!!.toString().trim('"'),
+            CompetitionPaymentFlow.ReceiptFetcher {
+                CompetitionPaymentFlow.ReceiptHistory(listOf(receipt.toString()), complete = false)
+            },
+        )
+
+        assertEquals(
+            "incomplete_receipt_history",
+            (result as CompetitionPaymentFlow.ReceiptResult.Failed).code,
+        )
     }
 
     @Test

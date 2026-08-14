@@ -1,9 +1,11 @@
 package com.cruxcoach.android.competition
 
 import com.cruxcoach.android.nostr.NostrPublicEventBuilder
+import com.cruxcoach.android.nostr.NostrRelayPool
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.domain.competition.Competition
 import com.cruxcoach.domain.competition.CompetitionBolt11
+import com.cruxcoach.domain.competition.CompetitionEvent
 import com.cruxcoach.domain.competition.CompetitionLnurl
 import com.cruxcoach.domain.competition.CompetitionProtocol
 import com.cruxcoach.domain.competition.CompetitionZap
@@ -11,12 +13,17 @@ import javax.inject.Inject
 import javax.inject.Named
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import com.vitorpamplona.quartz.nip01Core.core.Event
+import com.vitorpamplona.quartz.nip01Core.crypto.verifyId
+import com.vitorpamplona.quartz.nip01Core.crypto.verifySignature
 
 /**
  * Paying a competition entry fee, in the app — FEAT-058 §11.
@@ -44,6 +51,7 @@ class CompetitionPaymentFlow @Inject constructor(
     @Named("nostr") private val httpClient: OkHttpClient,
     private val signer: NostrSigner,
     private val intents: CompetitionIntentPublisher,
+    private val relayPool: NostrRelayPool,
 ) {
 
     /**
@@ -119,6 +127,113 @@ class CompetitionPaymentFlow @Inject constructor(
 
         /** [code] is one of the shared layer's stable error codes. */
         data class Failed(val code: String, val amountSats: Long = 0) : Result
+    }
+
+    sealed interface ReceiptResult {
+        data class Verified(
+            val receiptId: String,
+            val amountMsat: Long,
+            val zapperPubkey: String,
+            val weaklyBound: Boolean,
+        ) : ReceiptResult
+        data class Failed(val code: String) : ReceiptResult
+    }
+
+    data class ReceiptHistory(val events: List<String>, val complete: Boolean)
+
+    fun interface ReceiptFetcher {
+        suspend fun fetch(filter: String): ReceiptHistory
+    }
+
+    data class DecodedReceipt(
+        val event: CompetitionEvent,
+        val verifiedEventIds: Set<String>,
+    )
+
+    fun interface ReceiptDecoder {
+        fun decode(raw: String): DecodedReceipt?
+    }
+
+    private val defaultReceiptFetcher = ReceiptFetcher { filter ->
+        val events = mutableListOf<String>()
+        val complete = runCatching {
+            withTimeoutOrNull(RECEIPT_TIMEOUT_MS) {
+                relayPool.fetchStoredComplete(filter).collect(events::add)
+                true
+            } ?: false
+        }.getOrDefault(false)
+        ReceiptHistory(events, complete)
+    }
+
+    private val defaultReceiptDecoder = ReceiptDecoder { raw ->
+        val event = runCatching { Event.fromJson(raw) }.getOrNull() ?: return@ReceiptDecoder null
+        if (!runCatching { event.verifyId() && event.verifySignature() }.getOrDefault(false)) {
+            return@ReceiptDecoder null
+        }
+        val description = event.tags.firstOrNull { it.firstOrNull() == "description" }?.getOrNull(1)
+            ?: return@ReceiptDecoder null
+        val request = runCatching { Event.fromJson(description) }.getOrNull() ?: return@ReceiptDecoder null
+        if (!runCatching { request.verifyId() && request.verifySignature() }.getOrDefault(false)) {
+            return@ReceiptDecoder null
+        }
+        DecodedReceipt(event.toCompetitionEvent(), setOf(event.id, request.id))
+    }
+
+    /**
+     * Fetch and verify exactly the receipt an entrant named. This is invoked by
+     * an explicit organizer action, uses complete all-relay history, and never
+     * treats an unavailable relay or endpoint as proof of payment.
+     */
+    suspend fun verifyClaimedReceipt(
+        competition: Competition,
+        organizerPubkey: String,
+        payerPubkey: String,
+        receiptId: String,
+        receiptFetcher: ReceiptFetcher = defaultReceiptFetcher,
+        receiptDecoder: ReceiptDecoder = defaultReceiptDecoder,
+    ): ReceiptResult {
+        if (!CompetitionProtocol.isHex32(receiptId)) return ReceiptResult.Failed("no_receipt")
+        val lnurl = competition.feeLnurl ?: return ReceiptResult.Failed("no_provider_key")
+        val endpoint = when (val resolved = CompetitionLnurl.resolvePayEndpoint(lnurl)) {
+            is CompetitionLnurl.Resolved.Ok -> resolved.endpoint
+            is CompetitionLnurl.Resolved.Failed -> return ReceiptResult.Failed(resolved.error)
+        }
+        val payBody = fetch(endpoint.url) ?: return ReceiptResult.Failed("unreachable")
+        val pay = when (val checked = CompetitionLnurl.validatePayResponse(payBody, competition.feeMsat)) {
+            is CompetitionLnurl.PayResult.Ok -> checked.request
+            is CompetitionLnurl.PayResult.Failed -> return ReceiptResult.Failed(checked.error)
+        }
+        val provider = pay.nostrPubkey ?: return ReceiptResult.Failed("no_provider_key")
+        val history = runCatching {
+            receiptFetcher.fetch(
+                """{"ids":["$receiptId"],"kinds":[${CompetitionZap.RECEIPT_KIND}],"limit":4}""",
+            )
+        }.getOrElse { return ReceiptResult.Failed("incomplete_receipt_history") }
+        if (!history.complete) return ReceiptResult.Failed("incomplete_receipt_history")
+        val decoded = history.events.asSequence()
+            .mapNotNull(receiptDecoder::decode)
+            .firstOrNull { it.event.id == receiptId }
+            ?: return ReceiptResult.Failed("receipt_not_found")
+        val event = decoded.event
+        return when (val verdict = CompetitionZap.verifyReceipt(
+            event,
+            CompetitionZap.Expected(
+                providerPubkey = provider,
+                payerPubkey = payerPubkey,
+                recipientPubkey = competition.authority,
+                address = CompetitionProtocol.competitionAddress(organizerPubkey, competition.compId),
+                amountMsat = competition.feeMsat,
+            ),
+            verifySignature = { it.id in decoded.verifiedEventIds },
+        )) {
+            is CompetitionZap.Verdict.Failed -> ReceiptResult.Failed(verdict.error)
+            is CompetitionZap.Verdict.Ok -> ReceiptResult.Verified(
+                receiptId = event.id,
+                amountMsat = verdict.amountMsat,
+                zapperPubkey = event.pubkey,
+                weaklyBound = verdict.weaklyBound,
+            )
+        }
     }
 
     /**
@@ -217,5 +332,6 @@ class CompetitionPaymentFlow @Inject constructor(
 
     private companion object {
         const val MAX_RESPONSE_BYTES = 65_536L
+        const val RECEIPT_TIMEOUT_MS = 15_000L
     }
 }

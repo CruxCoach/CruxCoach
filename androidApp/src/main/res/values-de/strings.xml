@@ -2879,6 +2879,14 @@
     <string name="comp_host_payment_body">Bestätige dies nur, nachdem du den Eingang des vollständigen Startgelds unabhängig geprüft hast. Dies ist ein Host-Override im dauerhaften Audit-Log; CruxCoach kann das Geld weder prüfen noch bewegen.</string>
     <string name="comp_host_payment_reason">Wie wurde die Zahlung geprüft?</string>
     <string name="comp_host_payment_confirm">Als bezahlt eintragen</string>
+    <string name="comp_host_payment_verify">Gemeldeten Beleg prüfen</string>
+    <string name="comp_host_payment_verified">Beleg geprüft und Zahlung eingetragen.</string>
+    <string name="comp_host_payment_verified_weak">Beleg geprüft und Zahlung eingetragen. Die Rechnung des Anbieters hat ihre Beschreibung nicht kryptografisch gebunden.</string>
+    <string name="comp_host_payment_receipt_missing">Nachdem alle konfigurierten Relays geantwortet hatten, wurde kein passender Beleg gefunden. Versuche es erneut oder prüfe unabhängig.</string>
+    <string name="comp_host_payment_receipt_unavailable">Zahlungsendpunkt oder vollständiger Relay-Verlauf konnten nicht geprüft werden. Es wurde nichts als bezahlt markiert; versuche es nach Wiederherstellung der Verbindung erneut.</string>
+    <string name="comp_host_payment_receipt_unverifiable">Dieser Anbieter nennt keinen Schlüssel für Belegsignaturen. Prüfe unabhängig und nutze den protokollierten manuellen Override.</string>
+    <string name="comp_host_payment_receipt_record_failed">Der Beleg wurde geprüft, aber kein Relay hat die Zahlungsentscheidung angenommen. Versuche es vor der Zulassung erneut.</string>
+    <string name="comp_host_payment_receipt_invalid">Dieser Beleg passt nicht zu Anbieter, Person, Wettkampf oder vollständigem Startgeld. Prüfe unabhängig, bevor du den protokollierten manuellen Override nutzt.</string>
     <string name="comp_host_prize_title">Preisforderungen</string>
     <string name="comp_host_prize_not_final">Forderungen können geprüft werden, sobald die Rangliste endgültig ist.</string>
     <string name="comp_host_prize_no_winner">Für diesen Preis steht keine einzelne berechtigte Person fest.</string>

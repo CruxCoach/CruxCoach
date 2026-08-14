@@ -122,6 +122,15 @@ class CompetitionDetailViewModel @Inject constructor(
     private val _hostPrizeReviews = MutableStateFlow<Map<String, HostPrizeReview>>(emptyMap())
     val hostPrizeReviews: StateFlow<Map<String, HostPrizeReview>> = _hostPrizeReviews.asStateFlow()
 
+    sealed interface HostPaymentReview {
+        data object Working : HostPaymentReview
+        data class Verified(val weaklyBound: Boolean) : HostPaymentReview
+        data class Failed(val error: String) : HostPaymentReview
+    }
+
+    private val _hostPaymentReviews = MutableStateFlow<Map<String, HostPaymentReview>>(emptyMap())
+    val hostPaymentReviews: StateFlow<Map<String, HostPaymentReview>> = _hostPaymentReviews.asStateFlow()
+
     val myPubkey: String get() = signer.getPublicKeyHex()
     val isAuthority: Boolean get() = client.snapshot.value.competition?.authority == myPubkey
 
@@ -666,6 +675,59 @@ class CompetitionDetailViewModel @Inject constructor(
             subjects = listOf(pubkey),
             reason = reason.trim(),
         )
+    }
+
+    /** Verify the exact receipt named by a participant before settling their fee. */
+    fun hostVerifyPayment(intent: CompetitionProtocol.ParsedIntent.Valid) {
+        if (intent.op != "payment_claim") return
+        val receiptId = (intent.data["zap_receipt_id"] as? JsonPrimitive)?.content.orEmpty()
+        if (receiptId.isBlank()) {
+            _hostPaymentReviews.update { it + (intent.pubkey to HostPaymentReview.Failed("no_receipt")) }
+            return
+        }
+        if (_hostPaymentReviews.value[intent.pubkey] is HostPaymentReview.Working) return
+        _hostPaymentReviews.update { it + (intent.pubkey to HostPaymentReview.Working) }
+        viewModelScope.launch {
+            val snapshot = client.snapshot.value
+            val competition = snapshot.competition
+            if (competition == null || !snapshot.trustworthy || !snapshot.intentHistoryComplete) {
+                _hostPaymentReviews.update {
+                    it + (intent.pubkey to HostPaymentReview.Failed("not_loaded"))
+                }
+                return@launch
+            }
+            when (val checked = payments.verifyClaimedReceipt(
+                competition,
+                organizerPubkey,
+                intent.pubkey,
+                receiptId,
+            )) {
+                is CompetitionPaymentFlow.ReceiptResult.Failed -> _hostPaymentReviews.update {
+                    it + (intent.pubkey to HostPaymentReview.Failed(checked.code))
+                }
+                is CompetitionPaymentFlow.ReceiptResult.Verified -> {
+                    val published = hostPublisher.append(
+                        "payment_decision",
+                        JsonObject(mapOf(
+                            "pubkey" to JsonPrimitive(intent.pubkey),
+                            "state" to JsonPrimitive("settled"),
+                            "zap_receipt_id" to JsonPrimitive(checked.receiptId),
+                            "amount_msat" to JsonPrimitive(checked.amountMsat),
+                            "zapper_pubkey" to JsonPrimitive(checked.zapperPubkey),
+                        )),
+                        subjects = listOf(intent.pubkey),
+                    )
+                    _hostPaymentReviews.update {
+                        it + (intent.pubkey to when (published) {
+                            is CompetitionHostPublisher.Result.Published ->
+                                HostPaymentReview.Verified(checked.weaklyBound)
+                            is CompetitionHostPublisher.Result.Failed ->
+                                HostPaymentReview.Failed(published.reason)
+                        })
+                    }
+                }
+            }
+        }
     }
 
     /**
