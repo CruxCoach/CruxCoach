@@ -23,7 +23,6 @@ object CompetitionReducer {
      */
     val REJECTION_CODES = listOf(
         "already_topped", "attempt_out_of_order", "capacity_full", "climb_already_claimed",
-        "climb_not_selected",
         "correction_missing_replacement", "defer_budget_exhausted", "defer_consecutive_limit",
         "duplicate_in_order", "empty_announcement", "epoch_mismatch", "illegal_transition",
         "incomplete_seed_order", "index_out_of_range", "ineligible_in_order", "no_attempts_left",
@@ -32,16 +31,20 @@ object CompetitionReducer {
         "unknown_decision", "unknown_division", "unknown_op", "unknown_outcome",
         "unknown_payment_state", "unknown_prize", "unknown_prize_state", "unknown_queue_action",
         "uniqueness_not_enforced", "prize_already_awarded", "results_not_final", "wrong_status",
+        "config_bad_revision", "config_empty_patch", "config_immutable_field",
+        "config_impact_mismatch", "config_invalid", "config_referenced_climb",
+        "config_referenced_division",
     )
 
     private val REGISTRATION_STATES = setOf("registration_open")
-    private val CHECKIN_STATES = setOf("checkin_open", "running")
-    private val QUEUE_STATES = setOf("checkin_open", "running")
-    private val ATTEMPT_STATES = setOf("running")
 
     data class Chained(val entry: LogEntry, val eventId: String, val createdAt: Long)
 
-    data class Reduction(val state: CompetitionState, val chainBreakAt: Int?)
+    data class Reduction(
+        val state: CompetitionState,
+        val chainBreakAt: Int?,
+        val effectiveCompetition: Competition,
+    )
 
     fun initialState(competition: Competition, competitionEventId: String) = CompetitionState(
         compId = competition.compId,
@@ -95,7 +98,8 @@ object CompetitionReducer {
                 state = state.copy(forkDetected = true)
                 linked.sortedWith(compareBy({ it.createdAt }, { it.eventId })).first()
             }
-            state = applyEntry(state, chosen.entry, competition)
+            val effective = state.effectiveConfig?.let(Competition::from) ?: competition
+            state = applyEntry(state, chosen.entry, effective)
             state = state.copy(seq = chosen.entry.seq, head = chosen.eventId)
             expectedPrev = chosen.eventId
             seq += 1
@@ -108,7 +112,9 @@ object CompetitionReducer {
         if (chainBreakAt == null && bySeq.keys.any { it > state.seq }) {
             chainBreakAt = seq
         }
-        return Reduction(state.copy(chainComplete = chainBreakAt == null), chainBreakAt)
+        state = state.copy(chainComplete = chainBreakAt == null)
+        val effective = state.effectiveConfig?.let(Competition::from) ?: competition
+        return Reduction(state, chainBreakAt, effective)
     }
 
     fun applyEntry(state: CompetitionState, entry: LogEntry, competition: Competition): CompetitionState {
@@ -155,6 +161,7 @@ object CompetitionReducer {
         "lifecycle", "registration_decision", "payment_decision", "claim_decision",
         "prize_decision", "checkin", "queue", "defer_decision", "attempt_result",
         "disqualify", "announcement",
+        "config_update",
     )
 
     private fun dispatch(state: CompetitionState, entry: LogEntry, competition: Competition) = when (entry.op) {
@@ -169,6 +176,7 @@ object CompetitionReducer {
         "attempt_result" -> applyAttemptResult(state, entry, competition)
         "disqualify" -> applyDisqualify(state, entry)
         "announcement" -> applyAnnouncement(state, entry)
+        "config_update" -> applyConfigUpdate(state, entry, competition)
         else -> reject(state, entry, "unknown_op")
     }
 
@@ -325,7 +333,6 @@ object CompetitionReducer {
     }
 
     private fun applyCheckin(state: CompetitionState, entry: LogEntry, competition: Competition): CompetitionState {
-        if (state.status !in CHECKIN_STATES) return reject(state, entry, "wrong_status")
         val checkinState = entry.data.str("state")
         if (checkinState !in listOf("checked_in", "no_show")) return reject(state, entry, "unknown_checkin_state")
         if (checkinState == "checked_in" && !checkinWindowOpen(competition, state.status, entry.at)) {
@@ -342,15 +349,10 @@ object CompetitionReducer {
     }
 
     private fun registrationWindowOpen(competition: Competition, status: String, at: Long): Boolean =
-        at <= competition.registrationClosesAt && (
-            status == "registration_open" || status == "checkin_open" ||
-                (status == "running" && competition.rules.lateEntryAllowed)
-            )
+        CompetitionProtocol.registrationWindowOpen(competition, status, at)
 
     private fun checkinWindowOpen(competition: Competition, status: String, at: Long): Boolean =
-        at <= competition.checkinClosesAt && (
-            status == "checkin_open" || (status == "running" && competition.rules.lateEntryAllowed)
-            )
+        CompetitionProtocol.checkinWindowOpen(competition, status, at)
 
     private fun isEligible(
         state: CompetitionState,
@@ -381,11 +383,13 @@ object CompetitionReducer {
     }
 
     private fun applyQueue(state: CompetitionState, entry: LogEntry, competition: Competition): CompetitionState {
-        if (state.status !in QUEUE_STATES) return reject(state, entry, "wrong_status")
         val action = entry.data.str("action")
         if (action == null || action !in CompetitionProtocol.QUEUE_ACTIONS) {
             return reject(state, entry, "unknown_queue_action")
         }
+        if (!CompetitionProtocol.competitionRunning(competition, state.status, entry.at) &&
+            !checkinWindowOpen(competition, state.status, entry.at)
+        ) return reject(state, entry, "wrong_status")
 
         if (action == "seed" || action == "reorder") {
             val orderArray = entry.data["order"] as? JsonArray ?: return reject(state, entry, "no_order")
@@ -397,7 +401,14 @@ object CompetitionReducer {
             if (order.toSet().size != order.size) return reject(state, entry, "duplicate_in_order")
             if (order.any { it !in eligible }) return reject(state, entry, "ineligible_in_order")
             if (action == "seed" && order.size != eligible.size) return reject(state, entry, "incomplete_seed_order")
-            return state.copy(order = order, cursor = -1)
+            return state.copy(
+                order = order,
+                cursor = -1,
+                round = if (state.round == 0) 1 else state.round,
+                currentClimbId = if (state.currentClimbId.isBlank() && competition.rules.climbSource == "organizer_set") {
+                    competition.climbs.firstOrNull()?.id.orEmpty()
+                } else state.currentClimbId,
+            )
         }
 
         if (action == "open_turn") {
@@ -427,7 +438,7 @@ object CompetitionReducer {
 
         if (action == "next_climb") {
             val climbId = entry.data.str("climb_id") ?: return reject(state, entry, "unknown_climb")
-            if (competition.rules.climbSource == "organizer_set" && competition.climb(climbId) == null) {
+            if (competition.climb(climbId) == null) {
                 return reject(state, entry, "unknown_climb")
             }
             return state.copy(currentClimbId = climbId, cursor = -1, turnDeadlineAt = 0)
@@ -484,7 +495,9 @@ object CompetitionReducer {
         entry: LogEntry,
         competition: Competition,
     ): CompetitionState {
-        if (state.status !in ATTEMPT_STATES) return reject(state, entry, "wrong_status")
+        if (!CompetitionProtocol.competitionRunning(competition, state.status, entry.at)) {
+            return reject(state, entry, "wrong_status")
+        }
         val outcome = entry.data.str("outcome")
         if (outcome == null || outcome !in CompetitionProtocol.ATTEMPT_OUTCOMES) {
             return reject(state, entry, "unknown_outcome")
@@ -497,13 +510,9 @@ object CompetitionReducer {
         // The climb has to be one this competition actually runs. Without this an
         // attempt on any string at all would score: under `organizer_set` a climb
         // that is not in the competition, and under `participant_choice` a climb
-        // somebody else holds — which is the whole point of unique claims.
-        if (competition.rules.climbSource == "organizer_set") {
-            if (competition.climbs.none { it.id == climbId }) return reject(state, entry, "unknown_climb")
-        } else if (climbId !in participant.selections) {
-            return reject(state, entry, "climb_not_selected")
-        }
-
+        // Legacy claims/selections remain in state for hash compatibility, but
+        // never gate live access: everybody may attempt the complete pool.
+        if (competition.climb(climbId) == null) return reject(state, entry, "unknown_climb")
         val existing = participant.climb(climbId) ?: ClimbProgress(climbId = climbId)
         if (existing.outcome == "top") return reject(state, entry, "already_topped")
         val attemptNo = entry.data.int("attempt_no")
@@ -545,5 +554,55 @@ object CompetitionReducer {
         val text = entry.data.str("text")
         if (text.isNullOrEmpty()) return reject(state, entry, "empty_announcement")
         return state.copy(announcements = state.announcements + Announcement(entry.seq, text, entry.at))
+    }
+
+    private fun applyConfigUpdate(
+        state: CompetitionState,
+        entry: LogEntry,
+        competition: Competition,
+    ): CompetitionState {
+        val revision = entry.data.int("revision")
+        if (revision == null || revision != state.configRevision + 1) {
+            return reject(state, entry, "config_bad_revision")
+        }
+        val patch = entry.data["patch"] as? JsonObject
+            ?: return reject(state, entry, "config_empty_patch")
+        if (patch.isEmpty()) return reject(state, entry, "config_empty_patch")
+        val impact = CompetitionConfigUpdate.impact(patch)
+            ?: return reject(state, entry, "config_immutable_field")
+        if (entry.data.str("impact") != impact) return reject(state, entry, "config_impact_mismatch")
+
+        val current = state.effectiveConfig ?: CompetitionConfigUpdate.rootConfig(competition)
+        val merged = CompetitionConfigUpdate.merge(current, patch).toMutableMap().also {
+            it["revision"] = JsonPrimitive(revision)
+        }.let(::JsonObject)
+        val next = runCatching { Competition.from(merged) }.getOrNull()
+            ?: return reject(state, entry, "config_invalid")
+        if (CompetitionValidation.validate(next).isNotEmpty()) return reject(state, entry, "config_invalid")
+
+        val referencedClimbs = buildSet {
+            if (state.currentClimbId.isNotEmpty()) add(state.currentClimbId)
+            addAll(state.claims.keys)
+            state.participants.forEach { participant ->
+                addAll(participant.selections)
+                addAll(participant.climbs.map { it.climbId })
+            }
+        }
+        val nextClimbs = (next.climbs + next.climbPool).map { it.id }.toSet()
+        if (referencedClimbs.any { it !in nextClimbs }) {
+            return reject(state, entry, "config_referenced_climb")
+        }
+        val nextDivisions = next.divisions.map { it.id }.toSet()
+        if (state.participants.any { it.division.isNotEmpty() && it.division !in nextDivisions }) {
+            return reject(state, entry, "config_referenced_division")
+        }
+        return state.copy(
+            effectiveConfig = merged,
+            configRevision = revision,
+            audit = state.audit + AuditEntry(
+                entry.seq, "config_update", entry.reason, entry.at,
+                revision = revision, impact = impact,
+            ),
+        )
     }
 }

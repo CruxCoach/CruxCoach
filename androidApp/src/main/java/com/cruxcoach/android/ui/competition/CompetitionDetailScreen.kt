@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Share
@@ -24,7 +26,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -48,10 +49,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.saveable.listSaver
-import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -80,7 +78,10 @@ import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.MoonBoardVariant
 import com.cruxcoach.domain.competition.Competition
+import com.cruxcoach.domain.competition.CompetitionProtocol
 import kotlinx.coroutines.delay
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import java.text.DateFormat
 import java.util.Date
 import java.util.TimeZone
@@ -218,8 +219,8 @@ fun CompetitionDetailScreen(
                 item { WarningCard(stringResource(R.string.comp_fork)) }
             }
 
-            if (viewModel.isAuthority && state != null) {
-                item { OrganizerConsole(ui, viewModel, action) }
+            if (viewModel.isAuthority && state != null) item {
+                OrganizerConsole(ui, viewModel, action, now)
             }
 
             item {
@@ -228,8 +229,16 @@ fun CompetitionDetailScreen(
                         Text(competition.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                         if (competition.summary.isNotEmpty()) Text(competition.summary)
                         Spacer(Modifier.height(6.dp))
+                        val visibleStatus = when {
+                            state == null -> competition.status
+                            state.status in listOf("finished", "cancelled", "paused") -> state.status
+                            CompetitionProtocol.competitionRunning(competition, state.status, now) -> "running"
+                            CompetitionProtocol.checkinWindowOpen(competition, state.status, now) -> "checkin_open"
+                            CompetitionProtocol.registrationWindowOpen(competition, state.status, now) -> "registration_open"
+                            else -> "published"
+                        }
                         Text(
-                            stringResource(competitionStatusLabel(state?.status ?: competition.status)),
+                            stringResource(competitionStatusLabel(visibleStatus)),
                             style = MaterialTheme.typography.labelLarge,
                         )
                         Text(
@@ -250,21 +259,33 @@ fun CompetitionDetailScreen(
                 }
             }
 
-            // ── the four questions, in order ──
-            if (state != null) {
-                item { LivePanel(ui, now, viewModel) { id, _ -> lastAsked = id; viewModel.openClimb(id) } }
+            if (!viewModel.isAuthority && state != null) {
+                item { ParticipantJourneyCard(ui, now) }
+                val runningNow = CompetitionProtocol.competitionRunning(competition, state.status, now)
+                val terminal = state.status in listOf("finished", "cancelled")
+                if (runningNow || state.status == "paused" || terminal) item {
+                    LivePanel(ui, now, viewModel) { id, _ -> lastAsked = id; viewModel.openClimb(id) }
+                }
+                val me = ui.me
+                val pendingRegistration = ui.snapshot.pendingIntents.any {
+                    it.pubkey == ui.myPubkey && it.op == "register"
+                }
+                if (!terminal && (me == null || pendingRegistration ||
+                        me.registration in listOf("rejected", "withdrawn") ||
+                        (competition.feeMsat > 0 && me.payment in PAYABLE_STATES))
+                ) item {
+                    RegistrationPanel(ui, viewModel, action)
+                }
+                if (!terminal && me?.registration == "accepted") item {
+                    CheckInPanel(ui, viewModel, action, now)
+                }
+                item { PrizeClaimPanel(ui, viewModel) }
             }
-
-            // ── registration ──
-            item { PrizeClaimPanel(ui, viewModel) }
-            item { RegistrationPanel(ui, viewModel, action) { id, _ -> lastAsked = id; viewModel.openClimb(id) } }
             item { ClimbOpenProblem(climbOpen, lastAsked, viewModel) }
 
             item { CompetitionEssentials(competition) }
             item { CompetitionScoringCard(competition) }
-            if (!ui.picksOwnClimbs) {
-                item { CompetitionCatalogueOverview(ui) { id, _ -> lastAsked = id; viewModel.openClimb(id) } }
-            }
+            item { CompetitionCatalogueOverview(ui) { id, _ -> lastAsked = id; viewModel.openClimb(id) } }
 
             if (snapshot.trustworthy && snapshot.standings.isNotEmpty()) {
                 item { LeaderboardCard(ui) }
@@ -297,12 +318,38 @@ private fun OrganizerConsole(
     ui: CompetitionDetailViewModel.Ui,
     viewModel: CompetitionDetailViewModel,
     action: CompetitionDetailViewModel.Action,
+    nowSeconds: Long,
 ) {
     val competition = ui.snapshot.competition ?: return
     val state = ui.snapshot.state ?: return
     val cleanup by viewModel.cleanup.collectAsStateWithLifecycle()
     var announcement by rememberSaveable { mutableStateOf("") }
     var confirmCancel by rememberSaveable { mutableStateOf(false) }
+    var editCompetition by rememberSaveable { mutableStateOf(false) }
+    var editSubmitted by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(editCompetition, editSubmitted, action) {
+        if (editCompetition && editSubmitted && action is CompetitionDetailViewModel.Action.Sent) {
+            editCompetition = false
+            editSubmitted = false
+        }
+    }
+    if (editCompetition) HostCompetitionEditDialog(
+        competition = competition,
+        revision = state.configRevision + 1,
+        working = action is CompetitionDetailViewModel.Action.Working,
+        error = (action as? CompetitionDetailViewModel.Action.Failed)?.reason,
+        impactOf = viewModel::configUpdateImpact,
+        onDismiss = {
+            if (action !is CompetitionDetailViewModel.Action.Working) {
+                editCompetition = false
+                editSubmitted = false
+            }
+        },
+        onPublish = { patch, reason ->
+            editSubmitted = true
+            viewModel.hostUpdateConfig(patch, reason)
+        },
+    )
     if (confirmCancel) AlertDialog(
         onDismissRequest = { confirmCancel = false },
         title = { Text("Wettkampf wirklich absagen?") },
@@ -312,10 +359,15 @@ private fun OrganizerConsole(
     )
     Card(Modifier.fillMaxWidth().testTag("competition_host_console")) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Organizer-Konsole", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Text("Authority ${ui.myPubkey.take(12)}… · Log #${state.seq}", style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(R.string.comp_host_manage), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            HostScheduleOverview(competition, state.status, nowSeconds)
             Text(
-                "Status: ${state.status} · Verbindung: ${if (ui.connectedRelays > 0) "live (${ui.connectedRelays})" else "offline"}",
+                stringResource(R.string.comp_host_automatic_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                "${if (ui.connectedRelays > 0) "Live · ${ui.connectedRelays} Relays" else "Offline"} · Log #${state.seq}",
                 style = MaterialTheme.typography.bodySmall,
             )
             Text(
@@ -324,15 +376,21 @@ private fun OrganizerConsole(
                     "${ui.snapshot.pendingIntents.size} offene Anfragen",
                 style = MaterialTheme.typography.bodySmall,
             )
-            val next = when (state.status) {
-                "draft" -> "published"; "published" -> "registration_open"
-                "registration_open" -> "registration_closed"; "registration_closed" -> "checkin_open"
-                "checkin_open" -> "running"; "paused" -> "running"; "running" -> "finished"
-                else -> null
-            }
+            OutlinedButton(
+                onClick = {
+                    viewModel.clearAction()
+                    editSubmitted = false
+                    editCompetition = true
+                },
+                enabled = action !is CompetitionDetailViewModel.Action.Working,
+                modifier = Modifier.fillMaxWidth().testTag("competition_host_edit"),
+            ) { Text(stringResource(R.string.comp_edit_action)) }
+            val runningNow = CompetitionProtocol.competitionRunning(competition, state.status, nowSeconds)
+            val next = if (state.status == "paused") "running" else null
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 next?.let { target -> Button({ viewModel.hostLifecycle(target) }, Modifier.weight(1f).testTag("competition_host_lifecycle"), enabled = action !is CompetitionDetailViewModel.Action.Working) { Text(hostLifecycleLabel(target)) } }
-                if (state.status == "running") OutlinedButton({ viewModel.hostLifecycle("paused") }, Modifier.weight(1f)) { Text("Pausieren") }
+                if (runningNow) OutlinedButton({ viewModel.hostLifecycle("paused") }, Modifier.weight(1f)) { Text("Pausieren") }
+                if (runningNow || state.status == "paused") OutlinedButton({ viewModel.hostLifecycle("finished") }, Modifier.weight(1f)) { Text("Beenden") }
             }
             if (state.status !in listOf("finished", "cancelled")) {
                 TextButton({ confirmCancel = true }) { Text("Wettkampf absagen …") }
@@ -417,7 +475,7 @@ private fun OrganizerConsole(
                 }
             }
 
-            if (state.status in listOf("checkin_open", "running")) {
+            if (CompetitionProtocol.checkinWindowOpen(competition, state.status, nowSeconds) || runningNow || state.status == "paused") {
                 Text("Live-Steuerung", fontWeight = FontWeight.Bold)
                 if (state.order.isEmpty()) Button(viewModel::hostSeed, Modifier.testTag("competition_host_seed")) { Text("Queue aus Check-ins erstellen") }
                 else {
@@ -428,7 +486,7 @@ private fun OrganizerConsole(
                         else Button({ viewModel.hostQueue("advance") }, Modifier.testTag("competition_host_advance")) { Text("Weiter") }
                         if (state.cursor >= 0) OutlinedButton({ viewModel.hostQueue("close_turn") }) { Text("Zug schließen") }
                     }
-                    if (state.status == "running" && current != null && state.currentClimbId.isNotBlank()) {
+                    if (runningNow && current != null && state.currentClimbId.isNotBlank()) {
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             Button({ viewModel.hostAttempt(current, state.currentClimbId, "top") }) { Text("Top") }
                             OutlinedButton({ viewModel.hostAttempt(current, state.currentClimbId, "zone") }) { Text("Zone") }
@@ -444,7 +502,9 @@ private fun OrganizerConsole(
             OutlinedTextField(announcement, { announcement = it }, label = { Text("Durchsage") }, modifier = Modifier.fillMaxWidth())
             OutlinedButton({ viewModel.hostAnnounce(announcement); announcement = "" }, enabled = announcement.isNotBlank()) { Text("Veröffentlichen") }
             when (action) {
-                is CompetitionDetailViewModel.Action.Failed -> Text("Aktion fehlgeschlagen: ${action.reason}", color = MaterialTheme.colorScheme.error)
+                is CompetitionDetailViewModel.Action.Failed -> Text(
+                    competitionActionError(action.reason), color = MaterialTheme.colorScheme.error,
+                )
                 is CompetitionDetailViewModel.Action.Sent -> Text("Auf ${action.accepted} Relay(s) veröffentlicht.")
                 is CompetitionDetailViewModel.Action.Working -> LinearProgressIndicator(Modifier.fillMaxWidth())
                 else -> Unit
@@ -453,10 +513,144 @@ private fun OrganizerConsole(
     }
 }
 
+@Composable
+private fun HostCompetitionEditDialog(
+    competition: Competition,
+    revision: Int,
+    working: Boolean,
+    error: String?,
+    impactOf: (JsonObject) -> String?,
+    onDismiss: () -> Unit,
+    onPublish: (JsonObject, String) -> Unit,
+) {
+    val venue = (competition.raw["venue"] as? JsonObject)
+        ?.get("name")?.let { it as? JsonPrimitive }?.content.orEmpty()
+    var title by rememberSaveable(competition.revision) { mutableStateOf(competition.title) }
+    var summary by rememberSaveable(competition.revision) { mutableStateOf(competition.summary) }
+    var venueName by rememberSaveable(competition.revision) { mutableStateOf(venue) }
+    var capacity by rememberSaveable(competition.revision) { mutableStateOf(competition.capacity.toString()) }
+    var attempts by rememberSaveable(competition.revision) { mutableStateOf(competition.rules.attemptsPerClimb.toString()) }
+    var reason by rememberSaveable(competition.revision) { mutableStateOf("") }
+
+    val patch = JsonObject(buildMap {
+        title.trim().takeIf { it != competition.title }?.let { put("title", JsonPrimitive(it)) }
+        summary.trim().takeIf { it != competition.summary }?.let { put("summary", JsonPrimitive(it)) }
+        venueName.trim().takeIf { it != venue }?.let {
+            put("venue", JsonObject(mapOf("name" to JsonPrimitive(it))))
+        }
+        capacity.toIntOrNull()?.takeIf { it != competition.capacity }?.let { put("capacity", JsonPrimitive(it)) }
+        attempts.toIntOrNull()?.takeIf { it != competition.rules.attemptsPerClimb }?.let {
+            put("rules", JsonObject(mapOf("attempts_per_climb" to JsonPrimitive(it))))
+        }
+    })
+    val impact = impactOf(patch)
+    val valid = title.isNotBlank() && capacity.toIntOrNull() in 0..500 &&
+        attempts.toIntOrNull() in 1..20 && reason.isNotBlank() && impact != null
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.comp_edit_title)) },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 480.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(stringResource(R.string.comp_edit_revision, revision), style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(title, { title = it }, label = { Text(stringResource(R.string.comp_edit_field_title)) }, singleLine = true)
+                OutlinedTextField(summary, { summary = it }, label = { Text(stringResource(R.string.comp_edit_field_summary)) })
+                OutlinedTextField(venueName, { venueName = it }, label = { Text(stringResource(R.string.comp_edit_field_venue)) }, singleLine = true)
+                OutlinedTextField(capacity, { capacity = it.filter(Char::isDigit) }, label = { Text(stringResource(R.string.comp_edit_field_capacity)) }, singleLine = true)
+                OutlinedTextField(attempts, { attempts = it.filter(Char::isDigit) }, label = { Text(stringResource(R.string.comp_edit_field_attempts)) }, singleLine = true)
+                Card(colors = CardDefaults.cardColors(
+                    containerColor = if (impact == "scoring") MaterialTheme.colorScheme.errorContainer
+                    else MaterialTheme.colorScheme.secondaryContainer,
+                )) {
+                    Text(
+                        stringResource(if (impact == "scoring") R.string.comp_edit_impact_scoring else R.string.comp_edit_impact_safe),
+                        Modifier.padding(10.dp), style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                OutlinedTextField(
+                    reason, { reason = it }, label = { Text(stringResource(R.string.comp_edit_reason)) },
+                    supportingText = { Text(stringResource(R.string.comp_edit_reason_hint)) },
+                )
+                if (working) LinearProgressIndicator(Modifier.fillMaxWidth())
+                if (error != null) {
+                    Text(
+                        competitionActionError(error),
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Assertive },
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button({ onPublish(patch, reason.trim()) }, enabled = valid && !working) {
+                Text(stringResource(R.string.comp_edit_publish))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !working) {
+                Text(stringResource(android.R.string.cancel))
+            }
+        },
+    )
+}
+
+private fun competitionActionError(reason: String): String = when (reason) {
+    "reason_required" -> "Eine Begründung ist Pflicht."
+    "immutable_or_empty_patch" -> "Es gibt keine veröffentlichbare Änderung."
+    "config_referenced_climb" -> "Ein bereits verwendeter Boulder darf nicht entfernt werden."
+    "config_referenced_division" -> "Eine bereits verwendete Division darf nicht entfernt werden."
+    "config_invalid" -> "Die Änderung ergibt keine gültige Wettkampf-Konfiguration."
+    "config_bad_revision" -> "Die Competition wurde inzwischen geändert. Bitte neu laden und erneut versuchen."
+    "config_empty_patch" -> "Es wurden keine Änderungen erkannt."
+    "config_immutable_field" -> "Identität, Authority, Status und Relay-Zuordnung können hier nicht geändert werden."
+    "config_impact_mismatch" -> "Die Änderungsauswirkung konnte nicht eindeutig geprüft werden. Bitte neu laden."
+    "no_relay" -> "Kein Relay hat die Änderung angenommen. Es wurde nichts veröffentlicht."
+    else -> "Aktion fehlgeschlagen: $reason"
+}
+
 private fun hostLifecycleLabel(status: String) = when (status) {
-    "published" -> "Entwurf veröffentlichen"; "registration_open" -> "Anmeldung öffnen"
-    "registration_closed" -> "Anmeldung schließen"; "checkin_open" -> "Check-in öffnen"
-    "running" -> "Wettkampf starten / fortsetzen"; "finished" -> "Wettkampf beenden"; else -> status
+    "running" -> "Wettkampf fortsetzen"
+    "finished" -> "Wettkampf beenden"
+    else -> status
+}
+
+@Composable
+private fun HostScheduleOverview(competition: Competition, status: String, nowSeconds: Long) {
+    val registration = windowState(
+        competition,
+        nowSeconds,
+        competition.registrationOpensAt,
+        competition.registrationClosesAt,
+        CompetitionProtocol.registrationWindowOpen(competition, status, nowSeconds),
+    )
+    val checkin = windowState(
+        competition,
+        nowSeconds,
+        competition.checkinOpensAt,
+        competition.checkinClosesAt,
+        CompetitionProtocol.checkinWindowOpen(competition, status, nowSeconds),
+    )
+    val live = when {
+        status == "cancelled" -> stringResource(R.string.comp_journey_cancelled)
+        status == "finished" -> stringResource(R.string.comp_journey_finished)
+        status == "paused" -> stringResource(R.string.comp_live_paused)
+        CompetitionProtocol.competitionRunning(competition, status, nowSeconds) ->
+            stringResource(R.string.comp_journey_live_now)
+        nowSeconds < competition.startsAt -> stringResource(
+            R.string.comp_journey_starts,
+            formatCompetitionTime(competition, competition.startsAt),
+        )
+        else -> stringResource(R.string.comp_journey_finished)
+    }
+    JourneyRow(stringResource(R.string.comp_journey_registration), registration)
+    JourneyRow(stringResource(R.string.comp_journey_checkin), checkin)
+    JourneyRow(stringResource(R.string.comp_journey_live), live)
 }
 
 /** The wall and schedule belong before registration, not in small print. */
@@ -576,7 +770,11 @@ private fun LivePanel(
         state.participants.firstOrNull { it.pubkey == pubkey }?.displayOrShort()
     }
     val nextName = ui.nextClimber?.let { pubkey -> state.participant(pubkey)?.displayOrShort() }
-    val cue = ui.personalCue
+    val cue = CompetitionLivePolicy.personalCue(
+        state,
+        ui.myPubkey,
+        CompetitionProtocol.competitionRunning(competition, state.status, nowSeconds),
+    )
     val sync = CompetitionLivePolicy.syncHealth(
         hasState = true,
         connectedRelays = ui.connectedRelays,
@@ -619,7 +817,7 @@ private fun LivePanel(
             LabelledValue(stringResource(R.string.comp_current_climb), climbLabel(ui, state.currentClimbId))
             LabelledValue(stringResource(R.string.comp_next_climber), nextName ?: "—")
             LabelledValue(stringResource(R.string.comp_round), stringResource(R.string.comp_round, state.round))
-            if (state.status == "running") ui.secondsToDeadline(nowSeconds)?.let { seconds ->
+            if (CompetitionProtocol.competitionRunning(competition, state.status, nowSeconds)) ui.secondsToDeadline(nowSeconds)?.let { seconds ->
                 LabelledValue(
                     stringResource(R.string.comp_deadline),
                     "%d:%02d".format(seconds / 60, seconds % 60),
@@ -765,9 +963,11 @@ private fun ParticipantActionBar(
     val competition = ui.snapshot.competition ?: return
     val me = ui.me ?: return
     val activeClimb = ui.rotation.entries.firstOrNull()?.climb
+    val runningNow = CompetitionProtocol.competitionRunning(competition, state.status, nowSeconds)
+    val deferAvailability = ui.deferAvailability(nowSeconds)
     val canCheckIn = me.registration == "accepted" && me.checkin == "none" &&
         checkinWindowOpen(competition, state.status, nowSeconds)
-    if (state.status !in listOf("running", "paused") && !canCheckIn) return
+    if (!runningNow && state.status != "paused" && !canCheckIn) return
 
     Card(
         Modifier.fillMaxWidth().navigationBarsPadding().testTag("competition_actions"),
@@ -792,7 +992,7 @@ private fun ParticipantActionBar(
                         modifier = Modifier.weight(1f).testTag("competition_checkin_sticky"),
                     ) { Text(stringResource(R.string.comp_checkin_action)) }
                 }
-                if (activeClimb != null && state.status == "running") {
+                if (activeClimb != null && runningNow) {
                     Button(
                         onClick = { onOpenClimb(activeClimb.id) },
                         modifier = Modifier.weight(1f).testTag("competition_open_live"),
@@ -803,15 +1003,15 @@ private fun ParticipantActionBar(
                         )
                     }
                 }
-                if (ui.deferAvailability.allowed) {
+                if (deferAvailability.allowed) {
                     OutlinedButton(
                         onClick = { viewModel.requestDefer() },
                         modifier = Modifier.testTag("competition_defer"),
                     ) { Text(stringResource(R.string.comp_defer)) }
                 }
             }
-            if (ui.isMyTurn && !ui.deferAvailability.allowed) {
-                val reason = when (ui.deferAvailability.reason) {
+            if (ui.isMyTurn && !deferAvailability.allowed) {
+                val reason = when (deferAvailability.reason) {
                     CompetitionLivePolicy.DeferReason.PAUSED -> R.string.comp_next_paused
                     CompetitionLivePolicy.DeferReason.BUDGET -> R.string.comp_defer_none
                     CompetitionLivePolicy.DeferReason.CONSECUTIVE -> R.string.comp_live_defer_consecutive
@@ -824,7 +1024,7 @@ private fun ParticipantActionBar(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-            } else if (ui.deferAvailability.allowed) {
+            } else if (deferAvailability.allowed) {
                 Text(
                     stringResource(R.string.comp_defer_hint, competition.rules.deferSlots),
                     style = MaterialTheme.typography.bodySmall,
@@ -835,12 +1035,130 @@ private fun ParticipantActionBar(
     }
 }
 
+/** A single glance answers where this entrant is in each independent window. */
+@Composable
+private fun ParticipantJourneyCard(ui: CompetitionDetailViewModel.Ui, nowSeconds: Long) {
+    val competition = ui.snapshot.competition ?: return
+    val state = ui.snapshot.state ?: return
+    val me = ui.me
+    val pendingRegistration = ui.snapshot.pendingIntents.any {
+        it.pubkey == ui.myPubkey && it.op == "register"
+    }
+    val pendingCheckin = ui.snapshot.pendingIntents.any {
+        it.pubkey == ui.myPubkey && it.op == "checkin_request"
+    }
+    val registration = when {
+        me?.registration == "accepted" -> stringResource(R.string.comp_journey_registration_accepted)
+        me?.registration == "rejected" -> stringResource(R.string.comp_journey_registration_rejected)
+        me?.registration == "waitlisted" -> stringResource(R.string.comp_reg_waitlisted)
+        me?.registration == "withdrawn" -> stringResource(R.string.comp_reg_withdrawn)
+        pendingRegistration || me?.registration == "pending" ->
+            stringResource(R.string.comp_journey_registration_sent)
+        CompetitionProtocol.registrationWindowOpen(competition, state.status, nowSeconds) ->
+            stringResource(R.string.comp_journey_open_now)
+        nowSeconds < competition.registrationOpensAt -> stringResource(
+            R.string.comp_journey_opens,
+            formatCompetitionTime(competition, competition.registrationOpensAt),
+        )
+        else -> stringResource(R.string.comp_journey_closed)
+    }
+    val checkin = when {
+        me?.checkin == "checked_in" -> stringResource(R.string.comp_checkin_checked_in)
+        me?.checkin == "no_show" -> stringResource(R.string.comp_checkin_no_show)
+        pendingCheckin -> stringResource(R.string.comp_journey_request_sent)
+        me?.registration != "accepted" -> stringResource(R.string.comp_journey_after_acceptance)
+        CompetitionProtocol.checkinWindowOpen(competition, state.status, nowSeconds) ->
+            stringResource(R.string.comp_journey_open_now)
+        nowSeconds < competition.checkinOpensAt -> stringResource(
+            R.string.comp_journey_opens,
+            formatCompetitionTime(competition, competition.checkinOpensAt),
+        )
+        else -> stringResource(R.string.comp_journey_closed)
+    }
+    val live = when {
+        state.status == "cancelled" -> stringResource(R.string.comp_journey_cancelled)
+        state.status == "finished" -> stringResource(R.string.comp_journey_finished)
+        state.status == "paused" -> stringResource(R.string.comp_live_paused)
+        CompetitionProtocol.competitionRunning(competition, state.status, nowSeconds) ->
+            stringResource(R.string.comp_journey_live_now)
+        nowSeconds < competition.startsAt -> stringResource(
+            R.string.comp_journey_starts,
+            formatCompetitionTime(competition, competition.startsAt),
+        )
+        else -> stringResource(R.string.comp_journey_finished)
+    }
+
+    Card(Modifier.fillMaxWidth().testTag("competition_journey")) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(stringResource(R.string.comp_journey_title), fontWeight = FontWeight.Bold)
+            JourneyRow(stringResource(R.string.comp_journey_registration), registration)
+            JourneyRow(stringResource(R.string.comp_journey_checkin), checkin)
+            JourneyRow(stringResource(R.string.comp_journey_live), live)
+        }
+    }
+}
+
+@Composable
+private fun JourneyRow(label: String, status: String) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(0.35f))
+        Text(status, textAlign = TextAlign.End, modifier = Modifier.weight(0.65f))
+    }
+}
+
+@Composable
+private fun CheckInPanel(
+    ui: CompetitionDetailViewModel.Ui,
+    viewModel: CompetitionDetailViewModel,
+    action: CompetitionDetailViewModel.Action,
+    nowSeconds: Long,
+) {
+    val competition = ui.snapshot.competition ?: return
+    val state = ui.snapshot.state ?: return
+    val me = ui.me ?: return
+    val pending = ui.snapshot.pendingIntents.any {
+        it.pubkey == ui.myPubkey && it.op == "checkin_request"
+    }
+    val open = CompetitionProtocol.checkinWindowOpen(competition, state.status, nowSeconds)
+    Card(Modifier.fillMaxWidth().testTag("competition_checkin")) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(stringResource(R.string.comp_journey_checkin), fontWeight = FontWeight.Bold)
+            when {
+                me.checkin == "checked_in" -> Text(stringResource(R.string.comp_journey_checkin_done))
+                me.checkin == "no_show" -> Text(stringResource(R.string.comp_checkin_no_show))
+                pending -> {
+                    Text(
+                        stringResource(R.string.comp_journey_request_sent),
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                    )
+                    Text(stringResource(R.string.comp_journey_checkin_waiting))
+                }
+                open -> {
+                    Text(stringResource(R.string.comp_journey_checkin_open))
+                    Button(
+                        onClick = viewModel::requestCheckIn,
+                        enabled = action !is CompetitionDetailViewModel.Action.Working,
+                        modifier = Modifier.fillMaxWidth().testTag("competition_checkin_main"),
+                    ) { Text(stringResource(R.string.comp_checkin_action)) }
+                }
+                nowSeconds < competition.checkinOpensAt -> Text(
+                    stringResource(
+                        R.string.comp_journey_checkin_opens,
+                        formatCompetitionTime(competition, competition.checkinOpensAt),
+                    ),
+                )
+                else -> Text(stringResource(R.string.comp_journey_checkin_closed))
+            }
+        }
+    }
+}
+
 @Composable
 private fun RegistrationPanel(
     ui: CompetitionDetailViewModel.Ui,
     viewModel: CompetitionDetailViewModel,
     action: CompetitionDetailViewModel.Action,
-    onOpenClimb: (String, Int) -> Unit,
 ) {
     val competition = ui.snapshot.competition ?: return
     val state = ui.snapshot.state ?: return
@@ -875,10 +1193,6 @@ private fun RegistrationPanel(
                 // strands them.
                 if (competition.feeMsat > 0 && me.payment in PAYABLE_STATES) {
                     PaymentSection(ui, viewModel)
-                    Spacer(Modifier.height(8.dp))
-                }
-                if (ui.picksOwnClimbs) {
-                    ClaimStatusSection(ui, viewModel, onOpenClimb)
                     Spacer(Modifier.height(8.dp))
                 }
                 if (me.registration in listOf("pending", "accepted", "waitlisted") &&
@@ -923,7 +1237,7 @@ private fun RegistrationPanel(
                                 },
                                 display = me.display,
                                 waiverAccepted = true,
-                                selections = me.selections,
+                                selections = emptyList(),
                             )
                         },
                         modifier = Modifier.testTag("competition_register_again"),
@@ -932,8 +1246,28 @@ private fun RegistrationPanel(
                 return@Column
             }
 
+            val pendingRegistration = ui.snapshot.pendingIntents.any {
+                it.pubkey == ui.myPubkey && it.op == "register"
+            }
+            if (pendingRegistration) {
+                Text(
+                    stringResource(R.string.comp_journey_registration_sent),
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                )
+                Text(stringResource(R.string.comp_journey_registration_waiting))
+                return@Column
+            }
+
             if (!registrationOpen) {
-                Text(stringResource(R.string.comp_registration_closed))
+                Text(
+                    if (now < competition.registrationOpensAt) {
+                        stringResource(
+                            R.string.comp_journey_registration_opens,
+                            formatCompetitionTime(competition, competition.registrationOpensAt),
+                        )
+                    } else stringResource(R.string.comp_registration_closed),
+                )
                 return@Column
             }
 
@@ -996,70 +1330,31 @@ private fun RegistrationPanel(
                     Text(stringResource(R.string.comp_waiver_accept))
                 }
             }
-            val picked = rememberSaveable(
-                competition.compId,
-                saver = listSaver<SnapshotStateList<String>, String>(
-                    save = { it.toList() },
-                    restore = { saved -> mutableStateListOf<String>().apply { addAll(saved) } },
-                ),
-            ) { mutableStateListOf() }
-            var prunedPicks by rememberSaveable(competition.compId) { mutableStateOf(0) }
-            LaunchedEffect(ui.catalogue, state.claims) {
-                val ready = ui.catalogue as? CompetitionDetailViewModel.CatalogueState.Ready
-                    ?: return@LaunchedEffect
-                val allowed = competition.climbPool.map { it.id }.filter { id ->
-                    id in ready.entries && (
-                        competition.rules.selectionUniqueness != "unique_per_competition" ||
-                            state.claims[id] == null || state.claims[id] == ui.myPubkey
-                        )
-                }.toSet()
-                val before = picked.size
-                picked.removeAll { it !in allowed }
-                prunedPicks += before - picked.size
-            }
             if (ui.picksOwnClimbs) {
-                Spacer(Modifier.height(12.dp))
-                ClimbPicker(
-                    ui = ui,
-                    picked = picked,
-                    needed = competition.rules.climbCount,
-                    onOpenClimb = onOpenClimb,
-                )
-            }
-            if (prunedPicks > 0) {
+                Spacer(Modifier.height(8.dp))
                 Text(
-                    stringResource(R.string.comp_pick_pruned, prunedPicks),
+                    stringResource(
+                        R.string.comp_journey_choose_live,
+                        competition.rules.countedClimbCount,
+                    ),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            val readyIds = (ui.catalogue as? CompetitionDetailViewModel.CatalogueState.Ready)
-                ?.entries?.keys.orEmpty()
-            val picksComplete = !ui.picksOwnClimbs ||
-                (ui.catalogue is CompetitionDetailViewModel.CatalogueState.Ready &&
-                    picked.size == competition.rules.climbCount && picked.all { it in readyIds })
             Button(
                 onClick = {
                     viewModel.register(
                         division = selectedDivision,
                         display = display.trim(),
                         waiverAccepted = !competition.waiverRequired || waiver,
-                        selections = picked.toList(),
+                        selections = emptyList(),
                     )
                 },
-                enabled = display.isNotBlank() && (!competition.waiverRequired || waiver) && picksComplete,
+                enabled = display.isNotBlank() && (!competition.waiverRequired || waiver),
                 modifier = Modifier.fillMaxWidth().testTag("competition_register"),
             ) { Text(stringResource(R.string.comp_register)) }
             val registerProblem = when {
                 display.isBlank() -> stringResource(R.string.comp_display_required)
-                ui.picksOwnClimbs && ui.catalogue is CompetitionDetailViewModel.CatalogueState.Loading ->
-                    stringResource(R.string.comp_catalog_loading_register)
-                ui.picksOwnClimbs && ui.catalogue is CompetitionDetailViewModel.CatalogueState.Unavailable ->
-                    stringResource(R.string.comp_catalog_unavailable_register)
-                ui.picksOwnClimbs && !picksComplete -> stringResource(
-                    R.string.comp_pick_remaining,
-                    (competition.rules.climbCount - picked.size).coerceAtLeast(0),
-                )
                 competition.waiverRequired && !waiver -> stringResource(R.string.comp_waiver_required)
                 else -> null
             }
@@ -1353,176 +1648,6 @@ private fun payErrorMessage(code: String, amountSats: Long): String = when (code
     else -> stringResource(R.string.comp_pay_err_provider)
 }
 
-/**
- * Choosing climbs at registration, when the organizer let entrants choose.
- *
- * A climb somebody already holds is shown as taken and cannot be ticked, so the
- * race is visible before it is lost rather than after. Each one can be opened
- * on the board first — picking a problem you have not seen is how you find out
- * at the wall that it is not for you.
- */
-@Composable
-private fun ClimbPicker(
-    ui: CompetitionDetailViewModel.Ui,
-    picked: SnapshotStateList<String>,
-    needed: Int,
-    onOpenClimb: (String, Int) -> Unit,
-) {
-    val competition = ui.snapshot.competition ?: return
-    val state = ui.snapshot.state ?: return
-    val unique = competition.rules.selectionUniqueness == "unique_per_competition"
-    var query by rememberSaveable(competition.compId) { mutableStateOf("") }
-    var gradeBand by rememberSaveable(competition.compId) { mutableStateOf("all") }
-    var minimumSends by rememberSaveable(competition.compId) { mutableStateOf(0) }
-    var sort by rememberSaveable(competition.compId) { mutableStateOf("popular") }
-
-    Text(stringResource(R.string.comp_pick_title), fontWeight = FontWeight.Bold)
-    Text(stringResource(R.string.comp_pick_hint, needed), style = MaterialTheme.typography.bodySmall)
-    if (unique) {
-        Text(stringResource(R.string.comp_pick_unique_hint), style = MaterialTheme.typography.bodySmall)
-    }
-    Text(
-        stringResource(R.string.comp_pick_count, picked.size, needed),
-        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-    )
-    LinearProgressIndicator(
-        progress = { (picked.size.toFloat() / needed.coerceAtLeast(1)).coerceIn(0f, 1f) },
-        modifier = Modifier.fillMaxWidth().testTag("competition_pick_progress"),
-    )
-
-    when (val catalogue = ui.catalogue) {
-        CompetitionDetailViewModel.CatalogueState.Loading -> {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                CircularProgressIndicator(Modifier.size(22.dp))
-                Spacer(Modifier.width(10.dp))
-                Text(stringResource(R.string.comp_catalog_loading))
-            }
-            return
-        }
-        is CompetitionDetailViewModel.CatalogueState.Unavailable -> {
-            WarningCard(
-                stringResource(
-                    if (catalogue.reason == CompetitionDetailViewModel.CatalogueState.Reason.CATALOGUE_NOT_DOWNLOADED) {
-                        R.string.comp_catalog_missing
-                    } else {
-                        R.string.comp_catalog_bad_board
-                    },
-                ),
-            )
-            return
-        }
-        is CompetitionDetailViewModel.CatalogueState.Ready -> {
-            OutlinedTextField(
-                value = query,
-                onValueChange = { query = it.take(80) },
-                label = { Text(stringResource(R.string.comp_catalog_search)) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth().testTag("competition_catalog_search"),
-            )
-            Text(stringResource(R.string.comp_catalog_grade), style = MaterialTheme.typography.labelMedium)
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf(
-                    "all" to R.string.comp_catalog_all,
-                    "easy" to R.string.comp_catalog_easy,
-                    "mid" to R.string.comp_catalog_mid,
-                    "hard" to R.string.comp_catalog_hard,
-                ).forEach { (value, label) ->
-                    FilterChip(
-                        selected = gradeBand == value,
-                        onClick = { gradeBand = value },
-                        label = { Text(stringResource(label)) },
-                    )
-                }
-            }
-            Text(stringResource(R.string.comp_catalog_sends), style = MaterialTheme.typography.labelMedium)
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf(0, 10, 100).forEach { threshold ->
-                    FilterChip(
-                        selected = minimumSends == threshold,
-                        onClick = { minimumSends = threshold },
-                        label = {
-                            Text(
-                                if (threshold == 0) stringResource(R.string.comp_catalog_any)
-                                else stringResource(R.string.comp_catalog_sends_min, threshold),
-                            )
-                        },
-                    )
-                }
-            }
-            Text(stringResource(R.string.comp_catalog_sort), style = MaterialTheme.typography.labelMedium)
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf(
-                    "popular" to R.string.comp_catalog_sort_popular,
-                    "grade" to R.string.comp_catalog_sort_grade,
-                    "quality" to R.string.comp_catalog_sort_quality,
-                ).forEach { (value, label) ->
-                    FilterChip(
-                        selected = sort == value,
-                        onClick = { sort = value },
-                        label = { Text(stringResource(label)) },
-                    )
-                }
-            }
-
-            val entries = competition.climbPool.mapNotNull { catalogue.entries[it.id] }
-                .filter { entry ->
-                    val needle = query.trim().lowercase()
-                    (needle.isEmpty() || entry.climb.name.lowercase().contains(needle) ||
-                        entry.climb.setterUsername.orEmpty().lowercase().contains(needle)) &&
-                        (entry.climb.ascensionistCount ?: 0) >= minimumSends &&
-                        when (gradeBand) {
-                            "easy" -> (entry.climb.difficultyAverage ?: Double.MAX_VALUE) <= 18.0
-                            "mid" -> (entry.climb.difficultyAverage ?: -1.0) in 18.01..24.99
-                            "hard" -> (entry.climb.difficultyAverage ?: -1.0) >= 25.0
-                            else -> true
-                        }
-                }
-                .let { list ->
-                    when (sort) {
-                        "grade" -> list.sortedBy { it.climb.difficultyAverage ?: Double.MAX_VALUE }
-                        "quality" -> list.sortedByDescending { it.climb.qualityAverage ?: -1.0 }
-                        else -> list.sortedByDescending { it.climb.ascensionistCount ?: -1 }
-                    }
-                }
-            if (catalogue.incompatibleCount > 0 || catalogue.missingCount > 0) {
-                Text(
-                    stringResource(
-                        R.string.comp_catalog_hidden,
-                        catalogue.incompatibleCount,
-                        catalogue.missingCount,
-                    ),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
-            if (entries.isEmpty()) {
-                Text(stringResource(R.string.comp_catalog_no_results), style = MaterialTheme.typography.bodySmall)
-            }
-            entries.forEach { entry ->
-                val climb = entry.option
-                val takenBy = if (unique) state.claims[climb.id] else null
-                val taken = takenBy != null && takenBy != ui.myPubkey
-                CompetitionCatalogueCard(
-                    entry = entry,
-                    checked = picked.contains(climb.id),
-                    enabled = !taken && (picked.size < needed || picked.contains(climb.id)),
-                    taken = taken,
-                    zoneRelevant = competition.zoneScoringActive(),
-                    gradeScale = ui.gradeScale,
-                    onCheckedChange = { checked ->
-                        if (checked) {
-                            if (picked.size < needed) picked.add(climb.id)
-                        } else {
-                            picked.remove(climb.id)
-                        }
-                    },
-                    onOpenClimb = onOpenClimb,
-                )
-            }
-        }
-    }
-}
-
 @Composable
 private fun CompetitionCatalogueCard(
     entry: CompetitionDetailViewModel.CatalogueEntry,
@@ -1603,15 +1728,13 @@ private fun CompetitionCatalogueCard(
                 } else if (!enabled && !checked) {
                     Text(stringResource(R.string.comp_pick_limit_reached), style = MaterialTheme.typography.bodySmall)
                 }
-                if (zoneRelevant) {
+                if (zoneRelevant && validZoneHold != null) {
                     Text(
                         stringResource(
-                            if (validZoneHold != null) R.string.comp_catalog_zone_marked
-                            else R.string.comp_catalog_zone_legacy,
+                            R.string.comp_catalog_zone_marked,
                         ),
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (validZoneHold == null) MaterialTheme.colorScheme.error
-                        else MaterialTheme.colorScheme.primary,
+                        color = MaterialTheme.colorScheme.primary,
                     )
                 }
                 OpenOnBoardButton(option, onOpenClimb)
@@ -1626,12 +1749,19 @@ private fun CompetitionCatalogueOverview(
     onOpenClimb: (String, Int) -> Unit,
 ) {
     val competition = ui.snapshot.competition ?: return
-    if (competition.rules.climbSource != "organizer_set") return
     val ready = ui.catalogue as? CompetitionDetailViewModel.CatalogueState.Ready
     Card(Modifier.fillMaxWidth().testTag("competition_organizer_climbs")) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(stringResource(R.string.comp_catalog_comp_climbs), fontWeight = FontWeight.Bold)
-            Text(stringResource(R.string.comp_catalog_comp_climbs_hint), style = MaterialTheme.typography.bodySmall)
+            Text(
+                if (competition.rules.climbSource == "participant_choice") {
+                    stringResource(
+                        R.string.comp_journey_pool_best,
+                        competition.rules.countedClimbCount,
+                    )
+                } else stringResource(R.string.comp_catalog_comp_climbs_hint),
+                style = MaterialTheme.typography.bodySmall,
+            )
             if (ready == null) {
                 Text(
                     stringResource(
@@ -1646,7 +1776,7 @@ private fun CompetitionCatalogueOverview(
                 )
                 return@Column
             }
-            competition.climbs.mapNotNull { ready.entries[it.id] }.forEach { entry ->
+            competition.climbsFor(emptyList()).mapNotNull { ready.entries[it.id] }.forEach { entry ->
                 CompetitionCatalogueCard(
                     entry = entry,
                     checked = false,
@@ -1668,113 +1798,38 @@ private fun Competition.zoneScoringActive(): Boolean =
         (rules.scoring == "achievement_points" && (rules.scorePoints?.zone ?: 0) > 0) ||
         "most_zones" in rules.tiebreaks || "fewest_zone_attempts" in rules.tiebreaks
 
-/**
- * What happened to an entrant's picks.
- *
- * Losing a race silently is the worst version of it, so this names the climbs
- * that were granted, says plainly when one was taken first, and offers what is
- * still free. Re-registering replaces the earlier request rather than adding a
- * second one, because an intent reuses its nonce.
- */
-@Composable
-private fun ClaimStatusSection(
-    ui: CompetitionDetailViewModel.Ui,
-    viewModel: CompetitionDetailViewModel,
-    onOpenClimb: (String, Int) -> Unit,
-) {
-    val competition = ui.snapshot.competition ?: return
-    val state = ui.snapshot.state ?: return
-    val me = ui.me ?: return
-
-    Text(stringResource(R.string.comp_your_climbs), fontWeight = FontWeight.Bold)
-    me.selections.forEach { id ->
-        val climb = competition.climb(id)
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-            Text(climb?.label ?: id, modifier = Modifier.weight(1f))
-            if (climb != null) OpenOnBoardButton(climb, onOpenClimb)
-        }
-    }
-
-    if (ui.climbsStillToPick == 0) {
-        Text(stringResource(R.string.comp_picks_confirmed), style = MaterialTheme.typography.bodySmall)
-        return
-    }
-    if (!registrationWindowOpen(competition, state.status, System.currentTimeMillis() / 1000)) {
-        Text(stringResource(R.string.comp_picks_pending), style = MaterialTheme.typography.bodySmall)
-        return
-    }
-    val free = ui.freePoolClimbs.filter { it.id !in me.selections }
-    if (free.isEmpty()) {
-        Text(stringResource(R.string.comp_picks_none_left), style = MaterialTheme.typography.bodySmall)
-        return
-    }
-
-    Text(
-        stringResource(R.string.comp_picks_lost, ui.climbsStillToPick),
-        style = MaterialTheme.typography.bodySmall,
-        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-    )
-    val repick = rememberSaveable(
-        competition.compId,
-        "repick",
-        saver = listSaver<SnapshotStateList<String>, String>(
-            save = { it.toList() },
-            restore = { saved -> mutableStateListOf<String>().apply { addAll(saved) } },
-        ),
-    ) { mutableStateListOf<String>().apply { addAll(me.selections) } }
-    LaunchedEffect(ui.catalogue, state.claims) {
-        val ready = ui.catalogue as? CompetitionDetailViewModel.CatalogueState.Ready
-            ?: return@LaunchedEffect
-        repick.removeAll { id ->
-            id !in ready.entries || (state.claims[id] != null && state.claims[id] != ui.myPubkey)
-        }
-    }
-    ClimbPicker(
-        ui = ui,
-        picked = repick,
-        needed = competition.rules.climbCount,
-        onOpenClimb = onOpenClimb,
-    )
-    val repickReady = ui.catalogue is CompetitionDetailViewModel.CatalogueState.Ready &&
-        repick.size == competition.rules.climbCount
-    Button(
-        onClick = {
-            viewModel.register(
-                division = me.division.ifEmpty { competition.divisions.firstOrNull()?.id ?: "open" },
-                display = me.display,
-                waiverAccepted = true,
-                selections = repick.toList(),
-            )
-        },
-        enabled = repickReady,
-        modifier = Modifier.fillMaxWidth().testTag("competition_repick"),
-    ) { Text(stringResource(R.string.comp_pick_again)) }
-    if (!repickReady) {
-        Text(
-            when (ui.catalogue) {
-                CompetitionDetailViewModel.CatalogueState.Loading -> stringResource(R.string.comp_catalog_loading_register)
-                is CompetitionDetailViewModel.CatalogueState.Unavailable -> stringResource(R.string.comp_catalog_unavailable_register)
-                is CompetitionDetailViewModel.CatalogueState.Ready -> stringResource(
-                    R.string.comp_pick_remaining,
-                    (competition.rules.climbCount - repick.size).coerceAtLeast(0),
-                )
-            },
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.error,
-        )
-    }
-}
-
 private fun registrationWindowOpen(competition: Competition, status: String, at: Long): Boolean =
-    at <= competition.registrationClosesAt && (
-        status == "registration_open" || status == "checkin_open" ||
-            (status == "running" && competition.rules.lateEntryAllowed)
-        )
+    CompetitionProtocol.registrationWindowOpen(competition, status, at)
 
 private fun checkinWindowOpen(competition: Competition, status: String, at: Long): Boolean =
-    at <= competition.checkinClosesAt && (
-        status == "checkin_open" || (status == "running" && competition.rules.lateEntryAllowed)
-        )
+    CompetitionProtocol.checkinWindowOpen(competition, status, at)
+
+@Composable
+private fun windowState(
+    competition: Competition,
+    nowSeconds: Long,
+    opensAt: Long,
+    closesAt: Long,
+    open: Boolean,
+): String = when {
+    open -> stringResource(R.string.comp_journey_open_now)
+    nowSeconds < opensAt -> stringResource(
+        R.string.comp_journey_opens_short,
+        formatCompetitionTime(competition, opensAt),
+    )
+    nowSeconds > closesAt -> stringResource(R.string.comp_journey_closed)
+    else -> stringResource(R.string.comp_journey_closed)
+}
+
+@Composable
+private fun formatCompetitionTime(competition: Competition, epochSeconds: Long): String {
+    val formatter = remember(competition.timezone) {
+        DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).apply {
+            timeZone = TimeZone.getTimeZone(competition.timezone)
+        }
+    }
+    return remember(epochSeconds, formatter) { formatter.format(Date(epochSeconds * 1000)) }
+}
 
 /**
  * Asynchronous turns: which of my climbs I go to next.

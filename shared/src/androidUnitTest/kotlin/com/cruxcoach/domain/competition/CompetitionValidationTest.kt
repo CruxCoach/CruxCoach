@@ -127,17 +127,8 @@ class CompetitionValidationTest {
     }
 
     @Test
-    fun `times after the start require late arrivals to be enabled`() {
-        val blocked = problems(config(registrationClose = 1789005500, checkinClose = 1789005600))
-        assertFalse(blocked.isEmpty())
-
-        val allowed = problems(
-            config(
-                registrationClose = 1789005500,
-                checkinClose = 1789005600,
-                lateEntryAllowed = true,
-            ),
-        )
+    fun `registration check-in and running windows may overlap`() {
+        val allowed = problems(config(registrationClose = 1789005500, checkinClose = 1789005600))
         assertTrue(allowed.isEmpty(), allowed.joinToString())
     }
 
@@ -260,10 +251,10 @@ class CompetitionValidationTest {
     }
 
     @Test
-    fun `a unique pool has to be big enough for everyone to get a full set`() {
+    fun `a legacy unique pool is sized for Best-N not participant capacity`() {
         val one = """{"source":"organizer_list","options":[
             {"id":"p1","climb_uuid":"$real","angle":40,"label":"Blue slab","points":100}]}"""
-        val tooSmall = problems(
+        val enoughForBestN = problems(
             config(
                 climbs = "",
                 pool = one,
@@ -272,7 +263,7 @@ class CompetitionValidationTest {
                 capacity = 4,
             ),
         )
-        assertTrue(tooSmall.isNotEmpty(), "somebody would lose a race they can never win")
+        assertTrue(enoughForBestN.isEmpty(), enoughForBestN.joinToString())
 
         val two = """{"source":"organizer_list","options":[
             {"id":"p1","climb_uuid":"$real","angle":40,"label":"Blue slab","points":100},
@@ -324,6 +315,6 @@ class CompetitionValidationTest {
         assertEquals(listOf("p1", "p2"), competition.climbPool.map { it.id })
         assertEquals(45, competition.climbPool[1].angle)
         assertEquals("Red roof", competition.climb("p2")?.label)
-        assertEquals(listOf("p2"), competition.climbsFor(listOf("p2")).map { it.id })
+        assertEquals(listOf("p1", "p2"), competition.climbsFor(listOf("p2")).map { it.id })
     }
 }

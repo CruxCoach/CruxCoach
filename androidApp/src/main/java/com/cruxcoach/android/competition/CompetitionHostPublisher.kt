@@ -4,13 +4,17 @@ import com.cruxcoach.android.nostr.NostrPublicEventBuilder
 import com.cruxcoach.android.nostr.NostrRelayPool
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.domain.competition.CompetitionHostProtocol
+import com.cruxcoach.domain.competition.CompetitionConfigUpdate
 import com.cruxcoach.domain.competition.CompetitionProtocol
+import com.cruxcoach.domain.competition.CompetitionReducer
 import com.cruxcoach.domain.competition.CompetitionValidation
+import com.cruxcoach.domain.competition.LogEntry
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
 /** Publishes organizer decisions on the same authority chain as the website. */
 @Singleton
@@ -63,6 +67,16 @@ class CompetitionHostPublisher @Inject constructor(
         if (!state.chainComplete) return Result.Failed("incomplete_chain")
         val seq = state.seq + 1
         val at = System.currentTimeMillis() / 1000
+        if (op == "config_update") {
+            val preview = CompetitionReducer.applyEntry(
+                state,
+                LogEntry(seq, state.head, state.epoch, at, op, "authority", reason, data),
+                competition,
+            )
+            if (preview.rejected.size > state.rejected.size) {
+                return Result.Failed(preview.rejected.last().code)
+            }
+        }
         val event = runCatching {
             NostrPublicEventBuilder(signer).buildSignedEvent(
                 CompetitionProtocol.KIND,
@@ -78,6 +92,33 @@ class CompetitionHostPublisher @Inject constructor(
         if (accepted == 0) return Result.Failed("no_relay")
         client.ingestOwn(event, at)
         Result.Published(accepted, attempted)
+    }
+
+    /** Publish a permanent, reasoned edit without replacing the chain root. */
+    suspend fun updateConfig(patch: JsonObject, reason: String): Result {
+        if (reason.isBlank()) return Result.Failed("reason_required")
+        val impact = CompetitionConfigUpdate.impact(patch) ?: return Result.Failed("immutable_or_empty_patch")
+        val snapshot = client.snapshot.value
+        val competition = snapshot.competition ?: return Result.Failed("not_loaded")
+        val state = snapshot.state ?: return Result.Failed("not_loaded")
+        val revision = state.configRevision + 1
+        val merged = CompetitionConfigUpdate.merge(
+            CompetitionConfigUpdate.rootConfig(competition), patch,
+        ).toMutableMap().also { it["revision"] = JsonPrimitive(revision) }.let(::JsonObject)
+        val candidate = runCatching { com.cruxcoach.domain.competition.Competition.from(merged) }
+            .getOrElse { return Result.Failed("invalid_config") }
+        CompetitionValidation.validate(candidate).firstOrNull()?.let {
+            return Result.Failed("${it.field}: ${it.message}")
+        }
+        return append(
+            "config_update",
+            JsonObject(mapOf(
+                "revision" to JsonPrimitive(revision),
+                "patch" to patch,
+                "impact" to JsonPrimitive(impact),
+            )),
+            reason.trim(),
+        )
     }
 
     /**

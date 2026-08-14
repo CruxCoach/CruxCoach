@@ -39,11 +39,11 @@ object CompetitionProtocol {
     )
 
     val LEGAL_TRANSITIONS: Map<String, List<String>> = mapOf(
-        "draft" to listOf("published", "cancelled"),
-        "published" to listOf("registration_open", "cancelled"),
-        "registration_open" to listOf("registration_closed", "cancelled"),
-        "registration_closed" to listOf("checkin_open", "cancelled"),
-        "checkin_open" to listOf("running", "cancelled"),
+        "draft" to listOf("published", "paused", "finished", "cancelled"),
+        "published" to listOf("registration_open", "paused", "finished", "cancelled"),
+        "registration_open" to listOf("registration_closed", "paused", "finished", "cancelled"),
+        "registration_closed" to listOf("checkin_open", "paused", "finished", "cancelled"),
+        "checkin_open" to listOf("running", "paused", "finished", "cancelled"),
         "running" to listOf("paused", "finished", "cancelled"),
         "paused" to listOf("running", "finished", "cancelled"),
         "finished" to emptyList(),
@@ -53,7 +53,7 @@ object CompetitionProtocol {
     val LOG_OPS = listOf(
         "lifecycle", "registration_decision", "payment_decision", "claim_decision",
         "checkin", "queue", "defer_decision", "attempt_result", "correction",
-        "override", "announcement", "disqualify", "prize_decision",
+        "override", "announcement", "disqualify", "prize_decision", "config_update",
     )
 
     val INTENT_OPS = listOf(
@@ -71,8 +71,20 @@ object CompetitionProtocol {
     /** How long a winner has to claim, when the organizer sets no deadline. */
     const val DEFAULT_PRIZE_CLAIM_DAYS = 30
 
+    fun registrationWindowOpen(competition: Competition, status: String, at: Long): Boolean =
+        status !in setOf("finished", "cancelled") &&
+            at >= competition.registrationOpensAt && at <= competition.registrationClosesAt
+
+    fun checkinWindowOpen(competition: Competition, status: String, at: Long): Boolean =
+        status !in setOf("finished", "cancelled") &&
+            at >= competition.checkinOpensAt && at <= competition.checkinClosesAt
+
+    fun competitionRunning(competition: Competition, status: String, at: Long): Boolean =
+        status !in setOf("paused", "finished", "cancelled") &&
+            at >= competition.startsAt && at <= competition.endsAt
+
     /** An audit trail whose entries do not say why is a log, not an audit trail. */
-    val REASON_REQUIRED_OPS = setOf("correction", "override", "disqualify")
+    val REASON_REQUIRED_OPS = setOf("correction", "override", "disqualify", "config_update")
 
     private val COMP_ID = Regex("^[0-9a-f]{16}$")
     private val HEX32 = Regex("^[0-9a-f]{64}$")
@@ -504,10 +516,11 @@ data class Competition(
     fun climb(id: String): CompetitionClimb? =
         climbs.firstOrNull { it.id == id } ?: climbPool.firstOrNull { it.id == id }
 
-    /** The climbs one participant runs: their own picks, or the organizer's set. */
-    fun climbsFor(selections: List<String>): List<CompetitionClimb> =
-        if (rules.climbSource == "participant_choice") climbPool.filter { it.id in selections }
-        else climbs
+    /** Participant choice means the whole live pool; scoring keeps the best N. */
+    fun climbsFor(selections: List<String>): List<CompetitionClimb> {
+        @Suppress("UNUSED_VARIABLE") val ignoredLegacySelections = selections
+        return if (rules.climbSource == "participant_choice") climbPool else climbs
+    }
 
     companion object {
         fun from(payload: JsonObject): Competition {

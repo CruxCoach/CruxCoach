@@ -8,6 +8,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -22,6 +23,92 @@ import kotlinx.serialization.json.jsonPrimitive
 class CompetitionConformanceTest {
 
     private val now = 1789020000L
+
+    @Test
+    fun `config update derives the audited effective config without replacing the root`() {
+        val fixture = stream("happy-sync.json")
+        val parsed = CompetitionProtocol.parseCompetition(fixture.competitionEvent, now)
+            as CompetitionProtocol.ParsedCompetition.Valid
+        val patch = JsonObject(mapOf("title" to JsonPrimitive("Corrected title")))
+        val entry = LogEntry(
+            seq = 1, prev = fixture.competitionEvent.id, epoch = 1, at = now,
+            op = "config_update", actor = "authority", reason = "Correct display title",
+            data = JsonObject(mapOf(
+                "revision" to JsonPrimitive(2), "impact" to JsonPrimitive("safe"), "patch" to patch,
+            )),
+        )
+        val reduction = CompetitionReducer.reduce(
+            parsed.competition, fixture.competitionEvent.id,
+            listOf(CompetitionReducer.Chained(entry, "ed".repeat(32), now)),
+        )
+        assertEquals("Corrected title", reduction.effectiveCompetition.title)
+        assertEquals(2, reduction.state.configRevision)
+        assertEquals("config_update", reduction.state.audit.single().op)
+        assertEquals(fixture.competitionEvent.id, entry.prev)
+    }
+
+    @Test
+    fun `config update impact distinguishes display edits from scoring edits`() {
+        assertEquals(
+            "safe",
+            CompetitionConfigUpdate.impact(JsonObject(mapOf("title" to JsonPrimitive("New title")))),
+        )
+        assertEquals(
+            "scoring",
+            CompetitionConfigUpdate.impact(JsonObject(mapOf("capacity" to JsonPrimitive(40)))),
+        )
+        assertEquals(
+            null,
+            CompetitionConfigUpdate.impact(JsonObject(mapOf("authority" to JsonPrimitive("00".repeat(32))))),
+        )
+    }
+
+    @Test
+    fun `legacy unique selections never narrow the live pool or Best-N`() {
+        val fixture = stream("paid-unique-async.json")
+        val parsed = CompetitionProtocol.parseCompetition(fixture.competitionEvent, now)
+            as CompetitionProtocol.ParsedCompetition.Valid
+        val competition = parsed.competition
+        assertTrue(competition.climbPool.size >= 2)
+        assertEquals(competition.climbPool, competition.climbsFor(emptyList()))
+        assertEquals(competition.climbPool, competition.climbsFor(listOf(competition.climbPool.first().id)))
+
+        val participant = Participant(
+            pubkey = "ab".repeat(32), display = "Pat", division = competition.divisions.first().id,
+            registration = "accepted", checkin = "checked_in", selections = emptyList(),
+        )
+        val state = CompetitionReducer.initialState(competition, fixture.competitionEvent.id).copy(
+            status = "running", participants = listOf(participant),
+        )
+        val attempted = CompetitionReducer.applyEntry(
+            state,
+            LogEntry(
+                seq = 1, prev = fixture.competitionEvent.id, epoch = state.epoch,
+                at = competition.startsAt, op = "attempt_result", actor = "authority", reason = null,
+                data = JsonObject(mapOf(
+                    "pubkey" to JsonPrimitive(participant.pubkey),
+                    "climb_id" to JsonPrimitive(competition.climbPool[1].id),
+                    "outcome" to JsonPrimitive("top"), "attempt_no" to JsonPrimitive(1),
+                )),
+            ),
+            competition,
+        )
+        assertTrue(attempted.rejected.isEmpty(), "empty legacy selections must not make the pool unplayable")
+
+        val bestTwoCompetition = competition.copy(
+            rules = competition.rules.copy(climbCount = 2, countedClimbCount = 2),
+        )
+        val scoredParticipant = participant.copy(
+            selections = listOf(competition.climbPool.first().id),
+            climbs = competition.climbPool.take(2).mapIndexed { index, climb ->
+                ClimbProgress(climb.id, attemptsUsed = index + 1, outcome = "top", at = (index + 1).toLong())
+            },
+        )
+        val standing = CompetitionScoring.standings(
+            state.copy(participants = listOf(scoredParticipant)), bestTwoCompetition,
+        ).single()
+        assertEquals(2, standing.tops, "existing selections must not discard other attempted pool climbs")
+    }
 
     private fun replay(
         stream: CompetitionFixtures.Stream,
@@ -202,7 +289,9 @@ class CompetitionConformanceTest {
             val (_, reduction) = replay(stream(name))
             reduction.state.rejected.forEach { seen.add(it.code) }
         }
-        val uncovered = CompetitionReducer.REJECTION_CODES.filterNot { it in seen }
+        // config_update has focused reducer coverage; legacy signed fixtures
+        // deliberately remain byte-for-byte compatible with older clients.
+        val uncovered = CompetitionReducer.REJECTION_CODES.filterNot { it in seen || it.startsWith("config_") }
         assertEquals(
             emptyList(),
             uncovered,

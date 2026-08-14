@@ -12,7 +12,6 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.random.Random
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
@@ -86,7 +85,9 @@ class CompetitionIntentPublisher @Inject constructor(
             put("division", JsonPrimitive(division))
             put("display", JsonPrimitive(display))
             put("waiver_accepted", JsonPrimitive(waiverAccepted))
-            if (selections.isNotEmpty()) put("selections", JsonArray(selections.map { JsonPrimitive(it) }))
+            // Registration never preselects climbs. Keep the argument so older
+            // call sites remain source-compatible; legacy intents stay readable.
+            @Suppress("UNUSED_VARIABLE") val ignoredLegacySelections = selections
         }
         return send(competition, organizerPubkey, "register", JsonObject(data))
     }

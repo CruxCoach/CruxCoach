@@ -40,11 +40,9 @@ object CompetitionScoring {
      * attempts-to-top; [totalAttempts] keeps the raw number for display.
      */
     private fun tally(participant: Participant, competition: Competition): Standing {
-        val climbs = if (competition.rules.climbSource == "participant_choice" && participant.selections.isNotEmpty()) {
-            participant.climbs.filter { it.climbId in participant.selections }
-        } else {
-            participant.climbs
-        }
+        // Legacy selections remain in state for audit/hash compatibility, but
+        // every attempted pool climb is eligible for the deterministic Best-N.
+        val climbs = participant.climbs
         val achievement = competition.rules.scorePoints ?: CompetitionScorePoints(0, 0, 0)
         val pointScoring = competition.rules.scoring != "tops_then_attempts"
         val contributions = climbs.map { climb ->

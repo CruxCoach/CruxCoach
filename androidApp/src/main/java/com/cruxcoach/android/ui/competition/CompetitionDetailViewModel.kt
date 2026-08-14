@@ -8,6 +8,7 @@ import com.cruxcoach.android.competition.CompetitionIntentPublisher
 import com.cruxcoach.android.competition.CompetitionPaymentFlow
 import com.cruxcoach.android.competition.CompetitionRelayClient
 import com.cruxcoach.android.competition.CompetitionHostPublisher
+import com.cruxcoach.domain.competition.CompetitionConfigUpdate
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.android.payment.NostrProfileManager
 import com.cruxcoach.android.data.GradeScale
@@ -116,6 +117,8 @@ class CompetitionDetailViewModel @Inject constructor(
         val queue get() = CompetitionLivePolicy.queue(snapshot.state)
         val rotation get() = CompetitionLivePolicy.rotation(snapshot.competition, snapshot.state, me)
         val deferAvailability get() = CompetitionLivePolicy.defer(snapshot.state, snapshot.competition, me, myPubkey)
+        fun deferAvailability(nowSeconds: Long) =
+            CompetitionLivePolicy.defer(snapshot.state, snapshot.competition, me, myPubkey, nowSeconds)
 
         /** How many climbers are ahead of me in this round, or null when I am not in it. */
         val climbersBefore: Int?
@@ -169,7 +172,7 @@ class CompetitionDetailViewModel @Inject constructor(
             val state = snapshot.state ?: return false
             val competition = snapshot.competition ?: return false
             val mine = me ?: return false
-            if (state.status != "running" || state.paused) return false
+            if (!CompetitionProtocol.competitionRunning(competition, state.status, nowSeconds) || state.paused) return false
             if (!isMyTurn) return false
             if (mine.registration != "accepted") return false
             if (mine.checkin != "checked_in") return false
@@ -199,9 +202,8 @@ class CompetitionDetailViewModel @Inject constructor(
         /**
          * The climbs this person may still attempt.
          *
-         * Under participant choice that is the set they hold, never the whole
-         * pool: the reducer refuses an attempt on somebody else's climb, so a
-         * control offering one would only produce a rejection.
+         * Participant-choice entrants can try the whole pool. The leaderboard
+         * later keeps only their best N results.
          */
         val remainingClimbs: List<Remaining>
             get() {
@@ -522,6 +524,27 @@ class CompetitionDetailViewModel @Inject constructor(
 
     fun hostAnnounce(text: String) {
         if (text.isNotBlank()) hostAct("announcement", JsonObject(mapOf("text" to JsonPrimitive(text.trim()))))
+    }
+
+    fun configUpdateImpact(patch: JsonObject): String? = CompetitionConfigUpdate.impact(patch)
+
+    fun hostUpdateConfig(patch: JsonObject, reason: String) {
+        if (_action.value is Action.Working) return
+        if (reason.isBlank()) {
+            _action.value = Action.Failed("reason_required")
+            return
+        }
+        if (CompetitionConfigUpdate.impact(patch) == null) {
+            _action.value = Action.Failed("immutable_or_empty_patch")
+            return
+        }
+        _action.value = Action.Working
+        viewModelScope.launch {
+            _action.value = when (val result = hostPublisher.updateConfig(patch, reason.trim())) {
+                is CompetitionHostPublisher.Result.Published -> Action.Sent(result.accepted, result.attempted)
+                is CompetitionHostPublisher.Result.Failed -> Action.Failed(result.reason)
+            }
+        }
     }
 
     private fun hostAct(op: String, data: JsonObject, subjects: List<String> = emptyList()) {

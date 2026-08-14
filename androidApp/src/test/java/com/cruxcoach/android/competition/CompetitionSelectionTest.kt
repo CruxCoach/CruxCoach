@@ -38,6 +38,12 @@ class CompetitionSelectionTest {
               "authority_epoch": 1,
               "title": "Selection test",
               "status": "running",
+              "registration_opens_at": 0,
+              "registration_closes_at": 10000,
+              "checkin_opens_at": 0,
+              "checkin_closes_at": 10000,
+              "starts_at": 0,
+              "ends_at": 10000,
               "capacity": 4,
               "fee_msat": $feeMsat,
               "divisions": [{"id": "open", "label": "Open"}],
@@ -158,9 +164,9 @@ class CompetitionSelectionTest {
     }
 
     @Test
-    fun `the climbs on offer are this entrant's own, never the whole pool`() {
+    fun `legacy selections never narrow the live pool`() {
         val screen = ui(participants = listOf(entrant(selections = listOf("p1", "p3"))))
-        assertEquals(listOf("p1", "p3"), screen.remainingClimbs.map { it.climb.id })
+        assertEquals(listOf("p1", "p2", "p3"), screen.remainingClimbs.map { it.climb.id })
     }
 
     @Test
@@ -184,8 +190,8 @@ class CompetitionSelectionTest {
                 ),
             ),
         )
-        assertEquals(listOf("p2"), screen.remainingClimbs.map { it.climb.id })
-        assertEquals(1, screen.remainingClimbs.single().attemptsLeft)
+        assertEquals(listOf("p2", "p3"), screen.remainingClimbs.map { it.climb.id })
+        assertEquals(listOf(1, 2), screen.remainingClimbs.map { it.attemptsLeft })
     }
 
     @Test
@@ -200,7 +206,7 @@ class CompetitionSelectionTest {
                 ),
             ),
         )
-        assertTrue(screen.remainingClimbs.isEmpty())
+        assertEquals(listOf("p2", "p3"), screen.remainingClimbs.map { it.climb.id })
     }
 
     @Test

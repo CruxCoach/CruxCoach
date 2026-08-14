@@ -1,6 +1,6 @@
 {
   "name": "paid-unique-async",
-  "description": "Participant-chosen climbs with enforced uniqueness, a paid entry where one payment expires, and a no-show. The duplicate climb claim and an attempt on an unclaimed climb are both rejected by the reducer.",
+  "description": "A legacy participant-choice stream with claims, a paid entry where one payment expires, and a no-show. Duplicate claims remain auditable while attempts use the whole pool.",
   "schema": "cruxcoach-competition/1",
   "competition_event": {
     "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
@@ -1074,7 +1074,7 @@
   ],
   "expected": {
     "chain_break_at": null,
-    "state_hash": "4af6d8b535425dd8bf9010a1b903bb9ad7a7b8aa96e023c18824286dae346c0f",
+    "state_hash": "24b96dbb64a77feacf3759ce16b5ce839097e5846686370d2b4d7b4a0ae4e06a",
     "state": {
       "comp_id": "bb00cc11dd22ee33",
       "schema": "cruxcoach-competition/1",
@@ -1128,6 +1128,12 @@
               "attempts_used": 1,
               "outcome": "top",
               "at": 1789005520
+            },
+            {
+              "climb_id": "c3",
+              "attempts_used": 1,
+              "outcome": "top",
+              "at": 1789005510
             }
           ],
           "last_attempt_at": 1789005520
@@ -1148,11 +1154,6 @@
           "seq": 6,
           "op": "claim_decision",
           "code": "climb_already_claimed"
-        },
-        {
-          "seq": 17,
-          "op": "attempt_result",
-          "code": "climb_not_selected"
         }
       ],
       "fork_detected": false,
@@ -1167,10 +1168,10 @@
         "tops": 1,
         "zones": 1,
         "attempts": 1,
-        "points": 100,
+        "points": 120,
         "zone_attempts": 1,
         "total_attempts": 1,
-        "finished_at": 1789005520,
+        "finished_at": 1789005510,
         "rank": 1
       }
     ]

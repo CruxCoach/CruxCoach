@@ -64,6 +64,8 @@ class CompetitionRelayClient @Inject constructor(
 
     private val entries = linkedMapOf<String, CompetitionReducer.Chained>()
     private val intents = linkedMapOf<String, CompetitionProtocol.ParsedIntent.Valid>()
+    /** Immutable signed definition used as the log chain's root. */
+    private var definitionCompetition: Competition? = null
 
     /**
      * Fetch the competition definition.
@@ -76,6 +78,7 @@ class CompetitionRelayClient @Inject constructor(
         _snapshot.update { Snapshot(loading = true) }
         entries.clear()
         intents.clear()
+        definitionCompetition = null
 
         val filter = """{"kinds":[${CompetitionProtocol.KIND}],""" +
             """"authors":["$organizerPubkey"],""" +
@@ -110,6 +113,7 @@ class CompetitionRelayClient @Inject constructor(
                 false
             }
             is CompetitionProtocol.ParsedCompetition.Valid -> {
+                definitionCompetition = parsed.competition
                 _snapshot.update {
                     Snapshot(
                         competition = parsed.competition,
@@ -180,7 +184,7 @@ class CompetitionRelayClient @Inject constructor(
     /** Apply a locally published event immediately, so the UI does not wait for the echo. */
     fun ingestOwn(event: Event, nowSeconds: Long) {
         val current = _snapshot.value
-        val competition = current.competition ?: return
+        val competition = definitionCompetition ?: return
         val organizerPubkey = current.organizerPubkey ?: return
         val parsed = CompetitionProtocol.parseLogEntry(
             event.toCompetitionEvent(), competition, organizerPubkey, nowSeconds,
@@ -193,13 +197,14 @@ class CompetitionRelayClient @Inject constructor(
 
     private fun reduce() {
         val current = _snapshot.value
-        val competition = current.competition ?: return
+        val competition = definitionCompetition ?: return
         val rootId = current.competitionEventId ?: return
         val reduction = CompetitionReducer.reduce(competition, rootId, entries.values.toList())
         _snapshot.update {
             it.copy(
                 state = reduction.state,
-                standings = CompetitionScoring.standings(reduction.state, competition),
+                competition = reduction.effectiveCompetition,
+                standings = CompetitionScoring.standings(reduction.state, reduction.effectiveCompetition),
                 chainBreakAt = reduction.chainBreakAt,
                 entryCount = entries.size,
                 loading = false,

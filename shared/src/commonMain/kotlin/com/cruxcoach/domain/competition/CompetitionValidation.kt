@@ -77,10 +77,6 @@ object CompetitionValidation {
             Triple("registration_closes_at", competition.registrationClosesAt, "ends_at" to competition.endsAt),
             Triple("checkin_closes_at", competition.checkinClosesAt, "ends_at" to competition.endsAt),
         )
-        if (!competition.rules.lateEntryAllowed) {
-            orderedPairs += Triple("registration_closes_at", competition.registrationClosesAt, "starts_at" to competition.startsAt)
-            orderedPairs += Triple("checkin_closes_at", competition.checkinClosesAt, "starts_at" to competition.startsAt)
-        }
         for ((earlierName, earlier, laterPair) in orderedPairs) {
             val (laterName, later) = laterPair
             if (earlier > 0 && later > 0 && earlier > later) {
@@ -248,17 +244,8 @@ object CompetitionValidation {
                 if (options.size < rules.climbCount) {
                     fail("climb_pool", "needs at least ${rules.climbCount} climbs for this format")
                 }
-                if (rules.selectionUniqueness == "unique_per_competition" && competition.capacity > 0
-                    && options.size < competition.capacity * rules.climbCount
-                ) {
-                    // With unique claims, fewer climbs than entrants x picks
-                    // guarantees somebody loses a race they cannot recover from.
-                    fail(
-                        "climb_pool",
-                        "needs at least ${competition.capacity * rules.climbCount} climbs " +
-                            "so every entrant can claim a full set",
-                    )
-                }
+                // `unique_per_competition` remains readable for legacy signed
+                // events. Everyone now gets the full pool and Best-N scores it.
             }
         }
 

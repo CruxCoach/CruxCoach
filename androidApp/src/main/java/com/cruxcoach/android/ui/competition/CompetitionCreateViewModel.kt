@@ -127,7 +127,7 @@ class CompetitionCreateViewModel @Inject constructor(
             "comp_id" to JsonPrimitive(compId), "authority" to JsonPrimitive(authority), "authority_epoch" to JsonPrimitive(1),
             "title" to JsonPrimitive(d.title.trim()), "summary" to JsonPrimitive(d.summary.trim()), "description" to JsonPrimitive(d.rulesText.trim()),
             "organizer" to JsonObject(mapOf("name" to JsonPrimitive(d.organizer.trim()), "contact" to JsonPrimitive(d.contact.trim()))),
-            "visibility" to JsonPrimitive(if (d.public) "public" else "unlisted"), "status" to JsonPrimitive("draft"), "timezone" to JsonPrimitive("UTC"),
+            "visibility" to JsonPrimitive(if (d.public) "public" else "unlisted"), "status" to JsonPrimitive("published"), "timezone" to JsonPrimitive("UTC"),
             "registration_opens_at" to JsonPrimitive(now), "registration_closes_at" to JsonPrimitive(starts),
             "checkin_opens_at" to JsonPrimitive((starts - 3600).coerceAtLeast(now)), "checkin_closes_at" to JsonPrimitive(starts),
             "starts_at" to JsonPrimitive(starts), "ends_at" to JsonPrimitive(ends),

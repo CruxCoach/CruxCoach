@@ -97,6 +97,8 @@ data class AuditEntry(
     val reason: String?,
     val at: Long,
     val supersedesSeq: Int? = null,
+    val revision: Int? = null,
+    val impact: String? = null,
 ) {
     fun toCanonicalJson(): JsonObject {
         val fields = mutableMapOf<String, JsonElement>(
@@ -108,6 +110,8 @@ data class AuditEntry(
         // (no supersedes_seq) and a correction must serialize differently.
         if (reason != null) fields["reason"] = JsonPrimitive(reason)
         if (supersedesSeq != null) fields["supersedes_seq"] = JsonPrimitive(supersedesSeq)
+        if (revision != null) fields["revision"] = JsonPrimitive(revision)
+        if (impact != null) fields["impact"] = JsonPrimitive(impact)
         return JsonObject(fields)
     }
 }
@@ -128,6 +132,8 @@ data class CompetitionState(
     val status: String,
     val paused: Boolean = false,
     val configRevision: Int = 1,
+    /** Present only after the first config_update, preserving legacy state hashes. */
+    val effectiveConfig: JsonObject? = null,
     val round: Int = 0,
     val currentClimbId: String = "",
     val cursor: Int = -1,
@@ -165,8 +171,8 @@ data class CompetitionState(
         participant(pubkey) ?: Participant(pubkey = pubkey)
 
     /** The exact structure the state hash is computed over (FEAT-058 §4.3). */
-    fun toCanonicalJson(): JsonObject = JsonObject(
-        mapOf(
+    fun toCanonicalJson(): JsonObject {
+        val fields = mutableMapOf<String, JsonElement>(
             "announcements" to JsonArray(announcements.map { it.toCanonicalJson() }),
             "audit" to JsonArray(audit.map { it.toCanonicalJson() }),
             "authority" to JsonPrimitive(authority),
@@ -190,8 +196,10 @@ data class CompetitionState(
             "status" to JsonPrimitive(status),
             "turn_deadline_at" to JsonPrimitive(turnDeadlineAt),
             "turn_opened_at" to JsonPrimitive(turnOpenedAt),
-        ),
-    )
+        )
+        if (effectiveConfig != null) fields["effective_config"] = effectiveConfig
+        return JsonObject(fields)
+    }
 
     fun stateHash(): String = ccjHash(toCanonicalJson())
 }

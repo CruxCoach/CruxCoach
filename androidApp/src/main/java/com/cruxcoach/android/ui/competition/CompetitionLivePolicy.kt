@@ -3,6 +3,7 @@ package com.cruxcoach.android.ui.competition
 import com.cruxcoach.domain.competition.Competition
 import com.cruxcoach.domain.competition.CompetitionClimb
 import com.cruxcoach.domain.competition.CompetitionState
+import com.cruxcoach.domain.competition.CompetitionProtocol
 import com.cruxcoach.domain.competition.Participant
 
 /**
@@ -15,14 +16,14 @@ object CompetitionLivePolicy {
 
     data class PersonalCue(val kind: Cue, val ahead: Int? = null, val index: Int = -1)
 
-    fun personalCue(state: CompetitionState?, pubkey: String): PersonalCue {
+    fun personalCue(state: CompetitionState?, pubkey: String, running: Boolean = state?.status == "running"): PersonalCue {
         if (state == null || pubkey.isBlank()) return PersonalCue(Cue.SPECTATOR)
         val index = state.order.indexOf(pubkey)
         return when (state.status) {
             "finished" -> PersonalCue(Cue.FINISHED, index = index)
             "cancelled" -> PersonalCue(Cue.CANCELLED, index = index)
             "paused" -> PersonalCue(Cue.PAUSED, index = index)
-            "running" -> when {
+            else -> if (running) when {
                 index < 0 -> PersonalCue(Cue.NOT_QUEUED)
                 state.cursor == index -> PersonalCue(Cue.CURRENT, 0, index)
                 else -> {
@@ -30,8 +31,7 @@ object CompetitionLivePolicy {
                     val ahead = (index - cursor).coerceAtLeast(0)
                     PersonalCue(if (ahead == 1) Cue.NEXT else Cue.QUEUED, ahead, index)
                 }
-            }
-            else -> PersonalCue(Cue.WAITING, index = index)
+            } else PersonalCue(Cue.WAITING, index = index)
         }
     }
 
@@ -98,12 +98,20 @@ object CompetitionLivePolicy {
     enum class DeferReason { NOT_ENTERED, PHASE, PAUSED, NOT_YOUR_TURN, BUDGET, CONSECUTIVE }
     data class DeferAvailability(val allowed: Boolean, val reason: DeferReason? = null, val left: Int = 0)
 
-    fun defer(state: CompetitionState?, competition: Competition?, participant: Participant?, pubkey: String): DeferAvailability {
+    fun defer(
+        state: CompetitionState?,
+        competition: Competition?,
+        participant: Participant?,
+        pubkey: String,
+        at: Long? = null,
+    ): DeferAvailability {
         if (state == null || competition == null || participant == null) {
             return DeferAvailability(false, DeferReason.NOT_ENTERED)
         }
         if (state.status == "paused") return DeferAvailability(false, DeferReason.PAUSED)
-        if (state.status != "running") return DeferAvailability(false, DeferReason.PHASE)
+        val running = at?.let { CompetitionProtocol.competitionRunning(competition, state.status, it) }
+            ?: (state.status == "running")
+        if (!running) return DeferAvailability(false, DeferReason.PHASE)
         if (state.order.getOrNull(state.cursor) != pubkey) {
             return DeferAvailability(false, DeferReason.NOT_YOUR_TURN)
         }
