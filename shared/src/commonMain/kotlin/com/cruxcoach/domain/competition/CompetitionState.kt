@@ -155,6 +155,8 @@ data class CompetitionState(
     val rejected: List<Rejection> = emptyList(),
     val forkDetected: Boolean = false,
     val chainComplete: Boolean = true,
+    /** Accepted finish-entry time for local prize deadlines; excluded from the state hash. */
+    val resultsAt: Long = 0,
     /** Local bookkeeping: excluded from the hash so a snapshot-started client
      *  and a full-replay client still agree. */
     val fromSnapshot: Boolean = false,

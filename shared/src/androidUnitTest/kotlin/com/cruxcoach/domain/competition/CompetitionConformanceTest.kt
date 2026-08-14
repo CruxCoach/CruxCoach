@@ -187,6 +187,20 @@ class CompetitionConformanceTest {
     }
 
     @Test
+    fun `accepted finish time drives prize deadlines without changing the state hash`() {
+        val fixture = stream("happy-sync.json")
+        val finish = fixture.logEvents.map { event ->
+            event to CompetitionFixtures.json.parseToJsonElement(event.content).jsonObject
+        }.first { (_, body) ->
+            body.str("op") == "lifecycle" && body["data"]?.jsonObject?.str("status") == "finished"
+        }
+        val (_, reduction) = replay(fixture)
+        assertEquals(finish.second.long("at"), reduction.state.resultsAt)
+        assertEquals(fixture.expectedState, reduction.state.toCanonicalJson())
+        assertEquals(fixture.expectedStateHash, reduction.state.stateHash())
+    }
+
+    @Test
     fun `standings match the ones the website records`() {
         for (name in streamNames()) {
             val fixture = stream(name)

@@ -201,6 +201,7 @@ class CompetitionPrizeClaimTest {
         ) as CompetitionPrizeClaim.Verification.Failed
 
         assertEquals("unreadable", verify("not json").error)
+        assertEquals("unknown_schema", verify("""{"schema":"something/else"}""").error)
         val wrong = CompetitionPrizeClaim.buildClaimBody(
             "different", cash.id, hash, "lightning_address", "alice@example.org",
         )

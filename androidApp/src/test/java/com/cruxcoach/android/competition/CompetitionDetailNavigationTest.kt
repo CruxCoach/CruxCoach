@@ -13,6 +13,12 @@ class CompetitionDetailNavigationTest {
     ).firstOrNull(File::isFile)?.readText()
         ?: error("CompetitionDetailScreen.kt not found (cwd=${File(".").absolutePath})")
 
+    private fun prizePanelSource(): String = listOf(
+        File("src/main/java/com/cruxcoach/android/ui/competition/CompetitionHostPrizePanel.kt"),
+        File("androidApp/src/main/java/com/cruxcoach/android/ui/competition/CompetitionHostPrizePanel.kt"),
+    ).firstOrNull(File::isFile)?.readText()
+        ?: error("CompetitionHostPrizePanel.kt not found (cwd=${File(".").absolutePath})")
+
     @Test
     fun `host work is split into focused restorable destinations`() {
         val source = detailSource()
@@ -44,5 +50,13 @@ class CompetitionDetailNavigationTest {
         assertContains(source, "viewModel.hostConfirmPayment(pubkey, paymentReason)")
         assertContains(source, "competition_host_payment_confirm")
         assertFalse(source.contains("viewModel.hostQueue(\"close_turn\")"))
+
+        val prizePanel = prizePanelSource()
+        assertContains(source, "CompetitionHostPrizePanel(ui, viewModel, action)")
+        assertContains(prizePanel, "viewModel.reviewPrizeClaim(claim)")
+        assertContains(prizePanel, "review.resultsHash != currentHash")
+        assertContains(prizePanel, "viewModel.hostPrizeDecision(prize.id, winner.pubkey, \"approved\")")
+        assertContains(prizePanel, "competition_host_prize_paid_confirm")
+        assertContains(prizePanel, "R.string.comp_host_prize_receipt_no")
     }
 }

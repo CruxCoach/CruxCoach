@@ -1014,6 +1014,10 @@ private fun OrganizerConsole(
                 }
             }
 
+            if (route == HostRoute.ENTRANTS) {
+                CompetitionHostPrizePanel(ui, viewModel, action)
+            }
+
             if (route == HostRoute.LIVE) {
             if (CompetitionProtocol.checkinWindowOpen(competition, state.status, nowSeconds) || runningNow || state.status == "paused") {
                 Text(stringResource(R.string.comp_host_live_controls), fontWeight = FontWeight.Bold)

@@ -105,6 +105,23 @@ class CompetitionDetailViewModel @Inject constructor(
     private val _cleanup = MutableStateFlow<Cleanup>(Cleanup.Idle)
     val cleanup: StateFlow<Cleanup> = _cleanup.asStateFlow()
 
+    /** Organizer-only, in-memory view of a privately decrypted prize claim. */
+    sealed interface HostPrizeReview {
+        data class Working(val eventId: String) : HostPrizeReview
+        data class Valid(
+            val eventId: String,
+            val resultsHash: String,
+            val prizeId: String,
+            val pubkey: String,
+            val payoutKind: String,
+            val destination: String,
+        ) : HostPrizeReview
+        data class Failed(val eventId: String, val error: String) : HostPrizeReview
+    }
+
+    private val _hostPrizeReviews = MutableStateFlow<Map<String, HostPrizeReview>>(emptyMap())
+    val hostPrizeReviews: StateFlow<Map<String, HostPrizeReview>> = _hostPrizeReviews.asStateFlow()
+
     val myPubkey: String get() = signer.getPublicKeyHex()
     val isAuthority: Boolean get() = client.snapshot.value.competition?.authority == myPubkey
 
@@ -648,6 +665,79 @@ class CompetitionDetailViewModel @Inject constructor(
             )),
             subjects = listOf(pubkey),
             reason = reason.trim(),
+        )
+    }
+
+    /**
+     * Decrypt only after an explicit organizer action. This avoids an Amber
+     * permission prompt for every ciphertext a hostile relay can deliver.
+     */
+    fun reviewPrizeClaim(intent: CompetitionProtocol.ParsedIntent.Valid) {
+        if (intent.op != "prize_claim") return
+        val eventId = intent.eventId
+        if (_hostPrizeReviews.value[eventId] is HostPrizeReview.Working) return
+        val prizeId = (intent.data["prize_id"] as? JsonPrimitive)?.content ?: return
+        val ciphertext = (intent.data["enc"] as? JsonPrimitive)?.content ?: return
+        _hostPrizeReviews.update { it + (eventId to HostPrizeReview.Working(eventId)) }
+        viewModelScope.launch {
+            val snapshot = client.snapshot.value
+            val competition = snapshot.competition
+            val state = snapshot.state
+            val result = if (competition == null || state == null || !snapshot.trustworthy) {
+                HostPrizeReview.Failed(eventId, "not_loaded")
+            } else {
+                val plaintext = runCatching {
+                    signer.signer.nip44Decrypt(ciphertext, intent.pubkey)
+                }.getOrNull()
+                if (plaintext == null) {
+                    HostPrizeReview.Failed(eventId, "unreadable")
+                } else {
+                    val resultsHash = state.stateHash()
+                    when (val verified = CompetitionPrizeClaim.verifyClaim(
+                        plaintext = plaintext,
+                        compId = competition.compId,
+                        claimantPubkey = intent.pubkey,
+                        resultsHash = resultsHash,
+                        standings = snapshot.standings,
+                        prizes = competition.prizes,
+                        prizeStates = state.prizes,
+                        nowSeconds = System.currentTimeMillis() / 1000,
+                        deadline = CompetitionPrizeClaim.claimDeadline(
+                            state.resultsAt,
+                            competition.prizeClaimDays,
+                        ),
+                    )) {
+                        is CompetitionPrizeClaim.Verification.Failed ->
+                            HostPrizeReview.Failed(eventId, verified.error)
+                        is CompetitionPrizeClaim.Verification.Valid -> HostPrizeReview.Valid(
+                            eventId = eventId,
+                            resultsHash = resultsHash,
+                            prizeId = prizeId,
+                            pubkey = intent.pubkey,
+                            payoutKind = verified.claim["payout_kind"]?.let { it as? JsonPrimitive }?.content.orEmpty(),
+                            destination = verified.claim["destination"]?.let { it as? JsonPrimitive }?.content.orEmpty(),
+                        )
+                    }
+                }
+            }
+            _hostPrizeReviews.update { it + (eventId to result) }
+        }
+    }
+
+    fun hostPrizeDecision(prizeId: String, pubkey: String, state: String, reason: String? = null) {
+        if (state == "paid" && reason.isNullOrBlank()) {
+            _action.value = Action.Failed("reason_required")
+            return
+        }
+        hostAct(
+            "prize_decision",
+            JsonObject(mapOf(
+                "prize_id" to JsonPrimitive(prizeId),
+                "pubkey" to JsonPrimitive(pubkey),
+                "state" to JsonPrimitive(state),
+            )),
+            subjects = listOf(pubkey),
+            reason = reason?.trim()?.takeIf(String::isNotEmpty),
         )
     }
 

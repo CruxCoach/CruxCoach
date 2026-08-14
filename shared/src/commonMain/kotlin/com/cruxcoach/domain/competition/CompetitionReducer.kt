@@ -203,7 +203,11 @@ object CompetitionReducer {
             )
         }
         if (next == "cancelled" || next == "finished") {
-            updated = updated.copy(cursor = -1, turnDeadlineAt = 0)
+            updated = updated.copy(
+                cursor = -1,
+                turnDeadlineAt = 0,
+                resultsAt = if (next == "finished") entry.at else updated.resultsAt,
+            )
         }
         return updated
     }

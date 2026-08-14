@@ -139,7 +139,9 @@ object CompetitionPrizeClaim {
         nowSeconds: Long,
         deadline: Long,
     ): Verification {
-        val claim = parseClaimBody(plaintext) ?: return Verification.Failed("unreadable")
+        val claim = runCatching { json.parseToJsonElement(plaintext).jsonObject }.getOrNull()
+            ?: return Verification.Failed("unreadable")
+        if (claim.str("schema") != CLAIM_SCHEMA) return Verification.Failed("unknown_schema")
         if (claim.str("comp_id") != compId) return Verification.Failed("wrong_competition")
         val prizeId = claim.str("prize_id") ?: return Verification.Failed("unknown_prize")
         val prize = prizes.firstOrNull { it.id == prizeId }
