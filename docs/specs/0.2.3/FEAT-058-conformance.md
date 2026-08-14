@@ -11,7 +11,7 @@ listed as device-owed or manual, and says why.
 **The gates**
 
 ```bash
-# web — 334 tests
+# web — 479 tests
 cd cruxcoach-pages && scripts/check
 
 # app — the shared protocol, reducer, scoring, NIP-19 and canonical JSON
@@ -40,6 +40,7 @@ side that was not updated.
 | Stream | Entries | What it pins |
 |---|---|---|
 | `happy-sync` | 40 | A clean run: publish → register → accept → check in → seed → start → two climbs → finish |
+| `authority-operations` | 30 | Signed safe/scoring config edits, seed-and-open, atomic completion, skip, ranked retirement, and all config/turn rejections |
 | `defer-and-timeout` | 27 | A granted deferral, a refused second one, and a timeout that costs an attempt |
 | `paid-unique-async` | 18 | Participant-chosen climbs with enforced uniqueness, an expired payment, a no-show |
 | `fork-and-correction` | 7 | Two entries at one position, plus an override and a correction with mandatory reasons |
@@ -70,7 +71,7 @@ signed Lightning fixtures — no invoice, no network), `qr-reference.json`
 | **AC-10** deferral refused | web + app | *a second consecutive deferral is refused, with a stable code*; `defer_budget_exhausted` and `defer_consecutive_limit` both covered |
 | **AC-11** timeout costs an attempt | web | *an expired turn consumes an attempt* |
 | **AC-12** payment gates the turn | web | `competition-e2e.test.mjs` → *a paid competition keeps an unpaid entrant out of the running order*; stream `rejections-paid` produces `not_eligible` |
-| **AC-13** every rejection code | web + app | *every rejection code in the closed set is exercised by a fixture* (both suites; 33 of 33) |
+| **AC-13** every rejection code | web + app | *every rejection code in the closed set is exercised by a fixture* (both suites; 45 of 45) |
 | **AC-14** link shapes | web + app | `competition-pages.test.mjs` → *a join reference is recognised in every shape we hand out*; `CompetitionShareLinkTest` → *recognises every shape a link arrives in* |
 | **AC-15** wrong kind / wrong d-tag | web + app | `parseCompetitionRef` refuses; `CompetitionShareLinkTest` → *refuses an naddr for another kind*, *refuses an naddr whose d-tag is not a competition* |
 | **AC-16** QR decodes back | web | `competition-qr.test.mjs` → *the symbol decodes back to exactly the text that went in*, *every Reed-Solomon block is a valid codeword*, *the function areas match an independent encoder exactly* |
@@ -103,6 +104,7 @@ signed Lightning fixtures — no invoice, no network), `qr-reference.json`
 | **AC-41** native paid entry | app + web | `CompetitionLightningTest` (23) → the shared Kotlin LNURL/BOLT11/zap layer against the same `vectors/zap.json` the website asserts on, including all six wrong-receipt cases; `CompetitionPaymentFlowTest` (7) → the app's own sequence over a TLS `MockWebServer`, with a deliberately unpayable invoice; `competition-pages.test.mjs` → *the two clients offer the same participant actions* |
 | **AC-42** the build says which release it is | app | `ReleaseMetadataTest` → *the build identifies as this release*, *this release announces itself to upgrading users*, *the changelog has a section for this release* |
 | **AC-43** real camera planes | app | `CompetitionQrDecoderTest` → *a padded plane decodes, where a tightly-packed assumption would not*, *an interleaved plane decodes*, *a cropped region is taken from where the camera says it is*, *a plane too small for what it claims is refused* |
+| **AC-46** restart/backfill never invents personal state | web + app | Shared exact-d-tag paging uses twenty-sequence pages with a larger explicit fork allowance; `competition-store.test.mjs` emulates a hard 20-event relay cap and proves the full signed hash, while `CompetitionRelayBackfillPolicyTest` pins the same page/filter contract and both clients gate every role-specific surface on completed, gap-free, unforked history |
 
 ---
 

@@ -58,7 +58,7 @@ object CompetitionProtocol {
 
     val INTENT_OPS = listOf(
         "register", "withdraw", "checkin_request", "defer_request",
-        "attempt_report", "climb_choice", "payment_claim", "prize_claim", "prize_receipt",
+        "climb_choice", "attempt_report", "payment_claim", "prize_claim", "prize_receipt",
     )
 
     val QUEUE_ACTIONS = listOf(

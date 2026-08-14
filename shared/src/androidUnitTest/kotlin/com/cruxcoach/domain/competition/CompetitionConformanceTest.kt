@@ -191,7 +191,7 @@ class CompetitionConformanceTest {
         for (name in streamNames()) {
             val fixture = stream(name)
             val (parsed, reduction) = replay(fixture)
-            val standings = CompetitionScoring.standings(reduction.state, parsed.competition)
+            val standings = CompetitionScoring.standings(reduction.state, reduction.effectiveCompetition)
             assertEquals(
                 fixture.expectedStandings.size,
                 standings.size,
@@ -215,6 +215,43 @@ class CompetitionConformanceTest {
                     "${fixture.name}[$index]: finished at",
                 )
             }
+        }
+    }
+
+    @Test
+    fun `shared authority stream pins every additive operation and config rejection`() {
+        val fixture = stream("authority-operations.json")
+        val (_, reduction) = replay(fixture)
+        val operations = fixture.logEvents.map { event ->
+            CompetitionFixtures.json.parseToJsonElement(event.content).jsonObject
+        }
+
+        for (operation in listOf("complete_turn", "retire", "config_update")) {
+            assertTrue(
+                operations.any { it.str("op") == operation },
+                "$operation must be present as signed input",
+            )
+        }
+        for (action in listOf("seed_open", "skip_turn")) {
+            assertTrue(
+                operations.any { payload ->
+                    payload.str("op") == "queue" && payload["data"]?.jsonObject?.str("action") == action
+                },
+                "$action must be present as signed input",
+            )
+        }
+
+        assertEquals("points_sum", reduction.effectiveCompetition.rules.scoring)
+        assertEquals(4, reduction.state.configRevision)
+        val alice = reduction.state.participants.single { it.display == "alice" }
+        val bob = reduction.state.participants.single { it.display == "bob" }
+        assertEquals("finished", alice.result, "retirement keeps the participant ranked")
+        assertEquals("top", alice.climbs.single().outcome, "retirement keeps recorded results")
+        assertTrue(bob.climbs.isEmpty(), "skipping Bob consumes no attempt")
+
+        val configRejections = reduction.state.rejected.map { it.code }.toSet()
+        for (code in CompetitionReducer.REJECTION_CODES.filter { it.startsWith("config_") }) {
+            assertTrue(code in configRejections, "$code needs shared signed coverage")
         }
     }
 
@@ -289,9 +326,7 @@ class CompetitionConformanceTest {
             val (_, reduction) = replay(stream(name))
             reduction.state.rejected.forEach { seen.add(it.code) }
         }
-        // config_update has focused reducer coverage; legacy signed fixtures
-        // deliberately remain byte-for-byte compatible with older clients.
-        val uncovered = CompetitionReducer.REJECTION_CODES.filterNot { it in seen || it.startsWith("config_") }
+        val uncovered = CompetitionReducer.REJECTION_CODES.filterNot { it in seen }
         assertEquals(
             emptyList(),
             uncovered,
