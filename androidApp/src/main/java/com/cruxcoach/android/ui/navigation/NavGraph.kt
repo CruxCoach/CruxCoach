@@ -672,6 +672,8 @@ fun CruxCoachNavHost(
                     screenName = "PlaylistPlayer",
                     onNavigateBack = { navController.popBackStack() },
                 ) {
+                    val playerViewModel:
+                        com.cruxcoach.android.ui.playlist.PlaylistPlayerViewModel = hiltViewModel()
                     // The player's "sharing blocked" banner offers to turn
                     // Bluetooth on. Without this launcher the button fell back
                     // to the parameter's empty default and swallowed every tap.
@@ -680,7 +682,19 @@ fun CruxCoachNavHost(
                     ) { /* the coordinator picks the adapter change up by itself */ }
                     val sharingPermissionLauncher = rememberLauncherForActivityResult(
                         ActivityResultContracts.RequestMultiplePermissions()
-                    ) { /* likewise: sharing retries once the grant lands */ }
+                    ) {
+                        // A runtime-permission grant emits no Bluetooth adapter
+                        // event. Retry explicitly; otherwise a promoted host
+                        // remains local-only and the Allow button appears to do
+                        // nothing even though Android granted the permission.
+                        if (com.cruxcoach.android.ble.BlePermissionHelper
+                                .hasAdvertisingPermission(context) &&
+                            com.cruxcoach.android.ble.BlePermissionHelper
+                                .hasConnectionPermission(context)
+                        ) {
+                            playerViewModel.retrySharing()
+                        }
+                    }
                     com.cruxcoach.android.ui.playlist.PlaylistPlayerScreen(
                         onNavigateBack = { navController.popBackStack() },
                         onNavigateToClimb = { climbUuid, angle ->
@@ -701,6 +715,7 @@ fun CruxCoachNavHost(
                                     .getSessionHostingPermissions()
                             )
                         },
+                        viewModel = playerViewModel,
                     )
                 }
             }

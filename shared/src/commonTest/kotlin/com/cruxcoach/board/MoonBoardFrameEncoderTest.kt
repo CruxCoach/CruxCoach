@@ -1,6 +1,7 @@
 package com.cruxcoach.board
 
 import com.cruxcoach.domain.board.MoonBoardFrameEncoder
+import com.cruxcoach.domain.board.MoonBoardLedMode
 import com.cruxcoach.domain.board.MoonBoardVariant
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -16,6 +17,12 @@ class MoonBoardFrameEncoderTest {
 
     private val standard = MoonBoardVariant.MOONBOARD_2016   // 11×18
     private val mini = MoonBoardVariant.MINI_2020             // 11×12
+
+    @Test
+    fun unknownStoredLedModeFallsBackBelow() {
+        assertEquals(MoonBoardLedMode.BELOW, MoonBoardLedMode.fromWire("future-mode"))
+        assertEquals(MoonBoardLedMode.BELOW, MoonBoardLedMode.fromWire(null))
+    }
 
     @Test
     fun `MoonBoard 2010 uses the standard 198-position wiring map`() {
@@ -134,6 +141,54 @@ class MoonBoardFrameEncoderTest {
     }
 
     @Test
+    fun aboveModeUsesAdjacentLedAndKeepsFinishBelow() {
+        assertEquals(
+            "l#S0,P2,E197#",
+            MoonBoardFrameEncoder.encodeToString(
+                "p1r42p12r43p198r44",
+                standard,
+                ledMode = MoonBoardLedMode.ABOVE,
+            ),
+        )
+    }
+
+    @Test
+    fun bothModeEmitsBelowAndAboveForRegularHoldsOnly() {
+        assertEquals(
+            "l#S0,P1,P2,E197#",
+            MoonBoardFrameEncoder.encodeToString(
+                "p1r42p12r43p198r44",
+                standard,
+                ledMode = MoonBoardLedMode.BOTH,
+            ),
+        )
+    }
+
+    @Test
+    fun aboveModeFollowsReverseStripDirectionOnOddColumns() {
+        assertEquals(
+            "l#P33#",
+            MoonBoardFrameEncoder.encodeToString(
+                "p13r43",
+                standard,
+                ledMode = MoonBoardLedMode.ABOVE,
+            ),
+        )
+    }
+
+    @Test
+    fun finishRoleFallsBackBelowEvenWhenAnUpperPositionExists() {
+        assertEquals(
+            "l#E1#",
+            MoonBoardFrameEncoder.encodeToString(
+                "p12r44",
+                standard,
+                ledMode = MoonBoardLedMode.ABOVE,
+            ),
+        )
+    }
+
+    @Test
     fun emptyFramesEncodeToBareWrapper() {
         assertEquals(
             "l##",
@@ -172,6 +227,18 @@ class MoonBoardFrameEncoderTest {
         assertEquals(
             "l#S1,P22,E131#",
             MoonBoardFrameEncoder.encodeToString(frames, mini),
+        )
+    }
+
+    @Test
+    fun miniAboveModeUsesItsTwelveRowColumnDirection() {
+        assertEquals(
+            "l#S2,P21,E131#",
+            MoonBoardFrameEncoder.encodeToString(
+                "p12r42p13r43p132r44",
+                mini,
+                ledMode = MoonBoardLedMode.ABOVE,
+            ),
         )
     }
 

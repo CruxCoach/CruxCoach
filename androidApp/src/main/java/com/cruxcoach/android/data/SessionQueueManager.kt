@@ -171,6 +171,7 @@ class SessionQueueManager(
     @Volatile var onQueueChanged: (() -> Unit)? = null
     @Volatile var onCurrentClimbChanged: (() -> Unit)? = null
     @Volatile var onParticipantsChanged: (() -> Unit)? = null
+    @Volatile var onSessionInfoChanged: (() -> Unit)? = null
 
     /** Remote command sender — set by SessionGattBridge for participant mode.
      *  When set, addClimb/removeClimb/etc. send commands to host instead of mutating locally. */
@@ -206,6 +207,7 @@ class SessionQueueManager(
         onQueueChanged = null
         onCurrentClimbChanged = null
         onParticipantsChanged = null
+        onSessionInfoChanged = null
         onFirstQueueClimbSent = null
         remoteAddClimb = null
         onRestRequested = null
@@ -530,11 +532,16 @@ class SessionQueueManager(
 
     /** Update session info from host notification (participant side).
      *  The count from the host already includes the host (+1). */
-    fun updateSessionInfo(hostName: String, participantCount: Int) {
+    fun updateSessionInfo(
+        hostName: String,
+        participantCount: Int,
+        awaitingExplicitSend: Boolean = false,
+    ) {
         Log.d(TAG, "updateSessionInfo: hostName=$hostName, participantCount=$participantCount")
         _state.update { it.copy(
             hostName = hostName,
-            participantCount = participantCount
+            participantCount = participantCount,
+            awaitingExplicitSend = awaitingExplicitSend,
         ) }
     }
 
@@ -643,7 +650,9 @@ class SessionQueueManager(
                         return@withLock
                     }
                     QueueDeliveryPolicy.Decision.AWAIT_EXPLICIT -> {
+                        val changed = !_state.value.awaitingExplicitSend
                         _state.update { it.copy(awaitingExplicitSend = true) }
+                        if (changed) onSessionInfoChanged?.invoke()
                         Log.d(TAG, "sendCurrentClimbToBoard: waiting for an explicit send")
                         return@withLock
                     }
@@ -683,7 +692,11 @@ class SessionQueueManager(
                     if (climb.frames.isBlank()) return@withLock
                     val variant = com.cruxcoach.domain.board.MoonBoardVariant.fromLayoutId(climb.layoutId)
                         ?: com.cruxcoach.domain.board.MoonBoardVariant.MOONBOARD_2016
-                    val sent = bleConnection.sendMoonBoardClimb(climb.frames, variant)
+                    val sent = bleConnection.sendMoonBoardClimb(
+                        climb.frames,
+                        variant,
+                        userPreferences.moonBoardLedMode.first(),
+                    )
                     if (sent) {
                         markCurrentClimbProjected(key)
                         Log.d(TAG, "sendCurrentClimbToBoard: sent MoonBoard ${item.climbUuid.take(8)} angle=${item.angle}")
@@ -735,14 +748,17 @@ class SessionQueueManager(
             .forBoard(bleConnection.connectedBoard).connectionCapacity,
         singleConnectionMode = userPreferences.singleConnectionBoardSendMode.first(),
         multiConnectionMode = userPreferences.multiConnectionBoardSendMode.first(),
-        // A queue with other people in it is a shared wall, whatever the
-        // controller underneath can do.
-        hostingForOthers = _state.value.participantCount > 1,
+        // A playlist is driven by its host. Participants do not turn a
+        // physically single-connect controller into the generic relay case:
+        // the host's preference for the actual controller capacity decides.
+        hostingForOthers = false,
     )
 
     private fun markCurrentClimbProjected(key: String) {
         lastSentClimbKey = key
+        val changed = _state.value.awaitingExplicitSend
         _state.update { it.copy(awaitingExplicitSend = false) }
+        if (changed) onSessionInfoChanged?.invoke()
         val hadExternalOverride = _state.value.externalBoardOverride
         if (hadExternalOverride) {
             _state.update { it.copy(externalBoardOverride = false) }
@@ -790,7 +806,11 @@ class SessionQueueManager(
 
     fun encodeSessionInfo(): ByteArray {
         val s = _state.value
-        return SessionQueueProtocol.encodeSessionInfo(s.hostName, s.participantCount)
+        return SessionQueueProtocol.encodeSessionInfo(
+            s.hostName,
+            s.participantCount,
+            s.awaitingExplicitSend,
+        )
     }
 
     fun encodeParticipantList(): ByteArray {

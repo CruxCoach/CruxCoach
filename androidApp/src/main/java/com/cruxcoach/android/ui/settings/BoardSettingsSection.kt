@@ -27,6 +27,7 @@ import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.InfoBlue
 import com.cruxcoach.android.ui.theme.SuccessGreen
 import com.cruxcoach.domain.board.BoardBrand
+import com.cruxcoach.domain.board.MoonBoardLedMode
 
 @Composable
 internal fun DisplaySection(
@@ -166,6 +167,51 @@ internal fun BoardModelSection(
         )
         TextButton(onClick = onChangeModel) {
             Text(stringResource(R.string.settings_board_model_change), color = OrangeAccent)
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun MoonBoardLedPositionSection(
+    ledMode: MoonBoardLedMode,
+    onModeChange: (MoonBoardLedMode) -> Unit,
+) {
+    Text(
+        stringResource(R.string.settings_moonboard_led_position_title),
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.Bold,
+    )
+    Text(
+        stringResource(R.string.settings_moonboard_led_position_desc),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    SingleChoiceSegmentedButtonRow(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("settings_moonboard_led_position"),
+    ) {
+        MoonBoardLedMode.entries.forEachIndexed { index, mode ->
+            SegmentedButton(
+                selected = ledMode == mode,
+                onClick = { onModeChange(mode) },
+                shape = SegmentedButtonDefaults.itemShape(index, MoonBoardLedMode.entries.size),
+                label = {
+                    Text(
+                        stringResource(
+                            when (mode) {
+                                MoonBoardLedMode.BELOW ->
+                                    R.string.settings_moonboard_led_position_below
+                                MoonBoardLedMode.ABOVE ->
+                                    R.string.settings_moonboard_led_position_above
+                                MoonBoardLedMode.BOTH ->
+                                    R.string.settings_moonboard_led_position_both
+                            },
+                        ),
+                    )
+                },
+            )
         }
     }
 }

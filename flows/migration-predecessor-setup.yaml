@@ -50,7 +50,7 @@ tags:
 - assertVisible: "(Von Favoriten entfernen|Remove from favorites)"
 # Create one run-scoped ascent through the common historical accessibility UI.
 - tapOn: "(Begehung loggen|Log ascent)"
-- assertVisible: "(Begehung loggen|Log ascent)"
+- assertVisible: '(Kommentar \(optional\)|Comment \(optional\))'
 - tapOn: "Send"
 - tapOn:
     text: "+"
@@ -59,8 +59,9 @@ tags:
 - tapOn: '(Kommentar \(optional\)|Comment \(optional\))'
 - inputText: "E2E-MIGRATION-${E2E_MIGRATION_MARKER}"
 - hideKeyboard
+- assertVisible: "E2E-MIGRATION-${E2E_MIGRATION_MARKER}"
 - tapOn: "(Speichern|Save)"
-- assertNotVisible: "(Begehung loggen|Log ascent)"
+- assertNotVisible: "E2E-MIGRATION-${E2E_MIGRATION_MARKER}"
 - stopApp
 - launchApp
 - waitForAnimationToEnd:

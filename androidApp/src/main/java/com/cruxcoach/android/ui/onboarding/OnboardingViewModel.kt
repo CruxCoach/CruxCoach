@@ -563,8 +563,8 @@ class OnboardingViewModel @Inject constructor(
         viewModelScope.launch {
             val result = runCatching { backupRepository.restore(info) }
             boardSyncWatcher.cancel()
-            val imported = result.getOrNull()
-            if (imported != null) {
+            val restored = result.getOrNull()
+            if (restored != null) {
                 backupPreferences.setBackupEnabled(true)
                 backupPreferences.setBackupRestoreIntent(false)
                 _state.update {
@@ -573,8 +573,8 @@ class OnboardingViewModel @Inject constructor(
                         restoreAwaitingBoardSync = false,
                         pendingRestore = null,
                         restoreSucceeded = true,
-                        restoredAscents = imported.boardAscents,
-                        restoredLists = imported.climbLists,
+                        restoredAscents = restored.logbookEntriesInBackup,
+                        restoredLists = restored.listsInBackup,
                         backupOptIn = true,
                         backupChoice = BackupChoice.RESTORE,
                     )

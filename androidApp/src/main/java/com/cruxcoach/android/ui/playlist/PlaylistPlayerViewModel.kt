@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 data class PlaylistPlayerState(
@@ -160,6 +161,15 @@ class PlaylistPlayerViewModel @Inject constructor(
     }
 
     fun consumeLogFeedback() = _state.update { it.copy(lastLogged = null) }
+
+    /** Retry publication after the host permission dialog completes.
+     * BLE setup may involve a slow vendor stack during host handover, so it
+     * must not run on Compose's main thread. */
+    fun retrySharing() {
+        viewModelScope.launch(Dispatchers.Default) {
+            playback.retrySharing()
+        }
+    }
 
     fun requestStop() = _state.update { it.copy(showStopConfirm = true) }
     fun dismissStopConfirm() = _state.update { it.copy(showStopConfirm = false) }

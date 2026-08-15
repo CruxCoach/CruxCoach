@@ -16,6 +16,7 @@ import com.cruxcoach.android.nostr.SignerMode
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.HoldRole
 import com.cruxcoach.domain.board.MoonBoardHoldSets
+import com.cruxcoach.domain.board.MoonBoardLedMode
 import com.cruxcoach.domain.board.MoonBoardVariant
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -318,6 +319,10 @@ object PreferenceKeys {
         stringPreferencesKey("single_connection_board_send_mode")
     val MULTI_CONNECTION_BOARD_SEND_MODE =
         stringPreferencesKey("multi_connection_board_send_mode")
+    /** Legacy boolean used by development builds before the three-way mode. */
+    val MOONBOARD_LEDS_ABOVE_HOLDS = booleanPreferencesKey("moonboard_leds_above_holds")
+    /** MoonBoard LED placement. Absent preserves the historic mode below holds. */
+    val MOONBOARD_LED_MODE = stringPreferencesKey("moonboard_led_mode")
     fun lastUsedBoardAddress(brand: BoardBrand) =
         stringPreferencesKey("last_used_board_address_${brand.wireValue}")
     fun lastUsedBoardDisplayName(brand: BoardBrand) =
@@ -1022,6 +1027,23 @@ class UserPreferences(
     suspend fun setMultiConnectionBoardSendMode(mode: BoardSendMode) {
         dataStore.edit { prefs ->
             prefs[PreferenceKeys.MULTI_CONNECTION_BOARD_SEND_MODE] = mode.name
+        }
+    }
+
+    /** BELOW is the pre-existing wire format and therefore the upgrade default. */
+    val moonBoardLedMode: Flow<MoonBoardLedMode> = dataStore.data.map { prefs ->
+        prefs[PreferenceKeys.MOONBOARD_LED_MODE]?.let(MoonBoardLedMode::fromWire)
+            ?: if (prefs[PreferenceKeys.MOONBOARD_LEDS_ABOVE_HOLDS] == true) {
+                MoonBoardLedMode.BOTH
+            } else {
+                MoonBoardLedMode.BELOW
+            }
+    }
+
+    suspend fun setMoonBoardLedMode(mode: MoonBoardLedMode) {
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.MOONBOARD_LED_MODE] = mode.name
+            prefs.remove(PreferenceKeys.MOONBOARD_LEDS_ABOVE_HOLDS)
         }
     }
 

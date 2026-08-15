@@ -310,7 +310,12 @@ internal class BoardSendController(
                 val variant = com.cruxcoach.domain.board.MoonBoardVariant
                     .fromLayoutId(layoutId)
                     ?: com.cruxcoach.domain.board.MoonBoardVariant.MOONBOARD_2016
-                val success = bleConnection.sendMoonBoardClimb(frames, variant)
+                val ledMode = userPreferences.moonBoardLedMode.first()
+                val success = bleConnection.sendMoonBoardClimb(
+                    frames,
+                    variant,
+                    ledMode,
+                )
                 Log.i(TAG, "sendMoonBoardToBoard: writes done success=$success variant=$variant")
                 state.update { it.copy(
                     ble = it.ble.copy(

@@ -6,6 +6,7 @@ import com.cruxcoach.android.ble.QueueItem
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.ClimbWithStats
 import com.cruxcoach.domain.board.BoardBrand
+import com.cruxcoach.domain.board.MoonBoardLedMode
 import io.mockk.coEvery
 import io.mockk.coVerify
 import kotlinx.coroutines.flow.flowOf
@@ -51,6 +52,7 @@ class SessionQueueManagerTest {
     private val userPreferences = mockk<UserPreferences>(relaxed = true).also {
         every { it.singleConnectionBoardSendMode } returns flowOf(BoardSendMode.AUTOMATIC)
         every { it.multiConnectionBoardSendMode } returns flowOf(BoardSendMode.AUTOMATIC)
+        every { it.moonBoardLedMode } returns flowOf(MoonBoardLedMode.BELOW)
     }
 
     @Before
@@ -81,6 +83,7 @@ class SessionQueueManagerTest {
         queueManager.onQueueChanged = { }
         queueManager.onCurrentClimbChanged = { }
         queueManager.onParticipantsChanged = { }
+        queueManager.onSessionInfoChanged = { }
         queueManager.remoteAddClimb = { _, _ -> }
 
         queueManager.endQueue()
@@ -88,6 +91,7 @@ class SessionQueueManagerTest {
         assertNull("onQueueChanged must be null after endQueue", queueManager.onQueueChanged)
         assertNull("onCurrentClimbChanged must be null after endQueue", queueManager.onCurrentClimbChanged)
         assertNull("onParticipantsChanged must be null after endQueue", queueManager.onParticipantsChanged)
+        assertNull("onSessionInfoChanged must be null after endQueue", queueManager.onSessionInfoChanged)
         assertNull("remoteAddClimb must be null after endQueue", queueManager.remoteAddClimb)
     }
 
@@ -253,7 +257,7 @@ class SessionQueueManagerTest {
 
         verify(exactly = 0) { boardRepository.getClimbByUuid(any(), any()) }
         coVerify(exactly = 0) { bleConnection.sendClimb(any(), any(), any()) }
-        coVerify(exactly = 0) { bleConnection.sendMoonBoardClimb(any(), any()) }
+        coVerify(exactly = 0) { bleConnection.sendMoonBoardClimb(any(), any(), any()) }
     }
 
     @Test
@@ -592,7 +596,7 @@ class SessionQueueManagerTest {
         every { bleConnection.connectionState } returns MutableStateFlow(ConnectionState.CONNECTED)
         every { bleConnection.connectedBoardBrand } returns MutableStateFlow(connectedBrand)
         every { boardRepository.getClimbByUuid(any(), any()) } returns moonBoardClimb(uuid)
-        coEvery { bleConnection.sendMoonBoardClimb(any(), any()) } returns true
+        coEvery { bleConnection.sendMoonBoardClimb(any(), any(), any()) } returns true
         queueManager.startQueue("Host")
         queueManager.addClimb(uuid, 40)
     }
@@ -605,7 +609,7 @@ class SessionQueueManagerTest {
 
         queueManager.sendCurrentClimbToBoard()
 
-        coVerify(exactly = 0) { bleConnection.sendMoonBoardClimb(any(), any()) }
+        coVerify(exactly = 0) { bleConnection.sendMoonBoardClimb(any(), any(), any()) }
         coVerify(exactly = 0) { bleConnection.sendClimb(any(), any(), any()) }
     }
 
@@ -615,7 +619,7 @@ class SessionQueueManagerTest {
 
         queueManager.sendCurrentClimbToBoard()
 
-        coVerify(exactly = 1) { bleConnection.sendMoonBoardClimb(any(), any()) }
+        coVerify(exactly = 1) { bleConnection.sendMoonBoardClimb(any(), any(), any()) }
     }
 
     @Test
@@ -626,7 +630,36 @@ class SessionQueueManagerTest {
 
         queueManager.sendCurrentClimbToBoard()
 
-        coVerify(exactly = 1) { bleConnection.sendMoonBoardClimb(any(), any()) }
+        coVerify(exactly = 1) { bleConnection.sendMoonBoardClimb(any(), any(), any()) }
+    }
+
+    @Test
+    fun `single-connect host keeps automatic mode when participants join`() {
+        every { userPreferences.singleConnectionBoardSendMode } returns
+            flowOf(BoardSendMode.AUTOMATIC)
+        every { userPreferences.multiConnectionBoardSendMode } returns
+            flowOf(BoardSendMode.EXPLICIT)
+        setupConnectedSendScenario(connectedBrand = BoardBrand.MOONBOARD)
+        queueManager.addParticipant("AA:BB:CC:DD:EE:01", "Participant")
+        queueManager.addClimb("second", 40)
+
+        queueManager.nextClimb()
+
+        coVerify(exactly = 2) { bleConnection.sendMoonBoardClimb(any(), any(), any()) }
+        assertFalse(queueManager.state.value.awaitingExplicitSend)
+    }
+
+    @Test
+    fun `participant applies host explicit-send state`() {
+        queueManager.setParticipantRole(0, "Host")
+
+        queueManager.updateSessionInfo(
+            hostName = "Host",
+            participantCount = 2,
+            awaitingExplicitSend = true,
+        )
+
+        assertTrue(queueManager.state.value.awaitingExplicitSend)
     }
 
     @Test
@@ -801,14 +834,14 @@ class SessionQueueManagerTest {
 
         assertTrue(queueManager.state.value.externalBoardOverride)
         coVerify(exactly = 0) { bleConnection.sendClimb(any(), any(), any()) }
-        coVerify(exactly = 0) { bleConnection.sendMoonBoardClimb(any(), any()) }
+        coVerify(exactly = 0) { bleConnection.sendMoonBoardClimb(any(), any(), any()) }
     }
 
     @Test
     fun `successful host resend restores queue projection and clears external override`() {
         setupConnectedSendScenario(connectedBrand = BoardBrand.MOONBOARD)
         queueManager.markExternalBoardWrite()
-        coEvery { bleConnection.sendMoonBoardClimb(any(), any()) } returns true
+        coEvery { bleConnection.sendMoonBoardClimb(any(), any(), any()) } returns true
 
         queueManager.sendCurrentClimbToBoard()
 
@@ -820,7 +853,7 @@ class SessionQueueManagerTest {
     fun `failed host resend keeps external override honest`() {
         setupConnectedSendScenario(connectedBrand = BoardBrand.MOONBOARD)
         queueManager.markExternalBoardWrite()
-        coEvery { bleConnection.sendMoonBoardClimb(any(), any()) } returns false
+        coEvery { bleConnection.sendMoonBoardClimb(any(), any(), any()) } returns false
 
         queueManager.sendCurrentClimbToBoard()
 

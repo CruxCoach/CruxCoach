@@ -1243,7 +1243,13 @@ class ClimbEditorViewModel @Inject constructor(
             // MoonBoardFrameEncoder.encode (inside sendMoonBoardClimb) reads.
             val variant = MoonBoardVariant.fromLayoutId(cur.layoutId) ?: return
             val frames = cur.editor.encodeFrames()
-            val result = runCatching { bleConnection.sendMoonBoardClimb(frames, variant) }
+            val result = runCatching {
+                bleConnection.sendMoonBoardClimb(
+                    frames,
+                    variant,
+                    userPreferences.moonBoardLedMode.first(),
+                )
+            }
             result.fold(
                 onSuccess = { Log.i(TAG, "syncLeds(moonboard): sendMoonBoardClimb ok=$it holds=${cur.editor.selectedHolds.size}") },
                 onFailure = { Log.w(TAG, "syncLeds(moonboard): sendMoonBoardClimb threw", it) },

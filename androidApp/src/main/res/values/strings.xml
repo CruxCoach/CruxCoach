@@ -213,7 +213,7 @@
     <string name="onboarding_kilter_desc">Have a Kilter account? Import your ascents and projects.</string>
     <string name="onboarding_kilter_credentials_hint">Your credentials are only used for the import and can be discarded afterwards.</string>
     <string name="onboarding_kilter_logged_in">Logged in as %s</string>
-    <string name="onboarding_kilter_preview">%d entries found: %d ascents, %d projects (%d already imported)</string>
+    <string name="onboarding_kilter_preview">%1$d entries found: %2$d ascents, %3$d projects (%4$d already imported)</string>
     <string name="onboarding_kilter_import_once">Import once</string>
     <string name="onboarding_kilter_import_sync">Keep in sync</string>
     <string name="onboarding_kilter_import_success">%d entries imported!</string>
@@ -644,7 +644,7 @@
     <string name="dashboard_error">Error</string>
     <string name="dashboard_log_boulder">Log boulder</string>
     <string name="dashboard_phase">Phase: %s</string>
-    <string name="dashboard_session_summary">%d exercises, %d min</string>
+    <string name="dashboard_session_summary">%1$d exercises, %2$d min</string>
     <string name="dashboard_to_weekplan">Go to week plan</string>
 
     <!-- Stats -->
@@ -686,7 +686,7 @@
     <string name="board_log_attempt">Log attempt</string>
     <string name="board_browser_search_hint">Search name or setter…</string>
     <string name="board_browser_climbs_count">%d Climbs</string>
-    <string name="board_browser_climbs_loaded">%d Climbs (%d loaded)</string>
+    <string name="board_browser_climbs_loaded">%1$d Climbs (%2$d loaded)</string>
     <string name="board_browser_preparing_db">Preparing the climb database…</string>
     <string name="board_browser_preparing_db_hint">First launch after an update can take a minute or two on slower devices. Please keep the app open — closing it makes the preparation start over next time.</string>
     <string name="board_browser_empty_no_results">No climbs match the current filters</string>
@@ -980,7 +980,7 @@
     <string name="board_sync_db_synced">Database synced</string>
     <string name="board_sync_last_sync">Last sync: %s</string>
     <string name="board_sync_no_network_permission">CruxCoach has no network permission — grant it in the system settings under Permissions › Network.</string>
-    <string name="board_sync_overdue">No automatic update for %1$d days — tap "Re-download" to sync now.</string>
+    <string name="board_sync_overdue">No automatic update for %1$d days — tap \"Re-download\" to sync now.</string>
     <string name="board_sync_deferred">Android is holding the sync back — check battery optimisation for CruxCoach, then try again.</string>
     <string name="board_sync_redownload">Re-download</string>
     <string name="board_sync_status_not_loaded">not loaded</string>
@@ -1638,6 +1638,11 @@
     <string name="settings_board_model_title">Board size</string>
     <string name="settings_board_model_change">Change</string>
     <string name="settings_board_model_not_configured">Not configured</string>
+    <string name="settings_moonboard_led_position_title">LED position</string>
+    <string name="settings_moonboard_led_position_desc">Choose which existing LEDs mark each hold. Finish holds and positions without an upper LED stay lit from below.</string>
+    <string name="settings_moonboard_led_position_below">Below</string>
+    <string name="settings_moonboard_led_position_above">Above</string>
+    <string name="settings_moonboard_led_position_both">Both</string>
     <string name="settings_board_send_mode_title">Send to board</string>
     <string name="settings_board_send_mode_desc">Choose separately how climbs are sent for controllers that allow one or several connected apps. This applies to playlists too: on "Immediately" each climb goes to the wall as you reach it, on "Tap to send" the wall stays as it is until you tap the lamp. Climbing over a relay counts as several connected apps.</string>
     <string name="settings_board_capacity_recheck">Re-detect board capabilities</string>
@@ -1897,15 +1902,15 @@
     <string name="settings_backup_restore">Restore backup</string>
     <string name="settings_backup_restore_checking">Checking…</string>
     <string name="settings_backup_restore_dialog_title">Backup found</string>
-    <string name="settings_backup_restore_dialog_body">Size: %1$s.\nYour local data will be overwritten by the backup.</string>
+    <string name="settings_backup_restore_dialog_body">Size: %1$s.\nThe backup will be merged with your local data. Existing entries will not be duplicated.</string>
     <string name="settings_backup_restore_confirm">Restore</string>
     <string name="settings_backup_restore_cancel">Cancel</string>
     <string name="settings_backup_no_backup_found">No backup found for this account. If one should exist, check your network connection and try again later — backup servers may be temporarily unreachable.</string>
-    <string name="settings_backup_blob_unreachable">Backup info found, but the encrypted backup data is no longer available on any storage server (possibly deleted via a previous opt-out, or all servers are temporarily down). The info can be removed via "Delete remote backups". Try again later if this looks like a network issue.</string>
+    <string name="settings_backup_blob_unreachable">Backup info found, but the encrypted backup data is no longer available on any storage server (possibly deleted via a previous opt-out, or all servers are temporarily down). The info can be removed via \"Delete remote backups\". Try again later if this looks like a network issue.</string>
     <string name="settings_backup_check_decrypt_failed">A backup was found, but it could not be decrypted — the key doesn\'t seem to match.</string>
     <string name="settings_backup_check_error">Error while looking for a backup: %1$s</string>
     <string name="settings_backup_restore_failed">Backup could not be restored.</string>
-    <string name="settings_backup_restored">Restored: %1$d ascents, %2$d lists</string>
+    <string name="settings_backup_restored">Backup processed: %1$d logbook entries, %2$d lists. Existing data was not duplicated.</string>
     <string name="settings_backup_restore_wait_import">Boards are still loading — restore becomes available once that finishes.</string>
     <string name="settings_backup_succeeded">Backup created.</string>
     <string name="settings_backup_failed">Backup failed. Check your connection and try again.</string>
@@ -1935,7 +1940,7 @@
     <!-- BackupErrorReason — localized one per BackupException reason. -->
     <string name="backup_error_blob_upload_failed">Backup failed: no storage server accepted the encrypted backup (%1$d attempted).</string>
     <string name="backup_error_blob_upload_failed_with_detail">Backup failed: no storage server accepted the encrypted backup (%1$d attempted, %2$s).</string>
-    <string name="backup_error_amber_needs_auto_approve">Backup failed: Amber needs to be set to "always approve" for CruxCoach. Open Amber → CruxCoach and enable automatic approval, otherwise background backup cannot sign.</string>
+    <string name="backup_error_amber_needs_auto_approve">Backup failed: Amber needs to be set to \"always approve\" for CruxCoach. Open Amber → CruxCoach and enable automatic approval, otherwise background backup cannot sign.</string>
     <string name="backup_error_blob_not_visible">Backup failed: server accepted the upload but the data is not visible afterward (%1$d servers checked).</string>
     <string name="backup_error_pointer_not_durable">Backup failed: backup index rejected by every server (%1$d attempted). The data was uploaded but not announced — please retry once the servers are reachable.</string>
     <string name="backup_error_key_event_not_durable">Backup failed: encryption-key info rejected by every server (%1$d attempted). Without it the backup cannot be restored on another device — please retry once the servers are reachable.</string>
@@ -1976,7 +1981,7 @@
     <string name="onboarding_nostr_key_hint_import_later">Already have a Nostr key? You can import it later in Settings → Nostr key.</string>
     <string name="onboarding_nostr_backup_title">Backup your data</string>
     <string name="onboarding_nostr_backup_body">Encrypted on your device, then stored online across several public servers. Only you can decrypt it. Default: off — you can enable it any time in Settings.</string>
-    <string name="onboarding_restore_dialog_body">A backup was found (%1$s).\n\nRestoring it will replace any local data with the contents of the backup.</string>
+    <string name="onboarding_restore_dialog_body">A backup was found (%1$s).\n\nIts contents will be merged with your local data. Existing entries will not be duplicated.</string>
     <string name="onboarding_restore_progress_awaiting_board_sync">Waiting for the board database to finish downloading… on a fresh install this can take several minutes, longer on a slow connection.</string>
     <string name="onboarding_restore_progress_active">Restoring your backup…</string>
 
@@ -1988,12 +1993,12 @@
     <string name="onboarding_backup_import_key_button">Import Nostr key →</string>
     <string name="onboarding_backup_restore_checking">Looking for a backup…</string>
     <string name="onboarding_backup_restore_none_for_key">No backup was found for this account. You can still continue — a fresh backup will be created on the next sync.</string>
-    <string name="onboarding_backup_restore_waiting_for_key">Import your Nostr key to continue, or switch back to "Start fresh".</string>
+    <string name="onboarding_backup_restore_waiting_for_key">Import your Nostr key to continue, or switch back to \"Start fresh\".</string>
     <string name="onboarding_restart_confirm_title">Import Nostr key</string>
     <string name="onboarding_restart_confirm_body">CruxCoach will briefly restart after the import to switch the local encryption to your key. Onboarding continues automatically with the restore.</string>
     <string name="onboarding_kilter_step_title">Kilter logbook</string>
     <string name="onboarding_kilter_step_subtitle">Optional: pull your sends and attempts from the official Kilter Board app. You can do this later in settings.</string>
-    <string name="onboarding_kilter_skip_hint">Optional step. Tap "Done" without connecting — the Kilter import is always available later in settings.</string>
+    <string name="onboarding_kilter_skip_hint">Optional step. Tap \"Done\" without connecting — the Kilter import is always available later in settings.</string>
 
     <!-- Clipboard -->
     <string name="action_copy">Copy</string>
@@ -2077,7 +2082,7 @@
     <string name="onboarding_aurora_card_subtitle">Bring your Aurora ascents, attempts and playlists across via the JSON export Aurora sends after a data request.</string>
     <string name="whatsnew_aurora_import_title">Aurora data — import it now</string>
     <string name="whatsnew_aurora_import_body">0.1.4 ingests the email JSON Aurora sends after a data-export request. Your historical ascents, attempts and playlists land in CruxCoach\'s logbook with one tap.</string>
-    <string name="whatsnew_aurora_import_hint">Have the JSON file already? Tap "Import now". Otherwise the importer stays in Settings → Migrate from Aurora — request the export first, come back later.</string>
+    <string name="whatsnew_aurora_import_hint">Have the JSON file already? Tap \"Import now\". Otherwise the importer stays in Settings → Migrate from Aurora — request the export first, come back later.</string>
     <string name="whatsnew_aurora_import_action_now">Import now</string>
     <string name="whatsnew_aurora_import_action_later">Later</string>
 
@@ -2106,13 +2111,13 @@
     <!-- FEAT-015 board-locations map (0.2.0) -->
     <string name="whatsnew_board_map_title">New: boards on a map</string>
     <string name="whatsnew_board_map_body">0.2.0 puts every known Kilter and MoonBoard installation on an interactive world map. Tap the map icon next to hold-search in the board browser, pan around, tap a marker for the gym\'s address, phone, email, and a direct link into the climbs for that board\'s exact layout and size.</string>
-    <string name="whatsnew_board_map_hint">Filters cover board brand, layout family, country, public-vs-private, adjustability and size. The "Matches my board" filter narrows the markers to gyms whose hardware fits the board you configured in Settings.</string>
+    <string name="whatsnew_board_map_hint">Filters cover board brand, layout family, country, public-vs-private, adjustability and size. The \"Matches my board\" filter narrows the markers to gyms whose hardware fits the board you configured in Settings.</string>
     <string name="whatsnew_board_map_action_now">Open map</string>
     <string name="whatsnew_board_map_action_later">Later</string>
 
     <!-- FEAT-007 Phase 1 gym-board picker (0.2.0) -->
     <string name="whatsnew_gym_picker_title">New: pick your board by gym</string>
-    <string name="whatsnew_gym_picker_body">In Settings → Board-Größe, "Ändern" now offers a "Halle suchen" path. Search your gym, pick the wall, done — no more guessing the product-size code from the dropdown.</string>
+    <string name="whatsnew_gym_picker_body">In Settings → Board size, \"Change\" now offers a \"Find gym\" path. Search your gym, pick the wall, done — no more guessing the product-size code from the dropdown.</string>
     <string name="whatsnew_gym_picker_hint">The manual list is still there as a fallback for setters and home-wall owners who know their hardware off the top of their head.</string>
     <string name="whatsnew_gym_picker_action_now">Open Settings</string>
     <string name="whatsnew_gym_picker_action_later">Later</string>
@@ -2342,8 +2347,6 @@
     <string name="playlist_stop_handover_confirm">Hand over and leave</string>
     <string name="playlist_stop_end_for_all">End for everyone</string>
     <!-- Playlist transport: a playlist does not "play", it advances -->
-    <string name="playlist_pause_training_clock">Pause training time</string>
-    <string name="playlist_resume_training_clock">Resume</string>
     <string name="playlist_paused_banner">Training time paused — the board stays as it is</string>
     <string name="playlist_generator_pyramid_shape">Pyramid shape</string>
     <string name="playlist_pyramid_ascending">Build-up</string>

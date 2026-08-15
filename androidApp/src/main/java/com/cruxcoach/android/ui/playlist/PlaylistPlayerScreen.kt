@@ -29,6 +29,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.BluetoothConnected
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Replay
@@ -78,7 +80,10 @@ import com.cruxcoach.android.data.PlaybackPhase
 import com.cruxcoach.android.data.PlaylistPlaybackState
 import com.cruxcoach.android.data.SessionVisibility
 import com.cruxcoach.android.ui.board.QueueDeliveryPolicy
+import com.cruxcoach.android.ui.board.BleConnectionSheet
+import com.cruxcoach.android.ui.board.BleConnectionViewModel
 import com.cruxcoach.android.ui.board.KilterBoardVisualization
+import com.cruxcoach.android.ui.board.MoonBoardAssetState
 import com.cruxcoach.android.ui.board.MoonBoardVisualization
 import com.cruxcoach.android.ui.board.SessionQueueSheet
 import com.cruxcoach.android.ui.board.SessionSummarySheet
@@ -87,6 +92,7 @@ import com.cruxcoach.android.ui.navigation.ClimbNavigationSource
 import com.cruxcoach.android.ui.theme.DarkBackground
 import com.cruxcoach.android.ui.theme.InfoBlue
 import com.cruxcoach.android.ui.theme.OrangeAccent
+import com.cruxcoach.android.ui.theme.SuccessGreen
 import com.cruxcoach.android.ui.theme.WarningYellow
 import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.data.repository.brand
@@ -95,9 +101,9 @@ import com.cruxcoach.domain.board.MoonBoardVariant
 import android.bluetooth.BluetoothManager
 import androidx.compose.ui.platform.LocalContext
 import com.cruxcoach.android.ble.BlePermissionHelper
+import com.cruxcoach.android.ble.ConnectionState
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.ui.res.pluralStringResource
-import androidx.compose.foundation.layout.PaddingValues
 
 /**
  * The playlist player — the one place a running playlist lives. Board
@@ -124,6 +130,12 @@ fun PlaylistPlayerScreen(
     val playback by viewModel.playbackState.collectAsStateWithLifecycle()
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showQueueSheet by remember { mutableStateOf(false) }
+    var showBleSheet by remember { mutableStateOf(false) }
+    val bleConnectionViewModel: BleConnectionViewModel = hiltViewModel()
+    val bleConnectionState by bleConnectionViewModel.state.collectAsStateWithLifecycle()
+    val isBleConnected =
+        bleConnectionState.connectionState == ConnectionState.CONNECTED ||
+            bleConnectionState.connectionState == ConnectionState.SENDING
     val snackbarHostState = remember { androidx.compose.material3.SnackbarHostState() }
     val loggedSendMsg = stringResource(R.string.playlist_logged_send)
     val loggedAttemptMsg = stringResource(R.string.playlist_logged_attempt)
@@ -170,6 +182,14 @@ fun PlaylistPlayerScreen(
             // End from the sheet goes through the player's stop() so the
             // summary appears instead of a silent pop-out.
             onEndPlaylist = { viewModel.stop() },
+        )
+    }
+
+    if (showBleSheet) {
+        BleConnectionSheet(
+            onDismiss = { showBleSheet = false },
+            onNavigateToClimb = onNavigateToClimb,
+            viewModel = bleConnectionViewModel,
         )
     }
 
@@ -284,41 +304,16 @@ fun PlaylistPlayerScreen(
                                 fontWeight = FontWeight.Bold,
                             )
                             if (playback.queue.isNotEmpty()) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        stringResource(
-                                            R.string.playlist_player_progress,
-                                            playback.currentIndex + 1,
-                                            playback.queue.size,
-                                            formatElapsed(playback.elapsedSeconds),
-                                        ),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                    // Pausing the clock belongs to the clock. As a
-                                    // transport button it read as "pause the
-                                    // playlist", which it never did — board, climb
-                                    // and navigation all carried on regardless.
-                                    // Hidden during a planned rest: the clock is
-                                    // already stopped and only the rest may start
-                                    // it again.
-                                    if (!playback.isResting) {
-                                        TextButton(
-                                            onClick = { viewModel.playback.togglePause() },
-                                            contentPadding = PaddingValues(horizontal = 8.dp),
-                                            modifier = Modifier.testTag("player_clock_pause"),
-                                        ) {
-                                            Text(
-                                                stringResource(
-                                                    if (playback.isPaused) {
-                                                        R.string.playlist_resume_training_clock
-                                                    } else R.string.playlist_pause_training_clock
-                                                ),
-                                                style = MaterialTheme.typography.labelSmall,
-                                            )
-                                        }
-                                    }
-                                }
+                                Text(
+                                    stringResource(
+                                        R.string.playlist_player_progress,
+                                        playback.currentIndex + 1,
+                                        playback.queue.size,
+                                        formatElapsed(playback.elapsedSeconds),
+                                    ),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
                             }
                         }
                     },
@@ -333,6 +328,21 @@ fun PlaylistPlayerScreen(
                         }
                     },
                     actions = {
+                        IconButton(
+                            onClick = { showBleSheet = true },
+                            modifier = Modifier.testTag("player_ble_button"),
+                        ) {
+                            Icon(
+                                if (isBleConnected) Icons.Default.BluetoothConnected
+                                else Icons.Default.Bluetooth,
+                                contentDescription = stringResource(
+                                    if (isBleConnected) R.string.cd_board_connected
+                                    else R.string.cd_board_connect
+                                ),
+                                tint = if (isBleConnected) SuccessGreen
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                         if (playback.participantCount > 1) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(
@@ -414,13 +424,14 @@ fun PlaylistPlayerScreen(
                     // here instead — it is the same question, answered where
                     // the answer exists.
                     val context = LocalContext.current
-                    val bluetoothOff = remember(playback.sharingBlocked) {
-                        val adapter = context.getSystemService(BluetoothManager::class.java)?.adapter
-                        adapter != null && !adapter.isEnabled
-                    }
-                    val advertisePermissionMissing = remember(playback.sharingBlocked) {
+                    // Read platform state on every recomposition. Keying these
+                    // checks only on sharingBlocked kept the pre-dialog result
+                    // cached after a permission grant, so the banner continued
+                    // to claim that permission was missing.
+                    val adapter = context.getSystemService(BluetoothManager::class.java)?.adapter
+                    val bluetoothOff = adapter != null && !adapter.isEnabled
+                    val advertisePermissionMissing =
                         !BlePermissionHelper.hasAdvertisingPermission(context)
-                    }
                     Surface(
                         color = WarningYellow.copy(alpha = 0.15f),
                         modifier = Modifier.fillMaxWidth(),
@@ -494,7 +505,6 @@ fun PlaylistPlayerScreen(
                 playback = playback,
                 onPrevious = { viewModel.playback.previous() },
                 onNext = { viewModel.playback.next() },
-                onTogglePause = { viewModel.playback.togglePause() },
                 onOpenQueue = { showQueueSheet = true },
                 onAddClimbs = onNavigateToBrowser,
             )
@@ -684,8 +694,20 @@ private fun ClimbingContent(
         ) {
             when {
                 render != null -> {
+                    // Resolve the MoonBoard asset here as well as in the
+                    // renderer: its real image aspect is needed to cap the
+                    // player's width against the available height. Using the
+                    // generic fallback aspect after the asset had loaded made
+                    // taller board images overflow this box on shorter phones;
+                    // the bottom of the photo and its hold circles were clipped.
+                    val moonBoardAsset = if (render.isMoonBoard) {
+                        rememberMoonBoardAsset(render.climb.layoutId)
+                    } else null
                     val aspect = if (render.isMoonBoard) {
-                        MOONBOARD_FALLBACK_ASPECT
+                        (moonBoardAsset as? MoonBoardAssetState.Ready)
+                            ?.asset
+                            ?.imageAspect
+                            ?: MOONBOARD_FALLBACK_ASPECT
                     } else {
                         render.boardSize?.let { s ->
                             val w = (s.edgeRight - s.edgeLeft).toFloat()
@@ -703,7 +725,7 @@ private fun ClimbingContent(
                         if (render.isMoonBoard) {
                             MoonBoardVisualization(
                                 frames = render.climb.frames,
-                                assetState = rememberMoonBoardAsset(render.climb.layoutId),
+                                assetState = moonBoardAsset ?: MoonBoardAssetState.Unavailable,
                                 variant = MoonBoardVariant.fromLayoutId(render.climb.layoutId),
                                 modifier = Modifier.fillMaxWidth(),
                             )
@@ -723,7 +745,9 @@ private fun ClimbingContent(
                         // existed for it — and it sat two taps away from the
                         // board it acts on. Same corner as the explicit-send
                         // mode uses, so the gesture means one thing everywhere.
-                        if (QueueDeliveryPolicy.canSend(playback.isHost, playback.boardConnected)) {
+                        if (playback.isParticipant ||
+                            QueueDeliveryPolicy.canSend(playback.isHost, playback.boardConnected)
+                        ) {
                             // Two jobs, one control. Normally it repeats a send
                             // that someone overwrote — quiet, easily ignored.
                             // Under the explicit send mode it *is* the send, and
@@ -927,8 +951,6 @@ private fun PlayerControls(
     playback: PlaylistPlaybackState,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
-    /** Manual clock pause — offered on the timer, not as a transport button. */
-    onTogglePause: () -> Unit,
     onOpenQueue: () -> Unit,
     onAddClimbs: () -> Unit,
 ) {

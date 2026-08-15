@@ -54,6 +54,7 @@ fun BoardListDetailScreen(
     viewModel: BoardListDetailViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val bleConnectionViewModel: BleConnectionViewModel = hiltViewModel()
     var menuExpanded by remember { mutableStateOf(false) }
     var showSessionVisibilityDialog by rememberSaveable { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -97,6 +98,10 @@ fun BoardListDetailScreen(
             onSelect = { visibility ->
                 showSessionVisibilityDialog = false
                 requestNotificationPermissionIfNeeded()
+                // Lists and generated plans share the same playlist player:
+                // always try the remembered physical controller before the
+                // queue changes this screen into session-host mode.
+                bleConnectionViewModel.reconnectRememberedBoard()
                 viewModel.startPlayback(queueTitle, visibility, onPlayed)
             },
         )

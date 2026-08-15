@@ -41,6 +41,24 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
+ * Result of an authenticated cloud restore.
+ *
+ * [imported] counts newly written rows; [backupPreview] counts rows present
+ * in the decrypted backup. Keeping both prevents UUID-deduplicated data from
+ * being misreported as absent from the backup.
+ */
+data class BackupRestoreResult(
+    val imported: CruxCoachBackup.ImportResult,
+    val backupPreview: CruxCoachBackup.ImportPreview,
+) {
+    val logbookEntriesInBackup: Int
+        get() = backupPreview.boardAscents + backupPreview.boardBids
+
+    val listsInBackup: Int
+        get() = backupPreview.climbLists
+}
+
+/**
  * Orchestrates the backup pipeline from FEAT-002 §7.3 and the restore flow
  * from §8. All Nostr + Blossom work is delegated to the lower-level
  * collaborators; this class owns the invariants (blob-before-pointer,
@@ -384,7 +402,7 @@ class BackupRepository @Inject constructor(
      * On success the caller should flip `backupEnabled = true` and schedule
      * the worker.
      */
-    suspend fun restore(info: BackupInfo): CruxCoachBackup.ImportResult = pipelineMutex.withLock {
+    suspend fun restore(info: BackupInfo): BackupRestoreResult = pipelineMutex.withLock {
         // Wait out any in-flight board-sync before we start writing into
         // the (unencrypted) board DB's climbs table — concurrent writers
         // race for the SQLite writer-lock and bulk-import wins on
@@ -439,6 +457,17 @@ class BackupRepository @Inject constructor(
             .decompress(compressed, maxBytes = MAX_PLAINTEXT_BYTES)
             .toString(Charsets.UTF_8)
 
+        // Keep payload cardinalities separate from the number of newly
+        // inserted rows. ImportResult intentionally counts inserts and
+        // therefore reports zero for UUID-deduplicated ascents when a user
+        // restores over an intact local logbook. The Settings UI used to
+        // label that zero as "restored", which looked exactly like a backup
+        // that had silently omitted every ascent. Parsing the already
+        // authenticated plaintext here lets the UI report what the backup
+        // actually contained while importResult still describes database
+        // mutations and duplicate skips.
+        val backupPreview = CruxCoachBackup.preview(json)
+
         // 3 — import into local DB. Pin the decrypted payload to the
         // active signer: NIP-44 already guarantees the caller held the
         // right private key to decrypt, but an additional envelope-
@@ -473,9 +502,17 @@ class BackupRepository @Inject constructor(
         }
         Log.d(
             TAG,
-            "event=restore_done rowsImported=$rowsImported skippedDuplicates=${importResult.skippedDuplicates} durationMs=${System.currentTimeMillis() - started}",
+            "event=restore_done rowsImported=$rowsImported" +
+                " payloadAscents=${backupPreview.boardAscents}" +
+                " payloadBids=${backupPreview.boardBids}" +
+                " payloadLists=${backupPreview.climbLists}" +
+                " skippedDuplicates=${importResult.skippedDuplicates}" +
+                " durationMs=${System.currentTimeMillis() - started}",
         )
-        importResult
+        BackupRestoreResult(
+            imported = importResult,
+            backupPreview = backupPreview,
+        )
     }
 
     /**

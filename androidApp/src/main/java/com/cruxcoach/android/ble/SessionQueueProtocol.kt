@@ -8,7 +8,8 @@ import java.util.UUID
  * Binary encoding/decoding for Session Queue GATT payloads.
  *
  * **Commands** (Client → Host, written to QUEUE_COMMAND):
- *   CMD_ADD, CMD_REMOVE, CMD_SET_CURRENT, CMD_NEXT, CMD_PREV, CMD_JOIN, CMD_LEAVE
+ *   CMD_ADD, CMD_REMOVE, CMD_SET_CURRENT, CMD_NEXT, CMD_PREV, CMD_JOIN,
+ *   CMD_LEAVE, CMD_RESEND
  *
  * **Events** (Host → Client, notified via QUEUE_EVENT):
  *   EVT_ADDED, EVT_REMOVED, EVT_CURRENT, EVT_CLEARED, EVT_PARTICIPANT_JOINED/LEFT
@@ -36,6 +37,7 @@ object SessionQueueProtocol {
     const val CMD_JOIN: Byte = 0x06
     const val CMD_LEAVE: Byte = 0x07
     const val CMD_MOVE: Byte = 0x08
+    const val CMD_RESEND: Byte = 0x09
 
     // --- Event opcodes (Host → Client) ---
     const val EVT_ADDED: Byte = 0x01
@@ -104,6 +106,8 @@ object SessionQueueProtocol {
 
     fun encodeMove(from: Int, to: Int): ByteArray = byteArrayOf(CMD_MOVE, from.toByte(), to.toByte())
 
+    fun encodeResend(): ByteArray = byteArrayOf(CMD_RESEND)
+
     // ===== Command decoding (Host reads from Client) =====
 
     fun decodeCommand(data: ByteArray): SessionCommand? {
@@ -136,6 +140,7 @@ object SessionQueueProtocol {
                 if (data.size < 3) return null
                 SessionCommand.Move(data[1].toInt() and 0xFF, data[2].toInt() and 0xFF)
             }
+            CMD_RESEND -> SessionCommand.Resend
             else -> null
         }
     }
@@ -293,14 +298,22 @@ object SessionQueueProtocol {
 
     // ===== Session info (for GATT Read) =====
 
-    fun encodeSessionInfo(hostName: String, participantCount: Int): ByteArray {
+    fun encodeSessionInfo(
+        hostName: String,
+        participantCount: Int,
+        awaitingExplicitSend: Boolean = false,
+    ): ByteArray {
         val nameBytes = hostName.toByteArray(Charsets.UTF_8).let {
             if (it.size > 20) it.copyOf(20) else it
         }
-        val buf = ByteArray(2 + nameBytes.size)
+        // The trailing state byte is backwards-compatible: older clients read
+        // only count + name and ignore it. Bit 0 makes the host's send-mode
+        // decision authoritative on every participant UI.
+        val buf = ByteArray(3 + nameBytes.size)
         buf[0] = participantCount.toByte()
         buf[1] = nameBytes.size.toByte()
         nameBytes.copyInto(buf, 2)
+        buf[2 + nameBytes.size] = if (awaitingExplicitSend) 1 else 0
         return buf
     }
 
@@ -329,7 +342,8 @@ object SessionQueueProtocol {
         val count = data[0].toInt() and 0xFF
         val nameLen = (data[1].toInt() and 0xFF).coerceAtMost(data.size - 2)
         val name = String(data, 2, nameLen, Charsets.UTF_8)
-        return SessionInfo(name, count)
+        val flags = data.getOrNull(2 + nameLen)?.toInt() ?: 0
+        return SessionInfo(name, count, awaitingExplicitSend = flags and 1 != 0)
     }
 
     // ===== Participant list (for GATT Read) =====
@@ -397,6 +411,7 @@ sealed class SessionCommand {
     data class Join(val displayName: String) : SessionCommand()
     data object Leave : SessionCommand()
     data class Move(val from: Int, val to: Int) : SessionCommand()
+    data object Resend : SessionCommand()
 }
 
 sealed class SessionEvent {
@@ -435,4 +450,8 @@ data class QueueItem(
     val angle: Int,
     val restAfterSeconds: Int = 0,
 )
-data class SessionInfo(val hostName: String, val participantCount: Int)
+data class SessionInfo(
+    val hostName: String,
+    val participantCount: Int,
+    val awaitingExplicitSend: Boolean = false,
+)

@@ -133,6 +133,7 @@ class SessionGattBridgeMigrationTest {
 
     private lateinit var bridge: SessionGattBridge
     private lateinit var managerScope: CoroutineScope
+    private var hostingPermissionsGranted = true
 
     @Before
     fun setup() {
@@ -182,6 +183,8 @@ class SessionGattBridgeMigrationTest {
             bleConnection = mockBleConnection,
             boardStateManager = mockBoardStateManager,
             boardSessionManager = mockBoardSessionManager,
+            hasHostingPermissions = { hostingPermissionsGranted },
+            hostSetupDispatcher = testDispatcher,
             scope = managerScope,
         )
     }
@@ -555,6 +558,23 @@ class SessionGattBridgeMigrationTest {
     }
 
     // ===== Session command authorization =====
+
+    @Test
+    fun `promoted host without hosting permission does not touch GATT server`() =
+        runTest(testDispatcher.scheduler) {
+            hostingPermissionsGranted = false
+            queueManager.startQueue("Host", SessionVisibility.JOINABLE)
+
+            bridge.startSharing()
+
+            assertTrue(queueManager.state.value.isActive)
+            assertEquals(SessionVisibility.JOINABLE, queueManager.state.value.visibilityRequested)
+            assertEquals(SessionVisibility.LOCAL_ONLY, queueManager.state.value.visibility)
+            verify(exactly = 0) { mockGattServer.start() }
+            verify(exactly = 0) {
+                mockAdvertiser.advertiseSession(any(), any(), any(), any(), any())
+            }
+        }
 
     @Test
     fun `failed publication keeps the queue running but marks it local-only`() =

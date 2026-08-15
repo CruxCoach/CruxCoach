@@ -184,6 +184,11 @@ fun PlaylistDetailScreen(
             onSelect = { visibility ->
                 showSessionVisibilityDialog = false
                 requestNotificationPermissionIfNeeded()
+                // Starting a playlist should immediately reach for the last
+                // controller of the active board family. This is a direct
+                // GATT reconnect (no discovery/location gate); the player
+                // still exposes the picker if the remembered board is absent.
+                bleConnectionViewModel.reconnectRememberedBoard()
                 viewModel.play(queueTitle, visibility, onPlayed)
             },
         )
@@ -193,6 +198,7 @@ fun PlaylistDetailScreen(
         BleConnectionSheet(
             onDismiss = { showBleSheet = false },
             onNavigateToClimb = onNavigateToClimb,
+            viewModel = bleConnectionViewModel,
         )
     }
 
