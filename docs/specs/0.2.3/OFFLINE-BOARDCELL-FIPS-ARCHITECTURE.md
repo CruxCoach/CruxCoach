@@ -8,6 +8,8 @@ CruxRelay, and local competitions. The concise normative specification is
 [`FEAT-059-offline-board-cell-fips-mesh.md`](FEAT-059-offline-board-cell-fips-mesh.md).
 The hardware acceptance procedure is
 [`docs/FIPS_DEVICE_TEST_PROTOCOL.md`](../../FIPS_DEVICE_TEST_PROTOCOL.md).
+The separate iOS architecture note is
+[`docs/IOS_BOARD_ACCESS.md`](../../IOS_BOARD_ACCESS.md).
 
 ## 1. Objective
 
@@ -432,7 +434,35 @@ Until those questions are answered and measured, Variant B remains an
 architecture option. It must not appear accidentally by enabling additional
 FIPS transports.
 
-## 16. Binding MVP decision
+## 16. iOS and direct phone-to-board BLE
+
+Direct board communication remains a product requirement for normal personal
+use on iOS. A remote Android controller is not an adequate substitute. Stock
+Safari does not expose Web Bluetooth, however, and an nsite cannot grant a web
+page CoreBluetooth access. Some native BLE host must therefore be installed on
+the iPhone.
+
+The lowest-cost feasibility route is a CruxCoach web client inside an existing
+Web Bluetooth host such as Bluefy. That keeps CruxCoach itself out of the App
+Store and still gives the phone a direct GATT path to the board, but it depends
+on a third-party App Store app and does not expose the BLE/L2CAP primitives
+needed for the current FIPS phone-to-phone mesh. Full BoardCell mesh parity
+requires a thin native iOS host, including CoreBluetooth and an iOS FIPS
+transport, distributed through an explicitly supported signing or alternative
+distribution channel.
+
+A future Myco iOS runtime could host a CruxCoach nsite and expose a narrow board
+capability. It would not eliminate native installation: Myco itself would need
+to be installed first, and the current Myco runtime has neither an iOS client
+nor the required privileged nsite capability API.
+
+Regardless of platform, direct BLE capability does not grant write authority
+inside a competition. Only the canonical BoardCell controller may cross the
+write safety boundary. The platform analysis, distribution choices, security
+constraints, and required board-hardware spike are documented in
+[`docs/IOS_BOARD_ACCESS.md`](../../IOS_BOARD_ACCESS.md).
+
+## 17. Binding MVP decision
 
 The MVP uses Variant A:
 

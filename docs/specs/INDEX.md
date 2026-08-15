@@ -82,6 +82,9 @@ spec file so other branches see the reservation.
 
 The architecture guide for FEAT-059 is
 [`0.2.3/OFFLINE-BOARDCELL-FIPS-ARCHITECTURE.md`](0.2.3/OFFLINE-BOARDCELL-FIPS-ARCHITECTURE.md).
+Its iOS companion note, covering mandatory direct board BLE, Safari/Web
+Bluetooth constraints, third-party BLE hosts, native sideloading, and the
+Myco/nsite boundary, is [`../IOS_BOARD_ACCESS.md`](../IOS_BOARD_ACCESS.md).
 
 Implementation plan for FEAT-043/045/046:
 `0.2.2/IMPLEMENTATION-PLAN-convergence-player.md`.
