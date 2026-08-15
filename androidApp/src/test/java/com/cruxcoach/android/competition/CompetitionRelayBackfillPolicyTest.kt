@@ -112,17 +112,17 @@ class CompetitionRelayBackfillPolicyTest {
             0 until follow.indexOf("backfillLog(competition, organizerPubkey, address, nowSeconds)"))
         assertTrue(follow.contains("CoroutineStart.UNDISPATCHED"))
         assertTrue(follow.contains("Channel<String>(capacity = LIVE_BUFFER_CAPACITY)"))
-        assertTrue(follow.contains("failOnRelayError = true"))
+        assertTrue(follow.contains("failOnRelayError = false"))
     }
 
     @Test
-    fun `definition discovery is best effort but signed relay corroboration is strict`() {
+    fun `definition discovery is best effort but signed relay corroboration needs a majority`() {
         val source = File("src/main/java/com/cruxcoach/android/competition/CompetitionRelayClient.kt").readText()
         val load = source.substringAfter("suspend fun load(").substringBefore("fun follow(")
         assertTrue(load.contains("fetchNewest(discoveryScope, strict = false)"))
         assertTrue(load.contains("fetchNewest(required, strict = true)"))
-        assertTrue(load.contains("relayPool.fetchStoredComplete(filter, scope)"))
-        assertTrue(load.contains("else relayPool.fetchStored(filter, scope)"))
+        assertTrue(load.contains("fetchRelayQuorum(filter, scope, \"competition definition\")"))
+        assertTrue(load.contains("relayPool.fetchStored(filter, scope).collect(events::add)"))
     }
 
     @Test
@@ -168,11 +168,24 @@ class CompetitionRelayBackfillPolicyTest {
                 historyComplete = true,
                 intentHistoryComplete = true,
             ),
-            allReadRelaysConnected = false,
+            authorityQuorumConnected = false,
         )
         assertFalse(stale.historyComplete)
         assertFalse(stale.intentHistoryComplete)
         assertFalse(stale.trustworthy)
+
+        val majorityStillConnected = staleAfterRelayLoss(
+            CompetitionRelayClient.Snapshot(
+                state = state,
+                historyComplete = true,
+                intentHistoryComplete = true,
+            ),
+            authorityQuorumConnected = true,
+            intentQuorumConnected = true,
+        )
+        assertTrue(majorityStillConnected.historyComplete)
+        assertTrue(majorityStillConnected.intentHistoryComplete)
+        assertTrue(majorityStillConnected.trustworthy)
     }
 
     @Test
