@@ -28,6 +28,8 @@ object CompetitionReducer {
         "duplicate_in_order", "empty_announcement", "epoch_mismatch", "illegal_transition",
         "incomplete_seed_order", "index_out_of_range", "ineligible_in_order", "no_attempts_left",
         "no_fee", "no_order", "no_such_participant", "not_accepted_registration", "not_eligible",
+        "manual_queue_forbidden",
+        "turn_not_open",
         "not_in_order", "participant_inactive", "unknown_checkin_state", "unknown_climb",
         "unknown_decision", "unknown_division", "unknown_op", "unknown_outcome",
         "unknown_payment_state", "unknown_prize", "unknown_prize_state", "unknown_queue_action",
@@ -207,6 +209,12 @@ object CompetitionReducer {
     fun applyEntry(state: CompetitionState, entry: LogEntry, competition: Competition): CompetitionState {
         if (entry.epoch != state.epoch) return reject(state, entry, "epoch_mismatch")
 
+        val beforeCurrent = state.order.getOrNull(state.cursor)
+        val rejectedBefore = state.rejected.size
+        var appliedOp = entry.op
+        var appliedData = entry.data
+        val result: CompetitionState
+
         if (entry.op == "override") {
             val audited = state.copy(
                 audit = state.audit + AuditEntry(entry.seq, "override", entry.reason, entry.at),
@@ -214,10 +222,10 @@ object CompetitionReducer {
             val wrappedOp = entry.data.str("op") ?: return reject(audited, entry, "unknown_op")
             val wrappedData = entry.data["data"] as? JsonObject ?: return reject(audited, entry, "unknown_op")
             if (wrappedOp !in HANDLED_OPS) return reject(audited, entry, "unknown_op")
-            return dispatch(audited, entry.copy(op = wrappedOp, data = wrappedData), competition)
-        }
-
-        if (entry.op == "correction") {
+            appliedOp = wrappedOp
+            appliedData = wrappedData
+            result = dispatch(audited, entry.copy(op = wrappedOp, data = wrappedData), competition)
+        } else if (entry.op == "correction") {
             val audited = state.copy(
                 audit = state.audit + AuditEntry(
                     entry.seq, "correction", entry.reason, entry.at,
@@ -233,10 +241,16 @@ object CompetitionReducer {
             // reduce() handles corrections; applying this body at its later
             // sequence would be a different and unsafe operation.
             return reject(audited, entry, "correction_bad_target")
+        } else {
+            if (entry.op !in HANDLED_OPS) return reject(state, entry, "unknown_op")
+            result = dispatch(state, entry, competition)
         }
-
-        if (entry.op !in HANDLED_OPS) return reject(state, entry, "unknown_op")
-        return dispatch(state, entry, competition)
+        if (result.rejected.size != rejectedBefore) return result
+        val preservePostCurrent = appliedOp == "complete_turn" ||
+            appliedOp == "defer_decision" ||
+            (appliedOp == "queue" && appliedData.str("action") in listOf("skip_turn", "next_round"))
+        val effective = result.effectiveConfig?.let(Competition::from) ?: competition
+        return reconcileAutomaticQueue(result, effective, entry, beforeCurrent, preservePostCurrent)
     }
 
     /**
@@ -478,11 +492,98 @@ object CompetitionReducer {
         return -1
     }
 
+    private fun isQueueMember(state: CompetitionState, competition: Competition, pubkey: String): Boolean {
+        val participant = state.participant(pubkey) ?: return false
+        return participant.registration == "accepted" && participant.checkin == "checked_in" &&
+            participant.result == "active" && (competition.feeMsat <= 0 || participant.payment == "settled")
+    }
+
+    private fun queueKey(compId: String, pubkey: String): String = CompetitionDigest.sha256Hex(compId + pubkey)
+
+    fun automaticQueueOrder(compId: String, pubkeys: List<String>): List<String> =
+        CompetitionProtocol.defaultQueueOrder(compId, pubkeys)
+
+    private fun readyAt(state: CompetitionState, competition: Competition, pubkey: String, floor: Long): Long {
+        val participant = state.participant(pubkey)
+        val restReady = if (participant != null && participant.lastAttemptAt > 0) {
+            participant.lastAttemptAt + competition.rules.minRestSec
+        } else {
+            floor
+        }
+        return maxOf(floor, restReady)
+    }
+
+    private fun installAutomaticTurn(
+        state: CompetitionState,
+        competition: Competition,
+        at: Long,
+        anchorPubkey: String?,
+    ): CompetitionState {
+        if (state.order.isEmpty()) {
+            return state.copy(cursor = -1, turnOpenedAt = 0, turnDeadlineAt = 0)
+        }
+        val floor = maxOf(at, competition.startsAt)
+        val anchorKey = anchorPubkey?.let { queueKey(competition.compId, it) }
+        val indexed = state.order.mapIndexed { index, pubkey -> index to pubkey }
+        val circular = if (anchorKey == null) indexed else {
+            indexed.filter { queueKey(competition.compId, it.second) > anchorKey } +
+                indexed.filter { queueKey(competition.compId, it.second) <= anchorKey }
+        }
+        val selected = circular.firstOrNull { readyAt(state, competition, it.second, floor) <= floor }
+            ?: indexed.minWithOrNull(compareBy<Pair<Int, String>>(
+                { readyAt(state, competition, it.second, floor) }, { it.first },
+            ))!!
+        val openedAt = readyAt(state, competition, selected.second, floor)
+        val wrapped = anchorKey != null && queueKey(competition.compId, selected.second) <= anchorKey
+        return state.copy(
+            cursor = selected.first,
+            round = state.round + if (wrapped) 1 else 0,
+            turnOpenedAt = openedAt,
+            turnDeadlineAt = openedAt + competition.rules.turnDeadlineSec,
+            participants = if (wrapped) state.participants.map {
+                it.copy(defersUsedThisRound = 0, consecutiveDefers = 0)
+            } else state.participants,
+        )
+    }
+
+    private fun reconcileAutomaticQueue(
+        state: CompetitionState,
+        competition: Competition,
+        entry: LogEntry,
+        beforeCurrent: String?,
+        preservePostCurrent: Boolean,
+    ): CompetitionState {
+        if (competition.rules.queuePolicy != "automatic" || state.status in listOf("finished", "cancelled")) {
+            return state
+        }
+        val postCurrent = state.order.getOrNull(state.cursor)
+        val order = automaticQueueOrder(
+            competition.compId,
+            state.participants.filter { isQueueMember(state, competition, it.pubkey) }.map { it.pubkey },
+        )
+        var updated = state.copy(order = order)
+        if (updated.round == 0 && order.isNotEmpty()) {
+            updated = updated.copy(
+                round = 1,
+                currentClimbId = if (updated.currentClimbId.isBlank() && competition.rules.climbSource == "organizer_set") {
+                    competition.climbs.firstOrNull()?.id.orEmpty()
+                } else updated.currentClimbId,
+            )
+        }
+        val current = if (preservePostCurrent) postCurrent else beforeCurrent
+        if (current != null && current in order) return updated.copy(cursor = order.indexOf(current))
+        return installAutomaticTurn(updated, competition, entry.at, beforeCurrent)
+    }
+
     private fun applyQueue(state: CompetitionState, entry: LogEntry, competition: Competition): CompetitionState {
         val action = entry.data.str("action")
         if (action == null || action !in CompetitionProtocol.QUEUE_ACTIONS) {
             return reject(state, entry, "unknown_queue_action")
         }
+        if (competition.rules.queuePolicy == "automatic" && action in listOf(
+                "seed", "seed_open", "open_turn", "close_turn", "advance", "reorder", "next_round",
+            )
+        ) return reject(state, entry, "manual_queue_forbidden")
         if (!CompetitionProtocol.competitionRunning(competition, state.status, entry.at) &&
             !checkinWindowOpen(competition, state.status, entry.at)
         ) return reject(state, entry, "wrong_status")
@@ -536,6 +637,7 @@ object CompetitionReducer {
             if (state.cursor !in state.order.indices || state.turnOpenedAt <= 0) {
                 return reject(state, entry, "no_open_turn")
             }
+            if (entry.at < state.turnOpenedAt) return reject(state, entry, "turn_not_open")
             return openNextOrRound(state, competition, state.cursor, entry.at)
         }
 
@@ -586,6 +688,16 @@ object CompetitionReducer {
         }
         val current = state.order.indexOf(pubkey)
         if (current == -1) return reject(state, entry, "not_in_order")
+        if (competition.rules.queuePolicy == "automatic") {
+            if (state.cursor != current) return reject(state, entry, "not_current_turn")
+            if (state.turnOpenedAt <= 0) return reject(state, entry, "no_open_turn")
+            if (entry.at < state.turnOpenedAt) return reject(state, entry, "turn_not_open")
+            val advanced = state.withParticipant(participant.copy(
+                defersUsedThisRound = participant.defersUsedThisRound + 1,
+                consecutiveDefers = participant.consecutiveDefers + 1,
+            ))
+            return installAutomaticTurn(advanced, competition, entry.at, pubkey)
+        }
 
         // Move back by exactly defer_slots, never to the end of the round.
         val target = minOf(current + rules.deferSlots, state.order.size - 1)
@@ -667,6 +779,7 @@ object CompetitionReducer {
         if (state.cursor !in state.order.indices || state.turnOpenedAt <= 0) {
             return reject(state, entry, "no_open_turn")
         }
+        if (entry.at < state.turnOpenedAt) return reject(state, entry, "turn_not_open")
         val pubkey = entry.data.str("pubkey")
         if (pubkey == null || state.order[state.cursor] != pubkey) {
             return reject(state, entry, "not_current_turn")
@@ -675,7 +788,11 @@ object CompetitionReducer {
         val attempted = applyAttemptResult(state, entry, competition)
         if (attempted.rejected.size > state.rejected.size) return attempted
 
-        return openNextOrRound(attempted, competition, state.cursor, entry.at)
+        return if (competition.rules.queuePolicy == "automatic") {
+            installAutomaticTurn(attempted, competition, entry.at, pubkey)
+        } else {
+            openNextOrRound(attempted, competition, state.cursor, entry.at)
+        }
     }
 
     /** Open the next eligible turn, wrapping atomically into a fresh round. */
@@ -732,6 +849,7 @@ object CompetitionReducer {
         val wasCurrent = removedAt >= 0 && state.cursor == removedAt
         val order = state.order.filterNot { it == pubkey }
         var updated = state.withParticipant(participant.copy(result = "finished")).copy(order = order)
+        if (competition.rules.queuePolicy == "automatic") return updated
         updated = when {
             wasCurrent -> openNextOrRound(updated, competition, removedAt - 1, entry.at)
             removedAt >= 0 && removedAt < state.cursor -> updated.copy(cursor = state.cursor - 1)

@@ -12,7 +12,7 @@ import com.cruxcoach.domain.competition.Participant
  * lifecycle matrix without creating a second competition state machine.
  */
 object CompetitionLivePolicy {
-    enum class Cue { SPECTATOR, WAITING, NOT_QUEUED, CURRENT, NEXT, QUEUED, PAUSED, FINISHED, CANCELLED }
+    enum class Cue { SPECTATOR, WAITING, NOT_QUEUED, SCHEDULED, CURRENT, NEXT, QUEUED, PAUSED, FINISHED, CANCELLED }
 
     data class PersonalCue(
         val kind: Cue,
@@ -22,7 +22,12 @@ object CompetitionLivePolicy {
         val roundOffset: Int = 0,
     )
 
-    fun personalCue(state: CompetitionState?, pubkey: String, running: Boolean = state?.status == "running"): PersonalCue {
+    fun personalCue(
+        state: CompetitionState?,
+        pubkey: String,
+        running: Boolean = state?.status == "running",
+        nowSeconds: Long = Long.MAX_VALUE,
+    ): PersonalCue {
         if (state == null || pubkey.isBlank()) return PersonalCue(Cue.SPECTATOR)
         val index = state.order.indexOf(pubkey)
         return when (state.status) {
@@ -31,7 +36,11 @@ object CompetitionLivePolicy {
             "paused" -> PersonalCue(Cue.PAUSED, index = index)
             else -> if (running) when {
                 index < 0 -> PersonalCue(Cue.NOT_QUEUED)
-                state.cursor == index -> PersonalCue(Cue.CURRENT, 0, index)
+                state.cursor == index -> PersonalCue(
+                    if (state.turnOpenedAt > nowSeconds) Cue.SCHEDULED else Cue.CURRENT,
+                    0,
+                    index,
+                )
                 else -> {
                     val cursor = if (state.cursor < 0) 0 else state.cursor
                     val passedThisRound = state.cursor >= 0 && index < cursor
@@ -149,6 +158,7 @@ object CompetitionLivePolicy {
         val running = at?.let { CompetitionProtocol.competitionRunning(competition, state.status, it) }
             ?: (state.status == "running")
         if (!running) return DeferAvailability(false, DeferReason.PHASE)
+        if (at != null && at < state.turnOpenedAt) return DeferAvailability(false, DeferReason.PHASE)
         if (state.order.getOrNull(state.cursor) != pubkey) {
             return DeferAvailability(false, DeferReason.NOT_YOUR_TURN)
         }

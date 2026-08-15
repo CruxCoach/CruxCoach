@@ -2536,6 +2536,9 @@
     <string name="comp_checkin_checked_in">Checked in</string>
     <string name="comp_checkin_no_show">No-show</string>
     <string name="comp_current_climber">On the wall now</string>
+    <string name="comp_scheduled_climber">Scheduled next</string>
+    <string name="comp_live_scheduled_turn">Your turn starts %1$s</string>
+    <string name="comp_live_starts_at">Starts %1$s</string>
     <string name="comp_next_climber">Up next</string>
     <string name="comp_next_climber_next_round">Up next · next round</string>
     <string name="comp_before_you">Climbers before you</string>
@@ -2566,6 +2569,7 @@
     <string name="comp_live_no_prepared_boulder">You have not chosen your next boulder yet.</string>
     <string name="comp_live_queue">Climber queue</string>
     <string name="comp_live_now_short">Now</string>
+    <string name="comp_live_scheduled_short">Scheduled</string>
     <string name="comp_live_more">+ %1$d more</string>
     <string name="comp_live_your_rotation">Available boulders</string>
     <string name="comp_live_connecting">Connecting to the competition relays…</string>
@@ -2810,6 +2814,8 @@
     <string name="comp_host_request_choice">Prepared boulder</string>
     <string name="comp_host_live_controls">Live controls</string>
     <string name="comp_host_seed_queue">Create queue from checked-in entrants</string>
+    <string name="comp_host_queue_waiting">The running order updates automatically when an accepted, paid entrant checks in.</string>
+    <string name="comp_host_scheduled_turn">%1$s is scheduled next · starts %2$s</string>
     <string name="comp_host_turn">Turn: %1$s</string>
     <string name="comp_host_turn_not_open">not opened</string>
     <string name="comp_host_open_first_turn">Open first turn</string>

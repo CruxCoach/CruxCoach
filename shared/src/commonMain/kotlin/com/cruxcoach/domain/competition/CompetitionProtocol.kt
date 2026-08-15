@@ -85,7 +85,7 @@ object CompetitionProtocol {
     /** Stable default seeding shared by every authority UI. */
     fun defaultQueueOrder(compId: String, pubkeys: List<String>): List<String> =
         pubkeys.map { pubkey ->
-            pubkey to ccjHash(JsonObject(mapOf("k" to JsonPrimitive(compId + pubkey))))
+            pubkey to CompetitionDigest.sha256Hex(compId + pubkey)
         }.sortedWith(compareBy<Pair<String, String>> { it.second }.thenBy { it.first })
             .map { it.first }
 
@@ -469,6 +469,8 @@ data class CompetitionRules(
     val scorePoints: CompetitionScorePoints?,
     val tiebreaks: List<String>,
     val lateEntryAllowed: Boolean,
+    /** Null preserves legacy v1 host-authored seed_open semantics. */
+    val queuePolicy: String? = null,
 )
 
 data class CompetitionScorePoints(val zone: Int, val top: Int, val flash: Int)
@@ -625,6 +627,7 @@ data class Competition(
                     tiebreaks = rules["tiebreaks"]?.jsonArray.orEmpty()
                         .mapNotNull { it.jsonPrimitive.contentOrNullSafe() },
                     lateEntryAllowed = rules.bool("late_entry_allowed") ?: false,
+                    queuePolicy = rules.str("queue_policy"),
                 ),
                 relays = payload["relays"]?.jsonArray.orEmpty()
                     .mapNotNull { it.jsonPrimitive.contentOrNullSafe() },

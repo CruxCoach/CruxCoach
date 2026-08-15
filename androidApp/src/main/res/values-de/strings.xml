@@ -2535,6 +2535,9 @@
     <string name="comp_checkin_checked_in">Eingecheckt</string>
     <string name="comp_checkin_no_show">Nicht erschienen</string>
     <string name="comp_current_climber">Jetzt an der Wand</string>
+    <string name="comp_scheduled_climber">Als Nächstes eingeplant</string>
+    <string name="comp_live_scheduled_turn">Dein Zug startet %1$s</string>
+    <string name="comp_live_starts_at">Startet %1$s</string>
     <string name="comp_next_climber">Als Nächstes</string>
     <string name="comp_next_climber_next_round">Als Nächstes · nächste Runde</string>
     <string name="comp_before_you">Vor dir</string>
@@ -2565,6 +2568,7 @@
     <string name="comp_live_no_prepared_boulder">Du hast deinen nächsten Boulder noch nicht gewählt.</string>
     <string name="comp_live_queue">Teilnehmerreihenfolge</string>
     <string name="comp_live_now_short">Jetzt</string>
+    <string name="comp_live_scheduled_short">Eingeplant</string>
     <string name="comp_live_more">+ %1$d weitere</string>
     <string name="comp_live_your_rotation">Verfügbare Boulder</string>
     <string name="comp_live_connecting">Verbindung zu den Wettkampf-Relays wird aufgebaut…</string>
@@ -2809,6 +2813,8 @@
     <string name="comp_host_request_choice">Vorbereiteter Boulder</string>
     <string name="comp_host_live_controls">Live-Steuerung</string>
     <string name="comp_host_seed_queue">Queue aus eingecheckten Personen erstellen</string>
+    <string name="comp_host_queue_waiting">Die Reihenfolge aktualisiert sich automatisch, sobald eine angenommene, bezahlte Person eingecheckt ist.</string>
+    <string name="comp_host_scheduled_turn">%1$s ist als Nächstes eingeplant · startet %2$s</string>
     <string name="comp_host_turn">Zug: %1$s</string>
     <string name="comp_host_turn_not_open">noch nicht geöffnet</string>
     <string name="comp_host_open_first_turn">Ersten Zug öffnen</string>

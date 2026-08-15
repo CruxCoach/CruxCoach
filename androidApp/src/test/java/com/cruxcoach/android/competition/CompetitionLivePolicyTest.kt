@@ -97,6 +97,10 @@ class CompetitionLivePolicyTest {
         }
         assertEquals(CompetitionLivePolicy.Cue.NEXT, CompetitionLivePolicy.personalCue(state(), mine).kind)
         assertEquals(CompetitionLivePolicy.Cue.CURRENT, CompetitionLivePolicy.personalCue(state(cursor = 1), mine).kind)
+        assertEquals(
+            CompetitionLivePolicy.Cue.SCHEDULED,
+            CompetitionLivePolicy.personalCue(state(cursor = 1).copy(turnOpenedAt = 200), mine, true, 199).kind,
+        )
         assertEquals(CompetitionLivePolicy.Cue.QUEUED, CompetitionLivePolicy.personalCue(state(cursor = 0), third).kind)
         assertEquals(CompetitionLivePolicy.Cue.NOT_QUEUED, CompetitionLivePolicy.personalCue(state(), "d".repeat(64)).kind)
         assertEquals(CompetitionLivePolicy.Cue.PAUSED, CompetitionLivePolicy.personalCue(state("paused"), mine).kind)

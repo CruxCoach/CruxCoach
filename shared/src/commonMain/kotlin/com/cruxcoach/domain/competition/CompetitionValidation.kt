@@ -197,6 +197,9 @@ object CompetitionValidation {
         if (rules.deferBudgetPerRound !in 0..5) fail("rules.defer_budget_per_round", "must be between 0 and 5")
         if (rules.maxConsecutiveDefers !in 0..5) fail("rules.max_consecutive_defers", "must be between 0 and 5")
         if (rules.deferSlots !in 1..10) fail("rules.defer_slots", "must be between 1 and 10")
+        if (rules.queuePolicy != null && rules.queuePolicy !in listOf("automatic", "custom")) {
+            fail("rules.queue_policy", "must be one of: automatic, custom")
+        }
         if (rules.tiebreaks.isEmpty()) {
             fail("rules.tiebreaks", "needs at least one tiebreak")
         } else if (rules.tiebreaks.any { it !in TIEBREAKS }) {

@@ -1257,9 +1257,18 @@ private fun OrganizerConsole(
             if (route == HostRoute.LIVE) {
             if (CompetitionProtocol.checkinWindowOpen(competition, state.status, nowSeconds) || runningNow || state.status == "paused") {
                 Text(stringResource(R.string.comp_host_live_controls), fontWeight = FontWeight.Bold)
-                if (state.order.isEmpty()) Button(viewModel::hostSeed, Modifier.testTag("competition_host_seed")) { Text(stringResource(R.string.comp_host_seed_queue)) }
+                if (state.order.isEmpty()) {
+                    if (competition.rules.queuePolicy == "automatic") {
+                        Text(stringResource(R.string.comp_host_queue_waiting))
+                    } else {
+                        Button(viewModel::hostSeed, Modifier.testTag("competition_host_seed")) {
+                            Text(stringResource(R.string.comp_host_seed_queue))
+                        }
+                    }
+                }
                 else {
                     val current = state.order.getOrNull(state.cursor)
+                    val turnScheduled = current != null && state.turnOpenedAt > nowSeconds
                     val currentParticipant = current?.let(state::participant)
                     val currentChoice = ui.snapshot.pendingIntents.firstOrNull {
                         it.op == "climb_choice" && it.pubkey == current
@@ -1280,15 +1289,21 @@ private fun OrganizerConsole(
                     } else state.currentClimbId
                     val activeClimb = activeClimbId.takeIf(String::isNotBlank)?.let(competition::climb)
                     Text(
-                        stringResource(
+                        if (turnScheduled) stringResource(
+                            R.string.comp_host_scheduled_turn,
+                            current?.let { key -> state.participant(key)?.display?.ifBlank { key.take(12) } }
+                                ?: stringResource(R.string.comp_host_turn_not_open),
+                            formatCompetitionTime(competition, state.turnOpenedAt),
+                        ) else stringResource(
                             R.string.comp_host_turn,
                             current?.let { key -> state.participant(key)?.display?.ifBlank { key.take(12) } }
                                 ?: stringResource(R.string.comp_host_turn_not_open),
                         ),
                     )
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        if (state.cursor < 0) Button({ viewModel.hostQueue("open_turn", 0) }) { Text(stringResource(R.string.comp_host_open_first_turn)) }
-                        else Button({ confirmSkip = true }, Modifier.testTag("competition_host_skip_turn")) {
+                        if (state.cursor < 0 && competition.rules.queuePolicy != "automatic") {
+                            Button({ viewModel.hostQueue("open_turn", 0) }) { Text(stringResource(R.string.comp_host_open_first_turn)) }
+                        } else if (!turnScheduled) Button({ confirmSkip = true }, Modifier.testTag("competition_host_skip_turn")) {
                             Text(stringResource(R.string.comp_host_skip_turn))
                         }
                     }
@@ -1304,7 +1319,7 @@ private fun OrganizerConsole(
                             fontWeight = FontWeight.SemiBold,
                         )
                     }
-                    if (runningNow && current != null && activeClimbId.isNotBlank()) {
+                    if (runningNow && !turnScheduled && current != null && activeClimbId.isNotBlank()) {
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Button({ viewModel.hostAttempt(current, activeClimbId, "top", currentChoice?.eventId) }) { Text(stringResource(R.string.comp_host_result_top)) }
                             OutlinedButton({ viewModel.hostAttempt(current, activeClimbId, "zone", currentChoice?.eventId) }) { Text(stringResource(R.string.comp_host_result_zone)) }
@@ -1924,7 +1939,9 @@ private fun LivePanel(
         state,
         ui.myPubkey,
         CompetitionProtocol.competitionRunning(competition, state.status, nowSeconds),
+        nowSeconds,
     )
+    val turnScheduled = current != null && state.turnOpenedAt > nowSeconds
     val sync = CompetitionLivePolicy.syncHealth(
         hasState = true,
         connectedRelays = ui.connectedRelays,
@@ -1964,7 +1981,10 @@ private fun LivePanel(
                 CompetitionDetailViewModel.Action.Idle -> Unit
             }
             Text(
-                personalCueText(cue),
+                if (cue.kind == CompetitionLivePolicy.Cue.SCHEDULED) stringResource(
+                    R.string.comp_live_scheduled_turn,
+                    formatCompetitionTime(competition, state.turnOpenedAt),
+                ) else personalCueText(cue),
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
                 modifier = if (cue.kind == CompetitionLivePolicy.Cue.CURRENT) {
@@ -1984,7 +2004,7 @@ private fun LivePanel(
             )
             Spacer(Modifier.height(12.dp))
             LabelledValue(
-                stringResource(R.string.comp_current_climber),
+                stringResource(if (turnScheduled) R.string.comp_scheduled_climber else R.string.comp_current_climber),
                 currentName ?: stringResource(R.string.comp_nobody_climbing),
             )
             if (!ui.picksOwnClimbs) {
@@ -1998,7 +2018,12 @@ private fun LivePanel(
                 nextName ?: "—",
             )
             LabelledValue(stringResource(R.string.comp_round), stringResource(R.string.comp_round, state.round))
-            if (CompetitionProtocol.competitionRunning(competition, state.status, nowSeconds)) ui.secondsToDeadline(nowSeconds)?.let { seconds ->
+            if (turnScheduled) {
+                LabelledValue(
+                    stringResource(R.string.comp_detail_starts),
+                    formatCompetitionTime(competition, state.turnOpenedAt),
+                )
+            } else if (CompetitionProtocol.competitionRunning(competition, state.status, nowSeconds)) ui.secondsToDeadline(nowSeconds)?.let { seconds ->
                 LabelledValue(
                     stringResource(R.string.comp_deadline),
                     "%d:%02d".format(seconds / 60, seconds % 60),
@@ -2047,7 +2072,9 @@ private fun LivePanel(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
                         Text(
-                            if (entry.current) stringResource(R.string.comp_live_now_short)
+                            if (entry.current) stringResource(
+                                if (turnScheduled) R.string.comp_live_scheduled_short else R.string.comp_live_now_short,
+                            )
                             else if (entry.roundOffset > 0) stringResource(R.string.comp_live_next_round_short)
                             else (entry.queuePosition + 1).toString(),
                             Modifier.width(44.dp),
@@ -2117,6 +2144,7 @@ private fun personalCueText(cue: CompetitionLivePolicy.PersonalCue): String = wh
     CompetitionLivePolicy.Cue.SPECTATOR -> stringResource(R.string.comp_live_follow)
     CompetitionLivePolicy.Cue.WAITING -> stringResource(R.string.comp_live_get_ready)
     CompetitionLivePolicy.Cue.NOT_QUEUED -> stringResource(R.string.comp_live_not_queued)
+    CompetitionLivePolicy.Cue.SCHEDULED -> stringResource(R.string.comp_live_get_ready)
     CompetitionLivePolicy.Cue.CURRENT -> stringResource(R.string.comp_your_turn)
     CompetitionLivePolicy.Cue.NEXT -> stringResource(R.string.comp_live_you_are_next)
     CompetitionLivePolicy.Cue.QUEUED -> stringResource(R.string.comp_live_ahead, cue.ahead ?: 0)
@@ -2152,6 +2180,7 @@ private fun ParticipantActionBar(
             competition.climb(state.currentClimbId) ?: ui.rotation.entries.firstOrNull()?.climb
         } else null
     val runningNow = CompetitionProtocol.competitionRunning(competition, state.status, nowSeconds)
+    val myTurnNow = ui.isMyTurn && state.turnOpenedAt <= nowSeconds
     val deferAvailability = ui.deferAvailability(nowSeconds)
     val canCheckIn = me.registration == "accepted" && me.checkin == "none" &&
         checkinWindowOpen(competition, state.status, nowSeconds)
@@ -2165,7 +2194,11 @@ private fun ParticipantActionBar(
     ) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
             Text(
-                if (ui.isMyTurn) stringResource(R.string.comp_your_turn)
+                if (myTurnNow) stringResource(R.string.comp_your_turn)
+                else if (ui.isMyTurn) stringResource(
+                    R.string.comp_live_scheduled_turn,
+                    formatCompetitionTime(competition, state.turnOpenedAt),
+                )
                 else stringResource(R.string.comp_live_next_action),
                 fontWeight = FontWeight.Bold,
             )
@@ -2186,11 +2219,11 @@ private fun ParticipantActionBar(
                         modifier = Modifier.weight(1f).testTag("competition_open_live"),
                     ) {
                         Text(
-                            if (ui.isMyTurn) stringResource(R.string.comp_live_open_now)
+                            if (myTurnNow) stringResource(R.string.comp_live_open_now)
                             else stringResource(R.string.comp_live_prepare),
                         )
                     }
-                } else if (ui.isMyTurn && ui.picksOwnClimbs && runningNow) {
+                } else if (myTurnNow && ui.picksOwnClimbs && runningNow) {
                     Text(
                         stringResource(R.string.comp_live_choose_required_short),
                         modifier = Modifier.weight(1f).testTag("competition_choose_required_sticky"),
@@ -2205,7 +2238,7 @@ private fun ParticipantActionBar(
                     ) { Text(stringResource(R.string.comp_defer)) }
                 }
             }
-            if (ui.isMyTurn && !deferAvailability.allowed) {
+            if (myTurnNow && !deferAvailability.allowed) {
                 val reason = when (deferAvailability.reason) {
                     CompetitionLivePolicy.DeferReason.PAUSED -> R.string.comp_next_paused
                     CompetitionLivePolicy.DeferReason.BUDGET -> R.string.comp_defer_none

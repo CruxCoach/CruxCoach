@@ -40,13 +40,14 @@ side that was not updated.
 | Stream | Entries | What it pins |
 |---|---|---|
 | `happy-sync` | 40 | A clean run: publish → register → accept → check in → seed → start → two climbs → finish |
-| `authority-operations` | 30 | Signed safe/scoring config edits, seed-and-open, atomic completion, skip, ranked retirement, and all config/turn rejections |
+| `authority-operations` | 32 | Signed safe/scoring config edits, seed-and-open, atomic completion, skip, ranked retirement, and all config/turn rejections |
+| `automatic-queue` | 26 | Stable scheduled start without seed, early-action rejection, late entry on both sides of the cursor, defer, retire, payment loss, wrap, and future rest opening |
 | `defer-and-timeout` | 27 | A granted deferral, a refused second one, and a timeout that costs an attempt |
 | `paid-unique-async` | 18 | Participant-chosen climbs with enforced uniqueness, an expired payment, a no-show |
 | `fork-and-correction` | 7 | Two entries at one position, plus an override and a correction with mandatory reasons |
 | `chain-break` | 3 + 1 withheld | A gap: reduction must stop and say so |
 | `rejections` | 32 | Seventeen distinct rejection paths |
-| `rejections-paid` | 36 | The fifteen an earlier check masks in the stream above |
+| `rejections-paid` | 42 | The rejection paths an earlier check masks in the stream above |
 
 Vectors: `vectors/protocol.json` (canonical JSON, d-tags, NIP-19 address,
 event id and a tampered event, relay-URL rules), `vectors/zap.json` (locally

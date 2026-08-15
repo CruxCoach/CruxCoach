@@ -75,6 +75,7 @@ class CompetitionCreatePolicyTest {
         assertEquals("synchronous_rounds", rules.getValue("progression").jsonPrimitive.content)
         assertEquals("unique_per_competition", rules.getValue("selection_uniqueness").jsonPrimitive.content)
         assertEquals(true, rules.getValue("late_entry_allowed").jsonPrimitive.boolean)
+        assertEquals("automatic", rules.getValue("queue_policy").jsonPrimitive.content)
         val points = rules.getValue("score_points") as JsonObject
         assertEquals(11, points.getValue("zone").jsonPrimitive.int)
         assertEquals(29, points.getValue("top").jsonPrimitive.int)

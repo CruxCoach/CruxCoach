@@ -375,6 +375,7 @@ internal object CompetitionCreateDraftPolicy {
                 JsonPrimitive("earliest_finish"), JsonPrimitive("seed_order"),
             )),
             "late_entry_allowed" to JsonPrimitive(d.lateEntryAllowed),
+            "queue_policy" to JsonPrimitive("automatic"),
         )
         if (d.scoring == "achievement_points") rules["score_points"] = JsonObject(mapOf(
             "zone" to JsonPrimitive(d.zonePoints.toIntOrNull()?.coerceIn(0, 10_000) ?: 10),

@@ -475,6 +475,7 @@ still readable by anyone who has the address. The UI says so in those words.
     "climb_count": 5,
     "selection_uniqueness": "none",             // none | unique_per_competition
     "progression": "synchronous_rounds",        // synchronous_rounds | asynchronous_turns
+    "queue_policy": "automatic",               // absent = legacy signed seed; custom = explicit host order
     "attempts_per_climb": 3,
     "turn_deadline_sec": 120,
     "attempt_deadline_sec": 0,                  // 0 = no per-attempt clock
@@ -701,8 +702,8 @@ Every array in the reduced state has a **specified sort order**, because
 
 - `participants` — ascending by `pubkey` hex.
 - `climbs` inside a participant — ascending by `climb_id`.
-- `order` — as materialized by the seeding rule (§9.1), then mutated only by
-  explicit `queue` entries.
+- `order` — stable `sha256(compId || pubkey)` order for `queue_policy:
+  automatic`; otherwise as materialized by the legacy seeding rule (§9.1).
 - `announcements`, `audit` — ascending by `seq`.
 
 ### 7.2 The algorithm
@@ -817,6 +818,7 @@ distinct, and a self-report never contributes to a published standing.
 
 ### 9.1 Seeding
 
+Definitions without `rules.queue_policy` retain the original v1 behavior:
 `queue/seed` carries the running order **explicitly, as data**:
 `data.order` is the full list of pubkeys.
 
@@ -843,6 +845,17 @@ Divisions run as independent orders when `divisions.length > 1`; the reduced
 state keeps one `order` per division under the same rules. v1 UI runs one
 division at a time and says which.
 
+New definitions use `queue_policy: automatic`. After every accepted signed log
+entry, reduction derives the complete queue-eligible set (accepted, checked in,
+active, and paid when a fee is required), sorts it by the same stable hash, and
+reconciles it without pre-empting the current climber or changing their signed
+open/deadline. An entrant inserted before the cursor waits for the wrap; one
+inserted after it may climb later in the current round. Withdrawal, payment
+loss, no-show, disqualification, and retirement of the current climber advance
+from that climber's stable position in the same reduction step. Manual seed,
+open, close, advance, reorder, and next-round commands are rejected under this
+policy. Their legacy replay remains byte-identical when the field is absent.
+
 ### 9.2 Turn lifecycle
 
 ```
@@ -856,7 +869,12 @@ advance           → cursor = next eligible index, wrapping into next_climb / n
 Eligible means: `registration == accepted`, `checkin == checked_in`,
 `result == active`, and `min_rest_sec` has elapsed since this participant's last
 `attempt_result`. A participant who is not yet rested is **skipped forward**,
-not stalled behind — the queue never blocks on one person's rest timer.
+not stalled behind. Under automatic policy, if nobody is rested at the signed
+operation time, the fair earliest `last_attempt_at + min_rest_sec` candidate is
+retained at a future `turn_opened_at`; ties use stable order. The deadline is
+derived from that future opening, the UI says when it starts, and attempt,
+timeout, skip, and defer operations before it are rejected. Wall-clock passage
+alone never mutates signed state.
 
 ### 9.3 The defer rule
 
@@ -878,6 +896,10 @@ newIndex = min(currentIndex + defer_slots, lastEligibleIndexInRound)
 It never moves them to the end of the round, and it never carries a backlog into
 the next round. `defers_used_this_round` and `consecutive_defers` increment;
 `consecutive_defers` resets to 0 on any completed attempt.
+
+For automatic policy the stable order itself is not rewritten: a grant hands
+the wall to the next stable participant and the deferring climber waits for the
+next wrap. The same budgets, no-attempt consequence, and round reset apply.
 
 **No attempt inflation.** Deferring does not change `attempts_per_climb` and
 does not consume an attempt. The participant arrives at their new slot with
