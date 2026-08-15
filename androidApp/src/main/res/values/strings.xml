@@ -2733,6 +2733,11 @@
     <string name="comp_dev_relay">Development relay — this is not a real competition.</string>
     <string name="comp_register">Register</string>
     <string name="comp_identity_active">You’re taking part as %1$s.</string>
+    <string name="comp_identity_signed_in">Signed in as %1$s · %2$s</string>
+    <string name="comp_identity_unknown_name">Nostr identity</string>
+    <string name="comp_identity_not_registered">This identity is not registered for this competition.</string>
+    <string name="comp_identity_registration_owner">A previous registration belongs to the npub that signed it. Switching identities never merges entrants.</string>
+    <string name="comp_manage_identity">Switch identity or use Amber</string>
     <string name="comp_withdraw">Withdraw</string>
     <string name="comp_withdraw_confirm_title">Withdraw from this competition?</string>
     <string name="comp_withdraw_confirm_body">The organizer must confirm this request. If registration is still open, you can ask to enter again; after it closes, you may lose your place.</string>

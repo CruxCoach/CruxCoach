@@ -2732,6 +2732,11 @@
     <string name="comp_dev_relay">Entwicklungs-Relay — das ist kein echter Wettkampf.</string>
     <string name="comp_register">Anmelden</string>
     <string name="comp_identity_active">Du nimmst als %1$s teil.</string>
+    <string name="comp_identity_signed_in">Angemeldet als %1$s · %2$s</string>
+    <string name="comp_identity_unknown_name">Nostr-Identität</string>
+    <string name="comp_identity_not_registered">Diese Identität ist für diesen Wettkampf nicht angemeldet.</string>
+    <string name="comp_identity_registration_owner">Eine frühere Anmeldung gehört dem npub, der sie signiert hat. Ein Identitätswechsel führt Teilnehmende nie zusammen.</string>
+    <string name="comp_manage_identity">Identität wechseln oder Amber verwenden</string>
     <string name="comp_withdraw">Zurückziehen</string>
     <string name="comp_withdraw_confirm_title">Aus diesem Wettkampf zurückziehen?</string>
     <string name="comp_withdraw_confirm_body">Die Ausrichtung muss diese Anfrage bestätigen. Solange die Anmeldung offen ist, kannst du erneut anfragen; danach verlierst du möglicherweise deinen Platz.</string>

@@ -1,12 +1,15 @@
 package com.cruxcoach.android.competition
 
 import com.cruxcoach.android.ui.competition.hostIntentDestination
+import com.cruxcoach.android.ui.competition.competitionIdentityNpub
+import com.cruxcoach.android.ui.settings.competitionReturnUrl
 import com.cruxcoach.domain.competition.CompetitionProtocol
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 
 class CompetitionDetailNavigationTest {
 
@@ -99,5 +102,37 @@ class CompetitionDetailNavigationTest {
         assertContains(source, "android.net.Uri.encode(naddr)")
         assertContains(source, "ref.compId, ref.naddr")
         assertFalse(source.contains("relayHints.joinToString"))
+    }
+
+    @Test
+    fun `focused participant journey separates identity from enrollment`() {
+        val source = detailSource()
+        val pubkey = "12".repeat(32)
+
+        assertContains(competitionIdentityNpub(pubkey), "npub1")
+        assertContains(source, "ParticipantIdentityCard(ui, onManageIdentity)")
+        assertContains(source, "if (me == null) stringResource(R.string.comp_identity_not_registered)")
+        assertContains(source, "R.string.comp_identity_signed_in")
+        assertContains(source, "competition_manage_identity")
+        assertContains(source, "onManageIdentity = onManageIdentity")
+    }
+
+    @Test
+    fun `identity restart accepts only a canonical competition return target`() {
+        val naddr = CompetitionShareLink.naddr(
+            organizerPubkey = "8e7f65fcdab1434ff266ad1108f3ecc2e6538e5d0e25106834d7ab579ef28d99",
+            compId = "9f2c41ab77e05d13",
+            relays = emptyList(),
+        )
+        assertEquals(
+            "https://cruxcoach.org/comp/$naddr",
+            competitionReturnUrl(naddr, "cruxcoach.org"),
+        )
+        assertNull(competitionReturnUrl("https://evil.example/steal", "cruxcoach.org"))
+        assertNull(competitionReturnUrl("naddr1notvalid", "cruxcoach.org"))
+
+        val nav = navSource()
+        assertContains(nav, "Routes.keyManagement(naddr)")
+        assertContains(nav, "Routes.keyImport(returnCompetition)")
     }
 }

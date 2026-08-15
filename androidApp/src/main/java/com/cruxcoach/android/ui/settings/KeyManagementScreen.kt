@@ -58,6 +58,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
+import com.cruxcoach.android.BuildConfig
+import com.cruxcoach.android.competition.CompetitionShareLink
 import com.cruxcoach.android.nostr.AmberIntegration
 import com.cruxcoach.android.nostr.SignerMode
 import com.cruxcoach.android.ui.theme.OrangeAccent
@@ -69,6 +71,7 @@ import kotlin.system.exitProcess
 fun KeyManagementScreen(
     onNavigateBack: () -> Unit,
     onNavigateToImport: () -> Unit,
+    returnCompetitionNaddr: String = "",
     viewModel: KeyManagementViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -85,7 +88,7 @@ fun KeyManagementScreen(
     // Process restart after identity change (Amber login, switch to local)
     LaunchedEffect(state.requireRestart) {
         if (state.requireRestart) {
-            restartApp(context)
+            restartApp(context, returnCompetitionNaddr)
         }
     }
 
@@ -342,12 +345,12 @@ fun KeyManagementScreen(
         AmberSuccessDialog(
             onKeepLocalKey = {
                 showAmberSuccess = false
-                restartApp(context)
+                restartApp(context, returnCompetitionNaddr)
             },
             onDeleteLocalKey = {
                 showAmberSuccess = false
                 viewModel.deleteLocalKeyAfterAmber()
-                restartApp(context)
+                restartApp(context, returnCompetitionNaddr)
             }
         )
     }
@@ -626,11 +629,19 @@ private fun AmberSection(
     }
 }
 
-internal fun restartApp(context: Context) {
+internal fun competitionReturnUrl(naddr: String, host: String): String? =
+    CompetitionShareLink.parse(naddr)?.let {
+        CompetitionShareLink.httpsLink(it.naddr, host)
+    }
+
+internal fun restartApp(context: Context, returnCompetitionNaddr: String = "") {
     val intent = context.packageManager
         .getLaunchIntentForPackage(context.packageName)!!
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
         .putExtra("identity_switch", true)
+    competitionReturnUrl(returnCompetitionNaddr, BuildConfig.APP_LINK_HOST)?.let {
+        intent.data = Uri.parse(it)
+    }
     context.startActivity(intent)
     exitProcess(0)
 }

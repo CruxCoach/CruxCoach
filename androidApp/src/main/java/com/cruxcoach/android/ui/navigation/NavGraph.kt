@@ -160,6 +160,12 @@ object Routes {
     const val ANNOUNCEMENTS = "announcements"
     const val KEY_MANAGEMENT = "key_management"
     const val KEY_IMPORT = "key_import"
+    const val KEY_MANAGEMENT_ROUTE = "key_management?returnCompetition={returnCompetition}"
+    const val KEY_IMPORT_ROUTE = "key_import?returnCompetition={returnCompetition}"
+    fun keyManagement(returnCompetition: String = "") =
+        "key_management?returnCompetition=${android.net.Uri.encode(returnCompetition)}"
+    fun keyImport(returnCompetition: String = "") =
+        "key_import?returnCompetition=${android.net.Uri.encode(returnCompetition)}"
     const val NOSTR_PROFILE = "nostr_profile"
     const val SETTER_DETAIL = "setter_detail/{setterPubkey}"
     fun setterDetail(pubkey: String) = "setter_detail/$pubkey"
@@ -590,13 +596,17 @@ fun CruxCoachNavHost(
                         defaultValue = ""
                     },
                 ),
-            ) {
+            ) { backStackEntry ->
                 com.cruxcoach.android.ui.common.ScreenErrorBoundary(
                     screenName = "CompetitionDetail",
                     onNavigateBack = { navController.popBackStack() },
                 ) {
                     CompetitionDetailScreen(
                         onNavigateBack = { navController.popBackStack() },
+                        onManageIdentity = {
+                            val naddr = backStackEntry.arguments?.getString("naddr").orEmpty()
+                            navController.navigate(Routes.keyManagement(naddr))
+                        },
                         // A competition climb carries a real board uuid, so it
                         // opens on the same board screen as any other climb, at
                         // the angle the competition runs.
@@ -984,16 +994,35 @@ fun CruxCoachNavHost(
                 )
             }
 
-            composable(Routes.KEY_MANAGEMENT) {
+            composable(
+                Routes.KEY_MANAGEMENT_ROUTE,
+                arguments = listOf(navArgument("returnCompetition") {
+                    type = NavType.StringType
+                    defaultValue = ""
+                }),
+            ) { backStackEntry ->
+                val returnCompetition = backStackEntry.arguments
+                    ?.getString("returnCompetition").orEmpty()
                 KeyManagementScreen(
                     onNavigateBack = { navController.popBackStack() },
-                    onNavigateToImport = { navController.navigate(Routes.KEY_IMPORT) }
+                    onNavigateToImport = {
+                        navController.navigate(Routes.keyImport(returnCompetition))
+                    },
+                    returnCompetitionNaddr = returnCompetition,
                 )
             }
 
-            composable(Routes.KEY_IMPORT) {
+            composable(
+                Routes.KEY_IMPORT_ROUTE,
+                arguments = listOf(navArgument("returnCompetition") {
+                    type = NavType.StringType
+                    defaultValue = ""
+                }),
+            ) { backStackEntry ->
                 KeyImportScreen(
-                    onNavigateBack = { navController.popBackStack() }
+                    onNavigateBack = { navController.popBackStack() },
+                    returnCompetitionNaddr = backStackEntry.arguments
+                        ?.getString("returnCompetition").orEmpty(),
                 )
             }
 

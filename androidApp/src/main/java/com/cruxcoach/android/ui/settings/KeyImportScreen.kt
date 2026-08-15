@@ -60,6 +60,7 @@ import com.cruxcoach.android.ui.theme.OrangeAccent
 @Composable
 fun KeyImportScreen(
     onNavigateBack: () -> Unit,
+    returnCompetitionNaddr: String = "",
     viewModel: KeyImportViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -78,7 +79,7 @@ fun KeyImportScreen(
 
     LaunchedEffect(state.requireRestart) {
         if (state.requireRestart) {
-            restartApp(context)
+            restartApp(context, returnCompetitionNaddr)
         }
     }
 

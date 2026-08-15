@@ -89,6 +89,7 @@ import com.cruxcoach.domain.board.MoonBoardVariant
 import com.cruxcoach.domain.competition.Competition
 import com.cruxcoach.domain.competition.CompetitionClimb
 import com.cruxcoach.domain.competition.CompetitionProtocol
+import com.cruxcoach.domain.competition.Nip19
 import kotlinx.coroutines.delay
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -119,6 +120,7 @@ internal fun hostIntentDestination(op: String): String? = when (op) {
 @Composable
 fun CompetitionDetailScreen(
     onNavigateBack: () -> Unit,
+    onManageIdentity: () -> Unit = {},
     onOpenClimb: (climbUuid: String, angle: Int) -> Unit = { _, _ -> },
     viewModel: CompetitionDetailViewModel = hiltViewModel(),
 ) {
@@ -330,6 +332,7 @@ fun CompetitionDetailScreen(
                     if (id != null && ui.picksOwnClimbs) viewModel.chooseClimb(id)
                 },
                 onOpenClimb = { id -> lastAsked = id; viewModel.openClimb(id) },
+                onManageIdentity = onManageIdentity,
             )
             return@Scaffold
         }
@@ -462,6 +465,7 @@ private fun ParticipantPhaseScreen(
     onRoute: (ParticipantRoute) -> Unit,
     onPreparedClimb: (String?) -> Unit,
     onOpenClimb: (String) -> Unit,
+    onManageIdentity: () -> Unit,
 ) {
     val competition = ui.snapshot.competition ?: return
     LazyColumn(
@@ -489,6 +493,7 @@ private fun ParticipantPhaseScreen(
                 fontWeight = FontWeight.Bold,
             )
         }
+        item { ParticipantIdentityCard(ui, onManageIdentity) }
         item { ParticipantPhaseNavigation(route, ui, nowSeconds, onRoute) }
 
         when (route) {
@@ -549,6 +554,57 @@ private fun ParticipantPhaseScreen(
             ParticipantRoute.LEADERBOARD -> item { LeaderboardCard(ui) }
         }
         item { ClimbOpenProblem(climbOpen, lastAsked, viewModel) }
+    }
+}
+
+internal fun competitionIdentityNpub(pubkey: String): String = runCatching {
+    Nip19.encodeNpub(pubkey).let {
+        if (it.length > 24) "${it.take(12)}…${it.takeLast(6)}" else it
+    }
+}.getOrElse { "${pubkey.take(12)}…${pubkey.takeLast(6)}" }
+
+@Composable
+private fun ParticipantIdentityCard(
+    ui: CompetitionDetailViewModel.Ui,
+    onManageIdentity: () -> Unit,
+) {
+    val npub = remember(ui.myPubkey) { competitionIdentityNpub(ui.myPubkey) }
+    Card(Modifier.fillMaxWidth().testTag("competition_participant_identity")) {
+        Column(
+            Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                stringResource(
+                    R.string.comp_identity_signed_in,
+                    ui.suggestedDisplayName.ifBlank {
+                        stringResource(R.string.comp_identity_unknown_name)
+                    },
+                    npub,
+                ),
+                fontWeight = FontWeight.Bold,
+            )
+            val me = ui.me
+            Text(
+                if (me == null) stringResource(R.string.comp_identity_not_registered)
+                else stringResource(registrationLabel(me.registration)),
+                color = if (me == null) MaterialTheme.colorScheme.error
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+            )
+            if (me == null) {
+                Text(
+                    stringResource(R.string.comp_identity_registration_owner),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            OutlinedButton(
+                onClick = onManageIdentity,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                    .testTag("competition_manage_identity"),
+            ) { Text(stringResource(R.string.comp_manage_identity)) }
+        }
     }
 }
 
