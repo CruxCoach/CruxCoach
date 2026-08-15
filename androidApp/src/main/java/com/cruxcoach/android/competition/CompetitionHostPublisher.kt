@@ -3,6 +3,9 @@ package com.cruxcoach.android.competition
 import com.cruxcoach.android.nostr.NostrPublicEventBuilder
 import com.cruxcoach.android.nostr.NostrRelayPool
 import com.cruxcoach.android.nostr.NostrSigner
+import com.vitorpamplona.quartz.nip01Core.core.Event
+import com.vitorpamplona.quartz.nip01Core.crypto.verifyId
+import com.vitorpamplona.quartz.nip01Core.crypto.verifySignature
 import com.cruxcoach.domain.competition.CompetitionHostProtocol
 import com.cruxcoach.domain.competition.CompetitionConfigUpdate
 import com.cruxcoach.domain.competition.CompetitionProtocol
@@ -15,6 +18,10 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 /** Publishes organizer decisions on the same authority chain as the website. */
 @Singleton
@@ -22,6 +29,7 @@ class CompetitionHostPublisher @Inject constructor(
     private val signer: NostrSigner,
     private val relayPool: NostrRelayPool,
     private val client: CompetitionRelayClient,
+    private val cleanupStore: CompetitionCleanupStore,
 ) {
     sealed interface Result {
         data class Published(val accepted: Int, val attempted: Int) : Result
@@ -32,6 +40,8 @@ class CompetitionHostPublisher @Inject constructor(
         val tombstoneAccepted: Int,
         val deletionAccepted: Int,
         val attempted: Int,
+        val complete: Boolean,
+        val job: CompetitionCleanupJob,
     )
 
     private val writes = Mutex()
@@ -140,6 +150,8 @@ class CompetitionHostPublisher @Inject constructor(
         }
         cleanupTrustError(snapshot)?.let { error(it) }
 
+        cleanupStore.get(organizer, competition.compId)?.let { return@runCatching executeCleanup(it) }
+
         val now = System.currentTimeMillis() / 1000
         val tombstoneAt = CompetitionProtocol.nextReplaceableCreatedAt(now, snapshot.competitionCreatedAt)
         val tombstone = NostrPublicEventBuilder(signer).buildSignedEvent(
@@ -153,14 +165,84 @@ class CompetitionHostPublisher @Inject constructor(
             "CruxCoach test competition cleanup",
             CompetitionHostProtocol.deletionTags(definitionId),
         )
-        val scopedRelays = relayScope(competition)
-        val (tombstoneAttempted, tombstoneAccepted) = relayPool.sendEventWithStats(tombstone, scopedRelays)
-        val (deletionAttempted, deletionAccepted) = relayPool.sendEventWithStats(deletion, scopedRelays)
-        CleanupResult(
-            tombstoneAccepted = tombstoneAccepted,
-            deletionAccepted = deletionAccepted,
-            attempted = maxOf(tombstoneAttempted, deletionAttempted),
+        val job = CompetitionCleanupJob(
+            ownerPubkey = organizer,
+            compId = competition.compId,
+            title = competition.title,
+            definitionEventId = definitionId,
+            relays = competition.relays,
+            tombstoneEventJson = tombstone.toJson(),
+            deletionEventJson = deletion.toJson(),
+            updatedAt = now,
         )
+        // A synchronous durable commit is a precondition for the first send.
+        cleanupStore.save(job)
+        executeCleanup(job)
+    }
+
+    /** Resume from the overview after the addressable definition became a tombstone. */
+    suspend fun retryCleanup(job: CompetitionCleanupJob): kotlin.Result<CleanupResult> = runCatching {
+        require(job.ownerPubkey == signer.getPublicKeyHex()) { "not_authority" }
+        executeCleanup(job)
+    }
+
+    private suspend fun executeCleanup(initial: CompetitionCleanupJob): CleanupResult {
+        val (tombstone, deletion) = validateCleanupJob(initial)
+        val scopedRelays = competitionRelayScope(initial.relays, emptyList())
+        require(scopedRelays.map { it.url } == initial.relays) { "invalid_cleanup_relays" }
+
+        val tombstoneLatest = relayPool.sendEventWithOutcomes(tombstone, scopedRelays)
+        var job = initial.copy(
+            tombstoneOutcomes = mergeOutcomes(initial.tombstoneOutcomes, tombstoneLatest),
+            updatedAt = System.currentTimeMillis() / 1000,
+        )
+        cleanupStore.save(job)
+        val deletionLatest = relayPool.sendEventWithOutcomes(deletion, scopedRelays)
+        job = job.copy(
+            deletionOutcomes = mergeOutcomes(job.deletionOutcomes, deletionLatest),
+            updatedAt = System.currentTimeMillis() / 1000,
+        )
+        cleanupStore.save(job)
+        val complete = job.relays.all { job.tombstoneOutcomes[it] == true && job.deletionOutcomes[it] == true }
+        if (complete) cleanupStore.remove(job)
+        return CleanupResult(
+            tombstoneAccepted = job.tombstoneOutcomes.count { it.value },
+            deletionAccepted = job.deletionOutcomes.count { it.value },
+            attempted = job.relays.size,
+            complete = complete,
+            job = job,
+        )
+    }
+
+    private fun mergeOutcomes(
+        previous: Map<String, Boolean>, latest: List<NostrRelayPool.PublishOutcome>,
+    ) = latest.associate { outcome ->
+        outcome.url to (previous[outcome.url] == true || outcome.accepted)
+    }
+
+    private fun validateCleanupJob(job: CompetitionCleanupJob): Pair<Event, Event> {
+        require(job.ownerPubkey.matches(Regex("[0-9a-f]{64}"))) { "invalid_cleanup_owner" }
+        require(job.compId.matches(Regex("[0-9a-f]{16}"))) { "invalid_cleanup_coordinate" }
+        require(job.definitionEventId.matches(Regex("[0-9a-f]{64}"))) { "invalid_cleanup_definition" }
+        require(job.relays.isNotEmpty() && job.relays.distinct().size == job.relays.size) { "invalid_cleanup_relays" }
+        require(job.relays.all(CompetitionProtocol::isAllowedRelayUrl)) { "invalid_cleanup_relays" }
+        val tombstone = Event.fromJson(job.tombstoneEventJson)
+        val deletion = Event.fromJson(job.deletionEventJson)
+        require(tombstone.verifyId() && tombstone.verifySignature() &&
+            deletion.verifyId() && deletion.verifySignature()) { "invalid_cleanup_signature" }
+        require(tombstone.pubKey == job.ownerPubkey && deletion.pubKey == job.ownerPubkey &&
+            tombstone.kind == CompetitionProtocol.KIND && deletion.kind == 5) { "invalid_cleanup_event" }
+        require(tombstone.tags.any { it.size >= 2 && it[0] == "d" && it[1] == CompetitionProtocol.compDTag(job.compId) }) {
+            "invalid_cleanup_coordinate"
+        }
+        require(deletion.tags.any { it.size >= 2 && it[0] == "e" && it[1] == job.definitionEventId } &&
+            deletion.tags.any { it.size >= 2 && it[0] == "k" && it[1] == CompetitionProtocol.KIND.toString() }) {
+            "invalid_cleanup_target"
+        }
+        val content = Json.parseToJsonElement(tombstone.content).jsonObject
+        require(content["deleted"]?.jsonPrimitive?.boolean == true &&
+            content["comp_id"]?.jsonPrimitive?.content == job.compId) { "invalid_cleanup_tombstone" }
+        return tombstone to deletion
     }
 
     private suspend fun publish(

@@ -3,6 +3,9 @@ package com.cruxcoach.android.ui.competition
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.competition.CompetitionDiscovery
+import com.cruxcoach.android.competition.CompetitionCleanupJob
+import com.cruxcoach.android.competition.CompetitionCleanupStore
+import com.cruxcoach.android.competition.CompetitionHostPublisher
 import com.cruxcoach.android.competition.CompetitionShareLink
 import com.cruxcoach.android.nostr.NostrSigner
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -26,6 +29,8 @@ import kotlinx.coroutines.withContext
 class CompetitionsViewModel @Inject constructor(
     private val discovery: CompetitionDiscovery,
     private val signer: NostrSigner,
+    private val cleanupStore: CompetitionCleanupStore,
+    private val hostPublisher: CompetitionHostPublisher,
 ) : ViewModel() {
 
     data class State(
@@ -36,6 +41,9 @@ class CompetitionsViewModel @Inject constructor(
         val linkInput: String = "",
         val linkError: Boolean = false,
         val owned: List<CompetitionDiscovery.Listing> = emptyList(),
+        val cleanupJobs: List<CompetitionCleanupJob> = emptyList(),
+        val cleanupWorking: String? = null,
+        val cleanupError: String? = null,
     ) {
         val visible: List<CompetitionDiscovery.Listing>
             get() = listings
@@ -50,20 +58,44 @@ class CompetitionsViewModel @Inject constructor(
 
     fun refresh() {
         if (_state.value.loading) return
-        _state.update { it.copy(loading = true) }
+        val owner = signer.getPublicKeyHex()
+        _state.update { it.copy(loading = true, cleanupJobs = cleanupStore.list(owner)) }
         viewModelScope.launch {
             val now = System.currentTimeMillis() / 1000
             val found = withContext(Dispatchers.IO) { discovery.search(now) }
-            val mine = withContext(Dispatchers.IO) { discovery.owned(signer.getPublicKeyHex(), now) }
+            val mine = withContext(Dispatchers.IO) { discovery.owned(owner, now) }
             _state.update {
                 it.copy(
                     listings = discovery.filter(found, it.query),
                     loading = false,
                     loaded = true,
                     owned = mine,
+                    cleanupJobs = cleanupStore.list(owner),
                 )
             }
             allListings = found
+        }
+    }
+
+    fun retryCleanup(job: CompetitionCleanupJob) {
+        if (_state.value.cleanupWorking != null) return
+        _state.update { it.copy(cleanupWorking = job.compId, cleanupError = null) }
+        viewModelScope.launch {
+            hostPublisher.retryCleanup(job).fold(
+                onSuccess = {
+                    _state.update { state -> state.copy(
+                        cleanupWorking = null,
+                        cleanupJobs = cleanupStore.list(signer.getPublicKeyHex()),
+                    ) }
+                },
+                onFailure = { error ->
+                    _state.update { it.copy(
+                        cleanupWorking = null,
+                        cleanupError = error.message ?: "cleanup_failed",
+                        cleanupJobs = cleanupStore.list(signer.getPublicKeyHex()),
+                    ) }
+                },
+            )
         }
     }
 

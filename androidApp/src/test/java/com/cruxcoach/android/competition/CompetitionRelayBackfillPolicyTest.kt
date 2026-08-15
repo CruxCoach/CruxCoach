@@ -176,6 +176,37 @@ class CompetitionRelayBackfillPolicyTest {
     }
 
     @Test
+    fun `cleanup persists both signed events before network and retries retained bytes`() {
+        val source = File("src/main/java/com/cruxcoach/android/competition/CompetitionHostPublisher.kt").readText()
+        val deletion = source.substringAfter("suspend fun deleteCompetition()")
+            .substringBefore("suspend fun retryCleanup")
+        assertTrue(deletion.indexOf("cleanupStore.save(job)") in 0 until deletion.indexOf("executeCleanup(job)"))
+        assertTrue(deletion.contains("cleanupStore.get(organizer, competition.compId)"))
+
+        val execute = source.substringAfter("private suspend fun executeCleanup")
+            .substringBefore("private fun mergeOutcomes")
+        assertTrue(execute.indexOf("validateCleanupJob(initial)") in
+            0 until execute.indexOf("sendEventWithOutcomes(tombstone"))
+        assertTrue(execute.indexOf("cleanupStore.save(job)") in
+            0 until execute.indexOf("sendEventWithOutcomes(deletion"))
+        assertTrue(execute.indexOf("if (complete) cleanupStore.remove(job)") >
+            execute.indexOf("sendEventWithOutcomes(deletion"))
+    }
+
+    @Test
+    fun `cleanup remains actionable from overview after its definition disappears`() {
+        val viewModel = File("src/main/java/com/cruxcoach/android/ui/competition/CompetitionsViewModel.kt").readText()
+        val screen = File("src/main/java/com/cruxcoach/android/ui/competition/CompetitionsScreen.kt").readText()
+        assertTrue(viewModel.contains("cleanupJobs = cleanupStore.list(owner)"))
+        assertTrue(viewModel.contains("hostPublisher.retryCleanup(job)"))
+        assertTrue(viewModel.contains("cleanupStore.list(signer.getPublicKeyHex())"))
+        assertTrue(screen.contains("state.cleanupJobs"))
+        assertTrue(screen.contains("job.relays.forEach"))
+        assertTrue(screen.contains("comp_cleanup_pending_confirm_body"))
+        assertTrue(screen.contains("competition_cleanup_retry_"))
+    }
+
+    @Test
     fun `intent history is separate from snapshots and results`() {
         val filters = CompetitionRelayClient.intentFilters(address)
 

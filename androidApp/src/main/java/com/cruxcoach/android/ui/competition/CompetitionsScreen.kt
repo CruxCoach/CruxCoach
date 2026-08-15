@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Card
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -28,6 +29,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -38,6 +42,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
 import com.cruxcoach.android.competition.CompetitionDiscovery
+import com.cruxcoach.android.competition.CompetitionCleanupJob
 import com.cruxcoach.android.competition.CompetitionShareLink
 
 /**
@@ -59,6 +64,23 @@ fun CompetitionsScreen(
     viewModel: CompetitionsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    var confirmCleanup by remember { mutableStateOf<CompetitionCleanupJob?>(null) }
+
+    confirmCleanup?.let { job ->
+        AlertDialog(
+            onDismissRequest = { confirmCleanup = null },
+            title = { Text(stringResource(R.string.comp_cleanup_pending_confirm_title)) },
+            text = { Text(stringResource(R.string.comp_cleanup_pending_confirm_body)) },
+            confirmButton = {
+                Button(onClick = { confirmCleanup = null; viewModel.retryCleanup(job) }) {
+                    Text(stringResource(R.string.comp_host_cleanup_retry))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmCleanup = null }) { Text(stringResource(R.string.action_cancel)) }
+            },
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -96,6 +118,30 @@ fun CompetitionsScreen(
                     onClick = onCreateCompetition,
                     modifier = Modifier.fillMaxWidth().testTag("competition_create_open"),
                 ) { Text(stringResource(R.string.comp_create_open)) }
+            }
+
+            if (state.cleanupJobs.isNotEmpty()) {
+                item {
+                    Text(
+                        stringResource(R.string.comp_cleanup_pending_title),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+                item { Text(stringResource(R.string.comp_cleanup_pending_hint)) }
+                items(state.cleanupJobs, key = { "cleanup_${it.ownerPubkey}_${it.compId}" }) { job ->
+                    CleanupJobRow(
+                        job = job,
+                        working = state.cleanupWorking == job.compId,
+                        onRetry = { confirmCleanup = job },
+                    )
+                }
+                state.cleanupError?.let { error ->
+                    item { Text(
+                        stringResource(R.string.comp_host_cleanup_failed, error),
+                        color = MaterialTheme.colorScheme.error,
+                    ) }
+                }
             }
 
             if (state.owned.isNotEmpty()) {
@@ -206,6 +252,43 @@ fun CompetitionsScreen(
 
             items(state.visible, key = { it.eventId }) { listing ->
                 CompetitionRow(listing, onOpenCompetition)
+            }
+        }
+    }
+}
+
+@Composable
+private fun CleanupJobRow(
+    job: CompetitionCleanupJob,
+    working: Boolean,
+    onRetry: () -> Unit,
+) {
+    val tombstoneAccepted = job.relays.count { job.tombstoneOutcomes[it] == true }
+    val deletionAccepted = job.relays.count { job.deletionOutcomes[it] == true }
+    Card(Modifier.fillMaxWidth().testTag("competition_cleanup_${job.compId}")) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(job.title.ifBlank { job.compId }, fontWeight = FontWeight.Bold)
+            Text(stringResource(
+                R.string.comp_cleanup_pending_result,
+                tombstoneAccepted, deletionAccepted, job.relays.size,
+            ))
+            job.relays.forEach { relay ->
+                Text(
+                    stringResource(
+                        R.string.comp_cleanup_relay_result,
+                        relay,
+                        stringResource(if (job.tombstoneOutcomes[relay] == true) R.string.comp_cleanup_accepted else R.string.comp_cleanup_unacknowledged),
+                        stringResource(if (job.deletionOutcomes[relay] == true) R.string.comp_cleanup_accepted else R.string.comp_cleanup_unacknowledged),
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            OutlinedButton(
+                onClick = onRetry,
+                enabled = !working,
+                modifier = Modifier.fillMaxWidth().testTag("competition_cleanup_retry_${job.compId}"),
+            ) {
+                Text(stringResource(if (working) R.string.comp_cleanup_working else R.string.comp_host_cleanup_retry))
             }
         }
     }

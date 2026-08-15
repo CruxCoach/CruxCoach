@@ -1048,18 +1048,20 @@ private fun OrganizerConsole(
                     stringResource(R.string.comp_host_cleanup_explanation),
                     style = MaterialTheme.typography.bodySmall,
                 )
-                Button(
-                    onClick = { confirmCleanup = true },
-                    enabled = cleanup !is CompetitionDetailViewModel.Cleanup.Working,
-                    modifier = Modifier.fillMaxWidth().testTag("competition_host_cleanup"),
-                ) {
-                    Text(stringResource(if (cleanup is CompetitionDetailViewModel.Cleanup.Idle) R.string.comp_host_cleanup_action else R.string.comp_host_cleanup_retry))
+                if ((cleanup as? CompetitionDetailViewModel.Cleanup.Sent)?.complete != true) {
+                    Button(
+                        onClick = { confirmCleanup = true },
+                        enabled = cleanup !is CompetitionDetailViewModel.Cleanup.Working,
+                        modifier = Modifier.fillMaxWidth().testTag("competition_host_cleanup"),
+                    ) {
+                        Text(stringResource(if (cleanup is CompetitionDetailViewModel.Cleanup.Idle) R.string.comp_host_cleanup_action else R.string.comp_host_cleanup_retry))
+                    }
                 }
                 when (val result = cleanup) {
                     CompetitionDetailViewModel.Cleanup.Working -> LinearProgressIndicator(Modifier.fillMaxWidth())
                     is CompetitionDetailViewModel.Cleanup.Sent -> Text(
                         stringResource(
-                            R.string.comp_host_cleanup_result,
+                            if (result.complete) R.string.comp_host_cleanup_result_complete else R.string.comp_host_cleanup_result,
                             result.tombstoneAccepted,
                             result.deletionAccepted,
                             result.attempted,

@@ -104,7 +104,12 @@ class CompetitionDetailViewModel @Inject constructor(
     sealed interface Cleanup {
         data object Idle : Cleanup
         data object Working : Cleanup
-        data class Sent(val tombstoneAccepted: Int, val deletionAccepted: Int, val attempted: Int) : Cleanup
+        data class Sent(
+            val tombstoneAccepted: Int,
+            val deletionAccepted: Int,
+            val attempted: Int,
+            val complete: Boolean,
+        ) : Cleanup
         data class Failed(val reason: String) : Cleanup
     }
 
@@ -623,7 +628,9 @@ class CompetitionDetailViewModel @Inject constructor(
         _cleanup.value = Cleanup.Working
         viewModelScope.launch {
             _cleanup.value = hostPublisher.deleteCompetition().fold(
-                onSuccess = { Cleanup.Sent(it.tombstoneAccepted, it.deletionAccepted, it.attempted) },
+                onSuccess = { Cleanup.Sent(
+                    it.tombstoneAccepted, it.deletionAccepted, it.attempted, it.complete,
+                ) },
                 onFailure = { Cleanup.Failed(it.message ?: "cleanup_failed") },
             )
         }

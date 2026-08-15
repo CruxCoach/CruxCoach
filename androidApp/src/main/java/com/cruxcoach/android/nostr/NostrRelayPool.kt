@@ -48,6 +48,7 @@ class RelaySubscriptionIntegrityException(message: String, cause: Throwable? = n
 class NostrRelayPool @Inject constructor(
     @Named("nostr") private val okHttpClient: OkHttpClient
 ) {
+    data class PublishOutcome(val url: String, val accepted: Boolean)
     private data class SubscriptionSink(
         val failOnRelayError: Boolean,
         val event: (String) -> Boolean,
@@ -427,22 +428,31 @@ class NostrRelayPool @Inject constructor(
         event: Event,
         relays: List<RelayConfig> = writeRelays(),
     ): Pair<Int, Int> {
+        val outcomes = sendEventWithOutcomes(event, relays)
+        return outcomes.size to outcomes.count { it.accepted }
+    }
+
+    /** Per-relay acknowledgements for durable operations that must resume after restart. */
+    suspend fun sendEventWithOutcomes(
+        event: Event,
+        relays: List<RelayConfig> = writeRelays(),
+    ): List<PublishOutcome> {
         val eventJson = event.toJson()
-        val eventId = extractEventId(eventJson) ?: return 0 to 0
+        val eventId = extractEventId(eventJson) ?: return emptyList()
         val writeRelays = relays.filter { it.write }
-        val results = coroutineScope {
+        return coroutineScope {
             writeRelays.map { relay ->
                 async {
-                    try {
+                    val accepted = try {
                         getOrCreateConnection(relay.url).sendEvent(eventJson, eventId)
                     } catch (e: Exception) {
                         Log.w(TAG, "Send to ${relay.url} failed", e)
                         false
                     }
+                    PublishOutcome(relay.url, accepted)
                 }
             }.map { it.await() }
         }
-        return writeRelays.size to results.count { it }
     }
 
     /**
