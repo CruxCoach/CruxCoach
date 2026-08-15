@@ -1585,9 +1585,9 @@
           "1"
         ]
       ],
-      "content": "{\"actor\":\"authority\",\"at\":1789005540,\"comp_id\":\"e102a304b506c708\",\"data\":{\"impact\":\"scoring\",\"patch\":{\"divisions\":[{\"id\":\"masters\",\"label\":\"Masters\"}]},\"revision\":4},\"epoch\":1,\"op\":\"config_update\",\"prev\":\"d21e482dabc439e4f689ea935f257ba2772b8103dd069e015763cc9f0cbb4b42\",\"reason\":\"Keep a division already referenced by entrants.\",\"seq\":29,\"type\":\"log\",\"v\":1}",
-      "id": "e7029d36ea7453cb409b82bdd01554eedbc23fd976642b08a84f7088d2dab086",
-      "sig": "48791cf8264d8b8d1a1af6da4073c68efa76d94358025f24e6a2bf41e7770d0a6e811371bf32fd101d01ff2952cb2bdb8c0ad060adfc3656cdc02402f3a06858"
+      "content": "{\"actor\":\"authority\",\"at\":1789005540,\"comp_id\":\"e102a304b506c708\",\"data\":{\"impact\":\"scoring\",\"patch\":{\"climbs\":[{\"angle\":40,\"climb_uuid\":\"0d75e9c2-61a4-4fb8-b327-8e5c019a6d43\",\"id\":\"c1\",\"label\":\"Qualifier 1\",\"points\":100},{\"angle\":40,\"climb_uuid\":\"7b2e9d15-4c8a-4f36-8d52-1e9a3b7c4d08\",\"id\":\"c2\",\"label\":\"Qualifier 2\",\"points\":150}]},\"revision\":4},\"epoch\":1,\"op\":\"config_update\",\"prev\":\"d21e482dabc439e4f689ea935f257ba2772b8103dd069e015763cc9f0cbb4b42\",\"reason\":\"Do not retarget a referenced logical climb to another catalogue climb.\",\"seq\":29,\"type\":\"log\",\"v\":1}",
+      "id": "66b3963420d5f9a398d262d8e6afc022832130653f76e8e4ab92428de22f0096",
+      "sig": "3f7ae392f53c37964eaa60cbc1b04cf5e533650ca04d9844e78460694b5876081ebacdf86bdca3efcbb8642fc346a9e4e6c003aa27bb2e7166e9d3f328c4882f"
     },
     {
       "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
@@ -1625,7 +1625,7 @@
         ],
         [
           "prev",
-          "e7029d36ea7453cb409b82bdd01554eedbc23fd976642b08a84f7088d2dab086"
+          "66b3963420d5f9a398d262d8e6afc022832130653f76e8e4ab92428de22f0096"
         ],
         [
           "op",
@@ -1636,21 +1636,123 @@
           "1"
         ]
       ],
-      "content": "{\"actor\":\"authority\",\"at\":1789005550,\"comp_id\":\"e102a304b506c708\",\"data\":{\"impact\":\"safe\",\"patch\":{\"summary\":\"Verified after rejected edits.\"},\"revision\":4},\"epoch\":1,\"op\":\"config_update\",\"prev\":\"e7029d36ea7453cb409b82bdd01554eedbc23fd976642b08a84f7088d2dab086\",\"reason\":\"Publish the clarified event summary.\",\"seq\":30,\"type\":\"log\",\"v\":1}",
-      "id": "eb7e78288dc3671a7c7ec77cdf5300d52c85ca6eeefb754d9fed8b8f56dacd42",
-      "sig": "ba1c2ea062504966fbcb985afb45587c04d04c9cec5080dc74ceb39cb7fbdb568e423569fa7130b46ec1b2a576cc0df7480f307c090ffee7eb56216837133877"
+      "content": "{\"actor\":\"authority\",\"at\":1789005550,\"comp_id\":\"e102a304b506c708\",\"data\":{\"impact\":\"scoring\",\"patch\":{\"board\":{\"angle\":40,\"brand\":\"kilter\",\"layout_id\":2,\"model\":\"kilterboard-og\",\"size\":\"12x12\"}},\"revision\":4},\"epoch\":1,\"op\":\"config_update\",\"prev\":\"66b3963420d5f9a398d262d8e6afc022832130653f76e8e4ab92428de22f0096\",\"reason\":\"Do not move historical results to another physical board layout.\",\"seq\":30,\"type\":\"log\",\"v\":1}",
+      "id": "3e7e4f92e5e167852bcb868185cd01d81f25feb3317e17aa532ef11a8f361c37",
+      "sig": "06a350f90a1893bb76b6d62422494c133d2c50567d6d94796362433d629d461ce309171b9a9e47ab3547189f4cdfdb34455e1b597ea1053853bc657eea0d8693"
+    },
+    {
+      "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+      "created_at": 1789005560,
+      "kind": 30078,
+      "tags": [
+        [
+          "d",
+          "cruxcoach:comp:e102a304b506c708:log:000031"
+        ],
+        [
+          "L",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "l",
+          "log",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "cc-schema",
+          "cruxcoach-competition/1"
+        ],
+        [
+          "alt",
+          "CruxCoach competition log entry 31: config_update"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:e102a304b506c708"
+        ],
+        [
+          "seq",
+          "31"
+        ],
+        [
+          "prev",
+          "3e7e4f92e5e167852bcb868185cd01d81f25feb3317e17aa532ef11a8f361c37"
+        ],
+        [
+          "op",
+          "config_update"
+        ],
+        [
+          "epoch",
+          "1"
+        ]
+      ],
+      "content": "{\"actor\":\"authority\",\"at\":1789005560,\"comp_id\":\"e102a304b506c708\",\"data\":{\"impact\":\"scoring\",\"patch\":{\"divisions\":[{\"id\":\"masters\",\"label\":\"Masters\"}]},\"revision\":4},\"epoch\":1,\"op\":\"config_update\",\"prev\":\"3e7e4f92e5e167852bcb868185cd01d81f25feb3317e17aa532ef11a8f361c37\",\"reason\":\"Keep a division already referenced by entrants.\",\"seq\":31,\"type\":\"log\",\"v\":1}",
+      "id": "ea2fec60addbda81f677dbdb6f91401751f0531ee3369c3c9b3ffac7d74bed7f",
+      "sig": "814e296f5140c18a108c52c7014a856996198922f21439645ed6813a119b1781770bb83178208a9db69fc45eafec5581e119289388231d8d7f17b6459752a5e2"
+    },
+    {
+      "pubkey": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
+      "created_at": 1789005570,
+      "kind": 30078,
+      "tags": [
+        [
+          "d",
+          "cruxcoach:comp:e102a304b506c708:log:000032"
+        ],
+        [
+          "L",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "l",
+          "log",
+          "com.cruxcoach.competition"
+        ],
+        [
+          "cc-schema",
+          "cruxcoach-competition/1"
+        ],
+        [
+          "alt",
+          "CruxCoach competition log entry 32: config_update"
+        ],
+        [
+          "a",
+          "30078:2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004:cruxcoach:comp:e102a304b506c708"
+        ],
+        [
+          "seq",
+          "32"
+        ],
+        [
+          "prev",
+          "ea2fec60addbda81f677dbdb6f91401751f0531ee3369c3c9b3ffac7d74bed7f"
+        ],
+        [
+          "op",
+          "config_update"
+        ],
+        [
+          "epoch",
+          "1"
+        ]
+      ],
+      "content": "{\"actor\":\"authority\",\"at\":1789005570,\"comp_id\":\"e102a304b506c708\",\"data\":{\"impact\":\"safe\",\"patch\":{\"summary\":\"Verified after rejected edits.\"},\"revision\":4},\"epoch\":1,\"op\":\"config_update\",\"prev\":\"ea2fec60addbda81f677dbdb6f91401751f0531ee3369c3c9b3ffac7d74bed7f\",\"reason\":\"Publish the clarified event summary.\",\"seq\":32,\"type\":\"log\",\"v\":1}",
+      "id": "3fb70666de648d6d08d46099c729bebeebff7d2f313aa44dd4e039046c3ff035",
+      "sig": "ee383e3f18a762db23ed88e7755475687a3d7f1b1813a9d2391d7b67e47dc5df771e54687faa24e618aeb3934f49773243b5dc63886ba2d25ae30d1764dbb439"
     }
   ],
   "expected": {
     "chain_break_at": null,
-    "state_hash": "6b36fa5fdf14096a343bbe9d135e619477ee13155ecfe46d0a728cc070c6f5af",
+    "state_hash": "c653b7ab409b678417dd39797aace95fbba6a3fea4bbc0be5b8163d2a9b95d3c",
     "state": {
       "comp_id": "e102a304b506c708",
       "schema": "cruxcoach-competition/1",
       "authority": "2014dc3b1e6ca37888d3b4620fd4f23f1d8e5440dfbe51121cf787ad63b15004",
       "epoch": 1,
-      "seq": 30,
-      "head": "eb7e78288dc3671a7c7ec77cdf5300d52c85ca6eeefb754d9fed8b8f56dacd42",
+      "seq": 32,
+      "head": "3fb70666de648d6d08d46099c729bebeebff7d2f313aa44dd4e039046c3ff035",
       "status": "running",
       "paused": false,
       "config_revision": 4,
@@ -1745,10 +1847,10 @@
           "impact": "scoring"
         },
         {
-          "seq": 30,
+          "seq": 32,
           "op": "config_update",
           "reason": "Publish the clarified event summary.",
-          "at": 1789005550,
+          "at": 1789005570,
           "revision": 4,
           "impact": "safe"
         }
@@ -1796,6 +1898,16 @@
         },
         {
           "seq": 29,
+          "op": "config_update",
+          "code": "config_referenced_climb"
+        },
+        {
+          "seq": 30,
+          "op": "config_update",
+          "code": "config_referenced_climb"
+        },
+        {
+          "seq": 31,
           "op": "config_update",
           "code": "config_referenced_division"
         }

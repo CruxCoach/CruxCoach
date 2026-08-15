@@ -1,7 +1,7 @@
 {
   "schema": "cruxcoach-competition/1",
   "files": {
-    "streams/authority-operations.json": "83471a57747d048fc7e79735995d3018ccf47abdaba74e8500524049429cac97",
+    "streams/authority-operations.json": "cacd0c3b6d7971684f0df71c8a68388857608a939cb8b14df0b90b5b16211ace",
     "streams/chain-break.json": "995b73f3cff6e525f97307004d5419ef334588e0914de30c8efde4a4536bbf6c",
     "streams/defer-and-timeout.json": "c9ebdb6e03dcab86c06ee622ce059342856c2a2e2e1598419047310b382f9cf9",
     "streams/fork-and-correction.json": "fdb27fac97772271a0015022471a7217138764f7b689c38b2e67bd6641a98919",
@@ -13,5 +13,5 @@
     "vectors/protocol.json": "d203780035d099dcc7fb3b7ec99cba671e0919a3831b6a1818b6a2ace9e81f6b",
     "vectors/zap.json": "665a98ebc26b0315899e26c62bb780e1570fc015d347585a6416db063feb826a"
   },
-  "manifest_sha256": "9157bbb4b911639fe4ac478968a90178fd3cfc94208c43978d5839572a013d32"
+  "manifest_sha256": "4b901160c0cafd5e47cdee4cd82e9e60b1485354b8b6a53c356bda6d6f1f0a08"
 }
