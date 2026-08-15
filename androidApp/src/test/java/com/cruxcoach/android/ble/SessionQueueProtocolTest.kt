@@ -237,6 +237,37 @@ class SessionQueueProtocolTest {
         assertEquals(3, move.to)
     }
 
+    @Test
+    fun `semantic command request roundtrips and remains legacy-decodable`() {
+        val uuid = "550e8400-e29b-41d4-a716-446655440000"
+        val command = SessionCommand.Move(2, 0)
+        val context = SessionCommandContext(
+            sessionId = 42,
+            subject = SessionItemRef(uuid, 40, 0, 1),
+            after = SessionItemRef("660e8400-e29b-41d4-a716-446655440001", 30, 0, 1),
+        )
+
+        val encoded = SessionQueueProtocol.encodeCommandRequest(1234L, command, context)
+
+        assertEquals(command, SessionQueueProtocol.decodeCommand(encoded))
+        assertEquals(SessionCommandRequest(1234L, command, context.copy(
+            subject = context.subject!!.copy(climbUuid = uuid.replace("-", "").uppercase()),
+            after = context.after!!.copy(climbUuid = context.after.climbUuid.replace("-", "").uppercase()),
+        )), SessionQueueProtocol.decodeCommandRequest(encoded))
+    }
+
+    @Test
+    fun `targeted command result roundtrips`() {
+        val encoded = SessionQueueProtocol.encodeEventCommandResult(
+            99L, SessionCommandResult.CONFLICT,
+        )
+        assertEquals(
+            SessionEvent.CommandResult(99L, SessionCommandResult.CONFLICT),
+            SessionQueueProtocol.decodeEvent(encoded),
+        )
+        assertTrue(encoded.size <= 20)
+    }
+
     // ===== UUID handling =====
 
     @Test

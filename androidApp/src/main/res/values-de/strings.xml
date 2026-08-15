@@ -981,11 +981,11 @@
     <string name="board_ble_request_disconnect">Disconnect anfragen</string>
 
     <!-- FEAT-044 CruxRelay board sharing -->
-    <string name="relay_notification_channel">Freigabe für Board-Apps</string>
-    <string name="relay_notification_channel_desc">Wird angezeigt, während kompatible Board-Apps über CruxCoach senden können.</string>
-    <string name="relay_notification_title">Board für andere Apps freigegeben</string>
-    <string name="relay_notification_text">%d Board-App-Verbindungen</string>
-    <string name="relay_notification_stop">App-Freigabe beenden</string>
+    <string name="relay_notification_channel">CruxRelay</string>
+    <string name="relay_notification_channel_desc">Wird angezeigt, während dieses Handy Boulder von anderen Handys an das verbundene Board weiterleitet.</string>
+    <string name="relay_notification_title">CruxRelay ist aktiv</string>
+    <string name="relay_notification_text">%d Handys verbunden</string>
+    <string name="relay_notification_stop">CruxRelay beenden</string>
 
     <!-- Board: Climb Card -->
     <string name="board_climb_by_setter">von %s</string>
@@ -1412,6 +1412,10 @@
     <string name="board_queue_participants">Teilnehmer (%d)</string>
     <string name="board_queue_title">Session</string>
     <string name="board_queue_you_host">Du (Host)</string>
+    <string name="board_queue_command_pending">Änderungen werden synchronisiert (%1$d)…</string>
+    <string name="board_queue_command_conflict">Die Playlist wurde gleichzeitig geändert. Der aktuelle Stand wurde beibehalten; bitte erneut versuchen.</string>
+    <string name="board_queue_command_unavailable">Die Änderung konnte nicht gesendet werden. Bitte Nearby-Verbindung prüfen und erneut versuchen.</string>
+    <string name="board_queue_command_failed">Der Host konnte die Änderung nicht anwenden. Bitte erneut versuchen.</string>
     <string name="board_random_climb">Zufall</string>
     <string name="board_rest_timer_finished">Pause vorbei!</string>
     <string name="board_rest_timer_ready">Bereit für den nächsten Versuch!</string>
@@ -1687,12 +1691,12 @@
     <string name="settings_moonboard_led_position_above">Darüber</string>
     <string name="settings_moonboard_led_position_both">Beide</string>
     <string name="settings_board_send_mode_title">Ans Board senden</string>
-    <string name="settings_board_send_mode_desc">Lege getrennt fest, wie Boulder bei Controllern mit einer oder mehreren möglichen App-Verbindungen gesendet werden. Das gilt auch für Playlists: Bei „Sofort" geht jeder Boulder an die Wand, sobald du ihn erreichst, bei „Auf Tastendruck" bleibt die Wand, wie sie ist, bis du die Lampe antippst. Über einen Relay zu klettern zählt als mehrere App-Verbindungen.</string>
+    <string name="settings_board_send_mode_desc">Lege getrennt fest, wie Boulder an einen physischen Controller oder über einen geteilten Relay gesendet werden. Das gilt auch für Playlists: Bei „Sofort" geht jeder Boulder an die Wand, sobald du ihn erreichst, bei „Auf Tastendruck" bleibt die Wand, wie sie ist, bis du die Lampe antippst.</string>
     <string name="settings_board_capacity_recheck">Board-Fähigkeiten neu ermitteln</string>
     <string name="settings_board_capacity_recheck_desc">CruxCoach merkt sich, ob ein Controller eine App oder mehrere zulässt. Nutze das, wenn ein Board getauscht oder umgestellt wurde — beim nächsten Verbinden wird neu gemessen.</string>
     <string name="settings_board_capacity_recheck_done">Wird beim nächsten Verbinden neu gemessen</string>
     <string name="settings_board_send_mode_single">Nur eine Verbindung</string>
-    <string name="settings_board_send_mode_multi">Mehrere Verbindungen</string>
+    <string name="settings_board_send_mode_multi">Geteilter Relay</string>
     <string name="settings_board_send_mode_automatic">Sofort</string>
     <string name="settings_board_send_mode_explicit">Per Taste</string>
     <string name="settings_board_projection_lifecycle_moonboard">MoonBoard akzeptiert mehrere Verbindungen. Die Beleuchtung bleibt bis zur letzten Trennung erhalten.</string>
@@ -2289,13 +2293,14 @@
     <string name="list_plan_clear_message">Die Liste und alle Climbs bleiben erhalten. Nur die eigene Abspielreihenfolge wird entfernt.</string>
     <string name="list_plan_clear_action">Trainingsablauf entfernen</string>
     <!-- FEAT-044 CruxRelay: Host-„Board teilen"-Fläche -->
-    <string name="relay_share_button">Für andere Board-Apps freigeben</string>
-    <string name="relay_chip_text">Für Board-Apps freigegeben · %1$d verbunden</string>
+    <string name="relay_share_button">CruxRelay starten</string>
+    <string name="relay_share_description">Dieses Handy bleibt mit dem Board verbunden und leitet Boulder von anderen Handys an die Wand weiter.</string>
+    <string name="relay_chip_text">CruxRelay aktiv · %1$d verbunden</string>
     <string name="relay_advertised_as">Für andere sichtbar als \"%1$s\"</string>
-    <string name="relay_disclosure_title">Für Board-Apps freigeben</string>
-    <string name="relay_disclosure_text">Dein Handy erscheint vorübergehend als kompatibles Board namens \"CruxRelay…\". Andere Board-Apps senden über CruxCoach, ohne eine Queue zu starten. Der zuletzt erfolgreich gesendete Boulder steuert die Beleuchtung. Beim Beenden wird dein Bluetooth-Name wiederhergestellt.</string>
+    <string name="relay_disclosure_title">CruxRelay starten?</string>
+    <string name="relay_disclosure_text">Dieses Handy bleibt mit dem physischen Board verbunden und erscheint in der Nähe als \"CruxRelay…\". Andere Handys können sich damit verbinden und ihre Boulder darüber an die Wand senden. Der zuletzt erfolgreich gesendete Boulder steuert die Beleuchtung. Beim Beenden wird dein Bluetooth-Name wiederhergestellt.</string>
     <string name="relay_disclosure_disclaimer">CruxCoach ist nicht mit Kilter oder Aurora Climbing verbunden; Board-Namen dienen nur der Kompatibilität.</string>
-    <string name="relay_disclosure_confirm">Board-Apps zulassen</string>
+    <string name="relay_disclosure_confirm">CruxRelay starten</string>
     <string name="relay_error_server">Teilen konnte nicht starten. Bitte erneut versuchen.</string>
     <string name="relay_error_advertise">Board konnte nicht sichtbar gemacht werden.</string>
     <string name="relay_error_name">Freigabe-Name konnte nicht gesetzt werden.</string>

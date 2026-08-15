@@ -631,14 +631,6 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { userPreferences.setMoonBoardLedMode(mode) }
     }
 
-    /**
-     * Forget what was observed about controller capacity, so the next connect
-     * measures it again. The stored verdict outlives the hardware it describes.
-     */
-    fun recheckBoardCapacity() {
-        viewModelScope.launch { userPreferences.clearBoardCapacityObservations() }
-    }
-
     fun updateNearbyClimbSharing(enabled: Boolean) {
         _state.update { it.copy(climbSharing = it.climbSharing.copy(
             enabled = enabled,

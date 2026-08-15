@@ -40,7 +40,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ble.BlePermissionHelper
-import com.cruxcoach.android.ble.BoardControllerProfiles
 import com.cruxcoach.android.ble.DiscoveredBoard
 import com.cruxcoach.android.data.RelayError
 import com.cruxcoach.android.ui.theme.ErrorRed
@@ -62,7 +61,10 @@ fun RelaySharingSection(
     board: DiscoveredBoard?,
     viewModel: RelayShareViewModel = hiltViewModel()
 ) {
-    if (board == null || !BoardControllerProfiles.forBoard(board).relaySupported) return
+    // Offer CruxRelay for every directly-connected physical board, regardless
+    // of inferred controller capacity or board family. Only a relay endpoint
+    // itself must not be nested inside another relay.
+    if (board == null || board.isCruxRelay) return
 
     val context = LocalContext.current
     val state by viewModel.relayState.collectAsStateWithLifecycle()
@@ -119,6 +121,11 @@ fun RelaySharingSection(
     }
 
     if (!state.enabled) {
+        Text(
+            stringResource(R.string.relay_share_description),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         OutlinedButton(
             onClick = startSharing,
             modifier = Modifier

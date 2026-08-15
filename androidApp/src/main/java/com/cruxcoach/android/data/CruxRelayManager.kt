@@ -15,6 +15,7 @@ import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ble.GattConnectionEvent
 import com.cruxcoach.android.ble.RelayGattServer
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.relay.RelayBoardName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -214,33 +215,34 @@ class CruxRelayManager(
         // Subscribe before advertising: MutableSharedFlow does not replay a
         // write that arrives while there is no collector.
         forwardJob = scope.launch {
-            relayServer.climbs.collect { inbound ->
-                val ok = bleConnection.sendRawChunks(inbound.climb.chunks)
-                if (ok) {
-                    advertiser.clearActiveClimb()
-                    // Hand the raw climb along: it is the only thing that can
-                    // still name what an official app just put on the wall.
-                    //
-                    // Off the forwarding path, though. Identification reads the
-                    // catalogue and waits for the one-time index build, and
-                    // forwarding the NEXT climb to the board must not queue up
-                    // behind that — lighting the wall is the promise here,
-                    // naming the climb is a nicety. Cancelling the previous
-                    // attempt also keeps the banner on the newest write when
-                    // two arrive back to back.
-                    identifyJob?.cancel()
-                    identifyJob = scope.launch {
-                        projectionCoordinator.onExternalBoardWrite(inbound.climb)
+            if (board.boardBrand == BoardBrand.MOONBOARD) {
+                // MoonBoard speaks an ASCII Nordic-UART stream. Forward each
+                // guest write in order and byte-for-byte; there is no Aurora
+                // packet grouping for RelayFrameReassembler to perform.
+                relayServer.writes.collect { inbound ->
+                    if (bleConnection.sendRawChunks(listOf(inbound.value))) {
+                        advertiser.clearActiveClimb()
+                    } else {
+                        Log.w(TAG, "sendRawChunks failed for a relayed MoonBoard write")
+                        _state.update { it.copy(error = RelayError.FORWARD_FAILED) }
                     }
-                } else {
-                    Log.w(TAG, "sendRawChunks failed for a relayed climb")
-                    // Say so. The guest's app got its write acknowledged by our
-                    // GATT server and reports success; if we stay quiet too,
-                    // both sides believe a climb is on a wall that is dark.
-                    // Sharing stays on — a single refused frame is usually
-                    // transient, and BOARD_LOST already covers a link that
-                    // really went away.
-                    _state.update { it.copy(error = RelayError.FORWARD_FAILED) }
+                }
+            } else {
+                relayServer.climbs.collect { inbound ->
+                    val ok = bleConnection.sendRawChunks(inbound.climb.chunks)
+                    if (ok) {
+                        advertiser.clearActiveClimb()
+                        // Hand the raw climb along: it is the only thing that can
+                        // still name what an official app just put on the wall.
+                        // Identification stays off the forwarding path.
+                        identifyJob?.cancel()
+                        identifyJob = scope.launch {
+                            projectionCoordinator.onExternalBoardWrite(inbound.climb)
+                        }
+                    } else {
+                        Log.w(TAG, "sendRawChunks failed for a relayed climb")
+                        _state.update { it.copy(error = RelayError.FORWARD_FAILED) }
+                    }
                 }
             }
         }

@@ -3,6 +3,8 @@ package com.cruxcoach.android.ble
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.UUID
+import java.io.ByteArrayOutputStream
+import java.io.DataOutputStream
 
 /**
  * Binary encoding/decoding for Session Queue GATT payloads.
@@ -71,6 +73,10 @@ object SessionQueueProtocol {
      */
     const val EVT_REST_STARTED: Byte = 0x07
     const val EVT_REST_ENDED: Byte = 0x08
+    const val EVT_COMMAND_RESULT: Byte = 0x09
+
+    private const val COMMAND_CONTEXT_MARKER: Byte = -51 // 0xCD
+    private const val COMMAND_CONTEXT_VERSION: Byte = 1
 
     // ===== Command encoding (Client → Host) =====
 
@@ -108,6 +114,47 @@ object SessionQueueProtocol {
 
     fun encodeResend(): ByteArray = byteArrayOf(CMD_RESEND)
 
+    fun encodeCommand(command: SessionCommand): ByteArray = when (command) {
+        is SessionCommand.Add -> encodeAdd(command.climbUuid, command.angle)
+        is SessionCommand.Remove -> encodeRemove(command.index)
+        is SessionCommand.SetCurrent -> encodeSetCurrent(command.index)
+        SessionCommand.Next -> encodeNext()
+        SessionCommand.Prev -> encodePrev()
+        is SessionCommand.Join -> encodeJoin(command.displayName)
+        SessionCommand.Leave -> encodeLeave()
+        is SessionCommand.Move -> encodeMove(command.from, command.to)
+        SessionCommand.Resend -> encodeResend()
+    }
+
+    /**
+     * Appends an extension older 0.2.2 hosts safely ignore after decoding the
+     * legacy command prefix. New hosts use it for idempotency and semantic rebase.
+     */
+    fun encodeCommandRequest(requestId: Long, command: SessionCommand,
+        context: SessionCommandContext): ByteArray {
+        val output = ByteArrayOutputStream()
+        output.write(encodeCommand(command))
+        DataOutputStream(output).use { data ->
+            data.writeByte(COMMAND_CONTEXT_MARKER.toInt())
+            data.writeByte(COMMAND_CONTEXT_VERSION.toInt())
+            data.writeLong(requestId)
+            data.writeInt(context.sessionId)
+            listOf(context.subject, context.before, context.after,
+                context.expectedCurrent, context.expectedTarget).forEach { ref ->
+                if (ref == null) data.writeByte(0) else {
+                    data.writeByte(1)
+                    val uuid = UUID.fromString(normalizeUuid(ref.climbUuid))
+                    data.writeLong(uuid.mostSignificantBits)
+                    data.writeLong(uuid.leastSignificantBits)
+                    data.writeByte(ref.angle.coerceIn(0, 255))
+                    data.writeByte(ref.occurrence.coerceIn(0, 255))
+                    data.writeByte(ref.totalAtBase.coerceIn(0, 255))
+                }
+            }
+        }
+        return output.toByteArray()
+    }
+
     // ===== Command decoding (Host reads from Client) =====
 
     fun decodeCommand(data: ByteArray): SessionCommand? {
@@ -143,6 +190,38 @@ object SessionQueueProtocol {
             CMD_RESEND -> SessionCommand.Resend
             else -> null
         }
+    }
+
+    fun decodeCommandRequest(data: ByteArray): SessionCommandRequest? {
+        val command = decodeCommand(data) ?: return null
+        val offset = legacyCommandSize(command, data) ?: return SessionCommandRequest(null, command, null)
+        if (data.size <= offset || data[offset] != COMMAND_CONTEXT_MARKER)
+            return SessionCommandRequest(null, command, null)
+        return runCatching {
+            val buffer = ByteBuffer.wrap(data, offset + 1, data.size - offset - 1)
+                .order(ByteOrder.BIG_ENDIAN)
+            require(buffer.get() == COMMAND_CONTEXT_VERSION)
+            val requestId = buffer.long
+            val sessionId = buffer.int
+            fun readRef(): SessionItemRef? {
+                if (buffer.get().toInt() == 0) return null
+                val uuid = UUID(buffer.long, buffer.long).toString().replace("-", "").uppercase()
+                return SessionItemRef(uuid, buffer.get().toInt() and 0xff,
+                    buffer.get().toInt() and 0xff, buffer.get().toInt() and 0xff)
+            }
+            val context = SessionCommandContext(sessionId, readRef(), readRef(), readRef(), readRef(), readRef())
+            require(!buffer.hasRemaining())
+            SessionCommandRequest(requestId, command, context)
+        }.getOrNull()
+    }
+
+    private fun legacyCommandSize(command: SessionCommand, data: ByteArray): Int? = when (command) {
+        is SessionCommand.Add -> 18
+        is SessionCommand.Remove, is SessionCommand.SetCurrent -> 2
+        SessionCommand.Next, SessionCommand.Prev, SessionCommand.Leave,
+        SessionCommand.Resend -> 1
+        is SessionCommand.Move -> 3
+        is SessionCommand.Join -> if (data.size >= 2) 2 + (data[1].toInt() and 0xff) else null
     }
 
     // ===== Event encoding (Host → Client, via notifications) =====
@@ -201,6 +280,17 @@ object SessionQueueProtocol {
 
     fun encodeEventRestEnded(): ByteArray = byteArrayOf(EVT_REST_ENDED)
 
+    fun encodeEventCommandResult(requestId: Long, result: SessionCommandResult): ByteArray =
+        ByteBuffer.allocate(10).order(ByteOrder.BIG_ENDIAN).apply {
+            put(EVT_COMMAND_RESULT)
+            putLong(requestId)
+            put(when (result) {
+                SessionCommandResult.COMMITTED -> 0
+                SessionCommandResult.CONFLICT -> 1
+                SessionCommandResult.FAILED -> 2
+            }.toByte())
+        }.array()
+
     // ===== Event decoding (Client reads from Host notifications) =====
 
     fun decodeEvent(data: ByteArray): SessionEvent? {
@@ -238,6 +328,17 @@ object SessionQueueProtocol {
                 SessionEvent.RestStarted(seconds, data[3].toInt() and 0xFF)
             }
             EVT_REST_ENDED -> SessionEvent.RestEnded
+            EVT_COMMAND_RESULT -> if (data.size == 10) {
+                val buffer = ByteBuffer.wrap(data).order(ByteOrder.BIG_ENDIAN)
+                buffer.get()
+                val requestId = buffer.long
+                when (buffer.get().toInt()) {
+                    0 -> SessionEvent.CommandResult(requestId, SessionCommandResult.COMMITTED)
+                    1 -> SessionEvent.CommandResult(requestId, SessionCommandResult.CONFLICT)
+                    2 -> SessionEvent.CommandResult(requestId, SessionCommandResult.FAILED)
+                    else -> null
+                }
+            } else null
             else -> null
         }
     }
@@ -436,7 +537,32 @@ sealed class SessionEvent {
 
     /** The rest is over — either it ran out or somebody skipped it. */
     data object RestEnded : SessionEvent()
+    data class CommandResult(val requestId: Long, val result: SessionCommandResult) : SessionEvent()
 }
+
+data class SessionItemRef(
+    val climbUuid: String,
+    val angle: Int,
+    val occurrence: Int,
+    val totalAtBase: Int,
+)
+
+data class SessionCommandContext(
+    val sessionId: Int,
+    val subject: SessionItemRef? = null,
+    val before: SessionItemRef? = null,
+    val after: SessionItemRef? = null,
+    val expectedCurrent: SessionItemRef? = null,
+    val expectedTarget: SessionItemRef? = null,
+)
+
+data class SessionCommandRequest(
+    val requestId: Long?,
+    val command: SessionCommand,
+    val context: SessionCommandContext?,
+)
+
+enum class SessionCommandResult { COMMITTED, CONFLICT, FAILED }
 
 /**
  * One queue entry. [restAfterSeconds] is HOST-LOCAL playlist metadata

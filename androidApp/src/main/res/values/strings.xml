@@ -937,11 +937,11 @@
     <string name="board_ble_request_disconnect">Request disconnect</string>
 
     <!-- FEAT-044 CruxRelay board sharing -->
-    <string name="relay_notification_channel">Board-app sharing</string>
-    <string name="relay_notification_channel_desc">Shown while compatible board apps can send through CruxCoach.</string>
-    <string name="relay_notification_title">Board available to other apps</string>
-    <string name="relay_notification_text">%d board-app connections</string>
-    <string name="relay_notification_stop">Stop app sharing</string>
+    <string name="relay_notification_channel">CruxRelay</string>
+    <string name="relay_notification_channel_desc">Shown while this phone forwards climbs from other phones to the connected board.</string>
+    <string name="relay_notification_title">CruxRelay is active</string>
+    <string name="relay_notification_text">%d phones connected</string>
+    <string name="relay_notification_stop">Stop CruxRelay</string>
 
     <!-- Board: Climb Card -->
     <string name="board_climb_by_setter">by %s</string>
@@ -1369,6 +1369,10 @@
     <string name="board_queue_participants">Participants (%d)</string>
     <string name="board_queue_title">Session</string>
     <string name="board_queue_you_host">You (Host)</string>
+    <string name="board_queue_command_pending">Syncing changes (%1$d)…</string>
+    <string name="board_queue_command_conflict">The playlist changed at the same time. Current state was kept; please try again.</string>
+    <string name="board_queue_command_unavailable">Could not send the change. Check the nearby connection and try again.</string>
+    <string name="board_queue_command_failed">The host could not apply the change. Please try again.</string>
     <string name="board_random_climb">Random</string>
     <string name="board_rest_timer_finished">Rest finished!</string>
     <string name="board_rest_timer_ready">Ready for the next attempt!</string>
@@ -1644,12 +1648,12 @@
     <string name="settings_moonboard_led_position_above">Above</string>
     <string name="settings_moonboard_led_position_both">Both</string>
     <string name="settings_board_send_mode_title">Send to board</string>
-    <string name="settings_board_send_mode_desc">Choose separately how climbs are sent for controllers that allow one or several connected apps. This applies to playlists too: on "Immediately" each climb goes to the wall as you reach it, on "Tap to send" the wall stays as it is until you tap the lamp. Climbing over a relay counts as several connected apps.</string>
+    <string name="settings_board_send_mode_desc">Choose separately how climbs are sent to a physical controller or through a shared relay. This applies to playlists too: on "Immediately" each climb goes to the wall as you reach it, on "Tap to send" the wall stays as it is until you tap the lamp.</string>
     <string name="settings_board_capacity_recheck">Re-detect board capabilities</string>
     <string name="settings_board_capacity_recheck_desc">CruxCoach remembers whether a controller accepts one app or several. Use this after a board has been swapped or reconfigured — it is measured again on the next connection.</string>
     <string name="settings_board_capacity_recheck_done">Will be measured again on the next connection</string>
     <string name="settings_board_send_mode_single">Single connection</string>
-    <string name="settings_board_send_mode_multi">Multiple connections</string>
+    <string name="settings_board_send_mode_multi">Shared relay</string>
     <string name="settings_board_send_mode_automatic">Immediately</string>
     <string name="settings_board_send_mode_explicit">Tap to send</string>
     <string name="settings_board_projection_lifecycle_moonboard">MoonBoard accepts multiple clients. Its lights remain until the final connection closes.</string>
@@ -2290,13 +2294,14 @@
     <string name="list_plan_clear_message">The list and all its climbs remain. Only the custom playback sequence is removed.</string>
     <string name="list_plan_clear_action">Remove training plan</string>
     <!-- FEAT-044 CruxRelay: host "share board" surface -->
-    <string name="relay_share_button">Share with other board apps</string>
-    <string name="relay_chip_text">Available to board apps · %1$d connected</string>
+    <string name="relay_share_button">Start CruxRelay</string>
+    <string name="relay_share_description">This phone stays connected to the board and forwards climbs sent from other phones.</string>
+    <string name="relay_chip_text">CruxRelay active · %1$d connected</string>
     <string name="relay_advertised_as">Visible to others as \"%1$s\"</string>
-    <string name="relay_disclosure_title">Share with board apps</string>
-    <string name="relay_disclosure_text">Your phone temporarily appears as a compatible board named \"CruxRelay…\". Other board apps can send through CruxCoach without starting a queue. The latest successful send controls the lights. Your Bluetooth name is restored when you stop.</string>
+    <string name="relay_disclosure_title">Start CruxRelay?</string>
+    <string name="relay_disclosure_text">This phone remains connected to the physical board and appears nearby as \"CruxRelay…\". Other phones can connect to it and send climbs through it to the wall. The latest successful send controls the lights. Your Bluetooth name is restored when you stop.</string>
     <string name="relay_disclosure_disclaimer">CruxCoach is not affiliated with Kilter or Aurora Climbing; board names are used only for compatibility.</string>
-    <string name="relay_disclosure_confirm">Allow board apps</string>
+    <string name="relay_disclosure_confirm">Start CruxRelay</string>
     <string name="relay_error_server">Couldn\'t start sharing. Please try again.</string>
     <string name="relay_error_advertise">Couldn\'t make this board discoverable.</string>
     <string name="relay_error_name">Couldn\'t set the sharing name.</string>

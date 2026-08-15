@@ -125,8 +125,16 @@ class BleConnectionViewModel @Inject constructor(
         private const val SIBLING_WINDOW_MS = 1_000L
         /** Retries for a user-picked board — see BoardBleConnection.connect. */
         private const val DEFAULT_CONNECT_ATTEMPTS = 3
-        /** One connect attempt (10 s) plus the stack's pre-connect delays. */
-        private const val DIRECT_RECONNECT_TIMEOUT_MS = 14_000L
+        /**
+         * Android 9 commonly rejects the first address-only GATT attempt with
+         * a transient status 133 even though the controller is advertising.
+         * A second attempt makes the remembered-board path as reliable as a
+         * post-scan connect without making an absent board consume the full
+         * three-attempt picker budget.
+         */
+        private const val DIRECT_RECONNECT_ATTEMPTS = 2
+        /** Two 10 s attempts plus legacy settle and retry delays. */
+        private const val DIRECT_RECONNECT_TIMEOUT_MS = 24_000L
     }
 
     private val _state = MutableStateFlow(BleConnectionState())
@@ -530,8 +538,9 @@ class BleConnectionViewModel @Inject constructor(
      * not, [BleConnectionState.directReconnectFailed] hands the sheet over to
      * discovery, which is the point at which asking for location is honest.
      *
-     * One attempt only — three would take ~32 s to conclude "not here", and the
-     * user is waiting for exactly that answer.
+     * Two attempts: Android 9's first address-only connect often fails with a
+     * transient status 133. Three would take ~32 s to conclude "not here";
+     * two absorb that legacy-stack hiccup while keeping the fallback bounded.
      */
     fun tryRememberedControllerFirst() {
         val s = _state.value
@@ -544,7 +553,10 @@ class BleConnectionViewModel @Inject constructor(
         _state.update { it.copy(directReconnectInFlight = true, directReconnectFailed = false) }
         directReconnectJob = viewModelScope.safeLaunch(TAG) {
             try {
-                connectToBoard(remembered.toDiscoveredBoard(), maxAttempts = 1)
+                connectToBoard(
+                    remembered.toDiscoveredBoard(),
+                    maxAttempts = DIRECT_RECONNECT_ATTEMPTS,
+                )
                 val outcome = withTimeoutOrNull(DIRECT_RECONNECT_TIMEOUT_MS) {
                     bleConnection.connectionState.first { it != ConnectionState.CONNECTING }
                 }

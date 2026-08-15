@@ -42,6 +42,8 @@ class SessionGattClient(private val context: Context) {
         private const val TAG = "SessionGattClient"
         private const val CONNECTION_TIMEOUT_MS = 15_000L
         private const val WRITE_TIMEOUT_MS = 5_000L
+        private const val MTU_CALLBACK_TIMEOUT_MS = 1_500L
+        private const val DEFAULT_ATT_MTU = 23
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -75,6 +77,10 @@ class SessionGattClient(private val context: Context) {
     private var readDeferred: CompletableDeferred<Int>? = null
     private var descriptorDeferred: CompletableDeferred<Int>? = null
     private var timeoutJob: Job? = null
+    private var mtuCallbackJob: Job? = null
+    @Volatile private var negotiatedMtu = DEFAULT_ATT_MTU
+    private val subscriptionLock = Any()
+    private var subscriptionGatt: BluetoothGatt? = null
     private val writeMutex = Mutex()
 
     private val gattCallback = object : BluetoothGattCallback() {
@@ -124,18 +130,27 @@ class SessionGattClient(private val context: Context) {
 
             cmdCharacteristic = service.getCharacteristic(SessionGattUuids.QUEUE_COMMAND)
 
-            // Request larger MTU for queue state reads
-            gatt.requestMtu(512)
+            // Some Android 9 stacks return false or never deliver
+            // onMtuChanged. Do not leave the client CONNECTING forever: the
+            // default MTU still supports legacy commands and paged reads.
+            negotiatedMtu = DEFAULT_ATT_MTU
+            val requested = gatt.requestMtu(512)
+            if (!requested) {
+                beginSubscriptions(gatt, "MTU request rejected")
+            } else {
+                mtuCallbackJob?.cancel()
+                mtuCallbackJob = scope.launch {
+                    delay(MTU_CALLBACK_TIMEOUT_MS)
+                    beginSubscriptions(gatt, "MTU callback timeout")
+                }
+            }
         }
 
         @SuppressLint("MissingPermission")
         override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
             Log.d(TAG, "MTU changed to $mtu (status=$status)")
-            // Subscribe to notifications on all event/state characteristics
-            scope.launch {
-                subscribeToNotifications(gatt)
-                _connectionState.value = SessionClientState.CONNECTED
-            }
+            if (status == BluetoothGatt.GATT_SUCCESS) negotiatedMtu = mtu
+            beginSubscriptions(gatt, "MTU callback")
         }
 
         override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
@@ -195,6 +210,8 @@ class SessionGattClient(private val context: Context) {
             disconnect()
         }
         _connectionState.value = SessionClientState.CONNECTING
+        synchronized(subscriptionLock) { subscriptionGatt = null }
+        negotiatedMtu = DEFAULT_ATT_MTU
 
         val newGatt = device.connectGatt(
             context, false, gattCallback,
@@ -228,6 +245,8 @@ class SessionGattClient(private val context: Context) {
             "gatt=${gatt != null}, cmdChar=${cmdCharacteristic != null}")
         timeoutJob?.cancel()
         timeoutJob = null
+        mtuCallbackJob?.cancel()
+        mtuCallbackJob = null
         writeDeferred?.complete(BluetoothGatt.GATT_FAILURE)
         readDeferred?.complete(BluetoothGatt.GATT_FAILURE)
         descriptorDeferred?.complete(BluetoothGatt.GATT_FAILURE)
@@ -287,6 +306,9 @@ class SessionGattClient(private val context: Context) {
         return success
     }
 
+    /** True when this link can carry the payload in one characteristic write. */
+    fun supportsCommandSize(size: Int): Boolean = size <= negotiatedMtu - 3
+
     /** Read initial state after connecting. Serialized — waits for each read callback. */
     @SuppressLint("MissingPermission")
     suspend fun readInitialState() {
@@ -312,6 +334,22 @@ class SessionGattClient(private val context: Context) {
     }
 
     // --- Internal ---
+
+    private fun beginSubscriptions(gatt: BluetoothGatt, reason: String) {
+        synchronized(subscriptionLock) {
+            if (this.gatt !== gatt || subscriptionGatt === gatt) return
+            subscriptionGatt = gatt
+            mtuCallbackJob?.cancel()
+            mtuCallbackJob = null
+        }
+        Log.d(TAG, "Starting notification setup ($reason, mtu=$negotiatedMtu)")
+        scope.launch {
+            subscribeToNotifications(gatt)
+            if (this@SessionGattClient.gatt === gatt) {
+                _connectionState.value = SessionClientState.CONNECTED
+            }
+        }
+    }
 
     @SuppressLint("MissingPermission")
     private suspend fun subscribeToNotifications(gatt: BluetoothGatt) {
@@ -345,6 +383,7 @@ class SessionGattClient(private val context: Context) {
         if (gatt === g) {
             gatt = null
             cmdCharacteristic = null
+            synchronized(subscriptionLock) { subscriptionGatt = null }
         }
     }
 }

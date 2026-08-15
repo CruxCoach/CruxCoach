@@ -9,7 +9,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -25,7 +24,6 @@ import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.InfoBlue
-import com.cruxcoach.android.ui.theme.SuccessGreen
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.MoonBoardLedMode
 
@@ -224,7 +222,6 @@ internal fun BoardSendModeSection(
     boardBrand: BoardBrand,
     onSingleConnectionModeChange: (BoardSendMode) -> Unit,
     onMultiConnectionModeChange: (BoardSendMode) -> Unit,
-    onRecheckCapacity: () -> Unit,
 ) {
     Text(
         stringResource(R.string.settings_board_send_mode_title),
@@ -248,28 +245,6 @@ internal fun BoardSendModeSection(
         mode = multiConnectionMode,
         onModeChange = onMultiConnectionModeChange,
         testTag = "settings_board_send_mode_multi",
-    )
-
-    // The stored verdict outlives the hardware: a swapped gym controller, or a
-    // simulator moved between modes, otherwise keeps the old answer for good —
-    // and the app goes on offering behaviour the board no longer has.
-    var recheckDone by remember { mutableStateOf(false) }
-    TextButton(
-        onClick = { onRecheckCapacity(); recheckDone = true },
-        modifier = Modifier.testTag("settings_board_capacity_recheck"),
-    ) {
-        Text(stringResource(R.string.settings_board_capacity_recheck))
-    }
-    Text(
-        stringResource(
-            if (recheckDone) {
-                R.string.settings_board_capacity_recheck_done
-            } else {
-                R.string.settings_board_capacity_recheck_desc
-            },
-        ),
-        style = MaterialTheme.typography.bodySmall,
-        color = if (recheckDone) SuccessGreen else MaterialTheme.colorScheme.onSurfaceVariant,
     )
 
     Text(

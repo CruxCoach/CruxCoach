@@ -15,9 +15,22 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.cruxcoach.android.ble.QueueItem
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
+
+enum class PlaylistCommandFeedbackKind { CONFLICT, UNAVAILABLE, FAILED }
+
+data class PlaylistCommandFeedback(
+    val kind: PlaylistCommandFeedbackKind,
+    val action: String,
+)
 
 /**
  * Bridges [SessionQueueManager] with BLE GATT for shared sessions.
@@ -54,6 +67,8 @@ class SessionGattBridge(
         private const val TAG = "CruxBLE/Session"
         private const val MIGRATION_BASE_DELAY_MS = 1000L
         private const val MIGRATION_INDEX_STEP_MS = 3000L
+        private const val COMMAND_RESULT_TIMEOUT_MS = 5000L
+        private const val COMMAND_RESULT_CACHE_SIZE = 256
     }
 
     /**
@@ -84,6 +99,18 @@ class SessionGattBridge(
     @Volatile private var isSharing = false
     private var isRejoining = false
     private val commandGate = SessionCommandGate()
+    private val nextRequestId = AtomicLong(System.nanoTime())
+    private val pendingCommands = ConcurrentHashMap<Long, String>()
+    private val _pendingCommandCount = MutableStateFlow(0)
+    val pendingCommandCount = _pendingCommandCount.asStateFlow()
+    private val _commandFeedback = MutableSharedFlow<PlaylistCommandFeedback>(extraBufferCapacity = 32)
+    val commandFeedback = _commandFeedback.asSharedFlow()
+    private val handledCommandResults = object : LinkedHashMap<String, SessionCommandResult>(
+        COMMAND_RESULT_CACHE_SIZE + 1, 0.75f, true,
+    ) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, SessionCommandResult>?): Boolean =
+            size > COMMAND_RESULT_CACHE_SIZE
+    }
     /** SessionId of the host we just left — used to ignore stale advertisements during migration. */
     private var lastHostSessionId: Int = 0
 
@@ -96,6 +123,14 @@ class SessionGattBridge(
         BoardControllerProfiles.forBoard(bleConnection.connectedBoard).connectionCapacity
 
     init {
+        scope.launch {
+            queueManager.state.collect { state ->
+                if (!state.isActive && pendingCommands.isNotEmpty()) {
+                    pendingCommands.clear()
+                    _pendingCommandCount.value = 0
+                }
+            }
+        }
         // Auto-recover BLE when Bluetooth is toggled off/on.
         // Intentionally never unregistered: this class is a @Singleton, so the receiver
         // lives for the entire process lifetime — no leak.
@@ -758,29 +793,25 @@ class SessionGattBridge(
     // ===== Participant: send commands to host =====
 
     fun sendAddClimb(climbUuid: String, angle: Int) {
-        scope.launch {
-            gattClient.sendCommand(SessionQueueProtocol.encodeAdd(climbUuid, angle))
-        }
+        sendParticipantCommand("add", SessionCommand.Add(climbUuid, angle))
     }
 
     fun sendRemoveClimb(index: Int) {
-        scope.launch {
-            gattClient.sendCommand(SessionQueueProtocol.encodeRemove(index))
-        }
+        sendParticipantCommand("remove", SessionCommand.Remove(index))
     }
 
-    fun sendNext() = sendParticipantCommand("next", SessionQueueProtocol.encodeNext())
+    fun sendNext() = sendParticipantCommand("next", SessionCommand.Next)
 
-    fun sendPrev() = sendParticipantCommand("prev", SessionQueueProtocol.encodePrev())
+    fun sendPrev() = sendParticipantCommand("prev", SessionCommand.Prev)
 
     fun sendSetCurrent(index: Int) =
-        sendParticipantCommand("setCurrent($index)", SessionQueueProtocol.encodeSetCurrent(index))
+        sendParticipantCommand("setCurrent($index)", SessionCommand.SetCurrent(index))
 
     fun sendMove(from: Int, to: Int) =
-        sendParticipantCommand("move($from→$to)", SessionQueueProtocol.encodeMove(from, to))
+        sendParticipantCommand("move($from→$to)", SessionCommand.Move(from, to))
 
     fun sendResend() =
-        sendParticipantCommand("resend", SessionQueueProtocol.encodeResend())
+        sendParticipantCommand("resend", SessionCommand.Resend)
 
     /**
      * Fire a participant's control command at the host, and say so when it
@@ -795,8 +826,33 @@ class SessionGattBridge(
      * state, so there is nothing local to roll back) — this only makes the
      * failure findable.
      */
-    private fun sendParticipantCommand(label: String, payload: ByteArray) {
+    private fun sendParticipantCommand(label: String, command: SessionCommand) {
         scope.launch {
+            val state = queueManager.state.value
+            val context = SessionCommandRebaser.context(
+                command, state.sessionId, state.currentIndex, state.queue,
+            )
+            // Invalid local indices are a local conflict, not a malformed BLE write.
+            if (context == null) {
+                _commandFeedback.tryEmit(
+                    PlaylistCommandFeedback(PlaylistCommandFeedbackKind.CONFLICT, label),
+                )
+                return@launch
+            }
+            val requestId = nextRequestId.incrementAndGet()
+            pendingCommands[requestId] = label
+            _pendingCommandCount.value = pendingCommands.size
+            val extendedPayload = SessionQueueProtocol.encodeCommandRequest(requestId, command, context)
+            val payload = if (gattClient.supportsCommandSize(extendedPayload.size)) {
+                extendedPayload
+            } else {
+                // Android 9 fallback when MTU negotiation is unavailable.
+                // The host's authoritative state still converges through its
+                // normal broadcast, but this old-size command has no result id.
+                pendingCommands.remove(requestId)
+                _pendingCommandCount.value = pendingCommands.size
+                SessionQueueProtocol.encodeCommand(command)
+            }
             if (gattClient.sendCommand(payload)) {
                 // Logged on success too, not only on failure. Only logging the
                 // failure leaves the working path silent, and during the
@@ -805,7 +861,21 @@ class SessionGattBridge(
                 // "never pressed", "not sent", "sent and ignored" or "applied"
                 // equally well. A support log has to separate those.
                 Log.i(TAG, "event=transport_sent action=$label")
+                // Old 0.2.2 hosts ignore the appended context and cannot send
+                // a result. They still broadcast authoritative state, so age
+                // the indicator out without retrying (a retry would duplicate Add).
+                if (payload === extendedPayload) {
+                    delay(COMMAND_RESULT_TIMEOUT_MS)
+                    if (pendingCommands.remove(requestId) != null) {
+                        _pendingCommandCount.value = pendingCommands.size
+                    }
+                }
             } else {
+                pendingCommands.remove(requestId)
+                _pendingCommandCount.value = pendingCommands.size
+                _commandFeedback.tryEmit(
+                    PlaylistCommandFeedback(PlaylistCommandFeedbackKind.UNAVAILABLE, label),
+                )
                 Log.w(TAG, "event=transport_send_failed action=$label")
             }
         }
@@ -814,14 +884,15 @@ class SessionGattBridge(
     // ===== Internal: Host processes commands from clients =====
 
     private fun handleClientCommand(deviceAddress: String, data: ByteArray) {
-        val cmd = SessionQueueProtocol.decodeCommand(data)
-        if (cmd == null) {
+        val request = SessionQueueProtocol.decodeCommandRequest(data)
+        if (request == null) {
             Log.w(TAG, "Failed to decode session command (${data.size} bytes)")
             if (!commandGate.hasJoined(deviceAddress)) rejectClient(deviceAddress)
             return
         }
+        val receivedCommand = request.command
 
-        if (cmd is SessionCommand.Join) {
+        if (receivedCommand is SessionCommand.Join) {
             if (commandGate.join(deviceAddress)) {
                 val count = queueManager.state.value.participants.size
                 // The host names participants and hands the names out over GATT,
@@ -872,39 +943,119 @@ class SessionGattBridge(
             return
         }
 
-        Log.d(TAG, "Received joined session command (${cmd.javaClass.simpleName})")
-        when (cmd) {
-            is SessionCommand.Add -> queueManager.addClimb(cmd.climbUuid, cmd.angle)
-            is SessionCommand.Remove -> queueManager.removeClimb(cmd.index)
-            is SessionCommand.SetCurrent -> queueManager.setCurrentClimb(cmd.index)
-            // Through the host's phase-aware playback logic, not straight
-            // into the queue — see onRemoteNext.
-            is SessionCommand.Next -> {
-                Log.i(TAG, "event=transport_received action=next")
-                (onRemoteNext ?: queueManager::nextClimb).invoke()
-            }
-            is SessionCommand.Prev -> {
-                Log.i(TAG, "event=transport_received action=prev")
-                (onRemotePrev ?: queueManager::previousClimb).invoke()
-            }
-            is SessionCommand.Join -> Unit // handled before authorization gate
-            is SessionCommand.Leave -> {
-                Log.d(TAG, "Processing LEAVE from $deviceAddress, " +
-                    "participants before: ${queueManager.state.value.participants.map { it.deviceAddress }}")
-                Log.i(TAG, "event=participant_left")
-                queueManager.removeParticipant(deviceAddress)
-                commandGate.remove(deviceAddress)
-                Log.d(TAG, "After removeParticipant: count=${queueManager.state.value.participantCount}, " +
-                    "participants=${queueManager.state.value.participants.map { it.deviceAddress }}")
-                // Proactively disconnect from server side to ensure clean teardown
-                gattServer.cancelDevice(deviceAddress)
-            }
-            is SessionCommand.Move -> queueManager.moveClimb(cmd.from, cmd.to)
-            is SessionCommand.Resend -> {
-                Log.i(TAG, "event=transport_received action=resend")
-                queueManager.resendCurrentClimb()
+        // A participant may repeat a write after an Android 9 GATT failure.
+        // Return the original decision without applying the mutation twice.
+        request.requestId?.let { requestId ->
+            val key = commandResultKey(deviceAddress, request.context?.sessionId, requestId)
+            val previous = synchronized(handledCommandResults) { handledCommandResults[key] }
+            if (previous != null) {
+                sendCommandResult(deviceAddress, requestId, previous)
+                return
             }
         }
+
+        val cmd = if (request.context == null) {
+            // Compatibility with older clients: their index command retains
+            // its historical behavior, while upgraded peers get safe rebase.
+            receivedCommand
+        } else {
+            val state = queueManager.state.value
+            when (val rebased = SessionCommandRebaser.rebase(
+                receivedCommand,
+                request.context,
+                state.sessionId,
+                state.currentIndex,
+                state.queue,
+            )) {
+                is SessionCommandRebaser.Result.Apply -> rebased.command
+                is SessionCommandRebaser.Result.Conflict -> {
+                    Log.i(TAG, "event=command_conflict action=${receivedCommand.javaClass.simpleName} reason=${rebased.reason}")
+                    request.requestId?.let {
+                        rememberCommandResult(deviceAddress, request.context.sessionId, it,
+                            SessionCommandResult.CONFLICT)
+                        sendCommandResult(deviceAddress, it, SessionCommandResult.CONFLICT)
+                    }
+                    return
+                }
+            }
+        }
+
+        Log.d(TAG, "Received joined session command (${cmd.javaClass.simpleName})")
+        val applied = runCatching {
+            when (cmd) {
+                is SessionCommand.Add -> queueManager.addClimb(cmd.climbUuid, cmd.angle)
+                is SessionCommand.Remove -> queueManager.removeClimb(cmd.index)
+                is SessionCommand.SetCurrent -> queueManager.setCurrentClimb(cmd.index)
+                // Through the host's phase-aware playback logic, not straight
+                // into the queue — see onRemoteNext.
+                is SessionCommand.Next -> {
+                    Log.i(TAG, "event=transport_received action=next")
+                    (onRemoteNext ?: queueManager::nextClimb).invoke()
+                }
+                is SessionCommand.Prev -> {
+                    Log.i(TAG, "event=transport_received action=prev")
+                    (onRemotePrev ?: queueManager::previousClimb).invoke()
+                }
+                is SessionCommand.Join -> Unit // handled before authorization gate
+                is SessionCommand.Leave -> {
+                    Log.d(TAG, "Processing LEAVE from $deviceAddress, " +
+                        "participants before: ${queueManager.state.value.participants.map { it.deviceAddress }}")
+                    Log.i(TAG, "event=participant_left")
+                    queueManager.removeParticipant(deviceAddress)
+                    commandGate.remove(deviceAddress)
+                    Log.d(TAG, "After removeParticipant: count=${queueManager.state.value.participantCount}, " +
+                        "participants=${queueManager.state.value.participants.map { it.deviceAddress }}")
+                    // Proactively disconnect from server side to ensure clean teardown
+                    gattServer.cancelDevice(deviceAddress)
+                }
+                is SessionCommand.Move -> queueManager.moveClimb(cmd.from, cmd.to)
+                is SessionCommand.Resend -> {
+                    Log.i(TAG, "event=transport_received action=resend")
+                    queueManager.resendCurrentClimb()
+                }
+            }
+        }.onFailure { Log.e(TAG, "Failed to apply session command", it) }.isSuccess
+        if (!applied) {
+            request.requestId?.let {
+                rememberCommandResult(deviceAddress, request.context?.sessionId, it,
+                    SessionCommandResult.FAILED)
+                sendCommandResult(deviceAddress, it, SessionCommandResult.FAILED)
+            }
+            return
+        }
+        if (cmd !is SessionCommand.Leave) {
+            request.requestId?.let {
+                rememberCommandResult(deviceAddress, request.context?.sessionId, it,
+                    SessionCommandResult.COMMITTED)
+                sendCommandResult(deviceAddress, it, SessionCommandResult.COMMITTED)
+            }
+        }
+    }
+
+    private fun commandResultKey(deviceAddress: String, sessionId: Int?, requestId: Long) =
+        "$deviceAddress:${sessionId ?: 0}:$requestId"
+
+    private fun rememberCommandResult(
+        deviceAddress: String,
+        sessionId: Int?,
+        requestId: Long,
+        result: SessionCommandResult,
+    ) {
+        synchronized(handledCommandResults) {
+            handledCommandResults[commandResultKey(deviceAddress, sessionId, requestId)] = result
+        }
+    }
+
+    private fun sendCommandResult(
+        deviceAddress: String,
+        requestId: Long,
+        result: SessionCommandResult,
+    ) {
+        gattServer.notifyDevice(
+            deviceAddress,
+            SessionGattUuids.QUEUE_EVENT,
+            SessionQueueProtocol.encodeEventCommandResult(requestId, result),
+        )
     }
 
     private fun rejectClient(deviceAddress: String) {
@@ -951,6 +1102,20 @@ class SessionGattBridge(
             is SessionEvent.RestEnded -> {
                 Log.i(TAG, "event=rest_applied state=ended")
                 boardSessionManager.cancelRestTimer()
+            }
+            is SessionEvent.CommandResult -> {
+                val action = pendingCommands.remove(event.requestId) ?: return
+                _pendingCommandCount.value = pendingCommands.size
+                when (event.result) {
+                    SessionCommandResult.COMMITTED ->
+                        Log.i(TAG, "event=command_committed action=$action")
+                    SessionCommandResult.CONFLICT -> _commandFeedback.tryEmit(
+                        PlaylistCommandFeedback(PlaylistCommandFeedbackKind.CONFLICT, action),
+                    )
+                    SessionCommandResult.FAILED -> _commandFeedback.tryEmit(
+                        PlaylistCommandFeedback(PlaylistCommandFeedbackKind.FAILED, action),
+                    )
+                }
             }
         }
     }

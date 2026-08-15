@@ -33,6 +33,8 @@ class SessionQueueViewModel @Inject constructor(
 ) : ViewModel() {
 
     val state: StateFlow<SessionQueueState> = queueManager.state
+    val pendingCommandCount = gattBridge.pendingCommandCount
+    val commandFeedback = gattBridge.commandFeedback
 
     private val _climbInfos = MutableStateFlow<Map<String, QueueRowInfo>>(emptyMap())
     /** uuid → (name, formatted grade) for the queue rows. */

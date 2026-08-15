@@ -28,6 +28,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.SessionRole
+import com.cruxcoach.android.data.PlaylistCommandFeedbackKind
 import com.cruxcoach.android.ui.theme.OrangeAccent
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -43,6 +44,22 @@ fun SessionQueueSheet(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val climbInfos by viewModel.climbInfos.collectAsStateWithLifecycle()
+    val pendingCommands by viewModel.pendingCommandCount.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val conflictMessage = stringResource(R.string.board_queue_command_conflict)
+    val unavailableMessage = stringResource(R.string.board_queue_command_unavailable)
+    val failedMessage = stringResource(R.string.board_queue_command_failed)
+    LaunchedEffect(viewModel) {
+        viewModel.commandFeedback.collect { feedback ->
+            snackbarHostState.showSnackbar(
+                when (feedback.kind) {
+                    PlaylistCommandFeedbackKind.CONFLICT -> conflictMessage
+                    PlaylistCommandFeedbackKind.UNAVAILABLE -> unavailableMessage
+                    PlaylistCommandFeedbackKind.FAILED -> failedMessage
+                },
+            )
+        }
+    }
 
     // Drag-reorder state (only used when canEdit)
     var draggedFrom by remember { mutableIntStateOf(-1) }
@@ -68,6 +85,18 @@ fun SessionQueueSheet(
                 .padding(horizontal = 16.dp)
                 .padding(bottom = 32.dp)
         ) {
+            SnackbarHost(snackbarHostState)
+            if (pendingCommands > 0) {
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    stringResource(R.string.board_queue_command_pending, pendingCommands),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+            }
             // Header
             Row(
                 modifier = Modifier.fillMaxWidth(),

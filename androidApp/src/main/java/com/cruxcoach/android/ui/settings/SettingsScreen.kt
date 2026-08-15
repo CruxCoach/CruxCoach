@@ -226,7 +226,6 @@ fun SettingsScreen(
                             viewModel::updateSingleConnectionBoardSendMode,
                         onMultiConnectionModeChange =
                             viewModel::updateMultiConnectionBoardSendMode,
-                        onRecheckCapacity = viewModel::recheckBoardCapacity,
                     )
                     HorizontalDivider()
                     BleAutoDisconnectSection(
