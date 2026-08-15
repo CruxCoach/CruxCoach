@@ -37,7 +37,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.cruxcoach.android.nostr.NostrMessageSending
 import com.cruxcoach.android.nostr.SendResult
 import com.cruxcoach.android.nostr.model.MessageType
@@ -90,6 +92,9 @@ class MainActivity : AppCompatActivity() {
     @Inject
     lateinit var updaterRepository: dagger.Lazy<com.cruxcoach.android.updater.UpdaterRepository>
 
+    @Inject
+    lateinit var fipsMeshRuntime: dagger.Lazy<com.cruxcoach.android.fips.FipsMeshRuntime>
+
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -98,6 +103,14 @@ class MainActivity : AppCompatActivity() {
         // Re-emit from cached state so the user sees it without waiting for
         // the 2 h throttle to expire.
         if (granted) updaterRepository.get().reNotifyPendingUpdateIfAny()
+    }
+
+    private val fipsPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) {
+        // Rebuild the L2CAP listener and scanner after a grant. A denial is
+        // deliberately not re-prompted until a new realm is entered.
+        fipsMeshRuntime.get().onPermissionsChanged()
     }
 
     // Amber approval dialogs (Intent-based NIP-55 path). Registered as a
@@ -156,6 +169,15 @@ class MainActivity : AppCompatActivity() {
         // userPreferences injected via Hilt
         PerfLogger.trace("enableEdgeToEdge") { enableEdgeToEdge() }
         requestNotificationPermissionIfNeeded()
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                fipsMeshRuntime.get().permissionRequests.collect { permissions ->
+                    if (permissions.isNotEmpty()) {
+                        fipsPermissionLauncher.launch(permissions.toTypedArray())
+                    }
+                }
+            }
+        }
         PerfLogger.startFrameMonitor()
 
         PerfLogger.milestone("MainActivity.setContent START")

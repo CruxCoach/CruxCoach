@@ -12,11 +12,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
@@ -34,10 +36,16 @@ class FipsMeshRuntime @Inject constructor(
     private val assembler = FipsFrameAssembler()
     private val owners = AtomicInteger(0)
     private val rejectingRealmLink = AtomicBoolean(false)
+    private val restartingForPermissions = AtomicBoolean(false)
     private var radio: FipsBleRadio? = null
     private var bridge = 0L
     private var receiveJob: Job? = null
+    private var permissionWatchJob: Job? = null
     @Volatile private var realm: FipsRealmContext? = null
+    @Volatile private var permissionPromptedRealm: String? = null
+    private val permissionRequestChannel = Channel<List<String>>(Channel.CONFLATED)
+    /** One automatic request per active realm; denial never creates a prompt loop. */
+    val permissionRequests = permissionRequestChannel.receiveAsFlow()
     private val validatedDirectPeers = mutableSetOf<String>()
     private val helloSentAt = mutableMapOf<String, Long>()
     private val json = Json { ignoreUnknownKeys = false }
@@ -56,6 +64,7 @@ class FipsMeshRuntime @Inject constructor(
             receiveJob?.cancel(); receiveJob = null
             shutdownNative()
         }
+        if (realm != value) permissionPromptedRealm = null
         realm = value
         return ensureStarted()
     }
@@ -74,6 +83,11 @@ class FipsMeshRuntime @Inject constructor(
         if (_running.value) return true
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false // GATT session fallback remains active.
         val activeRealm = realm ?: return false
+        val missingPermissions = FipsPermissionPolicy.missingPermissions(context)
+        if (missingPermissions.isNotEmpty() && permissionPromptedRealm != activeRealm.realmId) {
+            permissionPromptedRealm = activeRealm.realmId
+            permissionRequestChannel.trySend(missingPermissions)
+        }
         return runCatching {
             val candidate = FipsBleRadio(context, activeRealm)
             radio = candidate
@@ -83,6 +97,7 @@ class FipsMeshRuntime @Inject constructor(
             check(NativeFips.start(keyStore.activate(activeRealm.realmId), MAX_DIRECT_CONNECTIONS))
             _running.value = true
             receiveJob = scope.launch { receiveLoop() }
+            if (missingPermissions.isNotEmpty()) watchForPermissionGrant(activeRealm.realmId)
             true
         }.getOrElse {
             shutdownNative()
@@ -101,6 +116,9 @@ class FipsMeshRuntime @Inject constructor(
     fun release() {
         if (owners.updateAndGet { maxOf(0, it - 1) } == 0) FipsMeshService.stop(context)
     }
+
+    /** Called by the Activity result callback; also covered by the watcher for grants from other UI. */
+    fun onPermissionsChanged() = restartForGrantedPermissions()
 
     override fun send(authenticatedPeerNpub: String, payload: ByteArray): Boolean {
         if (!ensureStarted()) return false
@@ -131,6 +149,7 @@ class FipsMeshRuntime @Inject constructor(
     }
 
     private fun shutdownNative() {
+        permissionWatchJob?.cancel(); permissionWatchJob = null
         runCatching { NativeFips.stop() }
         radio?.shutdown(); radio = null
         if (bridge != 0L) runCatching { NativeFips.bleBridgeFree(bridge) }
@@ -139,6 +158,33 @@ class FipsMeshRuntime @Inject constructor(
         _peers.value = emptyList()
         synchronized(validatedDirectPeers) { validatedDirectPeers.clear() }
         synchronized(helloSentAt) { helloSentAt.clear() }
+    }
+
+    private fun watchForPermissionGrant(realmId: String) {
+        if (permissionWatchJob?.isActive == true) return
+        permissionWatchJob = scope.launch {
+            while (isActive && realm?.realmId == realmId &&
+                FipsPermissionPolicy.missingPermissions(context).isNotEmpty()) {
+                delay(PERMISSION_POLL_MS)
+            }
+            if (isActive && realm?.realmId == realmId &&
+                FipsPermissionPolicy.missingPermissions(context).isEmpty()) {
+                permissionWatchJob = null
+                restartForGrantedPermissions()
+            }
+        }
+    }
+
+    private fun restartForGrantedPermissions() {
+        if (FipsPermissionPolicy.missingPermissions(context).isNotEmpty() ||
+            !restartingForPermissions.compareAndSet(false, true)) return
+        try {
+            permissionPromptedRealm = null
+            permissionWatchJob?.cancel(); permissionWatchJob = null
+            restartAfterBluetoothAvailable()
+        } finally {
+            restartingForPermissions.set(false)
+        }
     }
 
     private suspend fun receiveLoop() {
@@ -212,6 +258,7 @@ class FipsMeshRuntime @Inject constructor(
     companion object {
         const val MAX_DIRECT_CONNECTIONS = 7
         private const val JOIN_RETRY_MS = 5_000L
+        private const val PERMISSION_POLL_MS = 2_000L
         private val JOIN_PREFIX = byteArrayOf(0x43, 0x43, 0x4a, 0x31) // CCJ1
     }
 }
