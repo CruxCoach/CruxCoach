@@ -98,8 +98,8 @@ import java.text.DateFormat
 import java.util.Date
 import java.util.TimeZone
 
-private enum class ParticipantRoute { REGISTRATION, CHECKIN, LIVE, CHOOSER, LEADERBOARD }
-private enum class HostRoute { SETUP, ENTRANTS, LIVE }
+private enum class ParticipantRoute { REGISTRATION, CHECKIN, LIVE, CHOOSER, LEADERBOARD, RESULTS }
+private enum class HostRoute { SETUP, ENTRANTS, LIVE, RESULTS }
 
 /** Closed routing table: a new protocol intent cannot silently disappear. */
 internal fun hostIntentDestination(op: String): String? = when (op) {
@@ -292,14 +292,17 @@ fun CompetitionDetailScreen(
             val runningNow = CompetitionProtocol.competitionRunning(competition, state.status, now)
             val terminal = state.status in listOf("finished", "cancelled")
             val primaryRoute = when {
-                runningNow || state.status == "paused" || terminal -> ParticipantRoute.LIVE
+                state.status == "finished" -> ParticipantRoute.RESULTS
+                runningNow || state.status == "paused" || state.status == "cancelled" -> ParticipantRoute.LIVE
                 ui.me?.registration == "accepted" -> ParticipantRoute.CHECKIN
                 else -> ParticipantRoute.REGISTRATION
             }
             val allowedRoutes = buildSet {
                 add(ParticipantRoute.REGISTRATION)
                 if (ui.me?.registration == "accepted") add(ParticipantRoute.CHECKIN)
-                if (primaryRoute == ParticipantRoute.LIVE) {
+                if (primaryRoute == ParticipantRoute.RESULTS) {
+                    add(ParticipantRoute.RESULTS)
+                } else if (primaryRoute == ParticipantRoute.LIVE) {
                     add(ParticipantRoute.LIVE)
                     add(ParticipantRoute.LEADERBOARD)
                     if (ui.picksOwnClimbs) add(ParticipantRoute.CHOOSER)
@@ -339,6 +342,7 @@ fun CompetitionDetailScreen(
 
         if (viewModel.isAuthority && state != null) {
             val primaryRoute = when {
+                state.status == "finished" -> HostRoute.RESULTS
                 CompetitionProtocol.competitionRunning(competition, state.status, now) ||
                     state.status == "paused" -> HostRoute.LIVE
                 CompetitionProtocol.registrationWindowOpen(competition, state.status, now) ||
@@ -487,6 +491,7 @@ private fun ParticipantPhaseScreen(
                         ParticipantRoute.LIVE -> R.string.comp_participant_screen_live
                         ParticipantRoute.CHOOSER -> R.string.comp_participant_screen_chooser
                         ParticipantRoute.LEADERBOARD -> R.string.comp_leaderboard
+                        ParticipantRoute.RESULTS -> R.string.comp_results_title
                     },
                 ),
                 style = MaterialTheme.typography.headlineMedium,
@@ -552,6 +557,7 @@ private fun ParticipantPhaseScreen(
                 }
             }
             ParticipantRoute.LEADERBOARD -> item { LeaderboardCard(ui) }
+            ParticipantRoute.RESULTS -> item { FinalResultsPanel(ui, host = false) }
         }
         item { ClimbOpenProblem(climbOpen, lastAsked, viewModel) }
     }
@@ -630,7 +636,9 @@ private fun ParticipantPhaseNavigation(
             ParticipantRoute.REGISTRATION to R.string.comp_journey_registration,
             (ParticipantRoute.CHECKIN to R.string.comp_journey_checkin)
                 .takeIf { ui.me?.registration == "accepted" },
-            (ParticipantRoute.LIVE to R.string.comp_journey_live).takeIf { live },
+            ((if (state.status == "finished") ParticipantRoute.RESULTS else ParticipantRoute.LIVE) to
+                (if (state.status == "finished") R.string.comp_results_nav else R.string.comp_journey_live))
+                .takeIf { live },
         ).forEach { (target, label) ->
             OutlinedButton(
                 onClick = { onRoute(target) },
@@ -667,6 +675,7 @@ private fun OrganizerPhaseScreen(
                         HostRoute.SETUP -> R.string.comp_host_screen_setup
                         HostRoute.ENTRANTS -> R.string.comp_host_screen_entrants
                         HostRoute.LIVE -> R.string.comp_host_screen_live
+                        HostRoute.RESULTS -> R.string.comp_results_title
                     },
                 ),
                 style = MaterialTheme.typography.headlineMedium,
@@ -678,15 +687,17 @@ private fun OrganizerPhaseScreen(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
-                maxItemsInEachRow = 3,
+                maxItemsInEachRow = 4,
             ) {
                 listOf(
                     HostRoute.SETUP to R.string.comp_host_nav_setup,
                     HostRoute.ENTRANTS to R.string.comp_host_nav_entrants,
                     HostRoute.LIVE to R.string.comp_host_nav_live,
+                    HostRoute.RESULTS to R.string.comp_results_nav,
                 ).forEach { (target, label) ->
                     OutlinedButton(
                         onClick = { onRoute(target) },
+                        enabled = target != HostRoute.RESULTS || ui.snapshot.state?.status == "finished",
                         modifier = Modifier.weight(1f).heightIn(min = 48.dp)
                             .semantics { selected = route == target; role = Role.Tab }
                             .testTag("competition_host_nav_${target.name.lowercase()}"),
@@ -1077,7 +1088,7 @@ private fun OrganizerConsole(
             }
             }
 
-            if (route != HostRoute.SETUP && !ui.snapshot.intentHistoryComplete) {
+            if (route in listOf(HostRoute.ENTRANTS, HostRoute.LIVE) && !ui.snapshot.intentHistoryComplete) {
                 Text(
                     stringResource(R.string.comp_intents_untrusted_title),
                     fontWeight = FontWeight.Bold,
@@ -1254,6 +1265,14 @@ private fun OrganizerConsole(
                 CompetitionHostPrizePanel(ui, viewModel, action)
             }
 
+            if (route == HostRoute.RESULTS) {
+                FinalResultsPanel(ui, host = true)
+                if (!ui.snapshot.intentHistoryComplete) {
+                    WarningCard(stringResource(R.string.comp_intents_untrusted))
+                }
+                CompetitionHostPrizePanel(ui, viewModel, action)
+            }
+
             if (route == HostRoute.LIVE) {
             if (CompetitionProtocol.checkinWindowOpen(competition, state.status, nowSeconds) || runningNow || state.status == "paused") {
                 Text(stringResource(R.string.comp_host_live_controls), fontWeight = FontWeight.Bold)
@@ -1339,6 +1358,8 @@ private fun OrganizerConsole(
 
             OutlinedTextField(announcement, { announcement = it }, label = { Text(stringResource(R.string.comp_host_announcement)) }, modifier = Modifier.fillMaxWidth())
             OutlinedButton({ viewModel.hostAnnounce(announcement); announcement = "" }, enabled = announcement.isNotBlank()) { Text(stringResource(R.string.comp_host_publish)) }
+            }
+            if (route in listOf(HostRoute.LIVE, HostRoute.RESULTS)) {
             if (state.audit.any { it.supersedesResults }) WarningCard(stringResource(R.string.comp_results_amended))
             if (correctableAttempts.isNotEmpty()) {
                 OutlinedButton(
@@ -3264,12 +3285,186 @@ private fun OpenOnBoardButton(
     ) { Text(stringResource(R.string.comp_open_on_board)) }
 }
 
+/** Final-state hierarchy shared by participant and host destinations. */
 @Composable
-private fun LeaderboardCard(ui: CompetitionDetailViewModel.Ui) {
+private fun FinalResultsPanel(
+    ui: CompetitionDetailViewModel.Ui,
+    host: Boolean,
+) {
+    val competition = ui.snapshot.competition ?: return
+    val state = ui.snapshot.state ?: return
+    val standings = ui.snapshot.standings
+    val winners = standings.filter { it.rank == 1 }
+    val showPoints = competition.rules.scoring != "tops_then_attempts"
+    Column(
+        Modifier.fillMaxWidth().testTag(if (host) "competition_host_results" else "competition_participant_results"),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Card(
+            Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+        ) {
+            Column(
+                Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    stringResource(R.string.comp_results_final),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+                Text(
+                    if (winners.isEmpty()) stringResource(R.string.comp_results_no_ranked)
+                    else winners.joinToString(" · ") { it.display.ifBlank { it.pubkey.take(8) } },
+                    style = MaterialTheme.typography.headlineLarge,
+                    fontWeight = FontWeight.Black,
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+                Text(
+                    stringResource(
+                        when {
+                            winners.size == 1 -> R.string.comp_results_winner
+                            winners.size > 1 -> R.string.comp_results_joint_winners
+                            else -> R.string.comp_results_no_ranked_hint
+                        },
+                    ),
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+                standings.filter { it.rank > 0 }.take(3).forEach { row ->
+                    Card(
+                        Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
+                        ),
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Text(
+                                row.rank.toString(),
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.Black,
+                                color = if (row.rank == 1) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurface,
+                            )
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    row.display.ifBlank { row.pubkey.take(8) },
+                                    fontWeight = FontWeight.Bold,
+                                )
+                                Text(
+                                    if (showPoints) stringResource(
+                                        R.string.comp_results_podium_points,
+                                        row.points,
+                                        row.tops,
+                                    ) else stringResource(
+                                        R.string.comp_results_podium_tops,
+                                        row.tops,
+                                        row.attempts,
+                                    ),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (!host) standings.firstOrNull { it.pubkey == ui.myPubkey }?.let { mine ->
+            Card(
+                Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+            ) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(stringResource(R.string.comp_results_your_result), fontWeight = FontWeight.Bold)
+                    Text(
+                        if (mine.rank > 0) "#${mine.rank}" else "—",
+                        style = MaterialTheme.typography.displayMedium,
+                        fontWeight = FontWeight.Black,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (showPoints) ResultMetric(mine.points, stringResource(R.string.comp_table_points), Modifier.weight(1f))
+                        ResultMetric(mine.tops, stringResource(R.string.comp_table_tops), Modifier.weight(1f))
+                        ResultMetric(mine.zones, stringResource(R.string.comp_table_zones), Modifier.weight(1f))
+                        ResultMetric(mine.attempts, stringResource(R.string.comp_table_attempts), Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+
+        LeaderboardCard(ui, final = true)
+
+        val resultParticipants = if (host) {
+            standings.mapNotNull { row -> state.participant(row.pubkey) }
+        } else listOfNotNull(ui.me)
+        if (resultParticipants.isNotEmpty()) Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp)) {
+                Text(
+                    stringResource(if (host) R.string.comp_results_breakdown else R.string.comp_results_your_climbs),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                )
+                resultParticipants.forEach { participant ->
+                    var expanded by rememberSaveable(participant.pubkey) { mutableStateOf(!host) }
+                    Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                        TextButton(
+                            onClick = { expanded = !expanded },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(participant.displayOrShort(), Modifier.weight(1f), textAlign = TextAlign.Start)
+                            Text(stringResource(R.string.comp_results_climb_count, participant.climbs.size))
+                        }
+                        if (expanded) {
+                            if (participant.climbs.isEmpty()) Text(
+                                stringResource(R.string.comp_results_no_attempts),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            participant.climbs.forEach { climb ->
+                                val label = competition.climb(climb.climbId)?.label ?: climb.climbId
+                                LabelledValue(
+                                    label,
+                                    stringResource(
+                                        R.string.comp_results_climb_result,
+                                        stringResource(attemptOutcomeLabel(climb.outcome)),
+                                        climb.attemptsUsed,
+                                    ),
+                                )
+                            }
+                        }
+                        HorizontalDivider()
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ResultMetric(value: Int, label: String, modifier: Modifier = Modifier) {
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(value.toString(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+        Text(label, style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center)
+    }
+}
+
+@Composable
+private fun LeaderboardCard(ui: CompetitionDetailViewModel.Ui, final: Boolean = false) {
     val showPoints = ui.snapshot.competition?.rules?.scoring != "tops_then_attempts"
     Card(Modifier.fillMaxWidth().testTag("competition_leaderboard")) {
         Column(Modifier.padding(16.dp)) {
-            Text(stringResource(R.string.comp_leaderboard), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(
+                stringResource(if (final) R.string.comp_results_final_ranking else R.string.comp_leaderboard),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+            )
             if (!ui.snapshot.trustworthy) {
                 Text(
                     stringResource(R.string.comp_leaderboard_untrusted),
