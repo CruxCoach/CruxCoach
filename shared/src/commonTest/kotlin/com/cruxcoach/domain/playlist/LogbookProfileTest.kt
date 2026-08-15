@@ -14,6 +14,23 @@ import kotlin.test.assertTrue
  */
 class LogbookProfileTest {
 
+    @Test
+    fun `default profile is clamped to grades available on the board`() {
+        val profile = LogbookProfile(null, null, 0).adaptedToBoardGrades(23.0, 30.0)
+
+        assertEquals(23.0, profile.effectiveMax)
+        assertEquals(23.0, profile.effectiveRepeatableMax)
+        assertEquals(23.0, profile.effectiveRepeatableFlash)
+        assertTrue(!profile.isPersonalized)
+    }
+
+    @Test
+    fun `board grades never raise a personalized safety ceiling`() {
+        val profile = LogbookProfile(18.0, 16.0, 20, anchorDifficulty = 17.0)
+
+        assertEquals(profile, profile.adaptedToBoardGrades(23.0, 30.0))
+    }
+
     private fun send(difficulty: Double, uuid: String = "c$difficulty", at: String = "2026-07-01") =
         LoggedSend(uuid, difficulty, at)
 
