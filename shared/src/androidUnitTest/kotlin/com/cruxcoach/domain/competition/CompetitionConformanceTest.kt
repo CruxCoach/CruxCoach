@@ -96,6 +96,24 @@ class CompetitionConformanceTest {
         )
         assertEquals(1, reduction.state.configRevision)
         assertEquals("config_referenced_climb", reduction.state.rejected.last().code)
+
+        val board = root["board"]!!.jsonObject
+        val movedBoard = JsonObject(board.toMutableMap().also {
+            it["layout_id"] = JsonPrimitive(board["layout_id"]!!.jsonPrimitive.content.toInt() + 1)
+        })
+        val movedEntry = entry.copy(
+            data = JsonObject(mapOf(
+                "revision" to JsonPrimitive(2), "impact" to JsonPrimitive("scoring"),
+                "patch" to JsonObject(mapOf("board" to movedBoard)),
+            )),
+        )
+        val movedReduction = CompetitionReducer.reduce(
+            competition, fixture.competitionEvent.id,
+            listOf(CompetitionReducer.Chained(movedEntry, "f0".repeat(32), now)),
+            snapshot = initial, snapshotHead = fixture.competitionEvent.id,
+        )
+        assertEquals(1, movedReduction.state.configRevision)
+        assertEquals("config_referenced_climb", movedReduction.state.rejected.last().code)
     }
 
     @Test

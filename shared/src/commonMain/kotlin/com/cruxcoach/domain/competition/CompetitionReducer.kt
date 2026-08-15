@@ -797,6 +797,13 @@ object CompetitionReducer {
                     )
             }
         ) return reject(state, entry, "config_referenced_climb")
+        val boardIdentityKeys = listOf("brand", "model", "layout_id", "size")
+        val beforeBoard = current["board"] as? JsonObject
+        val afterBoard = merged["board"] as? JsonObject
+        if (referencedClimbs.isNotEmpty() && boardIdentityKeys.any { key ->
+                beforeBoard?.get(key) != afterBoard?.get(key)
+            }
+        ) return reject(state, entry, "config_referenced_climb")
         val nextDivisions = next.divisions.map { it.id }.toSet()
         if (state.participants.any { it.division.isNotEmpty() && it.division !in nextDivisions }) {
             return reject(state, entry, "config_referenced_division")
