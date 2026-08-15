@@ -2412,6 +2412,7 @@
     <string name="fips_mesh_no_connected_peers">No peers are currently connected.</string>
     <string name="fips_mesh_no_nearby_meshes">No other CruxCoach meshes are currently in range.</string>
     <string name="fips_mesh_connect_board_hint">Connect a physical board to activate its FIPS mesh and nearby discovery.</string>
+    <string name="fips_mesh_connect_action">Connect board or session</string>
     <string name="fips_mesh_own_active">Your board mesh is active</string>
     <string name="fips_mesh_own_inactive">No active board mesh</string>
     <string name="fips_mesh_cell">Mesh ID</string>

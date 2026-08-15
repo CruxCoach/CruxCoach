@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.BluetoothConnected
 import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -26,6 +27,10 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -35,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
+import com.cruxcoach.android.ui.board.BleConnectionSheet
 import com.cruxcoach.android.ui.theme.InfoBlue
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.SuccessGreen
@@ -46,6 +52,10 @@ fun FipsMeshScreen(
     viewModel: FipsMeshViewModel = hiltViewModel(),
 ) {
     val state = viewModel.state.collectAsStateWithLifecycle().value
+    var showConnectionSheet by remember { mutableStateOf(false) }
+    if (showConnectionSheet) {
+        BleConnectionSheet(onDismiss = { showConnectionSheet = false })
+    }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -73,7 +83,7 @@ fun FipsMeshScreen(
                     modifier = Modifier.padding(top = 8.dp),
                 )
             }
-            item { CurrentMeshCard(state) }
+            item { CurrentMeshCard(state, onConnect = { showConnectionSheet = true }) }
             item { SectionTitle(stringResource(R.string.fips_mesh_connected_peers)) }
             if (state.peers.isEmpty()) {
                 item { EmptyCard(stringResource(R.string.fips_mesh_no_connected_peers)) }
@@ -97,7 +107,7 @@ fun FipsMeshScreen(
 }
 
 @Composable
-private fun CurrentMeshCard(state: FipsMeshUiState) {
+private fun CurrentMeshCard(state: FipsMeshUiState, onConnect: () -> Unit) {
     val active = state.running && state.cellId != null
     MeshCard(container = if (active) SuccessGreen.copy(alpha = 0.10f) else InfoBlue.copy(alpha = 0.08f)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -125,6 +135,12 @@ private fun CurrentMeshCard(state: FipsMeshUiState) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            Button(
+                onClick = onConnect,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.fips_mesh_connect_action))
+            }
         }
     }
 }
