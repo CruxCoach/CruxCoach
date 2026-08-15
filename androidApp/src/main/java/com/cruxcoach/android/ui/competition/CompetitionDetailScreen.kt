@@ -289,10 +289,11 @@ fun CompetitionDetailScreen(
         }
 
         if (!viewModel.isAuthority && state != null) {
-            val runningNow = CompetitionProtocol.competitionRunning(competition, state.status, now)
-            val terminal = state.status in listOf("finished", "cancelled")
+            val effectiveStatus = CompetitionProtocol.effectiveCompetitionStatus(competition, state.status, now)
+            val runningNow = effectiveStatus == "running"
+            val terminal = effectiveStatus in listOf("finished", "cancelled")
             val primaryRoute = when {
-                state.status == "finished" -> ParticipantRoute.RESULTS
+                effectiveStatus == "finished" -> ParticipantRoute.RESULTS
                 runningNow || state.status == "paused" || state.status == "cancelled" -> ParticipantRoute.LIVE
                 ui.me?.registration == "accepted" -> ParticipantRoute.CHECKIN
                 else -> ParticipantRoute.REGISTRATION
@@ -341,9 +342,10 @@ fun CompetitionDetailScreen(
         }
 
         if (viewModel.isAuthority && state != null) {
+            val effectiveStatus = CompetitionProtocol.effectiveCompetitionStatus(competition, state.status, now)
             val primaryRoute = when {
-                state.status == "finished" -> HostRoute.RESULTS
-                CompetitionProtocol.competitionRunning(competition, state.status, now) ||
+                effectiveStatus == "finished" -> HostRoute.RESULTS
+                effectiveStatus == "running" ||
                     state.status == "paused" -> HostRoute.LIVE
                 CompetitionProtocol.registrationWindowOpen(competition, state.status, now) ||
                     CompetitionProtocol.checkinWindowOpen(competition, state.status, now) ||
@@ -394,8 +396,10 @@ fun CompetitionDetailScreen(
                         Spacer(Modifier.height(6.dp))
                         val visibleStatus = when {
                             state == null -> competition.status
-                            state.status in listOf("finished", "cancelled", "paused") -> state.status
-                            CompetitionProtocol.competitionRunning(competition, state.status, now) -> "running"
+                            CompetitionProtocol.effectiveCompetitionStatus(
+                                competition, state.status, now,
+                            ) in listOf("finished", "cancelled", "paused", "running") ->
+                                CompetitionProtocol.effectiveCompetitionStatus(competition, state.status, now)
                             CompetitionProtocol.checkinWindowOpen(competition, state.status, now) -> "checkin_open"
                             CompetitionProtocol.registrationWindowOpen(competition, state.status, now) -> "registration_open"
                             else -> "published"
@@ -624,8 +628,8 @@ private fun ParticipantPhaseNavigation(
 ) {
     val competition = ui.snapshot.competition ?: return
     val state = ui.snapshot.state ?: return
-    val live = CompetitionProtocol.competitionRunning(competition, state.status, nowSeconds) ||
-        state.status in listOf("paused", "finished", "cancelled")
+    val effectiveStatus = CompetitionProtocol.effectiveCompetitionStatus(competition, state.status, nowSeconds)
+    val live = effectiveStatus in listOf("running", "paused", "finished", "cancelled")
     FlowRow(
         Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -636,8 +640,8 @@ private fun ParticipantPhaseNavigation(
             ParticipantRoute.REGISTRATION to R.string.comp_journey_registration,
             (ParticipantRoute.CHECKIN to R.string.comp_journey_checkin)
                 .takeIf { ui.me?.registration == "accepted" },
-            ((if (state.status == "finished") ParticipantRoute.RESULTS else ParticipantRoute.LIVE) to
-                (if (state.status == "finished") R.string.comp_results_nav else R.string.comp_journey_live))
+            ((if (effectiveStatus == "finished") ParticipantRoute.RESULTS else ParticipantRoute.LIVE) to
+                (if (effectiveStatus == "finished") R.string.comp_results_nav else R.string.comp_journey_live))
                 .takeIf { live },
         ).forEach { (target, label) ->
             OutlinedButton(
@@ -661,6 +665,11 @@ private fun OrganizerPhaseScreen(
     contentPadding: androidx.compose.foundation.layout.PaddingValues,
     onRoute: (HostRoute) -> Unit,
 ) {
+    val competition = ui.snapshot.competition
+    val state = ui.snapshot.state
+    val effectiveStatus = if (competition != null && state != null) {
+        CompetitionProtocol.effectiveCompetitionStatus(competition, state.status, nowSeconds)
+    } else null
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(contentPadding)
             .testTag("competition_host_${route.name.lowercase()}"),
@@ -697,7 +706,7 @@ private fun OrganizerPhaseScreen(
                 ).forEach { (target, label) ->
                     OutlinedButton(
                         onClick = { onRoute(target) },
-                        enabled = target != HostRoute.RESULTS || ui.snapshot.state?.status == "finished",
+                        enabled = target != HostRoute.RESULTS || effectiveStatus == "finished",
                         modifier = Modifier.weight(1f).heightIn(min = 48.dp)
                             .semantics { selected = route == target; role = Role.Tab }
                             .testTag("competition_host_nav_${target.name.lowercase()}"),

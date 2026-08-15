@@ -107,6 +107,14 @@ object CompetitionProtocol {
         status !in setOf("paused", "finished", "cancelled") &&
             at >= competition.startsAt && at <= competition.endsAt
 
+    /** Wall-clock status shared by host and participant screens. */
+    fun effectiveCompetitionStatus(competition: Competition, status: String, at: Long): String = when {
+        status in setOf("finished", "cancelled") -> status
+        at > competition.endsAt -> "finished"
+        competitionRunning(competition, status, at) -> "running"
+        else -> status
+    }
+
     /** An audit trail whose entries do not say why is a log, not an audit trail. */
     val REASON_REQUIRED_OPS = setOf("correction", "override", "disqualify", "retire", "config_update")
 
