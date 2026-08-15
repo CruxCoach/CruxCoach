@@ -30,6 +30,7 @@ import com.cruxcoach.domain.playlist.PlaylistPlanner
 import com.cruxcoach.domain.playlist.SessionPosition
 import com.cruxcoach.domain.playlist.TrainingRanges
 import com.cruxcoach.domain.playlist.estimatedMinutes
+import com.cruxcoach.domain.board.BoardBrand
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlin.random.Random
@@ -86,6 +87,10 @@ data class PlaylistGeneratorState(
     val error: Boolean = false,
 )
 
+/** Aurora product-size ids have no meaning for MoonBoard catalogue rows. */
+internal fun playlistProductSizeFilter(boardBrand: String, productSizeId: Int): Int =
+    if (BoardBrand.fromWire(boardBrand).usesAuroraPlacements) productSizeId else 0
+
 @HiltViewModel
 class PlaylistGeneratorViewModel @Inject constructor(
     private val boardRepository: BoardRepository,
@@ -101,8 +106,16 @@ class PlaylistGeneratorViewModel @Inject constructor(
     init {
         viewModelScope.safeLaunch(TAG) {
             val snapshot = withContext(Dispatchers.IO) { userPreferences.getBoardFilterSnapshot() }
-            val productSizeId = userPreferences.boardProductSizeId.first()
-            profile = withContext(Dispatchers.IO) { loadProfile(snapshot.angle, snapshot.boardBrand, snapshot.layoutId) }
+            val productSizeId = playlistProductSizeFilter(
+                snapshot.boardBrand,
+                userPreferences.boardProductSizeId.first(),
+            )
+            profile = withContext(Dispatchers.IO) {
+                val range = loadBoardGradeRange(snapshot.angle, snapshot.boardBrand,
+                    snapshot.layoutId, productSizeId)
+                loadProfile(snapshot.angle, snapshot.boardBrand, snapshot.layoutId)
+                    .adaptedToBoardGrades(range.first, range.second)
+            }
             _state.update {
                 it.copy(
                     angle = snapshot.angle,
@@ -324,9 +337,38 @@ class PlaylistGeneratorViewModel @Inject constructor(
         _state.update { it.copy(angle = angle.coerceIn(0, 70)) }
         viewModelScope.safeLaunch(TAG) {
             // Angle changes the per-angle profile too.
-            profile = withContext(Dispatchers.IO) { loadProfile(_state.value.angle, _state.value.boardBrand, _state.value.layoutId) }
+            profile = withContext(Dispatchers.IO) {
+                val s = _state.value
+                val range = loadBoardGradeRange(
+                    s.angle, s.boardBrand, s.layoutId, s.productSizeId)
+                loadProfile(s.angle, s.boardBrand, s.layoutId)
+                    .adaptedToBoardGrades(range.first, range.second)
+            }
             refreshPlan()
         }
+    }
+
+    /** Lowest/highest graded climb that physically fits this board setup. */
+    private fun loadBoardGradeRange(
+        angle: Int,
+        boardBrand: String,
+        layoutId: Int,
+        productSizeId: Int,
+    ): Pair<Double?, Double?> {
+        fun edge(direction: SortDirection) = boardRepository.searchClimbsSorted(
+            angle = angle,
+            layoutId = layoutId,
+            boardBrand = boardBrand,
+            minDifficulty = TrainingRanges.MIN_DIFFICULTY,
+            maxDifficulty = TrainingRanges.MAX_DIFFICULTY,
+            minAscensionists = 0,
+            sortField = ClimbSortField.DIFFICULTY,
+            sortDirection = direction,
+            limit = 1,
+            climbType = ClimbTypeFilter.BOULDER,
+            selProductSizeId = productSizeId,
+        ).firstOrNull()?.difficultyAverage
+        return edge(SortDirection.ASC) to edge(SortDirection.DESC)
     }
 
     private fun currentParams(): PlaylistGeneratorParams {
@@ -390,32 +432,74 @@ class PlaylistGeneratorViewModel @Inject constructor(
                             .map { it.climbUuid }
                             .toSet()
 
+                        fun loadCandidates(
+                            minDiff: Double,
+                            maxDiff: Double,
+                        ): List<PlaylistCandidate> =
+                            boardRepository.searchClimbsSorted(
+                                angle = params.angle,
+                                layoutId = params.layoutId,
+                                boardBrand = params.boardBrand,
+                                minDifficulty = minDiff,
+                                maxDifficulty = maxDiff,
+                                // Popularity affects ranking below; it must not
+                                // exclude a valid climb and create a false
+                                // shortage on a community-sparse board.
+                                minAscensionists = 0,
+                                sortField = ClimbSortField.QUALITY,
+                                sortDirection = SortDirection.DESC,
+                                limit = CANDIDATE_POOL_SIZE,
+                                climbType = ClimbTypeFilter.BOULDER,
+                                selProductSizeId = params.productSizeId,
+                            ).filter { it.uuid !in ignored }.mapNotNull { climb ->
+                                climb.difficultyAverage?.let { diff ->
+                                    PlaylistCandidate(
+                                        climbUuid = climb.uuid,
+                                        difficulty = diff,
+                                        quality = climb.qualityAverage,
+                                        ascensionistCount = climb.ascensionistCount,
+                                        sent = climb.uuid in sent,
+                                        attempted = climb.uuid in attempted,
+                                        recentlyTried = climb.uuid in recentUuids,
+                                    )
+                                }
+                            }
+
                         val source = CandidateSource { minDiff, maxDiff ->
                             PerfLogger.traceQuery("playlist.candidateBand") {
-                                boardRepository.searchClimbsSorted(
-                                    angle = params.angle,
-                                    layoutId = params.layoutId,
-                                    boardBrand = params.boardBrand,
-                                    minDifficulty = minDiff,
-                                    maxDifficulty = maxDiff,
-                                    minAscensionists = MIN_ASCENSIONISTS,
-                                    sortField = ClimbSortField.QUALITY,
-                                    sortDirection = SortDirection.DESC,
-                                    limit = CANDIDATE_POOL_SIZE,
-                                    climbType = ClimbTypeFilter.BOULDER,
-                                    selProductSizeId = params.productSizeId,
-                                ).filter { it.uuid !in ignored }.mapNotNull { climb ->
-                                    climb.difficultyAverage?.let { diff ->
-                                        PlaylistCandidate(
-                                            climbUuid = climb.uuid,
-                                            difficulty = diff,
-                                            quality = climb.qualityAverage,
-                                            ascensionistCount = climb.ascensionistCount,
-                                            sent = climb.uuid in sent,
-                                            attempted = climb.uuid in attempted,
-                                            recentlyTried = climb.uuid in recentUuids,
-                                        )
-                                    }
+                                loadCandidates(minDiff, maxDiff)
+                            }
+                        }
+
+                        // Real board distribution for the last-resort grade
+                        // adaptation. minAscensionists=0 is intentional: a
+                        // community-sparse but graded climb is better than an
+                        // impossible plan. Sorted easiest-first so the bounded
+                        // pool represents the safe end of the board.
+                        val boardCandidates = PerfLogger.traceQuery("playlist.boardGradePool") {
+                            boardRepository.searchClimbsSorted(
+                                angle = params.angle,
+                                layoutId = params.layoutId,
+                                boardBrand = params.boardBrand,
+                                minDifficulty = TrainingRanges.MIN_DIFFICULTY,
+                                maxDifficulty = TrainingRanges.MAX_DIFFICULTY,
+                                minAscensionists = 0,
+                                sortField = ClimbSortField.DIFFICULTY,
+                                sortDirection = SortDirection.ASC,
+                                limit = BOARD_GRADE_POOL_SIZE,
+                                climbType = ClimbTypeFilter.BOULDER,
+                                selProductSizeId = params.productSizeId,
+                            ).filter { it.uuid !in ignored }.mapNotNull { climb ->
+                                climb.difficultyAverage?.let { diff ->
+                                    PlaylistCandidate(
+                                        climbUuid = climb.uuid,
+                                        difficulty = diff,
+                                        quality = climb.qualityAverage,
+                                        ascensionistCount = climb.ascensionistCount,
+                                        sent = climb.uuid in sent,
+                                        attempted = climb.uuid in attempted,
+                                        recentlyTried = climb.uuid in recentUuids,
+                                    )
                                 }
                             }
                         }
@@ -443,6 +527,7 @@ class PlaylistGeneratorViewModel @Inject constructor(
                                         )
                                     }
                                 },
+                                boardCandidates = boardCandidates,
                                 selection = params.selection,
                                 random = Random(System.currentTimeMillis()),
                             )
@@ -509,12 +594,8 @@ class PlaylistGeneratorViewModel @Inject constructor(
          *  whole logbook. */
         private const val NEARBY_ANGLE_TOLERANCE = 10
 
-        /** Candidate quality gate: at least a handful of community ascents
-         *  so junk climbs don't land in a training plan. Community-sparse
-         *  boards still work — the filler widens and the browse fallback
-         *  keeps minAsc low. */
-        private const val MIN_ASCENSIONISTS = 3
         private const val CANDIDATE_POOL_SIZE = 120
+        private const val BOARD_GRADE_POOL_SIZE = 1000
 
         /** Bids across all sessions before a climb counts as a project. */
         private const val MIN_PROJECT_ATTEMPTS = 3L

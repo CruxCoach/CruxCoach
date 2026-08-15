@@ -99,6 +99,82 @@ class PlaylistFillerTest {
     }
 
     @Test
+    fun `default plan follows the real board grades instead of failing`() {
+        val slots = listOf(
+            climbSlot(10.0, 11.0),
+            climbSlot(11.0, 12.0),
+            climbSlot(12.0, 13.0),
+        )
+        val board = listOf(
+            candidate("actual-1", 23.0),
+            candidate("actual-2", 24.0),
+            candidate("actual-3", 25.0),
+        )
+        val result = PlaylistFiller.fill(
+            PlaylistPlan(
+                slots = slots,
+                effectiveType = GeneratorType.PYRAMID,
+                usedDefaultProfile = true,
+                hardCeiling = 22.0,
+                maxWidening = 1.0,
+            ),
+            source = poolSource(emptyList()),
+            boardCandidates = board,
+            random = Random(1),
+        )
+
+        assertEquals(0, result.droppedClimbs)
+        assertEquals(setOf(23.0, 24.0, 25.0),
+            result.entries.filterIsInstance<GeneratedEntry.Climb>().map { it.difficulty }.toSet())
+    }
+
+    @Test
+    fun `board fallback keeps a personalized hard ceiling`() {
+        val result = PlaylistFiller.fill(
+            PlaylistPlan(
+                slots = listOf(climbSlot(10.0, 11.0)),
+                effectiveType = GeneratorType.PYRAMID,
+                usedDefaultProfile = false,
+                hardCeiling = 18.0,
+                maxWidening = 1.0,
+            ),
+            source = poolSource(emptyList()),
+            boardCandidates = listOf(candidate("too-hard", 23.0)),
+            random = Random(1),
+        )
+
+        assertEquals(1, result.droppedClimbs)
+        assertTrue(result.entries.isEmpty())
+    }
+
+    @Test
+    fun `manual warmup adapts to board while requested main band stays exact`() {
+        val plan = PlaylistPlan(
+            slots = listOf(
+                PlanSlot.ClimbSlot(10.0, 11.0, PlanSection.WARM_UP),
+                PlanSlot.ClimbSlot(18.0, 19.0, PlanSection.MAIN),
+            ),
+            effectiveType = GeneratorType.MANUAL,
+            usedDefaultProfile = true,
+            hardCeiling = 22.0,
+            maxWidening = 0.0,
+        )
+        val board = listOf(candidate("warmup", 16.0), candidate("main", 18.0))
+        val result = PlaylistFiller.fill(
+            plan = plan,
+            source = poolSource(board),
+            boardCandidates = board,
+            random = Random(1),
+        )
+
+        assertEquals(0, result.droppedClimbs)
+        assertEquals(
+            listOf(16.0, 18.0),
+            result.entries.filterIsInstance<GeneratedEntry.Climb>().map { it.difficulty },
+        )
+    }
+
+    @Test
     fun `drops the slot and its leading rest when nothing fits`() {
         val pool = listOf(candidate("only", 15.0))
         val result = PlaylistFiller.fill(

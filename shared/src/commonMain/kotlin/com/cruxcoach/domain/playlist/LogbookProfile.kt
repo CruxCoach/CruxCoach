@@ -55,6 +55,35 @@ data class LogbookProfile(
     /** Second-hardest true flash; fallback for [flashAnchorDifficulty]. */
     val secondFlashDifficulty: Double? = null,
 ) {
+    /**
+     * Seat an unpersonalized profile inside the grades that really exist on
+     * the selected board at the selected angle.
+     *
+     * The old empty-logbook fallback always assumed roughly V5. Fixed-angle
+     * boards can start well above or end well below that, which made every
+     * planned slot miss before the filler had seen a single real climb. A
+     * sparse/default profile is only a heuristic, so clamp that heuristic to
+     * the catalogue. A personalized profile remains untouched: catalogue
+     * scarcity must never raise a known climber's safety ceiling.
+     */
+    fun adaptedToBoardGrades(minDifficulty: Double?, maxDifficulty: Double?): LogbookProfile {
+        if (isPersonalized || minDifficulty == null || maxDifficulty == null ||
+            minDifficulty > maxDifficulty) return this
+
+        val boardMin = minDifficulty.coerceIn(
+            TrainingRanges.MIN_DIFFICULTY, TrainingRanges.MAX_DIFFICULTY)
+        val boardMax = maxDifficulty.coerceIn(boardMin, TrainingRanges.MAX_DIFFICULTY)
+        val adaptedMax = effectiveMax.coerceIn(boardMin, boardMax)
+        val adaptedAnchor = effectiveRepeatableMax.coerceIn(boardMin, adaptedMax)
+        val adaptedFlash = effectiveRepeatableFlash.coerceIn(boardMin, adaptedAnchor)
+        return copy(
+            maxDifficulty = adaptedMax,
+            flashDifficulty = adaptedFlash,
+            anchorDifficulty = adaptedAnchor,
+            flashAnchorDifficulty = adaptedFlash,
+        )
+    }
+
     /** Effective max for planning: logbook max or the ~V5 default. The PEAK —
      *  used as the hard ceiling, never as the work anchor. */
     val effectiveMax: Double
