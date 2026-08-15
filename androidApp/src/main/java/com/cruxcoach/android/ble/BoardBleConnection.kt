@@ -14,6 +14,7 @@ import com.cruxcoach.domain.board.BoardPacketEncoder
 import com.cruxcoach.domain.board.BoardHold
 import com.cruxcoach.domain.board.HoldRole
 import com.cruxcoach.domain.board.MoonBoardFrameEncoder
+import com.cruxcoach.domain.board.MoonBoardLedMode
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -782,10 +783,13 @@ class BoardBleConnection(private val context: Context) {
      * @param variant the MoonBoard variant of the active board; drives the
      *   per-column-height serpentine arithmetic in the encoder (18 for the
      *   standard 11×18 boards, 12 for Mini 2020).
+     * @param ledMode selects the known strip position below, above, or on both
+     *   sides of each hold. Finish holds always fall back to below.
      */
     suspend fun sendMoonBoardClimb(
         frames: String,
         variant: com.cruxcoach.domain.board.MoonBoardVariant,
+        ledMode: MoonBoardLedMode = MoonBoardLedMode.BELOW,
     ): Boolean = writeMutex.withLock {
         if (_connectionState.value != ConnectionState.CONNECTED) return false
 
@@ -794,7 +798,7 @@ class BoardBleConnection(private val context: Context) {
         // Re-armed from the finally below once we flip back to CONNECTED.
         disconnectJob?.cancel()
         try {
-            val payload = MoonBoardFrameEncoder.encode(frames, variant)
+            val payload = MoonBoardFrameEncoder.encode(frames, variant, ledMode)
             val chunks = payload.toList()
                 .chunked(BoardPacketEncoder.BLE_MTU)
                 .map { it.toByteArray() }

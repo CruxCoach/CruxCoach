@@ -52,6 +52,17 @@ class PlaylistCommandRebaserTest {
             PlaylistCommandRebaser.rebase(command, context, current, false))
     }
 
+    @Test fun `resend follows the same current climb but rejects an advance`() {
+        val base = BoardPlaylistState(7, 0, listOf(a, b, c))
+        val command = SessionCommand.Resend
+        val context = PlaylistCommandRebaser.context(command, base)
+
+        assertEquals(command, assertIs<PlaylistCommandRebaser.Result.Apply>(
+            PlaylistCommandRebaser.rebase(command, context, base.copy(items = listOf(a, c)), false)).command)
+        assertIs<PlaylistCommandRebaser.Result.Conflict>(
+            PlaylistCommandRebaser.rebase(command, context, base.copy(currentIndex = 1), false))
+    }
+
     @Test fun `duplicate count changes are treated as ambiguous`() {
         val base = BoardPlaylistState(7, 0, listOf(a, b, a))
         val command = SessionCommand.Remove(2)

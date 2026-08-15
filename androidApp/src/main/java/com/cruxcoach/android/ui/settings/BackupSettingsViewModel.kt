@@ -76,9 +76,10 @@ data class BackupSettingsState(
          */
         data object BlobUnreachable : Snackbar
         data object RestoreFailed : Snackbar
-        /** Restore completed — carries the imported counts so a successful
-         *  restore is never silent (and a 0/0 result is visible too). */
-        data class RestoreSucceeded(val ascents: Int, val lists: Int) : Snackbar
+        /** Restore completed — carries authenticated payload counts rather
+         *  than only newly inserted rows. UUID-deduplicated local rows are
+         *  therefore reported as present, not misleadingly as missing. */
+        data class RestoreSucceeded(val logbookEntries: Int, val lists: Int) : Snackbar
         data object BackupSucceeded : Snackbar
         /**
          * [reason] is the structured BackupException reason — the UI
@@ -304,8 +305,8 @@ class BackupSettingsViewModel @Inject constructor(
                         backupEnabled = true,
                         lastBackupIso = lastSyncEpoch?.toLocalizedDateTime(),
                         snackbar = BackupSettingsState.Snackbar.RestoreSucceeded(
-                            ascents = result.boardAscents,
-                            lists = result.climbLists,
+                            logbookEntries = result.logbookEntriesInBackup,
+                            lists = result.listsInBackup,
                         ),
                     )
                 }

@@ -1245,7 +1245,13 @@ class ClimbEditorViewModel @Inject constructor(
             val frames = cur.editor.encodeFrames()
             val result = runCatching {
                 com.cruxcoach.android.boardcell.BoardCellManager.current?.projectExternal(
-                    boardWrite = { bleConnection.sendMoonBoardClimb(frames, variant) },
+                    boardWrite = {
+                        bleConnection.sendMoonBoardClimb(
+                            frames,
+                            variant,
+                            userPreferences.moonBoardLedMode.first(),
+                        )
+                    },
                     identify = { null },
                 ).let { it is com.cruxcoach.android.boardcell.ProjectionResult.Committed ||
                     it is com.cruxcoach.android.boardcell.ProjectionResult.Duplicate }

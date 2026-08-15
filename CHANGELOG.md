@@ -28,7 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     screen says which entry it is waiting for. A confident wrong result is
     worse than an honest wait.
 
-## [0.2.2] - 2026-08-11
+## [0.2.2] - 2026-08-15
 
 Training playlists you can actually play — climb by climb, with rests,
 one-tap logging and a summary at the end — either from a list of your own
@@ -84,6 +84,10 @@ server.
   problem you were still working kept going dark. CruxCoach now holds the
   connection open for as long as the climb is meant to be lit, and tells
   you when the board is ready for you to send it again.
+- **MoonBoard LED position** — choose on every MoonBoard whether the existing
+  LEDs below the holds, above them, or both should light. Finish holds and
+  positions without an upper LED safely stay lit below. Existing installs keep
+  the previous below-only behaviour.
 - **CruxRelay — everyone in the session can send to the board** — most
   board controllers only talk to one app at a time, so one phone owns the
   wall and everyone else watches. Switch sharing on and your phone stands

@@ -245,21 +245,6 @@ class PlaylistPlaybackCoordinator(
     }
 
     /**
-     * Stop or restart the training clock by hand — the climber stepping away,
-     * not the playlist resting.
-     *
-     * Deliberately does nothing during a planned rest. It used to resume the
-     * clock there without touching the countdown, which booked the rest of the
-     * rest as training time; [skipRest] is the way out of that state.
-     */
-    fun togglePause() {
-        val session = boardSessionManager.state.value
-        if (session.pauseReason == PauseReason.PLANNED_REST) return
-        if (session.isPaused) boardSessionManager.resumeSession(PauseReason.MANUAL)
-        else boardSessionManager.pauseSession(PauseReason.MANUAL)
-    }
-
-    /**
      * End the rest block early and restart the clock.
      *
      * A participant routes this through the host instead of cancelling its own
@@ -278,8 +263,16 @@ class PlaylistPlaybackCoordinator(
         boardSessionManager.cancelRestTimer()
     }
 
-    /** Host-only: force re-send when someone else re-lit the wall. */
-    fun resendCurrentClimb() = queueManager.resendCurrentClimb()
+    /** Force the current climb back onto the wall. Participants ask the host,
+     * which remains the sole writer to the physical board. */
+    fun resendCurrentClimb() {
+        if (state.value.isParticipant) {
+            Log.i(TAG, "event=transport_requested action=resend role=participant")
+            gattBridge.sendResend()
+        } else {
+            queueManager.resendCurrentClimb()
+        }
+    }
 
     /** Applies the list's interaction rule after a successful quick-log write. */
     fun onClimbLogged(isSend: Boolean) {
@@ -377,6 +370,18 @@ class PlaylistPlaybackCoordinator(
         // No startQueue() here: that would flash HOST before GATT connects;
         // joinSession() drives setConnecting() → setParticipantRole().
         gattBridge.joinSession(device)
+    }
+
+    /** Re-attempt a requested joinable publication after its platform gate
+     * (normally BLUETOOTH_ADVERTISE) has been resolved. */
+    fun retrySharing() {
+        val current = state.value
+        if (current.isHost &&
+            current.visibilityRequested == SessionVisibility.JOINABLE &&
+            current.visibility != SessionVisibility.JOINABLE
+        ) {
+            gattBridge.ensureHostSharing()
+        }
     }
 
     /**

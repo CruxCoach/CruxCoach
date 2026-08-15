@@ -31,6 +31,8 @@ object PlaylistCommandRebaser {
             SessionCommand.Prev -> BoardPlaylistCommandContext(base.sessionId,
                 BoardPlaylistCommandKind.PREV, expectedCurrent = ref(base.currentIndex),
                 expectedTarget = ref(base.currentIndex - 1))
+            SessionCommand.Resend -> BoardPlaylistCommandContext(base.sessionId,
+                BoardPlaylistCommandKind.RESEND, expectedCurrent = ref(base.currentIndex))
             is SessionCommand.Move -> {
                 val subject = ref(command.from) ?: return null
                 if (command.to !in base.items.indices) return null
@@ -88,6 +90,12 @@ object PlaylistCommandRebaser {
                 }
                 Result.Apply(SessionCommand.Move(from, insertion.coerceAtMost(current.items.lastIndex)))
             }
+            SessionCommand.Resend -> {
+                val expected = resolve(context.expectedCurrent)
+                    ?: return Result.Conflict("current climb changed")
+                if (current.currentIndex == expected) Result.Apply(command)
+                else Result.Conflict("current climb changed")
+            }
             is SessionCommand.Join, SessionCommand.Leave -> Result.Conflict("not a playlist mutation")
         }
     }
@@ -105,6 +113,8 @@ object PlaylistCommandRebaser {
         is SessionCommand.Move -> if (command.from in current.items.indices &&
             command.to in current.items.indices && command.from != command.to) Result.Apply(command)
             else Result.Conflict("move indices are no longer valid")
+        SessionCommand.Resend -> if (current.currentIndex in current.items.indices) Result.Apply(command)
+            else Result.Conflict("there is no current climb")
         is SessionCommand.Join, SessionCommand.Leave -> Result.Conflict("not a playlist mutation")
     }
 
@@ -115,6 +125,7 @@ object PlaylistCommandRebaser {
         SessionCommand.Next -> BoardPlaylistCommandKind.NEXT
         SessionCommand.Prev -> BoardPlaylistCommandKind.PREV
         is SessionCommand.Move -> BoardPlaylistCommandKind.MOVE
+        SessionCommand.Resend -> BoardPlaylistCommandKind.RESEND
         is SessionCommand.Join, SessionCommand.Leave -> null
     }
 

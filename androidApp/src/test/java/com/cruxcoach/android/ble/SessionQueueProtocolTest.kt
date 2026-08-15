@@ -57,6 +57,12 @@ class SessionQueueProtocolTest {
     }
 
     @Test
+    fun `encodeResend and decodeCommand roundtrip`() {
+        val cmd = SessionQueueProtocol.decodeCommand(SessionQueueProtocol.encodeResend())
+        assertTrue(cmd is SessionCommand.Resend)
+    }
+
+    @Test
     fun `encodePrev and decodeCommand roundtrip`() {
         val cmd = SessionQueueProtocol.decodeCommand(SessionQueueProtocol.encodePrev())
         assertTrue(cmd is SessionCommand.Prev)
@@ -159,18 +165,36 @@ class SessionQueueProtocolTest {
 
     @Test
     fun `encodeSessionInfo and decodeSessionInfo roundtrip`() {
-        val encoded = SessionQueueProtocol.encodeSessionInfo("Host123", 3)
+        val encoded = SessionQueueProtocol.encodeSessionInfo(
+            "Host123",
+            3,
+            awaitingExplicitSend = true,
+        )
         val info = SessionQueueProtocol.decodeSessionInfo(encoded)!!
         assertEquals("Host123", info.hostName)
         assertEquals(3, info.participantCount)
+        assertTrue(info.awaitingExplicitSend)
+    }
+
+    @Test
+    fun `decodeSessionInfo accepts payload from client before explicit send flag`() {
+        val hostName = "OldHost".toByteArray(Charsets.UTF_8)
+        val legacy = byteArrayOf(2, hostName.size.toByte()) + hostName
+
+        val info = SessionQueueProtocol.decodeSessionInfo(legacy)!!
+
+        assertEquals("OldHost", info.hostName)
+        assertEquals(2, info.participantCount)
+        assertFalse(info.awaitingExplicitSend)
     }
 
     @Test
     fun `session info carries board cell scope while legacy remains readable`() {
         val scoped = SessionQueueProtocol.decodeSessionInfo(SessionQueueProtocol.encodeSessionInfo(
-            "Host", 4, "kilter:serial:abc", "cell-1"))!!
+            "Host", 4, "kilter:serial:abc", "cell-1", awaitingExplicitSend = true))!!
         assertEquals("kilter:serial:abc", scoped.physicalBoardId)
         assertEquals("cell-1", scoped.boardCellId)
+        assertTrue(scoped.awaitingExplicitSend)
         val legacy = SessionQueueProtocol.decodeSessionInfo(SessionQueueProtocol.encodeSessionInfo("Host", 4))!!
         assertNull(legacy.physicalBoardId)
         assertNull(legacy.boardCellId)

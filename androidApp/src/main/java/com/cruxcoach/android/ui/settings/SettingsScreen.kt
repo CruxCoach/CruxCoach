@@ -211,6 +211,12 @@ fun SettingsScreen(
                     // mounted. Renders nothing for any other brand, and none
                     // for MoonBoard 2010 (one set, no choice).
                     MoonBoardHoldSetSection()
+                    if (activeBoardBrand == BoardBrand.MOONBOARD) {
+                        MoonBoardLedPositionSection(
+                            ledMode = state.moonBoardLedMode,
+                            onModeChange = viewModel::updateMoonBoardLedMode,
+                        )
+                    }
                     HorizontalDivider()
                     BoardSendModeSection(
                         singleConnectionMode = state.singleConnectionBoardSendMode,
@@ -442,7 +448,11 @@ fun SettingsScreen(
             BackupSettingsState.Snackbar.RestoreFailed ->
                 stringResource(R.string.settings_backup_restore_failed)
             is BackupSettingsState.Snackbar.RestoreSucceeded ->
-                stringResource(R.string.settings_backup_restored, snackbar.ascents, snackbar.lists)
+                stringResource(
+                    R.string.settings_backup_restored,
+                    snackbar.logbookEntries,
+                    snackbar.lists,
+                )
             BackupSettingsState.Snackbar.BackupSucceeded ->
                 stringResource(R.string.settings_backup_succeeded)
             is BackupSettingsState.Snackbar.BackupFailed ->

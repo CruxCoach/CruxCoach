@@ -11,6 +11,7 @@ import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.ClimbWithStats
 import com.cruxcoach.data.repository.PersonalBoardRepository
 import com.cruxcoach.domain.board.BoardBrand
+import com.cruxcoach.domain.board.MoonBoardLedMode
 import com.cruxcoach.domain.board.MoonBoardVariant
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -42,22 +43,24 @@ class BoardSendControllerTest {
     )
 
     @Test
-    fun `successful MoonBoard send records volatile last climb`() = runTest {
+    fun `successful MoonBoard send applies LED mode and records volatile last climb`() = runTest {
+        val climb = moonClimb
         val state = MutableStateFlow(
             ClimbDetailState(
                 isLoading = false,
-                climb = moonClimb,
+                climb = climb,
                 angle = 40,
                 ble = BoardSendState(connectionState = ConnectionState.CONNECTED),
             )
         )
         val bleConnection = mockk<BoardBleConnection>(relaxed = true) {
             every { connectedBoardBrand } returns MutableStateFlow(BoardBrand.MOONBOARD)
-            coEvery { sendMoonBoardClimb(any(), any()) } returns true
+            coEvery { sendMoonBoardClimb(any(), any(), any()) } returns true
         }
         val preferences = mockk<UserPreferences>(relaxed = true) {
             every { boardBrand } returns flowOf(BoardBrand.MOONBOARD.wireValue)
             every { boardLayoutId } returns flowOf(MoonBoardVariant.MOONBOARD_2016.layoutId.toInt())
+            every { moonBoardLedMode } returns flowOf(MoonBoardLedMode.ABOVE)
         }
         val advertiser = mockk<ClimbBleAdvertiser>(relaxed = true) {
             every { advertiseClimb(any(), any(), any(), any()) } returns "started"
@@ -82,13 +85,14 @@ class BoardSendControllerTest {
 
         coVerify(exactly = 1) {
             bleConnection.sendMoonBoardClimb(
-                moonClimb.frames,
+                climb.frames,
                 MoonBoardVariant.MOONBOARD_2016,
+                MoonBoardLedMode.ABOVE,
             )
         }
         verify(exactly = 1) {
             advertiser.advertiseClimb(
-                climbUuid = moonClimb.uuid,
+                climbUuid = climb.uuid,
                 angle = 40,
                 sharingEnabled = true,
                 projectionSurvivesDisconnect = false,
@@ -108,11 +112,12 @@ class BoardSendControllerTest {
         )
         val bleConnection = mockk<BoardBleConnection>(relaxed = true) {
             every { connectedBoardBrand } returns MutableStateFlow(BoardBrand.MOONBOARD)
-            coEvery { sendMoonBoardClimb(any(), any()) } returns false
+            coEvery { sendMoonBoardClimb(any(), any(), any()) } returns false
         }
         val preferences = mockk<UserPreferences>(relaxed = true) {
             every { boardBrand } returns flowOf(BoardBrand.MOONBOARD.wireValue)
             every { boardLayoutId } returns flowOf(MoonBoardVariant.MOONBOARD_2016.layoutId.toInt())
+            every { moonBoardLedMode } returns flowOf(MoonBoardLedMode.BELOW)
         }
         val advertiser = mockk<ClimbBleAdvertiser>(relaxed = true)
         val queueManager = mockk<SessionQueueManager>(relaxed = true)

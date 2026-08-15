@@ -44,7 +44,7 @@
     <string name="nostr_profile_subscriber_status_stopped">Nicht verbunden</string>
     <string name="nostr_profile_subscriber_status_failures" formatted="false">%1$d Fehler in Folge (zuletzt: %2$s)</string>
     <string name="climb_creator_dup_title">Ein Climb mit diesen Holds existiert schon</string>
-    <string name="climb_creator_dup_message" formatted="false">Gleiches Griff-Layout wie „%s". Gleiche Griffe in anderem Winkel/Grade sind aber erlaubt.</string>
+    <string name="climb_creator_dup_message" formatted="false">Gleiches Griff-Layout wie „%s“. Gleiche Griffe in anderem Winkel/Grade sind aber erlaubt.</string>
     <string name="climb_creator_dup_continue">Weiter bearbeiten</string>
     <string name="climb_creator_dup_publish_anyway">Trotzdem veröffentlichen</string>
     <string name="climb_creator_drafts_open">Entwürfe öffnen</string>
@@ -55,7 +55,7 @@
     <string name="climb_creator_drafts_unnamed">Unbenannter Climb</string>
     <string name="climb_creator_drafts_holds" formatted="false">%d Griffe</string>
     <string name="climb_creator_drafts_delete_title">Entwurf löschen?</string>
-    <string name="climb_creator_drafts_delete_message" formatted="false">„%s" wird endgültig entfernt.</string>
+    <string name="climb_creator_drafts_delete_message" formatted="false">„%s“ wird endgültig entfernt.</string>
     <string name="climb_creator_drafts_delete_action">Entwurf löschen</string>
     <string name="climb_creator_drafts_delete_confirm">Löschen</string>
     <string name="climb_creator_heatmap_toggle">Heatmap (häufige Griffe) ein/aus</string>
@@ -213,7 +213,7 @@
     <string name="onboarding_kilter_desc">Hast du einen Kilter Account? Importiere deine Begehungen und Projekte.</string>
     <string name="onboarding_kilter_credentials_hint">Deine Zugangsdaten werden nur für den Import verwendet und können danach verworfen werden.</string>
     <string name="onboarding_kilter_logged_in">Angemeldet als %s</string>
-    <string name="onboarding_kilter_preview">%d Einträge gefunden: %d Begehungen, %d Projekte (%d bereits vorhanden)</string>
+    <string name="onboarding_kilter_preview">%1$d Einträge gefunden: %2$d Begehungen, %3$d Projekte (%4$d bereits vorhanden)</string>
     <string name="onboarding_kilter_import_once">Einmalig importieren</string>
     <string name="onboarding_kilter_import_sync">Dauerhaft synchronisieren</string>
     <string name="onboarding_kilter_import_success">%d Einträge importiert!</string>
@@ -240,7 +240,7 @@
     <string name="action_delete">Löschen</string>
     <string name="action_back">Zurück</string>
     <string name="screen_error_boundary_title">Da ist etwas schiefgegangen</string>
-    <string name="screen_error_boundary_body" formatted="false">Der Screen „%1$s" hat einen unerwarteten Fehler — der Rest der App ist weiter benutzbar. Gehe zurück und versuche es erneut.</string>
+    <string name="screen_error_boundary_body" formatted="false">Der Screen „%1$s“ hat einen unerwarteten Fehler — der Rest der App ist weiter benutzbar. Gehe zurück und versuche es erneut.</string>
     <string name="action_refresh">Aktualisieren</string>
     <string name="action_done">Fertig</string>
     <string name="action_share">Freigeben</string>
@@ -645,7 +645,7 @@
     <string name="dashboard_error">Fehler</string>
     <string name="dashboard_log_boulder">Boulder loggen</string>
     <string name="dashboard_phase">Phase: %s</string>
-    <string name="dashboard_session_summary">%d Übungen, %d min</string>
+    <string name="dashboard_session_summary">%1$d Übungen, %2$d min</string>
     <string name="dashboard_to_weekplan">Zum Wochenplan</string>
 
     <!-- Stats -->
@@ -687,7 +687,7 @@
     <string name="board_log_attempt">Attempt loggen</string>
     <string name="board_browser_search_hint">Name oder Setter suchen…</string>
     <string name="board_browser_climbs_count">%d Climbs</string>
-    <string name="board_browser_climbs_loaded">%d Climbs (%d geladen)</string>
+    <string name="board_browser_climbs_loaded">%1$d Climbs (%2$d geladen)</string>
     <string name="board_browser_preparing_db">Climb-Datenbank wird vorbereitet…</string>
     <string name="board_browser_preparing_db_hint">Der erste Start nach einem Update kann auf langsameren Geräten ein, zwei Minuten dauern. Bitte die App offen lassen — beim Schließen beginnt die Vorbereitung später von vorn.</string>
     <string name="board_browser_empty_no_results">Keine Climbs passen zu den aktuellen Filtern</string>
@@ -1024,7 +1024,7 @@
     <string name="board_sync_db_synced">Datenbank synchronisiert</string>
     <string name="board_sync_last_sync">Letzter Sync: %s</string>
     <string name="board_sync_no_network_permission">CruxCoach hat keine Netzwerkberechtigung — erteile sie in den Systemeinstellungen unter Berechtigungen › Netzwerk.</string>
-    <string name="board_sync_overdue">Seit %1$d Tagen keine automatische Aktualisierung — tippe auf „Neu herunterladen".</string>
+    <string name="board_sync_overdue">Seit %1$d Tagen keine automatische Aktualisierung — tippe auf „Neu herunterladen“.</string>
     <string name="board_sync_deferred">Android hält die Synchronisierung zurück — prüfe die Akku-Optimierung für CruxCoach und versuche es erneut.</string>
     <string name="board_sync_redownload">Neu herunterladen</string>
     <string name="board_sync_status_not_loaded">nicht geladen</string>
@@ -1684,6 +1684,11 @@
     <string name="settings_board_model_title">Board-Größe</string>
     <string name="settings_board_model_change">Ändern</string>
     <string name="settings_board_model_not_configured">Nicht konfiguriert</string>
+    <string name="settings_moonboard_led_position_title">LED-Position</string>
+    <string name="settings_moonboard_led_position_desc">Wähle, welche vorhandenen LEDs den Griff markieren. Topgriffe und Positionen ohne obere LED bleiben von unten beleuchtet.</string>
+    <string name="settings_moonboard_led_position_below">Darunter</string>
+    <string name="settings_moonboard_led_position_above">Darüber</string>
+    <string name="settings_moonboard_led_position_both">Beide</string>
     <string name="settings_board_send_mode_title">Ans Board senden</string>
     <string name="settings_board_send_mode_desc">Lege getrennt fest, wie Boulder bei Controllern mit einer oder mehreren möglichen App-Verbindungen gesendet werden. Das gilt auch für Playlists: Bei „Sofort" geht jeder Boulder an die Wand, sobald du ihn erreichst, bei „Auf Tastendruck" bleibt die Wand, wie sie ist, bis du die Lampe antippst. Über einen Relay zu klettern zählt als mehrere App-Verbindungen.</string>
     <string name="settings_board_capacity_recheck">Board-Fähigkeiten neu ermitteln</string>
@@ -1899,15 +1904,15 @@
     <string name="settings_backup_restore">Backup wiederherstellen</string>
     <string name="settings_backup_restore_checking">Prüfe…</string>
     <string name="settings_backup_restore_dialog_title">Backup gefunden</string>
-    <string name="settings_backup_restore_dialog_body">Größe: %1$s.\nDeine lokalen Daten werden durch das Backup überschrieben.</string>
+    <string name="settings_backup_restore_dialog_body">Größe: %1$s.\nDas Backup wird mit deinen lokalen Daten zusammengeführt. Bereits vorhandene Einträge werden nicht dupliziert.</string>
     <string name="settings_backup_restore_confirm">Wiederherstellen</string>
     <string name="settings_backup_restore_cancel">Abbrechen</string>
     <string name="settings_backup_no_backup_found">Für diesen Account wurde kein Backup gefunden. Falls eines existieren sollte, prüfe deine Netzwerkverbindung und versuche es später erneut — die Backup-Server könnten kurzzeitig nicht erreichbar sein.</string>
-    <string name="settings_backup_blob_unreachable">Backup-Info gefunden, aber die verschlüsselten Backup-Daten sind auf keinem Speicher-Server mehr verfügbar (möglicherweise durch ein früheres Opt-out gelöscht, oder alle Server sind kurzzeitig offline). Die Info kannst du über „Remote-Backups löschen" entfernen. Bei Verdacht auf ein Netzwerkproblem später erneut versuchen.</string>
+    <string name="settings_backup_blob_unreachable">Backup-Info gefunden, aber die verschlüsselten Backup-Daten sind auf keinem Speicher-Server mehr verfügbar (möglicherweise durch ein früheres Opt-out gelöscht, oder alle Server sind kurzzeitig offline). Die Info kannst du über „Remote-Backups löschen“ entfernen. Bei Verdacht auf ein Netzwerkproblem später erneut versuchen.</string>
     <string name="settings_backup_check_decrypt_failed">Ein Backup wurde gefunden, aber nicht entschlüsselt — der Schlüssel passt anscheinend nicht.</string>
     <string name="settings_backup_check_error">Fehler beim Suchen nach einem Backup: %1$s</string>
     <string name="settings_backup_restore_failed">Backup konnte nicht wiederhergestellt werden.</string>
-    <string name="settings_backup_restored">Wiederhergestellt: %1$d Begehungen, %2$d Listen</string>
+    <string name="settings_backup_restored">Backup verarbeitet: %1$d Logbucheinträge, %2$d Listen. Bereits vorhandene Daten wurden nicht dupliziert.</string>
     <string name="settings_backup_restore_wait_import">Boards werden noch geladen — Wiederherstellen ist verfügbar, sobald das fertig ist.</string>
     <string name="settings_backup_succeeded">Backup erstellt.</string>
     <string name="settings_backup_failed">Backup fehlgeschlagen. Prüfe deine Verbindung und versuche es erneut.</string>
@@ -1924,7 +1929,7 @@
     <string name="backup_key_warning_view_account">Zum CruxCoach Account</string>
     <string name="backup_key_warning_acknowledged">Habe Schlüssel gesichert</string>
     <string name="backup_key_warning_ack_dialog_title">Backup-Schlüssel gesichert?</string>
-    <string name="backup_key_warning_ack_dialog_body">Mit „Bestätigen" sagst du zu, dass du deinen Schlüssel an einem Ort außerhalb dieses Geräts gespeichert hast — Passwort-Manager, Amber-Backup, Zettel, etc. Wir können ihn nicht wiederherstellen, wenn du dieses Gerät verlierst, ohne ihn vorher gesichert zu haben. Lokale Daten auf diesem Gerät sind nicht betroffen.</string>
+    <string name="backup_key_warning_ack_dialog_body">Mit „Bestätigen“ sagst du zu, dass du deinen Schlüssel an einem Ort außerhalb dieses Geräts gespeichert hast — Passwort-Manager, Amber-Backup, Zettel, etc. Wir können ihn nicht wiederherstellen, wenn du dieses Gerät verlierst, ohne ihn vorher gesichert zu haben. Lokale Daten auf diesem Gerät sind nicht betroffen.</string>
     <string name="backup_key_warning_ack_confirm">Bestätigen</string>
     <string name="backup_key_warning_ack_cancel">Noch nicht</string>
     <string name="backup_key_warning_post_onboarding_hint">Nach Abschluss des Onboardings findest du deinen Schlüssel unter Einstellungen → CruxCoach Account.</string>
@@ -1937,7 +1942,7 @@
     <!-- BackupErrorReason — Lokalisierung pro BackupException-Reason. -->
     <string name="backup_error_blob_upload_failed">Backup fehlgeschlagen: Kein Speicher-Server hat das verschlüsselte Backup akzeptiert (%1$d versucht).</string>
     <string name="backup_error_blob_upload_failed_with_detail">Backup fehlgeschlagen: Kein Speicher-Server hat das verschlüsselte Backup akzeptiert (%1$d versucht, %2$s).</string>
-    <string name="backup_error_amber_needs_auto_approve">Backup fehlgeschlagen: Amber muss auf „automatisch zustimmen" gestellt sein. Öffne Amber → CruxCoach und aktiviere die automatische Zustimmung, sonst kann das Hintergrund-Backup nicht signieren.</string>
+    <string name="backup_error_amber_needs_auto_approve">Backup fehlgeschlagen: Amber muss auf „automatisch zustimmen“ gestellt sein. Öffne Amber → CruxCoach und aktiviere die automatische Zustimmung, sonst kann das Hintergrund-Backup nicht signieren.</string>
     <string name="backup_error_blob_not_visible">Backup fehlgeschlagen: Server hat den Upload angenommen, aber die Daten sind anschließend nicht sichtbar (%1$d Server geprüft).</string>
     <string name="backup_error_pointer_not_durable">Backup fehlgeschlagen: Backup-Index wurde von keinem Server angenommen (%1$d versucht). Die Daten sind hochgeladen aber nicht angekündigt — bitte erneut versuchen, sobald die Server erreichbar sind.</string>
     <string name="backup_error_key_event_not_durable">Backup fehlgeschlagen: Verschlüsselungs-Schlüssel-Info wurde von keinem Server angenommen (%1$d versucht). Ohne sie kann das Backup auf keinem anderen Gerät wiederhergestellt werden — bitte erneut versuchen, sobald die Server erreichbar sind.</string>
@@ -1978,7 +1983,7 @@
     <string name="onboarding_nostr_key_hint_import_later">Du hast schon einen Nostr-Key? Du kannst ihn später unter Einstellungen → Nostr-Schlüssel importieren.</string>
     <string name="onboarding_nostr_backup_title">Backup deiner Daten</string>
     <string name="onboarding_nostr_backup_body">Auf deinem Gerät verschlüsselt, danach online auf mehreren öffentlichen Servern gespeichert. Nur du kannst es entschlüsseln. Voreinstellung: aus — jederzeit in den Einstellungen aktivierbar.</string>
-    <string name="onboarding_restore_dialog_body">Ein Backup wurde gefunden (%1$s).\n\nWiederherstellen ersetzt deine lokalen Daten durch den Inhalt des Backups.</string>
+    <string name="onboarding_restore_dialog_body">Ein Backup wurde gefunden (%1$s).\n\nDer Inhalt wird mit deinen lokalen Daten zusammengeführt. Bereits vorhandene Einträge werden nicht dupliziert.</string>
     <string name="onboarding_restore_progress_awaiting_board_sync">Warte auf den Download der Board-Datenbank… das kann bei frischer Installation einige Minuten dauern, bei langsamer Verbindung auch länger.</string>
     <string name="onboarding_restore_progress_active">Backup wird wiederhergestellt…</string>
 
@@ -1990,12 +1995,12 @@
     <string name="onboarding_backup_import_key_button">Nostr-Schlüssel importieren →</string>
     <string name="onboarding_backup_restore_checking">Suche nach Backup…</string>
     <string name="onboarding_backup_restore_none_for_key">Für diesen Account wurde kein Backup gefunden. Du kannst trotzdem weiter — beim nächsten Sync wird ein neues Backup erstellt.</string>
-    <string name="onboarding_backup_restore_waiting_for_key">Importiere deinen Nostr-Schlüssel, um fortzufahren, oder wechsle zurück zu „Neu starten".</string>
+    <string name="onboarding_backup_restore_waiting_for_key">Importiere deinen Nostr-Schlüssel, um fortzufahren, oder wechsle zurück zu „Neu starten“.</string>
     <string name="onboarding_restart_confirm_title">Nostr-Schlüssel importieren</string>
     <string name="onboarding_restart_confirm_body">CruxCoach startet nach dem Import kurz neu, um die lokale Verschlüsselung auf deinen Schlüssel umzustellen. Das Onboarding setzt danach automatisch mit der Wiederherstellung fort.</string>
     <string name="onboarding_kilter_step_title">Kilter-Logbook</string>
     <string name="onboarding_kilter_step_subtitle">Optional: Deine Sends und Versuche aus der offiziellen Kilter Board App übernehmen. Auch später in den Einstellungen möglich.</string>
-    <string name="onboarding_kilter_skip_hint">Optionaler Schritt. Tippe „Fertig" ohne Anmeldung — der Kilter-Import ist jederzeit in den Einstellungen nachholbar.</string>
+    <string name="onboarding_kilter_skip_hint">Optionaler Schritt. Tippe „Fertig“ ohne Anmeldung — der Kilter-Import ist jederzeit in den Einstellungen nachholbar.</string>
 
     <!-- Clipboard -->
     <string name="action_copy">Kopieren</string>
@@ -2079,20 +2084,20 @@
     <string name="onboarding_aurora_card_subtitle">Begehungen, Versuche und Playlists aus dem Aurora-JSON-Export übernehmen.</string>
     <string name="whatsnew_aurora_import_title">Aurora-Daten — jetzt importieren</string>
     <string name="whatsnew_aurora_import_body">0.1.4 importiert die JSON-Datei, die Aurora auf Datenexport-Anfrage zusendet. Deine alten Begehungen, Versuche und Playlists landen mit einem Tipp im CruxCoach-Logbuch.</string>
-    <string name="whatsnew_aurora_import_hint">Datei schon zur Hand? Auf „Jetzt importieren" tippen. Sonst bleibt der Importer in Einstellungen → Migration aus Aurora — Export anfragen, später wiederkommen.</string>
+    <string name="whatsnew_aurora_import_hint">Datei schon zur Hand? Auf „Jetzt importieren“ tippen. Sonst bleibt der Importer in Einstellungen → Migration aus Aurora — Export anfragen, später wiederkommen.</string>
     <string name="whatsnew_aurora_import_action_now">Jetzt importieren</string>
     <string name="whatsnew_aurora_import_action_later">Später</string>
 
     <!-- FEAT-027 MoonBoard-Support (0.2.0) — Headline -->
     <string name="whatsnew_moonboard_title">Neu in 0.2.0: MoonBoard + Aurora-Boards</string>
     <string name="whatsnew_moonboard_body">0.2.0 bringt zusätzlich zu Kilter den vollen MoonBoard-Support und die Aurora-Boards — Tension, Grasshopper, Decoy, So iLL und Touchstone. Durchsuche jeden Katalog mit denselben Filtern für Grad, Winkel und Setter und lass Boulder per Bluetooth auf deinem Board aufleuchten.</string>
-    <string name="whatsnew_moonboard_hint">Außerdem neu: eine weltweite Board-Standortkarte und ein „Finde deine Halle"-Board-Picker — beides in den Einstellungen.</string>
+    <string name="whatsnew_moonboard_hint">Außerdem neu: eine weltweite Board-Standortkarte und ein „Finde deine Halle“-Board-Picker — beides in den Einstellungen.</string>
     <string name="whatsnew_moonboard_action_now">Board wählen</string>
     <string name="whatsnew_moonboard_action_later">Später</string>
     <!-- 0.2.1-Highlights (konsolidiert; 0.2.0-Board-Recap als Hint) -->
     <string name="whatsnew_021_title">Neu in 0.2.1</string>
     <string name="whatsnew_021_body">• Bereichssuche — zieh in der Hold-Suche einen Rahmen aufs Board-Foto und finde alle Climbs, die komplett darin liegen.\n\n• Kilter-Playlists werden Listen — der Login mit deinem Kilter-Account importiert jetzt auch deine Playlists.\n\n• Jeden Climb teilen — jeder Climb bekommt einen Link, der direkt in CruxCoach öffnet.\n\n• Listen über alle Boards — gespeicherte Listen zeigen jetzt alle deine Climbs, mit Board-Badge und Board-Filter.</string>
-    <string name="whatsnew_021_hint">In 0.2.0 leicht zu übersehen: MoonBoard und die Aurora-Boards (Tension, Grasshopper u.&#160;a.), eine weltweite Board-Karte und ein „Finde deine Halle"-Picker — alles in den Einstellungen.</string>
+    <string name="whatsnew_021_hint">In 0.2.0 leicht zu übersehen: MoonBoard und die Aurora-Boards (Tension, Grasshopper u.&#160;a.), eine weltweite Board-Karte und ein „Finde deine Halle“-Picker — alles in den Einstellungen.</string>
     <string name="whatsnew_021_action_go">Alles klar</string>
     <string name="whatsnew_021_action_boards">Boards ansehen</string>
     <string name="whatsnew_022_title">Neu in 0.2.2</string>
@@ -2113,13 +2118,13 @@
     <!-- FEAT-015 Board-Locations-Map (0.2.0) -->
     <string name="whatsnew_board_map_title">Neu: Boards auf der Karte</string>
     <string name="whatsnew_board_map_body">0.2.0 stellt alle bekannten Kilter- und MoonBoard-Installationen weltweit auf eine interaktive Karte. Tippe das Karten-Icon neben der Griffsuche im Board-Browser, navigiere zum Marker, hol dir Adresse, Telefon, E-Mail — und einen Direktlink zu allen Climbs für das exakte Layout und die Größe dieses Boards.</string>
-    <string name="whatsnew_board_map_hint">Filter für Board-Marke, Layout, Land, öffentlich/privat, Verstellbarkeit und Größe sind dabei. „Passt zu meinem Board" reduziert die Marker auf Hallen, deren Hardware zu deinem konfigurierten Board passt.</string>
+    <string name="whatsnew_board_map_hint">Filter für Board-Marke, Layout, Land, öffentlich/privat, Verstellbarkeit und Größe sind dabei. „Passt zu meinem Board“ reduziert die Marker auf Hallen, deren Hardware zu deinem konfigurierten Board passt.</string>
     <string name="whatsnew_board_map_action_now">Karte öffnen</string>
     <string name="whatsnew_board_map_action_later">Später</string>
 
     <!-- FEAT-007 Phase 1 Gym-Picker (0.2.0) -->
     <string name="whatsnew_gym_picker_title">Neu: Board über die Halle wählen</string>
-    <string name="whatsnew_gym_picker_body">In Einstellungen → Board-Größe öffnet „Ändern" jetzt einen „Halle suchen"-Pfad. Halle suchen, Wand antippen, fertig — ohne den Product-Size-Code aus der Dropdown raten zu müssen.</string>
+    <string name="whatsnew_gym_picker_body">In Einstellungen → Board-Größe öffnet „Ändern“ jetzt einen „Halle suchen“-Pfad. Halle suchen, Wand antippen, fertig — ohne den Product-Size-Code aus der Dropdown raten zu müssen.</string>
     <string name="whatsnew_gym_picker_hint">Die manuelle Liste bleibt als Fallback für Setter und Homewall-Besitzer, die ihre Hardware ohnehin kennen.</string>
     <string name="whatsnew_gym_picker_action_now">Einstellungen öffnen</string>
     <string name="whatsnew_gym_picker_action_later">Später</string>
@@ -2349,8 +2354,6 @@
     <string name="playlist_stop_handover_confirm">Übergeben und verlassen</string>
     <string name="playlist_stop_end_for_all">Für alle beenden</string>
     <!-- Playlist-Transport: eine Playlist „spielt" nicht, sie schaltet weiter -->
-    <string name="playlist_pause_training_clock">Trainingszeit pausieren</string>
-    <string name="playlist_resume_training_clock">Fortsetzen</string>
     <string name="playlist_paused_banner">Training pausiert — das Board bleibt, wie es ist</string>
     <string name="playlist_generator_pyramid_shape">Form der Pyramide</string>
     <string name="playlist_pyramid_ascending">Aufbau</string>

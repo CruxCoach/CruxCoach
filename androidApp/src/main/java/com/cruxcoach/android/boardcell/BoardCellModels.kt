@@ -43,7 +43,7 @@ data class BoardPlaylistItemRef(
 )
 
 @Serializable
-enum class BoardPlaylistCommandKind { ADD, REMOVE, SET_CURRENT, NEXT, PREV, MOVE }
+enum class BoardPlaylistCommandKind { ADD, REMOVE, SET_CURRENT, NEXT, PREV, MOVE, RESEND }
 
 /** Minimal semantic preconditions needed to safely rebase a playlist command. */
 @Serializable

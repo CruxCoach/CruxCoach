@@ -1,4 +1,4 @@
-# CruxCoach 0.2.2 — 2026-08-11
+# CruxCoach 0.2.2 — 2026-08-15
 
 Your lists become training sessions you can play, the board connection adapts to the controller in front of you, two more MoonBoards join the list — and app updates no longer hang on a single download server.
 
@@ -13,6 +13,8 @@ Your lists become training sessions you can play, the board connection adapts to
 - **Updates no longer depend on one server** — CruxCoach asks every known source for the newest version and takes whichever has it, and that list is fetched at runtime, so a download server can be added or retired without anyone installing a new version first. An APK is still installed only after its checksum and signature match. You can also choose to have updates download or install themselves — off unless you turn it on.
 
 ## More improvements
+- **MoonBoard LED position** — choose below, above or both on every MoonBoard;
+  finish holds safely stay below, and below remains the default.
 - **Delete one board's data, not all of it** — both *delete board data* and *delete logbook data* let you pick which boards they apply to. Your own climbs and community climbs are always kept.
 - **Auto-disconnect can be switched off** — the board connection stays open until you disconnect it yourself.
 - **Keep a session to yourself** — when you start one, you decide whether nearby CruxCoach users can see and join it.

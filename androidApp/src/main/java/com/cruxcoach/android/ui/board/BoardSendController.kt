@@ -321,7 +321,11 @@ internal class BoardSendController(
                 val success = boardCellWriteGateway.project(
                     BoardProjection(climb.uuid, s.angle,
                         BoardProjectionPolicy.projectionSurvivesDisconnect(climb.brand))) {
-                        bleConnection.sendMoonBoardClimb(frames, variant)
+                        bleConnection.sendMoonBoardClimb(
+                            frames,
+                            variant,
+                            userPreferences.moonBoardLedMode.first(),
+                        )
                     }
                 Log.i(TAG, "sendMoonBoardToBoard: writes done success=$success variant=$variant")
                 state.update { it.copy(

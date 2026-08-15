@@ -11,6 +11,7 @@ import android.os.SystemClock
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ble.*
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -22,6 +23,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.withContext
 import com.cruxcoach.android.ble.QueueItem
 import com.cruxcoach.android.fips.FipsMeshRuntime
 import com.cruxcoach.android.fips.FipsRealmContext
@@ -57,6 +59,11 @@ class SessionGattBridge(
     private val boardStateManager: BoardStateManager,
     private val boardSessionManager: BoardSessionManager,
     private val shouldAdvertiseIndividualClimbs: () -> Boolean = { true },
+    private val hasHostingPermissions: () -> Boolean = {
+        BlePermissionHelper.hasAdvertisingPermission(context) &&
+            BlePermissionHelper.hasConnectionPermission(context)
+    },
+    private val hostSetupDispatcher: CoroutineDispatcher = Dispatchers.Default,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
     private val fipsMeshRuntime: FipsMeshRuntime? = null,
     private val boardCellManager: BoardCellManager? = null,
@@ -92,7 +99,7 @@ class SessionGattBridge(
     private var migrationJob: Job? = null
     private var joinJob: Job? = null
     private var hostJob: Job? = null
-    private var isSharing = false
+    @Volatile private var isSharing = false
     private var isRejoining = false
     private var meshRealmHeldForJoin = false
     private val commandGate = SessionCommandGate()
@@ -232,6 +239,17 @@ class SessionGattBridge(
         }
 
         queueManager.setVisibilityRequested(SessionVisibility.JOINABLE)
+
+        // A participant can receive BLUETOOTH_CONNECT without ADVERTISE and
+        // therefore be promoted successfully but be unable to host. Do not
+        // open and immediately tear down a GATT server in that state: some
+        // vendor BLE stacks stall openGattServer during the client-to-server
+        // handover, which can trigger an ANR when this runs on Main.
+        if (!hasHostingPermissions()) {
+            Log.w(TAG, "Cannot share: missing session-hosting permission")
+            queueManager.setVisibility(SessionVisibility.LOCAL_ONLY)
+            return
+        }
         commandGate.clear()
 
         // Before start(): Android hands a freshly opened server every device
@@ -305,6 +323,12 @@ class SessionGattBridge(
                 queueManager.encodeSessionInfo()
             )
             updateSessionAdvertising()
+        }
+        queueManager.onSessionInfoChanged = {
+            gattServer.notifyAll(
+                SessionGattUuids.SESSION_INFO,
+                queueManager.encodeSessionInfo(),
+            )
         }
 
         // Cancel previous host collectors to avoid duplicate processing after BT recovery
@@ -438,6 +462,7 @@ class SessionGattBridge(
             queueManager.onQueueChanged = null
             queueManager.onCurrentClimbChanged = null
             queueManager.onParticipantsChanged = null
+            queueManager.onSessionInfoChanged = null
             queueManager.onFirstQueueClimbSent = null
             advertiser.stopSessionAdvertising()
             advertiser.stopAdvertising()
@@ -728,8 +753,14 @@ class SessionGattBridge(
                         handleSessionEndedByHost()
                         return@collect
                     }
-                    queueManager.updateSessionInfo(info.hostName, info.participantCount,
-                        info.physicalBoardId, info.boardCellId)
+                    val accepted = queueManager.updateSessionInfo(
+                        info.hostName,
+                        info.participantCount,
+                        info.physicalBoardId,
+                        info.boardCellId,
+                        info.awaitingExplicitSend,
+                    )
+                    if (!accepted) return@collect
                     info.boardCellId?.let { cellId ->
                         val runtime = fipsMeshRuntime ?: return@let
                         val physical = info.physicalBoardId ?: return@let
@@ -869,6 +900,9 @@ class SessionGattBridge(
     fun sendMove(from: Int, to: Int) =
         sendParticipantCommand("move($from→$to)", SessionCommand.Move(from, to))
 
+    fun sendResend() =
+        sendParticipantCommand("resend", SessionCommand.Resend)
+
     /**
      * Fire a participant's control command at the host, and say so when it
      * does not go out.
@@ -955,6 +989,7 @@ class SessionGattBridge(
             SessionCommand.Next -> (onRemoteNext ?: queueManager::nextClimb).invoke()
             SessionCommand.Prev -> (onRemotePrev ?: queueManager::previousClimb).invoke()
             is SessionCommand.Move -> queueManager.moveClimb(cmd.from, cmd.to)
+            SessionCommand.Resend -> queueManager.resendCurrentClimb()
             is SessionCommand.Join, SessionCommand.Leave -> return null
         }
         val state = queueManager.state.value
@@ -970,6 +1005,7 @@ class SessionGattBridge(
             SessionCommand.Next -> (onRemoteNext ?: queueManager::nextClimb).invoke()
             SessionCommand.Prev -> (onRemotePrev ?: queueManager::previousClimb).invoke()
             is SessionCommand.Move -> queueManager.moveClimb(command.from, command.to)
+            SessionCommand.Resend -> queueManager.resendCurrentClimb()
             is SessionCommand.Join, SessionCommand.Leave -> Unit
         }
     }
@@ -1087,6 +1123,10 @@ class SessionGattBridge(
                 gattServer.cancelDevice(deviceAddress)
             }
             is SessionCommand.Move -> queueManager.moveClimb(cmd.from, cmd.to)
+            is SessionCommand.Resend -> {
+                Log.i(TAG, "event=transport_received action=resend")
+                queueManager.resendCurrentClimb()
+            }
         }
     }
 
@@ -1246,7 +1286,9 @@ class SessionGattBridge(
             )
             Log.d(TAG, "Migration: promoteToHost complete, role=${queueManager.state.value.role}, " +
                 "queue=${queueManager.state.value.queue.size}, calling startSharing()")
-            startSharing()
+            // Host migration already performs a GATT client-to-server role
+            // switch. Keep vendor Bluetooth stack latency off the UI thread.
+            withContext(hostSetupDispatcher) { startSharing() }
             Log.d(TAG, "Migration complete — now hosting with ${queueState.queue.size} queued climbs")
         }
     }

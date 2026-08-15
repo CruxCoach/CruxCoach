@@ -150,6 +150,32 @@ class PlaylistPlaybackCoordinatorTest {
     }
 
     @Test
+    fun `participant resend routes to host via GATT`() {
+        queueManager.setParticipantRole(1, "Host")
+        queueManager.applyRemoteState(0, listOf(QueueItem("a", 40)))
+        awaitState { it.isParticipant && it.currentClimb != null }
+
+        coordinator.resendCurrentClimb()
+
+        verify(exactly = 1) { gattBridge.sendResend() }
+    }
+
+    @Test
+    fun `permission retry republishes a blocked host session`() {
+        queueManager.loadPlaylist(
+            "Playlist",
+            listOf(QueueItem("a", 40)),
+            SessionVisibility.JOINABLE,
+        )
+        queueManager.setVisibility(SessionVisibility.LOCAL_ONLY)
+        awaitState { it.sharingBlocked }
+
+        coordinator.retrySharing()
+
+        verify(exactly = 1) { gattBridge.ensureHostSharing() }
+    }
+
+    @Test
     fun `stop as joinable host ends sharing and queue, stop as participant leaves`() {
         queueManager.loadPlaylist(
             "Playlist",
@@ -254,21 +280,6 @@ class PlaylistPlaybackCoordinatorTest {
         // countdown running, which booked rest time as training time.
         verify(exactly = 1) { boardSessionManager.cancelRestTimer() }
         verify(exactly = 0) { boardSessionManager.resumeSession(any()) }
-    }
-
-    @Test
-    fun `togglePause does nothing during a planned rest`() {
-        every { boardSessionManager.state } returns MutableStateFlow(
-            BoardSessionState(
-                isActive = true, isPaused = true, pauseReason = PauseReason.PLANNED_REST,
-            )
-        )
-        coordinator.togglePause()
-        // Pressing play mid-rest used to restart the session clock while the
-        // countdown kept running, so the remainder of the rest was recorded
-        // as training.
-        verify(exactly = 0) { boardSessionManager.resumeSession(any()) }
-        verify(exactly = 0) { boardSessionManager.cancelRestTimer() }
     }
 
     @Test
