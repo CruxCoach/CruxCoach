@@ -1,6 +1,7 @@
 package com.cruxcoach.android.competition
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.util.Log
 import com.cruxcoach.android.nostr.NostrPublicEventBuilder
 import com.cruxcoach.android.nostr.NostrRelayPool
@@ -22,6 +23,31 @@ internal fun competitionIntentLaneKey(pubkey: String, compId: String, scope: Str
 
 internal fun legacyCompetitionIntentLaneKey(pubkey: String, compId: String, scope: String): String =
     "${pubkey.take(8)}:$compId:$scope"
+
+internal fun migratedCompetitionIntentNonce(
+    store: SharedPreferences,
+    key: String,
+    legacyKey: String,
+): String? {
+    store.getString(key, null)?.let { return it }
+    val legacy = store.getString(legacyKey, null) ?: return null
+    store.edit().putString(key, legacy).remove(legacyKey).apply()
+    return legacy
+}
+
+internal fun migratedCompetitionIntentCreatedAt(
+    store: SharedPreferences,
+    key: String,
+    legacyKey: String,
+): Long {
+    val field = "$key:created_at"
+    if (store.contains(field)) return store.getLong(field, 0)
+    val legacyField = "$legacyKey:created_at"
+    if (!store.contains(legacyField)) return 0
+    return store.getLong(legacyField, 0).also {
+        store.edit().putLong(field, it).remove(legacyField).apply()
+    }
+}
 
 /**
  * A participant's requests — FEAT-058 §6.5, §8.2.
@@ -77,29 +103,12 @@ class CompetitionIntentPublisher @Inject constructor(
         laneMutexes.getOrPut(laneKey(compId, scope)) { Mutex() }
     }
 
-    private fun migratedNonce(key: String, legacyKey: String): String? {
-        store.getString(key, null)?.let { return it }
-        val legacy = store.getString(legacyKey, null) ?: return null
-        store.edit().putString(key, legacy).remove(legacyKey).apply()
-        return legacy
-    }
-
-    private fun migratedCreatedAt(key: String, legacyKey: String): Long {
-        val field = "$key:created_at"
-        if (store.contains(field)) return store.getLong(field, 0)
-        val legacyField = "$legacyKey:created_at"
-        if (!store.contains(legacyField)) return 0
-        return store.getLong(legacyField, 0).also {
-            store.edit().putLong(field, it).remove(legacyField).apply()
-        }
-    }
-
     private fun nonceFor(compId: String, op: String): String = synchronized(nonces) {
         // Keyed by the signer too: two identities on one device must not share
         // a nonce, or one would replace the other's request.
         val key = laneKey(compId, op)
         nonces.getOrPut(key) {
-            migratedNonce(key, legacyLaneKey(compId, op)) ?: run {
+            migratedCompetitionIntentNonce(store, key, legacyLaneKey(compId, op)) ?: run {
                 val fresh = (0 until 4).joinToString("") { "%02x".format(Random.nextInt(256)) }
                 store.edit().putString(key, fresh).apply()
                 fresh
@@ -269,7 +278,8 @@ class CompetitionIntentPublisher @Inject constructor(
     /** Seed a lane from an exact, trusted relay restoration after restart. */
     fun observeIntent(compId: String, scope: String, createdAt: Long) = synchronized(createdAtFloors) {
         val key = laneKey(compId, scope)
-        val prior = createdAtFloors[key] ?: migratedCreatedAt(key, legacyLaneKey(compId, scope))
+        val prior = createdAtFloors[key] ?:
+            migratedCompetitionIntentCreatedAt(store, key, legacyLaneKey(compId, scope))
         if (createdAt > prior) {
             createdAtFloors[key] = createdAt
             store.edit().putLong("$key:created_at", createdAt).apply()
@@ -279,7 +289,8 @@ class CompetitionIntentPublisher @Inject constructor(
     private fun nextCreatedAt(compId: String, scope: String, now: Long): Long =
         synchronized(createdAtFloors) {
             val key = laneKey(compId, scope)
-            val prior = createdAtFloors[key] ?: migratedCreatedAt(key, legacyLaneKey(compId, scope))
+            val prior = createdAtFloors[key] ?:
+                migratedCompetitionIntentCreatedAt(store, key, legacyLaneKey(compId, scope))
             CompetitionProtocol.nextReplaceableCreatedAt(now, prior)
         }
 
