@@ -109,8 +109,13 @@ internal fun competitionDiscoveryRelayScope(
 class CompetitionRelayClient internal constructor(
     private val relayPool: NostrRelayPool,
     private val scopeResolver: (List<String>, List<RelayConfig>) -> List<RelayConfig>,
+    private val queryTimeoutMs: Long = BACKFILL_TIMEOUT_MS,
 ) {
-    @Inject constructor(relayPool: NostrRelayPool) : this(relayPool, ::competitionRelayScope)
+    @Inject constructor(relayPool: NostrRelayPool) : this(
+        relayPool,
+        ::competitionRelayScope,
+        BACKFILL_TIMEOUT_MS,
+    )
 
     /** What a screen needs, all of it derived, none of it stored twice. */
     data class Snapshot(
@@ -185,7 +190,7 @@ class CompetitionRelayClient internal constructor(
                 // moments ago. Explicit address lookup must bypass global dedup.
                 val events = if (strict) relayPool.fetchStoredComplete(filter, scope)
                 else relayPool.fetchStored(filter, scope)
-                withTimeoutOrNull(BACKFILL_TIMEOUT_MS) {
+                withTimeoutOrNull(queryTimeoutMs) {
                     events.collect { json ->
                         val event = runCatching { Event.fromJson(json) }.getOrNull() ?: return@collect
                         if (!accepts(event, organizerPubkey)) return@collect
@@ -336,7 +341,7 @@ class CompetitionRelayClient internal constructor(
                 // Intents are not authority state, but a complete inbox is
                 // needed before organizer/public request projections are used.
                 val intentHistoryComplete = runCatching {
-                    withTimeoutOrNull(BACKFILL_TIMEOUT_MS) {
+                    withTimeoutOrNull(queryTimeoutMs) {
                         coroutineScope {
                             intentFilters(address).map { intentFilter ->
                                 async {
@@ -393,7 +398,7 @@ class CompetitionRelayClient internal constructor(
         var firstSeq = 1
         while (firstSeq <= MAX_LOG_SEQUENCE) {
             val wanted = logPageDTags(competition.compId, firstSeq)
-            val completed = withTimeoutOrNull(BACKFILL_TIMEOUT_MS) {
+            val completed = withTimeoutOrNull(queryTimeoutMs) {
                 relayPool.fetchStoredComplete(
                     logPageFilter(competition.authority, address, wanted), relayScope,
                 ).collect { json ->
@@ -425,7 +430,7 @@ class CompetitionRelayClient internal constructor(
         var attempts = 0
         while (attempts < MAX_GAP_RECOVERY_PER_EVENT) {
             val missing = boundedMissingSequence(entrySequences()) ?: return
-            val completed = withTimeoutOrNull(BACKFILL_TIMEOUT_MS) {
+            val completed = withTimeoutOrNull(queryTimeoutMs) {
                 relayPool.fetchStoredComplete(
                     logPageFilter(
                         competition.authority,
@@ -528,7 +533,7 @@ class CompetitionRelayClient internal constructor(
     ): OwnIntent {
         var newest: CompetitionProtocol.ParsedIntent.Valid? = null
         val complete = runCatching {
-            withTimeoutOrNull(BACKFILL_TIMEOUT_MS) {
+            withTimeoutOrNull(queryTimeoutMs) {
                 relayPool.fetchStoredComplete(
                     ownIntentFilter(
                         competition.compId, competition.authority, organizerPubkey, pubkey, op, nonce,

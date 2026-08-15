@@ -21,11 +21,52 @@ import okhttp3.WebSocketListener
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** Runtime transport evidence; CompetitionRelayBackfillPolicyTest pins client call ordering. */
 class CompetitionRelayHandoffIntegrationTest {
+    @Test
+    fun `silent connected definition relay is unreachable rather than not found`() = runBlocking {
+        val requestSeen = CompletableDeferred<Unit>()
+        val serverSocket = AtomicReference<WebSocket>()
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+                override fun onOpen(webSocket: WebSocket, response: Response) {
+                    serverSocket.set(webSocket)
+                }
+
+                override fun onMessage(webSocket: WebSocket, text: String) {
+                    val request = Json.parseToJsonElement(text).jsonArray
+                    if (request[0].jsonPrimitive.content == "REQ") requestSeen.complete(Unit)
+                    // Deliberately remain connected without EVENT or EOSE.
+                }
+            }))
+            server.start()
+            val http = OkHttpClient()
+            val pool = NostrRelayPool(http)
+            val relayUrl = server.url("/").toString().replaceFirst("http", "ws")
+            val competition = CompetitionRelayClient(pool, ::competitionRelayScope, queryTimeoutMs = 250)
+
+            val loaded = competition.load(
+                organizerPubkey = "aa".repeat(32),
+                compId = "ad57d38ca87ecbc5",
+                nowSeconds = 1_789_020_000,
+                relayHints = listOf(relayUrl),
+            )
+            withTimeout(2_000) { requestSeen.await() }
+            assertFalse(loaded)
+            assertEquals(CompetitionRelayClient.Problem.UNREACHABLE, competition.snapshot.value.problem)
+            assertTrue(relayUrl in pool.connectedRelayUrls.value)
+
+            pool.closeAll()
+            serverSocket.get()?.close(1000, "test complete")
+            http.dispatcher.executorService.shutdown()
+            http.connectionPool.evictAll()
+        }
+    }
+
     @Test
     fun `duplicate EOSE from one relay cannot complete a strict two relay walk`() = runBlocking {
         val firstArmed = CompletableDeferred<Unit>()
