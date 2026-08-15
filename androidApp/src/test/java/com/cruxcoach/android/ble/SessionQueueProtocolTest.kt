@@ -4,6 +4,13 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SessionQueueProtocolTest {
+    @Test
+    fun `command result round trips for GATT feedback`() {
+        SessionCommandResult.entries.forEach { result ->
+            assertEquals(result, (SessionQueueProtocol.decodeEvent(
+                SessionQueueProtocol.encodeEventCommandResult(result)) as SessionEvent.CommandResult).result)
+        }
+    }
 
     // ===== Command roundtrip tests =====
 

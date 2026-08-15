@@ -33,6 +33,30 @@ data class BoardPlaylistState(
     val items: List<Pair<String, Int>> = emptyList(),
 )
 
+/** Identifies one occurrence without relying on an index that may have moved. */
+@Serializable
+data class BoardPlaylistItemRef(
+    val climbUuid: String,
+    val angle: Int,
+    val occurrence: Int,
+    val totalAtBase: Int,
+)
+
+@Serializable
+enum class BoardPlaylistCommandKind { ADD, REMOVE, SET_CURRENT, NEXT, PREV, MOVE }
+
+/** Minimal semantic preconditions needed to safely rebase a playlist command. */
+@Serializable
+data class BoardPlaylistCommandContext(
+    val sessionId: Int?,
+    val kind: BoardPlaylistCommandKind,
+    val subject: BoardPlaylistItemRef? = null,
+    val before: BoardPlaylistItemRef? = null,
+    val after: BoardPlaylistItemRef? = null,
+    val expectedCurrent: BoardPlaylistItemRef? = null,
+    val expectedTarget: BoardPlaylistItemRef? = null,
+)
+
 @Serializable
 enum class BoardCellAvailability {
     SETTLING, ACTIVE, FROZEN_NEEDS_CONTROLLER, FROZEN_NEEDS_SNAPSHOT,
@@ -71,12 +95,17 @@ data class BoardCellSnapshot(
     val projection: BoardProjection? = null,
     val projectionKnown: Boolean = true,
     val playlist: BoardPlaylistState = BoardPlaylistState(),
+    /** Advances only for playlist mutations; heartbeats cannot stale UI commands. */
+    val playlistRevision: Long = 0,
+    /** Bounded handover-safe idempotency window for retried commands. */
+    val recentCommandIds: List<String> = emptyList(),
     val availability: BoardCellAvailability = BoardCellAvailability.ACTIVE,
     val handover: BoardCellHandover? = null,
     val stateHash: String = "",
 ) {
     fun withComputedHash(): BoardCellSnapshot = copy(stateHash = BoardCellHash.compute(this))
-    fun hasValidHash(): Boolean = stateHash == BoardCellHash.compute(copy(stateHash = ""))
+    fun hasValidHash(): Boolean = stateHash == BoardCellHash.compute(copy(stateHash = "")) ||
+        (playlistRevision == 0L && stateHash == BoardCellHash.computeLegacyV2(copy(stateHash = "")))
 }
 
 @Serializable
@@ -130,7 +159,8 @@ data class BoardCellClaim(
 
 @Serializable
 enum class BoardCommandStatus {
-    ACCEPTED, COMMITTED, SUPERSEDED, REJECTED_STALE, NOT_CONTROLLER, BOARD_WRITE_FAILED,
+    ACCEPTED, COMMITTED, SUPERSEDED, REJECTED_STALE, REJECTED_CONFLICT,
+    NOT_CONTROLLER, BOARD_WRITE_FAILED,
 }
 
 @Serializable
@@ -162,9 +192,12 @@ data class BoardWriteIntent(
 )
 
 internal object BoardCellHash {
-    fun compute(snapshot: BoardCellSnapshot): String {
+    fun compute(snapshot: BoardCellSnapshot): String = compute(snapshot, "board-cell-v3", true)
+    fun computeLegacyV2(snapshot: BoardCellSnapshot): String = compute(snapshot, "board-cell-v2", false)
+
+    private fun compute(snapshot: BoardCellSnapshot, schema: String, includePlaylistRevision: Boolean): String {
         val canonical = buildString {
-            append("board-cell-v2\n").append(snapshot.cellId.value).append('\n')
+            append(schema).append('\n').append(snapshot.cellId.value).append('\n')
             append(snapshot.physicalBoardId.value).append('\n').append(snapshot.epoch).append('\n')
             append(snapshot.sequence).append('\n').append(snapshot.controllerId).append('\n')
             append(snapshot.controllerTerm).append('\n').append(snapshot.controllerHeartbeat).append('\n')
@@ -176,6 +209,8 @@ internal object BoardCellHash {
             append("pk:${snapshot.projectionKnown}\n")
             append("s:${snapshot.playlist.sessionId ?: "-"}|${snapshot.playlist.currentIndex}\n")
             snapshot.playlist.items.forEach { append("q:${it.first}|${it.second}\n") }
+            if (includePlaylistRevision) append("pr:${snapshot.playlistRevision}\n")
+            if (includePlaylistRevision) snapshot.recentCommandIds.forEach { append("ci:").append(it).append('\n') }
             append("a:${snapshot.availability.name}\n")
             snapshot.handover?.let {
                 append("h:${it.transferId}|${it.sourceControllerId}|${it.targetControllerId}|${it.sourceTerm}|${it.targetTerm}|${it.baseSequence}|${it.baseHash}|${it.phase}|${it.readinessProof ?: "-"}\n")

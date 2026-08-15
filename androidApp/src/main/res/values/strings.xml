@@ -1369,6 +1369,9 @@
     <string name="board_queue_participants">Participants (%d)</string>
     <string name="board_queue_title">Session</string>
     <string name="board_queue_you_host">You (Host)</string>
+    <string name="board_queue_command_conflict">The session changed at the same time. It is up to date now — please try your change again.</string>
+    <string name="board_queue_command_unavailable">Could not send the change. Check the nearby connection and try again.</string>
+    <string name="board_queue_command_failed">The controller could not apply the change. The shared session was refreshed.</string>
     <string name="board_random_climb">Random</string>
     <string name="board_rest_timer_finished">Rest finished!</string>
     <string name="board_rest_timer_ready">Ready for the next attempt!</string>

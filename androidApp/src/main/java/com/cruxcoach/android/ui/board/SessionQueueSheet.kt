@@ -28,6 +28,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.SessionRole
+import com.cruxcoach.android.data.PlaylistCommandFeedbackKind
 import com.cruxcoach.android.ui.theme.OrangeAccent
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -43,6 +44,20 @@ fun SessionQueueSheet(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val climbInfos by viewModel.climbInfos.collectAsStateWithLifecycle()
+    val pendingCommands by viewModel.pendingCommandCount.collectAsStateWithLifecycle()
+    val commandSnackbar = remember { SnackbarHostState() }
+    val conflictText = stringResource(R.string.board_queue_command_conflict)
+    val unavailableText = stringResource(R.string.board_queue_command_unavailable)
+    val failedText = stringResource(R.string.board_queue_command_failed)
+    LaunchedEffect(viewModel) {
+        viewModel.commandFeedback.collect { feedback ->
+            commandSnackbar.showSnackbar(when (feedback.kind) {
+                PlaylistCommandFeedbackKind.CONFLICT -> conflictText
+                PlaylistCommandFeedbackKind.UNAVAILABLE -> unavailableText
+                PlaylistCommandFeedbackKind.FAILED -> failedText
+            })
+        }
+    }
 
     // Drag-reorder state (only used when canEdit)
     var draggedFrom by remember { mutableIntStateOf(-1) }
@@ -96,6 +111,12 @@ fun SessionQueueSheet(
             }
 
             Spacer(Modifier.height(16.dp))
+
+            SnackbarHost(commandSnackbar)
+            if (pendingCommands > 0) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                Spacer(Modifier.height(8.dp))
+            }
 
             // Navigation controls (only for editors)
             if (canEdit && state.queue.isNotEmpty()) {

@@ -156,10 +156,11 @@ class SessionQueueManager(
             scope.launch {
                 state.distinctUntilChangedBy { Triple(it.role, it.queue, it.currentIndex) }.collect { value ->
                     if (value.role == SessionRole.HOST && value.boardCellId != null) {
-                        manager.replacePlaylist(BoardPlaylistState(
+                        val playlist = BoardPlaylistState(
                             value.sessionId, value.currentIndex,
                             value.queue.map { it.climbUuid to it.angle },
-                        ))
+                        )
+                        if (manager.snapshot()?.playlist != playlist) manager.replacePlaylist(playlist)
                     }
                 }
             }
@@ -349,6 +350,27 @@ class SessionQueueManager(
         if (_state.value.queue.size == 1) {
             sendCurrentClimbToBoard()
         }
+    }
+
+    /** Aligns the controller's mutable UI queue with its canonical log before rebasing a command. */
+    internal fun alignHostQueue(canonical: BoardPlaylistState) {
+        if (_state.value.role != SessionRole.HOST) return
+        val old = _state.value.queue
+        val used = BooleanArray(old.size)
+        val aligned = canonical.items.map { pair ->
+            val index = old.indices.firstOrNull { !used[it] &&
+                old[it].angle == pair.second &&
+                old[it].climbUuid.replace("-", "").equals(pair.first.replace("-", ""), true) }
+            if (index != null) {
+                used[index] = true
+                old[index]
+            } else QueueItem(pair.first, pair.second)
+        }
+        _state.update { it.copy(
+            sessionId = canonical.sessionId ?: it.sessionId,
+            queue = aligned,
+            currentIndex = canonical.currentIndex,
+        ) }
     }
 
     fun removeClimb(index: Int) {

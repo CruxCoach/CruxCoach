@@ -272,6 +272,47 @@ class BoardCellCoordinatorTest {
         assertEquals(BoardCommandStatus.REJECTED_STALE, store.acks.getValue("command-second").status)
     }
 
+    @Test fun `playlist revision ignores heartbeat and permits semantic rebase`() = runTest {
+        val board = PhysicalBoardId("board-playlist-revision"); val store = MemoryStore()
+        val (coordinator) = settled("controller", board, store = store, now = 100)
+        val initial = BoardPlaylistState(7, 0, listOf("a" to 40))
+        assertNotNull(coordinator.replacePlaylist(board, initial, 101, "initial"))
+        val baseRevision = coordinator.snapshot(board)!!.playlistRevision
+        coordinator.heartbeat(board, 102)
+
+        val rebased = coordinator.applyPlaylistCommand(board, 103, "semantic-add",
+            baseRevision) { current, exact ->
+            assertTrue(exact) // sequence changed, playlist revision did not
+            current.copy(items = current.items + ("b" to 40))
+        }
+
+        assertNotNull(rebased)
+        assertEquals(listOf("a" to 40, "b" to 40), coordinator.snapshot(board)!!.playlist.items)
+        assertEquals(baseRevision + 1, coordinator.snapshot(board)!!.playlistRevision)
+    }
+
+    @Test fun `two commands from one playlist revision may both commit after safe rebase`() = runTest {
+        val board = PhysicalBoardId("board-safe-rebase"); val store = MemoryStore()
+        val (coordinator) = settled("controller", board, store = store, now = 100)
+        assertNotNull(coordinator.replacePlaylist(board,
+            BoardPlaylistState(7, 0, listOf("a" to 40)), 101, "initial-safe-rebase"))
+        val base = coordinator.snapshot(board)!!.playlistRevision
+
+        assertNotNull(coordinator.applyPlaylistCommand(board, 102, "add-b", base) { state, _ ->
+            state.copy(items = state.items + ("b" to 40))
+        })
+        assertNotNull(coordinator.applyPlaylistCommand(board, 103, "add-c", base) { state, exact ->
+            assertFalse(exact)
+            state.copy(items = state.items + ("c" to 40))
+        })
+
+        assertEquals(listOf("a" to 40, "b" to 40, "c" to 40),
+            coordinator.snapshot(board)!!.playlist.items)
+        assertEquals(BoardCommandStatus.COMMITTED, store.acks.getValue("add-b").status)
+        assertEquals(BoardCommandStatus.COMMITTED, store.acks.getValue("add-c").status)
+        assertTrue(coordinator.snapshot(board)!!.recentCommandIds.containsAll(listOf("add-b", "add-c")))
+    }
+
     @Test fun `participant can never write physical board directly`() = runTest {
         val board = PhysicalBoardId("board-participant")
         val (source) = settled("source", board, now = 100)

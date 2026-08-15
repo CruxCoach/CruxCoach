@@ -68,11 +68,16 @@ discovery or relays for BoardCell state.
   gate. Timeout/abort is allowed only before commit. The old host tears down
   only after `COMPLETED`; either side resumes its persisted phase after restart.
 - Every command has a durable `commandId` result (`ACCEPTED`, `COMMITTED`,
-  `SUPERSEDED`, `REJECTED_STALE`, `NOT_CONTROLLER` or `BOARD_WRITE_FAILED`).
-  Base-sequence validation, the local queue mutation and the complete playlist
-  commit share the cell serializer; a stale burst command never mutates UI state.
-  The controller mutex orders concurrent Climb/Next/SetCurrent requests; a
-  second request with the same base sequence is stale and never reaches the board.
+  `SUPERSEDED`, `REJECTED_STALE`, `REJECTED_CONFLICT`, `NOT_CONTROLLER` or
+  `BOARD_WRITE_FAILED`). Playlist commands use a separate playlist revision,
+  so heartbeat traffic does not invalidate them. Semantic item/current/anchor
+  preconditions let the controller rebase independent concurrent changes;
+  conflicting navigation or reorder intent is rejected visibly. Validation,
+  optional rebase, local queue mutation and the complete playlist commit share
+  the cell serializer. Missing terminal ACKs retry idempotently with bounded
+  backoff. Bounded ingress applies backpressure (or rejects the GATT write)
+  rather than silently dropping an accepted burst, and the queue UI exposes
+  pending work plus targeted conflict/failure feedback.
 - A crash after physical success but before canonical commit cannot be read
   back semantically on current board protocols. Recovery marks projection
   unknown and freezes until an explicit operator reproject succeeds.
@@ -90,7 +95,8 @@ discovery or relays for BoardCell state.
   no scope, so they are authoritative only while at most one board is known.
 - GATT session info has a backwards-compatible optional BoardCell extension.
   Once admitted, participant queue commands prefer authenticated FIPS and carry
-  physical-board/cell/epoch/term/base-sequence scope and a command ID; the canonical playlist snapshot
+  physical-board/cell/epoch/term/playlist-revision scope, semantic preconditions
+  and a command ID; the canonical playlist snapshot
   drives reconnect and participant catch-up. GATT remains admission/API-28
   fallback rather than the post-join data plane.
 - Competition definitions, intents and authority-chain events retain existing

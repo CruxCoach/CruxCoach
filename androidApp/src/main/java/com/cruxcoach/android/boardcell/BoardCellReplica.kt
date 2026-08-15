@@ -95,7 +95,10 @@ class BoardCellReplica(val localMemberId: String, initial: BoardCellSnapshot? = 
                         BoardCellAvailability.ACTIVE else current.availability,
                 )
                 is BoardCellEvent.ProjectUnknown -> current.copy(projection = null, projectionKnown = false)
-                is BoardCellEvent.PlaylistReplaced -> current.copy(playlist = event.playlist)
+                is BoardCellEvent.PlaylistReplaced -> current.copy(
+                    playlist = event.playlist,
+                    playlistRevision = current.playlistRevision + 1,
+                )
                 is BoardCellEvent.MemberJoined -> current.copy(members = current.members + event.memberId)
                 is BoardCellEvent.ControllerHeartbeat -> current.copy(controllerHeartbeat = event.heartbeat)
                 is BoardCellEvent.HandoverPrepared -> current.copy(handover = event.value)
@@ -122,8 +125,20 @@ class BoardCellReplica(val localMemberId: String, initial: BoardCellSnapshot? = 
                     members = current.members + event.resolvedMembers,
                     projection = null, projectionKnown = false,
                     availability = BoardCellAvailability.FROZEN_WRITE_RECOVERY, handover = null)
-            }.copy(sequence = sequence, stateHash = "")
-            return next.withComputedHash()
+            }
+            val commandId = when (event) {
+                is BoardCellEvent.ProjectCommitted -> event.commandId
+                is BoardCellEvent.ProjectUnknown -> event.commandId
+                is BoardCellEvent.PlaylistReplaced -> event.commandId
+                is BoardCellEvent.ProjectionRecoveryRequired -> event.commandId
+                else -> null
+            }
+            val withDedup = if (commandId == null) next else next.copy(
+                recentCommandIds = (next.recentCommandIds.filterNot { it == commandId } + commandId)
+                    .takeLast(256),
+            )
+            val ordered = withDedup.copy(sequence = sequence, stateHash = "")
+            return ordered.withComputedHash()
         }
     }
 }

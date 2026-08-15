@@ -15,9 +15,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -47,17 +47,19 @@ class BoardCellManager @Inject constructor(
     private val boardRealmAvailable = AtomicBoolean(false)
     private val _snapshots = MutableStateFlow<BoardCellSnapshot?>(null)
     val snapshots = _snapshots.asStateFlow()
-    private val _sessionCommands = MutableSharedFlow<InboundSessionCommand>(extraBufferCapacity = 64)
-    val sessionCommands = _sessionCommands.asSharedFlow()
-    private val _commandAcks = MutableSharedFlow<BoardCommandAck>(extraBufferCapacity = 64)
-    val commandAcks = _commandAcks.asSharedFlow()
+    // The suspendable transport callback provides real backpressure: after
+    // ACCEPTED no command can disappear, while a hostile peer cannot grow RAM.
+    private val sessionCommandChannel = Channel<InboundSessionCommand>(256)
+    val sessionCommands = sessionCommandChannel.receiveAsFlow()
+    private val commandAckChannel = Channel<BoardCommandAck>(256)
+    val commandAcks = commandAckChannel.receiveAsFlow()
     @Volatile private var handoverLifecycle: BoardCellHandoverLifecycle? = null
     private val handledHandoverPhase = mutableSetOf<String>()
 
     init {
         current = this
-        meshTransport.onSessionCommand = { _sessionCommands.tryEmit(it) }
-        meshTransport.onCommandAck = { _, ack -> _commandAcks.tryEmit(ack) }
+        meshTransport.onSessionCommand = { sessionCommandChannel.send(it) }
+        meshTransport.onCommandAck = { _, ack -> commandAckChannel.send(ack) }
         scope.launch {
             runtime.messages.collect { message ->
                 meshTransport.receive(message.senderNpub, message.payload, monotonicNow())
@@ -139,19 +141,27 @@ class BoardCellManager @Inject constructor(
         }
     }
 
-    fun sendSessionCommand(payload: ByteArray, commandId: String = UUID.randomUUID().toString()): Boolean {
-        if (!::coordinator.isInitialized || !BoardCellPlatformPolicy.meshAvailable(Build.VERSION.SDK_INT)) return false
+    fun sendSessionCommand(payload: ByteArray, context: BoardPlaylistCommandContext?,
+        commandId: String = UUID.randomUUID().toString()): String? {
+        if (!::coordinator.isInitialized || !BoardCellPlatformPolicy.meshAvailable(Build.VERSION.SDK_INT)) return null
+        val snapshot = snapshot() ?: return null
+        return commandId.takeIf { meshTransport.sendSessionCommand(snapshot, commandId, payload, context) }
+    }
+
+    fun retrySessionCommand(payload: ByteArray, context: BoardPlaylistCommandContext?,
+        commandId: String, basePlaylistRevision: Long): Boolean {
         val snapshot = snapshot() ?: return false
-        return meshTransport.sendSessionCommand(snapshot, commandId, payload)
+        return meshTransport.sendSessionCommand(snapshot, commandId, payload, context,
+            basePlaylistRevision)
     }
 
     suspend fun commitSessionCommand(
         command: InboundSessionCommand,
-        applyCommand: () -> BoardPlaylistState?,
+        applyCommand: (BoardPlaylistState, Boolean) -> BoardPlaylistState?,
     ) {
         val board = BoardCellScopeRegistry.selected.value ?: return
-        val committed = coordinator.replacePlaylistAfterValidation(
-            board, monotonicNow(), command.commandId, command.baseSequence, applyCommand)
+        val committed = coordinator.applyPlaylistCommand(
+            board, monotonicNow(), command.commandId, command.basePlaylistRevision, applyCommand)
         val snapshot = coordinator.snapshot(board) ?: return
         val ack = durableStore.commandAck(command.commandId) ?: BoardCommandAck(
             commandId = command.commandId,
@@ -167,6 +177,19 @@ class BoardCellManager @Inject constructor(
         if (durableStore.commandAck(command.commandId) == null) durableStore.recordAck(ack)
         meshTransport.publishCommandAck(command.senderId, ack)
         refreshSelected()
+    }
+
+    suspend fun commitLocalSessionCommand(
+        commandId: String,
+        basePlaylistRevision: Long,
+        applyCommand: (BoardPlaylistState, Boolean) -> BoardPlaylistState?,
+    ): BoardCommandAck? {
+        val board = writableBoard() ?: return null
+        coordinator.applyPlaylistCommand(board, monotonicNow(), commandId,
+            basePlaylistRevision, applyCommand)
+        val ack = durableStore.commandAck(commandId)
+        refreshSelected()
+        return ack
     }
 
     fun bindPhysicalBoardFallback(observedAddress: String, durableBindingId: String) {

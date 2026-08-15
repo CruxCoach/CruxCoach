@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.util.Log
+import android.os.SystemClock
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ble.*
 import kotlinx.coroutines.CoroutineScope
@@ -15,11 +16,22 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import com.cruxcoach.android.ble.QueueItem
 import com.cruxcoach.android.fips.FipsMeshRuntime
 import com.cruxcoach.android.fips.FipsRealmContext
 import com.cruxcoach.android.boardcell.BoardCellManager
 import com.cruxcoach.android.boardcell.BoardCellHandoverLifecycle
+import com.cruxcoach.android.boardcell.BoardCommandStatus
+import com.cruxcoach.android.boardcell.BoardPlaylistState
+
+enum class PlaylistCommandFeedbackKind { CONFLICT, UNAVAILABLE, FAILED }
+data class PlaylistCommandFeedback(val kind: PlaylistCommandFeedbackKind, val action: String)
 
 /**
  * Bridges [SessionQueueManager] with BLE GATT for shared sessions.
@@ -84,6 +96,19 @@ class SessionGattBridge(
     private var isRejoining = false
     private var meshRealmHeldForJoin = false
     private val commandGate = SessionCommandGate()
+    private data class PendingMeshCommand(
+        val label: String,
+        val payload: ByteArray,
+        val context: com.cruxcoach.android.boardcell.BoardPlaylistCommandContext,
+        val basePlaylistRevision: Long,
+        @Volatile var attempts: Int = 0,
+        @Volatile var retryAtMs: Long = SystemClock.elapsedRealtime() + 2_000,
+    )
+    private val pendingMeshCommands = ConcurrentHashMap<String, PendingMeshCommand>()
+    private val _pendingCommandCount = MutableStateFlow(0)
+    val pendingCommandCount = _pendingCommandCount.asStateFlow()
+    private val _commandFeedback = MutableSharedFlow<PlaylistCommandFeedback>(extraBufferCapacity = 64)
+    val commandFeedback = _commandFeedback.asSharedFlow()
     /** SessionId of the host we just left — used to ignore stale advertisements during migration. */
     private var lastHostSessionId: Int = 0
 
@@ -96,6 +121,14 @@ class SessionGattBridge(
         BoardControllerProfiles.forBoard(bleConnection.connectedBoard).connectionCapacity
 
     init {
+        scope.launch {
+            queueManager.state.collect {
+                if (!it.isActive) {
+                    pendingMeshCommands.clear()
+                    _pendingCommandCount.value = 0
+                }
+            }
+        }
         boardCellManager?.installHandoverLifecycle(BoardCellHandoverLifecycle(
             prepareTarget = {
                 if (queueManager.state.value.role != SessionRole.HOST) {
@@ -139,6 +172,43 @@ class SessionGattBridge(
             scope.launch {
                 manager.sessionCommands.collect { command ->
                     handleMeshCommand(command)
+                }
+            }
+            scope.launch {
+                manager.commandAcks.collect { ack ->
+                    val pending = pendingMeshCommands[ack.commandId] ?: return@collect
+                    val action = pending.label
+                    when (ack.status) {
+                        BoardCommandStatus.COMMITTED -> removePendingCommand(ack.commandId)
+                        BoardCommandStatus.REJECTED_CONFLICT,
+                        BoardCommandStatus.REJECTED_STALE,
+                        BoardCommandStatus.SUPERSEDED -> {
+                            removePendingCommand(ack.commandId)
+                            _commandFeedback.emit(PlaylistCommandFeedback(
+                                PlaylistCommandFeedbackKind.CONFLICT, action))
+                        }
+                        BoardCommandStatus.NOT_CONTROLLER,
+                        BoardCommandStatus.BOARD_WRITE_FAILED -> {
+                            removePendingCommand(ack.commandId)
+                            _commandFeedback.emit(PlaylistCommandFeedback(
+                                PlaylistCommandFeedbackKind.FAILED, action))
+                        }
+                        BoardCommandStatus.ACCEPTED -> Unit
+                    }
+                }
+            }
+            scope.launch {
+                while (true) {
+                    delay(1_000)
+                    val now = SystemClock.elapsedRealtime()
+                    pendingMeshCommands.forEach { (commandId, pending) ->
+                        if (now < pending.retryAtMs) return@forEach
+                        manager.retrySessionCommand(pending.payload, pending.context, commandId,
+                            pending.basePlaylistRevision)
+                        pending.attempts++
+                        val backoff = (2_000L shl pending.attempts.coerceAtMost(3)).coerceAtMost(15_000L)
+                        pending.retryAtMs = now + backoff
+                    }
                 }
             }
         }
@@ -782,26 +852,22 @@ class SessionGattBridge(
     // ===== Participant: send commands to host =====
 
     fun sendAddClimb(climbUuid: String, angle: Int) {
-        scope.launch {
-            gattClient.sendCommand(SessionQueueProtocol.encodeAdd(climbUuid, angle))
-        }
+        sendParticipantCommand("add", SessionCommand.Add(climbUuid, angle))
     }
 
     fun sendRemoveClimb(index: Int) {
-        scope.launch {
-            gattClient.sendCommand(SessionQueueProtocol.encodeRemove(index))
-        }
+        sendParticipantCommand("remove($index)", SessionCommand.Remove(index))
     }
 
-    fun sendNext() = sendParticipantCommand("next", SessionQueueProtocol.encodeNext())
+    fun sendNext() = sendParticipantCommand("next", SessionCommand.Next)
 
-    fun sendPrev() = sendParticipantCommand("prev", SessionQueueProtocol.encodePrev())
+    fun sendPrev() = sendParticipantCommand("prev", SessionCommand.Prev)
 
     fun sendSetCurrent(index: Int) =
-        sendParticipantCommand("setCurrent($index)", SessionQueueProtocol.encodeSetCurrent(index))
+        sendParticipantCommand("setCurrent($index)", SessionCommand.SetCurrent(index))
 
     fun sendMove(from: Int, to: Int) =
-        sendParticipantCommand("move($from→$to)", SessionQueueProtocol.encodeMove(from, to))
+        sendParticipantCommand("move($from→$to)", SessionCommand.Move(from, to))
 
     /**
      * Fire a participant's control command at the host, and say so when it
@@ -816,9 +882,35 @@ class SessionGattBridge(
      * state, so there is nothing local to roll back) — this only makes the
      * failure findable.
      */
-    private fun sendParticipantCommand(label: String, payload: ByteArray) {
+    private fun sendParticipantCommand(label: String, command: SessionCommand) {
         scope.launch {
-            val sentByFips = boardCellManager?.sendSessionCommand(payload) == true
+            val payload = SessionQueueProtocol.encodeCommand(command) ?: return@launch
+            val snapshot = boardCellManager?.snapshot()
+            val context = snapshot?.let { PlaylistCommandRebaser.context(command, it.playlist) }
+            if (queueManager.state.value.role == SessionRole.HOST) {
+                if (snapshot == null || context == null) {
+                    applyLegacyLocalCommand(command)
+                    return@launch
+                }
+                val commandId = UUID.randomUUID().toString()
+                val ack = boardCellManager.commitLocalSessionCommand(commandId,
+                    snapshot.playlistRevision) { current, exact ->
+                        applyRebasedCommand(command, context, current, exact)
+                    }
+                if (ack?.status != BoardCommandStatus.COMMITTED) {
+                    _commandFeedback.emit(PlaylistCommandFeedback(
+                        PlaylistCommandFeedbackKind.CONFLICT, label))
+                }
+                return@launch
+            }
+            val candidateId = UUID.randomUUID().toString()
+            if (context != null) pendingMeshCommands[candidateId] = PendingMeshCommand(
+                label, payload, context, snapshot.playlistRevision)
+            _pendingCommandCount.value = pendingMeshCommands.size
+            val commandId = if (context != null)
+                boardCellManager.sendSessionCommand(payload, context, candidateId) else null
+            val sentByFips = commandId != null
+            if (!sentByFips) removePendingCommand(candidateId)
             if (sentByFips || gattClient.sendCommand(payload)) {
                 // Logged on success too, not only on failure. Only logging the
                 // failure leaves the working path silent, and during the
@@ -829,34 +921,62 @@ class SessionGattBridge(
                 Log.i(TAG, "event=transport_sent action=$label")
             } else {
                 Log.w(TAG, "event=transport_send_failed action=$label")
+                _commandFeedback.emit(PlaylistCommandFeedback(
+                    PlaylistCommandFeedbackKind.UNAVAILABLE, label))
             }
         }
     }
 
+    private fun removePendingCommand(commandId: String) {
+        pendingMeshCommands.remove(commandId)
+        _pendingCommandCount.value = pendingMeshCommands.size
+    }
+
     /** FIPS has already authenticated membership and exact BoardCell epoch/sequence. */
     private suspend fun handleMeshCommand(command: com.cruxcoach.android.boardcell.InboundSessionCommand) {
-        boardCellManager?.commitSessionCommand(command) {
+        val decoded = SessionQueueProtocol.decodeCommand(command.payload)
+        boardCellManager?.commitSessionCommand(command) { current, exact ->
             if (queueManager.state.value.role != SessionRole.HOST) return@commitSessionCommand null
-            when (val cmd = SessionQueueProtocol.decodeCommand(command.payload)) {
-                is SessionCommand.Add -> queueManager.addClimb(cmd.climbUuid, cmd.angle)
-                is SessionCommand.Remove -> queueManager.removeClimb(cmd.index)
-                is SessionCommand.SetCurrent -> queueManager.setCurrentClimb(cmd.index)
-                is SessionCommand.Next -> (onRemoteNext ?: queueManager::nextClimb).invoke()
-                is SessionCommand.Prev -> (onRemotePrev ?: queueManager::previousClimb).invoke()
-                is SessionCommand.Move -> queueManager.moveClimb(cmd.from, cmd.to)
-                is SessionCommand.Leave -> Log.i(TAG,
-                    "event=fips_participant_left npub=${command.senderId.take(16)}")
-                is SessionCommand.Join, null -> return@commitSessionCommand null
-            }
-            val state = queueManager.state.value
-            com.cruxcoach.android.boardcell.BoardPlaylistState(
-                state.sessionId, state.currentIndex, state.queue.map { it.climbUuid to it.angle })
+            val cmd = decoded ?: return@commitSessionCommand null
+            applyRebasedCommand(cmd, command.context, current, exact)
+        }
+    }
+
+    private fun applyRebasedCommand(command: SessionCommand,
+        context: com.cruxcoach.android.boardcell.BoardPlaylistCommandContext?,
+        current: BoardPlaylistState, exact: Boolean): BoardPlaylistState? {
+        val resolved = PlaylistCommandRebaser.rebase(command, context, current, exact)
+            as? PlaylistCommandRebaser.Result.Apply ?: return null
+        queueManager.alignHostQueue(current)
+        when (val cmd = resolved.command) {
+            is SessionCommand.Add -> queueManager.addClimb(cmd.climbUuid, cmd.angle)
+            is SessionCommand.Remove -> queueManager.removeClimb(cmd.index)
+            is SessionCommand.SetCurrent -> queueManager.setCurrentClimb(cmd.index)
+            SessionCommand.Next -> (onRemoteNext ?: queueManager::nextClimb).invoke()
+            SessionCommand.Prev -> (onRemotePrev ?: queueManager::previousClimb).invoke()
+            is SessionCommand.Move -> queueManager.moveClimb(cmd.from, cmd.to)
+            is SessionCommand.Join, SessionCommand.Leave -> return null
+        }
+        val state = queueManager.state.value
+        return BoardPlaylistState(state.sessionId, state.currentIndex,
+            state.queue.map { it.climbUuid to it.angle })
+    }
+
+    private fun applyLegacyLocalCommand(command: SessionCommand) {
+        when (command) {
+            is SessionCommand.Add -> queueManager.addClimb(command.climbUuid, command.angle)
+            is SessionCommand.Remove -> queueManager.removeClimb(command.index)
+            is SessionCommand.SetCurrent -> queueManager.setCurrentClimb(command.index)
+            SessionCommand.Next -> (onRemoteNext ?: queueManager::nextClimb).invoke()
+            SessionCommand.Prev -> (onRemotePrev ?: queueManager::previousClimb).invoke()
+            is SessionCommand.Move -> queueManager.moveClimb(command.from, command.to)
+            is SessionCommand.Join, SessionCommand.Leave -> Unit
         }
     }
 
     // ===== Internal: Host processes commands from clients =====
 
-    private fun handleClientCommand(deviceAddress: String, data: ByteArray) {
+    private suspend fun handleClientCommand(deviceAddress: String, data: ByteArray) {
         val cmd = SessionQueueProtocol.decodeCommand(data)
         if (cmd == null) {
             Log.w(TAG, "Failed to decode session command (${data.size} bytes)")
@@ -917,6 +1037,29 @@ class SessionGattBridge(
         }
 
         Log.d(TAG, "Received joined session command (${cmd.javaClass.simpleName})")
+        val snapshot = boardCellManager?.snapshot()
+        if (cmd !is SessionCommand.Leave && snapshot != null) {
+            val semanticContext = PlaylistCommandRebaser.context(cmd, snapshot.playlist)
+            if (semanticContext != null) {
+                val commandId = UUID.randomUUID().toString()
+                val ack = boardCellManager.commitLocalSessionCommand(commandId,
+                    snapshot.playlistRevision) { current, exact ->
+                    applyRebasedCommand(cmd, semanticContext, current, exact)
+                }
+                Log.i(TAG, "event=gatt_command_result action=${cmd.javaClass.simpleName} " +
+                    "status=${ack?.status ?: "unavailable"}")
+                val result = when (ack?.status) {
+                    BoardCommandStatus.COMMITTED -> SessionCommandResult.COMMITTED
+                    BoardCommandStatus.REJECTED_CONFLICT,
+                    BoardCommandStatus.REJECTED_STALE,
+                    BoardCommandStatus.SUPERSEDED -> SessionCommandResult.CONFLICT
+                    else -> SessionCommandResult.FAILED
+                }
+                gattServer.notifyDevice(deviceAddress, SessionGattUuids.QUEUE_EVENT,
+                    SessionQueueProtocol.encodeEventCommandResult(result))
+                return
+            }
+        }
         when (cmd) {
             is SessionCommand.Add -> queueManager.addClimb(cmd.climbUuid, cmd.angle)
             is SessionCommand.Remove -> queueManager.removeClimb(cmd.index)
@@ -991,6 +1134,13 @@ class SessionGattBridge(
             is SessionEvent.RestEnded -> {
                 Log.i(TAG, "event=rest_applied state=ended")
                 boardSessionManager.cancelRestTimer()
+            }
+            is SessionEvent.CommandResult -> when (event.result) {
+                SessionCommandResult.COMMITTED -> Unit
+                SessionCommandResult.CONFLICT -> _commandFeedback.tryEmit(
+                    PlaylistCommandFeedback(PlaylistCommandFeedbackKind.CONFLICT, "gatt"))
+                SessionCommandResult.FAILED -> _commandFeedback.tryEmit(
+                    PlaylistCommandFeedback(PlaylistCommandFeedbackKind.FAILED, "gatt"))
             }
         }
     }

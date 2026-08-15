@@ -69,6 +69,7 @@ object SessionQueueProtocol {
      */
     const val EVT_REST_STARTED: Byte = 0x07
     const val EVT_REST_ENDED: Byte = 0x08
+    const val EVT_COMMAND_RESULT: Byte = 0x09
 
     // ===== Command encoding (Client → Host) =====
 
@@ -108,6 +109,17 @@ object SessionQueueProtocol {
     fun encodeLeave(): ByteArray = byteArrayOf(CMD_LEAVE)
 
     fun encodeMove(from: Int, to: Int): ByteArray = byteArrayOf(CMD_MOVE, from.toByte(), to.toByte())
+
+    fun encodeCommand(command: SessionCommand): ByteArray? = when (command) {
+        is SessionCommand.Add -> encodeAdd(command.climbUuid, command.angle)
+        is SessionCommand.Remove -> encodeRemove(command.index)
+        is SessionCommand.SetCurrent -> encodeSetCurrent(command.index)
+        SessionCommand.Next -> encodeNext()
+        SessionCommand.Prev -> encodePrev()
+        is SessionCommand.Move -> encodeMove(command.from, command.to)
+        is SessionCommand.Join -> encodeJoin(command.displayName, command.memberNpub)
+        SessionCommand.Leave -> encodeLeave()
+    }
 
     // ===== Command decoding (Host reads from Client) =====
 
@@ -207,6 +219,15 @@ object SessionQueueProtocol {
 
     fun encodeEventRestEnded(): ByteArray = byteArrayOf(EVT_REST_ENDED)
 
+    fun encodeEventCommandResult(result: SessionCommandResult): ByteArray = byteArrayOf(
+        EVT_COMMAND_RESULT,
+        when (result) {
+            SessionCommandResult.COMMITTED -> 0
+            SessionCommandResult.CONFLICT -> 1
+            SessionCommandResult.FAILED -> 2
+        }.toByte(),
+    )
+
     // ===== Event decoding (Client reads from Host notifications) =====
 
     fun decodeEvent(data: ByteArray): SessionEvent? {
@@ -244,6 +265,12 @@ object SessionQueueProtocol {
                 SessionEvent.RestStarted(seconds, data[3].toInt() and 0xFF)
             }
             EVT_REST_ENDED -> SessionEvent.RestEnded
+            EVT_COMMAND_RESULT -> when (data.getOrNull(1)?.toInt()) {
+                0 -> SessionEvent.CommandResult(SessionCommandResult.COMMITTED)
+                1 -> SessionEvent.CommandResult(SessionCommandResult.CONFLICT)
+                2 -> SessionEvent.CommandResult(SessionCommandResult.FAILED)
+                else -> null
+            }
             else -> null
         }
     }
@@ -454,7 +481,10 @@ sealed class SessionEvent {
 
     /** The rest is over — either it ran out or somebody skipped it. */
     data object RestEnded : SessionEvent()
+    data class CommandResult(val result: SessionCommandResult) : SessionEvent()
 }
+
+enum class SessionCommandResult { COMMITTED, CONFLICT, FAILED }
 
 /**
  * One queue entry. [restAfterSeconds] is HOST-LOCAL playlist metadata

@@ -187,6 +187,7 @@ The complete snapshot contains at least:
 - last confirmed board climb and angle;
 - whether the current physical board content is known;
 - complete playlist/session and current index;
+- a playlist-only revision that is unaffected by controller heartbeats;
 - availability state;
 - hash of the complete state.
 
@@ -259,14 +260,36 @@ After admission, the BoardCell snapshot is always the source of truth:
 
 - `projection` answers which climb was last confirmed as sent;
 - `playlist` contains the complete list, session ID, and current position;
-- command base validation, queue mutation and playlist snapshot commit execute
-  in one cell-critical section, so rejected concurrent commands have no local side effect;
+- each command carries a playlist revision plus semantic references to the
+  affected climb occurrence, current climb and/or move destination anchors;
+- validation/rebase, queue mutation and playlist snapshot commit execute in one
+  cell-critical section, so a rejected command has no local side effect;
+- stale commands are not rejected merely for being stale. Adds, removes,
+  selections and moves are rebased when their actual preconditions remain
+  unchanged. `Next`/`Prev`, changed destination anchors and ambiguous duplicate
+  climbs conflict rather than guessing what the user meant;
+- every command has a durable ID and correlated `ACCEPTED`, `COMMITTED` or
+  terminal failure result. The UI reports a real conflict after applying the
+  latest canonical snapshot instead of silently ignoring the tap;
+- missing terminal acknowledgements are retried with the same command ID and
+  original semantic preconditions using bounded exponential backoff. A slim
+  progress indicator remains visible while commands are pending;
+- the latest 256 committed command IDs travel in the hashed snapshot, so a
+  controller receiving a full snapshot retains idempotency across handover;
+  the matching durable ACK store is pruned to the same bound;
+- authenticated FIPS and scoped GATT ingress enter the same controller
+  serializer. FIPS uses bounded suspendable backpressure; GATT rejects an ATT
+  write instead of acknowledging and dropping it when its bounded ingress is
+  full. Scoped GATT sends a targeted command-result event back to its caller;
 - reconnecting and newly admitted participants receive a full snapshot rather
   than only future deltas.
 
 GATT session info has a backwards-compatible optional BoardCell extension.
 GATT remains an admission/compatibility path and the Android 9/API 28 fallback.
 On API 29+, admitted participants prefer the authenticated FIPS data plane.
+The API 28 wire format still carries legacy indices, so the controller captures
+their semantic meaning at ordered receipt time; it cannot recover an intention
+that was already stale on the Android 9 screen.
 
 ## 9. Multi-connect boards and adjacent boards
 

@@ -163,6 +163,9 @@ class BoardCellCoordinator(
             if (it is BoardCellApplyResult.Applied) {
                 controllerObservedAt[incoming.physicalBoardId] = nowMonotonicMs
                 durableStore.persistSnapshot(it.snapshot)
+                it.snapshot.recentCommandIds.forEach { commandId ->
+                    durableStore.recordAck(ack(commandId, BoardCommandStatus.COMMITTED, it.snapshot))
+                }
                 BoardCellScopeRegistry.joinCell(incoming.physicalBoardId, incoming.cellId)
             }
         }
@@ -178,10 +181,21 @@ class BoardCellCoordinator(
         if (result is BoardCellApplyResult.Applied) {
             controllerObservedAt[envelope.physicalBoardId] = nowMonotonicMs
             durableStore.persistSnapshot(result.snapshot)
+            eventCommandId(envelope.event)?.let { commandId ->
+                durableStore.recordAck(ack(commandId, BoardCommandStatus.COMMITTED, result.snapshot))
+            }
         } else if (result is BoardCellApplyResult.NeedSnapshot) {
             transport.requestSnapshot(envelope.cellId, result.expectedSequence - 1)
         }
         result
+    }
+
+    private fun eventCommandId(event: BoardCellEvent): String? = when (event) {
+        is BoardCellEvent.ProjectCommitted -> event.commandId
+        is BoardCellEvent.ProjectUnknown -> event.commandId
+        is BoardCellEvent.PlaylistReplaced -> event.commandId
+        is BoardCellEvent.ProjectionRecoveryRequired -> event.commandId
+        else -> null
     }
 
     suspend fun replacePlaylist(
@@ -223,6 +237,40 @@ class BoardCellCoordinator(
         if (playlist == null) {
             durableStore.recordAck(ack(commandId, BoardCommandStatus.SUPERSEDED, current,
                 detail = "session command produced no state change"))
+            return@withLock null
+        }
+        commitCommandEvent(boardId, BoardCellEvent.PlaylistReplaced(playlist, commandId), commandId)
+    }
+
+    /**
+     * Serializes a semantic playlist command. Older revisions may be rebased
+     * by [derivePlaylist]; future revisions and ambiguous rebases are rejected.
+     */
+    suspend fun applyPlaylistCommand(
+        boardId: PhysicalBoardId,
+        nowMonotonicMs: Long,
+        commandId: String,
+        basePlaylistRevision: Long,
+        derivePlaylist: (current: BoardPlaylistState, exactRevision: Boolean) -> BoardPlaylistState?,
+    ): BoardCellEnvelope? = mutex.withLock {
+        durableStore.commandAck(commandId)?.let { return@withLock null }
+        val current = writable(boardId, nowMonotonicMs) ?: return@withLock null
+        if (basePlaylistRevision > current.playlistRevision) {
+            durableStore.recordAck(ack(commandId, BoardCommandStatus.REJECTED_STALE, current,
+                detail = "playlist revision is ahead of controller"))
+            return@withLock null
+        }
+        val playlist = try {
+            derivePlaylist(current.playlist, basePlaylistRevision == current.playlistRevision)
+        } catch (failure: Exception) {
+            if (failure is CancellationException) throw failure
+            durableStore.recordAck(ack(commandId, BoardCommandStatus.SUPERSEDED, current,
+                detail = failure.message ?: "session command failed"))
+            return@withLock null
+        }
+        if (playlist == null) {
+            durableStore.recordAck(ack(commandId, BoardCommandStatus.REJECTED_CONFLICT, current,
+                detail = "playlist changed in a conflicting way"))
             return@withLock null
         }
         commitCommandEvent(boardId, BoardCellEvent.PlaylistReplaced(playlist, commandId), commandId)

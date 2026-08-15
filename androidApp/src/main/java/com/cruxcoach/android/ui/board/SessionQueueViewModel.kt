@@ -6,6 +6,7 @@ import com.cruxcoach.android.data.SessionGattBridge
 import com.cruxcoach.android.data.SessionQueueManager
 import com.cruxcoach.android.data.SessionQueueState
 import com.cruxcoach.android.data.SessionRole
+import com.cruxcoach.android.data.PlaylistCommandFeedback
 import com.cruxcoach.android.ui.navigation.ClimbNavigationState
 import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.data.repository.BoardRepository
@@ -33,6 +34,8 @@ class SessionQueueViewModel @Inject constructor(
 ) : ViewModel() {
 
     val state: StateFlow<SessionQueueState> = queueManager.state
+    val commandFeedback = gattBridge.commandFeedback
+    val pendingCommandCount = gattBridge.pendingCommandCount
 
     private val _climbInfos = MutableStateFlow<Map<String, QueueRowInfo>>(emptyMap())
     /** uuid → (name, formatted grade) for the queue rows. */
@@ -68,43 +71,23 @@ class SessionQueueViewModel @Inject constructor(
     }
 
     fun next() {
-        if (state.value.role == SessionRole.PARTICIPANT) {
-            gattBridge.sendNext()
-        } else {
-            queueManager.nextClimb()
-        }
+        gattBridge.sendNext()
     }
 
     fun prev() {
-        if (state.value.role == SessionRole.PARTICIPANT) {
-            gattBridge.sendPrev()
-        } else {
-            queueManager.previousClimb()
-        }
+        gattBridge.sendPrev()
     }
 
     fun setCurrent(index: Int) {
-        if (state.value.role == SessionRole.PARTICIPANT) {
-            gattBridge.sendSetCurrent(index)
-        } else {
-            queueManager.setCurrentClimb(index)
-        }
+        gattBridge.sendSetCurrent(index)
     }
 
     fun removeClimb(index: Int) {
-        if (state.value.role == SessionRole.PARTICIPANT) {
-            gattBridge.sendRemoveClimb(index)
-        } else {
-            queueManager.removeClimb(index)
-        }
+        gattBridge.sendRemoveClimb(index)
     }
 
     fun moveClimb(from: Int, to: Int) {
-        if (state.value.role == SessionRole.PARTICIPANT) {
-            gattBridge.sendMove(from, to)
-        } else {
-            queueManager.moveClimb(from, to)
-        }
+        gattBridge.sendMove(from, to)
     }
 
     fun endOrLeave() {

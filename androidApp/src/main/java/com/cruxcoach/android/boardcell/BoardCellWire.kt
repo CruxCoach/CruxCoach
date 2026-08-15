@@ -16,7 +16,10 @@ sealed interface BoardCellWireMessage {
     @Serializable @SerialName("handover_ready") data class Ready(val value: HandoverReady) : BoardCellWireMessage
     @Serializable @SerialName("fork_notice") data class ForkNotice(val value: BoardCellForkNotice) : BoardCellWireMessage
     @Serializable @SerialName("session_command") data class SessionCommand(
-        val commandId: String, val baseSequence: Long, val payload: ByteArray,
+        val commandId: String,
+        val basePlaylistRevision: Long,
+        val payload: ByteArray,
+        val context: BoardPlaylistCommandContext? = null,
     ) : BoardCellWireMessage
     @Serializable @SerialName("command_ack") data class CommandAck(val value: BoardCommandAck) : BoardCellWireMessage
 }
@@ -36,7 +39,9 @@ data class BoardCellWireFrame(
 )
 
 object BoardCellWireCodec {
-    const val VERSION = 2
+    // V3 adds playlistRevision and semantic command preconditions. Mixing V2
+    // would silently reinterpret a global sequence as a playlist revision.
+    const val VERSION = 3
     private val json = Json { classDiscriminator = "type"; encodeDefaults = true; ignoreUnknownKeys = false }
     fun encode(frame: BoardCellWireFrame): ByteArray = json.encodeToString(frame).encodeToByteArray()
     fun decode(bytes: ByteArray): BoardCellWireFrame {
@@ -48,7 +53,8 @@ object BoardCellWireCodec {
             require(it.epoch >= 0 && it.controllerTerm > 0)
             when (val message = it.message) {
                 is BoardCellWireMessage.Snapshot -> {
-                    require(message.value.members.size <= 128 && message.value.playlist.items.size <= 512)
+                    require(message.value.members.size <= 128 && message.value.playlist.items.size <= 512 &&
+                        message.value.recentCommandIds.size <= 256)
                 }
                 is BoardCellWireMessage.SessionCommand -> require(
                     message.commandId.length in 8..128 && message.payload.size in 1..BoardCellMeshTransport.MAX_SESSION_COMMAND_BYTES)
@@ -69,8 +75,9 @@ interface AuthenticatedMeshLink {
 data class InboundSessionCommand(
     val senderId: String,
     val commandId: String,
-    val baseSequence: Long,
+    val basePlaylistRevision: Long,
     val payload: ByteArray,
+    val context: BoardPlaylistCommandContext?,
 )
 
 class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCellTransport {
@@ -80,8 +87,8 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
     private var outboxBytes = 0
     private val seenFrames = LinkedHashSet<String>()
     private val seenCommands = LinkedHashMap<String, BoardCommandAck>()
-    var onSessionCommand: ((InboundSessionCommand) -> Unit)? = null
-    var onCommandAck: ((String, BoardCommandAck) -> Unit)? = null
+    var onSessionCommand: (suspend (InboundSessionCommand) -> Unit)? = null
+    var onCommandAck: (suspend (String, BoardCommandAck) -> Unit)? = null
 
     fun attach(value: BoardCellCoordinator) { coordinator = value }
     fun rememberSnapshot(snapshot: BoardCellSnapshot) { snapshots[snapshot.cellId] = snapshot }
@@ -126,12 +133,14 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
         sendOrQueue(target, frameFor(snapshot, BoardCellWireMessage.CommandAck(ack)))
     }
 
-    fun sendSessionCommand(snapshot: BoardCellSnapshot, commandId: String, payload: ByteArray): Boolean {
+    fun sendSessionCommand(snapshot: BoardCellSnapshot, commandId: String, payload: ByteArray,
+        context: BoardPlaylistCommandContext?,
+        basePlaylistRevision: Long = snapshot.playlistRevision): Boolean {
         if (link.localNpub !in snapshot.members || snapshot.controllerId == link.localNpub ||
             snapshot.availability != BoardCellAvailability.ACTIVE || payload.isEmpty() ||
             payload.size > MAX_SESSION_COMMAND_BYTES) return false
         return link.send(snapshot.controllerId, frameFor(snapshot,
-            BoardCellWireMessage.SessionCommand(commandId, snapshot.sequence, payload)))
+            BoardCellWireMessage.SessionCommand(commandId, basePlaylistRevision, payload, context)))
     }
 
     suspend fun receive(authenticatedSender: String, bytes: ByteArray, nowMonotonicMs: Long = 0): BoardCellApplyResult? {
@@ -210,7 +219,7 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
                 }
                 seenCommands[key]?.let { publishCommandAck(authenticatedSender, it); return null }
                 if (authenticatedSender !in snapshot.members || link.localNpub != snapshot.controllerId ||
-                    message.baseSequence != snapshot.sequence || message.payload.isEmpty() ||
+                    message.basePlaylistRevision > snapshot.playlistRevision || message.payload.isEmpty() ||
                     message.payload.size > MAX_SESSION_COMMAND_BYTES) {
                     val status = if (link.localNpub != snapshot.controllerId) BoardCommandStatus.NOT_CONTROLLER
                     else BoardCommandStatus.REJECTED_STALE
@@ -226,7 +235,7 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
                 trimMap(seenCommands, MAX_SEEN_COMMANDS)
                 publishCommandAck(authenticatedSender, accepted)
                 onSessionCommand?.invoke(InboundSessionCommand(authenticatedSender, message.commandId,
-                    message.baseSequence, message.payload))
+                    message.basePlaylistRevision, message.payload, message.context))
                 null
             }
             is BoardCellWireMessage.CommandAck -> {

@@ -1412,6 +1412,9 @@
     <string name="board_queue_participants">Teilnehmer (%d)</string>
     <string name="board_queue_title">Session</string>
     <string name="board_queue_you_host">Du (Host)</string>
+    <string name="board_queue_command_conflict">Die Session wurde gleichzeitig geändert. Sie ist jetzt aktuell – bitte versuche deine Änderung erneut.</string>
+    <string name="board_queue_command_unavailable">Die Änderung konnte nicht gesendet werden. Prüfe die Nearby-Verbindung und versuche es erneut.</string>
+    <string name="board_queue_command_failed">Der Controller konnte die Änderung nicht übernehmen. Die gemeinsame Session wurde aktualisiert.</string>
     <string name="board_random_climb">Zufall</string>
     <string name="board_rest_timer_finished">Pause vorbei!</string>
     <string name="board_rest_timer_ready">Bereit für den nächsten Versuch!</string>

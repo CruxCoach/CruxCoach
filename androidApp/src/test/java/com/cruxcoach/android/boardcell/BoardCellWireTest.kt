@@ -73,16 +73,19 @@ class BoardCellWireTest {
         val accepted = mutableListOf<InboundSessionCommand>()
         transport.onSessionCommand = { accepted += it }
 
-        val stale = frame("member", BoardCellWireMessage.SessionCommand("stale-command", snapshot.sequence + 1, byteArrayOf(7)),
+        val stale = frame("member", BoardCellWireMessage.SessionCommand("stale-command", snapshot.playlistRevision + 1, byteArrayOf(7)),
             epoch = snapshot.epoch, term = snapshot.controllerTerm, id = "message-stale")
         assertTrue(transport.receive("member", stale) is BoardCellApplyResult.Rejected)
         assertEquals(BoardCommandStatus.REJECTED_STALE,
             (BoardCellWireCodec.decode(link.sent.last().second).message as BoardCellWireMessage.CommandAck).value.status)
 
-        val good = frame("member", BoardCellWireMessage.SessionCommand("good-command", snapshot.sequence, byteArrayOf(8)),
+        val context = BoardPlaylistCommandContext(null, BoardPlaylistCommandKind.ADD)
+        val good = frame("member", BoardCellWireMessage.SessionCommand("good-command",
+            snapshot.playlistRevision, byteArrayOf(8), context),
             epoch = snapshot.epoch, term = snapshot.controllerTerm, id = "message-good")
         assertNull(transport.receive("member", good))
         assertEquals("good-command", accepted.single().commandId)
+        assertEquals(context, accepted.single().context)
         assertEquals(BoardCommandStatus.ACCEPTED,
             (BoardCellWireCodec.decode(link.sent.last().second).message as BoardCellWireMessage.CommandAck).value.status)
     }
@@ -97,7 +100,7 @@ class BoardCellWireTest {
         coordinator.joinMember(board, "member")
         val snapshot = coordinator.snapshot(board)!!; transport.rememberSnapshot(snapshot)
         val commandId = "accepted-then-committed"
-        val command = BoardCellWireMessage.SessionCommand(commandId, snapshot.sequence, byteArrayOf(8))
+        val command = BoardCellWireMessage.SessionCommand(commandId, snapshot.playlistRevision, byteArrayOf(8))
 
         assertNull(transport.receive("member", frame("member", command,
             snapshot.epoch, snapshot.controllerTerm, "message-first"), 2))

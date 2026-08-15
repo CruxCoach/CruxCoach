@@ -15,6 +15,8 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -55,11 +57,9 @@ class SessionGattServer(private val context: Context) {
     private val _isRunning = MutableStateFlow(false)
     val isRunning: StateFlow<Boolean> = _isRunning.asStateFlow()
 
-    // Buffer sized to absorb a burst from MAX_CONNECTED_DEVICES participants
-    // issuing queue commands simultaneously — tryEmit on the BLE binder
-    // thread must not silently drop user actions.
-    private val _commands = MutableSharedFlow<GattCommand>(extraBufferCapacity = 128)
-    val commands: SharedFlow<GattCommand> = _commands.asSharedFlow()
+    // Large enough for a human-generated burst, bounded against a flooding peer.
+    private val commandChannel = Channel<GattCommand>(512)
+    val commands = commandChannel.receiveAsFlow()
 
     private val _connectionEvents = MutableSharedFlow<GattConnectionEvent>(extraBufferCapacity = 32)
     val connectionEvents: SharedFlow<GattConnectionEvent> = _connectionEvents.asSharedFlow()
@@ -173,11 +173,11 @@ class SessionGattServer(private val context: Context) {
         ) {
             if (characteristic.uuid == SessionGattUuids.QUEUE_COMMAND && value != null) {
                 Log.d(TAG, "Write request: QUEUE_COMMAND ${value.size} bytes from ${device.address}")
-                if (!_commands.tryEmit(GattCommand(device.address, value))) {
-                    Log.w(TAG, "commands buffer full — dropping ${value.size}B from ${device.address}")
-                }
+                val queued = commandChannel.trySend(GattCommand(device.address, value)).isSuccess
+                if (!queued) Log.w(TAG, "command queue full — rejecting ${value.size}B write")
                 if (responseNeeded) {
-                    gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null)
+                    gattServer?.sendResponse(device, requestId,
+                        if (queued) BluetoothGatt.GATT_SUCCESS else BluetoothGatt.GATT_FAILURE, 0, null)
                 }
             } else if (responseNeeded) {
                 gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_FAILURE, 0, null)
@@ -347,6 +347,24 @@ class SessionGattServer(private val context: Context) {
                 } catch (e: Exception) {
                     Log.w(TAG, "Failed to notify $address for $charUuid", e)
                 }
+            }
+        }
+    }
+
+    /** Sends a command result only to the client that issued it. */
+    @SuppressLint("MissingPermission")
+    fun notifyDevice(deviceAddress: String, charUuid: UUID, value: ByteArray) {
+        val server = gattServer ?: return
+        val characteristic = server.getService(SessionGattUuids.SERVICE)
+            ?.getCharacteristic(charUuid) ?: return
+        if (synchronized(lock) {
+                subscribedDevices[charUuid]?.contains(deviceAddress) != true
+            }) return
+        val device = bluetoothManager?.adapter?.getRemoteDevice(deviceAddress) ?: return
+        synchronized(notifyLock) {
+            characteristic.value = value
+            if (!server.notifyCharacteristicChanged(device, characteristic, false)) {
+                Log.w(TAG, "notifyDevice failed for ...${charUuid.toString().substring(4, 8)}")
             }
         }
     }
