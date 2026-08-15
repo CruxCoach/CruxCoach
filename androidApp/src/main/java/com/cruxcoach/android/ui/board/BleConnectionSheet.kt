@@ -181,7 +181,25 @@ fun BleConnectionSheet(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         if (permissions.values.all { it }) {
-            viewModel.reconnectRememberedBoard()
+            viewModel.tryRememberedControllerFirst()
+        }
+    }
+
+    // Every "use the remembered board" affordance must perform the direct
+    // GATT connect itself. In particular, after an automatic reconnect has
+    // failed, merely leaving discovery is not enough: directReconnectFailed
+    // keeps the legacy location gate active and the button otherwise appears
+    // to do nothing. Resetting that state is part of
+    // tryRememberedControllerFirst(), so the retry works with location off on
+    // Android 8-11 as intended.
+    val reconnectRememberedBoard: () -> Unit = {
+        pendingScanStart = null
+        discoveryRequested = false
+        val needed = BlePermissionHelper.getReconnectPermissions()
+        if (state.hasConnectionPermission || needed.isEmpty()) {
+            viewModel.tryRememberedControllerFirst()
+        } else {
+            connectionPermissionLauncher.launch(needed)
         }
     }
 
@@ -341,14 +359,7 @@ fun BleConnectionSheet(
                 !discoveryFlowActive && rememberedBoard != null -> {
                     RememberedBoardContent(
                         board = rememberedBoard,
-                        onReconnect = {
-                            val needed = BlePermissionHelper.getReconnectPermissions()
-                            if (state.hasConnectionPermission || needed.isEmpty()) {
-                                viewModel.tryRememberedControllerFirst()
-                            } else {
-                                connectionPermissionLauncher.launch(needed)
-                            }
-                        },
+                        onReconnect = reconnectRememberedBoard,
                         onSearchOtherBoards = {
                             viewModel.stopScan()
                             discoveryRequested = true
@@ -367,10 +378,7 @@ fun BleConnectionSheet(
                             permissionLauncher.launch(BlePermissionHelper.getRequiredPermissions())
                         },
                         onUseRememberedBoard = rememberedBoard?.let {
-                            {
-                                pendingScanStart = null
-                                discoveryRequested = false
-                            }
+                            reconnectRememberedBoard
                         },
                     )
                 }
@@ -379,10 +387,7 @@ fun BleConnectionSheet(
                 locationPromptNeeded -> {
                     LocationDisabledContent(
                         onUseRememberedBoard = rememberedBoard?.let {
-                            {
-                                pendingScanStart = null
-                                discoveryRequested = false
-                            }
+                            reconnectRememberedBoard
                         },
                     )
                 }
@@ -406,7 +411,7 @@ fun BleConnectionSheet(
                         onReconnectRemembered = rememberedBoard?.let {
                             {
                                 viewModel.stopScan()
-                                viewModel.reconnectRememberedBoard()
+                                reconnectRememberedBoard()
                             }
                         },
                         onSessionTapped = {
@@ -722,8 +727,8 @@ private fun ConnectedContent(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            // Two answers, never a third: a controller is exclusive unless it
-            // was caught advertising while connected (BoardControllerProfiles).
+            // Two answers, never a third: physical controllers are treated as
+            // exclusive; CruxRelay is multi-client by construction.
             val connectionMode = when {
                 board?.isCruxRelay == true -> R.string.board_ble_connection_via_relay
                 BoardControllerProfiles.forBoard(board).connectionCapacity ==

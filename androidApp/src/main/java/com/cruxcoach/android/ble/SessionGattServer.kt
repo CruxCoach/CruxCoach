@@ -58,6 +58,7 @@ class SessionGattServer(private val context: Context) {
     val isRunning: StateFlow<Boolean> = _isRunning.asStateFlow()
 
     // Large enough for a human-generated burst, bounded against a flooding peer.
+    // Android must never acknowledge a command that the app then drops.
     private val commandChannel = Channel<GattCommand>(512)
     val commands = commandChannel.receiveAsFlow()
 

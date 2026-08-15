@@ -45,17 +45,19 @@ fun SessionQueueSheet(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val climbInfos by viewModel.climbInfos.collectAsStateWithLifecycle()
     val pendingCommands by viewModel.pendingCommandCount.collectAsStateWithLifecycle()
-    val commandSnackbar = remember { SnackbarHostState() }
-    val conflictText = stringResource(R.string.board_queue_command_conflict)
-    val unavailableText = stringResource(R.string.board_queue_command_unavailable)
-    val failedText = stringResource(R.string.board_queue_command_failed)
+    val snackbarHostState = remember { SnackbarHostState() }
+    val conflictMessage = stringResource(R.string.board_queue_command_conflict)
+    val unavailableMessage = stringResource(R.string.board_queue_command_unavailable)
+    val failedMessage = stringResource(R.string.board_queue_command_failed)
     LaunchedEffect(viewModel) {
         viewModel.commandFeedback.collect { feedback ->
-            commandSnackbar.showSnackbar(when (feedback.kind) {
-                PlaylistCommandFeedbackKind.CONFLICT -> conflictText
-                PlaylistCommandFeedbackKind.UNAVAILABLE -> unavailableText
-                PlaylistCommandFeedbackKind.FAILED -> failedText
-            })
+            snackbarHostState.showSnackbar(
+                when (feedback.kind) {
+                    PlaylistCommandFeedbackKind.CONFLICT -> conflictMessage
+                    PlaylistCommandFeedbackKind.UNAVAILABLE -> unavailableMessage
+                    PlaylistCommandFeedbackKind.FAILED -> failedMessage
+                },
+            )
         }
     }
 
@@ -83,6 +85,18 @@ fun SessionQueueSheet(
                 .padding(horizontal = 16.dp)
                 .padding(bottom = 32.dp)
         ) {
+            SnackbarHost(snackbarHostState)
+            if (pendingCommands > 0) {
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    stringResource(R.string.board_queue_command_pending, pendingCommands),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+            }
             // Header
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -111,12 +125,6 @@ fun SessionQueueSheet(
             }
 
             Spacer(Modifier.height(16.dp))
-
-            SnackbarHost(commandSnackbar)
-            if (pendingCommands > 0) {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                Spacer(Modifier.height(8.dp))
-            }
 
             // Navigation controls (only for editors)
             if (canEdit && state.queue.isNotEmpty()) {

@@ -13,6 +13,7 @@ import android.content.Context
 import android.util.Log
 import com.cruxcoach.domain.relay.CompleteClimb
 import com.cruxcoach.domain.relay.RelayFrameReassembler
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -26,9 +27,15 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** A complete climb an official-app client wrote to the emulated board char. */
 data class RelayInboundClimb(val deviceAddress: String, val climb: CompleteClimb)
+
+/** One Nordic-UART write exactly as a guest sent it. MoonBoard uses an ASCII
+ * stream instead of Aurora's framed packets, so these writes are forwarded
+ * byte-for-byte without [RelayFrameReassembler]. */
+data class RelayInboundWrite(val deviceAddress: String, val value: ByteArray)
 
 /**
  * The board-emulation GATT server of CruxRelay (FEAT-044).
@@ -52,18 +59,24 @@ class RelayGattServer(private val context: Context) {
         private const val TAG = "CruxRelay/Server"
         private const val MAX_CONNECTED_DEVICES = 4
         private const val LIVENESS_CHECK_INTERVAL_MS = 10_000L
+        private const val CLIENT_DISCONNECT_GRACE_MS = 300L
+        private const val SERVICE_REGISTRATION_TIMEOUT_MS = 2_000L
     }
 
     private val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
     private var gattServer: BluetoothGattServer? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var livenessJob: Job? = null
+    private var serviceRegistration: CompletableDeferred<Boolean>? = null
 
     private val _isRunning = MutableStateFlow(false)
     val isRunning: StateFlow<Boolean> = _isRunning.asStateFlow()
 
     private val _climbs = MutableSharedFlow<RelayInboundClimb>(extraBufferCapacity = 64)
     val climbs: SharedFlow<RelayInboundClimb> = _climbs.asSharedFlow()
+
+    private val _writes = MutableSharedFlow<RelayInboundWrite>(extraBufferCapacity = 256)
+    val writes: SharedFlow<RelayInboundWrite> = _writes.asSharedFlow()
 
     private val _connectionEvents = MutableSharedFlow<GattConnectionEvent>(extraBufferCapacity = 32)
     val connectionEvents: SharedFlow<GattConnectionEvent> = _connectionEvents.asSharedFlow()
@@ -89,6 +102,14 @@ class RelayGattServer(private val context: Context) {
         boardAddressProvider()?.equals(address, ignoreCase = true) == true
 
     private val gattCallback = object : BluetoothGattServerCallback() {
+        override fun onServiceAdded(status: Int, service: BluetoothGattService) {
+            if (service.uuid == BoardBleUuids.DATA_TRANSFER_SERVICE) {
+                val ready = status == BluetoothGatt.GATT_SUCCESS
+                Log.d(TAG, "Relay service registration finished: status=$status ready=$ready")
+                serviceRegistration?.complete(ready)
+            }
+        }
+
         @SuppressLint("MissingPermission")
         override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
             val address = device.address
@@ -131,6 +152,12 @@ class RelayGattServer(private val context: Context) {
             offset: Int, value: ByteArray?
         ) {
             if (characteristic.uuid == BoardBleUuids.DATA_TRANSFER_CHAR && value != null) {
+                // Preserve the exact write for protocols such as MoonBoard.
+                // CruxRelayManager selects this stream only when the physical
+                // board is not using Aurora packet framing.
+                if (!_writes.tryEmit(RelayInboundWrite(device.address, value.copyOf()))) {
+                    Log.w(TAG, "writes buffer full — dropping a write from ${device.address}")
+                }
                 // Reassemble per client; a complete climb (ONLY / FIRST..LAST)
                 // may span many writes. Never act on a partial write.
                 val completed = synchronized(lock) {
@@ -151,7 +178,7 @@ class RelayGattServer(private val context: Context) {
     }
 
     @SuppressLint("MissingPermission")
-    fun start(): Boolean {
+    suspend fun start(): Boolean {
         if (_isRunning.value) return true
         val manager = bluetoothManager ?: return false
         val server = manager.openGattServer(context, gattCallback) ?: run {
@@ -171,8 +198,19 @@ class RelayGattServer(private val context: Context) {
         )
         service.addCharacteristic(writeChar)
 
+        val registration = CompletableDeferred<Boolean>()
+        serviceRegistration = registration
         if (!server.addService(service)) {
             Log.e(TAG, "Failed to add relay GATT service")
+            serviceRegistration = null
+            server.close(); gattServer = null; return false
+        }
+        val serviceReady = withTimeoutOrNull(SERVICE_REGISTRATION_TIMEOUT_MS) {
+            registration.await()
+        } == true
+        serviceRegistration = null
+        if (!serviceReady) {
+            Log.e(TAG, "Relay GATT service was not registered before timeout")
             server.close(); gattServer = null; return false
         }
         _isRunning.value = true
@@ -186,15 +224,36 @@ class RelayGattServer(private val context: Context) {
     }
 
     @SuppressLint("MissingPermission")
-    fun stop() {
+    suspend fun stop() {
         if (!_isRunning.value) return
+        serviceRegistration?.cancel(); serviceRegistration = null
         livenessJob?.cancel(); livenessJob = null
+
+        // BluetoothGattServer.close() only releases the local server object on
+        // some Android stacks; it does not reliably tell existing centrals
+        // that their link is gone. Cancel every client explicitly first so a
+        // guest CruxCoach immediately leaves CONNECTED instead of keeping a
+        // stale "connected to CruxRelay" state until the supervision timeout.
+        val server = gattServer
+        val clientAddresses = synchronized(lock) { connectedDevices.toList() }
+        clientAddresses.forEach { address ->
+            runCatching {
+                bluetoothManager?.adapter?.getRemoteDevice(address)?.let { device ->
+                    server?.cancelConnection(device)
+                }
+            }.onFailure { Log.w(TAG, "Could not disconnect relay client $address", it) }
+        }
+        if (clientAddresses.isNotEmpty()) {
+            // Let the controller put the disconnect over the air before close
+            // tears down the server callback and its underlying native slot.
+            delay(CLIENT_DISCONNECT_GRACE_MS)
+        }
         synchronized(lock) {
             connectedDevices.clear()
             reassemblers.values.forEach { it.reset() }
             reassemblers.clear()
         }
-        gattServer?.close(); gattServer = null
+        server?.close(); gattServer = null
         _isRunning.value = false
         Log.d(TAG, "Relay GATT server stopped")
     }

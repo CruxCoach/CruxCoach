@@ -6,7 +6,6 @@ import com.cruxcoach.android.data.SessionGattBridge
 import com.cruxcoach.android.data.SessionQueueManager
 import com.cruxcoach.android.data.SessionQueueState
 import com.cruxcoach.android.data.SessionRole
-import com.cruxcoach.android.data.PlaylistCommandFeedback
 import com.cruxcoach.android.ui.navigation.ClimbNavigationState
 import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.data.repository.BoardRepository
@@ -34,8 +33,8 @@ class SessionQueueViewModel @Inject constructor(
 ) : ViewModel() {
 
     val state: StateFlow<SessionQueueState> = queueManager.state
-    val commandFeedback = gattBridge.commandFeedback
     val pendingCommandCount = gattBridge.pendingCommandCount
+    val commandFeedback = gattBridge.commandFeedback
 
     private val _climbInfos = MutableStateFlow<Map<String, QueueRowInfo>>(emptyMap())
     /** uuid → (name, formatted grade) for the queue rows. */
@@ -71,23 +70,43 @@ class SessionQueueViewModel @Inject constructor(
     }
 
     fun next() {
-        gattBridge.sendNext()
+        if (state.value.role == SessionRole.PARTICIPANT) {
+            gattBridge.sendNext()
+        } else {
+            queueManager.nextClimb()
+        }
     }
 
     fun prev() {
-        gattBridge.sendPrev()
+        if (state.value.role == SessionRole.PARTICIPANT) {
+            gattBridge.sendPrev()
+        } else {
+            queueManager.previousClimb()
+        }
     }
 
     fun setCurrent(index: Int) {
-        gattBridge.sendSetCurrent(index)
+        if (state.value.role == SessionRole.PARTICIPANT) {
+            gattBridge.sendSetCurrent(index)
+        } else {
+            queueManager.setCurrentClimb(index)
+        }
     }
 
     fun removeClimb(index: Int) {
-        gattBridge.sendRemoveClimb(index)
+        if (state.value.role == SessionRole.PARTICIPANT) {
+            gattBridge.sendRemoveClimb(index)
+        } else {
+            queueManager.removeClimb(index)
+        }
     }
 
     fun moveClimb(from: Int, to: Int) {
-        gattBridge.sendMove(from, to)
+        if (state.value.role == SessionRole.PARTICIPANT) {
+            gattBridge.sendMove(from, to)
+        } else {
+            queueManager.moveClimb(from, to)
+        }
     }
 
     fun endOrLeave() {

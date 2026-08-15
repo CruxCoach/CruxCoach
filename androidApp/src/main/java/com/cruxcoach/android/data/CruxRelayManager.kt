@@ -18,6 +18,7 @@ import com.cruxcoach.android.ble.RelayGattServer
 import com.cruxcoach.android.boardcell.BoardCellEvent
 import com.cruxcoach.android.boardcell.BoardCellManager
 import com.cruxcoach.android.boardcell.ProjectionResult
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.relay.RelayBoardName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -218,33 +219,37 @@ class CruxRelayManager(
         // Subscribe before advertising: MutableSharedFlow does not replay a
         // write that arrives while there is no collector.
         forwardJob = scope.launch {
-            relayServer.climbs.collect { inbound ->
-                val result = boardCellManager.projectExternal(
-                    boardWrite = { bleConnection.sendRawChunks(inbound.climb.chunks) },
-                    identify = { projectionCoordinator.identifyExternal(inbound.climb) },
-                )
-                if (result is ProjectionResult.Committed || result is ProjectionResult.Duplicate) {
-                    advertiser.clearActiveClimb()
-                    // Identification already ran inside BoardCell's projection mutex:
-                    // the next board write cannot overtake its canonical event. Keep
-                    // only the legacy UI/persistence projection off this collector;
-                    // cancellation prevents an older banner update winning later.
-                    identifyJob?.cancel()
-                    identifyJob = scope.launch {
-                        val projection = if (result is ProjectionResult.Committed) {
-                            (result.envelope.event as? BoardCellEvent.ProjectCommitted)?.projection
-                        } else boardCellManager.snapshot()?.projection
-                        projectionCoordinator.onCanonicalExternalBoardWrite(projection)
+            if (board.boardBrand == BoardBrand.MOONBOARD) {
+                // MoonBoard speaks an ASCII Nordic-UART stream. Forward each
+                // guest write in order and byte-for-byte; there is no Aurora
+                // packet grouping for RelayFrameReassembler to perform.
+                relayServer.writes.collect { inbound ->
+                    if (bleConnection.sendRawChunks(listOf(inbound.value))) {
+                        advertiser.clearActiveClimb()
+                    } else {
+                        Log.w(TAG, "sendRawChunks failed for a relayed MoonBoard write")
+                        _state.update { it.copy(error = RelayError.FORWARD_FAILED) }
                     }
-                } else {
-                    Log.w(TAG, "relayed climb was not canonically committed: $result")
-                    // Say so. The guest's app got its write acknowledged by our
-                    // GATT server and reports success; if we stay quiet too,
-                    // both sides believe a climb is on a wall that is dark.
-                    // Sharing stays on — a single refused frame is usually
-                    // transient, and BOARD_LOST already covers a link that
-                    // really went away.
-                    _state.update { it.copy(error = RelayError.FORWARD_FAILED) }
+                }
+            } else {
+                relayServer.climbs.collect { inbound ->
+                    val result = boardCellManager.projectExternal(
+                        boardWrite = { bleConnection.sendRawChunks(inbound.climb.chunks) },
+                        identify = { projectionCoordinator.identifyExternal(inbound.climb) },
+                    )
+                    if (result is ProjectionResult.Committed || result is ProjectionResult.Duplicate) {
+                        advertiser.clearActiveClimb()
+                        identifyJob?.cancel()
+                        identifyJob = scope.launch {
+                            val projection = if (result is ProjectionResult.Committed) {
+                                (result.envelope.event as? BoardCellEvent.ProjectCommitted)?.projection
+                            } else boardCellManager.snapshot()?.projection
+                            projectionCoordinator.onCanonicalExternalBoardWrite(projection)
+                        }
+                    } else {
+                        Log.w(TAG, "relayed climb was not canonically committed: $result")
+                        _state.update { it.copy(error = RelayError.FORWARD_FAILED) }
+                    }
                 }
             }
         }

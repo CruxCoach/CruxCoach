@@ -170,3 +170,37 @@ Open decisions before implementation:
 - confirm the six-hour snapshot staleness threshold;
 - confirm hand-rolled drag state rather than a dependency;
 - confirm anchored draggable rather than a pager.
+
+## 9. Android 9 GATT fallback and concurrent edits
+
+The 0.2.2 playlist implementation remains the compatibility transport for
+Android 9 devices. The host is the single sequencer and its queue is always the
+authoritative state. Participants do not optimistically mutate their local
+queue; they wait for the host's state/event broadcast.
+
+New clients append a versioned semantic context and a request id after the
+legacy command bytes. Existing 0.2.2 hosts decode the unchanged prefix and
+ignore the extension. New hosts use the extension to make concurrent edits
+safe:
+
+- add and resend are independent and can be applied in arrival order;
+- remove and select-current follow the referenced climb rather than a stale
+  numeric index;
+- next/previous require the same current climb and adjacent target;
+- move follows the moved climb and its destination neighbours;
+- repeated identical climbs are accepted only while their occurrence remains
+  unambiguous.
+
+Commands are consumed from a bounded GATT channel. If it is full, Android
+returns a failed characteristic write instead of acknowledging and silently
+dropping the action. The host caches recent request results to make a repeated
+write idempotent and sends the result only to the requesting device. The UI
+shows outstanding changes and reports transport failures or semantic
+conflicts. A result indicator expires after five seconds without retry when
+talking to an older host: retrying an add against a host that does not
+understand request ids could duplicate it.
+
+The authoritative full queue broadcast remains the recovery mechanism after a
+dropped notification or reconnect. Command-result notifications fit the
+default 20-byte ATT payload; the existing MTU negotiation continues to carry
+the semantic request extension and paged full-state frames.

@@ -7,13 +7,13 @@ import org.junit.Test
 
 class BoardRelayPolicyTest {
     @Test
-    fun `relay follows the current Aurora advertising observation`() {
+    fun `continued advertising does not suppress relay for a physical board`() {
         assertEquals(
             BoardRelayAvailability.AVAILABLE,
             BoardRelayPolicy.availability(board(advertisesWhileConnected = false)),
         )
         assertEquals(
-            BoardRelayAvailability.MULTI_CONNECT_NOT_NEEDED,
+            BoardRelayAvailability.AVAILABLE,
             BoardRelayPolicy.availability(board(advertisesWhileConnected = true)),
         )
     }
@@ -30,9 +30,9 @@ class BoardRelayPolicyTest {
     }
 
     @Test
-    fun `MoonBoard does not use Aurora frame relay`() {
+    fun `MoonBoard supports raw Nordic UART relay`() {
         assertEquals(
-            BoardRelayAvailability.UNSUPPORTED_PROTOCOL,
+            BoardRelayAvailability.AVAILABLE,
             BoardRelayPolicy.availability(board(brand = BoardBrand.MOONBOARD)),
         )
     }

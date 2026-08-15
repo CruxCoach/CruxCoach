@@ -19,10 +19,10 @@ internal object BoardRelayPolicy {
     ): BoardRelayAvailability = when {
         board == null -> BoardRelayAvailability.NO_BOARD
         board.isCruxRelay -> BoardRelayAvailability.RELAY_ENDPOINT
-        !board.boardBrand.usesAuroraProtocol -> BoardRelayAvailability.UNSUPPORTED_PROTOCOL
-        // An Aurora controller is exclusive unless it was caught advertising
-        // while connected, and an exclusive board is exactly what the relay is
-        // for — so "not established" and "single" are the same answer here.
+        // Physical controllers are relayable regardless of family or inferred
+        // capacity. Continued
+        // advertising cannot prove that a second GATT central is accepted,
+        // and an exclusive board is exactly what the relay is for.
         else -> when (BoardControllerProfiles.forBoard(board).connectionCapacity) {
             BoardConnectionCapacity.MULTIPLE -> BoardRelayAvailability.MULTI_CONNECT_NOT_NEEDED
             BoardConnectionCapacity.SINGLE,

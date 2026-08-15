@@ -36,7 +36,7 @@ internal data class BoardControllerProfile(
 /**
  * One capability registry for connection, queue and relay UX.
  *
- * **Every physical controller counts as exclusive until proven otherwise.**
+ * **Every physical controller counts as exclusive.**
  * That is not a guess about firmware, it is how the boards behave and how their
  * own apps treat them: the Kilter app tries each of a wall's endpoints in turn
  * and, when none accepts, can only say "both signals are busy or out of range"
@@ -44,15 +44,12 @@ internal data class BoardControllerProfile(
  * an inactivity auto-disconnect for the same reason: the board has to be handed
  * back before the next climber can use it.
  *
- * The one usable signal is POSITIVE: seeing a connectable advertisement from
- * the controller while we already hold GATT proves it can still accept another
- * central (a peripheral can only be connected to while it advertises). Missing
- * that observation proves nothing on its own — Android suppresses
- * advertisements from an already-connected peer often enough that a bare
- * negative says more about the phone than about the board. A *completed* scan
- * that saw nothing is different, and it is the only thing that can correct a
- * stale "accepts several": the probe distinguishes the two and persists both,
- * so a controller swapped for an exclusive one is not misjudged for ever.
+ * Advertising while connected is not proof of spare connection capacity. Some
+ * controllers keep publishing connectable advertisements but reject a second
+ * GATT central. A single phone cannot distinguish that from genuine multi-client
+ * support without another device actually connecting, so using the advertisement
+ * as proof produced a dangerous false positive. Physical boards therefore stay
+ * conservative regardless of that legacy observation.
  *
  * CruxRelay is our own endpoint, so its multi-client capacity is known outright.
  */
@@ -76,13 +73,9 @@ internal object BoardControllerProfiles {
             )
         }
 
-        // Only the positive observation carries information; "not seen" and
-        // "not probed yet" are the same conservative answer.
-        val capacity = if (advertisesWhileConnected == true) {
-            BoardConnectionCapacity.MULTIPLE
-        } else {
-            BoardConnectionCapacity.SINGLE
-        }
+        // A continued advertisement does not prove that a second central will
+        // be accepted. Only CruxRelay's capacity is known by construction.
+        val capacity = BoardConnectionCapacity.SINGLE
         return BoardControllerProfile(
             connectionCapacity = capacity,
             projectionLifetime = if (brand == BoardBrand.MOONBOARD) {
@@ -90,8 +83,7 @@ internal object BoardControllerProfiles {
             } else {
                 BoardProjectionLifetime.RETAINED_AFTER_DISCONNECT
             },
-            relaySupported = brand?.usesAuroraProtocol == true &&
-                capacity == BoardConnectionCapacity.SINGLE,
+            relaySupported = brand?.isInteractive == true,
         )
     }
 }

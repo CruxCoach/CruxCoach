@@ -21,14 +21,14 @@ class BoardControllerProfilesTest {
     }
 
     @Test
-    fun `Aurora controller observed advertising while connected is multi-connect`() {
+    fun `advertising while connected does not claim multi-connect`() {
         val profile = BoardControllerProfiles.resolve(
             BoardBrand.TENSION,
             advertisesWhileConnected = true,
         )
 
-        assertEquals(BoardConnectionCapacity.MULTIPLE, profile.connectionCapacity)
-        assertFalse(profile.relaySupported)
+        assertEquals(BoardConnectionCapacity.SINGLE, profile.connectionCapacity)
+        assertTrue(profile.relaySupported)
     }
 
     @Test
@@ -43,15 +43,15 @@ class BoardControllerProfilesTest {
     }
 
     @Test
-    fun `MoonBoard capacity is observed independently from projection lifetime`() {
+    fun `MoonBoard advertising does not override exclusive capacity`() {
         val profile = BoardControllerProfiles.resolve(
             BoardBrand.MOONBOARD,
             advertisesWhileConnected = true,
         )
 
-        assertEquals(BoardConnectionCapacity.MULTIPLE, profile.connectionCapacity)
+        assertEquals(BoardConnectionCapacity.SINGLE, profile.connectionCapacity)
         assertEquals(BoardProjectionLifetime.UNTIL_LAST_CONNECTION, profile.projectionLifetime)
-        assertFalse(profile.relaySupported)
+        assertTrue(profile.relaySupported)
     }
 
     @Test
