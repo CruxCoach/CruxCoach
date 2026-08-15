@@ -59,12 +59,15 @@ internal class CompetitionBackfillRetryGate(
 internal fun staleAfterRelayLoss(
     snapshot: CompetitionRelayClient.Snapshot,
     allReadRelaysConnected: Boolean,
+    intentQuorumConnected: Boolean = allReadRelaysConnected,
 ): CompetitionRelayClient.Snapshot = if (
     allReadRelaysConnected || (!snapshot.historyComplete && !snapshot.intentHistoryComplete)
 ) snapshot else snapshot.copy(
     historyComplete = false,
-    intentHistoryComplete = false,
-    pendingIntents = emptyList(),
+    intentHistoryComplete = snapshot.intentHistoryComplete && intentQuorumConnected,
+    pendingIntents = if (snapshot.intentHistoryComplete && intentQuorumConnected) {
+        snapshot.pendingIntents
+    } else emptyList(),
 )
 
 internal fun competitionRelayScope(
@@ -340,20 +343,12 @@ class CompetitionRelayClient internal constructor(
 
                 // Intents are not authority state, but a complete inbox is
                 // needed before organizer/public request projections are used.
-                val intentHistoryComplete = runCatching {
-                    withTimeoutOrNull(queryTimeoutMs) {
-                        coroutineScope {
-                            intentFilters(address).map { intentFilter ->
-                                async {
-                                    relayPool.fetchStoredComplete(intentFilter, relayScope).collect { json ->
-                                        ingest(json, competition, organizerPubkey, nowSeconds())
-                                    }
-                                }
-                            }.awaitAll()
-                        }
-                        true
-                    } ?: false
-                }.onFailure { Log.w(TAG, "stored intent backfill failed", it) }.getOrDefault(false)
+                val (intentHistoryComplete, intentEvents) = fetchIntentQuorum(
+                    intentFilter(address, competition.authority), relayScope.orEmpty(),
+                )
+                intentEvents.forEach { json ->
+                    ingest(json, competition, organizerPubkey, nowSeconds())
+                }
                 reduce(
                     loading = false,
                     historyComplete = historyComplete,
@@ -509,12 +504,13 @@ class CompetitionRelayClient internal constructor(
 
     /** A dropped read relay invalidates every projection until exact recovery. */
     fun connectionChanged(connectedUrls: Set<String> = relayPool.connectedRelayUrls.value) {
+        val readScope = (relayScope ?: relayPool.readRelays()).filter { it.read }
+        val connectedCount = readScope.count { it.url in connectedUrls }
         _snapshot.update {
             staleAfterRelayLoss(
                 it,
-                relayPool.allReadRelaysConnected(
-                    relayScope ?: relayPool.readRelays(), connectedUrls,
-                ),
+                connectedCount == readScope.size,
+                connectedCount >= relayQuorum(readScope.size),
             )
         }
     }
@@ -532,30 +528,48 @@ class CompetitionRelayClient internal constructor(
         nowSeconds: Long,
     ): OwnIntent {
         var newest: CompetitionProtocol.ParsedIntent.Valid? = null
-        val complete = runCatching {
-            withTimeoutOrNull(queryTimeoutMs) {
-                relayPool.fetchStoredComplete(
-                    ownIntentFilter(
-                        competition.compId, competition.authority, organizerPubkey, pubkey, op, nonce,
-                    ),
-                    scopeResolver(
-                        competition.relays,
-                        relayPool.readRelays() + relayPool.writeRelays(),
-                    ),
-                )
-                    .collect { json ->
-                        val event = runCatching { Event.fromJson(json) }.getOrNull() ?: return@collect
-                        if (!acceptsBody(event) || event.pubKey != pubkey) return@collect
-                        val parsed = CompetitionProtocol.parseIntent(
-                            event.toCompetitionEvent(), competition, organizerPubkey, nowSeconds,
-                        ) as? CompetitionProtocol.ParsedIntent.Valid ?: return@collect
-                        if (parsed.op != op) return@collect
-                        if (shouldReplaceIntent(newest, parsed)) newest = parsed
-                    }
-                true
-            } ?: false
-        }.getOrDefault(false)
+        val (complete, events) = fetchIntentQuorum(
+            ownIntentFilter(
+                competition.compId, competition.authority, organizerPubkey, pubkey, op, nonce,
+            ),
+            scopeResolver(
+                competition.relays,
+                relayPool.readRelays() + relayPool.writeRelays(),
+            ),
+        )
+        events.forEach { json ->
+            val event = runCatching { Event.fromJson(json) }.getOrNull() ?: return@forEach
+            if (!acceptsBody(event) || event.pubKey != pubkey) return@forEach
+            val parsed = CompetitionProtocol.parseIntent(
+                event.toCompetitionEvent(), competition, organizerPubkey, nowSeconds,
+            ) as? CompetitionProtocol.ParsedIntent.Valid ?: return@forEach
+            if (parsed.op != op) return@forEach
+            if (shouldReplaceIntent(newest, parsed)) newest = parsed
+        }
         return OwnIntent(complete, newest.takeIf { complete })
+    }
+
+    /** Query each signed relay independently so one incompatible relay cannot cancel its peers. */
+    private suspend fun fetchIntentQuorum(
+        filter: String,
+        scope: List<RelayConfig>,
+    ): Pair<Boolean, List<String>> = coroutineScope {
+        val readers = scope.filter { it.read }.distinctBy { it.url }
+        if (readers.isEmpty()) return@coroutineScope false to emptyList()
+        val results = readers.map { relay ->
+            async {
+                val events = mutableListOf<String>()
+                val answered = runCatching {
+                    withTimeoutOrNull(queryTimeoutMs) {
+                        relayPool.fetchStoredComplete(filter, listOf(relay)).collect(events::add)
+                        true
+                    } ?: false
+                }.onFailure { Log.w(TAG, "stored intent relay failed: ${relay.url}", it) }
+                    .getOrDefault(false)
+                answered to events
+            }
+        }.awaitAll()
+        (results.count { it.first } >= relayQuorum(readers.size)) to results.flatMap { it.second }
     }
 
     private fun reduce(
@@ -653,9 +667,10 @@ class CompetitionRelayClient internal constructor(
         internal fun logPageFilter(authority: String, address: String, dTags: List<String>): String =
             """{"kinds":[${CompetitionProtocol.KIND}],"authors":["$authority"],"#a":["$address"],"#d":[${dTags.joinToString(",") { "\"$it\"" }}],"limit":100}"""
 
-        internal fun intentFilters(address: String): List<String> = CompetitionProtocol.INTENT_OPS.map { op ->
-            """{"kinds":[${CompetitionProtocol.KIND}],"#a":["$address"],"#l":["intent"],"#op":["$op"],"limit":1000}"""
-        }
+        internal fun relayQuorum(relayCount: Int): Int = maxOf(1, relayCount / 2 + 1)
+
+        internal fun intentFilter(address: String, authority: String): String =
+            """{"kinds":[${CompetitionProtocol.KIND}],"#a":["$address"],"#p":["$authority"],"limit":1000}"""
 
         internal fun ownIntentFilter(
             compId: String,
@@ -667,7 +682,7 @@ class CompetitionRelayClient internal constructor(
         ): String {
             val address = CompetitionProtocol.competitionAddress(organizerPubkey, compId)
             val dTag = CompetitionProtocol.intentDTag(compId, pubkey, nonce)
-            return """{"kinds":[${CompetitionProtocol.KIND}],"authors":["$pubkey"],"#d":["$dTag"],"#a":["$address"],"#p":["$authority"],"#op":["$op"],"limit":8}"""
+            return """{"kinds":[${CompetitionProtocol.KIND}],"authors":["$pubkey"],"#d":["$dTag"],"#a":["$address"],"#p":["$authority"],"limit":8}"""
         }
 
         internal fun boundedMissingSequence(sequences: Set<Int>): Int? {

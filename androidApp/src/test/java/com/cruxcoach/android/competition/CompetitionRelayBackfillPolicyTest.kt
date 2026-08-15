@@ -208,15 +208,14 @@ class CompetitionRelayBackfillPolicyTest {
 
     @Test
     fun `intent history is separate from snapshots and results`() {
-        val filters = CompetitionRelayClient.intentFilters(address)
+        val filter = CompetitionRelayClient.intentFilter(address, authority)
 
-        assertEquals(CompetitionProtocol.INTENT_OPS.size, filters.size)
-        assertTrue(filters.all { it.contains("\"#a\":[\"$address\"]") })
-        assertTrue(filters.all { it.contains("\"#l\":[\"intent\"]") })
-        assertTrue(filters.all { it.contains("\"limit\":1000") })
-        CompetitionProtocol.INTENT_OPS.forEach { op ->
-            assertTrue(filters.any { it.contains("\"#op\":[\"$op\"]") })
-        }
+        assertTrue(filter.contains("\"#a\":[\"$address\"]"))
+        assertTrue(filter.contains("\"#p\":[\"$authority\"]"))
+        assertTrue(filter.contains("\"limit\":1000"))
+        assertFalse(filter.contains("\"#l\""))
+        assertFalse(filter.contains("\"#op\""))
+        assertEquals(3, CompetitionRelayClient.relayQuorum(5))
     }
 
     @Test
@@ -229,7 +228,7 @@ class CompetitionRelayBackfillPolicyTest {
 
         assertTrue(filter.contains("\"authors\":[\"$pubkey\"]"))
         assertTrue(filter.contains("\"#d\":[\"${CompetitionProtocol.intentDTag(compId, pubkey, nonce)}\"]"))
-        assertTrue(filter.contains("\"#op\":[\"climb_choice\"]"))
+        assertFalse(filter.contains("\"#op\""))
         assertTrue(filter.endsWith("\"limit\":8}"))
     }
 
