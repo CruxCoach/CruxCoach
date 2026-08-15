@@ -1,5 +1,6 @@
 use std::net::Ipv6Addr;
-use std::sync::{Mutex, OnceLock};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use fips::config::{BleConfig, TransportInstances};
@@ -8,27 +9,83 @@ use fips::{Config, Node, PeerIdentity};
 use jni::JNIEnv;
 use jni::objects::{JByteArray, JClass, JObject, JString};
 use jni::sys::{jboolean, jint, jlong, jstring};
-use tokio::runtime::Runtime;
-use tokio::sync::mpsc;
 
 use crate::{decode_datagram, encode_datagram};
 
 mod ble;
 
 struct Running {
-    runtime: Runtime,
-    task: tokio::task::JoinHandle<()>,
-    outbound: mpsc::Sender<Vec<u8>>,
-    inbound: std::sync::mpsc::Receiver<Vec<u8>>,
-    identities: mpsc::Sender<DnsResolvedIdentity>,
+    stop_tx: Option<tokio::sync::oneshot::Sender<()>>,
+    node_thread: Option<std::thread::JoinHandle<()>>,
+    exited: std::sync::mpsc::Receiver<()>,
+    inbound: Arc<Mutex<std::sync::mpsc::Receiver<Vec<u8>>>>,
+    batch_tx: Option<std::sync::mpsc::SyncSender<OutboundBatch>>,
+    batch_thread: Option<std::thread::JoinHandle<()>>,
+    inbound_thread: Option<std::thread::JoinHandle<()>>,
     read: fips::control::read_handle::ControlReadHandle,
     source: Ipv6Addr,
     npub: String,
+    alive: Arc<AtomicBool>,
+}
+
+struct OutboundBatch {
+    identity: DnsResolvedIdentity,
+    packets: Vec<Vec<u8>>,
 }
 
 static RUNNING: OnceLock<Mutex<Option<Running>>> = OnceLock::new();
+static LIFECYCLE: Mutex<()> = Mutex::new(());
+static STOPPING: AtomicBool = AtomicBool::new(false);
+static SEND: Mutex<()> = Mutex::new(());
 fn running() -> &'static Mutex<Option<Running>> {
     RUNNING.get_or_init(|| Mutex::new(None))
+}
+
+const START_TIMEOUT: Duration = Duration::from_secs(30);
+const STOP_TIMEOUT: Duration = Duration::from_secs(3);
+
+/// FIPS defaults both crypto pools to available_parallelism(), which is a
+/// server-friendly default but excessive for the small BoardCell frames on a
+/// phone. Respect an explicit operator override, otherwise use one worker in
+/// each direction just like the measured fips-android mobile profile.
+fn apply_mobile_profile(config: &mut Config) {
+    for key in ["FIPS_ENCRYPT_WORKERS", "FIPS_DECRYPT_WORKERS"] {
+        if std::env::var_os(key).is_none() {
+            // SAFETY: start/stop is serialized by LIFECYCLE and these variables
+            // are read only while Node::start runs on the node thread.
+            unsafe { std::env::set_var(key, "1") };
+        }
+    }
+    config.node.tick_interval_secs = 5;
+    config.node.heartbeat_interval_secs = 20;
+    config.node.link_dead_timeout_secs = 60;
+}
+
+fn stop_running(mut value: Running) {
+    STOPPING.store(true, Ordering::Release);
+    // Stop accepting whole application messages first. The pump drains the
+    // bounded queue while the node is alive, or observes the node channels
+    // closing during shutdown.
+    drop(value.batch_tx.take());
+    if let Some(stop) = value.stop_tx.take() {
+        let _ = stop.send(());
+    }
+    if value.exited.recv_timeout(STOP_TIMEOUT).is_ok() {
+        if let Some(thread) = value.node_thread.take() {
+            let _ = thread.join();
+        }
+        if let Some(thread) = value.batch_thread.take() {
+            let _ = thread.join();
+        }
+        if let Some(thread) = value.inbound_thread.take() {
+            let _ = thread.join();
+        }
+        STOPPING.store(false, Ordering::Release);
+    } else {
+        // Dropping JoinHandle detaches rather than blocking the Android caller.
+        // The thread still owns all node state and tears it down independently.
+        let _ = value.node_thread.take();
+    }
 }
 
 fn jstring(env: &mut JNIEnv, input: JString) -> Option<String> {
@@ -45,12 +102,19 @@ pub extern "system" fn Java_com_cruxcoach_android_fips_NativeFips_start(
     let Some(secret) = jstring(&mut env, secret) else {
         return 0;
     };
-    let mut guard = running().lock().unwrap();
-    if guard.is_some() {
+    let _lifecycle = LIFECYCLE.lock().unwrap();
+    // A timed-out stop deliberately leaves the old node thread detached. Do
+    // not overlap a second FIPS node with it; the exiting thread clears this
+    // flag and the Kotlin liveness reconciler retries on its next pass.
+    if STOPPING.load(Ordering::Acquire) {
+        return 0;
+    }
+    if running().lock().unwrap().is_some() {
         return 1;
     }
     let result = (|| -> Result<Running, String> {
         let mut config = Config::new();
+        apply_mobile_profile(&mut config);
         config.node.identity.nsec = Some(secret);
         config.node.identity.persistent = false; // Android owns encrypted persistence.
         config.tun.enabled = false;
@@ -66,28 +130,117 @@ pub extern "system" fn Java_com_cruxcoach_android_fips_NativeFips_start(
         let npub = node.npub();
         let source = node.identity().address().to_ipv6();
         let read = node.control_read_handle();
-        let (outbound, inbound) = node.enable_app_owned_tun();
+        let (outbound, native_inbound) = node.enable_app_owned_tun();
+        // FIPS' app-owned inbound seam is an unbounded std channel. Drain it
+        // continuously into a bounded queue so a paused Kotlin consumer cannot
+        // grow native memory without limit. Overflow drops datagrams; the
+        // BoardCell outbox/anti-entropy layer repairs missed state.
+        let (bounded_inbound_tx, inbound) = std::sync::mpsc::sync_channel(256);
+        let inbound_thread = std::thread::Builder::new()
+            .name("crux-fips-app-rx".into())
+            .spawn(move || {
+                while let Ok(packet) = native_inbound.recv() {
+                    match bounded_inbound_tx.try_send(packet) {
+                        Ok(()) | Err(std::sync::mpsc::TrySendError::Full(_)) => {}
+                        Err(std::sync::mpsc::TrySendError::Disconnected(_)) => break,
+                    }
+                }
+            })
+            .map_err(|error| format!("spawn application receiver: {error}"))?;
         let identities = node.enable_app_owned_dns();
-        let runtime = Runtime::new().map_err(|e| e.to_string())?;
-        let task = runtime.spawn(async move {
-            if node.start().await.is_ok() {
-                let _ = node.run_rx_loop().await;
+        let (batch_tx, batch_rx) = std::sync::mpsc::sync_channel::<OutboundBatch>(8);
+        let pump_outbound = outbound.clone();
+        let pump_identities = identities.clone();
+        let batch_thread = std::thread::Builder::new()
+            .name("crux-fips-app-tx".into())
+            .spawn(move || {
+                'messages: while let Ok(batch) = batch_rx.recv() {
+                    if pump_identities.blocking_send(batch.identity).is_err() {
+                        break;
+                    }
+                    for packet in batch.packets {
+                        if pump_outbound.blocking_send(packet).is_err() {
+                            break 'messages;
+                        }
+                    }
+                }
+            })
+            .map_err(|error| format!("spawn application sender: {error}"))?;
+        let (ready_tx, ready_rx) = std::sync::mpsc::channel::<Result<(), String>>();
+        let (stop_tx, stop_rx) = tokio::sync::oneshot::channel::<()>();
+        let (exit_tx, exit_rx) = std::sync::mpsc::channel();
+        let alive = Arc::new(AtomicBool::new(false));
+        let thread_alive = Arc::clone(&alive);
+        let node_thread = std::thread::Builder::new()
+            .name("crux-fips-node".into())
+            .spawn(move || {
+                let runtime = match tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    Ok(runtime) => runtime,
+                    Err(error) => {
+                        let _ = ready_tx.send(Err(format!("tokio runtime: {error}")));
+                        let _ = exit_tx.send(());
+                        return;
+                    }
+                };
+                let running_alive = Arc::clone(&thread_alive);
+                runtime.block_on(async move {
+                    if let Err(error) = node.start().await {
+                        let _ = ready_tx.send(Err(format!("node start: {error}")));
+                        return;
+                    }
+                    running_alive.store(true, Ordering::Release);
+                    let _ = ready_tx.send(Ok(()));
+                    tokio::select! {
+                        _ = stop_rx => {}
+                        _ = node.run_rx_loop() => {}
+                    }
+                });
+                runtime.shutdown_timeout(Duration::from_secs(2));
+                thread_alive.store(false, Ordering::Release);
+                STOPPING.store(false, Ordering::Release);
+                let _ = exit_tx.send(());
+            })
+            .map_err(|error| format!("spawn node thread: {error}"))?;
+        match ready_rx.recv_timeout(START_TIMEOUT) {
+            Ok(Ok(())) => {}
+            Ok(Err(error)) => {
+                let _ = node_thread.join();
+                return Err(error);
             }
-        });
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                STOPPING.store(true, Ordering::Release);
+                let _ = stop_tx.send(());
+                // The node thread owns all state and observes the already-sent
+                // stop signal after a late start; never extend the JNI timeout
+                // with an unbounded join.
+                drop(node_thread);
+                return Err("node start timed out".into());
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                let _ = node_thread.join();
+                return Err("node thread died during start".into());
+            }
+        }
         Ok(Running {
-            runtime,
-            task,
-            outbound,
-            inbound,
-            identities,
+            stop_tx: Some(stop_tx),
+            node_thread: Some(node_thread),
+            exited: exit_rx,
+            inbound: Arc::new(Mutex::new(inbound)),
+            batch_tx: Some(batch_tx),
+            batch_thread: Some(batch_thread),
+            inbound_thread: Some(inbound_thread),
             read,
             source,
             npub,
+            alive,
         })
     })();
     match result {
         Ok(value) => {
-            *guard = Some(value);
+            *running().lock().unwrap() = Some(value);
             1
         }
         Err(_) => 0,
@@ -95,13 +248,28 @@ pub extern "system" fn Java_com_cruxcoach_android_fips_NativeFips_start(
 }
 
 #[unsafe(no_mangle)]
+pub extern "system" fn Java_com_cruxcoach_android_fips_NativeFips_isAlive(
+    _env: JNIEnv,
+    _class: JClass,
+) -> jboolean {
+    jboolean::from(
+        running()
+            .lock()
+            .unwrap()
+            .as_ref()
+            .is_some_and(|value| value.alive.load(Ordering::Acquire)),
+    )
+}
+
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_cruxcoach_android_fips_NativeFips_stop(
     _env: JNIEnv,
     _class: JClass,
 ) {
-    if let Some(value) = running().lock().unwrap().take() {
-        value.task.abort();
-        value.runtime.shutdown_timeout(Duration::from_secs(2));
+    let _lifecycle = LIFECYCLE.lock().unwrap();
+    let value = running().lock().unwrap().take();
+    if let Some(value) = value {
+        stop_running(value);
     }
 }
 
@@ -121,40 +289,64 @@ pub extern "system" fn Java_com_cruxcoach_android_fips_NativeFips_npub(
         .unwrap_or(std::ptr::null_mut())
 }
 
+/// Atomically admits a complete fragmented application message. `packed`
+/// contains repeated big-endian `[u32 length][frame]` records. A bounded queue
+/// holds whole batches; its worker may then await TUN capacity without ever
+/// exposing a partially-admitted message to the caller.
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_cruxcoach_android_fips_NativeFips_send(
+pub extern "system" fn Java_com_cruxcoach_android_fips_NativeFips_sendBatch(
     mut env: JNIEnv,
     _class: JClass,
     destination_npub: JString,
-    bytes: JByteArray,
+    packed: JByteArray,
 ) -> jboolean {
     let Some(npub) = jstring(&mut env, destination_npub) else {
         return 0;
     };
-    let Ok(payload) = env.convert_byte_array(bytes) else {
+    let Ok(bytes) = env.convert_byte_array(packed) else {
         return 0;
     };
     let Ok(peer) = PeerIdentity::from_npub(&npub) else {
         return 0;
     };
-    let guard = running().lock().unwrap();
-    let Some(value) = guard.as_ref() else {
-        return 0;
-    };
-    if value
-        .identities
-        .try_send(DnsResolvedIdentity {
-            node_addr: *peer.node_addr(),
-            pubkey: peer.pubkey_full(),
-        })
-        .is_err()
-    {
+    let mut cursor = 0usize;
+    let mut frames = Vec::new();
+    while cursor < bytes.len() {
+        if bytes.len() - cursor < 4 {
+            return 0;
+        }
+        let length = u32::from_be_bytes(bytes[cursor..cursor + 4].try_into().unwrap()) as usize;
+        cursor += 4;
+        if length == 0 || length > crate::MAX_APP_PAYLOAD || bytes.len() - cursor < length {
+            return 0;
+        }
+        frames.push(&bytes[cursor..cursor + length]);
+        cursor += length;
+    }
+    if frames.is_empty() {
         return 0;
     }
-    let Some(packet) = encode_datagram(value.source, peer.address().to_ipv6(), &payload) else {
+    let state = running().lock().unwrap().as_ref().and_then(|value| {
+        value.batch_tx.as_ref().map(|tx| (tx.clone(), value.source))
+    });
+    let Some((batch_tx, source)) = state else {
         return 0;
     };
-    jboolean::from(value.outbound.try_send(packet).is_ok())
+    let Some(packets) = frames
+        .iter()
+        .map(|frame| encode_datagram(source, peer.address().to_ipv6(), frame))
+        .collect::<Option<Vec<_>>>()
+    else {
+        return 0;
+    };
+    let _send = SEND.lock().unwrap();
+    jboolean::from(batch_tx.try_send(OutboundBatch {
+        identity: DnsResolvedIdentity {
+            node_addr: *peer.node_addr(),
+            pubkey: peer.pubkey_full(),
+        },
+        packets,
+    }).is_ok())
 }
 
 /// Returns `[u16 npub length][UTF-8 npub][application bytes]`, or an empty array.
@@ -164,21 +356,38 @@ pub extern "system" fn Java_com_cruxcoach_android_fips_NativeFips_receive(
     _class: JClass,
     timeout_ms: jint,
 ) -> jni::sys::jbyteArray {
-    let guard = running().lock().unwrap();
-    let Some(value) = guard.as_ref() else {
+    let inbound = running()
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|value| Arc::clone(&value.inbound));
+    let Some(inbound) = inbound else {
         return env.byte_array_from_slice(&[]).unwrap().into_raw();
     };
-    let Ok(packet) = value
-        .inbound
-        .recv_timeout(Duration::from_millis(timeout_ms.max(0) as u64))
-    else {
+    let received = if timeout_ms < 0 {
+        inbound.lock().unwrap().recv().ok()
+    } else {
+        inbound
+            .lock()
+            .unwrap()
+            .recv_timeout(Duration::from_millis(timeout_ms as u64))
+            .ok()
+    };
+    let Some(packet) = received else {
         return env.byte_array_from_slice(&[]).unwrap().into_raw();
     };
     let Some(datagram) = decode_datagram(&packet) else {
         return env.byte_array_from_slice(&[]).unwrap().into_raw();
     };
-    let source_npub = value
-        .read
+    let read = running()
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|value| value.read.clone());
+    let Some(read) = read else {
+        return env.byte_array_from_slice(&[]).unwrap().into_raw();
+    };
+    let source_npub = read
         .peer_views()
         .into_iter()
         .find_map(|p| {
@@ -204,13 +413,10 @@ pub extern "system" fn Java_com_cruxcoach_android_fips_NativeFips_peers(
     env: JNIEnv,
     _class: JClass,
 ) -> jstring {
-    let text = running()
-        .lock()
-        .unwrap()
-        .as_ref()
-        .map(|r| {
-            r.read
-                .peer_views()
+    let read = running().lock().unwrap().as_ref().map(|r| r.read.clone());
+    let text = read
+        .map(|read| {
+            read.peer_views()
                 .into_iter()
                 .map(|p| {
                     format!(

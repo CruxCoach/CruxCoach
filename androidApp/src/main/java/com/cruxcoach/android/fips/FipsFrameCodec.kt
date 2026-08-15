@@ -11,6 +11,13 @@ object FipsFrameCodec {
     private const val HEADER_BYTES = 61
     private const val MAGIC = 0x4343464D // CCFM
 
+    /** Stable across outbox retries, so a retry finishes/replaces the same
+     * in-flight assembly instead of allocating another one for 30 seconds. */
+    fun messageId(payload: ByteArray): UUID {
+        val hash = MessageDigest.getInstance("SHA-256").digest(payload)
+        return ByteBuffer.wrap(hash).let { UUID(it.long, it.long) }
+    }
+
     fun fragment(payload: ByteArray, id: UUID = UUID.randomUUID()): List<ByteArray> {
         require(payload.size <= MAX_MESSAGE_BYTES)
         val count = maxOf(1, (payload.size + MAX_CHUNK_BYTES - 1) / MAX_CHUNK_BYTES)
@@ -52,35 +59,68 @@ object FipsFrameCodec {
 
 class FipsFrameAssembler(
     private val nowMs: () -> Long = System::currentTimeMillis,
-    private val maxInflight: Int = 128,
+    private val maxInflight: Int = 32,
+    private val maxBufferedBytes: Int = 8 * 1_048_576,
+    private val maxInflightPerSender: Int = 4,
     private val ttlMs: Long = 30_000,
 ) {
     private data class Pending(val created: Long, val count: Int, val total: Int, val hash: ByteArray,
-        val pieces: MutableMap<Int, ByteArray> = mutableMapOf())
+        val pieces: MutableMap<Int, ByteArray> = mutableMapOf(), var bufferedBytes: Int = 0)
     private val pending = linkedMapOf<Pair<String, UUID>, Pending>()
+    private var bufferedBytes = 0
+
+    private fun remove(key: Pair<String, UUID>) {
+        pending.remove(key)?.let { bufferedBytes -= it.bufferedBytes }
+    }
+
+    private fun evictExpired(now: Long) {
+        pending.entries.filter { now - it.value.created > ttlMs }
+            .map { it.key }
+            .forEach(::remove)
+    }
+
+    private fun evictOldest(except: Pair<String, UUID>? = null): Boolean {
+        val key = pending.keys.firstOrNull { it != except } ?: return false
+        remove(key)
+        return true
+    }
 
     @Synchronized
     fun accept(authenticatedSender: String, bytes: ByteArray): ByteArray? {
         val fragment = FipsFrameCodec.decode(bytes) ?: return null
         val now = nowMs()
-        pending.entries.removeAll { now - it.value.created > ttlMs }
+        evictExpired(now)
         val key = authenticatedSender to fragment.id
         val value = pending[key] ?: run {
-            while (pending.size >= maxInflight) pending.remove(pending.keys.first())
+            while (pending.size >= maxInflight) evictOldest()
+            while (pending.keys.count { it.first == authenticatedSender } >= maxInflightPerSender) {
+                val oldest = pending.keys.firstOrNull { it.first == authenticatedSender } ?: break
+                remove(oldest)
+            }
             Pending(now, fragment.count, fragment.total, fragment.hash).also { pending[key] = it }
         }
         if (value.count != fragment.count || value.total != fragment.total ||
-            !value.hash.contentEquals(fragment.hash)) { pending.remove(key); return null }
-        value.pieces.putIfAbsent(fragment.index, fragment.payload)
+            !value.hash.contentEquals(fragment.hash)) { remove(key); return null }
+        if (fragment.index !in value.pieces) {
+            while (bufferedBytes + fragment.payload.size > maxBufferedBytes) {
+                if (!evictOldest(except = key)) {
+                    remove(key)
+                    return null
+                }
+            }
+            value.pieces[fragment.index] = fragment.payload
+            value.bufferedBytes += fragment.payload.size
+            bufferedBytes += fragment.payload.size
+        }
         if (value.pieces.size != value.count) return null
         val complete = ByteArray(value.total)
         var offset = 0
         for (index in 0 until value.count) {
             val part = value.pieces[index] ?: return null
-            if (offset + part.size > complete.size) { pending.remove(key); return null }
+            if (offset + part.size > complete.size) { remove(key); return null }
             part.copyInto(complete, offset); offset += part.size
         }
-        pending.remove(key)
+        remove(key)
         if (offset != complete.size || !MessageDigest.getInstance("SHA-256").digest(complete)
                 .contentEquals(value.hash)) return null
         return complete

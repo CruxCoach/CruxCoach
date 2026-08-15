@@ -26,7 +26,6 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.withContext
 import com.cruxcoach.android.ble.QueueItem
 import com.cruxcoach.android.fips.FipsMeshRuntime
-import com.cruxcoach.android.fips.FipsRealmContext
 import com.cruxcoach.android.boardcell.BoardCellManager
 import com.cruxcoach.android.boardcell.BoardCellHandoverLifecycle
 import com.cruxcoach.android.boardcell.BoardCommandStatus
@@ -764,13 +763,16 @@ class SessionGattBridge(
                     info.boardCellId?.let { cellId ->
                         val runtime = fipsMeshRuntime ?: return@let
                         val physical = info.physicalBoardId ?: return@let
-                        if (boardCellManager?.prepareParticipantScope(physical, cellId) == false) return@let
-                        if (runtime.activateRealm(FipsRealmContext(cellId, cellId))) {
-                            if (!meshRealmHeldForJoin) {
-                                runtime.acquire()
-                                meshRealmHeldForJoin = true
-                            }
+                        val acquiredNow = !meshRealmHeldForJoin
+                        if (acquiredNow) {
+                            runtime.acquire(FipsMeshRuntime.OWNER_SESSION)
+                            meshRealmHeldForJoin = true
+                        }
+                        if (boardCellManager?.prepareParticipantScope(physical, cellId) != false) {
                             gattClient.sendCommand(SessionQueueProtocol.encodeJoin("", runtime.localNpub))
+                        } else if (acquiredNow) {
+                            runtime.release(FipsMeshRuntime.OWNER_SESSION)
+                            meshRealmHeldForJoin = false
                         }
                     }
                 }

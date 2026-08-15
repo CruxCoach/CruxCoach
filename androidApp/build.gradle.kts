@@ -36,6 +36,48 @@ val anonymousMetricsEndpointBuildConfig = anonymousMetricsEndpoint
     .replace("\\", "\\\\")
     .replace("\"", "\\\"")
 
+// Every development branch installs as its own app. Keep the source namespace
+// stable (R/BuildConfig imports do not change), but derive a deterministic,
+// collision-resistant applicationId suffix from the full Git branch name.
+// This lets stable, multiple feature branches, and their independent app data
+// coexist on the same Android device and across Android user/work profiles.
+val checkedOutGitBranch = providers.exec {
+    commandLine("git", "rev-parse", "--abbrev-ref", "HEAD")
+}.standardOutput.asText.get().trim()
+val ciBranchName = listOf(
+    "GITHUB_HEAD_REF",
+    "GITHUB_REF_NAME",
+    "CI_COMMIT_REF_NAME",
+    "BRANCH_NAME",
+).asSequence()
+    .mapNotNull { providers.environmentVariable(it).orNull?.takeIf(String::isNotBlank) }
+    .firstOrNull()
+val developmentBranchName = checkedOutGitBranch.takeUnless { it == "HEAD" }
+    ?: ciBranchName
+    ?: "detached"
+val developmentBranchParts = developmentBranchName.split('/', limit = 2)
+val developmentBranchKind = developmentBranchParts
+    .takeIf { it.size == 2 }
+    ?.first()
+    ?.lowercase()
+    ?.replace(Regex("[^a-z0-9]+"), "_")
+    ?.trim('_')
+    ?.ifEmpty { null }
+    ?: "branch"
+val developmentFeatureName = developmentBranchParts.last()
+    // Worktree/date suffixes describe when a branch was created, not the
+    // logical feature app users should see on their device.
+    .replace(Regex("[-_]?20[0-9]{6}$"), "")
+    .ifEmpty { developmentBranchParts.last() }
+val developmentBranchSlug = developmentFeatureName
+    .lowercase()
+    .replace(Regex("[^a-z0-9]+"), "_")
+    .trim('_')
+    .ifEmpty { "detached" }
+    .take(48)
+val developmentAppIdSuffix = ".dev.$developmentBranchKind.$developmentBranchSlug"
+val developmentLabelBranch = developmentFeatureName.take(40)
+
 android {
     namespace = "com.cruxcoach.android"
     compileSdk = 36
@@ -299,6 +341,11 @@ android {
     }
 
     buildTypes {
+        debug {
+            applicationIdSuffix = developmentAppIdSuffix
+            versionNameSuffix = "-dev"
+            resValue("string", "app_name", "CruxCoach Dev · $developmentLabelBranch")
+        }
         release {
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
             isMinifyEnabled = true
@@ -333,6 +380,18 @@ android {
     }
 
     sourceSets["main"].jniLibs.srcDir(layout.buildDirectory.dir("generated/fipsJniLibs"))
+
+    packaging {
+        dex {
+            // minSdk 28 makes AGP store DEX files uncompressed by default so
+            // Android can mmap them directly from the APK. That turns the
+            // debug APK served by the peer-to-peer offline-share flow from
+            // roughly 60 MB into roughly 140 MB and causes real Wi-Fi Direct
+            // transfers to time out. Prefer the smaller transport artifact;
+            // Android extracts the DEX files during installation instead.
+            useLegacyPackaging = true
+        }
+    }
 
 }
 

@@ -1,0 +1,39 @@
+package com.cruxcoach.android.fips
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class FipsNearbyMeshTrackerTest {
+    @Test
+    fun `updates one advertisement and keeps current mesh first`() {
+        val tracker = FipsNearbyMeshTracker(ttlMs = 1_000)
+        tracker.record(mesh("foreign", "cell-a", -40, 100, current = false))
+        tracker.record(mesh("own", "cell-b", -80, 110, current = true))
+        val result = tracker.record(mesh("foreign", "cell-a", -55, 120, current = false))
+
+        assertEquals(2, result.size)
+        assertTrue(result.first().matchesActiveRealm)
+        assertEquals(-55, result.last().rssi)
+    }
+
+    @Test
+    fun `same address may advertise a different mesh and stale observations expire`() {
+        val tracker = FipsNearbyMeshTracker(ttlMs = 100)
+        tracker.record(mesh("realm-a", "cell-a", -60, 0, address = "AA"))
+        val both = tracker.record(mesh("realm-b", "cell-b", -65, 50, address = "AA"))
+        assertEquals(2, both.size)
+
+        val fresh = tracker.prune(120)
+        assertEquals(listOf("realm-b"), fresh.map { it.realmTag })
+    }
+
+    private fun mesh(
+        realm: String,
+        cell: String,
+        rssi: Int,
+        seen: Long,
+        current: Boolean = false,
+        address: String = realm,
+    ) = FipsNearbyMesh(address, realm, cell, rssi, seen, current)
+}

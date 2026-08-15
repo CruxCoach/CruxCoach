@@ -68,6 +68,16 @@ class LocalShareClient {
         }
     }
 
+    /** Arms sender-side snapshot preparation without downloading its body. */
+    fun requestSnapshotBuild(network: Network, baseUrl: String) {
+        val url = URL(LocalShareProtocol.artifactUrl(baseUrl, LocalShareProtocol.BOARD_PATH))
+        openResponse(network, url, method = "HEAD").use { response ->
+            if (response.code !in setOf(HTTP_OK, HTTP_SERVICE_UNAVAILABLE)) {
+                throw IOException("Snapshot request HTTP ${response.code}")
+            }
+        }
+    }
+
     /** Best-effort end-of-download signal. The sender can now tear down its
      * hotspot, which also returns manually connected fresh installs to their
      * previous Wi-Fi — something the newly installed app cannot request
@@ -171,7 +181,7 @@ class LocalShareClient {
                 throw IOException("Artifact response length mismatch")
             }
             FileOutputStream(partial, append).use { output ->
-                val buffer = ByteArray(64 * 1024)
+                val buffer = ByteArray(TRANSFER_BUFFER_SIZE)
                 var downloaded = offset
                 while (downloaded < artifact.sizeBytes) {
                     val wanted = minOf(buffer.size.toLong(), artifact.sizeBytes - downloaded).toInt()
@@ -209,9 +219,14 @@ class LocalShareClient {
             throw IOException("Local-share URL must use private IPv4 HTTP")
         }
         val port = url.port.takeIf { it > 0 } ?: throw IOException("Missing local-share port")
-        if (method != "GET" && method != "POST") throw IOException("Unsupported HTTP method")
+        if (method != "GET" && method != "HEAD" && method != "POST") {
+            throw IOException("Unsupported HTTP method")
+        }
         val socket = network.socketFactory.createSocket()
         try {
+            socket.receiveBufferSize = SOCKET_BUFFER_SIZE
+            socket.sendBufferSize = SOCKET_BUFFER_SIZE
+            socket.tcpNoDelay = true
             socket.soTimeout = readTimeoutMs
             socket.connect(InetSocketAddress(url.host, port), connectTimeoutMs)
             val requestTarget = url.file.takeIf { it.isNotEmpty() } ?: "/"
@@ -296,6 +311,8 @@ class LocalShareClient {
     }
 
     private companion object {
+        const val TRANSFER_BUFFER_SIZE = 512 * 1024
+        const val SOCKET_BUFFER_SIZE = 1024 * 1024
         const val TAG = "LocalShareClient"
         const val CONNECT_TIMEOUT_MS = 10_000
         const val READ_TIMEOUT_MS = 60_000
@@ -306,6 +323,7 @@ class LocalShareClient {
         const val HTTP_OK = 200
         const val HTTP_PARTIAL = 206
         const val HTTP_NO_CONTENT = 204
+        const val HTTP_SERVICE_UNAVAILABLE = 503
         const val MAX_MANIFEST_BYTES = 1 * 1024 * 1024
         const val MAX_HEADER_LINE_BYTES = 8 * 1024
         val HEADER_NAME = Regex("[A-Za-z0-9-]{1,64}")

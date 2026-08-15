@@ -1,4 +1,6 @@
-use std::sync::{Arc, OnceLock};
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use fips::transport::ble::addr::BleAddr;
@@ -8,6 +10,12 @@ use jni::sys::{jboolean, jint, jlong};
 use jni::{JNIEnv, JavaVM};
 
 static VM: OnceLock<JavaVM> = OnceLock::new();
+static BRIDGES: OnceLock<Mutex<HashMap<i64, Arc<AndroidBleBridge>>>> = OnceLock::new();
+static NEXT_BRIDGE: AtomicI64 = AtomicI64::new(1);
+
+fn bridges() -> &'static Mutex<HashMap<i64, Arc<AndroidBleBridge>>> {
+    BRIDGES.get_or_init(|| Mutex::new(HashMap::new()))
+}
 
 fn with_env<R>(default: R, f: impl FnOnce(&mut JNIEnv) -> R) -> R {
     let Some(vm) = VM.get() else { return default };
@@ -79,12 +87,12 @@ impl AndroidRadio for KotlinRadio {
     }
 }
 
-unsafe fn bridge<'a>(handle: jlong) -> Option<&'a Arc<AndroidBleBridge>> {
-    if handle == 0 {
-        None
-    } else {
-        Some(unsafe { &*(handle as *const Arc<AndroidBleBridge>) })
-    }
+/// Clone a strong reference while the registry lock is held. JNI callers then
+/// operate without the registry lock, and bridge_free merely prevents new
+/// callers from acquiring the retired generation. This removes the raw-pointer
+/// use-after-free race with late Kotlin reader/writer callbacks.
+fn bridge(handle: jlong) -> Option<Arc<AndroidBleBridge>> {
+    bridges().lock().unwrap().get(&handle).cloned()
 }
 
 fn addr(env: &mut JNIEnv, value: &JString) -> Option<BleAddr> {
@@ -101,14 +109,14 @@ pub fn bridge_new(env: JNIEnv, _class: JClass, radio: JObject) -> jlong {
     };
     let value = AndroidBleBridge::new(Arc::new(KotlinRadio { radio: global }));
     set_android_ble_bridge(Arc::clone(&value));
-    Box::into_raw(Box::new(value)) as jlong
+    let handle = NEXT_BRIDGE.fetch_add(1, Ordering::Relaxed).max(1);
+    bridges().lock().unwrap().insert(handle, value);
+    handle
 }
 
 pub fn bridge_free(_env: JNIEnv, _class: JClass, handle: jlong) {
     if handle != 0 {
-        unsafe {
-            drop(Box::from_raw(handle as *mut Arc<AndroidBleBridge>));
-        }
+        bridges().lock().unwrap().remove(&handle);
     }
 }
 
@@ -120,7 +128,7 @@ pub fn deliver_inbound(
     send: jint,
     recv: jint,
 ) -> jlong {
-    let Some(b) = (unsafe { bridge(h) }) else {
+    let Some(b) = bridge(h) else {
         return 0;
     };
     let Some(a) = addr(&mut env, &value) else {
@@ -139,7 +147,7 @@ pub fn deliver_connect_result(
     send: jint,
     recv: jint,
 ) -> jlong {
-    let Some(b) = (unsafe { bridge(h) }) else {
+    let Some(b) = bridge(h) else {
         return 0;
     };
     let a = addr(&mut env, &value).unwrap_or(BleAddr {
@@ -157,7 +165,7 @@ pub fn deliver_scan(
     psm: jint,
     rssi: jint,
 ) {
-    let Some(b) = (unsafe { bridge(h) }) else {
+    let Some(b) = bridge(h) else {
         return;
     };
     if let Some(a) = addr(&mut env, &value) {
@@ -173,7 +181,7 @@ pub fn channel_recv(
     data: JByteArray,
     len: jint,
 ) -> jboolean {
-    let Some(b) = (unsafe { bridge(h) }) else {
+    let Some(b) = bridge(h) else {
         return 0;
     };
     let Ok(mut bytes) = env.convert_byte_array(data) else {
@@ -184,7 +192,7 @@ pub fn channel_recv(
 }
 
 pub fn channel_closed(_env: JNIEnv, _class: JClass, h: jlong, id: jlong) {
-    if let Some(b) = unsafe { bridge(h) } {
+    if let Some(b) = bridge(h) {
         b.channel_closed(id);
     }
 }
@@ -197,7 +205,7 @@ pub fn channel_next_send(
     out: JByteArray,
     timeout: jint,
 ) -> jint {
-    let Some(b) = (unsafe { bridge(h) }) else {
+    let Some(b) = bridge(h) else {
         return -1;
     };
     match b.next_send(id, Duration::from_millis(timeout.max(0) as u64)) {

@@ -252,7 +252,7 @@
 
     <!-- FEAT-006 Map (placeholder; full set added in phase 10) -->
     <string name="map_screen_title">Karte</string>
-    <string name="cd_map">Kilter Board auf der Karte finden</string>
+    <string name="cd_map">Boards auf der Karte entdecken</string>
     <string name="map_filter_show_all">Alle</string>
     <string name="map_filter_show_original">Kommerzielle Hallen (Original)</string>
     <string name="map_filter_show_homewalls">Private Homewalls</string>
@@ -1028,6 +1028,7 @@
     <string name="board_sync_deferred">Android hält die Synchronisierung zurück — prüfe die Akku-Optimierung für CruxCoach und versuche es erneut.</string>
     <string name="board_sync_redownload">Neu herunterladen</string>
     <string name="board_sync_status_not_loaded">nicht geladen</string>
+    <string name="board_sync_status_waiting">wird vorbereitet</string>
     <string name="board_sync_status_dash">—</string>
     <string name="board_sync_load_board">%1$s laden</string>
     <string name="board_sync_reload_board">%1$s neu laden</string>
@@ -2399,7 +2400,35 @@
     <string name="cd_open_menu">Menü öffnen</string>
     <string name="main_menu_title">Hauptmenü</string>
     <string name="main_menu_board_catalog">Board-Katalog</string>
+    <string name="main_menu_fips_mesh">FIPS Mesh</string>
     <string name="main_menu_competitions">Wettkämpfe</string>
+    <string name="fips_mesh_overview_title">FIPS Mesh</string>
+    <string name="fips_mesh_explanation">CruxCoach-Meshes in der Nähe werden lokal über Bluetooth erkannt. Nur für das aktive Board-Mesh authentifizierte Peers dürfen Board- oder Playlist-Zustände austauschen.</string>
+    <string name="fips_mesh_connected_peers">Verbundene Peers</string>
+    <string name="fips_mesh_nearby_meshes">Meshes in Reichweite</string>
+    <string name="fips_mesh_no_connected_peers">Aktuell sind keine Peers verbunden.</string>
+    <string name="fips_mesh_no_nearby_meshes">Aktuell sind keine weiteren CruxCoach-Meshes in Reichweite.</string>
+    <string name="fips_mesh_connect_board_hint">Verbinde ein physisches Board, um sein FIPS-Mesh und die Umgebungssuche zu aktivieren.</string>
+    <string name="fips_mesh_own_active">Dein Board-Mesh ist aktiv</string>
+    <string name="fips_mesh_own_inactive">Kein aktives Board-Mesh</string>
+    <string name="fips_mesh_cell">Mesh-ID</string>
+    <string name="fips_mesh_members">Mitglieder</string>
+    <string name="fips_mesh_state">Zustand</string>
+    <string name="fips_mesh_own_node">Dieses Gerät</string>
+    <string name="fips_mesh_controller">Controller</string>
+    <string name="fips_mesh_peer_controller">Controller dieses Meshes</string>
+    <string name="fips_mesh_peer_member">Authentifiziertes Mesh-Mitglied</string>
+    <string name="fips_mesh_peer_authenticated">Direkt authentifizierter Peer</string>
+    <string name="fips_mesh_peer_verifying">Verbindung wird geprüft</string>
+    <string name="fips_mesh_transport">Transport</string>
+    <string name="fips_mesh_nearby_own">Dein Mesh in Reichweite</string>
+    <string name="fips_mesh_nearby_other">CruxCoach-Mesh in der Nähe</string>
+    <string name="fips_mesh_realm_tag">Realm-Tag</string>
+    <string name="fips_mesh_cell_tag">Cell-Tag</string>
+    <string name="fips_mesh_signal">Signal</string>
+    <string name="fips_mesh_signal_near">Sehr nah</string>
+    <string name="fips_mesh_signal_reachable">In Reichweite</string>
+    <string name="fips_mesh_signal_weak">Schwaches Signal</string>
     <string name="comp_title">Wettkämpfe</string>
     <string name="comp_detail_essentials">Auf einen Blick</string>
     <string name="comp_detail_starts">Beginn</string>

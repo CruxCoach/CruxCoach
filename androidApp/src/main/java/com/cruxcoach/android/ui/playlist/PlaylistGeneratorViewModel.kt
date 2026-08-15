@@ -446,8 +446,13 @@ class PlaylistGeneratorViewModel @Inject constructor(
                                 // exclude a valid climb and create a false
                                 // shortage on a community-sparse board.
                                 minAscensionists = 0,
-                                sortField = ClimbSortField.QUALITY,
-                                sortDirection = SortDirection.DESC,
+                                // The filler ranks quality itself. Sorting the
+                                // joined catalogue by quality here forced a
+                                // temp sort for every widened band on a full
+                                // multi-board DB; difficulty follows the browse
+                                // index and returns the bounded pool quickly.
+                                sortField = ClimbSortField.DIFFICULTY,
+                                sortDirection = SortDirection.ASC,
                                 limit = CANDIDATE_POOL_SIZE,
                                 climbType = ClimbTypeFilter.BOULDER,
                                 selProductSizeId = params.productSizeId,

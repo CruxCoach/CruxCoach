@@ -64,5 +64,7 @@ object ShareCompression {
         }
     }
 
-    private const val BUFFER_SIZE = 64 * 1024
+    // Large sequential SQLite snapshots benefit from fewer Java/JNI and flash
+    // calls; memory stays bounded and this runs only for an explicit share.
+    private const val BUFFER_SIZE = 512 * 1024
 }

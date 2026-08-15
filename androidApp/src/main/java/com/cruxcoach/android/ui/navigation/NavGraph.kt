@@ -114,6 +114,7 @@ object Routes {
     const val STATS = "stats"
     const val EXERCISE_LIBRARY = "exercise_library"
     const val BOARD_BROWSER = "board_browser"
+    const val FIPS_MESH = "fips_mesh"
     const val COMPETITIONS = "competitions"
     const val COMPETITION_SCAN = "competition_scan"
     const val COMPETITION_CREATE = "competition_create"
@@ -507,8 +508,10 @@ fun CruxCoachNavHost(
                             selected = MainDestination.BOARD_CATALOG,
                             onSelect = { destination ->
                                 drawerScope.launch { drawerState.close() }
-                                if (destination == MainDestination.COMPETITIONS) {
-                                    navController.navigate(Routes.COMPETITIONS)
+                                when (destination) {
+                                    MainDestination.BOARD_CATALOG -> Unit
+                                    MainDestination.FIPS_MESH -> navController.navigate(Routes.FIPS_MESH)
+                                    MainDestination.COMPETITIONS -> navController.navigate(Routes.COMPETITIONS)
                                 }
                             },
                         )
@@ -530,6 +533,17 @@ fun CruxCoachNavHost(
                     },
                     onNavigateToMap = { navController.navigate(Routes.BOARD_MAP) }
                 )
+                }
+            }
+
+            composable(Routes.FIPS_MESH) {
+                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
+                    screenName = "FipsMesh",
+                    onNavigateBack = { navController.popBackStack() },
+                ) {
+                    com.cruxcoach.android.ui.fips.FipsMeshScreen(
+                        onNavigateBack = { navController.popBackStack() },
+                    )
                 }
             }
 

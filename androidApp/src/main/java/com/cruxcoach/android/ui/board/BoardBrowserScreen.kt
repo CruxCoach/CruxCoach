@@ -571,9 +571,6 @@ fun BoardBrowserScreen(
                             )
                         }
                     }
-                    // FEAT-006: discover Kilter Boards on a map. Lives next
-                    // to hold-search as a peer "find climbs by another
-                    // dimension" action.
                     IconButton(
                         onClick = onNavigateToMap,
                         modifier = Modifier

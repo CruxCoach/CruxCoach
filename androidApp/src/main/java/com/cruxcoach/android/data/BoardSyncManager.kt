@@ -20,6 +20,7 @@ import com.cruxcoach.android.util.LocalShareNetwork
 import com.cruxcoach.android.util.LocalShareProtocol
 import com.cruxcoach.android.util.LocalShareResumeStore
 import com.cruxcoach.android.util.ShareCompression
+import com.cruxcoach.android.util.withBackgroundThreadPriority
 import com.cruxcoach.android.updater.IntegrityVerifier
 import com.cruxcoach.util.DateTimeUtil
 import kotlinx.coroutines.CoroutineScope
@@ -341,12 +342,14 @@ class BoardSyncManager(
                         blossomSyncManager.downloadAndDecompressChunk(chunk = chunk, outputFile = out)
                         backfillFiles.add(out)
                     }
-                    importer.importFromChunks(
-                        metaDbFiles = emptyList(),
-                        climbsDbFiles = emptyList(),
-                        statsDbFiles = emptyList(),
-                        locationsDbFiles = backfillFiles
-                    )
+                    withBackgroundThreadPriority {
+                        importer.importFromChunks(
+                            metaDbFiles = emptyList(),
+                            climbsDbFiles = emptyList(),
+                            statsDbFiles = emptyList(),
+                            locationsDbFiles = backfillFiles
+                        )
+                    }
                     locationChunks.forEach { blossomSyncManager.saveChunkHash(it.name, it.sha256) }
                     Log.i(TAG, "Locations backfill: imported ${boardLocationRepository.count()} locations")
                     true
@@ -403,7 +406,7 @@ class BoardSyncManager(
             // (the WHERE move_count = 0 filter skips already-counted climbs).
             if (boardRepository.getSyncState("move_count_backfill_v2") == null) {
                 Log.d(TAG, "Running one-time move_count backfill (v2, role-aware)...")
-                importer.backfillMoveCounts()
+                withBackgroundThreadPriority { importer.backfillMoveCounts() }
                 boardRepository.upsertSyncState("move_count_backfill_v2", "done")
                 Log.d(TAG, "Move count backfill complete")
             }
@@ -750,7 +753,7 @@ class BoardSyncManager(
                 // skip ANALYZE inline to keep the "finalizing" phase short).
                 // Runs detached, after performBlossomSync already signalled
                 // syncComplete, so it never extends the visible sync.
-                runCatching { importer.analyzeDatabase() }
+                runCatching { withBackgroundThreadPriority { importer.analyzeDatabase() } }
                     .onFailure { Log.w(TAG, "Post-sync ANALYZE failed", it) }
             } catch (e: Exception) {
                 Log.w(TAG, "Blossom sync failed", e)
@@ -921,16 +924,18 @@ class BoardSyncManager(
 
             Log.d(TAG, "Importing chunks: meta=${metaFiles.size}, climbs=${climbFiles.size}, stats=${statFiles.size}, locations=${locationFiles.size}")
             var kilterDone: ImportStep.Done? = null
-            importer.importFromChunks(
-                metaDbFiles = metaFiles,
-                climbsDbFiles = climbFiles,
-                statsDbFiles = statFiles,
-                locationsDbFiles = locationFiles,
-                onProgress = { step ->
-                    if (step is ImportStep.Done) kilterDone = step
-                    _state.update { it.copy(importStep = step) }
-                }
-            )
+            withBackgroundThreadPriority {
+                importer.importFromChunks(
+                    metaDbFiles = metaFiles,
+                    climbsDbFiles = climbFiles,
+                    statsDbFiles = statFiles,
+                    locationsDbFiles = locationFiles,
+                    onProgress = { step ->
+                        if (step is ImportStep.Done) kilterDone = step
+                        _state.update { it.copy(importStep = step) }
+                    }
+                )
+            }
             Log.d(TAG, "Import completed successfully")
             bumpCatalogueRevision()
 
@@ -1191,7 +1196,7 @@ class BoardSyncManager(
     private fun analyzeAfterSingleBoardImport(imported: Boolean) {
         if (!imported) return
         scope.launch {
-            runCatching { importer.analyzeDatabase() }
+            runCatching { withBackgroundThreadPriority { importer.analyzeDatabase() } }
                 .onFailure { Log.w(TAG, "Post single-board import ANALYZE failed", it) }
         }
     }
@@ -1321,14 +1326,16 @@ class BoardSyncManager(
             ) {
                 throw java.io.IOException("Shared board snapshot failed verification")
             }
-            importer.importFromLocalDb(raw) { step ->
-                // ImportStep.Done is emitted before the manager's own
-                // denormalized refresh and durable hash bookkeeping. Keep the
-                // visible run in Finalizing until all of that is actually done.
-                updateLocalShareProgress(
-                    if (step is ImportStep.Done) ImportStep.Finalizing else step,
-                    brands,
-                )
+            withBackgroundThreadPriority {
+                importer.importFromLocalDb(raw) { step ->
+                    // ImportStep.Done is emitted before the manager's own
+                    // denormalized refresh and durable hash bookkeeping. Keep the
+                    // visible run in Finalizing until all of that is actually done.
+                    updateLocalShareProgress(
+                        if (step is ImportStep.Done) ImportStep.Finalizing else step,
+                        brands,
+                    )
+                }
             }
             updateLocalShareProgress(ImportStep.Finalizing, brands)
             bumpCatalogueRevision()
@@ -1385,17 +1392,40 @@ class BoardSyncManager(
         var boardArtifact: LocalShareProtocol.BoardArtifact? = null
         val receivedManifest: LocalShareProtocol.Manifest
         try {
-            val initial = initialManifest
-            receivedManifest = if (initial != null && initial.boardStatus != "preparing") {
-                initial
-            } else {
-                updateLocalShareProgress(
-                    if (initial?.boardStatus == "preparing") {
-                        ImportStep.PreparingSnapshot
-                    } else {
-                        ImportStep.FetchingManifest
+            updateLocalShareProgress(ImportStep.FetchingManifest, interactiveBoardBrands())
+            val firstManifest = initialManifest ?: client.fetchManifest(network, baseUrl)
+            val initialBrands = sharedBoardBrands(firstManifest.board)
+                .ifEmpty { interactiveBoardBrands() }
+
+            // The APK is the bootstrapping artifact: transfer it before any
+            // 500 MB snapshot copy/VACUUM/gzip work starts on the sender.
+            if (firstManifest.apkVersionCode > BuildConfig.VERSION_CODE.toLong()) {
+                val safeVersion = firstManifest.apkVersionName
+                    .replace(Regex("[^0-9A-Za-z._-]"), "_")
+                val target = File(
+                    appContext.cacheDir,
+                    "local_share_update_${safeVersion}_${firstManifest.apk.sha256.take(16)}.apk",
+                )
+                apkDownload = client.downloadResumable(
+                    network = network,
+                    baseUrl = baseUrl,
+                    artifact = firstManifest.apk,
+                    target = target,
+                    onVerifying = {
+                        updateLocalShareProgress(ImportStep.VerifyingApk, initialBrands)
                     },
-                    interactiveBoardBrands(),
+                ) { downloaded, total ->
+                    updateLocalShareProgress(ImportStep.DownloadApk(downloaded, total), initialBrands)
+                }
+            }
+
+            receivedManifest = if (firstManifest.boardStatus == "preparing") {
+                // Explicitly arm the expensive sender-side work only after the
+                // APK is complete (or when no APK update was required).
+                client.requestSnapshotBuild(network, baseUrl)
+                updateLocalShareProgress(
+                    ImportStep.PreparingSnapshot,
+                    initialBrands,
                 )
                 client.awaitReadyManifest(
                     network = network,
@@ -1404,11 +1434,11 @@ class BoardSyncManager(
                     onPreparing = {
                         updateLocalShareProgress(
                             ImportStep.PreparingSnapshot,
-                            interactiveBoardBrands(),
+                            initialBrands,
                         )
                     },
                 )
-            }
+            } else firstManifest
 
             val offeredBoard = receivedManifest.board
             val brands = sharedBoardBrands(offeredBoard)
@@ -1437,25 +1467,6 @@ class BoardSyncManager(
                 throw java.io.IOException("Sender has no board snapshot")
             }
 
-            if (receivedManifest.apkVersionCode > BuildConfig.VERSION_CODE.toLong()) {
-                val safeVersion = receivedManifest.apkVersionName
-                    .replace(Regex("[^0-9A-Za-z._-]"), "_")
-                val target = File(
-                    appContext.cacheDir,
-                    "local_share_update_${safeVersion}_${receivedManifest.apk.sha256.take(16)}.apk",
-                )
-                apkDownload = client.downloadResumable(
-                    network = network,
-                    baseUrl = baseUrl,
-                    artifact = receivedManifest.apk,
-                    target = target,
-                    onVerifying = {
-                        updateLocalShareProgress(ImportStep.VerifyingApk, brands)
-                    },
-                ) { downloaded, total ->
-                    updateLocalShareProgress(ImportStep.DownloadApk(downloaded, total), brands)
-                }
-            }
             runCatching { client.notifyDownloadComplete(network, baseUrl) }
                 .onFailure { Log.w(TAG, "Could not notify sender that downloads completed", it) }
         } finally {
@@ -1627,8 +1638,10 @@ class BoardSyncManager(
                 }
 
                 // Import the full DB file
-                importer.importFromLocalDb(tempFile) { step ->
-                    _state.update { it.copy(importStep = step) }
+                withBackgroundThreadPriority {
+                    importer.importFromLocalDb(tempFile) { step ->
+                        _state.update { it.copy(importStep = step) }
+                    }
                 }
                 bumpCatalogueRevision()
 

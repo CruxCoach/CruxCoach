@@ -343,15 +343,25 @@ private fun PlaybackOptionsSheet(
         .map { it.climb.boardBrand to it.climb.layoutId }
         .distinct()
         .size
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+    ) {
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .fillMaxHeight(0.9f),
         ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp)
+                    // The fixed action below must never cover the final option.
+                    .padding(bottom = 88.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
             Text(
                 stringResource(R.string.list_playback_title),
                 style = MaterialTheme.typography.titleLarge,
@@ -475,12 +485,17 @@ private fun PlaybackOptionsSheet(
                     isError = true,
                 )
             }
+            }
 
             Button(
                 onClick = onStart,
                 enabled = !state.isStartingPlayback &&
                     (state.usePlaybackPlan || (state.entries.isNotEmpty() && visibleBoardCount == 1)),
-                modifier = Modifier.fillMaxWidth().testTag("list_playback_confirm"),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(horizontal = 20.dp, vertical = 12.dp)
+                    .fillMaxWidth()
+                    .testTag("list_playback_confirm"),
                 colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
                 shape = RoundedCornerShape(8.dp),
             ) {

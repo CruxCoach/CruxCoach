@@ -1,5 +1,6 @@
 package com.cruxcoach.android.boardcell
 
+import com.cruxcoach.android.fips.FipsDebugLog
 import java.util.UUID
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -96,17 +97,26 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
     override suspend fun publishClaim(claim: BoardCellClaim) {
         val frame = frame(claim.cellId.value, claim.cellId, claim.physicalBoardId, 0, claim.proposedTerm,
             BoardCellWireMessage.DirectClaim(claim))
-        link.directAuthenticatedPeers().forEach { sendOrQueue(it, frame) }
+        val peers = link.directAuthenticatedPeers()
+        FipsDebugLog.event("wire", "claim_publish", "claimant" to FipsDebugLog.id(claim.claimantId),
+            "cell" to FipsDebugLog.id(claim.cellId.value), "directPeers" to peers.size)
+        peers.forEach { sendOrQueue(it, frame) }
     }
 
     override suspend fun publishEvent(envelope: BoardCellEnvelope) {
         val snapshot = coordinator?.snapshot(envelope.physicalBoardId) ?: snapshots[envelope.cellId]
         snapshot?.let { snapshots[it.cellId] = it }
+        FipsDebugLog.event("wire", "event_publish", "type" to envelope.event.javaClass.simpleName,
+            "sequence" to envelope.sequence, "term" to envelope.controllerTerm,
+            "members" to snapshot?.members?.size)
         multicast(snapshot?.members.orEmpty(), frameFor(snapshot ?: return,
             BoardCellWireMessage.Event(envelope), envelope.controllerTerm))
     }
 
     override suspend fun publishSnapshot(snapshot: BoardCellSnapshot) {
+        FipsDebugLog.event("wire", "snapshot_publish", "sequence" to snapshot.sequence,
+            "term" to snapshot.controllerTerm, "members" to snapshot.members.size,
+            "hash" to FipsDebugLog.id(snapshot.stateHash))
         snapshots[snapshot.cellId] = snapshot
         multicast(snapshot.members, frameFor(snapshot, BoardCellWireMessage.Snapshot(snapshot)))
     }
@@ -127,6 +137,9 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
     }
 
     override suspend fun publishCommandAck(target: String, ack: BoardCommandAck) {
+        FipsDebugLog.event("wire", "command_ack_publish", "target" to FipsDebugLog.id(target),
+            "command" to FipsDebugLog.id(ack.commandId), "status" to ack.status,
+            "sequence" to ack.resultingSequence)
         val snapshot = snapshots[ack.cellId] ?: return
         seenCommands["$target:${ack.commandId}"] = ack
         trimMap(seenCommands, MAX_SEEN_COMMANDS)
@@ -138,19 +151,45 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
         basePlaylistRevision: Long = snapshot.playlistRevision): Boolean {
         if (link.localNpub !in snapshot.members || snapshot.controllerId == link.localNpub ||
             snapshot.availability != BoardCellAvailability.ACTIVE || payload.isEmpty() ||
-            payload.size > MAX_SESSION_COMMAND_BYTES) return false
-        return link.send(snapshot.controllerId, frameFor(snapshot,
+            payload.size > MAX_SESSION_COMMAND_BYTES) {
+            FipsDebugLog.warning("wire", "session_command_refused", "command" to FipsDebugLog.id(commandId),
+                "localMember" to (link.localNpub in snapshot.members),
+                "localIsController" to (snapshot.controllerId == link.localNpub),
+                "availability" to snapshot.availability, "bytes" to payload.size)
+            return false
+        }
+        val sent = link.send(snapshot.controllerId, frameFor(snapshot,
             BoardCellWireMessage.SessionCommand(commandId, basePlaylistRevision, payload, context)))
+        FipsDebugLog.event("wire", if (sent) "session_command_tx" else "session_command_tx_failed",
+            "controller" to FipsDebugLog.id(snapshot.controllerId), "command" to FipsDebugLog.id(commandId),
+            "baseRevision" to basePlaylistRevision, "kind" to context?.kind, "bytes" to payload.size)
+        return sent
     }
 
     suspend fun receive(authenticatedSender: String, bytes: ByteArray, nowMonotonicMs: Long = 0): BoardCellApplyResult? {
         val value = runCatching { BoardCellWireCodec.decode(bytes) }.getOrElse {
+            FipsDebugLog.warning("wire", "frame_rejected", "sender" to FipsDebugLog.id(authenticatedSender),
+                "bytes" to bytes.size, "reason" to "invalid/unsupported wire frame")
             return BoardCellApplyResult.Rejected("invalid/unsupported wire frame")
         }
-        if (value.senderId != authenticatedSender) return BoardCellApplyResult.Rejected("authenticated sender mismatch")
+        FipsDebugLog.event("wire", "frame_rx", "sender" to FipsDebugLog.id(authenticatedSender),
+            "message" to value.message.javaClass.simpleName, "messageId" to FipsDebugLog.id(value.messageId),
+            "realm" to FipsDebugLog.id(value.realmId), "cell" to FipsDebugLog.id(value.cellId.value),
+            "epoch" to value.epoch, "term" to value.controllerTerm, "bytes" to bytes.size)
+        if (value.senderId != authenticatedSender) {
+            FipsDebugLog.warning("wire", "frame_rejected", "reason" to "authenticated sender mismatch")
+            return BoardCellApplyResult.Rejected("authenticated sender mismatch")
+        }
         val expectedRealm = link.activeRealmId()
-        if (expectedRealm != null && value.realmId != expectedRealm) return BoardCellApplyResult.Rejected("realm mismatch")
-        if (!seenFrames.add("$authenticatedSender:${value.messageId}")) return BoardCellApplyResult.IgnoredStale
+        if (expectedRealm != null && value.realmId != expectedRealm) {
+            FipsDebugLog.warning("wire", "frame_rejected", "reason" to "realm mismatch",
+                "expected" to FipsDebugLog.id(expectedRealm), "received" to FipsDebugLog.id(value.realmId))
+            return BoardCellApplyResult.Rejected("realm mismatch")
+        }
+        if (!seenFrames.add("$authenticatedSender:${value.messageId}")) {
+            FipsDebugLog.event("wire", "frame_duplicate_ignored", "messageId" to FipsDebugLog.id(value.messageId))
+            return BoardCellApplyResult.IgnoredStale
+        }
         trimSet(seenFrames, MAX_SEEN_FRAMES)
         val target = coordinator ?: return BoardCellApplyResult.Rejected("coordinator unavailable")
         val local = snapshots[value.cellId]
@@ -213,6 +252,8 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
                 // A durable terminal result supersedes an in-flight ACCEPTED
                 // cache entry when a command is retried after commit.
                 target.commandAck(message.commandId)?.let {
+                    FipsDebugLog.event("wire", "session_command_deduplicated_durable",
+                        "command" to FipsDebugLog.id(message.commandId), "status" to it.status)
                     seenCommands[key] = it
                     publishCommandAck(authenticatedSender, it)
                     return null
@@ -226,6 +267,10 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
                     val ack = BoardCommandAck(message.commandId, status, snapshot.cellId, snapshot.epoch,
                         snapshot.controllerTerm, snapshot.sequence, snapshot.stateHash, "command scope/base rejected")
                     seenCommands[key] = ack
+                    FipsDebugLog.warning("wire", "session_command_rejected",
+                        "command" to FipsDebugLog.id(message.commandId), "status" to status,
+                        "baseRevision" to message.basePlaylistRevision,
+                        "currentRevision" to snapshot.playlistRevision)
                     publishCommandAck(authenticatedSender, ack)
                     return BoardCellApplyResult.Rejected("session command rejected")
                 }
@@ -234,6 +279,10 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
                 seenCommands[key] = accepted
                 trimMap(seenCommands, MAX_SEEN_COMMANDS)
                 publishCommandAck(authenticatedSender, accepted)
+                FipsDebugLog.event("wire", "session_command_accepted",
+                    "command" to FipsDebugLog.id(message.commandId),
+                    "sender" to FipsDebugLog.id(authenticatedSender),
+                    "baseRevision" to message.basePlaylistRevision, "kind" to message.context?.kind)
                 onSessionCommand?.invoke(InboundSessionCommand(authenticatedSender, message.commandId,
                     message.basePlaylistRevision, message.payload, message.context))
                 null
@@ -246,12 +295,17 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
                     message.value.controllerTerm != snapshot.controllerTerm)
                     return BoardCellApplyResult.Rejected("ack sender/scope/term mismatch")
                 onCommandAck?.invoke(authenticatedSender, message.value)
+                FipsDebugLog.event("wire", "command_ack_rx", "controller" to FipsDebugLog.id(authenticatedSender),
+                    "command" to FipsDebugLog.id(message.value.commandId), "status" to message.value.status,
+                    "sequence" to message.value.resultingSequence)
                 null
             }
         }
     }
 
     fun retryOutbox(limit: Int = 64) {
+        if (outbox.isNotEmpty()) FipsDebugLog.event("wire", "outbox_retry",
+            "queuedFrames" to outbox.size, "queuedBytes" to outboxBytes, "limit" to limit)
         repeat(minOf(limit, outbox.size)) {
             val item = outbox.removeFirst(); outboxBytes -= item.second.size
             if (!link.send(item.first, item.second)) enqueue(item.first, item.second)
@@ -276,14 +330,25 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
         members.asSequence().filter { it != link.localNpub }.forEach { sendOrQueue(it, bytes) }
 
     private fun sendOrQueue(peer: String, bytes: ByteArray) {
-        if (bytes.size > MAX_WIRE_BYTES) return
-        if (!link.send(peer, bytes)) enqueue(peer, bytes)
+        if (bytes.size > MAX_WIRE_BYTES) {
+            FipsDebugLog.warning("wire", "frame_dropped_oversize", "peer" to FipsDebugLog.id(peer),
+                "bytes" to bytes.size, "max" to MAX_WIRE_BYTES)
+            return
+        }
+        if (!link.send(peer, bytes)) {
+            FipsDebugLog.warning("wire", "frame_queued", "peer" to FipsDebugLog.id(peer),
+                "bytes" to bytes.size)
+            enqueue(peer, bytes)
+        }
     }
 
     private fun enqueue(peer: String, bytes: ByteArray) {
         while (outbox.isNotEmpty() && (outbox.size >= MAX_OUTBOX || outboxBytes + bytes.size > MAX_OUTBOX_BYTES))
             outboxBytes -= outbox.removeFirst().second.size
-        if (bytes.size <= MAX_OUTBOX_BYTES) { outbox.addLast(peer to bytes); outboxBytes += bytes.size }
+        if (bytes.size <= MAX_OUTBOX_BYTES) {
+            outbox.addLast(peer to bytes); outboxBytes += bytes.size
+            FipsDebugLog.event("wire", "outbox_size", "frames" to outbox.size, "bytes" to outboxBytes)
+        }
     }
 
     private fun <T> trimSet(set: LinkedHashSet<T>, max: Int) { while (set.size > max) set.remove(set.first()) }

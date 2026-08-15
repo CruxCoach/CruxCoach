@@ -10,6 +10,7 @@ import com.cruxcoach.android.R
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
+import java.io.BufferedOutputStream
 import java.io.File
 import java.io.RandomAccessFile
 import java.net.Inet4Address
@@ -53,8 +54,6 @@ object ApkShareHelper {
             "aurora_apk_download.zip",
             "aurora_apk_db.sqlite3",
             "kilter_board_import.sqlite3",
-            LocalApkServer.SNAPSHOT_NAME,
-            LocalApkServer.COMPRESSED_SNAPSHOT_NAME,
             // Pair-copy leftovers from an interrupted snapshot (see
             // LocalApkServer.boardDbSnapshot).
             "${LocalApkServer.SNAPSHOT_NAME}-wal",
@@ -190,8 +189,15 @@ class LocalApkServer(
     private data class SnapshotMetadata(
         val compressedSha256: String,
         val uncompressedSha256: String,
+        val uncompressedSizeBytes: Long,
         val schemaVersion: Int,
         val catalogues: List<LocalShareProtocol.BoardCatalogue>,
+    )
+    private data class SourceFingerprint(
+        val mainLength: Long,
+        val mainModified: Long,
+        val walLength: Long,
+        val walModified: Long,
     )
     private data class SnapshotView(
         val state: SnapState,
@@ -203,6 +209,7 @@ class LocalApkServer(
         val raw: File,
         val compressed: File,
         val metadata: SnapshotMetadata,
+        val sourceFingerprint: SourceFingerprint,
     )
 
     private val sessionId = UUID.randomUUID().toString()
@@ -211,11 +218,15 @@ class LocalApkServer(
 
     var onAutoShutdown: (() -> Unit)? = null
     var onReceiverComplete: (() -> Unit)? = null
+    /** Fires once before this session starts snapshot work or a large file. */
+    var onBulkTransferStarted: (() -> Unit)? = null
+    private val bulkTransferAnnounced = java.util.concurrent.atomic.AtomicBoolean(false)
     /** Set after start() — used to build deep link URLs in the landing page. */
     var baseUrl: String? = null
         private set
 
     fun start(port: Int = LOCAL_SHARE_PORT, hostIp: String? = null): Int {
+        restoreCachedSnapshot()
         // Bind to a specific interface IP so the share server isn't reachable
         // on every network the device happens to be connected to (mobile data,
         // home WiFi, …). Default to loopback if the caller didn't pass an IP —
@@ -241,7 +252,12 @@ class LocalApkServer(
         thread(isDaemon = true, name = "apk-server") {
             while (running) {
                 try {
-                    val client = ss.accept()
+                    val client = ss.accept().apply {
+                        // Keep the radio fed across short flash-read stalls.
+                        sendBufferSize = SOCKET_BUFFER_SIZE
+                        receiveBufferSize = SOCKET_BUFFER_SIZE
+                        tcpNoDelay = true
+                    }
                     handleClient(client)
                 } catch (_: Exception) {
                     break
@@ -250,12 +266,12 @@ class LocalApkServer(
         }
         scheduleAutoShutdown(autoShutdownMs)
 
-        // Kick the scrubbed-snapshot build the moment the server starts, so
-        // its (potentially minutes-long) VACUUM overlaps with the receiver
-        // installing the APK / connecting instead of blocking the /board.db
-        // request. If the receiver still arrives first, it gets 503 +
-        // Retry-After and polls — see serveBoardDb().
-        ensureSnapshotBuilding()
+        // Do not start the potentially minutes-long copy/VACUUM/gzip pass yet.
+        // A fresh-install receiver needs the APK first, and doing both against
+        // the same phone storage made that download dramatically slower and
+        // more likely to outlive an ordinary client's local-only Wi-Fi stay.
+        // A board request arms the snapshot explicitly; a browser APK download
+        // arms it after the last APK byte has been sent.
         return ss.localPort
     }
 
@@ -270,7 +286,6 @@ class LocalApkServer(
                 File(snap.path + "-wal").delete()
                 File(snap.path + "-shm").delete()
             }
-            compressedSnapshotFile?.delete()
             snapshotFile = null
             compressedSnapshotFile = null
             snapshotMetadata = null
@@ -323,7 +338,7 @@ class LocalApkServer(
                     line = reader.readLine()
                 }
 
-                val out = socket.getOutputStream()
+                val out = BufferedOutputStream(socket.getOutputStream(), STREAM_BUFFER_SIZE)
                 val path = rawPath.substringBefore('?')
                 val headOnly = method == "HEAD"
                 var receiverCompleted = false
@@ -355,9 +370,9 @@ class LocalApkServer(
     }
 
     private fun serveManifest(out: java.io.OutputStream, headOnly: Boolean) {
-        // A transient snapshot failure (for example, a catalogue writer held
-        // SQLite's lock) heals on the next poll instead of becoming terminal.
-        ensureSnapshotBuilding()
+        // Reading the manifest must stay cheap: the receiver uses it to decide
+        // whether an APK is needed. Snapshot work is armed explicitly by a
+        // board request, or after the APK's final byte, so APK always wins.
         // Hashing the APK is intentionally lazy but deterministic. The first
         // manifest request pays this one-time read while the board snapshot is
         // normally still being prepared in parallel.
@@ -372,14 +387,14 @@ class LocalApkServer(
             },
         )
         if (view.state == SnapState.READY &&
-            view.compressed != null && view.raw != null && view.metadata != null
+            view.compressed != null && view.metadata != null
         ) {
             boardJson
                 .put("path", LocalShareProtocol.BOARD_PATH)
                 .put("compression", "gzip")
                 .put("sizeBytes", view.compressed.length())
                 .put("sha256", view.metadata.compressedSha256)
-                .put("uncompressedSizeBytes", view.raw.length())
+                .put("uncompressedSizeBytes", view.metadata.uncompressedSizeBytes)
                 .put("uncompressedSha256", view.metadata.uncompressedSha256)
                 .put("schemaVersion", view.metadata.schemaVersion)
                 .put(
@@ -443,6 +458,7 @@ class LocalApkServer(
             rangeHeader = rangeHeader,
             headOnly = headOnly,
         )
+        if (!headOnly) ensureSnapshotBuilding()
     }
 
     /**
@@ -484,6 +500,16 @@ class LocalApkServer(
             }
         }
         if (db == null) {
+            // Only the gzip endpoint is part of the advertised v1 protocol.
+            // A restored cross-session cache deliberately retains the compact
+            // gzip file, not another 500+ MB raw copy.
+            if (!compressed && synchronized(snapshotLock) {
+                    snapState == SnapState.READY && compressedSnapshotFile?.exists() == true
+                }
+            ) {
+                serve404(out)
+                return
+            }
             ensureSnapshotBuilding()
             serve503(out)
             return
@@ -532,10 +558,14 @@ class LocalApkServer(
         if (headOnly) return
 
         activeTransfers.incrementAndGet()
+        announceBulkWork()
         try {
+            runCatching {
+                android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_DISPLAY)
+            }
             RandomAccessFile(file, "r").use { input ->
                 input.seek(offset)
-                val buffer = ByteArray(64 * 1024)
+                val buffer = ByteArray(STREAM_BUFFER_SIZE)
                 var left = remaining
                 while (left > 0L) {
                     val read = input.read(buffer, 0, minOf(buffer.size.toLong(), left).toInt())
@@ -585,7 +615,13 @@ class LocalApkServer(
             if (snapState == SnapState.BUILDING || snapState == SnapState.READY) return
             snapState = SnapState.BUILDING
         }
+        // A receiver that already has this APK can arm /board.db directly;
+        // don't wait for a file stream before giving SQLite exclusive CPU.
+        announceBulkWork()
         thread(isDaemon = true, name = "apk-snapshot-build") {
+            runCatching {
+                android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_DISPLAY)
+            }
             val startMs = System.currentTimeMillis()
             val built = buildBoardDbSnapshot(live)
             synchronized(snapshotLock) {
@@ -601,6 +637,7 @@ class LocalApkServer(
                     compressedSnapshotFile = built.compressed
                     snapshotMetadata = built.metadata
                     snapState = SnapState.READY
+                    persistSnapshotCache(built.metadata, built.sourceFingerprint)
                 } else {
                     snapState = SnapState.FAILED
                 }
@@ -616,6 +653,12 @@ class LocalApkServer(
             } else {
                 Log.w("LocalApkServer", "board-DB snapshot build failed after ${secs}s — will retry on next request")
             }
+        }
+    }
+
+    private fun announceBulkWork() {
+        if (bulkTransferAnnounced.compareAndSet(false, true)) {
+            onBulkTransferStarted?.invoke()
         }
     }
 
@@ -651,6 +694,7 @@ class LocalApkServer(
         val snapWal = File(snap.path + "-wal")
         val snapShm = File(snap.path + "-shm")
         return try {
+            var copiedFingerprint: SourceFingerprint? = null
             val db = android.database.sqlite.SQLiteDatabase.openDatabase(
                 live.absolutePath, null,
                 android.database.sqlite.SQLiteDatabase.OPEN_READWRITE
@@ -673,6 +717,7 @@ class LocalApkServer(
                     // Never copy the -shm: it's a volatile index for the
                     // LIVE wal; SQLite rebuilds it for the copied pair.
                     snapShm.delete()
+                    copiedFingerprint = sourceFingerprint(live)
                 } finally {
                     db.execSQL("ROLLBACK")
                 }
@@ -726,9 +771,11 @@ class LocalApkServer(
                 metadata = SnapshotMetadata(
                     compressedSha256 = LocalShareProtocol.sha256(compressed),
                     uncompressedSha256 = LocalShareProtocol.sha256(snap),
+                    uncompressedSizeBytes = snap.length(),
                     schemaVersion = schemaVersion,
                     catalogues = catalogues,
                 ),
+                sourceFingerprint = checkNotNull(copiedFingerprint),
             )
         } catch (e: Exception) {
             Log.w("LocalApkServer", "board-DB snapshot failed — refusing to serve the live file", e)
@@ -738,6 +785,172 @@ class LocalApkServer(
             compressed.delete()
             null
         }
+    }
+
+    /**
+     * Reuses the expensive scrub/VACUUM/gzip result across share sessions.
+     * The cache is accepted only when every live SQLite file attribute still
+     * matches the point at which the consistent main/WAL pair was copied.
+     */
+    private fun restoreCachedSnapshot() {
+        val live = boardDbFile ?: return
+        val dir = snapshotDir ?: return
+        if (!live.exists()) return
+        val compressed = File(dir, COMPRESSED_SNAPSHOT_NAME)
+        val metadataFile = File(dir, SNAPSHOT_METADATA_NAME)
+        if (!compressed.exists()) return
+        if (!metadataFile.exists()) {
+            val raw = File(dir, SNAPSHOT_NAME)
+            if (adoptLegacySnapshot(live, raw, compressed)) {
+                restoreCachedSnapshot()
+            }
+            return
+        }
+        val restored = runCatching {
+            val json = org.json.JSONObject(metadataFile.readText())
+            val source = json.getJSONObject("source")
+            val expected = SourceFingerprint(
+                mainLength = source.getLong("mainLength"),
+                mainModified = source.getLong("mainModified"),
+                walLength = source.getLong("walLength"),
+                walModified = source.getLong("walModified"),
+            )
+            check(sourceFingerprint(live) == expected) { "board database changed" }
+            check(json.getLong("compressedSizeBytes") == compressed.length()) {
+                "compressed snapshot size changed"
+            }
+            val cataloguesJson = json.getJSONArray("catalogues")
+            val catalogues = buildList {
+                for (index in 0 until cataloguesJson.length()) {
+                    val item = cataloguesJson.getJSONObject(index)
+                    add(
+                        LocalShareProtocol.BoardCatalogue(
+                            boardBrand = item.getString("boardBrand"),
+                            climbCount = item.getLong("climbCount"),
+                        ),
+                    )
+                }
+            }
+            SnapshotMetadata(
+                compressedSha256 = json.getString("compressedSha256"),
+                uncompressedSha256 = json.getString("uncompressedSha256"),
+                uncompressedSizeBytes = json.getLong("uncompressedSizeBytes"),
+                schemaVersion = json.getInt("schemaVersion"),
+                catalogues = catalogues,
+            )
+        }.getOrElse { error ->
+            Log.i("LocalApkServer", "Discarding stale snapshot cache: ${error.message}")
+            compressed.delete()
+            metadataFile.delete()
+            return
+        }
+        synchronized(snapshotLock) {
+            compressedSnapshotFile = compressed
+            snapshotMetadata = restored
+            snapState = SnapState.READY
+        }
+        Log.i(
+            "LocalApkServer",
+            "Reused board-DB snapshot cache (${compressed.length() / 1024 / 1024} MB gzip)",
+        )
+    }
+
+    /** One-time migration for a snapshot produced by the previous build,
+     * which already had safe scrub/VACUUM semantics but no cache sidecar. */
+    private fun adoptLegacySnapshot(live: File, raw: File, compressed: File): Boolean {
+        if (!raw.exists() || raw.lastModified() < live.lastModified()) return false
+        return runCatching {
+            val schemaAndCatalogues = android.database.sqlite.SQLiteDatabase.openDatabase(
+                raw.absolutePath,
+                null,
+                android.database.sqlite.SQLiteDatabase.OPEN_READONLY,
+            ).use { snapshotDb ->
+                val schema = snapshotDb.rawQuery("PRAGMA user_version", null).use { cursor ->
+                    if (cursor.moveToFirst()) cursor.getInt(0) else 0
+                }
+                val catalogues = snapshotDb.rawQuery(
+                    """
+                    SELECT COALESCE(board_brand, 'kilter'), COUNT(*)
+                    FROM climbs
+                    WHERE is_listed = 1
+                    GROUP BY COALESCE(board_brand, 'kilter')
+                    ORDER BY COALESCE(board_brand, 'kilter')
+                    """.trimIndent(),
+                    null,
+                ).use { cursor ->
+                    buildList {
+                        while (cursor.moveToNext()) {
+                            add(LocalShareProtocol.BoardCatalogue(cursor.getString(0), cursor.getLong(1)))
+                        }
+                    }
+                }
+                schema to catalogues
+            }
+            val metadata = SnapshotMetadata(
+                compressedSha256 = LocalShareProtocol.sha256(compressed),
+                uncompressedSha256 = LocalShareProtocol.sha256(raw),
+                uncompressedSizeBytes = raw.length(),
+                schemaVersion = schemaAndCatalogues.first,
+                catalogues = schemaAndCatalogues.second,
+            )
+            compressedSnapshotFile = compressed
+            persistSnapshotCache(metadata, sourceFingerprint(live))
+            raw.delete()
+            Log.i("LocalApkServer", "Adopted previous board-DB snapshot cache")
+            true
+        }.getOrElse { error ->
+            Log.w("LocalApkServer", "Could not adopt previous snapshot cache", error)
+            false
+        }
+    }
+
+    private fun persistSnapshotCache(
+        metadata: SnapshotMetadata,
+        source: SourceFingerprint,
+    ) {
+        val dir = snapshotDir ?: return
+        val target = File(dir, SNAPSHOT_METADATA_NAME)
+        val temporary = File(dir, "$SNAPSHOT_METADATA_NAME.tmp")
+        runCatching {
+            val catalogues = org.json.JSONArray().apply {
+                metadata.catalogues.forEach { catalogue ->
+                    put(
+                        org.json.JSONObject()
+                            .put("boardBrand", catalogue.boardBrand)
+                            .put("climbCount", catalogue.climbCount),
+                    )
+                }
+            }
+            temporary.writeText(
+                org.json.JSONObject()
+                    .put("source", org.json.JSONObject()
+                        .put("mainLength", source.mainLength)
+                        .put("mainModified", source.mainModified)
+                        .put("walLength", source.walLength)
+                        .put("walModified", source.walModified))
+                    .put("compressedSizeBytes", compressedSnapshotFile?.length() ?: 0L)
+                    .put("compressedSha256", metadata.compressedSha256)
+                    .put("uncompressedSha256", metadata.uncompressedSha256)
+                    .put("uncompressedSizeBytes", metadata.uncompressedSizeBytes)
+                    .put("schemaVersion", metadata.schemaVersion)
+                    .put("catalogues", catalogues)
+                    .toString(),
+            )
+            check(temporary.renameTo(target)) { "metadata rename failed" }
+        }.onFailure { error ->
+            temporary.delete()
+            Log.w("LocalApkServer", "Could not persist snapshot cache metadata", error)
+        }
+    }
+
+    private fun sourceFingerprint(live: File): SourceFingerprint {
+        val wal = File(live.path + "-wal")
+        return SourceFingerprint(
+            mainLength = live.length(),
+            mainModified = live.lastModified(),
+            walLength = if (wal.exists()) wal.length() else 0L,
+            walModified = if (wal.exists()) wal.lastModified() else 0L,
+        )
     }
 
     private fun serve404(out: java.io.OutputStream) {
@@ -781,9 +994,12 @@ class LocalApkServer(
         const val LOCAL_SHARE_PORT = 4949
         const val AUTO_SHUTDOWN_MS = 15 * 60 * 1000L
         private const val ACTIVE_TRANSFER_RECHECK_MS = 30_000L
+        private const val STREAM_BUFFER_SIZE = 512 * 1024
+        private const val SOCKET_BUFFER_SIZE = 1024 * 1024
         /** Checkpointed board-DB copy in cacheDir; see [buildBoardDbSnapshot]. */
         const val SNAPSHOT_NAME = "board_share_snapshot.db"
         const val COMPRESSED_SNAPSHOT_NAME = "board_share_snapshot.db.gz"
+        internal const val SNAPSHOT_METADATA_NAME = "board_share_snapshot.meta.json"
 
         private val LANDING_HTML = """
 <!doctype html>

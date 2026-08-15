@@ -11,6 +11,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -96,23 +97,29 @@ class CompetitionMeshTransport @Inject constructor(
     }
 
     /** Explicit competition open/create action switches to realm_id=competition_id. */
-    fun joinLocal(compId: String): Boolean {
+    suspend fun joinLocal(compId: String): Boolean {
         if (isJoined(compId)) return true
         synchronized(joined) { joined.keys.filter { it != compId } }.forEach(::leave)
         val snapshot = BoardCellManager.current?.snapshot() ?: return false
         val membership = Membership(snapshot.cellId.value, snapshot.physicalBoardId.value,
             System.currentTimeMillis(), credentials.getOrCreate(compId))
         BoardCellManager.current?.freezeForTransportRealmSwitch()
-        if (!runtime.activateRealm(FipsRealmContext(compId, membership.cellId, FipsRealmKind.COMPETITION))) return false
+        val owner = FipsMeshRuntime.competitionOwner(compId)
+        runtime.acquire(owner)
+        if (!withContext(Dispatchers.IO) {
+                runtime.activateRealm(FipsRealmContext(compId, membership.cellId, FipsRealmKind.COMPETITION))
+            }) {
+            runtime.release(owner)
+            return false
+        }
         synchronized(joined) { joined[compId] = membership }
-        runtime.acquire()
         requestHistory(compId)
         return true
     }
 
     fun leave(compId: String) {
         if (synchronized(joined) { joined.remove(compId) } != null) {
-            runtime.release()
+            runtime.release(FipsMeshRuntime.competitionOwner(compId))
             runtime.endRealm(compId)
             credentials.end(compId)
             synchronized(remotes) { remotes.keys.removeAll { it.startsWith("$compId|") } }

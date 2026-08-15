@@ -481,8 +481,14 @@ class BoardDatabaseImporter(
         var snapshotHasMoveCount = false
         var snapshotHasMethod = false
         val brand = arrayOf<Any?>(boardBrand)
-        withDeferredIndexes(
-            onRebuild = { onProgress?.invoke(ImportStep.Finalizing) }
+        // Aurora-family snapshots are much smaller than the combined local
+        // catalogue. Rebuilding every global climb/stat index once per board
+        // becomes O(boards × total catalogue) after MoonBoard is present and
+        // caused minutes of CPU saturation. Maintain indexes incrementally for
+        // these board-scoped inserts; reserve drop/rebuild for the large Kilter
+        // and MoonBoard bulk imports where it is actually cheaper.
+        withIncrementalIndexes(
+            onComplete = { onProgress?.invoke(ImportStep.Finalizing) }
         ) {
             val targetDb = openTargetDb()
             try {
@@ -1831,6 +1837,16 @@ class BoardDatabaseImporter(
                 db2.close()
             }
         }
+    }
+
+    /** Run a board-scoped import with existing indexes intact. */
+    private inline fun <R> withIncrementalIndexes(
+        crossinline onComplete: () -> Unit = {},
+        block: () -> R,
+    ): R = try {
+        block()
+    } finally {
+        onComplete()
     }
 
     /**

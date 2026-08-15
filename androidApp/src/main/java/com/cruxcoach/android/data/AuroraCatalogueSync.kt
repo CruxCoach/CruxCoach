@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.cruxcoach.android.data.blossom.BlossomSyncException
 import com.cruxcoach.android.data.blossom.BlossomSyncManager
+import com.cruxcoach.android.util.withBackgroundThreadPriority
 import com.cruxcoach.domain.board.BoardBrand
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -120,11 +121,13 @@ class AuroraCatalogueSync @Inject constructor(
                         )
                     }
                 )
-                importer.importAuroraSnapshot(outFile, board.wireValue) { step ->
-                    if (step is BoardDatabaseImporter.ImportStep.Done) {
-                        importedClimbs = step.climbs.toLong()
+                withBackgroundThreadPriority {
+                    importer.importAuroraSnapshot(outFile, board.wireValue) { step ->
+                        if (step is BoardDatabaseImporter.ImportStep.Done) {
+                            importedClimbs = step.climbs.toLong()
+                        }
+                        onProgress?.invoke(step)
                     }
-                    onProgress?.invoke(step)
                 }
                 // Persist the chunk hash so the next sync short-circuits
                 // unless a fresher snapshot is published.

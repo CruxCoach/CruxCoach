@@ -32,7 +32,9 @@ class FipsMeshService : android.app.Service() {
                 .setOngoing(true).setOnlyAlertOnce(true).build(),
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE else 0)
-        if (!runtime.ensureStarted()) stopSelf()
+        // Runtime startup happens on its IO scope before the service is requested.
+        // Never run the native ready handshake from the application's main thread.
+        if (!runtime.running.value) stopSelf()
         return START_NOT_STICKY
     }
 

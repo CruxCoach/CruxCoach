@@ -6,8 +6,9 @@ internal object NativeFips {
 
     external fun start(secret: String, maxDirectConnections: Int): Boolean
     external fun stop()
+    external fun isAlive(): Boolean
     external fun npub(): String
-    external fun send(destinationNpub: String, bytes: ByteArray): Boolean
+    external fun sendBatch(destinationNpub: String, packedFrames: ByteArray): Boolean
     external fun receive(timeoutMs: Int): ByteArray
     external fun peers(): String
 

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DeveloperBoard
 import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalDrawerSheet
@@ -24,12 +25,11 @@ import com.cruxcoach.android.R
 /**
  * The first-level menu behind the CruxCoach logo — FEAT-058.
  *
- * Two entries and nothing else. The board catalogue is what the app has always
- * been; competitions are the new thing. Everything that used to be reachable
+ * First-level destinations only. Everything that used to be reachable
  * from the browser's action bar stays exactly where it was: this drawer adds a
  * level above the app, it does not reorganise it.
  */
-enum class MainDestination { BOARD_CATALOG, COMPETITIONS }
+enum class MainDestination { BOARD_CATALOG, FIPS_MESH, COMPETITIONS }
 
 @Composable
 fun MainDrawerSheet(
@@ -54,6 +54,15 @@ fun MainDrawerSheet(
             modifier = Modifier
                 .padding(NavigationDrawerItemDefaults.ItemPadding)
                 .testTag("menu_board_catalog"),
+        )
+        NavigationDrawerItem(
+            icon = { Icon(Icons.Default.Hub, contentDescription = null) },
+            label = { Text(stringResource(R.string.main_menu_fips_mesh)) },
+            selected = selected == MainDestination.FIPS_MESH,
+            onClick = { onSelect(MainDestination.FIPS_MESH) },
+            modifier = Modifier
+                .padding(NavigationDrawerItemDefaults.ItemPadding)
+                .testTag("menu_fips_mesh"),
         )
         NavigationDrawerItem(
             icon = { Icon(Icons.Default.EmojiEvents, contentDescription = null) },

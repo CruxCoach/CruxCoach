@@ -23,10 +23,15 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.atomic.AtomicInteger
 
 /** Android API 29+ L2CAP CoC radio owned by Kotlin and driven by FIPS over JNI. */
 @SuppressLint("MissingPermission")
-internal class FipsBleRadio(context: Context, private val realm: FipsRealmContext) {
+internal class FipsBleRadio(
+    context: Context,
+    private val realm: FipsRealmContext,
+    private val onNearbyMesh: (FipsNearbyMesh) -> Unit = {},
+) {
     private val adapter = (context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
     private val io = Executors.newCachedThreadPool()
     private val retry = Executors.newSingleThreadScheduledExecutor()
@@ -42,10 +47,19 @@ internal class FipsBleRadio(context: Context, private val realm: FipsRealmContex
     @Volatile private var localNonce = newNonce()
     private var nonceRotatedAtMs = System.currentTimeMillis()
     private var nonceRotation: ScheduledFuture<*>? = null
+    private var advertiseRetry: ScheduledFuture<*>? = null
+    private var scanRetry: ScheduledFuture<*>? = null
+    private val advertiseGeneration = AtomicInteger(0)
+    private val scanGeneration = AtomicInteger(0)
     private val observedNonceTags = ConcurrentHashMap<String, Long>()
     private val observedAddresses = ConcurrentHashMap<String, Long>()
+    private val lastDiscoveryLog = ConcurrentHashMap<String, Long>()
 
-    fun bindBridge(handle: Long) { bridge = handle }
+    fun bindBridge(handle: Long) {
+        bridge = handle
+        FipsDebugLog.event("radio", "bridge_bound", "handle" to handle,
+            "realm" to FipsDebugLog.id(realm.realmId), "cell" to FipsDebugLog.id(realm.boardCellId))
+    }
 
     @RequiresApi(29)
     fun listen(): Int = try {
@@ -53,12 +67,19 @@ internal class FipsBleRadio(context: Context, private val realm: FipsRealmContex
         val socket = adapter?.listenUsingInsecureL2capChannel() ?: return 0
         server = socket
         io.execute { acceptLoop(socket) }
+        FipsDebugLog.event("radio", "l2cap_listening", "psm" to socket.psm)
         socket.psm
-    } catch (e: Exception) { Log.e(TAG, "L2CAP listen failed", e); 0 }
+    } catch (e: Exception) {
+        Log.e(TAG, "L2CAP listen failed", e)
+        FipsDebugLog.warning("radio", "l2cap_listen_failed", "error" to (e.message ?: e.javaClass.simpleName))
+        0
+    }
 
     @RequiresApi(29)
     fun connect(connectId: Long, address: String, psm: Int) {
         if (stopped) return
+        FipsDebugLog.event("radio", "outbound_connect_begin", "connectId" to connectId,
+            "address" to address.substringAfter('/'), "psm" to psm)
         io.execute {
             val mac = address.substringAfter('/', address)
             try {
@@ -67,9 +88,14 @@ internal class FipsBleRadio(context: Context, private val realm: FipsRealmContex
                 socket.connect()
                 val id = NativeFips.bleDeliverConnectResult(bridge, connectId, true, address,
                     sendMtu(socket), receiveMtu(socket))
+                FipsDebugLog.event("radio", "outbound_connect_result", "connectId" to connectId,
+                    "channel" to id, "address" to mac, "sendMtu" to sendMtu(socket),
+                    "receiveMtu" to receiveMtu(socket))
                 if (id > 0) startChannel(id, socket) else socket.close()
             } catch (e: Exception) {
                 Log.w(TAG, "L2CAP connect failed: ${e.message}")
+                FipsDebugLog.warning("radio", "outbound_connect_failed", "connectId" to connectId,
+                    "address" to mac, "psm" to psm, "error" to (e.message ?: e.javaClass.simpleName))
                 NativeFips.bleDeliverConnectResult(bridge, connectId, false, address, 0, 0)
             }
         }
@@ -79,6 +105,7 @@ internal class FipsBleRadio(context: Context, private val realm: FipsRealmContex
         if (stopped) return
         advertisedPsm = psm
         stopAdvertising()
+        val generation = advertiseGeneration.incrementAndGet()
         if (System.currentTimeMillis() - nonceRotatedAtMs >= NONCE_ROTATE_MS) {
             localNonce = newNonce()
             nonceRotatedAtMs = System.currentTimeMillis()
@@ -95,9 +122,13 @@ internal class FipsBleRadio(context: Context, private val realm: FipsRealmContex
             .setConnectable(true).setTimeout(0).build()
         val callback = object : AdvertiseCallback() {
             override fun onStartSuccess(value: AdvertiseSettings?) {
+                if (stopped || generation != advertiseGeneration.get()) return
                 advertiseRetries = 0
+                FipsDebugLog.event("radio", "advertising_started", "psm" to psm,
+                    "realmTag" to FipsDebugLog.tag(realm.realmTag), "cellTag" to FipsDebugLog.tag(realm.cellTag),
+                    "nonceTag" to FipsDebugLog.tag(DirectJoinProof.nonceTag(localNonce)))
                 nonceRotation = retry.schedule({
-                    if (!stopped) {
+                    if (!stopped && generation == advertiseGeneration.get()) {
                         localNonce = newNonce()
                         nonceRotatedAtMs = System.currentTimeMillis()
                         startAdvertising(advertisedPsm)
@@ -105,67 +136,122 @@ internal class FipsBleRadio(context: Context, private val realm: FipsRealmContex
                 }, NONCE_ROTATE_MS, TimeUnit.MILLISECONDS)
             }
             override fun onStartFailure(errorCode: Int) {
+                if (stopped || generation != advertiseGeneration.get()) return
                 Log.w(TAG, "advertise failed $errorCode")
-                scheduleAdvertiseRetry()
+                FipsDebugLog.warning("radio", "advertising_failed", "code" to errorCode, "psm" to psm)
+                scheduleAdvertiseRetry(generation)
             }
         }
         advertiserCallback = callback
+        FipsDebugLog.event("radio", "advertising_start_requested", "psm" to psm,
+            "payloadBytes" to psmBytes.size)
         runCatching { advertiser.startAdvertising(settings, data, callback) }
-            .onFailure { scheduleAdvertiseRetry() }
+            .onFailure { scheduleAdvertiseRetry(generation) }
     }
 
-    private fun scheduleAdvertiseRetry() {
-        if (stopped) return
+    private fun scheduleAdvertiseRetry(generation: Int) {
+        if (stopped || generation != advertiseGeneration.get()) return
         val seconds = minOf(60L, 5L shl minOf(advertiseRetries++, 3))
-        retry.schedule({ if (!stopped) startAdvertising(advertisedPsm) }, seconds, TimeUnit.SECONDS)
+        FipsDebugLog.event("radio", "advertising_retry_scheduled", "delaySeconds" to seconds,
+            "attempt" to advertiseRetries)
+        advertiseRetry?.cancel(false)
+        advertiseRetry = retry.schedule({
+            if (!stopped && generation == advertiseGeneration.get()) startAdvertising(advertisedPsm)
+        }, seconds, TimeUnit.SECONDS)
     }
 
     fun stopAdvertising() {
+        advertiseGeneration.incrementAndGet()
         nonceRotation?.cancel(false); nonceRotation = null
+        advertiseRetry?.cancel(false); advertiseRetry = null
         advertiserCallback?.let { callback ->
             runCatching { adapter?.bluetoothLeAdvertiser?.stopAdvertising(callback) }
         }
         advertiserCallback = null
+        FipsDebugLog.event("radio", "advertising_stopped")
     }
 
     fun startScanning() {
         if (stopped) return
         stopScanning()
+        val generation = scanGeneration.incrementAndGet()
         val scanner = adapter?.bluetoothLeScanner ?: return
         val callback = object : ScanCallback() {
             override fun onScanResult(type: Int, result: ScanResult) = handleResult(result)
             override fun onBatchScanResults(results: MutableList<ScanResult>) = results.forEach(::handleResult)
             override fun onScanFailed(errorCode: Int) {
+                if (stopped || generation != scanGeneration.get()) return
                 val floor = if (errorCode == SCAN_FAILED_SCANNING_TOO_FREQUENTLY) 30L else 0L
                 val seconds = maxOf(floor, minOf(60L, 5L shl minOf(scanRetries++, 3)))
-                retry.schedule({ if (!stopped) startScanning() }, seconds, TimeUnit.SECONDS)
+                FipsDebugLog.warning("radio", "scan_failed", "code" to errorCode,
+                    "retrySeconds" to seconds, "attempt" to scanRetries)
+                scheduleScanRetry(generation, seconds)
             }
         }
         scannerCallback = callback
         val filter = ScanFilter.Builder().setServiceUuid(CRUXCOACH_FIPS_UUID).build()
         val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_POWER).build()
+        FipsDebugLog.event("radio", "scan_started", "mode" to "low_power",
+            "realmTag" to FipsDebugLog.tag(realm.realmTag), "cellTag" to FipsDebugLog.tag(realm.cellTag))
         runCatching { scanner.startScan(listOf(filter), settings, callback) }
+            .onFailure { FipsDebugLog.warning("radio", "scan_start_failed",
+                "error" to (it.message ?: it.javaClass.simpleName)).also {
+                    scheduleScanRetry(generation, 5L)
+                } }
+    }
+
+    private fun scheduleScanRetry(generation: Int, seconds: Long) {
+        if (stopped || generation != scanGeneration.get()) return
+        scanRetry?.cancel(false)
+        scanRetry = retry.schedule({
+            if (!stopped && generation == scanGeneration.get()) startScanning()
+        }, seconds, TimeUnit.SECONDS)
     }
 
     private fun handleResult(result: ScanResult) {
         scanRetries = 0
         val bytes = result.scanRecord?.getServiceData(CRUXCOACH_FIPS_UUID) ?: return
         if (bytes.size != ADVERTISEMENT_BYTES || bytes[0] != ADVERTISEMENT_VERSION) return
-        if (!bytes.copyOfRange(3, 7).contentEquals(realm.realmTag) ||
-            !bytes.copyOfRange(7, 11).contentEquals(realm.cellTag)) return
+        val advertisedRealmTag = bytes.copyOfRange(3, 7)
+        val advertisedCellTag = bytes.copyOfRange(7, 11)
+        val matchesActiveRealm = advertisedRealmTag.contentEquals(realm.realmTag) &&
+            advertisedCellTag.contentEquals(realm.cellTag)
+        onNearbyMesh(
+            FipsNearbyMesh(
+                address = result.device.address,
+                realmTag = advertisedRealmTag.toHex(),
+                cellTag = advertisedCellTag.toHex(),
+                rssi = result.rssi,
+                lastSeenMs = System.currentTimeMillis(),
+                matchesActiveRealm = matchesActiveRealm,
+            )
+        )
+        // Discovery may describe foreign CruxCoach meshes in the UI, but only
+        // the exact active realm/cell is handed to FIPS for connection.
+        if (!matchesActiveRealm) return
         val nonceTag = bytes.copyOfRange(11, 15).toHex()
         observedNonceTags[nonceTag] = System.currentTimeMillis()
         observedNonceTags.entries.removeAll { System.currentTimeMillis() - it.value > DirectJoinProof.MAX_AGE_MS }
         observedAddresses[result.device.address.uppercase()] = System.currentTimeMillis()
         observedAddresses.entries.removeAll { System.currentTimeMillis() - it.value > DirectJoinProof.MAX_AGE_MS }
         val psm = (bytes[1].toInt() and 255) or ((bytes[2].toInt() and 255) shl 8)
-        if (psm > 0) NativeFips.bleDeliverScan(bridge,
-            "$ADAPTER/${result.device.address}", psm, result.rssi)
+        if (psm > 0) {
+            val now = System.currentTimeMillis()
+            val previousLog = lastDiscoveryLog.put(result.device.address, now) ?: 0L
+            if (now - previousLog >= DISCOVERY_LOG_INTERVAL_MS) {
+                FipsDebugLog.event("radio", "matching_peer_discovered", "address" to result.device.address,
+                    "psm" to psm, "rssi" to result.rssi, "nonceTag" to nonceTag)
+            }
+            NativeFips.bleDeliverScan(bridge, "$ADAPTER/${result.device.address}", psm, result.rssi)
+        }
     }
 
     fun stopScanning() {
+        scanGeneration.incrementAndGet()
+        scanRetry?.cancel(false); scanRetry = null
         scannerCallback?.let { runCatching { adapter?.bluetoothLeScanner?.stopScan(it) } }
         scannerCallback = null
+        FipsDebugLog.event("radio", "scan_stopped")
     }
 
     fun localNonceHex(): String = localNonce.toHex()
@@ -178,11 +264,15 @@ internal class FipsBleRadio(context: Context, private val realm: FipsRealmContex
     fun closeChannel(id: Long) { channels.remove(id)?.let { runCatching { it.close() } } }
 
     fun shutdown() {
+        FipsDebugLog.event("radio", "shutdown", "channels" to channels.size,
+            "observedPeers" to observedAddresses.size)
         stopped = true
         stopScanning(); stopAdvertising()
         runCatching { server?.close() }; server = null
         channels.keys.toList().forEach(::closeChannel)
         io.shutdownNow(); retry.shutdownNow()
+        runCatching { io.awaitTermination(EXECUTOR_STOP_SECONDS, TimeUnit.SECONDS) }
+        runCatching { retry.awaitTermination(EXECUTOR_STOP_SECONDS, TimeUnit.SECONDS) }
     }
 
     private fun acceptLoop(listener: BluetoothServerSocket) {
@@ -192,16 +282,22 @@ internal class FipsBleRadio(context: Context, private val realm: FipsRealmContex
             if (seenAt == null || System.currentTimeMillis() - seenAt > DirectJoinProof.MAX_AGE_MS) {
                 // Inbound L2CAP is not discovery: require a matching, recent local scan first.
                 runCatching { socket.close() }
+                FipsDebugLog.warning("radio", "inbound_rejected", "address" to socket.remoteDevice.address,
+                    "reason" to "no recent matching local scan")
                 continue
             }
             val id = NativeFips.bleDeliverInbound(bridge,
                 "$ADAPTER/${socket.remoteDevice.address}", sendMtu(socket), receiveMtu(socket))
+            FipsDebugLog.event("radio", "inbound_accepted", "address" to socket.remoteDevice.address,
+                "channel" to id, "sendMtu" to sendMtu(socket), "receiveMtu" to receiveMtu(socket))
             if (id > 0) startChannel(id, socket) else runCatching { socket.close() }
         }
     }
 
     private fun startChannel(id: Long, socket: BluetoothSocket) {
         channels[id] = socket
+        FipsDebugLog.event("radio", "channel_open", "channel" to id,
+            "address" to socket.remoteDevice.address, "channels" to channels.size)
         io.execute { reader(id, socket) }
         io.execute { writer(id, socket) }
     }
@@ -219,7 +315,11 @@ internal class FipsBleRadio(context: Context, private val realm: FipsRealmContex
     private fun writer(id: Long, socket: BluetoothSocket) {
         val buffer = ByteArray(MAX_PACKET)
         try {
-            while (!stopped) when (val count = NativeFips.bleChannelNextSend(bridge, id, buffer, 1_000)) {
+            // Channel close disconnects the native sender and wakes this wait;
+            // a long fallback timeout avoids one idle wakeup per channel/sec.
+            while (!stopped) when (val count = NativeFips.bleChannelNextSend(
+                bridge, id, buffer, OUTBOUND_WAIT_MS,
+            )) {
                 -1 -> break
                 0 -> Unit
                 else -> { socket.outputStream.write(buffer, 0, count); socket.outputStream.flush() }
@@ -229,6 +329,7 @@ internal class FipsBleRadio(context: Context, private val realm: FipsRealmContex
 
     private fun channelGone(id: Long) {
         closeChannel(id)
+        FipsDebugLog.event("radio", "channel_closed", "channel" to id, "remaining" to channels.size)
         runCatching { NativeFips.bleChannelClosed(bridge, id) }
     }
 
@@ -242,6 +343,9 @@ internal class FipsBleRadio(context: Context, private val realm: FipsRealmContex
         private const val ADVERTISEMENT_VERSION: Byte = 1
         private const val ADVERTISEMENT_BYTES = 15
         private const val NONCE_ROTATE_MS = 30_000L
+        private const val DISCOVERY_LOG_INTERVAL_MS = 10_000L
+        private const val EXECUTOR_STOP_SECONDS = 2L
+        private const val OUTBOUND_WAIT_MS = 60_000
         // A compact CruxCoach-specific 16-bit-shaped UUID keeps the legacy 31-byte
         // advertising budget; full ids and the full nonce are authenticated in CCJ1.
         private val CRUXCOACH_FIPS_UUID = ParcelUuid(UUID.fromString("0000ccf1-0000-1000-8000-00805f9b34fb"))

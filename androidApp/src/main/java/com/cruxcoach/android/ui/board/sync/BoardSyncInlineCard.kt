@@ -487,6 +487,7 @@ private fun DatabaseImportSection(
                     boardErrors = state.boardErrors,
                     syncing = state.isSyncing,
                     localShareInProgress = state.localShareInProgress,
+                    globalStep = state.importStep,
                     onLoadBoard = onLoadBoard,
                 )
 
@@ -686,6 +687,7 @@ private fun BoardCatalogueStatusList(
     boardErrors: Map<BoardBrand, String>,
     syncing: Boolean,
     localShareInProgress: Boolean,
+    globalStep: ImportStep?,
     onLoadBoard: (BoardBrand) -> Unit,
 ) {
     val boards = remember {
@@ -693,6 +695,8 @@ private fun BoardCatalogueStatusList(
             BoardBrand.entries.filter { it.usesAuroraProtocol && it != BoardBrand.KILTER }
     }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        val sharedPhasePending = localShareInProgress &&
+            globalStep?.isSharedLocalSharePhase() == true
         boards.forEach { brand ->
             // Discovery, snapshot creation, download and verification are
             // global share phases. LocalShareProgressSummary already renders
@@ -706,7 +710,12 @@ private fun BoardCatalogueStatusList(
                 count = boardCounts[brand.wireValue] ?: 0L,
                 isActive = brand == activeBrand,
                 step = rowStep,
-                hasError = boardErrors.containsKey(brand),
+                // Discovery/snapshot/download are one global operation. A
+                // missing per-board step during that window is not a Kilter
+                // failure (and stale errors must not leak into the waiting
+                // UI): every catalogue gets the same neutral pending state.
+                sharedPhasePending = sharedPhasePending,
+                hasError = !sharedPhasePending && boardErrors.containsKey(brand),
                 anySyncing = syncing,
                 onLoad = { onLoadBoard(brand) },
             )
@@ -720,6 +729,7 @@ private fun BoardStatusRow(
     count: Long,
     isActive: Boolean,
     step: ImportStep?,
+    sharedPhasePending: Boolean,
     hasError: Boolean,
     anySyncing: Boolean,
     onLoad: () -> Unit,
@@ -783,6 +793,11 @@ private fun BoardStatusRow(
                 boardSyncing -> CircularProgressIndicator(
                     color = OrangeAccent, modifier = Modifier.size(20.dp), strokeWidth = 2.dp,
                 )
+                sharedPhasePending -> CircularProgressIndicator(
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp,
+                )
                 loaded -> Icon(
                     Icons.Default.CheckCircle, contentDescription = null,
                     tint = SuccessGreen, modifier = Modifier.size(20.dp),
@@ -820,6 +835,11 @@ private fun BoardStatusRow(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.widthIn(max = 140.dp),
+                )
+                sharedPhasePending -> Text(
+                    stringResource(R.string.board_sync_status_waiting),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 loaded -> Text(
                     "%,d".format(displayCount),

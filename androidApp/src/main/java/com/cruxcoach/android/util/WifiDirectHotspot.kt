@@ -19,8 +19,8 @@ import kotlin.random.Random
 /**
  * Creates a local hotspot for APK sharing.
  * Tries two strategies:
- * 1. WiFi Direct createGroup (Briar approach) — fixed IP 192.168.49.1
- * 2. LocalOnlyHotspot (fallback) — system-assigned IP
+ * 1. LocalOnlyHotspot — the platform path for ordinary Wi-Fi clients
+ * 2. WiFi Direct createGroup (fallback) — fixed IP 192.168.49.1
  */
 class WifiDirectHotspot(context: Context) {
 
@@ -81,18 +81,18 @@ class WifiDirectHotspot(context: Context) {
         failureLog.clear()
         staleCruxCoachGroupCleanupAttempted = false
         acquireLocks()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            tryWifiDirect(1, onStarted, onError)
-        } else {
-            // Android 8/9 cannot create a locally configured P2P group. On
-            // affected HTC-era stacks createGroup() can report success and
-            // expose an Android-named SSID while ordinary Wi-Fi clients never
-            // receive a usable route to the group owner. LocalOnlyHotspot is
-            // the platform-supported compatibility path on API 26-28 and is
-            // reachable by normal QR-joined Wi-Fi clients.
-            Log.d(TAG, "Using LocalOnlyHotspot compatibility path on API ${Build.VERSION.SDK_INT}")
-            tryLocalOnlyHotspot(onStarted, onError)
-        }
+        // The receiver joins through a regular Wi-Fi QR, not Wi-Fi Direct
+        // discovery/negotiation. Some Android clients repeatedly abandon a
+        // P2P group-owner AP after roughly one minute even though the group
+        // itself remains healthy. LocalOnlyHotspot is the platform API for
+        // exactly this local-only, ordinary-client topology. Keep P2P as a
+        // fallback on API 29+, where we can configure usable credentials.
+        Log.d(TAG, "Using LocalOnlyHotspot primary path on API ${Build.VERSION.SDK_INT}")
+        tryLocalOnlyHotspot(
+            onStarted,
+            onError,
+            fallbackToWifiDirect = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q,
+        )
     }
 
     // ---- Strategy 1: WiFi Direct (Briar approach) ----
@@ -176,7 +176,10 @@ class WifiDirectHotspot(context: Context) {
                     val config = WifiP2pConfig.Builder()
                         .setNetworkName("DIRECT-${r1}${r2}-CruxCoach$suffix")
                         .setPassphrase(generatePassphrase())
-                        .setGroupOperatingBand(WifiP2pConfig.GROUP_OWNER_BAND_2GHZ)
+                        // Prefer the substantially faster, less congested 5 GHz
+                        // radio. This path is only a fallback when the regular
+                        // LocalOnlyHotspot is unavailable.
+                        .setGroupOperatingBand(WifiP2pConfig.GROUP_OWNER_BAND_5GHZ)
                         .build()
                     wifiP2pManager.createGroup(ch, config, listener)
                 } else {
@@ -302,7 +305,8 @@ class WifiDirectHotspot(context: Context) {
     @SuppressLint("MissingPermission")
     private fun tryLocalOnlyHotspot(
         onStarted: (HotspotInfo) -> Unit,
-        onError: (String) -> Unit
+        onError: (String) -> Unit,
+        fallbackToWifiDirect: Boolean = false,
     ) {
         if (!running) return
         Log.d(TAG, "Trying LocalOnlyHotspot fallback")
@@ -350,13 +354,23 @@ class WifiDirectHotspot(context: Context) {
                 override fun onFailed(reason: Int) {
                     failureLog.add("LOH failed: reason=$reason")
                     Log.w(TAG, "LocalOnlyHotspot failed: $reason")
-                    reportFinalError(onError)
+                    if (fallbackToWifiDirect) {
+                        Log.w(TAG, "LocalOnlyHotspot unavailable; falling back to WiFi Direct")
+                        tryWifiDirect(1, onStarted, onError)
+                    } else {
+                        reportFinalError(onError)
+                    }
                 }
             }, handler)
         } catch (e: Exception) {
             failureLog.add("LOH exception: ${e.message}")
             Log.e(TAG, "LocalOnlyHotspot exception", e)
-            reportFinalError(onError)
+            if (fallbackToWifiDirect) {
+                Log.w(TAG, "LocalOnlyHotspot threw; falling back to WiFi Direct")
+                tryWifiDirect(1, onStarted, onError)
+            } else {
+                reportFinalError(onError)
+            }
         }
     }
 

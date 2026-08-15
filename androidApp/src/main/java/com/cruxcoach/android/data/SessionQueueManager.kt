@@ -244,7 +244,7 @@ class SessionQueueManager(
             physicalBoardId = BoardCellScopeRegistry.selected.value?.value,
             boardCellId = BoardCellScopeRegistry.selectedCellId()?.value,
         ) }
-        fipsMeshRuntime?.acquire()
+        fipsMeshRuntime?.acquire(FipsMeshRuntime.OWNER_SESSION)
         bleConnection.acquireKeepAlive(BoardConnectionOwner.SESSION)
         Log.d(TAG, "Queue started (sessionId=$sessionId, hostName=$hostName)")
     }
@@ -287,7 +287,7 @@ class SessionQueueManager(
         onRestRequested = null
         isPlaylistQueue = false
         bleConnection.releaseKeepAlive(BoardConnectionOwner.SESSION)
-        fipsMeshRuntime?.release()
+        fipsMeshRuntime?.release(FipsMeshRuntime.OWNER_SESSION)
         Log.d(TAG, "endQueue(): complete, state reset to NONE")
     }
 

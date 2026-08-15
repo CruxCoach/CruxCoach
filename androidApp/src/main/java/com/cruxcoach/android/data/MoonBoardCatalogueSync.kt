@@ -2,6 +2,7 @@ package com.cruxcoach.android.data
 
 import android.content.Context
 import android.util.Log
+import com.cruxcoach.android.util.withBackgroundThreadPriority
 import com.cruxcoach.android.data.blossom.BlossomSyncException
 import com.cruxcoach.android.data.blossom.BlossomSyncManager
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -101,11 +102,13 @@ class MoonBoardCatalogueSync @Inject constructor(
                         )
                     }
                 )
-                importer.importMoonBoardSnapshot(outFile) { step ->
-                    if (step is BoardDatabaseImporter.ImportStep.Done) {
-                        importedClimbs = step.climbs.toLong()
+                withBackgroundThreadPriority {
+                    importer.importMoonBoardSnapshot(outFile) { step ->
+                        if (step is BoardDatabaseImporter.ImportStep.Done) {
+                            importedClimbs = step.climbs.toLong()
+                        }
+                        onProgress?.invoke(step)
                     }
-                    onProgress?.invoke(step)
                 }
                 // Persist the chunk hash so the next sync short-circuits
                 // unless a fresher snapshot is published.
