@@ -111,12 +111,17 @@ internal class FipsBleRadio(
             nonceRotatedAtMs = System.currentTimeMillis()
         }
         val advertiser = adapter?.bluetoothLeAdvertiser ?: return
-        val psmBytes = byteArrayOf(
-            ADVERTISEMENT_VERSION, psm.toByte(), (psm shr 8).toByte(),
-            *realm.realmTag, *realm.cellTag, *DirectJoinProof.nonceTag(localNonce),
-        )
+        val psmBytes = FipsAdvertisementCodec.encode(realm, psm, DirectJoinProof.nonceTag(localNonce))
+        // V2 uses the complete 128-bit BoardCell id. Advertising it only as
+        // service data (without a duplicate service-UUID list entry) keeps the
+        // connectable legacy advertisement within Android's 31-byte budget.
         val data = AdvertiseData.Builder().setIncludeDeviceName(false)
-            .addServiceUuid(CRUXCOACH_FIPS_UUID).addServiceData(CRUXCOACH_FIPS_UUID, psmBytes).build()
+            .addServiceData(CRUXCOACH_FIPS_UUID, psmBytes).build()
+        val scanResponse = realm.meshName?.trim()?.takeIf(String::isNotEmpty)?.let { name ->
+            AdvertiseData.Builder().addServiceData(
+                CRUXCOACH_FIPS_NAME_UUID, meshNameBytes(name),
+            ).build()
+        }
         val settings = AdvertiseSettings.Builder()
             .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_BALANCED)
             .setConnectable(true).setTimeout(0).build()
@@ -145,7 +150,10 @@ internal class FipsBleRadio(
         advertiserCallback = callback
         FipsDebugLog.event("radio", "advertising_start_requested", "psm" to psm,
             "payloadBytes" to psmBytes.size)
-        runCatching { advertiser.startAdvertising(settings, data, callback) }
+        runCatching {
+            if (scanResponse != null) advertiser.startAdvertising(settings, data, scanResponse, callback)
+            else advertiser.startAdvertising(settings, data, callback)
+        }
             .onFailure { scheduleAdvertiseRetry(generation) }
     }
 
@@ -189,7 +197,7 @@ internal class FipsBleRadio(
             }
         }
         scannerCallback = callback
-        val filter = ScanFilter.Builder().setServiceUuid(CRUXCOACH_FIPS_UUID).build()
+        val filter = ScanFilter.Builder().setServiceData(CRUXCOACH_FIPS_UUID, byteArrayOf()).build()
         val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_POWER).build()
         FipsDebugLog.event("radio", "scan_started", "mode" to "low_power",
             "realmTag" to FipsDebugLog.tag(realm.realmTag), "cellTag" to FipsDebugLog.tag(realm.cellTag))
@@ -211,9 +219,11 @@ internal class FipsBleRadio(
     private fun handleResult(result: ScanResult) {
         scanRetries = 0
         val bytes = result.scanRecord?.getServiceData(CRUXCOACH_FIPS_UUID) ?: return
-        if (bytes.size != ADVERTISEMENT_BYTES || bytes[0] != ADVERTISEMENT_VERSION) return
-        val advertisedRealmTag = bytes.copyOfRange(3, 7)
-        val advertisedCellTag = bytes.copyOfRange(7, 11)
+        val advertisement = FipsAdvertisementCodec.decode(bytes) ?: return
+        val boardName = result.scanRecord?.getServiceData(CRUXCOACH_FIPS_NAME_UUID)
+            ?.decodeToString()?.trim()?.takeIf(String::isNotEmpty)
+        val advertisedRealmTag = advertisement.realmTag
+        val advertisedCellTag = advertisement.cellTag
         val matchesActiveRealm = advertisedRealmTag.contentEquals(realm.realmTag) &&
             advertisedCellTag.contentEquals(realm.cellTag)
         onNearbyMesh(
@@ -224,17 +234,19 @@ internal class FipsBleRadio(
                 rssi = result.rssi,
                 lastSeenMs = System.currentTimeMillis(),
                 matchesActiveRealm = matchesActiveRealm,
+                joinableBoardCellId = advertisement.joinableBoardCellId,
+                boardName = boardName,
             )
         )
         // Discovery may describe foreign CruxCoach meshes in the UI, but only
         // the exact active realm/cell is handed to FIPS for connection.
         if (!matchesActiveRealm) return
-        val nonceTag = bytes.copyOfRange(11, 15).toHex()
+        val nonceTag = advertisement.nonceTag.toHex()
         observedNonceTags[nonceTag] = System.currentTimeMillis()
         observedNonceTags.entries.removeAll { System.currentTimeMillis() - it.value > DirectJoinProof.MAX_AGE_MS }
         observedAddresses[result.device.address.uppercase()] = System.currentTimeMillis()
         observedAddresses.entries.removeAll { System.currentTimeMillis() - it.value > DirectJoinProof.MAX_AGE_MS }
-        val psm = (bytes[1].toInt() and 255) or ((bytes[2].toInt() and 255) shl 8)
+        val psm = advertisement.psm
         if (psm > 0) {
             val now = System.currentTimeMillis()
             val previousLog = lastDiscoveryLog.put(result.device.address, now) ?: 0L
@@ -340,8 +352,6 @@ internal class FipsBleRadio(
         private const val TAG = "CruxFipsRadio"
         private const val ADAPTER = "ble0"
         private const val MAX_PACKET = 8_192
-        private const val ADVERTISEMENT_VERSION: Byte = 1
-        private const val ADVERTISEMENT_BYTES = 15
         private const val NONCE_ROTATE_MS = 30_000L
         private const val DISCOVERY_LOG_INTERVAL_MS = 10_000L
         private const val EXECUTOR_STOP_SECONDS = 2L
@@ -349,9 +359,18 @@ internal class FipsBleRadio(
         // A compact CruxCoach-specific 16-bit-shaped UUID keeps the legacy 31-byte
         // advertising budget; full ids and the full nonce are authenticated in CCJ1.
         private val CRUXCOACH_FIPS_UUID = ParcelUuid(UUID.fromString("0000ccf1-0000-1000-8000-00805f9b34fb"))
+        private val CRUXCOACH_FIPS_NAME_UUID = ParcelUuid(UUID.fromString("0000ccf2-0000-1000-8000-00805f9b34fb"))
     }
 
 
     private fun ByteArray.toHex() = joinToString("") { "%02x".format(it) }
     private fun newNonce() = ByteArray(16).also(SecureRandom()::nextBytes)
+    private fun meshNameBytes(value: String): ByteArray {
+        var result = ByteArray(0)
+        value.codePoints().forEach { codePoint ->
+            val candidate = result + String(Character.toChars(codePoint)).encodeToByteArray()
+            if (candidate.size <= 24) result = candidate
+        }
+        return result
+    }
 }

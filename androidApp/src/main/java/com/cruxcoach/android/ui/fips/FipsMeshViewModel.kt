@@ -8,8 +8,12 @@ import com.cruxcoach.android.fips.FipsMeshRuntime
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 data class FipsMeshPeerUi(
     val npub: String,
@@ -27,6 +31,8 @@ data class NearbyFipsMeshUi(
     val rssi: Int,
     val lastSeenMs: Long,
     val currentMesh: Boolean,
+    val joinableBoardCellId: String?,
+    val boardName: String?,
 )
 
 data class FipsMeshUiState(
@@ -45,10 +51,20 @@ data class FipsMeshUiState(
 
 @HiltViewModel
 class FipsMeshViewModel @Inject constructor(
-    runtime: FipsMeshRuntime,
-    boardCellManager: BoardCellManager,
+    private val runtime: FipsMeshRuntime,
+    private val boardCellManager: BoardCellManager,
     boardConnection: BoardBleConnection,
 ) : ViewModel() {
+    private val _joiningMeshName = MutableStateFlow<String?>(null)
+    val joiningMeshName = _joiningMeshName.asStateFlow()
+
+    init {
+        runtime.startNearbyDiscovery()
+        viewModelScope.launch {
+            boardCellManager.snapshots.filterNotNull().collect { _joiningMeshName.value = null }
+        }
+    }
+
     val state = combine(
         runtime.running,
         runtime.peers,
@@ -85,8 +101,20 @@ class FipsMeshViewModel @Inject constructor(
                     rssi = it.rssi,
                     lastSeenMs = it.lastSeenMs,
                     currentMesh = it.matchesActiveRealm,
+                    joinableBoardCellId = it.joinableBoardCellId,
+                    boardName = it.boardName,
                 )
             },
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FipsMeshUiState())
+
+    fun join(mesh: NearbyFipsMeshUi) {
+        val cellId = mesh.joinableBoardCellId ?: return
+        _joiningMeshName.value = mesh.boardName ?: "Board-Mesh"
+        viewModelScope.launch {
+            if (!boardCellManager.joinNearbyMesh(cellId)) _joiningMeshName.value = null
+        }
+    }
+
+    fun ensureDiscovery() = runtime.startNearbyDiscovery()
 }

@@ -2406,12 +2406,12 @@
     <string name="main_menu_fips_mesh">FIPS Mesh</string>
     <string name="main_menu_competitions">Competitions</string>
     <string name="fips_mesh_overview_title">FIPS Mesh</string>
-    <string name="fips_mesh_explanation">Nearby CruxCoach meshes are discovered locally over Bluetooth. Only peers authenticated for the active board mesh can exchange board or playlist state.</string>
+    <string name="fips_mesh_explanation">Nearby CruxCoach board meshes are open to everyone in Bluetooth range. Joining does not grant control of the physical board.</string>
     <string name="fips_mesh_connected_peers">Connected peers</string>
     <string name="fips_mesh_nearby_meshes">Meshes in range</string>
     <string name="fips_mesh_no_connected_peers">No peers are currently connected.</string>
     <string name="fips_mesh_no_nearby_meshes">No other CruxCoach meshes are currently in range.</string>
-    <string name="fips_mesh_connect_board_hint">Connect a physical board to activate its FIPS mesh and nearby discovery.</string>
+    <string name="fips_mesh_connect_board_hint">Nearby board meshes appear automatically. You can also connect a physical board or playlist session.</string>
     <string name="fips_mesh_connect_action">Connect board or session</string>
     <string name="fips_mesh_own_active">Your board mesh is active</string>
     <string name="fips_mesh_own_inactive">No active board mesh</string>
@@ -2433,6 +2433,9 @@
     <string name="fips_mesh_signal_near">Very close</string>
     <string name="fips_mesh_signal_reachable">In range</string>
     <string name="fips_mesh_signal_weak">Weak signal</string>
+    <string name="fips_mesh_join_action">Join mesh</string>
+    <string name="fips_nearby_meshes_count">%1$d board meshes nearby</string>
+    <string name="fips_mesh_joining">Joining %1$s…</string>
     <string name="comp_title">Competitions</string>
     <string name="comp_detail_essentials">At a glance</string>
     <string name="comp_detail_starts">Starts</string>

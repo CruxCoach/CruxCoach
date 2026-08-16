@@ -99,7 +99,7 @@ fun FipsMeshScreen(
                 items(
                     state.nearbyMeshes,
                     key = { "${it.address}:${it.realmTag}:${it.cellTag}" },
-                ) { NearbyMeshCard(it) }
+                ) { mesh -> NearbyMeshCard(mesh, onJoin = { viewModel.join(mesh) }) }
             }
             item { Spacer(Modifier.size(20.dp)) }
         }
@@ -170,14 +170,14 @@ private fun PeerCard(peer: FipsMeshPeerUi) {
 }
 
 @Composable
-private fun NearbyMeshCard(mesh: NearbyFipsMeshUi) {
+private fun NearbyMeshCard(mesh: NearbyFipsMeshUi, onJoin: () -> Unit) {
     MeshCard(container = if (mesh.currentMesh) OrangeAccent.copy(alpha = 0.10f) else Color.Unspecified) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Hub, contentDescription = null, tint = OrangeAccent)
             Spacer(Modifier.width(10.dp))
             Column {
                 Text(
-                    if (mesh.currentMesh) stringResource(R.string.fips_mesh_nearby_own)
+                    mesh.boardName ?: if (mesh.currentMesh) stringResource(R.string.fips_mesh_nearby_own)
                     else stringResource(R.string.fips_mesh_nearby_other),
                     fontWeight = FontWeight.SemiBold,
                 )
@@ -188,9 +188,12 @@ private fun NearbyMeshCard(mesh: NearbyFipsMeshUi) {
                 )
             }
         }
-        Detail(stringResource(R.string.fips_mesh_realm_tag), mesh.realmTag)
-        Detail(stringResource(R.string.fips_mesh_cell_tag), mesh.cellTag)
         Detail(stringResource(R.string.fips_mesh_signal), "${mesh.rssi} dBm")
+        if (!mesh.currentMesh && mesh.joinableBoardCellId != null) {
+            Button(onClick = onJoin, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.fips_mesh_join_action))
+            }
+        }
     }
 }
 

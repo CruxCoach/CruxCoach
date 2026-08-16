@@ -28,6 +28,19 @@ class FipsNearbyMeshTrackerTest {
         assertEquals(listOf("realm-b"), fresh.map { it.realmTag })
     }
 
+    @Test
+    fun `several advertisers of one mesh produce one named board card`() {
+        val tracker = FipsNearbyMeshTracker(ttlMs = 1_000)
+        tracker.record(mesh("realm-a", "cell-a", -60, 10, address = "AA").copy(
+            boardName = "MoonBoard", joinableBoardCellId = "cell-id",
+        ))
+        val result = tracker.record(mesh("realm-a", "cell-a", -45, 20, address = "BB"))
+
+        assertEquals(1, result.size)
+        assertEquals("MoonBoard", result.single().boardName)
+        assertEquals("cell-id", result.single().joinableBoardCellId)
+    }
+
     private fun mesh(
         realm: String,
         cell: String,

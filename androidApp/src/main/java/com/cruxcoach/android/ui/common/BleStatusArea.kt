@@ -2,6 +2,7 @@ package com.cruxcoach.android.ui.common
 
 import androidx.compose.runtime.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.hilt.navigation.compose.hiltViewModel
 import android.util.Log
 import com.cruxcoach.android.data.BleShareManager
 import com.cruxcoach.android.data.CruxRelayManager
@@ -13,6 +14,7 @@ import com.cruxcoach.android.data.SessionQueueManager
 import com.cruxcoach.android.data.SessionRole
 import com.cruxcoach.android.ui.board.SessionQueueSheet
 import com.cruxcoach.android.ui.board.relayErrorText
+import com.cruxcoach.android.ui.fips.FipsMeshViewModel
 
 private const val TAG = "CruxBLE/UI"
 
@@ -63,6 +65,13 @@ fun BleStatusArea(
 ) {
     val bleShareManager = LocalBleShareManager.current
     val state by bleShareManager.uiState.collectAsStateWithLifecycle()
+    val meshViewModel: FipsMeshViewModel = hiltViewModel()
+    val meshState by meshViewModel.state.collectAsStateWithLifecycle()
+    val joiningMeshName by meshViewModel.joiningMeshName.collectAsStateWithLifecycle()
+    val nearbyMeshes = meshState.nearbyMeshes.filterNot { it.currentMesh }
+    LaunchedEffect(meshState.running) {
+        if (!meshState.running) meshViewModel.ensureDiscovery()
+    }
 
     // Bug 3: Session join handled internally via CompositionLocals — works on every screen
     val sessionQueueManager = LocalSessionQueueManager.current
@@ -100,7 +109,7 @@ fun BleStatusArea(
     // the regular chip instead.
     val hasContent = effectiveOnBoard != null || state.boardOccupiedCount > 0 ||
         state.nearbySessions.isNotEmpty() || state.ownSession != null ||
-        relayState.enabled
+        relayState.enabled || nearbyMeshes.isNotEmpty() || joiningMeshName != null
 
     // Terminal relay errors (BOARD_LOST, a failed start) land AFTER the
     // sharing sheet's error surface is gone — show them here so the stop
@@ -146,6 +155,9 @@ fun BleStatusArea(
             onOpenQueueSheet = { showQueueSheet = true },
             relayClientCount = relayClientCount,
             onStopRelay = stopRelay,
+            nearbyMeshes = nearbyMeshes,
+            onJoinMesh = meshViewModel::join,
+            joiningMeshName = joiningMeshName,
         )
     } else {
         BleStatusChip(
@@ -155,7 +167,9 @@ fun BleStatusArea(
             onAddToQueue = onAddToQueue,
             onRandomToQueue = onRandomToQueue,
             relayClientCount = relayClientCount,
-            onStopRelay = stopRelay
+            onStopRelay = stopRelay,
+            nearbyMeshCount = nearbyMeshes.size,
+            joiningMeshName = joiningMeshName,
         )
     }
 }

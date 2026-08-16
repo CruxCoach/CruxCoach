@@ -33,6 +33,8 @@ data class FipsNearbyMesh(
     val rssi: Int,
     val lastSeenMs: Long,
     val matchesActiveRealm: Boolean,
+    val joinableBoardCellId: String? = null,
+    val boardName: String? = null,
 )
 
 internal class FipsNearbyMeshTracker(private val ttlMs: Long = 45_000L) {
@@ -41,8 +43,15 @@ internal class FipsNearbyMeshTracker(private val ttlMs: Long = 45_000L) {
     @Synchronized
     fun record(mesh: FipsNearbyMesh): List<FipsNearbyMesh> {
         val cutoff = mesh.lastSeenMs - ttlMs
+        val previous = meshes.firstOrNull { it.realmTag == mesh.realmTag && it.cellTag == mesh.cellTag }
+        val merged = mesh.copy(
+            boardName = mesh.boardName ?: previous?.boardName,
+            joinableBoardCellId = mesh.joinableBoardCellId ?: previous?.joinableBoardCellId,
+        )
+        // A mesh can advertise through several members. Present one board card,
+        // retaining the strongest/current address only as a proximity hint.
         meshes = (meshes.filter { it.lastSeenMs >= cutoff &&
-            !(it.address == mesh.address && it.realmTag == mesh.realmTag && it.cellTag == mesh.cellTag) } + mesh)
+            !(it.realmTag == mesh.realmTag && it.cellTag == mesh.cellTag) } + merged)
             .sortedWith(compareByDescending<FipsNearbyMesh> { it.matchesActiveRealm }.thenByDescending { it.rssi })
         return meshes
     }
@@ -74,6 +83,7 @@ class FipsMeshRuntime @Inject constructor(
     private var receiveJob: Job? = null
     private var peerJob: Job? = null
     private var permissionWatchJob: Job? = null
+    private var passiveDiscovery: FipsNearbyDiscovery? = null
     @Volatile private var realm: FipsRealmContext? = null
     @Volatile private var permissionPromptedRealm: String? = null
     private val permissionRequestChannel = Channel<List<String>>(Channel.CONFLATED)
@@ -113,7 +123,25 @@ class FipsMeshRuntime @Inject constructor(
         }
         if (realm != value) permissionPromptedRealm = null
         realm = value
+        stopNearbyDiscovery()
         return ensureStarted()
+    }
+
+    /** Discovery is intentionally independent from board ownership: opening
+     * the mesh overview is enough to see public BoardCell meshes nearby. */
+    @Synchronized
+    fun startNearbyDiscovery() {
+        if (_running.value || suspendedForBulkTransfer.get() || passiveDiscovery != null ||
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+        val missing = FipsPermissionPolicy.missingPermissions(context)
+        if (missing.isNotEmpty()) permissionRequestChannel.trySend(missing)
+        passiveDiscovery = FipsNearbyDiscovery(context, ::recordNearbyMesh).also { it.start() }
+    }
+
+    @Synchronized
+    fun stopNearbyDiscovery() {
+        passiveDiscovery?.stop()
+        passiveDiscovery = null
     }
 
     @Synchronized
@@ -234,6 +262,7 @@ class FipsMeshRuntime @Inject constructor(
 
     @Synchronized
     fun shutdown() {
+        stopNearbyDiscovery()
         receiveJob?.cancel(); receiveJob = null
         peerJob?.cancel(); peerJob = null
         shutdownNative()
@@ -464,6 +493,7 @@ class FipsMeshRuntime @Inject constructor(
         const val MAX_DIRECT_CONNECTIONS = 7
         const val OWNER_BOARD_CELL = "board-cell"
         const val OWNER_SESSION = "session"
+        const val OWNER_NEARBY_BOARD_CELL = "nearby-board-cell"
         fun competitionOwner(compId: String) = "competition:$compId"
         private const val JOIN_RETRY_MS = 5_000L
         private const val PEER_REFRESH_MS = 2_000L

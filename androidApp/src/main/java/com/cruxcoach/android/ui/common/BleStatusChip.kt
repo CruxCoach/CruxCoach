@@ -56,6 +56,8 @@ internal fun BleStatusChip(
     /** Client count while the board is shared, or null when it is not. */
     relayClientCount: Int? = null,
     onStopRelay: (() -> Unit)? = null,
+    nearbyMeshCount: Int = 0,
+    joiningMeshName: String? = null,
 ) {
     val session = state.ownSession
 
@@ -99,7 +101,8 @@ internal fun BleStatusChip(
         // Sharing alone is enough to show this block, but it has nothing to
         // say in the summary line — rendering the row anyway left a bare
         // icon + chevron above the sharing line.
-        val summary = buildChipSummary(effectiveOnBoard, state)
+        val summary = joiningMeshName?.let { stringResource(R.string.fips_mesh_joining, it) }
+            ?: buildChipSummary(effectiveOnBoard, state, nearbyMeshCount)
         if (summary.isNotBlank()) {
         Row(
             modifier = Modifier
@@ -366,7 +369,8 @@ internal fun SignalIndicator(rssi: Int) {
 @Composable
 internal fun buildChipSummary(
     onBoard: OnBoardClimbEntry?,
-    state: BleShareUiState
+    state: BleShareUiState,
+    nearbyMeshCount: Int = 0,
 ): String = buildString {
     if (onBoard != null) {
         val name = onBoard.name ?: stringResource(R.string.ble_unknown_climb)
@@ -396,6 +400,10 @@ internal fun buildChipSummary(
                 state.nearbySessions.size,
             )
         )
+    }
+    if (nearbyMeshCount > 0) {
+        if (isNotEmpty()) append(" · ")
+        append(stringResource(R.string.fips_nearby_meshes_count, nearbyMeshCount))
     }
 }
 

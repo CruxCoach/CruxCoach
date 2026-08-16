@@ -2405,12 +2405,12 @@
     <string name="main_menu_fips_mesh">FIPS Mesh</string>
     <string name="main_menu_competitions">Wettkämpfe</string>
     <string name="fips_mesh_overview_title">FIPS Mesh</string>
-    <string name="fips_mesh_explanation">CruxCoach-Meshes in der Nähe werden lokal über Bluetooth erkannt. Nur für das aktive Board-Mesh authentifizierte Peers dürfen Board- oder Playlist-Zustände austauschen.</string>
+    <string name="fips_mesh_explanation">CruxCoach-Board-Meshes stehen allen in Bluetooth-Reichweite offen. Der Beitritt erteilt keine Kontrolle über das physische Board.</string>
     <string name="fips_mesh_connected_peers">Verbundene Peers</string>
     <string name="fips_mesh_nearby_meshes">Meshes in Reichweite</string>
     <string name="fips_mesh_no_connected_peers">Aktuell sind keine Peers verbunden.</string>
     <string name="fips_mesh_no_nearby_meshes">Aktuell sind keine weiteren CruxCoach-Meshes in Reichweite.</string>
-    <string name="fips_mesh_connect_board_hint">Verbinde ein physisches Board, um sein FIPS-Mesh und die Umgebungssuche zu aktivieren.</string>
+    <string name="fips_mesh_connect_board_hint">Board-Meshes in der Nähe erscheinen automatisch. Du kannst zusätzlich ein physisches Board oder eine Playlist-Session verbinden.</string>
     <string name="fips_mesh_connect_action">Board oder Session verbinden</string>
     <string name="fips_mesh_own_active">Dein Board-Mesh ist aktiv</string>
     <string name="fips_mesh_own_inactive">Kein aktives Board-Mesh</string>
@@ -2432,6 +2432,9 @@
     <string name="fips_mesh_signal_near">Sehr nah</string>
     <string name="fips_mesh_signal_reachable">In Reichweite</string>
     <string name="fips_mesh_signal_weak">Schwaches Signal</string>
+    <string name="fips_mesh_join_action">Mesh beitreten</string>
+    <string name="fips_nearby_meshes_count">%1$d Board-Meshes in der Nähe</string>
+    <string name="fips_mesh_joining">Beitritt zu %1$s…</string>
     <string name="comp_title">Wettkämpfe</string>
     <string name="comp_detail_essentials">Auf einen Blick</string>
     <string name="comp_detail_starts">Beginn</string>

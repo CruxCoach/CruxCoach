@@ -25,6 +25,7 @@ import com.cruxcoach.android.data.OnBoardClimbEntry
 import com.cruxcoach.android.data.OnBoardSource
 import com.cruxcoach.android.data.OwnSessionState
 import com.cruxcoach.android.ui.theme.OrangeAccent
+import com.cruxcoach.android.ui.fips.NearbyFipsMeshUi
 
 @Composable
 internal fun BleStatusExpanded(
@@ -39,6 +40,9 @@ internal fun BleStatusExpanded(
     /** Non-null while this phone is relaying for other apps. */
     relayClientCount: Int? = null,
     onStopRelay: (() -> Unit)? = null,
+    nearbyMeshes: List<NearbyFipsMeshUi> = emptyList(),
+    onJoinMesh: ((NearbyFipsMeshUi) -> Unit)? = null,
+    joiningMeshName: String? = null,
 ) {
     Card(
         modifier = Modifier
@@ -123,6 +127,19 @@ internal fun BleStatusExpanded(
                 Spacer(Modifier.height(8.dp))
             }
 
+            if (nearbyMeshes.isNotEmpty()) {
+                NearbyMeshesSection(nearbyMeshes, onJoinMesh)
+                Spacer(Modifier.height(8.dp))
+            }
+            joiningMeshName?.let { name ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.fips_mesh_joining, name))
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+
             // Disconnect request section
             if (state.canRequestDisconnect && onRequestDisconnect != null) {
                 DisconnectRequestSection(
@@ -138,6 +155,45 @@ internal fun BleStatusExpanded(
         // one strip that belonged to neither container.
         if (relayClientCount != null && onStopRelay != null) {
             RelaySharingLine(clientCount = relayClientCount, onStop = onStopRelay)
+        }
+    }
+}
+
+@Composable
+private fun NearbyMeshesSection(
+    meshes: List<NearbyFipsMeshUi>,
+    onJoinMesh: ((NearbyFipsMeshUi) -> Unit)?,
+) {
+    meshes.forEach { mesh ->
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Default.CellTower, null, tint = OrangeAccent, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    mesh.boardName ?: stringResource(R.string.fips_mesh_nearby_other),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                )
+                Text(
+                    stringResource(R.string.fips_mesh_signal) + " · ${mesh.rssi} dBm",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (onJoinMesh != null && mesh.joinableBoardCellId != null) {
+                FilledTonalButton(
+                    onClick = { onJoinMesh(mesh) },
+                    colors = ButtonDefaults.filledTonalButtonColors(
+                        containerColor = OrangeAccent.copy(alpha = 0.3f),
+                    ),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                ) {
+                    Text(stringResource(R.string.common_join), style = MaterialTheme.typography.labelSmall)
+                }
+            }
         }
     }
 }

@@ -45,6 +45,7 @@ class BoardCellManager @Inject constructor(
     private lateinit var coordinator: BoardCellCoordinator
     private val boardBindings = PhysicalBoardBindingStore(context)
     private var heldRuntime = false
+    private var nearbyRealmHeld = false
     private var activeNodeId = durableStore.localFallbackNodeId()
     private val boardRealmAvailable = AtomicBoolean(false)
     private val _snapshots = MutableStateFlow<BoardCellSnapshot?>(null)
@@ -86,6 +87,10 @@ class BoardCellManager @Inject constructor(
                     }
                     return@collectLatest
                 }
+                if (nearbyRealmHeld) {
+                    runtime.release(FipsMeshRuntime.OWNER_NEARBY_BOARD_CELL)
+                    nearbyRealmHeld = false
+                }
                 val physical = PhysicalBoardIdentity.resolve(board, boardBindings.bindingFor(board.address))
                 BoardCellScopeRegistry.replaceProvisionalSelection(physical)
                 val restored = durableStore.snapshot(physical)
@@ -99,7 +104,9 @@ class BoardCellManager @Inject constructor(
                     runtime.acquire(FipsMeshRuntime.OWNER_BOARD_CELL)
                     heldRuntime = true
                 }
-                val fipsActive = meshAvailable && runtime.activateRealm(FipsRealmContext(cellId.value, cellId.value))
+                val fipsActive = meshAvailable && runtime.activateRealm(FipsRealmContext(
+                    cellId.value, cellId.value, meshName = board.displayName,
+                ))
                 if (!fipsActive && heldRuntime) {
                     runtime.release(FipsMeshRuntime.OWNER_BOARD_CELL)
                     heldRuntime = false
@@ -288,6 +295,31 @@ class BoardCellManager @Inject constructor(
         return true
     }
 
+    /** Enter a public BoardCell discovered over BLE. No physical-board pairing
+     * or playlist-session approval is required. The controller commits
+     * membership only after FIPS plus the direct one-hop nonce proof succeeds. */
+    suspend fun joinNearbyMesh(boardCellId: String): Boolean {
+        if (!BoardCellPlatformPolicy.meshAvailable(Build.VERSION.SDK_INT)) return false
+        val cell = runCatching { BoardCellId(boardCellId) }.getOrNull() ?: return false
+        if (!nearbyRealmHeld) {
+            runtime.acquire(FipsMeshRuntime.OWNER_NEARBY_BOARD_CELL)
+            nearbyRealmHeld = true
+        }
+        if (!withContext(Dispatchers.IO) { runtime.activateRealm(FipsRealmContext(cell.value, cell.value)) }) {
+            runtime.release(FipsMeshRuntime.OWNER_NEARBY_BOARD_CELL)
+            nearbyRealmHeld = false
+            return false
+        }
+        activeNodeId = runtime.localNpub
+        coordinator = BoardCellCoordinator(activeNodeId, meshTransport, durableStore, settleMs = 2_000)
+        meshTransport.attach(coordinator)
+        boardRealmAvailable.set(false)
+        FipsDebugLog.event("boardcell", "nearby_mesh_join_started",
+            "cell" to FipsDebugLog.id(cell.value), "node" to FipsDebugLog.id(activeNodeId))
+        refreshSelected()
+        return true
+    }
+
     fun installHandoverLifecycle(value: BoardCellHandoverLifecycle?) { handoverLifecycle = value }
 
     /** No implicit election: caller must identify the intended, user-visible target. */
@@ -360,6 +392,14 @@ class BoardCellManager @Inject constructor(
             // with SQLite/VACUUM for CPU. Freeze logical mesh time with the
             // native runtime and resume maintenance when sharing ends.
             if (boardRealmAvailable.get() && !runtime.isSuspendedForBulkTransfer()) BoardCellScopeRegistry.selected.value?.let { board ->
+                val snapshot = coordinator.snapshot(board)
+                if (snapshot?.controllerId == activeNodeId) {
+                    runtime.directAuthenticatedPeers().filterNot { it in snapshot.members }.forEach { peer ->
+                        FipsDebugLog.event("boardcell", "nearby_member_auto_admitted",
+                            "peer" to FipsDebugLog.id(peer), "cell" to FipsDebugLog.id(snapshot.cellId.value))
+                        coordinator.joinMember(board, peer)
+                    }
+                }
                 coordinator.heartbeat(board, monotonicNow())
                 coordinator.expireLocalDeadlines(monotonicNow())
                 refreshSelected()

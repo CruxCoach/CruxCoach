@@ -10,6 +10,7 @@ data class FipsRealmContext(
     val realmId: String,
     val boardCellId: String,
     val kind: FipsRealmKind = FipsRealmKind.BOARD_CELL,
+    val meshName: String? = null,
 ) {
     init {
         require(realmId.isNotBlank())
