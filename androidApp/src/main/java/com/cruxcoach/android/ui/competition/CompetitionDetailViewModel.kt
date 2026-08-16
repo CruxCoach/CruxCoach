@@ -76,7 +76,12 @@ class CompetitionDetailViewModel @Inject constructor(
     sealed interface Action {
         data object Idle : Action
         data object Working : Action
-        data class Sent(val accepted: Int, val attempted: Int) : Action
+        data class Sent(
+            val accepted: Int,
+            val attempted: Int,
+            val localRecipients: Int = accepted,
+            val encryptedOnline: Boolean = false,
+        ) : Action
         data class Failed(val reason: String) : Action
     }
 
@@ -97,6 +102,10 @@ class CompetitionDetailViewModel @Inject constructor(
     val myPubkey: String get() = signer.getPublicKeyHex()
     val isAuthority: Boolean get() = client.snapshot.value.competition?.authority == myPubkey
 
+    fun participantDataOnline(): Boolean =
+        (client.snapshot.value.competition?.raw?.get("participant_data_visibility") as? JsonPrimitive)
+            ?.content == "online"
+
     data class Ui(
         val snapshot: CompetitionRelayClient.Snapshot,
         val myPubkey: String,
@@ -106,6 +115,10 @@ class CompetitionDetailViewModel @Inject constructor(
         val connectedRelays: Int = 0,
     ) {
         val me get() = snapshot.state?.participants?.firstOrNull { it.pubkey == myPubkey }
+        val privateRegistrationStatus: String?
+            get() = snapshot.privateReceipts["registration_decision"]?.state
+        val privateCheckinStatus: String?
+            get() = snapshot.privateReceipts["checkin"]?.state
         val currentClimber: String?
             get() = snapshot.state?.let { s ->
                 if (s.cursor < 0) null else s.order.getOrNull(s.cursor)
@@ -473,7 +486,10 @@ class CompetitionDetailViewModel @Inject constructor(
             when (val result = intents.chooseClimb(competition, organizerPubkey, climb.id)) {
                 is CompetitionIntentPublisher.Result.Published ->
                     if (generation == climbChoiceGeneration) {
-                        _action.value = Action.Sent(result.accepted, result.attempted)
+                        _action.value = Action.Sent(
+                            result.accepted, result.attempted,
+                            result.localRecipients, result.encryptedOnline,
+                        )
                     }
                 is CompetitionIntentPublisher.Result.Failed ->
                     if (generation == climbChoiceGeneration) _action.value = Action.Failed(result.reason)
@@ -495,7 +511,12 @@ class CompetitionDetailViewModel @Inject constructor(
             when (val result = work()) {
                 null -> _action.update { Action.Failed("not_loaded") }
                 is CompetitionIntentPublisher.Result.Published ->
-                    _action.update { Action.Sent(result.accepted, result.attempted) }
+                    _action.update {
+                        Action.Sent(
+                            result.accepted, result.attempted,
+                            result.localRecipients, result.encryptedOnline,
+                        )
+                    }
                 is CompetitionIntentPublisher.Result.Failed ->
                     _action.update { Action.Failed(result.reason) }
             }
@@ -523,9 +544,11 @@ class CompetitionDetailViewModel @Inject constructor(
 
     fun hostRegistration(pubkey: String, decision: String, intentId: String? = null, division: String? = null, display: String? = null) {
         val participant = client.snapshot.value.state?.participant(pubkey)
+        val defaultDivision = client.snapshot.value.competition?.divisions?.firstOrNull()?.id
         hostAct("registration_decision", JsonObject(buildMap {
             put("pubkey", JsonPrimitive(pubkey)); put("decision", JsonPrimitive(decision))
-            (division ?: participant?.division)?.takeIf(String::isNotBlank)?.let { put("division", JsonPrimitive(it)) }
+            (division ?: participant?.division?.takeIf(String::isNotBlank) ?: defaultDivision)
+                ?.takeIf(String::isNotBlank)?.let { put("division", JsonPrimitive(it)) }
             (display ?: participant?.display)?.takeIf(String::isNotBlank)?.let { put("display", JsonPrimitive(it)) }
             intentId?.let { put("intent_id", JsonPrimitive(it)) }
         }), subjects = listOf(pubkey))
@@ -594,6 +617,17 @@ class CompetitionDetailViewModel @Inject constructor(
         _action.value = Action.Working
         viewModelScope.launch {
             _action.value = when (val result = hostPublisher.updateConfig(patch, reason.trim())) {
+                is CompetitionHostPublisher.Result.Published -> Action.Sent(result.accepted, result.attempted)
+                is CompetitionHostPublisher.Result.Failed -> Action.Failed(result.reason)
+            }
+        }
+    }
+
+    fun enableParticipantDataOnline() {
+        if (_action.value is Action.Working) return
+        _action.value = Action.Working
+        viewModelScope.launch {
+            _action.value = when (val result = hostPublisher.enableParticipantDataOnline()) {
                 is CompetitionHostPublisher.Result.Published -> Action.Sent(result.accepted, result.attempted)
                 is CompetitionHostPublisher.Result.Failed -> Action.Failed(result.reason)
             }

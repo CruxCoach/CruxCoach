@@ -1,9 +1,9 @@
 package com.cruxcoach.android.competition
 
+import android.util.Log
+import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.boardcell.BoardCellManager
 import com.cruxcoach.android.fips.FipsMeshRuntime
-import com.cruxcoach.android.fips.FipsRealmContext
-import com.cruxcoach.android.fips.FipsRealmKind
 import com.vitorpamplona.quartz.nip01Core.core.Event
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -11,17 +11,18 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
-/** Signed local events in a competition realm; each participant may carry a distinct BoardCell. */
+/** Signed competition streams scoped to the currently active physical BoardCell. */
 @Singleton
 class CompetitionMeshTransport @Inject constructor(
     private val runtime: FipsMeshRuntime,
     private val client: CompetitionRelayClient,
     private val credentials: CompetitionLocalCredentialStore,
+    private val eventStore: CompetitionLocalEventStore,
+    private val boardConnection: BoardBleConnection,
 ) {
     @Serializable private data class Wire(
         val type: String = "competition_event",
@@ -63,9 +64,13 @@ class CompetitionMeshTransport @Inject constructor(
 
     private fun receive(incoming: com.cruxcoach.android.fips.AuthenticatedFipsMessage) {
         val wire = runCatching { json.decodeFromString<Wire>(incoming.payload.decodeToString()) }.getOrNull() ?: return
-        synchronized(joined) { joined[wire.compId] } ?: return
+        val local = synchronized(joined) { joined[wire.compId] } ?: return
         if (wire.compId.isBlank() || wire.cellId.isBlank() || wire.physicalBoardId.isBlank() ||
             wire.participantCredential.length != 48 || wire.epoch <= 0 || wire.sequence < 0) return
+        // A competition realm is tied to one concrete board cell. Merely
+        // knowing the comp id must not let a peer from another board inject or
+        // request its private history.
+        if (wire.cellId != local.cellId || wire.physicalBoardId != local.physicalBoardId) return
         val remoteKey = "${wire.compId}|${wire.participantCredential}"
         val progress = synchronized(remotes) { remotes[remoteKey] }
         if (progress == null) {
@@ -93,26 +98,34 @@ class CompetitionMeshTransport @Inject constructor(
         val event = runCatching { Event.fromJson(wire.eventJson) }.getOrNull() ?: return
         current.sequence = wire.sequence
         synchronized(history) { history.getOrPut(wire.compId) { linkedMapOf() }[event.id] = incoming.payload.decodeToString() }
+        runCatching { eventStore.put(wire.compId, event.id, event.toJson()) }
+            .onFailure { Log.w(TAG, "could not persist received competition event", it) }
         client.ingestMesh(event, System.currentTimeMillis() / 1_000)
     }
 
-    /** Explicit competition open/create action switches to realm_id=competition_id. */
+    /**
+     * Join this competition as a scoped stream on the active board realm.
+     *
+     * Competition used to replace the BoardCell realm here. That froze the
+     * board controller at exactly the moment the host needed to send climbs.
+     * Keeping both protocols on the authenticated board realm makes the
+     * concrete board the physical scope; compId still separates logical logs.
+     */
     suspend fun joinLocal(compId: String): Boolean {
         if (isJoined(compId)) return true
         synchronized(joined) { joined.keys.filter { it != compId } }.forEach(::leave)
         val snapshot = BoardCellManager.current?.snapshot() ?: return false
         val membership = Membership(snapshot.cellId.value, snapshot.physicalBoardId.value,
             System.currentTimeMillis(), credentials.getOrCreate(compId))
-        BoardCellManager.current?.freezeForTransportRealmSwitch()
         val owner = FipsMeshRuntime.competitionOwner(compId)
         runtime.acquire(owner)
-        if (!withContext(Dispatchers.IO) {
-                runtime.activateRealm(FipsRealmContext(compId, membership.cellId, FipsRealmKind.COMPETITION))
-            }) {
+        if (!runtime.running.value) {
             runtime.release(owner)
             return false
         }
+        boardConnection.acquireKeepAlive(KEEP_ALIVE_OWNER)
         synchronized(joined) { joined[compId] = membership }
+        restoreLocalHistory(compId, membership)
         requestHistory(compId)
         return true
     }
@@ -120,8 +133,7 @@ class CompetitionMeshTransport @Inject constructor(
     fun leave(compId: String) {
         if (synchronized(joined) { joined.remove(compId) } != null) {
             runtime.release(FipsMeshRuntime.competitionOwner(compId))
-            runtime.endRealm(compId)
-            credentials.end(compId)
+            boardConnection.releaseKeepAlive(KEEP_ALIVE_OWNER)
             synchronized(remotes) { remotes.keys.removeAll { it.startsWith("$compId|") } }
         }
     }
@@ -134,7 +146,37 @@ class CompetitionMeshTransport @Inject constructor(
             eventJson = event.toJson())
         val encoded = json.encodeToString(wire)
         synchronized(history) { history.getOrPut(compId) { linkedMapOf() }[event.id] = encoded }
+        eventStore.put(compId, event.id, event.toJson())
         return realmPeers().count { runtime.send(it, encoded.encodeToByteArray()) }
+    }
+
+    /** Restore definition first; the reducer can then accept chained entries in any order. */
+    private fun restoreLocalHistory(compId: String, membership: Membership) {
+        val events = runCatching { eventStore.load(compId) }
+            .onFailure { Log.w(TAG, "could not restore local competition history", it) }
+            .getOrDefault(emptyList()).mapNotNull { raw ->
+            runCatching { Event.fromJson(raw) }.getOrNull()
+        }.sortedWith(
+            compareBy<Event> {
+                if (it.tags.any { tag -> tag.size >= 2 && tag[0] == "l" && tag[1] == "competition" }) 0 else 1
+            }.thenBy { it.createdAt }.thenBy { it.id },
+        )
+        events.forEach { event ->
+            membership.sequence++
+            val wire = Wire(
+                compId = compId,
+                cellId = membership.cellId,
+                physicalBoardId = membership.physicalBoardId,
+                epoch = membership.epoch,
+                sequence = membership.sequence,
+                participantCredential = membership.credential,
+                eventJson = event.toJson(),
+            )
+            synchronized(history) {
+                history.getOrPut(compId) { linkedMapOf() }[event.id] = json.encodeToString(wire)
+            }
+            client.ingestMesh(event, System.currentTimeMillis() / 1_000)
+        }
     }
 
     private fun requestHistory(compId: String) {
@@ -147,5 +189,9 @@ class CompetitionMeshTransport @Inject constructor(
     private fun realmPeers(): Sequence<String> = runtime.peers.value.asSequence()
         .filter { it.connected && it.npub != runtime.localNpub }.map { it.npub }.distinct()
 
-    companion object { @Volatile internal var current: CompetitionMeshTransport? = null }
+    companion object {
+        private const val TAG = "CompetitionMesh"
+        private const val KEEP_ALIVE_OWNER = "competition-mesh"
+        @Volatile internal var current: CompetitionMeshTransport? = null
+    }
 }

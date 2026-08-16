@@ -2,6 +2,7 @@ package com.cruxcoach.android.ui.competition
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.cruxcoach.android.boardcell.BoardCellManager
 import com.cruxcoach.android.competition.CompetitionHostPublisher
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.android.data.UserPreferences
@@ -123,17 +124,23 @@ class CompetitionCreateViewModel @Inject constructor(
         val ends = starts + (d.durationHours.toLongOrNull() ?: 3) * 3600
         val climbs = parseClimbs(d)
         val authority = signer.getPublicKeyHex()
+        // Bind a newly-created physical competition to this concrete board
+        // cell without publishing the BLE address/serial from which it was
+        // derived. Older definitions remain readable without this field.
+        val boardCellId = BoardCellManager.current?.snapshot()?.cellId?.value
+            ?: throw IllegalStateException("Kein aktives Board-Mesh. Bitte zuerst mit dem Wettkampf-Board verbinden.")
         val config = JsonObject(linkedMapOf(
             "comp_id" to JsonPrimitive(compId), "authority" to JsonPrimitive(authority), "authority_epoch" to JsonPrimitive(1),
             "title" to JsonPrimitive(d.title.trim()), "summary" to JsonPrimitive(d.summary.trim()), "description" to JsonPrimitive(d.rulesText.trim()),
             "organizer" to JsonObject(mapOf("name" to JsonPrimitive(d.organizer.trim()), "contact" to JsonPrimitive(d.contact.trim()))),
             "visibility" to JsonPrimitive(if (d.public) "public" else "unlisted"), "status" to JsonPrimitive("published"), "timezone" to JsonPrimitive("UTC"),
+            "participant_data_visibility" to JsonPrimitive("local"),
             "registration_opens_at" to JsonPrimitive(now), "registration_closes_at" to JsonPrimitive(starts),
             "checkin_opens_at" to JsonPrimitive((starts - 3600).coerceAtLeast(now)), "checkin_closes_at" to JsonPrimitive(starts),
             "starts_at" to JsonPrimitive(starts), "ends_at" to JsonPrimitive(ends),
             "capacity" to JsonPrimitive(d.capacity.toIntOrNull()?.coerceIn(0, 500) ?: 20), "waitlist_enabled" to JsonPrimitive(true),
             "venue" to JsonObject(mapOf("kind" to JsonPrimitive("physical"), "name" to JsonPrimitive(d.venue.trim()), "address" to JsonPrimitive(d.address.trim()))),
-            "board" to JsonObject(mapOf("brand" to JsonPrimitive(d.boardBrand), "model" to JsonPrimitive(d.boardModel.trim()), "size" to JsonPrimitive(d.boardSize.trim()), "angle" to JsonPrimitive(d.angle.toInt()), "layout_id" to JsonPrimitive(d.layoutId.toInt()))),
+            "board" to JsonObject(mapOf("brand" to JsonPrimitive(d.boardBrand), "model" to JsonPrimitive(d.boardModel.trim()), "size" to JsonPrimitive(d.boardSize.trim()), "angle" to JsonPrimitive(d.angle.toInt()), "layout_id" to JsonPrimitive(d.layoutId.toInt()), "cell_id" to JsonPrimitive(boardCellId))),
             "divisions" to JsonArray(listOf(JsonObject(mapOf("id" to JsonPrimitive("open"), "label" to JsonPrimitive(d.division.trim().ifBlank { "Open" }))))),
             "eligibility" to JsonPrimitive(""), "waiver" to JsonPrimitive(if (d.waiverRequired) d.rulesText.trim() else ""), "waiver_required" to JsonPrimitive(d.waiverRequired),
             "participant_instructions" to JsonPrimitive(""), "spectator_info" to JsonPrimitive(""), "refund_policy" to JsonPrimitive(""),

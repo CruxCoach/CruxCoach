@@ -46,7 +46,13 @@ class CompetitionIntentPublisher @Inject constructor(
 
     /** Outcome of a publish, with enough detail for the UI to be honest. */
     sealed interface Result {
-        data class Published(val event: Event, val attempted: Int, val accepted: Int) : Result
+        data class Published(
+            val event: Event,
+            val attempted: Int,
+            val accepted: Int,
+            val localRecipients: Int = accepted,
+            val encryptedOnline: Boolean = false,
+        ) : Result
         data class Failed(val reason: String) : Result
     }
 
@@ -84,9 +90,11 @@ class CompetitionIntentPublisher @Inject constructor(
             return Result.Failed("waiver")
         }
         val data = buildMap<String, kotlinx.serialization.json.JsonElement> {
-            put("division", JsonPrimitive(division))
+            // The signing key is already authenticated by the event envelope.
+            // Keep registration intentionally minimal: nickname + public key,
+            // with no legal acknowledgement or competition detail on the wire.
             put("display", JsonPrimitive(display))
-            put("waiver_accepted", JsonPrimitive(waiverAccepted))
+            @Suppress("UNUSED_VARIABLE") val ignoredDivision = division
             // Registration never preselects climbs. Keep the argument so older
             // call sites remain source-compatible; legacy intents stay readable.
             @Suppress("UNUSED_VARIABLE") val ignoredLegacySelections = selections
@@ -251,14 +259,53 @@ class CompetitionIntentPublisher @Inject constructor(
         expiration?.let { tags += listOf("expiration", it.toString()) }
 
         return try {
+            // The ordinary signed event is the local/offline form. It never
+            // touches a relay while participant publication is disabled.
             val event = NostrPublicEventBuilder(signer)
                 .buildSignedEvent(CompetitionProtocol.KIND, payload, tags)
             if (!mesh.isJoined(competition.compId) && !mesh.joinLocal(competition.compId)) {
                 return Result.Failed("board_cell_unavailable")
             }
-            val accepted = mesh.publish(competition.compId, event)
+            val localRecipients = mesh.publish(competition.compId, event)
             client.ingestMesh(event, System.currentTimeMillis() / 1_000)
-            Result.Published(event, accepted, accepted)
+
+            if (op != "register") {
+                return Result.Published(event, localRecipients, localRecipients, localRecipients)
+            }
+
+            // Registration is the sole participant operation intended to work
+            // before arriving at the venue. Publish a separately signed NIP-44
+            // ciphertext to the host; never fall back to the clear event.
+            val ciphertext = runCatching {
+                // Encrypt the already signed local event, not only its content.
+                // Both transports then refer to the same intent id, so a host
+                // decision cannot become pending again when local history is
+                // replayed after an earlier online registration.
+                signer.signer.nip44Encrypt(event.toJson(), competition.authority)
+            }.getOrNull()
+            if (ciphertext == null) {
+                return if (localRecipients > 0) {
+                    Result.Published(event, localRecipients, localRecipients, localRecipients)
+                } else Result.Failed("no_encryption")
+            }
+            val encryptedTags = buildList<List<String>> {
+                addAll(tags.filterNot { it.firstOrNull() == "alt" })
+                add(listOf("alt", "Encrypted CruxCoach competition registration"))
+                add(listOf("enc", "nip44"))
+            }
+            val encryptedEvent = NostrPublicEventBuilder(signer)
+                .buildSignedEvent(CompetitionProtocol.KIND, ciphertext, encryptedTags)
+            // Let the sender's screen show its own pending request without
+            // waiting for a relay echo (or requiring the host to be online).
+            client.ingestEncryptedIntent(encryptedEvent, competition.authority, at)
+            val (relayAttempted, relayAccepted) = relayPool.sendEventWithStats(encryptedEvent)
+            Result.Published(
+                event = event,
+                attempted = relayAttempted,
+                accepted = relayAccepted,
+                localRecipients = localRecipients,
+                encryptedOnline = relayAccepted > 0,
+            )
         } catch (e: Exception) {
             Log.w(TAG, "intent $op failed", e)
             Result.Failed(e.message ?: "unknown")

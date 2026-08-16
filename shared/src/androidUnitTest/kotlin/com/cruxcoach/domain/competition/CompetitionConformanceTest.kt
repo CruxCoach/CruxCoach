@@ -58,8 +58,42 @@ class CompetitionConformanceTest {
             CompetitionConfigUpdate.impact(JsonObject(mapOf("capacity" to JsonPrimitive(40)))),
         )
         assertEquals(
+            "safe",
+            CompetitionConfigUpdate.impact(
+                JsonObject(mapOf("participant_data_visibility" to JsonPrimitive("online"))),
+            ),
+        )
+        assertEquals(
             null,
             CompetitionConfigUpdate.impact(JsonObject(mapOf("authority" to JsonPrimitive("00".repeat(32))))),
+        )
+    }
+
+    @Test
+    fun `participant publication is private by default and only accepts explicit states`() {
+        val fixture = stream("happy-sync.json")
+        val parsed = CompetitionProtocol.parseCompetition(fixture.competitionEvent, now)
+            as CompetitionProtocol.ParsedCompetition.Valid
+        assertEquals("local", CompetitionProtocol.participantDataVisibility(parsed.competition))
+
+        val onlineRaw = JsonObject(
+            parsed.competition.raw.toMutableMap().apply {
+                put("participant_data_visibility", JsonPrimitive("online"))
+            },
+        )
+        val online = Competition.from(onlineRaw)
+        assertTrue(CompetitionProtocol.participantDataOnline(online))
+        assertTrue(CompetitionValidation.validate(online).isEmpty())
+
+        val invalid = Competition.from(
+            JsonObject(
+                parsed.competition.raw.toMutableMap().apply {
+                    put("participant_data_visibility", JsonPrimitive("public_by_accident"))
+                },
+            ),
+        )
+        assertTrue(
+            CompetitionValidation.validate(invalid).any { it.field == "participant_data_visibility" },
         )
     }
 

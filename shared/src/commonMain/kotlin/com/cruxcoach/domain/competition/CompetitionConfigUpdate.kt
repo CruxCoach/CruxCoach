@@ -9,7 +9,7 @@ object CompetitionConfigUpdate {
     val SAFE_FIELDS = setOf(
         "title", "summary", "description", "eligibility", "waiver",
         "participant_instructions", "spectator_info", "refund_policy", "visibility",
-        "venue", "timezone", "prize_claim_days",
+        "venue", "timezone", "prize_claim_days", "participant_data_visibility",
     )
     val SCORING_FIELDS = setOf(
         "starts_at", "ends_at", "registration_opens_at", "registration_closes_at",

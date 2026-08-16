@@ -258,6 +258,17 @@ fun CompetitionDetailScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        val participantDataOnline =
+                            (competition.raw["participant_data_visibility"] as? JsonPrimitive)?.content == "online"
+                        Text(
+                            stringResource(
+                                if (participantDataOnline) R.string.comp_privacy_online
+                                else R.string.comp_privacy_local,
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (participantDataOnline) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.primary,
+                        )
                         val me = ui.me
                         if (me != null) {
                             Text(stringResource(registrationLabel(me.registration)))
@@ -348,6 +359,7 @@ private fun OrganizerConsole(
     val cleanup by viewModel.cleanup.collectAsStateWithLifecycle()
     var announcement by rememberSaveable { mutableStateOf("") }
     var confirmCancel by rememberSaveable { mutableStateOf(false) }
+    var confirmOnlinePublication by rememberSaveable { mutableStateOf(false) }
     var editCompetition by rememberSaveable { mutableStateOf(false) }
     var editSubmitted by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(editCompetition, editSubmitted, action) {
@@ -380,6 +392,20 @@ private fun OrganizerConsole(
         confirmButton = { Button({ confirmCancel = false; viewModel.hostLifecycle("cancelled") }) { Text("Endgültig absagen") } },
         dismissButton = { TextButton({ confirmCancel = false }) { Text("Zurück") } },
     )
+    if (confirmOnlinePublication) AlertDialog(
+        onDismissRequest = { confirmOnlinePublication = false },
+        title = { Text(stringResource(R.string.comp_privacy_confirm_title)) },
+        text = { Text(stringResource(R.string.comp_privacy_confirm_body)) },
+        confirmButton = {
+            Button({
+                confirmOnlinePublication = false
+                viewModel.enableParticipantDataOnline()
+            }) { Text(stringResource(R.string.comp_privacy_confirm_action)) }
+        },
+        dismissButton = {
+            TextButton({ confirmOnlinePublication = false }) { Text(stringResource(R.string.comp_privacy_keep_local)) }
+        },
+    )
     Card(Modifier.fillMaxWidth().testTag("competition_host_console")) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(stringResource(R.string.comp_host_manage), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
@@ -399,6 +425,39 @@ private fun OrganizerConsole(
                     "${ui.snapshot.pendingIntents.size} offene Anfragen",
                 style = MaterialTheme.typography.bodySmall,
             )
+            val participantDataOnline =
+                (competition.raw["participant_data_visibility"] as? JsonPrimitive)?.content == "online"
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        stringResource(
+                            if (participantDataOnline) R.string.comp_privacy_online_title
+                            else R.string.comp_privacy_local_title,
+                        ),
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        stringResource(
+                            if (participantDataOnline) R.string.comp_privacy_online_host_body
+                            else R.string.comp_privacy_local_host_body,
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    if (!participantDataOnline) {
+                        OutlinedButton(
+                            onClick = { confirmOnlinePublication = true },
+                            enabled = action !is CompetitionDetailViewModel.Action.Working,
+                            modifier = Modifier.fillMaxWidth().testTag("competition_enable_online_data"),
+                        ) { Text(stringResource(R.string.comp_privacy_enable_action)) }
+                    } else {
+                        OutlinedButton(
+                            onClick = viewModel::enableParticipantDataOnline,
+                            enabled = action !is CompetitionDetailViewModel.Action.Working,
+                            modifier = Modifier.fillMaxWidth().testTag("competition_retry_online_data"),
+                        ) { Text(stringResource(R.string.comp_privacy_retry_action)) }
+                    }
+                }
+            }
             OutlinedButton(
                 onClick = {
                     viewModel.clearAction()
@@ -545,7 +604,10 @@ private fun OrganizerConsole(
                 is CompetitionDetailViewModel.Action.Failed -> Text(
                     competitionActionError(action.reason), color = MaterialTheme.colorScheme.error,
                 )
-                is CompetitionDetailViewModel.Action.Sent -> Text("Auf ${action.accepted} Relay(s) veröffentlicht.")
+                is CompetitionDetailViewModel.Action.Sent -> Text(
+                    if (participantDataOnline) "Online: ${action.accepted}/${action.attempted} Relay-Zustellungen bestätigt."
+                    else "Im lokalen Wettkampf-Mesh geteilt."
+                )
                 is CompetitionDetailViewModel.Action.Working -> LinearProgressIndicator(Modifier.fillMaxWidth())
                 else -> Unit
             }
@@ -1154,6 +1216,10 @@ private fun ParticipantJourneyCard(ui: CompetitionDetailViewModel.Ui, nowSeconds
         me?.registration == "rejected" -> stringResource(R.string.comp_journey_registration_rejected)
         me?.registration == "waitlisted" -> stringResource(R.string.comp_reg_waitlisted)
         me?.registration == "withdrawn" -> stringResource(R.string.comp_reg_withdrawn)
+        ui.privateRegistrationStatus == "accepted" -> stringResource(R.string.comp_journey_registration_accepted)
+        ui.privateRegistrationStatus == "rejected" -> stringResource(R.string.comp_journey_registration_rejected)
+        ui.privateRegistrationStatus == "waitlisted" -> stringResource(R.string.comp_reg_waitlisted)
+        ui.privateRegistrationStatus == "withdrawn" -> stringResource(R.string.comp_reg_withdrawn)
         pendingRegistration || me?.registration == "pending" ->
             stringResource(R.string.comp_journey_registration_sent)
         CompetitionProtocol.registrationWindowOpen(competition, state.status, nowSeconds) ->
@@ -1167,8 +1233,11 @@ private fun ParticipantJourneyCard(ui: CompetitionDetailViewModel.Ui, nowSeconds
     val checkin = when {
         me?.checkin == "checked_in" -> stringResource(R.string.comp_checkin_checked_in)
         me?.checkin == "no_show" -> stringResource(R.string.comp_checkin_no_show)
+        ui.privateCheckinStatus == "checked_in" -> stringResource(R.string.comp_checkin_checked_in)
+        ui.privateCheckinStatus == "no_show" -> stringResource(R.string.comp_checkin_no_show)
         pendingCheckin -> stringResource(R.string.comp_journey_request_sent)
-        me?.registration != "accepted" -> stringResource(R.string.comp_journey_after_acceptance)
+        me?.registration != "accepted" && ui.privateRegistrationStatus != "accepted" ->
+            stringResource(R.string.comp_journey_after_acceptance)
         CompetitionProtocol.checkinWindowOpen(competition, state.status, nowSeconds) ->
             stringResource(R.string.comp_journey_open_now)
         nowSeconds < competition.checkinOpensAt -> stringResource(
@@ -1272,7 +1341,16 @@ private fun RegistrationPanel(
         Column(Modifier.padding(16.dp)) {
             when (action) {
                 is CompetitionDetailViewModel.Action.Sent -> Text(
-                    stringResource(R.string.comp_sent_relays, action.accepted, action.attempted),
+                    if (action.encryptedOnline) {
+                        stringResource(
+                            R.string.comp_registration_sent_private_online,
+                            action.accepted,
+                            action.attempted,
+                            action.localRecipients,
+                        )
+                    } else {
+                        stringResource(R.string.comp_sent_relays, action.localRecipients)
+                    },
                     modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                 )
                 is CompetitionDetailViewModel.Action.Failed -> Text(
@@ -1351,7 +1429,17 @@ private fun RegistrationPanel(
             val pendingRegistration = ui.snapshot.pendingIntents.any {
                 it.pubkey == ui.myPubkey && it.op == "register"
             }
-            if (pendingRegistration) {
+            ui.privateRegistrationStatus?.let { privateStatus ->
+                Text(
+                    stringResource(R.string.comp_private_host_confirmation),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Text(stringResource(registrationLabel(privateStatus)), fontWeight = FontWeight.Bold)
+                if (privateStatus in listOf("accepted", "waitlisted", "withdrawn")) return@Column
+                Spacer(Modifier.height(8.dp))
+            }
+            if (pendingRegistration && ui.privateRegistrationStatus == null) {
                 Text(
                     stringResource(R.string.comp_journey_registration_sent),
                     fontWeight = FontWeight.Bold,
@@ -1384,9 +1472,6 @@ private fun RegistrationPanel(
                 if (display.isBlank()) display = ui.suggestedDisplayName
             }
             var waiver by rememberSaveable { mutableStateOf(false) }
-            var selectedDivision by rememberSaveable(competition.compId) {
-                mutableStateOf(competition.divisions.firstOrNull()?.id ?: "open")
-            }
             OutlinedTextField(
                 value = display,
                 onValueChange = { display = it.take(48) },
@@ -1395,30 +1480,6 @@ private fun RegistrationPanel(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth().testTag("competition_display_name"),
             )
-            if (competition.divisions.size > 1) {
-                Spacer(Modifier.height(12.dp))
-                Text(stringResource(R.string.comp_division_required), fontWeight = FontWeight.Bold)
-                Text(
-                    stringResource(R.string.comp_division_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                competition.divisions.forEach { division ->
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { selectedDivision = division.id }
-                            .testTag("competition_division_${division.id}"),
-                    ) {
-                        RadioButton(
-                            selected = selectedDivision == division.id,
-                            onClick = { selectedDivision = division.id },
-                        )
-                        Text(division.label)
-                    }
-                }
-            }
             if (competition.waiverRequired) {
                 Spacer(Modifier.height(8.dp))
                 Text(stringResource(R.string.comp_terms), fontWeight = FontWeight.Bold)
@@ -1446,7 +1507,7 @@ private fun RegistrationPanel(
             Button(
                 onClick = {
                     viewModel.register(
-                        division = selectedDivision,
+                        division = competition.divisions.firstOrNull()?.id ?: "open",
                         display = display.trim(),
                         waiverAccepted = !competition.waiverRequired || waiver,
                         selections = emptyList(),

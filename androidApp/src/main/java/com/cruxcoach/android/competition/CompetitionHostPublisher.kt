@@ -1,5 +1,7 @@
 package com.cruxcoach.android.competition
 
+import android.util.Log
+import com.cruxcoach.android.boardcell.BoardCellManager
 import com.cruxcoach.android.nostr.NostrPublicEventBuilder
 import com.cruxcoach.android.nostr.NostrRelayPool
 import com.cruxcoach.android.nostr.NostrSigner
@@ -11,6 +13,10 @@ import com.cruxcoach.domain.competition.CompetitionValidation
 import com.cruxcoach.domain.competition.LogEntry
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonObject
@@ -36,6 +42,10 @@ class CompetitionHostPublisher @Inject constructor(
     )
 
     private val writes = Mutex()
+    private val receiptScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    private fun participantDataOnline(): Boolean =
+        client.snapshot.value.competition?.let(CompetitionProtocol::participantDataOnline) == true
 
     suspend fun create(config: JsonObject): Result {
         val competition = runCatching { com.cruxcoach.domain.competition.Competition.from(config) }
@@ -44,11 +54,20 @@ class CompetitionHostPublisher @Inject constructor(
             return Result.Failed("${it.field}: ${it.message}")
         }
         if (competition.authority != signer.getPublicKeyHex()) return Result.Failed("wrong_authority")
+        val configuredCell = (competition.raw["board"] as? JsonObject)
+            ?.get("cell_id")?.let { it as? JsonPrimitive }?.content
+            ?: return Result.Failed("board.cell_id: is required for a new competition")
+        val boardCell = BoardCellManager.current ?: return Result.Failed("board_cell_unavailable")
+        val activeCell = boardCell.snapshot()?.cellId?.value
+            ?: return Result.Failed("board_cell_unavailable")
+        if (configuredCell != activeCell) return Result.Failed("wrong_board_cell")
+        if (!boardCell.isLocalController()) return Result.Failed("host_must_control_board")
         if (!mesh.joinLocal(competition.compId)) return Result.Failed("board_cell_unavailable")
         return publish(
             competition.compId,
             CompetitionHostProtocol.competitionContent(config),
             CompetitionHostProtocol.competitionTags(config),
+            publishDefinitionOnline = true,
         )
     }
 
@@ -97,7 +116,91 @@ class CompetitionHostPublisher @Inject constructor(
         }
         val accepted = mesh.publish(competition.compId, event)
         client.ingestOwn(event, at)
-        Result.Published(accepted, accepted)
+        receiptScope.launch {
+            publishPrivateReceipts(
+                competition.compId, organizer, seq, at, op, data, subjects, event.id,
+            )
+        }
+        if (participantDataOnline()) {
+            val (attempted, relayAccepted) = relayPool.sendEventWithStats(event)
+            Result.Published(relayAccepted, attempted)
+        } else {
+            Result.Published(accepted, accepted)
+        }
+    }
+
+    /**
+     * Explicit, irreversible privacy boundary: first record the host's choice in the
+     * local authority chain, then copy the complete signed authority history online.
+     * Participant intents are not part of that history and remain mesh-local.
+     */
+    suspend fun enableParticipantDataOnline(): Result {
+        if (!participantDataOnline()) {
+            when (val updated = updateConfig(
+                JsonObject(mapOf("participant_data_visibility" to JsonPrimitive("online"))),
+                "Host enabled online participant data and results",
+            )) {
+                is Result.Failed -> return updated
+                is Result.Published -> Unit
+            }
+        }
+        val events = client.eventsForOnlinePublication()
+        if (events.isEmpty()) return Result.Failed("not_loaded")
+        var attempted = 0
+        var accepted = 0
+        for (event in events) {
+            val stats = relayPool.sendEventWithStats(event)
+            attempted += stats.first
+            accepted += stats.second
+        }
+        return Result.Published(accepted, attempted)
+    }
+
+    /**
+     * Remote registration needs a private answer even while the canonical
+     * participant log remains on site. A receipt contains only the decision;
+     * it cannot be used as an alternate result chain.
+     */
+    private suspend fun publishPrivateReceipts(
+        compId: String,
+        organizerPubkey: String,
+        seq: Int,
+        at: Long,
+        op: String,
+        data: JsonObject,
+        subjects: List<String>,
+        sourceEventId: String,
+    ) {
+        val state = when (op) {
+            "registration_decision" -> (data["decision"] as? JsonPrimitive)?.content
+            "checkin" -> (data["state"] as? JsonPrimitive)?.content
+            else -> null
+        } ?: return
+        subjects.distinct().filter(CompetitionProtocol::isHex32).forEach { recipient ->
+            runCatching {
+                val plaintext = CompetitionPrivateReceiptCodec.content(
+                    compId, recipient, op, state, sourceEventId, at,
+                )
+                val ciphertext = signer.signer.nip44Encrypt(plaintext, recipient)
+                val tags = listOf(
+                    listOf("d", CompetitionPrivateReceiptCodec.dTag(compId, recipient, seq)),
+                    listOf("L", CompetitionProtocol.NAMESPACE),
+                    listOf("l", "private_receipt", CompetitionProtocol.NAMESPACE),
+                    listOf("cc-schema", CompetitionProtocol.SCHEMA),
+                    listOf("alt", "Encrypted CruxCoach competition confirmation"),
+                    listOf("a", CompetitionProtocol.competitionAddress(organizerPubkey, compId)),
+                    listOf("p", recipient),
+                    listOf("enc", "nip44"),
+                )
+                val receipt = NostrPublicEventBuilder(signer)
+                    .buildSignedEvent(CompetitionProtocol.KIND, ciphertext, tags)
+                relayPool.sendEventWithStats(receipt)
+            }.onFailure {
+                // The canonical local decision already succeeded. Failure to
+                // deliver this convenience receipt must not roll it back.
+                Log.w(TAG, "private competition receipt delivery failed", it)
+            }
+        }
     }
 
     /** Publish a permanent, reasoned edit without replacing the chain root. */
@@ -152,22 +255,38 @@ class CompetitionHostPublisher @Inject constructor(
         require(mesh.isJoined(competition.compId) || mesh.joinLocal(competition.compId)) {
             "board_cell_unavailable"
         }
-        val tombstoneAccepted = mesh.publish(competition.compId, tombstone)
-        val deletionAccepted = mesh.publish(competition.compId, deletion)
+        mesh.publish(competition.compId, tombstone)
+        mesh.publish(competition.compId, deletion)
+        // The definition is always public/unlisted on Nostr, independently of
+        // participant privacy, so cleanup must reach those same relays too.
+        val tombstoneStats = relayPool.sendEventWithStats(tombstone)
+        val deletionStats = relayPool.sendEventWithStats(deletion)
         CleanupResult(
-            tombstoneAccepted = tombstoneAccepted,
-            deletionAccepted = deletionAccepted,
-            attempted = maxOf(tombstoneAccepted, deletionAccepted),
+            tombstoneAccepted = tombstoneStats.second,
+            deletionAccepted = deletionStats.second,
+            attempted = maxOf(tombstoneStats.first, deletionStats.first),
         )
     }
 
-    private suspend fun publish(compId: String, content: String, tags: List<List<String>>): Result = runCatching {
+    private suspend fun publish(
+        compId: String,
+        content: String,
+        tags: List<List<String>>,
+        publishDefinitionOnline: Boolean = false,
+    ): Result = runCatching {
         val event = NostrPublicEventBuilder(signer).buildSignedEvent(CompetitionProtocol.KIND, content, tags)
         if (!mesh.isJoined(compId) && !mesh.joinLocal(compId)) {
             return@runCatching Result.Failed("board_cell_unavailable")
         }
         val accepted = mesh.publish(compId, event)
         client.ingestMesh(event, System.currentTimeMillis() / 1_000)
-        Result.Published(accepted, accepted)
+        if (publishDefinitionOnline) {
+            val (attempted, relayAccepted) = relayPool.sendEventWithStats(event)
+            Result.Published(relayAccepted, attempted)
+        } else Result.Published(accepted, accepted)
     }.getOrElse { Result.Failed(it.message ?: "publish_failed") }
+
+    private companion object {
+        const val TAG = "CompetitionHost"
+    }
 }

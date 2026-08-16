@@ -60,6 +60,14 @@ object CompetitionValidation {
         }
 
         if (competition.visibility !in VISIBILITIES) fail("visibility", "must be one of: ${VISIBILITIES.joinToString(", ")}")
+        competition.raw.str("participant_data_visibility")?.let { visibility ->
+            if (visibility !in CompetitionProtocol.PARTICIPANT_DATA_VISIBILITIES) {
+                fail(
+                    "participant_data_visibility",
+                    "must be one of: ${CompetitionProtocol.PARTICIPANT_DATA_VISIBILITIES.joinToString(", ")}",
+                )
+            }
+        }
         if (competition.status !in CompetitionProtocol.LIFECYCLE) fail("status", "must be a known lifecycle state")
         if (competition.capacity !in 0..500) fail("capacity", "must be between 0 and 500")
         if (competition.timezone.isEmpty()) fail("timezone", "is required")

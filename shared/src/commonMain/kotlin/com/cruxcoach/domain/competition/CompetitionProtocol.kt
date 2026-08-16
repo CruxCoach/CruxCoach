@@ -67,6 +67,19 @@ object CompetitionProtocol {
     val ATTEMPT_OUTCOMES = listOf("top", "zone", "fall", "pass", "timeout")
     val PAYMENT_STATES = listOf("not_required", "pending", "settled", "failed", "expired", "refunded")
 
+    /**
+     * Participant-bearing authority entries stay local unless the host crosses
+     * this boundary explicitly. Missing means `local`, preserving privacy for
+     * definitions created before the field existed.
+     */
+    val PARTICIPANT_DATA_VISIBILITIES = listOf("local", "online")
+
+    fun participantDataVisibility(competition: Competition): String =
+        competition.raw.str("participant_data_visibility") ?: "local"
+
+    fun participantDataOnline(competition: Competition): Boolean =
+        participantDataVisibility(competition) == "online"
+
     /** Stable default seeding shared by every authority UI. */
     fun defaultQueueOrder(compId: String, pubkeys: List<String>): List<String> =
         pubkeys.map { pubkey ->

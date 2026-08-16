@@ -3,6 +3,7 @@ package com.cruxcoach.android.competition
 import android.util.Log
 import com.cruxcoach.android.nostr.NostrEventPolicy
 import com.cruxcoach.android.nostr.NostrRelayPool
+import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.domain.competition.Competition
 import com.cruxcoach.domain.competition.CompetitionEvent
 import com.cruxcoach.domain.competition.CompetitionProtocol
@@ -18,8 +19,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.delay
 
@@ -35,6 +34,7 @@ import kotlinx.coroutines.delay
 @Singleton
 class CompetitionRelayClient @Inject constructor(
     private val relayPool: NostrRelayPool,
+    private val signer: NostrSigner,
 ) {
 
     /** What a screen needs, all of it derived, none of it stored twice. */
@@ -50,6 +50,8 @@ class CompetitionRelayClient @Inject constructor(
         val entryCount: Int = 0,
         val usesDevelopmentRelay: Boolean = false,
         val pendingIntents: List<CompetitionProtocol.ParsedIntent.Valid> = emptyList(),
+        /** Encrypted host confirmations for this identity; never canonical state. */
+        val privateReceipts: Map<String, CompetitionPrivateReceipt> = emptyMap(),
         /** Local receipt time, never part of the reduced competition state. */
         val lastSyncedAt: Long = 0,
     ) {
@@ -66,7 +68,10 @@ class CompetitionRelayClient @Inject constructor(
     val connectedRelayCount: StateFlow<Int> = relayPool.connectedRelayCount
 
     private val entries = linkedMapOf<String, CompetitionReducer.Chained>()
+    private val authorityEvents = linkedMapOf<String, Event>()
+    private var definitionEvent: Event? = null
     private val intents = linkedMapOf<String, CompetitionProtocol.ParsedIntent.Valid>()
+    private val privateReceipts = linkedMapOf<String, CompetitionPrivateReceipt>()
     /** Immutable signed definition used as the log chain's root. */
     private var definitionCompetition: Competition? = null
 
@@ -80,7 +85,10 @@ class CompetitionRelayClient @Inject constructor(
     suspend fun load(organizerPubkey: String, compId: String, nowSeconds: Long): Boolean {
         _snapshot.update { Snapshot(loading = true) }
         entries.clear()
+        authorityEvents.clear()
+        definitionEvent = null
         intents.clear()
+        privateReceipts.clear()
         definitionCompetition = null
 
         // Explicit open joins the local BoardCell first and requests complete
@@ -91,8 +99,9 @@ class CompetitionRelayClient @Inject constructor(
                 val local = _snapshot.value
                 if (local.competition?.compId == compId) return true
             }
-            _snapshot.update { Snapshot(problem = Problem.NOT_FOUND) }
-            return false
+            // Nobody nearby had the definition. Continue with its public
+            // relay copy; joining a quiet local realm must not make remote
+            // registration pages look deleted.
         }
 
         val filter = """{"kinds":[${CompetitionProtocol.KIND}],""" +
@@ -129,6 +138,7 @@ class CompetitionRelayClient @Inject constructor(
             }
             is CompetitionProtocol.ParsedCompetition.Valid -> {
                 definitionCompetition = parsed.competition
+                definitionEvent = found
                 _snapshot.update {
                     Snapshot(
                         competition = parsed.competition,
@@ -155,10 +165,6 @@ class CompetitionRelayClient @Inject constructor(
         val current = _snapshot.value
         val competition = current.competition ?: return@flow
         val organizerPubkey = current.organizerPubkey ?: return@flow
-        if (CompetitionMeshTransport.current?.isJoined(competition.compId) == true) {
-            snapshot.map { it.state?.seq ?: -1L }.distinctUntilChanged().collect { emit(entries.size) }
-            return@flow
-        }
         val address = CompetitionProtocol.competitionAddress(organizerPubkey, competition.compId)
         val filter = """{"kinds":[${CompetitionProtocol.KIND}],"#a":["$address"]}"""
 
@@ -166,6 +172,19 @@ class CompetitionRelayClient @Inject constructor(
             val event = runCatching { Event.fromJson(json) }.getOrNull() ?: return@collect
             if (!acceptsBody(event)) return@collect
             if (entries.containsKey(event.id)) return@collect
+            if (event.tags.any { it.size >= 2 && it[0] == "enc" && it[1] == "nip44" }) {
+                val localPubkey = signer.getPublicKeyHex()
+                val counterparty = if (event.pubKey == localPubkey) competition.authority else event.pubKey
+                val privateReceipt = event.tags.any {
+                    it.size >= 3 && it[0] == "l" && it[1] == "private_receipt" &&
+                        it[2] == CompetitionProtocol.NAMESPACE
+                }
+                val accepted = if (privateReceipt) {
+                    ingestPrivateReceipt(event, nowSeconds())
+                } else ingestEncryptedIntent(event, counterparty, nowSeconds())
+                if (accepted) emit(entries.size)
+                return@collect
+            }
             val parsedIntent = CompetitionProtocol.parseIntent(
                 event.toCompetitionEvent(), competition, organizerPubkey, nowSeconds(),
             )
@@ -190,6 +209,7 @@ class CompetitionRelayClient @Inject constructor(
                     if (parsed.needsUpgrade) _snapshot.update { it.copy(problem = Problem.NEEDS_UPGRADE) }
                 }
                 is CompetitionProtocol.ParsedLogEntry.Valid -> {
+                    authorityEvents[event.id] = event
                     entries[event.id] = CompetitionReducer.Chained(
                         parsed.entry, parsed.eventId, parsed.createdAt,
                     )
@@ -209,9 +229,58 @@ class CompetitionRelayClient @Inject constructor(
             event.toCompetitionEvent(), competition, organizerPubkey, nowSeconds,
         )
         if (parsed is CompetitionProtocol.ParsedLogEntry.Valid) {
+            authorityEvents[event.id] = event
             entries[event.id] = CompetitionReducer.Chained(parsed.entry, parsed.eventId, parsed.createdAt)
             reduce()
         }
+    }
+
+    /**
+     * Decrypt a relay-carried private intent only on one of its endpoints.
+     * Signature/id verification applies to both the ciphertext envelope and
+     * the decrypted, independently signed local intent before parsing.
+     */
+    suspend fun ingestEncryptedIntent(event: Event, counterpartyPubkey: String, nowSeconds: Long): Boolean {
+        if (!acceptsBody(event) ||
+            event.tags.none { it.size >= 2 && it[0] == "enc" && it[1] == "nip44" }
+        ) return false
+        val competition = definitionCompetition ?: return false
+        val organizer = _snapshot.value.organizerPubkey ?: return false
+        val localPubkey = signer.getPublicKeyHex()
+        if (localPubkey != competition.authority && event.pubKey != localPubkey) return false
+        if (event.pubKey == competition.authority) return false
+        val plaintext = runCatching {
+            signer.signer.nip44Decrypt(event.content, counterpartyPubkey)
+        }.getOrNull() ?: return false
+        val clearEvent = runCatching { Event.fromJson(plaintext) }.getOrNull() ?: return false
+        if (clearEvent.pubKey != event.pubKey || !acceptsBody(clearEvent)) return false
+        val parsed = CompetitionProtocol.parseIntent(
+            clearEvent.toCompetitionEvent(), competition, organizer, nowSeconds,
+        )
+        if (parsed !is CompetitionProtocol.ParsedIntent.Valid || parsed.op != "register") return false
+        upsertIntent(parsed)
+        reduce()
+        return true
+    }
+
+    private suspend fun ingestPrivateReceipt(event: Event, nowSeconds: Long): Boolean {
+        if (!acceptsBody(event)) return false
+        val competition = definitionCompetition ?: return false
+        val localPubkey = signer.getPublicKeyHex()
+        if (event.pubKey != competition.authority ||
+            event.tags.none { it.size >= 2 && it[0] == "p" && it[1] == localPubkey }
+        ) return false
+        val plaintext = runCatching {
+            signer.signer.nip44Decrypt(event.content, competition.authority)
+        }.getOrNull() ?: return false
+        val receipt = CompetitionPrivateReceiptCodec.parse(
+            plaintext, competition.compId, localPubkey,
+        ) ?: return false
+        if (receipt.at > nowSeconds + CompetitionProtocol.MAX_FUTURE_SKEW_SECONDS) return false
+        val old = privateReceipts[receipt.op]
+        if (old == null || receipt.at >= old.at) privateReceipts[receipt.op] = receipt
+        reduce()
+        return true
     }
 
     /** Ingest a signed event received from an authenticated, joined FIPS cell. */
@@ -223,6 +292,7 @@ class CompetitionRelayClient @Inject constructor(
                 is CompetitionProtocol.ParsedCompetition.Invalid -> false
                 is CompetitionProtocol.ParsedCompetition.Valid -> {
                     definitionCompetition = parsed.competition
+                    definitionEvent = event
                     _snapshot.value = Snapshot(
                         competition = parsed.competition,
                         competitionEventId = parsed.eventId,
@@ -236,16 +306,34 @@ class CompetitionRelayClient @Inject constructor(
         val organizer = _snapshot.value.organizerPubkey ?: return false
         val intent = CompetitionProtocol.parseIntent(event.toCompetitionEvent(), existing, organizer, nowSeconds)
         if (intent is CompetitionProtocol.ParsedIntent.Valid) {
-            val key = "${intent.pubkey}:${intent.op}"
-            val old = intents[key]
-            if (old == null || intent.createdAt >= old.createdAt) intents[key] = intent
+            upsertIntent(intent)
             reduce(); return true
         }
         if (event.pubKey != existing.authority || entries.containsKey(event.id)) return false
         val parsed = CompetitionProtocol.parseLogEntry(event.toCompetitionEvent(), existing, organizer, nowSeconds)
         if (parsed !is CompetitionProtocol.ParsedLogEntry.Valid) return false
+        authorityEvents[event.id] = event
         entries[event.id] = CompetitionReducer.Chained(parsed.entry, parsed.eventId, parsed.createdAt)
         reduce(); return true
+    }
+
+    /** Canonical signed authority chain only. Participant intents deliberately never leave the local mesh. */
+    fun eventsForOnlinePublication(): List<Event> {
+        val definition = definitionEvent ?: return emptyList()
+        val state = snapshot.value.state ?: return emptyList()
+        if (!state.chainComplete || state.forkDetected) return emptyList()
+        val byId = entries.values.associateBy { it.eventId }
+        val reversed = mutableListOf<Event>()
+        var cursor = state.head
+        while (cursor != definition.id) {
+            val chained = byId[cursor] ?: return emptyList()
+            reversed += authorityEvents[cursor] ?: return emptyList()
+            cursor = chained.entry.prev
+        }
+        return buildList {
+            add(definition)
+            addAll(reversed.asReversed())
+        }
     }
 
     private fun reduce() {
@@ -263,6 +351,7 @@ class CompetitionRelayClient @Inject constructor(
                 loading = false,
                 lastSyncedAt = System.currentTimeMillis() / 1000,
                 pendingIntents = unansweredIntents(),
+                privateReceipts = privateReceipts.toMap(),
             )
         }
     }
@@ -300,13 +389,19 @@ class CompetitionRelayClient @Inject constructor(
         return intents.values.filter { it.eventId !in answeredIds }.sortedBy { it.createdAt }
     }
 
+    private fun upsertIntent(intent: CompetitionProtocol.ParsedIntent.Valid) {
+        val key = "${intent.pubkey}:${intent.op}"
+        val old = intents[key]
+        if (old == null || intent.createdAt >= old.createdAt) intents[key] = intent
+    }
+
     companion object {
         private const val TAG = "CompetitionRelay"
     }
 }
 
 /** Quartz's event, reduced to the shape the shared protocol layer speaks. */
-fun Event.toCompetitionEvent() = CompetitionEvent(
+fun Event.toCompetitionEvent(content: String = this.content) = CompetitionEvent(
     id = id,
     pubkey = pubKey,
     createdAt = createdAt,
