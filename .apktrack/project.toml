@@ -36,4 +36,4 @@ package = "com.cruxcoach.android.dev.feat.board_cell_mesh_mvp"
 package_patterns = ["com.cruxcoach.android.dev.*"]
 certificate_sha256 = "7c79e883b332269c8a36f4edb981f734d2844fc057cfcc15aec4bc04e3c3e6a5"
 tracks = ["fips"]
-track_patterns = ["feat*"]
+track_patterns = ["feat-*"]
