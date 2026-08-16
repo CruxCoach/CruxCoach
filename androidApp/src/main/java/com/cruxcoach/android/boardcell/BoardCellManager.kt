@@ -262,7 +262,10 @@ class BoardCellManager @Inject constructor(
                     if (!knownSharedCell) {
                         FipsDebugLog.event("boardcell", "new_cell_claim_begin",
                             "cell" to FipsDebugLog.id(cellId.value), "node" to FipsDebugLog.id(activeNodeId))
-                        claimAndSettle(physical, cellId)
+                        _membershipTransition.value = if (claimAndSettle(physical, cellId) != null)
+                            MeshMembershipTransition.IDLE else MeshMembershipTransition.ERROR
+                    } else if (rejoined) {
+                        _membershipTransition.value = MeshMembershipTransition.IDLE
                     } else if (!rejoined) {
                         // Never create a competing lineage merely because the
                         // previous live members are temporarily unreachable.
