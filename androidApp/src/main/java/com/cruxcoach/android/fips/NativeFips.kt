@@ -11,6 +11,7 @@ internal object NativeFips {
     external fun sendBatch(destinationNpub: String, packedFrames: ByteArray): Boolean
     external fun receive(timeoutMs: Int): ByteArray
     external fun peers(): String
+    external fun bleAttempts(): String
 
     external fun bleBridgeNew(radio: Any): Long
     external fun bleBridgeFree(handle: Long)

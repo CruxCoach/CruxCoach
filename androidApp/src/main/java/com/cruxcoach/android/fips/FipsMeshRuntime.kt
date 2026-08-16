@@ -105,6 +105,7 @@ class FipsMeshRuntime @Inject constructor(
     val permissionRequests = permissionRequestChannel.receiveAsFlow()
     private val validatedDirectPeers = mutableSetOf<String>()
     private val helloSentAt = mutableMapOf<String, Long>()
+    private val loggedNativeBleAttempts = linkedSetOf<String>()
     private val json = Json { ignoreUnknownKeys = false }
     private val _running = MutableStateFlow(false)
     val running = _running.asStateFlow()
@@ -400,6 +401,28 @@ class FipsMeshRuntime @Inject constructor(
         return ensureStarted()
     }
 
+    /** Rebuild a retained realm after its final remote member disappeared.
+     *
+     * Android can leave an authenticated FIPS transport entry alive briefly
+     * after the underlying phone/app stopped producing BoardCell heartbeats.
+     * That ghost entry rejects a fresh L2CAP channel from the same node as a
+     * duplicate. Once no remote canonical member remains, rebuilding is safe
+     * and makes the next explicit join start with an empty transport pool. */
+    @Synchronized
+    fun recycleIdleMeshTransport(reason: String): Boolean {
+        val active = realm ?: return false
+        if (!_running.value || !owners.isActive()) return false
+        FipsDebugLog.event(
+            "runtime", "idle_transport_recycle",
+            "realm" to FipsDebugLog.id(active.realmId),
+            "reason" to reason,
+            "peers" to _peers.value.size,
+        )
+        receiveJob?.cancel(); receiveJob = null
+        shutdownNative()
+        return ensureStarted()
+    }
+
     private fun shutdownNative() {
         FipsDebugLog.event("runtime", "native_shutdown", "running" to _running.value,
             "peers" to _peers.value.size, "bridge" to bridge)
@@ -507,6 +530,7 @@ class FipsMeshRuntime @Inject constructor(
             _peers.value = runCatching { NativeFips.peers().lineSequence().filter(String::isNotBlank).mapNotNull { line ->
                 val p = line.split('\t'); if (p.size != 4) null else FipsPeer(p[0], p[1].toBoolean(), p[2], p[3].toLongOrNull() ?: 0)
             }.toList() }.getOrDefault(emptyList())
+            logNewNativeBleAttempts()
             val connectedBlePeers = _peers.value.asSequence()
                 .filter { it.connected && it.transport == "ble" }.map { it.npub }.toSet()
             synchronized(validatedDirectPeers) { validatedDirectPeers.retainAll(connectedBlePeers) }
@@ -529,6 +553,36 @@ class FipsMeshRuntime @Inject constructor(
             sendJoinHellosToNewDirectPeers()
             delay(PEER_REFRESH_MS)
         }
+    }
+
+    private fun logNewNativeBleAttempts() {
+        runCatching { NativeFips.bleAttempts() }.getOrDefault("")
+            .lineSequence().filter(String::isNotBlank).forEach { line ->
+                val isNew = synchronized(loggedNativeBleAttempts) {
+                    if (!loggedNativeBleAttempts.add(line)) false else {
+                        while (loggedNativeBleAttempts.size > MAX_LOGGED_NATIVE_ATTEMPTS) {
+                            loggedNativeBleAttempts.remove(loggedNativeBleAttempts.first())
+                        }
+                        true
+                    }
+                }
+                if (!isNew) return@forEach
+                val fields = line.split('\t')
+                if (fields.size != 7) {
+                    FipsDebugLog.warning("native_ble", "attempt_decode_failed", "fields" to fields.size)
+                    return@forEach
+                }
+                FipsDebugLog.event(
+                    "native_ble", "attempt_resolved",
+                    "atMs" to fields[0],
+                    "address" to fields[1].substringAfter('/'),
+                    "peer" to FipsDebugLog.id(fields[2]),
+                    "role" to fields[3],
+                    "discoveryMs" to fields[4],
+                    "outcome" to fields[5],
+                    "sendFailures" to fields[6],
+                )
+            }
     }
 
     private fun sendJoinHellosToNewDirectPeers() {
@@ -643,6 +697,7 @@ class FipsMeshRuntime @Inject constructor(
         fun competitionOwner(compId: String) = "competition:$compId"
         private const val JOIN_RETRY_MS = 5_000L
         private const val PEER_REFRESH_MS = 2_000L
+        private const val MAX_LOGGED_NATIVE_ATTEMPTS = 256
         private const val RECEIVE_WAIT_MS = 5_000
         private const val PERMISSION_POLL_MS = 2_000L
         private val JOIN_PREFIX = byteArrayOf(0x43, 0x43, 0x4a, 0x31) // CCJ1

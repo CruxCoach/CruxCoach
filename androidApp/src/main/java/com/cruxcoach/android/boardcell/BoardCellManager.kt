@@ -164,7 +164,8 @@ class BoardCellManager @Inject constructor(
                 val result = meshTransport.receive(message.senderNpub, message.payload, monotonicNow())
                 FipsDebugLog.event("boardcell", "mesh_message_applied",
                     "sender" to FipsDebugLog.id(message.senderNpub), "bytes" to message.payload.size,
-                    "result" to (result?.javaClass?.simpleName ?: "control"))
+                    "result" to (result?.javaClass?.simpleName ?: "control"),
+                    "reason" to ((result as? BoardCellApplyResult.Rejected)?.reason ?: "-"))
                 refreshSelected()
                 processHandover()
                 processControllerRecovery()
@@ -504,6 +505,15 @@ class BoardCellManager @Inject constructor(
         if (!nearbyRealmHeld) {
             runtime.acquire(FipsMeshRuntime.OWNER_NEARBY_BOARD_CELL)
             nearbyRealmHeld = true
+        }
+        // A failed handover/reconnect can leave this exact realm running even
+        // though the local canonical replica was cleared. Reusing it also
+        // reuses old connection progress and native peer entries, which can
+        // make a join skip phases or reject the new channel as a duplicate.
+        // Always make an explicit join without membership a fresh transport
+        // generation; the persistent realm key keeps the node identity stable.
+        if (runtime.activeRealmId() == cell.value && runtime.running.value) {
+            runtime.endRealm(cell.value)
         }
         meshTransport.resetForRealm()
         pendingProjectionRequests.clear()
@@ -937,7 +947,20 @@ class BoardCellManager @Inject constructor(
                         meshTransport.sendMemberHeartbeat(snapshot, now / CONTROLLER_HEARTBEAT_INTERVAL_MS)
                     }
                     if (snapshot.controllerId == activeNodeId) {
-                        coordinator.evictExpiredMembers(board, now, MEMBER_LIVENESS_TIMEOUT_MS)
+                        val evicted = coordinator.evictExpiredMembers(
+                            board, now, MEMBER_LIVENESS_TIMEOUT_MS,
+                        )
+                        if (evicted.isNotEmpty()) {
+                            val afterEviction = coordinator.snapshot(board)
+                            if (afterEviction?.members == setOf(activeNodeId)) {
+                                // Clear native ghost links only after canonical
+                                // liveness has removed the final remote member.
+                                // The controller continues advertising with the
+                                // same realm identity and can accept a clean
+                                // normal join immediately afterwards.
+                                runtime.recycleIdleMeshTransport("last remote member timed out")
+                            }
+                        }
                     }
                 }
                 if (boardRealmAvailable.get() && !runtime.isSuspendedForBulkTransfer()) {

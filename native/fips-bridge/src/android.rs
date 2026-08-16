@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use fips::config::{BleConfig, TransportInstances};
+use fips::transport::ble::attempts::ble_attempt_log;
 use fips::upper::dns::DnsResolvedIdentity;
 use fips::{Config, Node, PeerIdentity};
 use jni::JNIEnv;
@@ -432,6 +433,40 @@ pub extern "system" fn Java_com_cruxcoach_android_fips_NativeFips_peers(
                 .join("\n")
         })
         .unwrap_or_default();
+    env.new_string(text)
+        .map(|s| s.into_raw())
+        .unwrap_or(std::ptr::null_mut())
+}
+
+/// One tab-separated resolved BLE attempt per line:
+/// timestamp, address, node, role, discovery-ms, outcome, send-failures.
+/// This exposes FIPS' bounded diagnostic ring to Android logcat without
+/// enabling verbose native logging or leaking any private key material.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_cruxcoach_android_fips_NativeFips_bleAttempts(
+    env: JNIEnv,
+    _class: JClass,
+) -> jstring {
+    let text = ble_attempt_log()
+        .snapshot()
+        .into_iter()
+        .flat_map(|peer| {
+            let send_failures = peer.send_failures;
+            peer.attempts.into_iter().map(move |attempt| {
+                format!(
+                    "{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                    attempt.at_ms,
+                    attempt.ble_addr,
+                    attempt.node_addr_hex,
+                    attempt.role.as_str(),
+                    attempt.discovery_ms,
+                    attempt.outcome.as_str(),
+                    send_failures,
+                )
+            })
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
     env.new_string(text)
         .map(|s| s.into_raw())
         .unwrap_or(std::ptr::null_mut())

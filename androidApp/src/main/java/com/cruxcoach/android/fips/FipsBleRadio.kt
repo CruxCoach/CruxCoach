@@ -23,7 +23,9 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 
 internal class FipsOutboundDialGate {
     private var activeId: Long? = null
@@ -50,6 +52,7 @@ internal class FipsBleRadio(
     private val io = Executors.newCachedThreadPool()
     private val retry = Executors.newSingleThreadScheduledExecutor()
     private val channels = ConcurrentHashMap<Long, BluetoothSocket>()
+    private val channelTraces = ConcurrentHashMap<Long, ChannelTrace>()
     @Volatile private var bridge = 0L
     @Volatile private var stopped = false
     private var server: BluetoothServerSocket? = null
@@ -103,6 +106,17 @@ internal class FipsBleRadio(
             NativeFips.bleDeliverConnectResult(bridge, connectId, false, address, 0, 0)
             return
         }
+        // The platform dial finishing only means L2CAP opened; the FIPS
+        // pubkey/Noise handshake still runs on that channel. Do not let a
+        // rotating BLE address start a second connection to the same mesh in
+        // that window. A failed/closed channel removes its trace immediately,
+        // so the next candidate remains a fast fallback.
+        if (channelTraces.values.any { it.direction == "outbound" && !it.closed.get() }) {
+            FipsDebugLog.event("radio", "outbound_connect_suppressed", "connectId" to connectId,
+                "address" to address.substringAfter('/'), "reason" to "outbound channel is handshaking")
+            NativeFips.bleDeliverConnectResult(bridge, connectId, false, address, 0, 0)
+            return
+        }
         if (!outboundDialGate.tryAcquire(connectId)) {
             FipsDebugLog.event("radio", "outbound_connect_suppressed", "connectId" to connectId,
                 "address" to address.substringAfter('/'), "reason" to "another dial is active")
@@ -129,7 +143,11 @@ internal class FipsBleRadio(
                 FipsDebugLog.event("radio", "outbound_connect_result", "connectId" to connectId,
                     "channel" to id, "address" to mac, "sendMtu" to sendMtu(socket),
                     "receiveMtu" to receiveMtu(socket))
-                if (id > 0) startChannel(id, socket) else socket.close()
+                if (id > 0) startChannel(id, socket, "outbound") else {
+                    FipsDebugLog.warning("radio", "channel_transport_rejected",
+                        "connectId" to connectId, "address" to mac, "direction" to "outbound")
+                    socket.close()
+                }
             } catch (e: Exception) {
                 Log.w(TAG, "L2CAP connect failed: ${e.message}")
                 FipsDebugLog.warning("radio", "outbound_connect_failed", "connectId" to connectId,
@@ -324,7 +342,8 @@ internal class FipsBleRadio(
             nowMs = System.currentTimeMillis())
     }
 
-    fun closeChannel(id: Long) { channels.remove(id)?.let { runCatching { it.close() } } }
+    /** Called by the native transport when it deliberately drops a stream. */
+    fun closeChannel(id: Long) = closeChannel(id, "native_close_requested")
 
     fun shutdown() {
         FipsDebugLog.event("radio", "shutdown", "channels" to channels.size,
@@ -333,7 +352,7 @@ internal class FipsBleRadio(
         runCatching { outboundSocket?.close() }; outboundSocket = null
         stopScanning(); stopAdvertising()
         runCatching { server?.close() }; server = null
-        channels.keys.toList().forEach(::closeChannel)
+        channels.keys.toList().forEach { closeChannel(it, "runtime_shutdown") }
         io.shutdownNow(); retry.shutdownNow()
         runCatching { io.awaitTermination(EXECUTOR_STOP_SECONDS, TimeUnit.SECONDS) }
         runCatching { retry.awaitTermination(EXECUTOR_STOP_SECONDS, TimeUnit.SECONDS) }
@@ -351,48 +370,108 @@ internal class FipsBleRadio(
                 "$ADAPTER/${socket.remoteDevice.address}", sendMtu(socket), receiveMtu(socket))
             FipsDebugLog.event("radio", "inbound_accepted", "address" to socket.remoteDevice.address,
                 "channel" to id, "sendMtu" to sendMtu(socket), "receiveMtu" to receiveMtu(socket))
-            if (id > 0) startChannel(id, socket) else runCatching { socket.close() }
+            if (id > 0) startChannel(id, socket, "inbound") else {
+                FipsDebugLog.warning("radio", "channel_transport_rejected",
+                    "address" to socket.remoteDevice.address, "direction" to "inbound")
+                runCatching { socket.close() }
+            }
         }
     }
 
-    private fun startChannel(id: Long, socket: BluetoothSocket) {
+    private fun startChannel(id: Long, socket: BluetoothSocket, direction: String) {
         channels[id] = socket
+        channelTraces[id] = ChannelTrace(direction, socket.remoteDevice.address)
         onConnectionStage(FipsConnectionStage.CHANNEL_OPEN)
         FipsDebugLog.event("radio", "channel_open", "channel" to id,
-            "address" to socket.remoteDevice.address, "channels" to channels.size)
+            "address" to socket.remoteDevice.address, "direction" to direction,
+            "channels" to channels.size)
         io.execute { reader(id, socket) }
         io.execute { writer(id, socket) }
     }
 
     private fun reader(id: Long, socket: BluetoothSocket) {
         val buffer = ByteArray(MAX_PACKET)
+        var closeReason = "reader_stopped"
         try {
             while (!stopped) {
                 val count = socket.inputStream.read(buffer)
-                if (count < 0 || !NativeFips.bleChannelDeliverRecv(bridge, id, buffer, count)) break
+                if (count < 0) {
+                    closeReason = "remote_eof"
+                    break
+                }
+                channelTraces[id]?.recordReceived(count)
+                if (!NativeFips.bleChannelDeliverRecv(bridge, id, buffer, count)) {
+                    closeReason = "native_receive_rejected"
+                    break
+                }
             }
-        } catch (_: IOException) { } finally { channelGone(id) }
+        } catch (failure: IOException) {
+            closeReason = "reader_io:${failure.message ?: failure.javaClass.simpleName}"
+        } finally { channelGone(id, closeReason) }
     }
 
     private fun writer(id: Long, socket: BluetoothSocket) {
         val buffer = ByteArray(MAX_PACKET)
+        var closeReason = "writer_stopped"
         try {
             // Channel close disconnects the native sender and wakes this wait;
             // a long fallback timeout avoids one idle wakeup per channel/sec.
             while (!stopped) when (val count = NativeFips.bleChannelNextSend(
                 bridge, id, buffer, OUTBOUND_WAIT_MS,
             )) {
-                -1 -> break
+                -1 -> {
+                    closeReason = "native_sender_closed"
+                    break
+                }
                 0 -> Unit
-                else -> { socket.outputStream.write(buffer, 0, count); socket.outputStream.flush() }
+                else -> {
+                    socket.outputStream.write(buffer, 0, count); socket.outputStream.flush()
+                    channelTraces[id]?.recordSent(count)
+                }
             }
-        } catch (_: IOException) { } finally { channelGone(id) }
+        } catch (failure: IOException) {
+            closeReason = "writer_io:${failure.message ?: failure.javaClass.simpleName}"
+        } finally { channelGone(id, closeReason) }
     }
 
-    private fun channelGone(id: Long) {
-        closeChannel(id)
-        FipsDebugLog.event("radio", "channel_closed", "channel" to id, "remaining" to channels.size)
+    private fun closeChannel(id: Long, reason: String) {
+        channels.remove(id)?.let { runCatching { it.close() } }
+        logChannelClosed(id, reason)
+    }
+
+    private fun channelGone(id: Long, reason: String) {
+        closeChannel(id, reason)
         runCatching { NativeFips.bleChannelClosed(bridge, id) }
+    }
+
+    private fun logChannelClosed(id: Long, reason: String) {
+        val trace = channelTraces[id] ?: return
+        if (!trace.closed.compareAndSet(false, true)) return
+        channelTraces.remove(id, trace)
+        FipsDebugLog.event(
+            "radio", "channel_closed",
+            "channel" to id,
+            "address" to trace.address,
+            "direction" to trace.direction,
+            "reason" to reason,
+            "lifetimeMs" to (System.currentTimeMillis() - trace.openedAtMs),
+            "rxPackets" to trace.rxPackets.get(),
+            "rxBytes" to trace.rxBytes.get(),
+            "txPackets" to trace.txPackets.get(),
+            "txBytes" to trace.txBytes.get(),
+            "remaining" to channels.size,
+        )
+    }
+
+    private class ChannelTrace(val direction: String, val address: String) {
+        val openedAtMs = System.currentTimeMillis()
+        val rxPackets = AtomicLong()
+        val rxBytes = AtomicLong()
+        val txPackets = AtomicLong()
+        val txBytes = AtomicLong()
+        val closed = AtomicBoolean(false)
+        fun recordReceived(bytes: Int) { rxPackets.incrementAndGet(); rxBytes.addAndGet(bytes.toLong()) }
+        fun recordSent(bytes: Int) { txPackets.incrementAndGet(); txBytes.addAndGet(bytes.toLong()) }
     }
 
     private fun sendMtu(socket: BluetoothSocket) = socket.maxTransmitPacketSize.coerceIn(20, 1_500)

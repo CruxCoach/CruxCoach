@@ -554,9 +554,27 @@ class BleConnectionViewModel @Inject constructor(
 
     fun joinBoardMesh(mesh: FipsNearbyMesh) {
         val cellId = mesh.joinableBoardCellId ?: return
+        // A board auto-connect coroutine may already have passed its scan wait
+        // when the user explicitly chooses a mesh. Make the mesh join the sole
+        // radio action; otherwise that coroutine can surface a controller
+        // transfer prompt (and even start a board GATT connect) mid-join.
+        autoConnectScanJob?.cancel()
+        autoConnectScanJob = null
+        pendingBoard = null
+        if (bleConnection.connectionState.value == ConnectionState.CONNECTING) {
+            bleConnection.disconnect()
+        }
         viewModelScope.safeLaunch(TAG) {
             bleScanner.stopScan()
-            _state.update { it.copy(joiningBoardCellId = cellId, meshJoinFailed = false) }
+            _state.update {
+                it.copy(
+                    isAutoConnectScan = false,
+                    controllerRequestBoard = null,
+                    controllerRequestState = ControllerRequestState.IDLE,
+                    joiningBoardCellId = cellId,
+                    meshJoinFailed = false,
+                )
+            }
             val joined = try {
                 boardCellManager.joinNearbyMesh(cellId, mesh.boardName)
             } catch (failure: CancellationException) {
