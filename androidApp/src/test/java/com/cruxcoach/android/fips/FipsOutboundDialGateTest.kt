@@ -17,4 +17,12 @@ class FipsOutboundDialGateTest {
         gate.release(1)
         assertTrue(gate.tryAcquire(4))
     }
+
+    @Test
+    fun `matching realm scans remain active after canonical membership`() {
+        // FIPS needs both peers to cross-probe so its authenticated node-key
+        // tie-breaker can retain exactly one deterministic direction.
+        assertTrue(shouldDeliverFipsScan(matchesActiveRealm = true))
+        assertFalse(shouldDeliverFipsScan(matchesActiveRealm = false))
+    }
 }

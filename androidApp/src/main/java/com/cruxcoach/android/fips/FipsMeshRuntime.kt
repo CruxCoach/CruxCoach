@@ -125,7 +125,7 @@ class FipsMeshRuntime @Inject constructor(
     val nearbyMeshes = _nearbyMeshes.asStateFlow()
     private val _connectionProgress = MutableStateFlow(FipsConnectionProgress())
     val connectionProgress = _connectionProgress.asStateFlow()
-    private val outboundDiscoverySettled = AtomicBoolean(false)
+    private val crossProbeModeAnnounced = AtomicBoolean(false)
     override val localNpub: String get() = if (_running.value) runCatching { NativeFips.npub() }.getOrDefault("") else ""
 
     init {
@@ -172,7 +172,7 @@ class FipsMeshRuntime @Inject constructor(
         }
         if (realm != value) {
             permissionPromptedRealm = null
-            outboundDiscoverySettled.set(false)
+            crossProbeModeAnnounced.set(false)
         }
         realm = value
         _connectionProgress.value = FipsConnectionProgress(value.realmId, value.boardCellId)
@@ -223,7 +223,7 @@ class FipsMeshRuntime @Inject constructor(
         receiveJob?.cancel(); receiveJob = null
         shutdownNative()
         realm = null
-        outboundDiscoverySettled.set(false)
+        crossProbeModeAnnounced.set(false)
         keyStore.end(realmId)
     }
 
@@ -265,7 +265,6 @@ class FipsMeshRuntime @Inject constructor(
         }
         return runCatching {
             val candidate = FipsBleRadio(context, activeRealm, ::recordNearbyMesh, ::recordConnectionStage)
-            if (outboundDiscoverySettled.get()) candidate.settleMembership()
             radio = candidate
             bridge = NativeFips.bleBridgeNew(candidate)
             check(bridge != 0L)
@@ -340,16 +339,16 @@ class FipsMeshRuntime @Inject constructor(
 
     override fun activeRealmId(): String? = realm?.realmId
 
-    /** Once canonical membership exists, existing members only advertise and
-     * accept. A later explicit joiner is the sole dialer, avoiding Android's
-     * simultaneous inbound/outbound L2CAP race without disturbing live links. */
+    /** FIPS resolves simultaneous BLE probes from both peers by comparing the
+     * authenticated node keys. Keep cross-probing enabled after membership is
+     * established; otherwise half of all joiners lose their sole outbound
+     * channel while the member never creates the required opposite channel. */
     @Synchronized
     fun settleActiveMembership(cellId: String) {
         if (realm?.boardCellId != cellId || !_running.value ||
-            !outboundDiscoverySettled.compareAndSet(false, true)) return
-        radio?.settleMembership()
-        FipsDebugLog.event("runtime", "outbound_discovery_settled",
-            "cell" to FipsDebugLog.id(cellId), "mode" to "advertise_accept_and_passive_scan")
+            !crossProbeModeAnnounced.compareAndSet(false, true)) return
+        FipsDebugLog.event("runtime", "membership_transport_active",
+            "cell" to FipsDebugLog.id(cellId), "mode" to "fips_cross_probe")
     }
 
     @Synchronized
