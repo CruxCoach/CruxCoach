@@ -100,6 +100,14 @@ data class BoardCellJoinRequest(
 )
 
 @Serializable
+data class BoardCellLeaveRequest(
+    val requestId: String,
+)
+
+@Serializable
+enum class BoardCellMemberLeaveReason { VOLUNTARY, LIVENESS_TIMEOUT }
+
+@Serializable
 data class BoardCellControllerRecovery(
     val claimantId: String,
     val baseControllerId: String,
@@ -155,6 +163,8 @@ data class BoardCellSnapshot(
     val lineageId: String,
     val resolvedLineages: Set<String> = emptySet(),
     val members: Set<String>,
+    /** Advances only when the canonical live-membership set changes. */
+    val membershipRevision: Long = 0,
     val projection: BoardProjection? = null,
     val projectionKnown: Boolean = true,
     val playlist: BoardPlaylistState = BoardPlaylistState(),
@@ -169,9 +179,11 @@ data class BoardCellSnapshot(
 ) {
     fun withComputedHash(): BoardCellSnapshot = copy(stateHash = BoardCellHash.compute(this))
     fun hasValidHash(): Boolean = stateHash == BoardCellHash.compute(copy(stateHash = "")) ||
-        (lastControllerRecovery == null &&
+        (membershipRevision == 0L &&
+            stateHash == BoardCellHash.computeLegacyV4(copy(stateHash = ""))) ||
+        (membershipRevision == 0L && lastControllerRecovery == null &&
             stateHash == BoardCellHash.computeLegacyV3(copy(stateHash = ""))) ||
-        (lastControllerRecovery == null && playlistRevision == 0L &&
+        (membershipRevision == 0L && lastControllerRecovery == null && playlistRevision == 0L &&
             stateHash == BoardCellHash.computeLegacyV2(copy(stateHash = "")))
 }
 
@@ -185,6 +197,10 @@ sealed interface BoardCellEvent {
     @Serializable data class ProjectUnknown(val commandId: String, val reason: String) : BoardCellEvent
     @Serializable data class PlaylistReplaced(val playlist: BoardPlaylistState, val commandId: String) : BoardCellEvent
     @Serializable data class MemberJoined(val memberId: String) : BoardCellEvent
+    @Serializable data class MemberLeft(
+        val memberId: String,
+        val reason: BoardCellMemberLeaveReason,
+    ) : BoardCellEvent
     @Serializable data class ControllerHeartbeat(val heartbeat: Long) : BoardCellEvent
     @Serializable data class HandoverPrepared(val value: BoardCellHandover) : BoardCellEvent
     @Serializable data class HandoverSourceReleased(val transferId: String) : BoardCellEvent
@@ -265,12 +281,13 @@ data class BoardWriteIntent(
 )
 
 internal object BoardCellHash {
-    fun compute(snapshot: BoardCellSnapshot): String = compute(snapshot, "board-cell-v4", true, true)
-    fun computeLegacyV3(snapshot: BoardCellSnapshot): String = compute(snapshot, "board-cell-v3", true, false)
-    fun computeLegacyV2(snapshot: BoardCellSnapshot): String = compute(snapshot, "board-cell-v2", false, false)
+    fun compute(snapshot: BoardCellSnapshot): String = compute(snapshot, "board-cell-v5", true, true, true)
+    fun computeLegacyV4(snapshot: BoardCellSnapshot): String = compute(snapshot, "board-cell-v4", true, true, false)
+    fun computeLegacyV3(snapshot: BoardCellSnapshot): String = compute(snapshot, "board-cell-v3", true, false, false)
+    fun computeLegacyV2(snapshot: BoardCellSnapshot): String = compute(snapshot, "board-cell-v2", false, false, false)
 
     private fun compute(snapshot: BoardCellSnapshot, schema: String, includePlaylistRevision: Boolean,
-        includeControllerRecovery: Boolean): String {
+        includeControllerRecovery: Boolean, includeMembershipRevision: Boolean): String {
         val canonical = buildString {
             append(schema).append('\n').append(snapshot.cellId.value).append('\n')
             append(snapshot.physicalBoardId.value).append('\n').append(snapshot.epoch).append('\n')
@@ -279,6 +296,7 @@ internal object BoardCellHash {
             append(snapshot.lineageId).append('\n')
             snapshot.resolvedLineages.sorted().forEach { append("r:").append(it).append('\n') }
             snapshot.members.sorted().forEach { append("m:").append(it).append('\n') }
+            if (includeMembershipRevision) append("mr:${snapshot.membershipRevision}\n")
             snapshot.projection?.let { append("p:${it.climbUuid}|${it.angle}|${it.projectionSurvivesDisconnect}\n") }
                 ?: append("p:-\n")
             append("pk:${snapshot.projectionKnown}\n")
@@ -317,9 +335,9 @@ internal object BoardCellRecoveryElection {
 
     fun delayMs(snapshot: BoardCellSnapshot, candidateId: String, retry: Int): Long? {
         if (candidateId !in snapshot.members) return null
-        // A returning controller gets first chance to re-fence the same board
-        // after Bluetooth OFF/ON; if it is actually gone, it runs no election
-        // and the remaining canonical ranks continue normally.
+        // The same controller gets first chance after a transient physical
+        // board disconnect while its mesh transport remains live. Bluetooth
+        // OFF ends local membership and therefore never reaches this path.
         if (candidateId == snapshot.controllerId) return retry.coerceAtMost(3) * 1_500L
         val ranked = snapshot.members.asSequence().filter { it != snapshot.controllerId }
             .map { it to score(snapshot, it) }

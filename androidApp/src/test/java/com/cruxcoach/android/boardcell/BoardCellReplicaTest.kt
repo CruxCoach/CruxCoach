@@ -22,11 +22,23 @@ class BoardCellReplicaTest {
         assertEquals("later", replica.snapshot?.projection?.climbUuid)
     }
 
-    @Test fun `wrong cell and nonmember snapshots are rejected`() {
+    @Test fun `wrong cell is rejected but newer exclusion snapshot retires stale member`() {
         val replica = BoardCellReplica("member", initial())
         val foreign = initial().copy(cellId = BoardCellId("other")).withComputedHash()
         assertTrue(replica.applySnapshot(foreign) is BoardCellApplyResult.Rejected)
         val excluded = initial().copy(sequence = 1, members = setOf("controller")).withComputedHash()
-        assertTrue(replica.applySnapshot(excluded) is BoardCellApplyResult.Rejected)
+        assertTrue(replica.applySnapshot(excluded) is BoardCellApplyResult.Applied)
+        assertFalse("member" in replica.snapshot!!.members)
+        assertTrue(BoardCellReplica("member").applySnapshot(excluded) is BoardCellApplyResult.Rejected)
+    }
+
+    @Test fun `legacy v4 hash migrates only before live membership revision advances`() {
+        val base = initial().copy(stateHash = "")
+        assertTrue(base.copy(stateHash = BoardCellHash.computeLegacyV4(base)).hasValidHash())
+
+        val joined = BoardCellReplica.reduce(initial(), BoardCellEvent.MemberJoined("new-member"), 1)
+        val withoutRevision = joined.copy(membershipRevision = 0, stateHash = "")
+        val forgedLegacy = joined.copy(stateHash = BoardCellHash.computeLegacyV4(withoutRevision))
+        assertFalse(forgedLegacy.hasValidHash())
     }
 }

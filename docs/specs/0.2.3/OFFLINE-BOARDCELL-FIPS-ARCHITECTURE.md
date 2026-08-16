@@ -189,6 +189,7 @@ The complete snapshot contains at least:
 - `PhysicalBoardId`, `BoardCellId`, and epoch;
 - monotonic sequence number;
 - controller, persisted controller term and ordered heartbeat counter;
+- the live member set and monotonically increasing membership revision;
 - members;
 - last confirmed board climb and angle;
 - whether the current physical board content is known;
@@ -229,7 +230,21 @@ members start a short staggered recovery race. A claimant advances the term
 only after acquiring the physical board connection, which acts as the fencing
 token; peers validate the exact previous controller, term, sequence and hash.
 The recovery base remains in the hashed snapshot so a peer that missed the
-recovery event can still converge after reconnect.
+recovery event can still converge after reconnect. A different recovered
+controller removes the failed controller from live membership in that same
+canonical transition.
+
+Member liveness uses the same local-monotonic rule independently of controller
+liveness. Every non-controller emits an authenticated best-effort heartbeat at
+2 s intervals. The FIPS routed message retains its end-source npub across
+multiple hops, and any other valid, correctly scoped source frame renews the
+same observation. The controller emits `MEMBER_LEFT` only after 6 s without
+source traffic. Voluntary leave requests produce the same ordered event. A
+phone that disables Bluetooth clears its local realm, selection, keep-alive
+and durable membership replica immediately; the controller converges after the
+three missed windows. When an excluded stale partition reconnects, its digest
+receives an authoritative exclusion snapshot. It cannot resume the old lease
+and must be sponsored through the ordinary permissionless join path.
 
 Controller handover is durable and explicit:
 
@@ -238,7 +253,8 @@ source PREPARED(target, nextTerm)
 target acquires HOST + board keep-alive + connected-board gate
 target READY -> source TARGET_READY -> source COMMITTED(nextTerm)
 target renews heartbeat/write authority -> target COMPLETED
-source may now tear down its old session and board ownership
+source may now tear down its old session and board ownership; if leaving, the
+new controller sequences MEMBER_LEFT(source)
 ```
 
 The source may abort only before commit. A restarted source or target resumes

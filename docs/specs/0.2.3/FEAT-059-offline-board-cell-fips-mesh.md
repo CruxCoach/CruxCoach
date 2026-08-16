@@ -14,7 +14,7 @@ is in
 One physical board has one application scope (`BoardCell`) independent of BLE,
 GATT or FIPS links. The complete state is a deterministic snapshot containing
 physical-board id, cell id, lineage, epoch, controller term, ordered heartbeat,
-sequence, members,
+sequence, live members and membership revision,
 projection and playlist. Every delta names the same board/cell/epoch, advances
 exactly one sequence and binds previous/resulting SHA-256 hashes.
 
@@ -37,7 +37,7 @@ discovery or relays for BoardCell state.
   membership, physical board, cell, epoch, sequence and hashes are checked.
 - The FIPS secret lives in a separate encrypted realm store and is never the
   account/Nostr key. It survives reconnect, process death and Bluetooth restart
-  in one active realm, and rotates on realm end or switch. Competition participant
+  per realm across reconnect, process death and Bluetooth restart. Competition participant
   continuity has another opaque encrypted local credential.
 - A normal realm has `realm_id == board_cell_id`. A local competition has
   `realm_id == competition_id`; every wire member retains its Cell and
@@ -65,6 +65,15 @@ discovery or relays for BoardCell state.
   Only a claimant that acquired the exclusive physical board connection may
   advance the controller term, minimizing controllerless time without allowing
   an unfenced logical writer.
+- Membership is live, not an indefinite durable entitlement. Every non-controller
+  sends a best-effort authenticated heartbeat to the controller every 2 s; FIPS
+  preserves the end-source identity across multi-hop routing. Any valid scoped
+  source traffic renews that lease. After three missed windows the controller
+  sequences `MEMBER_LEFT`; one dropped packet never evicts a member. Voluntary
+  leave uses the same canonical event. A recovered controller removes the failed
+  controller in its fenced recovery event. A stale excluded replica accepts the
+  newer controller snapshot as a tombstone and must use ordinary permissionless
+  sponsorship to join again.
 - Controller transfer is `PREPARED -> TARGET_READY -> COMMITTED -> COMPLETED`.
   The source explicitly selects a member. The target may emit readiness only
   after acquiring the session HOST role, board keep-alive and a connected-board
@@ -112,10 +121,10 @@ discovery or relays for BoardCell state.
 API 29+ uses Android L2CAP CoC beneath FIPS' authenticated/encrypted sessions.
 The compact CruxCoach-specific advertisement contains only version, dynamic PSM,
 four-byte realm/cell prefilter tags and a four-byte tag of a short-lived random
-join nonce. Full realm ID, Cell ID and nonce are checked in a CCJ1 control frame;
-the sender must simultaneously be a native direct BLE peer and its nonce must
-have been scanned locally. CCJ1 is consumed below the application transport and
-cannot be relayed as discovery. Foreign realm advertisements are never handed to
+join nonce. Full realm and Cell IDs are checked in a fresh CCJ1 control frame;
+the nonce is positive hardening, not a bidirectional-scan admission gate. A
+joining phone needs to discover only one current member. CCJ1 is consumed below
+the application transport and cannot be relayed as discovery. Foreign realm advertisements are never handed to
 FIPS auto-connect. API 28 retains GATT transport fallback, but native, playlist
 and CruxRelay board writes still cross the same BoardCell serializer and WAL.
 An active cell/session/competition holds a `connectedDevice` foreground service;

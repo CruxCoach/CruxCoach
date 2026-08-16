@@ -15,6 +15,12 @@ class AndroidBoardCellDurableStore(context: Context) : BoardCellDurableStore {
         check(prefs.edit().putString(snapshotKey(snapshot.physicalBoardId), json.encodeToString(snapshot)).commit())
     }
 
+    override fun clearSnapshot(boardId: PhysicalBoardId) {
+        // Membership is live, but an interrupted physical write intent is a
+        // separate safety record and must survive leaving/rejoin.
+        check(prefs.edit().remove(snapshotKey(boardId)).commit())
+    }
+
     override fun persistSnapshotWithAck(snapshot: BoardCellSnapshot, ack: BoardCommandAck) = synchronized(ackLock) {
         val editor = prefs.edit().putString(snapshotKey(snapshot.physicalBoardId), json.encodeToString(snapshot))
         check(addBoundedAck(editor, ack).commit())

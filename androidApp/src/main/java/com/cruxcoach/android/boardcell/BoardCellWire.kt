@@ -24,6 +24,12 @@ sealed interface BoardCellWireMessage {
     @Serializable @SerialName("member_join_request") data class MemberJoinRequest(
         val value: BoardCellJoinRequest,
     ) : BoardCellWireMessage
+    @Serializable @SerialName("member_heartbeat") data class MemberHeartbeat(
+        val tick: Long,
+    ) : BoardCellWireMessage
+    @Serializable @SerialName("member_leave_request") data class MemberLeaveRequest(
+        val value: BoardCellLeaveRequest,
+    ) : BoardCellWireMessage
     @Serializable @SerialName("controller_recovery") data class ControllerRecovery(
         val value: BoardCellControllerRecovery,
     ) : BoardCellWireMessage
@@ -55,11 +61,13 @@ data class BoardCellWireFrame(
 )
 
 object BoardCellWireCodec {
-    // V6 adds semantic projection bases so heartbeat-only sequence advances
+    // V7 makes membership live: authenticated member heartbeats, explicit
+    // leave requests and canonical MemberLeft events. Older peers fail closed.
+    // V6 added semantic projection bases so heartbeat-only sequence advances
     // do not spuriously reject a participant's board command. V5 added
     // permissionless, member-sponsored multi-hop BoardCell admission.
     // Older peers must fail closed instead of interpreting the new authority flow.
-    const val VERSION = 6
+    const val VERSION = 7
     private val json = Json { classDiscriminator = "type"; encodeDefaults = true; ignoreUnknownKeys = false }
     fun encode(frame: BoardCellWireFrame): ByteArray = json.encodeToString(frame).encodeToByteArray()
     fun decode(bytes: ByteArray): BoardCellWireFrame {
@@ -72,7 +80,11 @@ object BoardCellWireCodec {
             when (val message = it.message) {
                 is BoardCellWireMessage.Snapshot -> {
                     require(message.value.members.size <= 128 && message.value.playlist.items.size <= 512 &&
-                        message.value.recentCommandIds.size <= 256)
+                        message.value.recentCommandIds.size <= 256 &&
+                        message.value.membershipRevision >= 0)
+                }
+                is BoardCellWireMessage.Event -> if (message.value.event is BoardCellEvent.MemberLeft) {
+                    require(message.value.event.memberId.length in 1..256)
                 }
                 is BoardCellWireMessage.SessionCommand -> require(
                     message.commandId.length in 8..128 && message.payload.size in 1..BoardCellMeshTransport.MAX_SESSION_COMMAND_BYTES)
@@ -87,6 +99,9 @@ object BoardCellWireCodec {
                         message.value.candidateId.length in 1..256 &&
                         message.value.sponsorId.length in 1..256 &&
                         message.value.candidateId != message.value.sponsorId)
+                is BoardCellWireMessage.MemberHeartbeat -> require(message.tick >= 0)
+                is BoardCellWireMessage.MemberLeaveRequest -> require(
+                    message.value.requestId.length in 8..128)
                 is BoardCellWireMessage.ControllerRecovery -> require(
                     message.value.claimantId.length in 1..256 &&
                         message.value.connectionProof.length in 8..256)
@@ -169,6 +184,12 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
                 .forEach { peer -> link.send(peer, bytes) }
         } else {
             multicast(current.members, bytes)
+            (envelope.event as? BoardCellEvent.MemberLeft)?.memberId?.let { removed ->
+                // Give an actively connected leaver its canonical tombstone.
+                // It is intentionally best-effort: disconnected members are
+                // repaired by an exclusion snapshot if they contact us again.
+                link.send(removed, bytes)
+            }
         }
     }
 
@@ -214,6 +235,24 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
             frameFor(snapshot, BoardCellWireMessage.MemberJoinRequest(request)))
     }
 
+    /** Periodic authenticated end-source proof; routing may be multi-hop. */
+    fun sendMemberHeartbeat(snapshot: BoardCellSnapshot, tick: Long): Boolean {
+        if (link.localNpub !in snapshot.members || link.localNpub == snapshot.controllerId ||
+            snapshot.availability != BoardCellAvailability.ACTIVE) return false
+        return link.send(snapshot.controllerId,
+            frameFor(snapshot, BoardCellWireMessage.MemberHeartbeat(tick)))
+    }
+
+    fun sendMemberLeaveRequest(snapshot: BoardCellSnapshot, requestId: String): Boolean {
+        if (link.localNpub !in snapshot.members || link.localNpub == snapshot.controllerId ||
+            requestId.length !in 8..128) return false
+        return link.send(snapshot.controllerId, frameFor(snapshot,
+            BoardCellWireMessage.MemberLeaveRequest(BoardCellLeaveRequest(requestId))))
+    }
+
+    private fun sendAuthoritativeSnapshot(snapshot: BoardCellSnapshot, target: String): Boolean =
+        link.send(target, frameFor(snapshot, BoardCellWireMessage.Snapshot(snapshot)))
+
     /** Targeted full-state welcome/resync for a reachable canonical member. */
     fun sendSnapshotTo(snapshot: BoardCellSnapshot, memberId: String): Boolean {
         if (link.localNpub != snapshot.controllerId || memberId !in snapshot.members) return false
@@ -223,8 +262,12 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
     override suspend fun publishRecovery(recovery: BoardCellControllerRecovery) {
         val snapshot = coordinator?.snapshot(recovery.envelope.physicalBoardId) ?: return
         snapshots[snapshot.cellId] = snapshot
-        multicast(snapshot.members, frameFor(snapshot,
-            BoardCellWireMessage.ControllerRecovery(recovery), recovery.baseControllerTerm))
+        val bytes = frameFor(snapshot, BoardCellWireMessage.ControllerRecovery(recovery),
+            recovery.baseControllerTerm)
+        multicast(snapshot.members, bytes)
+        if (recovery.baseControllerId != snapshot.controllerId) {
+            link.send(recovery.baseControllerId, bytes)
+        }
     }
 
     fun sendProjectionRequest(snapshot: BoardCellSnapshot, request: BoardProjectionRequest): Boolean {
@@ -316,6 +359,10 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
             else -> local != null && value.epoch == local.epoch && value.controllerTerm == local.controllerTerm
         }
         if (!scopeMatchesPayload) return BoardCellApplyResult.Rejected("realm/cell/board/epoch/term mismatch")
+        if (local != null && local.controllerId == link.localNpub &&
+            authenticatedSender in local.members && authenticatedSender != link.localNpub) {
+            target.observeMemberActivity(local.physicalBoardId, authenticatedSender, nowMonotonicMs)
+        }
         return when (val message = value.message) {
             is BoardCellWireMessage.DirectClaim -> {
                 if (authenticatedSender !in link.directAuthenticatedPeers() || message.value.claimantId != authenticatedSender ||
@@ -340,7 +387,12 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
             is BoardCellWireMessage.AntiEntropy -> {
                 val snapshot = snapshots[value.cellId]
                     ?: return BoardCellApplyResult.Rejected("anti-entropy has no local cell")
-                if (authenticatedSender !in snapshot.members) return BoardCellApplyResult.Rejected("anti-entropy sender is not member")
+                if (authenticatedSender !in snapshot.members) {
+                    if (snapshot.controllerId == link.localNpub) {
+                        sendAuthoritativeSnapshot(snapshot, authenticatedSender)
+                    }
+                    return BoardCellApplyResult.Rejected("anti-entropy sender is not member")
+                }
                 if (authenticatedSender == snapshot.controllerId) {
                     target.observeControllerActivity(snapshot.physicalBoardId, authenticatedSender,
                         nowMonotonicMs)
@@ -392,9 +444,37 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
                 if (message.value.candidateId in snapshot.members) {
                     sendSnapshotTo(snapshot, message.value.candidateId)
                 } else {
-                    target.joinMember(snapshot.physicalBoardId, message.value.candidateId)
+                    target.joinMember(snapshot.physicalBoardId, message.value.candidateId, nowMonotonicMs)
                     target.snapshot(snapshot.physicalBoardId)?.let { snapshots[it.cellId] = it }
                 }
+                null
+            }
+            is BoardCellWireMessage.MemberHeartbeat -> {
+                val snapshot = snapshots[value.cellId]
+                    ?: return BoardCellApplyResult.Rejected("member heartbeat has no local cell")
+                if (link.localNpub != snapshot.controllerId || authenticatedSender == snapshot.controllerId ||
+                    authenticatedSender !in snapshot.members) {
+                    if (link.localNpub == snapshot.controllerId && authenticatedSender !in snapshot.members) {
+                        sendAuthoritativeSnapshot(snapshot, authenticatedSender)
+                    }
+                    return BoardCellApplyResult.Rejected("member heartbeat sender/role mismatch")
+                }
+                target.observeMemberActivity(snapshot.physicalBoardId, authenticatedSender, nowMonotonicMs)
+                null
+            }
+            is BoardCellWireMessage.MemberLeaveRequest -> {
+                val snapshot = snapshots[value.cellId]
+                    ?: return BoardCellApplyResult.Rejected("member leave has no local cell")
+                if (link.localNpub != snapshot.controllerId || authenticatedSender == snapshot.controllerId ||
+                    authenticatedSender !in snapshot.members) {
+                    if (link.localNpub == snapshot.controllerId && authenticatedSender !in snapshot.members) {
+                        sendAuthoritativeSnapshot(snapshot, authenticatedSender)
+                    }
+                    return BoardCellApplyResult.Rejected("member leave sender/role mismatch")
+                }
+                target.leaveMember(snapshot.physicalBoardId, authenticatedSender,
+                    BoardCellMemberLeaveReason.VOLUNTARY, nowMonotonicMs)
+                target.snapshot(snapshot.physicalBoardId)?.let { snapshots[it.cellId] = it }
                 null
             }
             is BoardCellWireMessage.ControllerRecovery ->

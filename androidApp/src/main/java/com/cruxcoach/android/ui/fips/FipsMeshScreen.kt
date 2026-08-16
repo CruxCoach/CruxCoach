@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
+import com.cruxcoach.android.boardcell.MeshMembershipTransition
 import com.cruxcoach.android.ui.board.BleConnectionSheet
 import com.cruxcoach.android.ui.theme.InfoBlue
 import com.cruxcoach.android.ui.theme.OrangeAccent
@@ -56,6 +57,8 @@ fun FipsMeshScreen(
     val state = viewModel.state.collectAsStateWithLifecycle().value
     val joiningBoardCellId by viewModel.joiningBoardCellId.collectAsStateWithLifecycle()
     val joinFailed by viewModel.joinFailed.collectAsStateWithLifecycle()
+    val leaveFailed by viewModel.leaveFailed.collectAsStateWithLifecycle()
+    val membershipTransition by viewModel.membershipTransition.collectAsStateWithLifecycle()
     val incomingControllerRequest by viewModel.incomingControllerRequest.collectAsStateWithLifecycle()
     var showConnectionSheet by remember { mutableStateOf(false) }
     incomingControllerRequest?.let { request ->
@@ -105,7 +108,18 @@ fun FipsMeshScreen(
                     modifier = Modifier.padding(top = 8.dp),
                 )
             }
-            item { CurrentMeshCard(state, onConnect = { showConnectionSheet = true }) }
+            item { CurrentMeshCard(state,
+                leaving = membershipTransition == MeshMembershipTransition.LEAVING,
+                leaveFailed = leaveFailed,
+                onLeave = viewModel::leave,
+                onConnect = { showConnectionSheet = true }) }
+            if (membershipTransition == MeshMembershipTransition.ERROR && !joinFailed && !leaveFailed) {
+                item {
+                    Text(stringResource(R.string.fips_mesh_disconnected),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error)
+                }
+            }
             item { SectionTitle(stringResource(R.string.fips_mesh_connected_peers)) }
             if (state.peers.isEmpty()) {
                 item { EmptyCard(stringResource(R.string.fips_mesh_no_connected_peers)) }
@@ -137,10 +151,13 @@ fun FipsMeshScreen(
 }
 
 @Composable
-private fun CurrentMeshCard(state: FipsMeshUiState, onConnect: () -> Unit) {
-    // Membership survives a temporary Bluetooth/transport outage. Keep the
-    // card as the current mesh and surface the radio error separately instead
-    // of telling the user their mesh disappeared.
+private fun CurrentMeshCard(
+    state: FipsMeshUiState,
+    leaving: Boolean,
+    leaveFailed: Boolean,
+    onLeave: () -> Unit,
+    onConnect: () -> Unit,
+) {
     val active = state.cellId != null
     MeshCard(container = if (active) SuccessGreen.copy(alpha = 0.10f) else InfoBlue.copy(alpha = 0.08f)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -164,6 +181,15 @@ private fun CurrentMeshCard(state: FipsMeshUiState, onConnect: () -> Unit) {
             Detail(stringResource(R.string.fips_mesh_controller), shortNpub(state.controllerNpub))
             if (!state.bluetoothAvailable) {
                 Text(stringResource(R.string.board_bt_off_message),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error)
+            }
+            Button(onClick = onLeave, enabled = !leaving, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(if (leaving) R.string.fips_mesh_leaving
+                    else R.string.fips_mesh_leave_action))
+            }
+            if (leaveFailed) {
+                Text(stringResource(R.string.fips_mesh_leave_failed),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error)
             }

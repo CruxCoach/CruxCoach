@@ -62,6 +62,9 @@ class FipsMeshViewModel @Inject constructor(
     val joiningBoardCellId = _joiningBoardCellId.asStateFlow()
     private val _joinFailed = MutableStateFlow(false)
     val joinFailed = _joinFailed.asStateFlow()
+    private val _leaveFailed = MutableStateFlow(false)
+    val leaveFailed = _leaveFailed.asStateFlow()
+    val membershipTransition = boardCellManager.membershipTransition
     val incomingControllerRequest = boardCellManager.incomingControllerRequest
 
     init {
@@ -141,6 +144,13 @@ class FipsMeshViewModel @Inject constructor(
     }
 
     fun ensureDiscovery() = runtime.startNearbyDiscovery()
+
+    fun leave() {
+        _leaveFailed.value = false
+        viewModelScope.launch {
+            _leaveFailed.value = !boardCellManager.leaveCurrentMesh()
+        }
+    }
 
     fun dismissJoinError() { _joinFailed.value = false }
 

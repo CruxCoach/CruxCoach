@@ -61,6 +61,9 @@ class BoardCellCoordinator(
     private val replicas = mutableMapOf<PhysicalBoardId, BoardCellReplica>()
     private val settleDeadlines = mutableMapOf<PhysicalBoardId, Long>()
     private val controllerObservedAt = mutableMapOf<PhysicalBoardId, Long>()
+    /** Local monotonic observations only; never hashed or trusted from peers. */
+    private val memberObservedAt = mutableMapOf<PhysicalBoardId, MutableMap<String, Long>>()
+    private val memberDepartedAt = mutableMapOf<PhysicalBoardId, MutableMap<String, Long>>()
     private val handoverDeadlines = mutableMapOf<String, Long>()
     private val observedForkLineages = mutableMapOf<PhysicalBoardId, MutableSet<String>>()
     private val observedForkMembers = mutableMapOf<PhysicalBoardId, MutableSet<String>>()
@@ -92,6 +95,7 @@ class BoardCellCoordinator(
         ).withComputedHash()
         replicas[boardId] = BoardCellReplica(nodeId, snapshot)
         controllerObservedAt[boardId] = nowMonotonicMs
+        memberObservedAt[boardId] = snapshot.members.associateWithTo(mutableMapOf()) { nowMonotonicMs }
         durableStore.persistSnapshot(snapshot)
         BoardCellScopeRegistry.bindCell(boardId, snapshot.cellId)
         transport.publishSnapshot(snapshot)
@@ -105,6 +109,7 @@ class BoardCellCoordinator(
         replica.applySnapshot(incoming).also {
             if (it is BoardCellApplyResult.Applied) {
                 controllerObservedAt[incoming.physicalBoardId] = nowMonotonicMs
+                if (incoming.controllerId == nodeId) seedMemberLiveness(incoming, nowMonotonicMs)
                 incoming.handover?.takeIf {
                     it.phase in setOf(HandoverPhase.PREPARED, HandoverPhase.SOURCE_RELEASED,
                         HandoverPhase.TARGET_READY)
@@ -175,6 +180,7 @@ class BoardCellCoordinator(
         replica.applySnapshot(incoming).also {
             if (it is BoardCellApplyResult.Applied) {
                 controllerObservedAt[incoming.physicalBoardId] = nowMonotonicMs
+                if (it.snapshot.controllerId == nodeId) seedMemberLiveness(it.snapshot, nowMonotonicMs)
                 durableStore.persistSnapshot(it.snapshot)
                 it.snapshot.recentCommandIds.forEach { commandId ->
                     durableStore.recordAck(ack(commandId, BoardCommandStatus.COMMITTED, it.snapshot))
@@ -201,6 +207,7 @@ class BoardCellCoordinator(
         val result = replica.applyEvent(envelope)
         if (result is BoardCellApplyResult.Applied) {
             controllerObservedAt[envelope.physicalBoardId] = nowMonotonicMs
+            if (result.snapshot.controllerId == nodeId) seedMemberLiveness(result.snapshot, nowMonotonicMs)
             durableStore.persistSnapshot(result.snapshot)
             eventCommandId(envelope.event)?.let { commandId ->
                 durableStore.recordAck(ack(commandId, BoardCommandStatus.COMMITTED, result.snapshot))
@@ -309,14 +316,111 @@ class BoardCellCoordinator(
         commitCommandEvent(boardId, BoardCellEvent.PlaylistReplaced(playlist, commandId), commandId)
     }
 
-    suspend fun joinMember(boardId: PhysicalBoardId, memberId: String): BoardCellEnvelope? = mutex.withLock {
+    suspend fun joinMember(
+        boardId: PhysicalBoardId,
+        memberId: String,
+        nowMonotonicMs: Long = 0,
+    ): BoardCellEnvelope? = mutex.withLock {
         val current = replicas[boardId]?.snapshot ?: return@withLock null
+        val departedAt = memberDepartedAt[boardId]?.get(memberId)
         if (current.controllerId != nodeId || current.availability != BoardCellAvailability.ACTIVE ||
             memberId.isBlank() || memberId in current.members ||
+            (nowMonotonicMs > 0 && departedAt != null &&
+                nowMonotonicMs - departedAt < heartbeatTimeoutMs) ||
             current.members.size >= MAX_MEMBERS) return@withLock null
         commitCanonical(boardId, BoardCellEvent.MemberJoined(memberId)).also {
+            memberObservedAt.getOrPut(boardId) { mutableMapOf() }[memberId] = nowMonotonicMs
+            memberDepartedAt[boardId]?.remove(memberId)
             replicas[boardId]?.snapshot?.let { snapshot -> transport.publishSnapshot(snapshot) }
         }
+    }
+
+    /** Any correctly realm-scoped FIPS frame proves its authenticated end
+     * source is alive, independent of how many mesh hops carried it. */
+    suspend fun observeMemberActivity(
+        boardId: PhysicalBoardId,
+        memberId: String,
+        nowMonotonicMs: Long,
+    ): Boolean = mutex.withLock {
+        val current = replicas[boardId]?.snapshot ?: return@withLock false
+        if (current.controllerId != nodeId || memberId == nodeId || memberId !in current.members)
+            return@withLock false
+        memberObservedAt.getOrPut(boardId) { mutableMapOf() }[memberId] = nowMonotonicMs
+        true
+    }
+
+    suspend fun leaveMember(
+        boardId: PhysicalBoardId,
+        memberId: String,
+        reason: BoardCellMemberLeaveReason,
+        nowMonotonicMs: Long = 0,
+    ): BoardCellEnvelope? = mutex.withLock {
+        val current = replicas[boardId]?.snapshot ?: return@withLock null
+        if (current.controllerId != nodeId || current.availability != BoardCellAvailability.ACTIVE ||
+            memberId == current.controllerId || memberId !in current.members) return@withLock null
+        commitCanonical(boardId, BoardCellEvent.MemberLeft(memberId, reason)).also {
+            memberObservedAt[boardId]?.remove(memberId)
+            memberDepartedAt.getOrPut(boardId) { mutableMapOf() }[memberId] = nowMonotonicMs
+        }
+    }
+
+    /** Remove peers only after three missed 2 s liveness windows. Missing
+     * observations start with a complete grace period. */
+    suspend fun evictExpiredMembers(
+        boardId: PhysicalBoardId,
+        nowMonotonicMs: Long,
+        timeoutMs: Long,
+    ): List<BoardCellEnvelope> = mutex.withLock {
+        val current = replicas[boardId]?.snapshot ?: return@withLock emptyList()
+        if (current.controllerId != nodeId || current.availability != BoardCellAvailability.ACTIVE)
+            return@withLock emptyList()
+        val observations = memberObservedAt.getOrPut(boardId) { mutableMapOf() }
+        val protectedTarget = current.handover?.takeIf { it.phase in setOf(
+            HandoverPhase.PREPARED, HandoverPhase.SOURCE_RELEASED, HandoverPhase.TARGET_READY,
+        ) }?.targetControllerId
+        val expired = current.members.asSequence().filter { it != nodeId && it != protectedTarget }
+            .filter { member ->
+                val last = observations[member]
+                if (last == null) { observations[member] = nowMonotonicMs; false }
+                else nowMonotonicMs - last >= timeoutMs
+            }.sorted().toList()
+        expired.mapNotNull { member ->
+            commitCanonical(boardId, BoardCellEvent.MemberLeft(
+                member, BoardCellMemberLeaveReason.LIVENESS_TIMEOUT)).also {
+                observations.remove(member)
+                memberDepartedAt.getOrPut(boardId) { mutableMapOf() }[member] = nowMonotonicMs
+            }
+        }
+    }
+
+    suspend fun liveSuccessors(
+        boardId: PhysicalBoardId,
+        nowMonotonicMs: Long,
+        timeoutMs: Long,
+    ): List<String> = mutex.withLock {
+        val current = replicas[boardId]?.snapshot ?: return@withLock emptyList()
+        if (current.controllerId != nodeId) return@withLock emptyList()
+        val observations = memberObservedAt.getOrPut(boardId) { mutableMapOf() }
+        current.members.asSequence().filter { it != nodeId }
+            .filter { member -> observations[member]?.let { nowMonotonicMs - it < timeoutMs } == true }
+            .sorted().toList()
+    }
+
+    suspend fun forgetLocalReplica(
+        boardId: PhysicalBoardId,
+        clearDurableSnapshot: Boolean = true,
+    ) = mutex.withLock {
+        replicas.remove(boardId)
+        controllerObservedAt.remove(boardId)
+        memberObservedAt.remove(boardId)
+        memberDepartedAt.remove(boardId)
+        if (clearDurableSnapshot) durableStore.clearSnapshot(boardId)
+    }
+
+    private fun seedMemberLiveness(snapshot: BoardCellSnapshot, nowMonotonicMs: Long) {
+        val observations = memberObservedAt.getOrPut(snapshot.physicalBoardId) { mutableMapOf() }
+        observations.keys.retainAll(snapshot.members)
+        snapshot.members.filter { it != nodeId }.forEach { observations.putIfAbsent(it, nowMonotonicMs) }
     }
 
     companion object {
@@ -588,6 +692,7 @@ class BoardCellCoordinator(
         )
         durableStore.persistSnapshot(next)
         check(replica.applyEvent(envelope) is BoardCellApplyResult.Applied)
+        seedMemberLiveness(next, nowMonotonicMs)
         controllerObservedAt[boardId] = nowMonotonicMs
         transport.publishRecovery(recovery)
         recovery

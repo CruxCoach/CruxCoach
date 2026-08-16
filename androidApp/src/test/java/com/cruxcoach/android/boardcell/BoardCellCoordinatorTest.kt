@@ -126,6 +126,65 @@ class BoardCellCoordinatorTest {
             replica.snapshot(board)!!.availability)
     }
 
+    @Test fun `member is evicted only after three missed heartbeat windows`() = runTest {
+        val board = PhysicalBoardId("moon:serial:member-liveness")
+        val (controller, transport) = settled("controller", board, now = 100)
+        controller.joinMember(board, "member", 100)
+
+        assertTrue(controller.evictExpiredMembers(board, 105, 6).isEmpty())
+        assertTrue("member" in controller.snapshot(board)!!.members)
+        val evicted = controller.evictExpiredMembers(board, 106, 6)
+
+        assertEquals(1, evicted.size)
+        assertEquals(BoardCellMemberLeaveReason.LIVENESS_TIMEOUT,
+            (evicted.single().event as BoardCellEvent.MemberLeft).reason)
+        assertFalse("member" in controller.snapshot(board)!!.members)
+        assertEquals(2L, controller.snapshot(board)!!.membershipRevision)
+        assertTrue(transport.events.last().event is BoardCellEvent.MemberLeft)
+        assertNull("a still-open old link cannot be immediately auto-admitted",
+            controller.joinMember(board, "member", 107))
+        assertNotNull(controller.joinMember(board, "member", 207))
+        assertTrue("member" in controller.snapshot(board)!!.members)
+    }
+
+    @Test fun `multi hop member activity renews controller liveness lease`() = runTest {
+        val board = PhysicalBoardId("moon:serial:multi-hop-member")
+        val (controller) = settled("controller", board, now = 100)
+        controller.joinMember(board, "member", 100)
+
+        assertTrue(controller.observeMemberActivity(board, "member", 105))
+        assertTrue(controller.evictExpiredMembers(board, 110, 6).isEmpty())
+        assertTrue("member" in controller.snapshot(board)!!.members)
+        assertEquals(1, controller.evictExpiredMembers(board, 111, 6).size)
+    }
+
+    @Test fun `voluntary member leave is canonical and rejoin uses a new membership revision`() = runTest {
+        val board = PhysicalBoardId("moon:serial:voluntary-leave")
+        val (controller) = settled("controller", board, now = 100)
+        controller.joinMember(board, "member", 100)
+        val left = controller.leaveMember(board, "member", BoardCellMemberLeaveReason.VOLUNTARY)!!
+        assertTrue(left.event is BoardCellEvent.MemberLeft)
+        assertFalse("member" in controller.snapshot(board)!!.members)
+
+        assertNotNull(controller.joinMember(board, "member", 110))
+        assertTrue("member" in controller.snapshot(board)!!.members)
+        assertEquals(3L, controller.snapshot(board)!!.membershipRevision)
+    }
+
+    @Test fun `switching cells leaves the old membership before joining the new one`() = runTest {
+        val oldBoard = PhysicalBoardId("moon:serial:old-cell")
+        val newBoard = PhysicalBoardId("moon:serial:new-cell")
+        val (oldController) = settled("old-host", oldBoard, now = 100)
+        val (newController) = settled("new-host", newBoard, now = 100)
+        oldController.joinMember(oldBoard, "switcher", 100)
+
+        assertNotNull(oldController.leaveMember(oldBoard, "switcher",
+            BoardCellMemberLeaveReason.VOLUNTARY, 101))
+        assertFalse("switcher" in oldController.snapshot(oldBoard)!!.members)
+        assertNotNull(newController.joinMember(newBoard, "switcher", 102))
+        assertTrue("switcher" in newController.snapshot(newBoard)!!.members)
+    }
+
     @Test fun `snapshot gap does not prevent controller recovery after controller disappears`() = runTest {
         val board = PhysicalBoardId("moon:serial:gap-then-failure")
         val (source) = settled("source", board, now = 100)
@@ -186,12 +245,15 @@ class BoardCellCoordinatorTest {
         assertEquals("candidate", candidate.snapshot(board)!!.controllerId)
         assertEquals(base.controllerTerm + 1, candidate.snapshot(board)!!.controllerTerm)
         assertEquals(BoardCellAvailability.ACTIVE, candidate.snapshot(board)!!.availability)
+        assertFalse("failed controller is removed by the recovery event",
+            "source" in candidate.snapshot(board)!!.members)
         assertTrue(observer.acceptControllerRecovery("candidate", recovery, 112) is BoardCellApplyResult.Applied)
         assertEquals("candidate", observer.snapshot(board)!!.controllerId)
+        assertFalse("source" in observer.snapshot(board)!!.members)
         assertNull(observer.recoverController(board, "second-proof", 113))
     }
 
-    @Test fun `same controller reclaims board after bluetooth restart with next term`() = runTest {
+    @Test fun `same controller reclaims board after transient physical reconnect with next term`() = runTest {
         val board = PhysicalBoardId("kilter:serial:bluetooth-restart")
         val (controller) = settled("controller", board, now = 100)
         controller.expireLocalDeadlines(200)
@@ -276,6 +338,11 @@ class BoardCellCoordinatorTest {
         val completed = target.completeHandover(board, "tx", 105)!!
         assertTrue(source.acceptEvent("target", completed, 105) is BoardCellApplyResult.Applied)
         assertEquals(HandoverPhase.COMPLETED, source.snapshot(board)!!.handover!!.phase)
+        val sourceLeft = target.leaveMember(board, "source",
+            BoardCellMemberLeaveReason.VOLUNTARY)!!
+        assertTrue(source.acceptEvent("target", sourceLeft, 106) is BoardCellApplyResult.Applied)
+        assertFalse("source" in target.snapshot(board)!!.members)
+        assertFalse("source" in source.snapshot(board)!!.members)
         assertTrue(target.project(board, BoardProjection("new", 40), 106) { true } is ProjectionResult.Committed)
     }
 

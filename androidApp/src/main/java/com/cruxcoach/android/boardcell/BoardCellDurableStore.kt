@@ -3,6 +3,7 @@ package com.cruxcoach.android.boardcell
 /** Synchronous durability boundary: methods return only after stable storage. */
 interface BoardCellDurableStore {
     fun persistSnapshot(snapshot: BoardCellSnapshot)
+    fun clearSnapshot(boardId: PhysicalBoardId) = Unit
     fun persistSnapshotWithAck(snapshot: BoardCellSnapshot, ack: BoardCommandAck)
     fun persistIntent(intent: BoardWriteIntent)
     fun markPhysicalWriteSucceeded(intent: BoardWriteIntent)
@@ -15,6 +16,7 @@ interface BoardCellDurableStore {
 
 object NoOpBoardCellDurableStore : BoardCellDurableStore {
     override fun persistSnapshot(snapshot: BoardCellSnapshot) = Unit
+    override fun clearSnapshot(boardId: PhysicalBoardId) = Unit
     override fun persistSnapshotWithAck(snapshot: BoardCellSnapshot, ack: BoardCommandAck) = Unit
     override fun persistIntent(intent: BoardWriteIntent) = Unit
     override fun markPhysicalWriteSucceeded(intent: BoardWriteIntent) = Unit

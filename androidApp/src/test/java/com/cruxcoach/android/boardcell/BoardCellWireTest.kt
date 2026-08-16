@@ -291,6 +291,71 @@ class BoardCellWireTest {
             shared.controllerTerm, "join-forged-frame"), 4) is BoardCellApplyResult.Rejected)
     }
 
+    @Test fun `authenticated multi hop heartbeat keeps member live without direct peer view`() = runTest {
+        val board = PhysicalBoardId("board")
+        val link = Link("host", direct = emptySet())
+        val transport = BoardCellMeshTransport(link)
+        val host = BoardCellCoordinator("host", transport, settleMs = 0)
+        transport.attach(host)
+        host.beginClaim(board, BoardCellId("cell"), 1)
+        host.settle(board, 1)
+        host.joinMember(board, "member", 1)
+        val snapshot = host.snapshot(board)!!
+        transport.rememberSnapshot(snapshot)
+
+        assertNull(transport.receive("member", frame("member",
+            BoardCellWireMessage.MemberHeartbeat(2), snapshot.epoch,
+            snapshot.controllerTerm, "member-heartbeat-01"), 5))
+        assertTrue(host.evictExpiredMembers(board, 10, 6).isEmpty())
+        assertTrue("member" in host.snapshot(board)!!.members)
+        assertEquals(1, host.evictExpiredMembers(board, 11, 6).size)
+    }
+
+    @Test fun `voluntary leave request is authenticated and sequenced by controller`() = runTest {
+        val board = PhysicalBoardId("board")
+        val link = Link("host")
+        val transport = BoardCellMeshTransport(link)
+        val host = BoardCellCoordinator("host", transport, settleMs = 0)
+        transport.attach(host)
+        host.beginClaim(board, BoardCellId("cell"), 1)
+        host.settle(board, 1)
+        host.joinMember(board, "member", 1)
+        val snapshot = host.snapshot(board)!!
+        transport.rememberSnapshot(snapshot)
+        val request = BoardCellWireMessage.MemberLeaveRequest(
+            BoardCellLeaveRequest("member-leave-01"))
+
+        assertNull(transport.receive("member", frame("member", request, snapshot.epoch,
+            snapshot.controllerTerm, "member-leave-frame"), 2))
+        assertFalse("member" in host.snapshot(board)!!.members)
+        assertTrue(link.sent.any { (target, bytes) -> target == "member" &&
+            ((BoardCellWireCodec.decode(bytes).message as? BoardCellWireMessage.Event)?.value?.event
+                is BoardCellEvent.MemberLeft) })
+    }
+
+    @Test fun `removed stale member receives exclusion snapshot on reconnect digest`() = runTest {
+        val board = PhysicalBoardId("board")
+        val link = Link("host")
+        val transport = BoardCellMeshTransport(link)
+        val host = BoardCellCoordinator("host", transport, settleMs = 0)
+        transport.attach(host)
+        host.beginClaim(board, BoardCellId("cell"), 1)
+        host.settle(board, 1)
+        host.joinMember(board, "member", 1)
+        val stale = host.snapshot(board)!!
+        host.leaveMember(board, "member", BoardCellMemberLeaveReason.LIVENESS_TIMEOUT)
+        val current = host.snapshot(board)!!
+        transport.rememberSnapshot(current)
+        link.sent.clear()
+
+        val digest = BoardCellWireMessage.AntiEntropy(stale.sequence, stale.stateHash)
+        assertTrue(transport.receive("member", frame("member", digest, current.epoch,
+            current.controllerTerm, "stale-member-digest"), 9) is BoardCellApplyResult.Rejected)
+        val repair = BoardCellWireCodec.decode(link.sent.single().second).message
+            as BoardCellWireMessage.Snapshot
+        assertFalse("member" in repair.value.members)
+    }
+
     @Test fun `frozen controller cannot extend membership on a stale history`() = runTest {
         val board = PhysicalBoardId("board")
         val link = Link("host", direct = setOf("member", "candidate"))

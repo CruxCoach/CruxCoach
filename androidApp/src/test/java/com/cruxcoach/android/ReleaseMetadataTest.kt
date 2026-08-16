@@ -35,13 +35,13 @@ class ReleaseMetadataTest {
     @Test
     fun `the build identifies as this release`() {
         assertEquals("0.2.3", stringField("versionName"))
-        assertEquals(12, intField("versionCode"))
+        assertEquals(13, intField("versionCode"))
         assertEquals(
             "0.2.3",
             BuildConfig.VERSION_NAME.removeSuffix("-dev"),
             "debug builds may carry the configured -dev suffix",
         )
-        assertEquals(12, BuildConfig.VERSION_CODE)
+        assertEquals(13, BuildConfig.VERSION_CODE)
     }
 
     @Test

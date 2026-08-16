@@ -23,7 +23,6 @@ class BoardCellReplica(val localMemberId: String, initial: BoardCellSnapshot? = 
                     incoming.lineageId == BoardCellLineage.resolvedId(incoming.cellId, incoming.resolvedLineages) &&
                     incoming.availability == BoardCellAvailability.FROZEN_WRITE_RECOVERY
                 if (validResolution) {
-                    if (localMemberId !in incoming.members) return BoardCellApplyResult.Rejected("local node is not a cell member")
                     snapshot = incoming
                     return BoardCellApplyResult.Applied(incoming)
                 }
@@ -43,7 +42,12 @@ class BoardCellReplica(val localMemberId: String, initial: BoardCellSnapshot? = 
                 }
             }
         }
-        if (localMemberId !in incoming.members) return BoardCellApplyResult.Rejected("local node is not a cell member")
+        // A newer controller snapshot that excludes this node is the canonical
+        // membership tombstone. Retain it just long enough for the manager to
+        // tear down local realm state; initial snapshots still require an
+        // admitted local member and therefore cannot be used for passive join.
+        if (localMemberId !in incoming.members && current == null)
+            return BoardCellApplyResult.Rejected("local node is not a cell member")
         snapshot = incoming
         return BoardCellApplyResult.Applied(incoming)
     }
@@ -99,7 +103,16 @@ class BoardCellReplica(val localMemberId: String, initial: BoardCellSnapshot? = 
                     playlist = event.playlist,
                     playlistRevision = current.playlistRevision + 1,
                 )
-                is BoardCellEvent.MemberJoined -> current.copy(members = current.members + event.memberId)
+                is BoardCellEvent.MemberJoined -> current.copy(
+                    members = current.members + event.memberId,
+                    membershipRevision = current.membershipRevision +
+                        if (event.memberId in current.members) 0 else 1,
+                )
+                is BoardCellEvent.MemberLeft -> current.copy(
+                    members = current.members - event.memberId,
+                    membershipRevision = current.membershipRevision +
+                        if (event.memberId in current.members) 1 else 0,
+                )
                 is BoardCellEvent.ControllerHeartbeat -> current.copy(controllerHeartbeat = event.heartbeat)
                 is BoardCellEvent.HandoverPrepared -> current.copy(handover = event.value)
                 is BoardCellEvent.HandoverSourceReleased -> current.copy(
@@ -125,6 +138,10 @@ class BoardCellReplica(val localMemberId: String, initial: BoardCellSnapshot? = 
                     controllerHeartbeat = 0,
                     availability = BoardCellAvailability.ACTIVE,
                     handover = null,
+                    members = if (event.controllerId == current.controllerId) current.members
+                        else current.members - current.controllerId,
+                    membershipRevision = current.membershipRevision +
+                        if (event.controllerId == current.controllerId) 0 else 1,
                     lastControllerRecovery = BoardCellControllerRecoveryProof(
                         claimantId = event.controllerId,
                         baseControllerId = current.controllerId,
@@ -142,6 +159,8 @@ class BoardCellReplica(val localMemberId: String, initial: BoardCellSnapshot? = 
                     lineageId = event.newLineageId, epoch = event.newEpoch,
                     resolvedLineages = event.resolvedLineages,
                     members = current.members + event.resolvedMembers,
+                    membershipRevision = current.membershipRevision +
+                        if (event.resolvedMembers.all { it in current.members }) 0 else 1,
                     projection = null, projectionKnown = false,
                     availability = BoardCellAvailability.FROZEN_WRITE_RECOVERY, handover = null,
                     lastControllerRecovery = null)
