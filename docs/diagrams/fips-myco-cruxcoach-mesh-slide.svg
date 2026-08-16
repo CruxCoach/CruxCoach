@@ -1,0 +1,198 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+  <defs>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#0f172a" flood-opacity="0.09"/>
+    </filter>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f8fafc"/>
+      <stop offset="0.5" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#f1f5f9"/>
+    </linearGradient>
+    <linearGradient id="blueGlow" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#eff6ff"/>
+      <stop offset="1" stop-color="#eef2ff"/>
+    </linearGradient>
+    <linearGradient id="purpleGlow" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#faf5ff"/>
+      <stop offset="1" stop-color="#f5f3ff"/>
+    </linearGradient>
+    <linearGradient id="greenGlow" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ecfdf5"/>
+      <stop offset="1" stop-color="#f0fdfa"/>
+    </linearGradient>
+    <marker id="arrowBlue" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#2563eb"/></marker>
+    <marker id="arrowPurple" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#7c3aed"/></marker>
+    <marker id="arrowGreen" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#059669"/></marker>
+
+    <g id="phone">
+      <rect x="-17" y="-25" width="34" height="50" rx="8" fill="#1e293b"/>
+      <rect x="-12" y="-18" width="24" height="34" rx="3" fill="#ffffff"/>
+      <circle cx="0" cy="20" r="2" fill="#94a3b8"/>
+    </g>
+    <g id="nodeBlue"><circle r="16" fill="#2563eb" stroke="#fff" stroke-width="4"/><circle r="4" fill="#dbeafe"/></g>
+    <g id="nodePurple"><circle r="16" fill="#7c3aed" stroke="#fff" stroke-width="4"/><circle r="4" fill="#ede9fe"/></g>
+    <g id="nodeGreen"><circle r="16" fill="#059669" stroke="#fff" stroke-width="4"/><circle r="4" fill="#d1fae5"/></g>
+    <g id="nodeMuted"><circle r="13" fill="#cbd5e1" stroke="#fff" stroke-width="3"/><circle r="3.5" fill="#64748b"/></g>
+    <g id="board">
+      <rect x="-29" y="-25" width="58" height="50" rx="8" fill="#0f172a"/>
+      <circle cx="-15" cy="-11" r="4" fill="#f59e0b"/><circle cx="2" cy="-14" r="4" fill="#22c55e"/><circle cx="17" cy="-5" r="4" fill="#38bdf8"/>
+      <circle cx="-6" cy="4" r="4" fill="#f43f5e"/><circle cx="13" cy="12" r="4" fill="#a78bfa"/><circle cx="-18" cy="15" r="4" fill="#fde047"/>
+    </g>
+    <g id="check"><circle r="12" fill="#16a34a"/><path d="M-5 0 L-1 4 L6 -5" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></g>
+  </defs>
+
+  <rect width="1600" height="900" fill="url(#bg)"/>
+  <circle cx="96" cy="50" r="135" fill="#dbeafe" opacity="0.32"/>
+  <circle cx="1510" cy="830" r="210" fill="#d1fae5" opacity="0.28"/>
+
+  <text x="800" y="62" font-size="39" font-weight="850" fill="#0f172a" text-anchor="middle">Ein Mesh-Protokoll. Drei sehr verschiedene Grenzen.</text>
+  <text x="800" y="98" font-size="17" fill="#475569" text-anchor="middle">FIPS liefert Identität, Verschlüsselung und Multi-Hop — das Produkt entscheidet, wer sich womit verbindet.</text>
+
+  <!-- FIPS card -->
+  <g filter="url(#shadow)">
+    <rect x="42" y="126" width="486" height="650" rx="24" fill="url(#blueGlow)" stroke="#bfdbfe"/>
+  </g>
+  <rect x="68" y="150" width="154" height="29" rx="14.5" fill="#dbeafe"/>
+  <text x="145" y="170" font-size="12" font-weight="800" fill="#1d4ed8" letter-spacing="1" text-anchor="middle">GLOBALER UNDERLAY</text>
+  <text x="68" y="220" font-size="30" font-weight="850" fill="#0f172a">FIPS allgemein</text>
+  <text x="68" y="247" font-size="14.5" fill="#475569">Das allgemeine, verschlüsselte IPv6-Mesh</text>
+
+  <!-- global network -->
+  <g stroke="#93c5fd" stroke-width="2.2" fill="none">
+    <ellipse cx="285" cy="363" rx="178" ry="96" stroke-dasharray="5 6" opacity="0.75"/>
+    <path d="M118 355 Q285 260 451 355 M118 370 Q285 460 451 370" opacity="0.45"/>
+    <path d="M150 318 L228 288 L306 340 L405 304 M150 318 L177 408 L306 340 L377 414 M228 288 L285 431 L405 304 M177 408 L285 431 L377 414"/>
+  </g>
+  <use href="#nodeBlue" x="150" y="318"/><use href="#nodeBlue" x="228" y="288"/>
+  <use href="#nodeBlue" x="306" y="340"/><use href="#nodeBlue" x="405" y="304"/>
+  <use href="#nodeBlue" x="177" y="408"/><use href="#nodeBlue" x="285" y="431"/><use href="#nodeBlue" x="377" y="414"/>
+  <rect x="178" y="457" width="214" height="27" rx="13.5" fill="#fff" stroke="#bfdbfe"/>
+  <text x="285" y="476" font-size="12.5" font-weight="700" fill="#1d4ed8" text-anchor="middle">ein globaler Adress- &amp; Routingraum</text>
+
+  <g font-size="14" fill="#334155">
+    <circle cx="76" cy="520" r="4" fill="#2563eb"/><text x="90" y="525"><tspan font-weight="700">Identität:</tspan> dauerhafter Node-Key / npub</text>
+    <circle cx="76" cy="549" r="4" fill="#2563eb"/><text x="90" y="554"><tspan font-weight="700">Reichweite:</tspan> über konfigurierte Transportpfade</text>
+    <circle cx="76" cy="578" r="4" fill="#2563eb"/><text x="90" y="583"><tspan font-weight="700">Scope:</tspan> anwendungsneutral, kein Realm-Konzept</text>
+  </g>
+
+  <line x1="68" y1="608" x2="502" y2="608" stroke="#bfdbfe"/>
+  <text x="68" y="638" font-size="12" font-weight="800" fill="#1d4ed8" letter-spacing="1">WIE KOMMT EIN NODE DAZU?</text>
+  <g transform="translate(78,675)">
+    <circle cx="22" cy="0" r="21" fill="#dbeafe"/><text x="22" y="6" font-size="17" font-weight="800" fill="#1d4ed8" text-anchor="middle">1</text>
+    <circle cx="150" cy="0" r="21" fill="#dbeafe"/><text x="150" y="6" font-size="17" font-weight="800" fill="#1d4ed8" text-anchor="middle">2</text>
+    <circle cx="278" cy="0" r="21" fill="#dbeafe"/><text x="278" y="6" font-size="17" font-weight="800" fill="#1d4ed8" text-anchor="middle">3</text>
+    <line x1="45" y1="0" x2="124" y2="0" stroke="#2563eb" stroke-width="2" marker-end="url(#arrowBlue)"/>
+    <line x1="173" y1="0" x2="252" y2="0" stroke="#2563eb" stroke-width="2" marker-end="url(#arrowBlue)"/>
+    <text x="22" y="37" font-size="11.5" fill="#475569" text-anchor="middle">Peer finden</text>
+    <text x="150" y="37" font-size="11.5" fill="#475569" text-anchor="middle">Noise-Auth</text>
+    <text x="278" y="37" font-size="11.5" fill="#475569" text-anchor="middle">Route bilden</text>
+  </g>
+  <rect x="381" y="652" width="121" height="48" rx="12" fill="#2563eb"/>
+  <text x="441" y="672" font-size="11.5" font-weight="700" fill="#fff" text-anchor="middle">Join = Teil des</text>
+  <text x="441" y="689" font-size="11.5" font-weight="700" fill="#fff" text-anchor="middle">Underlays</text>
+
+  <!-- Myco card -->
+  <g filter="url(#shadow)">
+    <rect x="557" y="126" width="486" height="650" rx="24" fill="url(#purpleGlow)" stroke="#ddd6fe"/>
+  </g>
+  <rect x="583" y="150" width="236" height="29" rx="14.5" fill="#ede9fe"/>
+  <text x="701" y="170" font-size="12" font-weight="800" fill="#6d28d9" letter-spacing="1" text-anchor="middle">LOKALER CIRCLE · GLOBALER FIPS</text>
+  <text x="583" y="220" font-size="30" font-weight="850" fill="#0f172a">Myco</text>
+  <text x="583" y="247" font-size="14.5" fill="#475569">Lokales Vertrauen auf dem globalen Underlay</text>
+
+  <!-- Myco layered network -->
+  <g stroke="#cbd5e1" stroke-width="1.8" fill="none" opacity="0.8">
+    <path d="M610 320 L686 282 L796 300 L924 282 M610 320 L641 411 L748 431 L887 412 L964 345 M686 282 L748 431 M796 300 L641 411 M796 300 L887 412 M924 282 L964 345 L887 412"/>
+  </g>
+  <use href="#nodeMuted" x="610" y="320"/><use href="#nodeMuted" x="686" y="282"/>
+  <use href="#nodeMuted" x="924" y="282"/><use href="#nodeMuted" x="964" y="345"/>
+  <use href="#nodeMuted" x="641" y="411"/><use href="#nodeMuted" x="748" y="431"/><use href="#nodeMuted" x="887" y="412"/>
+  <ellipse cx="806" cy="352" rx="127" ry="92" fill="#f5f3ff" fill-opacity="0.9" stroke="#7c3aed" stroke-width="2.5" stroke-dasharray="7 5"/>
+  <g stroke="#a78bfa" stroke-width="3">
+    <line x1="730" y1="331" x2="802" y2="292"/><line x1="802" y1="292" x2="884" y2="338"/><line x1="730" y1="331" x2="785" y2="404"/><line x1="785" y1="404" x2="884" y2="338"/>
+  </g>
+  <use href="#nodePurple" x="730" y="331"/><use href="#nodePurple" x="802" y="292"/><use href="#nodePurple" x="884" y="338"/><use href="#nodePurple" x="785" y="404"/>
+  <rect x="750" y="344" width="116" height="27" rx="13.5" fill="#7c3aed"/>
+  <text x="808" y="363" font-size="12.5" font-weight="800" fill="#fff" text-anchor="middle">YOUR CIRCLE</text>
+  <text x="811" y="469" font-size="12.5" font-weight="700" fill="#6d28d9" text-anchor="middle">Apps &amp; Sync lokal · Routing-Unterbau bleibt global</text>
+
+  <g font-size="14" fill="#334155">
+    <circle cx="591" cy="520" r="4" fill="#7c3aed"/><text x="605" y="525"><tspan font-weight="700">Identität:</tspan> FIPS-Node plus Myco-Pairing</text>
+    <circle cx="591" cy="549" r="4" fill="#7c3aed"/><text x="605" y="554"><tspan font-weight="700">Reichweite:</tspan> globaler FIPS-Unterbau</text>
+    <circle cx="591" cy="578" r="4" fill="#7c3aed"/><text x="605" y="583"><tspan font-weight="700">Scope:</tspan> nsites fließen im lokalen Circle</text>
+  </g>
+
+  <line x1="583" y1="608" x2="1017" y2="608" stroke="#ddd6fe"/>
+  <text x="583" y="638" font-size="12" font-weight="800" fill="#6d28d9" letter-spacing="1">WIE JOINT MAN DEN CIRCLE?</text>
+  <g transform="translate(593,675)">
+    <circle cx="22" cy="0" r="21" fill="#ede9fe"/><text x="22" y="6" font-size="17" font-weight="800" fill="#6d28d9" text-anchor="middle">1</text>
+    <circle cx="150" cy="0" r="21" fill="#ede9fe"/><text x="150" y="6" font-size="17" font-weight="800" fill="#6d28d9" text-anchor="middle">2</text>
+    <circle cx="278" cy="0" r="21" fill="#ede9fe"/><text x="278" y="6" font-size="17" font-weight="800" fill="#6d28d9" text-anchor="middle">3</text>
+    <line x1="45" y1="0" x2="124" y2="0" stroke="#7c3aed" stroke-width="2" marker-end="url(#arrowPurple)"/>
+    <line x1="173" y1="0" x2="252" y2="0" stroke="#7c3aed" stroke-width="2" marker-end="url(#arrowPurple)"/>
+    <text x="22" y="37" font-size="11.5" fill="#475569" text-anchor="middle">QR / NFC</text>
+    <text x="150" y="37" font-size="11.5" fill="#475569" text-anchor="middle">1× Invite</text>
+    <text x="278" y="37" font-size="11.5" fill="#475569" text-anchor="middle">beidseitig gepairt</text>
+  </g>
+  <rect x="896" y="652" width="121" height="48" rx="12" fill="#7c3aed"/>
+  <text x="956" y="672" font-size="11.5" font-weight="700" fill="#fff" text-anchor="middle">Join = lokale</text>
+  <text x="956" y="689" font-size="11.5" font-weight="700" fill="#fff" text-anchor="middle">Vertrauensbeziehung</text>
+
+  <!-- CruxCoach card -->
+  <g filter="url(#shadow)">
+    <rect x="1072" y="126" width="486" height="650" rx="24" fill="url(#greenGlow)" stroke="#a7f3d0"/>
+  </g>
+  <rect x="1098" y="150" width="218" height="29" rx="14.5" fill="#d1fae5"/>
+  <text x="1207" y="170" font-size="12" font-weight="800" fill="#047857" letter-spacing="1" text-anchor="middle">LOCAL ONLY · REALM-SCOPED</text>
+  <text x="1098" y="220" font-size="30" font-weight="850" fill="#0f172a">CruxCoach</text>
+  <text x="1098" y="247" font-size="14.5" fill="#475569">Isolierte FIPS-Insel pro BoardCell-Realm</text>
+
+  <!-- isolated realms -->
+  <rect x="1100" y="278" width="270" height="176" rx="72" fill="#ecfdf5" stroke="#059669" stroke-width="2.5"/>
+  <text x="1235" y="303" font-size="12" font-weight="800" fill="#047857" text-anchor="middle">REALM A · KILTER BOARD</text>
+  <g stroke="#34d399" stroke-width="2.7">
+    <line x1="1150" y1="356" x2="1237" y2="337"/><line x1="1237" y1="337" x2="1319" y2="374"/><line x1="1150" y1="356" x2="1210" y2="414"/><line x1="1210" y1="414" x2="1319" y2="374"/>
+  </g>
+  <use href="#nodeGreen" x="1150" y="356"/><use href="#nodeGreen" x="1237" y="337"/><use href="#nodeGreen" x="1319" y="374"/><use href="#nodeGreen" x="1210" y="414"/>
+  <use href="#board" x="1286" y="420"/>
+  <rect x="1395" y="306" width="134" height="120" rx="50" fill="#fff7ed" stroke="#fb923c" stroke-width="2.2"/>
+  <text x="1462" y="330" font-size="11.5" font-weight="800" fill="#c2410c" text-anchor="middle">REALM B</text>
+  <line x1="1430" y1="365" x2="1494" y2="365" stroke="#fdba74" stroke-width="2.5"/>
+  <circle cx="1430" cy="365" r="14" fill="#f97316" stroke="#fff" stroke-width="3"/><circle cx="1494" cy="365" r="14" fill="#f97316" stroke="#fff" stroke-width="3"/>
+  <use href="#board" x="1462" y="401" transform="translate(1462 401) scale(.65) translate(-1462 -401)"/>
+  <line x1="1375" y1="367" x2="1390" y2="367" stroke="#ef4444" stroke-width="4" stroke-dasharray="4 4"/>
+  <path d="M1380 355 L1388 379 M1388 355 L1380 379" stroke="#ef4444" stroke-width="2.5"/>
+  <text x="1315" y="475" font-size="12.5" font-weight="700" fill="#047857" text-anchor="middle">keine globale Kante · kein Cross-Realm-Transit</text>
+
+  <g font-size="14" fill="#334155">
+    <circle cx="1106" cy="520" r="4" fill="#059669"/><text x="1120" y="525"><tspan font-weight="700">Identität:</tspan> eigener Key je Realm</text>
+    <circle cx="1106" cy="549" r="4" fill="#059669"/><text x="1120" y="554"><tspan font-weight="700">Reichweite:</tspan> nur die aktive BoardCell</text>
+    <circle cx="1106" cy="578" r="4" fill="#059669"/><text x="1120" y="583"><tspan font-weight="700">Scope:</tspan> Realm + Cell müssen exakt passen</text>
+  </g>
+
+  <line x1="1098" y1="608" x2="1532" y2="608" stroke="#a7f3d0"/>
+  <text x="1098" y="638" font-size="12" font-weight="800" fill="#047857" letter-spacing="1">WIE JOINT MAN DAS BOARD-MESH?</text>
+  <g transform="translate(1108,675)">
+    <circle cx="22" cy="0" r="21" fill="#d1fae5"/><text x="22" y="6" font-size="17" font-weight="800" fill="#047857" text-anchor="middle">1</text>
+    <circle cx="150" cy="0" r="21" fill="#d1fae5"/><text x="150" y="6" font-size="17" font-weight="800" fill="#047857" text-anchor="middle">2</text>
+    <circle cx="278" cy="0" r="21" fill="#d1fae5"/><text x="278" y="6" font-size="17" font-weight="800" fill="#047857" text-anchor="middle">3</text>
+    <line x1="45" y1="0" x2="124" y2="0" stroke="#059669" stroke-width="2" marker-end="url(#arrowGreen)"/>
+    <line x1="173" y1="0" x2="252" y2="0" stroke="#059669" stroke-width="2" marker-end="url(#arrowGreen)"/>
+    <text x="22" y="37" font-size="11.5" fill="#475569" text-anchor="middle">Realm sehen</text>
+    <text x="150" y="37" font-size="11.5" fill="#475569" text-anchor="middle">1 Member treffen</text>
+    <text x="278" y="37" font-size="11.5" fill="#475569" text-anchor="middle">State synchron</text>
+  </g>
+  <rect x="1411" y="652" width="121" height="48" rx="12" fill="#059669"/>
+  <text x="1471" y="672" font-size="11.5" font-weight="700" fill="#fff" text-anchor="middle">Join = offen im</text>
+  <text x="1471" y="689" font-size="11.5" font-weight="700" fill="#fff" text-anchor="middle">passenden Realm</text>
+
+  <!-- takeaway strip -->
+  <rect x="88" y="805" width="1424" height="64" rx="20" fill="#0f172a"/>
+  <text x="124" y="832" font-size="12" font-weight="800" fill="#93c5fd" letter-spacing="1">MERKSATZ</text>
+  <text x="124" y="855" font-size="16" font-weight="650" fill="#fff">FIPS verbindet Nodes.</text>
+  <text x="512" y="844" font-size="16" font-weight="650" fill="#fff">Myco verbindet Menschen &amp; ihre Apps</text>
+  <text x="512" y="862" font-size="13" fill="#c4b5fd">— lokal vertraut, global transportiert.</text>
+  <text x="1057" y="844" font-size="16" font-weight="650" fill="#fff">CruxCoach verbindet ein konkretes Board</text>
+  <text x="1057" y="862" font-size="13" fill="#6ee7b7">— lokal, permissionless und Realm-isoliert.</text>
+  <line x1="472" y1="819" x2="472" y2="855" stroke="#334155"/><line x1="1017" y1="819" x2="1017" y2="855" stroke="#334155"/>
+</svg>
