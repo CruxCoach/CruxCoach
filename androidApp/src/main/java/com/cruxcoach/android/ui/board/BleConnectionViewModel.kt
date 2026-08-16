@@ -716,14 +716,42 @@ class BleConnectionViewModel @Inject constructor(
     }
 
     fun disconnect() {
-        if (boardCellManager.handoverBeforeControllerDisconnect()) return
-        bleConnection.disconnect()
+        // Disconnect is an explicit opt-out, not a transient radio failure.
+        // Cancel every coroutine that could already be waiting to reconnect
+        // before leaving the BoardCell; otherwise a delayed scan/session job
+        // can reconnect the board and immediately bootstrap another mesh.
+        autoConnectJob?.cancel(); autoConnectJob = null
+        autoConnectScanJob?.cancel(); autoConnectScanJob = null
+        directReconnectJob?.cancel(); directReconnectJob = null
+        disconnectTimeoutJob?.cancel(); disconnectTimeoutJob = null
+        pendingBoard = null
+        bleScanner.stopScan()
+        _state.update {
+            it.copy(
+                isAutoConnectScan = false,
+                directReconnectInFlight = false,
+                isRequestingDisconnect = false,
+                controllerRequestBoard = null,
+                controllerRequestState = ControllerRequestState.IDLE,
+            )
+        }
+        manualDisconnectJob?.cancel()
+        manualDisconnectJob = viewModelScope.safeLaunch(TAG) {
+            Log.i(TAG, "User disconnect: leaving BoardCell before closing board GATT")
+            try {
+                boardCellManager.leaveMeshForBoardDisconnect()
+            } finally {
+                bleConnection.disconnect()
+                Log.i(TAG, "User disconnect: BoardCell left and board GATT closed")
+            }
+        }
     }
 
     private var disconnectTimeoutJob: Job? = null
     private var autoConnectJob: Job? = null
     private var autoConnectScanJob: Job? = null
     private var directReconnectJob: Job? = null
+    private var manualDisconnectJob: Job? = null
     private var disconnectCooldownUntil = 0L
     /** Set after accepting a remote disconnect — suppresses the dialog until next connect. */
     private var suppressDisconnectDialog = false

@@ -18,6 +18,7 @@ import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -609,6 +610,35 @@ class BoardCellManager @Inject constructor(
         _membershipTransition.value = if (left) MeshMembershipTransition.IDLE
             else MeshMembershipTransition.ERROR
         left
+    }
+
+    /** A user-requested physical-board disconnect is also an unconditional
+     * local mesh leave. Prefer the canonical leave/handover path, but never
+     * retain or resurrect local membership merely because the last peer became
+     * unreachable while the user was pressing Disconnect. Remote members will
+     * converge through their normal heartbeat eviction in that partition. */
+    suspend fun leaveMeshForBoardDisconnect(): Boolean = withContext(NonCancellable) {
+        nearbyJoinMutex.withLock {
+            _membershipTransition.value = MeshMembershipTransition.LEAVING
+            val initial = snapshot()
+            try {
+                val canonical = runCatching { leaveCurrentMeshLocked() }.getOrElse { failure ->
+                    FipsDebugLog.warning("boardcell", "user_disconnect_leave_failed",
+                        "error" to (failure.message ?: failure.javaClass.simpleName))
+                    false
+                }
+                if (!canonical && initial != null) {
+                    FipsDebugLog.warning("boardcell", "user_disconnect_forced_local_leave",
+                        "cell" to FipsDebugLog.id(initial.cellId.value),
+                        "controller" to FipsDebugLog.id(initial.controllerId),
+                        "members" to initial.members.size)
+                    teardownLocalMembership(initial)
+                }
+                canonical
+            } finally {
+                _membershipTransition.value = MeshMembershipTransition.IDLE
+            }
+        }
     }
 
     private suspend fun leaveCurrentMeshLocked(): Boolean {
