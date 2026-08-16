@@ -8,6 +8,7 @@ import com.cruxcoach.android.boardcell.IncomingControllerRequest
 import com.cruxcoach.android.fips.FipsMeshRuntime
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -15,7 +16,6 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.delay
 
 data class FipsMeshPeerUi(
     val npub: String,
@@ -39,6 +39,7 @@ data class NearbyFipsMeshUi(
 
 data class FipsMeshUiState(
     val running: Boolean = false,
+    val bluetoothAvailable: Boolean = true,
     val boardName: String? = null,
     val boardBrand: String? = null,
     val physicalBoardId: String? = null,
@@ -57,48 +58,33 @@ class FipsMeshViewModel @Inject constructor(
     private val boardCellManager: BoardCellManager,
     boardConnection: BoardBleConnection,
 ) : ViewModel() {
-    private var autoJoinAttemptedCell: String? = null
-    private val _joiningMeshName = MutableStateFlow<String?>(null)
-    val joiningMeshName = _joiningMeshName.asStateFlow()
+    private val _joiningBoardCellId = MutableStateFlow<String?>(null)
+    val joiningBoardCellId = _joiningBoardCellId.asStateFlow()
+    private val _joinFailed = MutableStateFlow(false)
+    val joinFailed = _joinFailed.asStateFlow()
     val incomingControllerRequest = boardCellManager.incomingControllerRequest
 
     init {
         runtime.startNearbyDiscovery()
         viewModelScope.launch {
-            boardCellManager.snapshots.filterNotNull().collect { _joiningMeshName.value = null }
-        }
-        viewModelScope.launch {
-            combine(runtime.nearbyMeshes, boardCellManager.snapshots) { nearby, snapshot -> nearby to snapshot }
-                .collect { (nearby, snapshot) ->
-                    if (snapshot != null) return@collect
-                    val only = nearby.filter { !it.matchesActiveRealm && it.joinableBoardCellId != null }
-                        .singleOrNull() ?: return@collect
-                    if (autoJoinAttemptedCell == only.joinableBoardCellId) return@collect
-                    delay(1_500)
-                    val stable = runtime.nearbyMeshes.value
-                        .filter { !it.matchesActiveRealm && it.joinableBoardCellId != null }.singleOrNull()
-                    if (stable?.joinableBoardCellId == only.joinableBoardCellId &&
-                        boardCellManager.snapshots.value == null) {
-                        autoJoinAttemptedCell = only.joinableBoardCellId
-                        _joiningMeshName.value = only.boardName ?: "Board-Mesh"
-                        if (!boardCellManager.joinNearbyMesh(only.joinableBoardCellId!!, only.boardName)) {
-                            _joiningMeshName.value = null
-                        }
-                    }
-                }
+            boardCellManager.snapshots.filterNotNull().collect {
+                _joiningBoardCellId.value = null
+                _joinFailed.value = false
+            }
         }
     }
 
     val state = combine(
-        runtime.running,
+        combine(runtime.running, runtime.bluetoothAvailable) { running, bluetooth -> running to bluetooth },
         runtime.peers,
         runtime.nearbyMeshes,
         boardCellManager.snapshots,
         boardConnection.connectedBoardDescriptor,
-    ) { running, peers, nearby, snapshot, board ->
+    ) { transport, peers, nearby, snapshot, board ->
         val direct = runtime.directAuthenticatedPeers()
         FipsMeshUiState(
-            running = running,
+            running = transport.first,
+            bluetoothAvailable = transport.second,
             boardName = board?.displayName ?: nearby.firstOrNull { it.matchesActiveRealm }?.boardName,
             boardBrand = board?.boardBrand?.name,
             physicalBoardId = snapshot?.physicalBoardId?.value,
@@ -124,7 +110,9 @@ class FipsMeshViewModel @Inject constructor(
                     cellTag = it.cellTag,
                     rssi = it.rssi,
                     lastSeenMs = it.lastSeenMs,
-                    currentMesh = it.matchesActiveRealm,
+                    // Realm-tag equality only says the radio is currently
+                    // trying that realm; it does not mean membership/ownership.
+                    currentMesh = snapshot?.cellId?.value == it.joinableBoardCellId,
                     joinableBoardCellId = it.joinableBoardCellId,
                     boardName = it.boardName,
                 )
@@ -134,13 +122,27 @@ class FipsMeshViewModel @Inject constructor(
 
     fun join(mesh: NearbyFipsMeshUi) {
         val cellId = mesh.joinableBoardCellId ?: return
-        _joiningMeshName.value = mesh.boardName ?: "Board-Mesh"
+        _joinFailed.value = false
+        _joiningBoardCellId.value = cellId
         viewModelScope.launch {
-            if (!boardCellManager.joinNearbyMesh(cellId, mesh.boardName)) _joiningMeshName.value = null
+            try {
+                val joined = try {
+                    boardCellManager.joinNearbyMesh(cellId, mesh.boardName)
+                } catch (failure: CancellationException) {
+                    throw failure
+                } catch (_: Exception) {
+                    false
+                }
+                _joinFailed.value = !joined
+            } finally {
+                _joiningBoardCellId.value = null
+            }
         }
     }
 
     fun ensureDiscovery() = runtime.startNearbyDiscovery()
+
+    fun dismissJoinError() { _joinFailed.value = false }
 
     fun approveControllerTransfer(request: IncomingControllerRequest) =
         boardCellManager.approveControllerTransfer(request.requestId)

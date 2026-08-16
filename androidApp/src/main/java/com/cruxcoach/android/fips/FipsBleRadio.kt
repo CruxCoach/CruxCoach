@@ -52,7 +52,6 @@ internal class FipsBleRadio(
     private val advertiseGeneration = AtomicInteger(0)
     private val scanGeneration = AtomicInteger(0)
     private val observedNonceTags = ConcurrentHashMap<String, Long>()
-    private val observedAddresses = ConcurrentHashMap<String, Long>()
     private val lastDiscoveryLog = ConcurrentHashMap<String, Long>()
 
     fun bindBridge(handle: Long) {
@@ -244,8 +243,6 @@ internal class FipsBleRadio(
         val nonceTag = advertisement.nonceTag.toHex()
         observedNonceTags[nonceTag] = System.currentTimeMillis()
         observedNonceTags.entries.removeAll { System.currentTimeMillis() - it.value > DirectJoinProof.MAX_AGE_MS }
-        observedAddresses[result.device.address.uppercase()] = System.currentTimeMillis()
-        observedAddresses.entries.removeAll { System.currentTimeMillis() - it.value > DirectJoinProof.MAX_AGE_MS }
         val psm = advertisement.psm
         if (psm > 0) {
             val now = System.currentTimeMillis()
@@ -277,7 +274,7 @@ internal class FipsBleRadio(
 
     fun shutdown() {
         FipsDebugLog.event("radio", "shutdown", "channels" to channels.size,
-            "observedPeers" to observedAddresses.size)
+            "observedNonces" to observedNonceTags.size)
         stopped = true
         stopScanning(); stopAdvertising()
         runCatching { server?.close() }; server = null
@@ -290,14 +287,11 @@ internal class FipsBleRadio(
     private fun acceptLoop(listener: BluetoothServerSocket) {
         while (!stopped) {
             val socket = try { listener.accept() } catch (_: IOException) { break }
-            val seenAt = observedAddresses[socket.remoteDevice.address.uppercase()]
-            if (seenAt == null || System.currentTimeMillis() - seenAt > DirectJoinProof.MAX_AGE_MS) {
-                // Inbound L2CAP is not discovery: require a matching, recent local scan first.
-                runCatching { socket.close() }
-                FipsDebugLog.warning("radio", "inbound_rejected", "address" to socket.remoteDevice.address,
-                    "reason" to "no recent matching local scan")
-                continue
-            }
+            // The initiator already discovered this exact realm advertisement.
+            // Requiring the listener to have scanned the initiator as well
+            // made direct joins impossible on asymmetric Android scanners.
+            // FIPS authenticates the channel; CCJ1 then verifies full realm and
+            // cell scope before BoardCell admission.
             val id = NativeFips.bleDeliverInbound(bridge,
                 "$ADAPTER/${socket.remoteDevice.address}", sendMtu(socket), receiveMtu(socket))
             FipsDebugLog.event("radio", "inbound_accepted", "address" to socket.remoteDevice.address,

@@ -55,9 +55,22 @@ internal object DirectJoinProof {
     ): Boolean {
         if (!directBleEdge || hello.realmId != expected.realmId ||
             hello.boardCellId != expected.boardCellId || !isFresh(hello.issuedAtMs, nowMs)) return false
-        val nonce = hello.nonceHex.hexToBytes() ?: return false
-        val seenAt = observedNonceTags[nonceTag(nonce).toHex()] ?: return false
-        return seenAt <= nowMs && nowMs - seenAt <= MAX_AGE_MS
+        // A matching locally observed nonce is useful hardening when scanning
+        // is symmetric, but Android frequently establishes a valid inbound
+        // L2CAP edge before the listener ever scans the initiator. FIPS direct
+        // peer authentication + exact full scope + freshness are the admission
+        // boundary; the nonce must not turn one-way discovery into a deadlock.
+        // Do not turn old/local scan state into a rejection: a listener may
+        // have seen the initiator earlier and still legitimately receive a new
+        // inbound edge after that observation expired. A fresh match is only
+        // positive corroboration; absence, malformed data, or staleness leaves
+        // the authenticated direct-edge decision unchanged.
+        hello.nonceHex.hexToBytes()?.let { nonce ->
+            observedNonceTags[nonceTag(nonce).toHex()]?.let { seenAt ->
+                seenAt <= nowMs && nowMs - seenAt <= MAX_AGE_MS
+            }
+        }
+        return true
     }
 
     internal fun ByteArray.toHex() = joinToString("") { "%02x".format(it) }

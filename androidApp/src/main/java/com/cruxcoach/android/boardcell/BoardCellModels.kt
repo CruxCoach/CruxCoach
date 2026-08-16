@@ -91,6 +91,14 @@ data class BoardCellControllerDecision(
     val accepted: Boolean,
 )
 
+/** A current member attests that [candidateId] is its directly authenticated BLE neighbor. */
+@Serializable
+data class BoardCellJoinRequest(
+    val requestId: String,
+    val candidateId: String,
+    val sponsorId: String,
+)
+
 @Serializable
 data class BoardCellControllerRecovery(
     val claimantId: String,
@@ -102,12 +110,37 @@ data class BoardCellControllerRecovery(
     val envelope: BoardCellEnvelope,
 )
 
+/**
+ * Durable authorization for snapshots published by a recovered controller.
+ *
+ * Recovery used to be carried only by the transient event. If that packet was
+ * lost, peers correctly rejected the new controller's later snapshot because
+ * it was neither the old controller nor a handover target. Keeping the exact
+ * recovery base in the hashed snapshot makes reconnect/anti-entropy repair the
+ * same transition without weakening normal snapshot authority.
+ */
+@Serializable
+data class BoardCellControllerRecoveryProof(
+    val claimantId: String,
+    val baseControllerId: String,
+    val baseControllerTerm: Long,
+    val baseSequence: Long,
+    val baseHash: String,
+    val connectionProof: String,
+)
+
 @Serializable
 data class BoardProjectionRequest(
     val commandId: String,
     val projection: BoardProjection,
     val baseSequence: Long,
+    val baseProjection: BoardProjection?,
+    val basePlaylistRevision: Long,
 )
+
+internal fun BoardProjectionRequest.semanticBaseSequence(current: BoardCellSnapshot): Long =
+    if (baseSequence <= current.sequence && baseProjection == current.projection &&
+        basePlaylistRevision == current.playlistRevision) current.sequence else baseSequence
 
 /** Complete state. Deadlines are local monotonic observations and never cross the wire. */
 @Serializable
@@ -131,11 +164,15 @@ data class BoardCellSnapshot(
     val recentCommandIds: List<String> = emptyList(),
     val availability: BoardCellAvailability = BoardCellAvailability.ACTIVE,
     val handover: BoardCellHandover? = null,
+    val lastControllerRecovery: BoardCellControllerRecoveryProof? = null,
     val stateHash: String = "",
 ) {
     fun withComputedHash(): BoardCellSnapshot = copy(stateHash = BoardCellHash.compute(this))
     fun hasValidHash(): Boolean = stateHash == BoardCellHash.compute(copy(stateHash = "")) ||
-        (playlistRevision == 0L && stateHash == BoardCellHash.computeLegacyV2(copy(stateHash = "")))
+        (lastControllerRecovery == null &&
+            stateHash == BoardCellHash.computeLegacyV3(copy(stateHash = ""))) ||
+        (lastControllerRecovery == null && playlistRevision == 0L &&
+            stateHash == BoardCellHash.computeLegacyV2(copy(stateHash = "")))
 }
 
 @Serializable
@@ -228,10 +265,12 @@ data class BoardWriteIntent(
 )
 
 internal object BoardCellHash {
-    fun compute(snapshot: BoardCellSnapshot): String = compute(snapshot, "board-cell-v3", true)
-    fun computeLegacyV2(snapshot: BoardCellSnapshot): String = compute(snapshot, "board-cell-v2", false)
+    fun compute(snapshot: BoardCellSnapshot): String = compute(snapshot, "board-cell-v4", true, true)
+    fun computeLegacyV3(snapshot: BoardCellSnapshot): String = compute(snapshot, "board-cell-v3", true, false)
+    fun computeLegacyV2(snapshot: BoardCellSnapshot): String = compute(snapshot, "board-cell-v2", false, false)
 
-    private fun compute(snapshot: BoardCellSnapshot, schema: String, includePlaylistRevision: Boolean): String {
+    private fun compute(snapshot: BoardCellSnapshot, schema: String, includePlaylistRevision: Boolean,
+        includeControllerRecovery: Boolean): String {
         val canonical = buildString {
             append(schema).append('\n').append(snapshot.cellId.value).append('\n')
             append(snapshot.physicalBoardId.value).append('\n').append(snapshot.epoch).append('\n')
@@ -251,6 +290,10 @@ internal object BoardCellHash {
             snapshot.handover?.let {
                 append("h:${it.transferId}|${it.sourceControllerId}|${it.targetControllerId}|${it.sourceTerm}|${it.targetTerm}|${it.baseSequence}|${it.baseHash}|${it.phase}|${it.readinessProof ?: "-"}\n")
             } ?: append("h:-\n")
+            if (includeControllerRecovery) snapshot.lastControllerRecovery?.let {
+                append("cr:${it.claimantId}|${it.baseControllerId}|${it.baseControllerTerm}|")
+                append("${it.baseSequence}|${it.baseHash}|${it.connectionProof}\n")
+            } ?: append("cr:-\n")
         }
         return MessageDigest.getInstance("SHA-256").digest(canonical.toByteArray())
             .joinToString("") { "%02x".format(it) }
@@ -263,5 +306,39 @@ internal object BoardCellLineage {
         val material = "board-cell-lineage-resolution-v1|${cellId.value}|${lineages.sorted().joinToString("|")}"
         return MessageDigest.getInstance("SHA-256").digest(material.encodeToByteArray())
             .joinToString("") { "%02x".format(it) }
+    }
+}
+
+/** Canonical, topology-independent staggering for fenced controller recovery. */
+internal object BoardCellRecoveryElection {
+    private const val EXACT_SLOTS = 8
+    private const val SLOT_MS = 250L
+    private const val TAIL_JITTER_MS = 500L
+
+    fun delayMs(snapshot: BoardCellSnapshot, candidateId: String, retry: Int): Long? {
+        if (candidateId !in snapshot.members) return null
+        // A returning controller gets first chance to re-fence the same board
+        // after Bluetooth OFF/ON; if it is actually gone, it runs no election
+        // and the remaining canonical ranks continue normally.
+        if (candidateId == snapshot.controllerId) return retry.coerceAtMost(3) * 1_500L
+        val ranked = snapshot.members.asSequence().filter { it != snapshot.controllerId }
+            .map { it to score(snapshot, it) }
+            .sortedWith(compareBy<Pair<String, Long>> { it.second }.thenBy { it.first })
+            .toList()
+        val rank = ranked.indexOfFirst { it.first == candidateId }
+        if (rank < 0) return null
+        val initial = if (rank < EXACT_SLOTS) (rank + 1) * SLOT_MS else
+            (EXACT_SLOTS + 1) * SLOT_MS + ranked[rank].second % (TAIL_JITTER_MS + 1)
+        return initial + retry.coerceAtMost(3) * 1_500L
+    }
+
+    private fun score(snapshot: BoardCellSnapshot, candidateId: String): Long {
+        val bytes = MessageDigest.getInstance("SHA-256").digest(
+            "board-cell-recovery-v1|${snapshot.cellId.value}|${snapshot.controllerTerm}|".plus(
+                "${snapshot.stateHash}|$candidateId").encodeToByteArray())
+        return ((bytes[0].toLong() and 0xff) shl 24) or
+            ((bytes[1].toLong() and 0xff) shl 16) or
+            ((bytes[2].toLong() and 0xff) shl 8) or
+            (bytes[3].toLong() and 0xff)
     }
 }

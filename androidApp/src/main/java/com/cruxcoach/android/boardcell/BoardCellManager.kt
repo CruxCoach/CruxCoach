@@ -15,6 +15,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
@@ -23,8 +24,13 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 data class BoardCellHandoverLifecycle(
     /** Releases the source's exclusive physical board connection before the target may connect. */
@@ -44,6 +50,12 @@ data class BoardCellHandoverLifecycle(
 data class IncomingControllerRequest(
     val requestId: String,
     val requesterNpub: String,
+)
+
+private data class PendingProjectionRequest(
+    val request: BoardProjectionRequest,
+    var retryAtMs: Long,
+    var attempts: Int = 0,
 )
 
 enum class ControllerRequestState { IDLE, WAITING, ACCEPTED, DENIED, TIMED_OUT, FAILED }
@@ -86,14 +98,20 @@ class BoardCellManager @Inject constructor(
     private val handledHandoverPhase = ConcurrentHashMap.newKeySet<String>()
     private var recoveryJob: kotlinx.coroutines.Job? = null
     private var recoveryAttempt = 0
+    private val sponsoredAt = ConcurrentHashMap<String, Long>()
+    private val pendingProjectionRequests = ConcurrentHashMap<String, PendingProjectionRequest>()
     @Volatile private var authorizedRecoveryBoard: PhysicalBoardId? = null
     private var lastSnapshotTrace = ""
+    private val nearbyJoinMutex = Mutex()
 
     init {
         current = this
         boardConnection.connectionGuard = { board -> !requiresControllerRequest(board) }
         meshTransport.onSessionCommand = { sessionCommandChannel.send(it) }
-        meshTransport.onCommandAck = { _, ack -> commandAckChannel.send(ack) }
+        meshTransport.onCommandAck = { _, ack ->
+            if (ack.status != BoardCommandStatus.ACCEPTED) pendingProjectionRequests.remove(ack.commandId)
+            commandAckChannel.send(ack)
+        }
         meshTransport.onProjectionRequest = { projectionRequestChannel.send(it) }
         meshTransport.onControllerRequest = { sender, request ->
             val snapshot = snapshot()
@@ -132,6 +150,11 @@ class BoardCellManager @Inject constructor(
         }
         scope.launch {
             runtime.messages.collect { message ->
+                if (runtime.activeRealmId() == null) {
+                    FipsDebugLog.event("boardcell", "mesh_message_dropped",
+                        "reason" to "no active realm", "sender" to FipsDebugLog.id(message.senderNpub))
+                    return@collect
+                }
                 val result = meshTransport.receive(message.senderNpub, message.payload, monotonicNow())
                 FipsDebugLog.event("boardcell", "mesh_message_applied",
                     "sender" to FipsDebugLog.id(message.senderNpub), "bytes" to message.payload.size,
@@ -152,7 +175,16 @@ class BoardCellManager @Inject constructor(
                         boardConnection.releaseKeepAlive(BoardConnectionOwner.BOARD_MESH)
                         meshBoardKeepAliveHeld = false
                     }
-                    if (heldRuntime) {
+                    // A BoardCell membership is active radio use even while
+                    // GrapheneOS/system Bluetooth temporarily drops GATT. Keep
+                    // the logical owner so STATE_ON can restart the same realm.
+                    val retained = _snapshots.value?.takeIf { activeNodeId in it.members }
+                    // BoardBleConnection clears its physical UI selection on
+                    // disconnect. Preserve the logical cell so maintenance,
+                    // BT-ON reconnect and fenced recovery keep running.
+                    retained?.let { BoardCellScopeRegistry.joinCell(it.physicalBoardId, it.cellId) }
+                    val memberStillActive = retained != null
+                    if (heldRuntime && !memberStillActive) {
                         runtime.release(FipsMeshRuntime.OWNER_BOARD_CELL)
                         heldRuntime = false
                     }
@@ -174,6 +206,10 @@ class BoardCellManager @Inject constructor(
                 if (meshAvailable && !heldRuntime) {
                     runtime.acquire(FipsMeshRuntime.OWNER_BOARD_CELL)
                     heldRuntime = true
+                }
+                if (meshAvailable) {
+                    meshTransport.resetForRealm()
+                    pendingProjectionRequests.clear()
                 }
                 val fipsActive = meshAvailable && runtime.activateRealm(FipsRealmContext(
                     cellId.value, cellId.value, meshName = board.displayName,
@@ -297,8 +333,16 @@ class BoardCellManager @Inject constructor(
         commandId: String = UUID.randomUUID().toString(),
     ): String? {
         val snapshot = snapshot() ?: return null
-        val request = BoardProjectionRequest(commandId, projection, snapshot.sequence)
-        return commandId.takeIf { meshTransport.sendProjectionRequest(snapshot, request) }
+        val request = BoardProjectionRequest(commandId, projection, snapshot.sequence,
+            snapshot.projection, snapshot.playlistRevision)
+        if (!meshTransport.sendProjectionRequest(snapshot, request)) return null
+        if (pendingProjectionRequests.size >= MAX_PENDING_PROJECTIONS) {
+            pendingProjectionRequests.entries.minByOrNull { it.value.retryAtMs }?.key
+                ?.let(pendingProjectionRequests::remove)
+        }
+        pendingProjectionRequests[commandId] = PendingProjectionRequest(
+            request, monotonicNow() + PROJECTION_RETRY_INITIAL_MS)
+        return commandId
     }
 
     suspend fun commitProjectionRequest(
@@ -307,8 +351,14 @@ class BoardCellManager @Inject constructor(
     ): ProjectionResult {
         val board = writableBoard() ?: return ProjectionResult.Refused("BoardCell unavailable")
         val request = inbound.request
+        val current = coordinator.snapshot(board)
+            ?: return ProjectionResult.Refused("BoardCell unavailable")
+        // Heartbeats and membership changes share the canonical sequence but
+        // do not conflict with the board projection the participant saw. Only
+        // rebase when both user-visible command domains are still unchanged.
+        val semanticBase = request.semanticBaseSequence(current)
         return coordinator.project(board, request.projection, monotonicNow(), request.commandId,
-            request.baseSequence, boardWrite).also { result ->
+            semanticBase, boardWrite).also { result ->
             val ack = when (result) {
                 is ProjectionResult.Committed -> result.ack
                 is ProjectionResult.Duplicate -> result.ack
@@ -382,6 +432,8 @@ class BoardCellManager @Inject constructor(
         val cell = runCatching { BoardCellId(boardCellId) }.getOrNull() ?: return false
         if (BoardCellId.forPhysical(physical) != cell) return false
         BoardCellScopeRegistry.replaceProvisionalSelection(physical)
+        meshTransport.resetForRealm()
+        pendingProjectionRequests.clear()
         if (!withContext(Dispatchers.IO) {
                 runtime.activateRealm(FipsRealmContext(cell.value, cell.value))
             }) return false
@@ -406,20 +458,43 @@ class BoardCellManager @Inject constructor(
     }
 
     /** Enter a public BoardCell discovered over BLE. No physical-board pairing
-     * or playlist-session approval is required. The controller commits
-     * membership only after FIPS plus the direct one-hop nonce proof succeeds. */
-    suspend fun joinNearbyMesh(boardCellId: String, boardName: String? = null): Boolean {
+     * or playlist-session approval is required. FIPS authenticates a direct
+     * neighbor and CCJ1 verifies exact full realm/cell scope before admission. */
+    suspend fun joinNearbyMesh(boardCellId: String, boardName: String? = null): Boolean =
+        nearbyJoinMutex.withLock {
         if (!BoardCellPlatformPolicy.meshAvailable(Build.VERSION.SDK_INT)) return false
         val cell = runCatching { BoardCellId(boardCellId) }.getOrNull() ?: return false
+        snapshot()?.let { active ->
+            if (active.cellId == cell && activeNodeId in active.members) return true
+            // Joining another realm must never silently tear down a physical
+            // board/controller mesh. That requires an explicit leave/handover.
+            FipsDebugLog.warning("boardcell", "nearby_mesh_join_refused",
+                "reason" to "another board cell is active",
+                "activeCell" to FipsDebugLog.id(active.cellId.value),
+                "requestedCell" to FipsDebugLog.id(cell.value))
+            return false
+        }
         if (!nearbyRealmHeld) {
             runtime.acquire(FipsMeshRuntime.OWNER_NEARBY_BOARD_CELL)
             nearbyRealmHeld = true
         }
-        if (!withContext(Dispatchers.IO) {
+        meshTransport.resetForRealm()
+        pendingProjectionRequests.clear()
+        val activated = try {
+            withContext(Dispatchers.IO) {
                 runtime.activateRealm(FipsRealmContext(cell.value, cell.value, meshName = boardName))
-            }) {
-            runtime.release(FipsMeshRuntime.OWNER_NEARBY_BOARD_CELL)
-            nearbyRealmHeld = false
+            }
+        } catch (failure: CancellationException) {
+            rollbackNearbyJoin(cell)
+            throw failure
+        } catch (failure: Exception) {
+            FipsDebugLog.warning("boardcell", "nearby_mesh_join_failed",
+                "cell" to FipsDebugLog.id(cell.value),
+                "error" to (failure.message ?: failure.javaClass.simpleName))
+            false
+        }
+        if (!activated) {
+            rollbackNearbyJoin(cell)
             return false
         }
         activeNodeId = runtime.localNpub
@@ -430,7 +505,39 @@ class BoardCellManager @Inject constructor(
         FipsDebugLog.event("boardcell", "nearby_mesh_join_started",
             "cell" to FipsDebugLog.id(cell.value), "node" to FipsDebugLog.id(activeNodeId))
         refreshSelected()
-        return true
+        val joined = try {
+            withTimeoutOrNull(NEARBY_JOIN_TIMEOUT_MS) {
+                snapshots.filterNotNull().first { it.cellId == cell && activeNodeId in it.members }
+            } != null
+        } catch (failure: CancellationException) {
+            rollbackNearbyJoin(cell)
+            throw failure
+        }
+        if (joined) {
+            val current = snapshot()
+            FipsDebugLog.event("boardcell", "nearby_mesh_join_succeeded",
+                "cell" to FipsDebugLog.id(cell.value), "members" to current?.members?.size,
+                "controller" to FipsDebugLog.id(current?.controllerId))
+        } else {
+            FipsDebugLog.warning("boardcell", "nearby_mesh_join_timed_out",
+                "cell" to FipsDebugLog.id(cell.value), "timeoutMs" to NEARBY_JOIN_TIMEOUT_MS)
+            rollbackNearbyJoin(cell)
+        }
+        return joined
+    }
+
+    private fun rollbackNearbyJoin(cell: BoardCellId) {
+        runtime.endRealm(cell.value)
+        if (nearbyRealmHeld) {
+            runtime.release(FipsMeshRuntime.OWNER_NEARBY_BOARD_CELL)
+            nearbyRealmHeld = false
+        }
+        meshTransport.resetForRealm()
+        pendingProjectionRequests.clear()
+        sponsoredAt.clear()
+        _snapshots.value = null
+        if (boardConnection.connectedBoard == null) BoardCellScopeRegistry.clearSelection()
+        runtime.startNearbyDiscovery()
     }
 
     fun installHandoverLifecycle(value: BoardCellHandoverLifecycle?) { handoverLifecycle = value }
@@ -598,15 +705,47 @@ class BoardCellManager @Inject constructor(
             // with SQLite/VACUUM for CPU. Freeze logical mesh time with the
             // native runtime and resume maintenance when sharing ends.
             BoardCellScopeRegistry.selected.value?.let { board ->
-                if (boardRealmAvailable.get() && !runtime.isSuspendedForBulkTransfer()) {
-                    val snapshot = coordinator.snapshot(board)
-                    if (snapshot?.controllerId == activeNodeId) {
-                        runtime.directAuthenticatedPeers().filterNot { it in snapshot.members }.forEach { peer ->
-                            FipsDebugLog.event("boardcell", "nearby_member_auto_admitted",
-                                "peer" to FipsDebugLog.id(peer), "cell" to FipsDebugLog.id(snapshot.cellId.value))
-                            coordinator.joinMember(board, peer)
+                val now = monotonicNow()
+                val snapshot = coordinator.snapshot(board)
+                if (snapshot != null && runtime.running.value && !runtime.isSuspendedForBulkTransfer()) {
+                    val nearbyCandidates = runtime.directAuthenticatedPeers()
+                    sponsoredAt.keys.removeAll { candidate ->
+                        candidate !in nearbyCandidates
+                    }
+                    nearbyCandidates.forEach { peer ->
+                        val last = sponsoredAt[peer]
+                        if (last != null && now - last < MEMBER_SPONSOR_RETRY_MS) return@forEach
+                        if (snapshot.controllerId == activeNodeId) {
+                            if (peer in snapshot.members) {
+                                if (meshTransport.sendSnapshotTo(snapshot, peer)) sponsoredAt[peer] = now
+                            } else {
+                                FipsDebugLog.event("boardcell", "nearby_member_auto_admitted",
+                                    "peer" to FipsDebugLog.id(peer), "cell" to FipsDebugLog.id(snapshot.cellId.value))
+                                coordinator.joinMember(board, peer)
+                                sponsoredAt[peer] = now
+                            }
+                        } else {
+                            if (meshTransport.sponsorMember(snapshot, peer)) {
+                                sponsoredAt[peer] = now
+                                FipsDebugLog.event("boardcell", "nearby_member_sponsored",
+                                    "peer" to FipsDebugLog.id(peer),
+                                    "controller" to FipsDebugLog.id(snapshot.controllerId))
+                            }
                         }
                     }
+                    pendingProjectionRequests.values.forEach { pending ->
+                        if (snapshot.projection == pending.request.projection) {
+                            pendingProjectionRequests.remove(pending.request.commandId)
+                            return@forEach
+                        }
+                        if (now < pending.retryAtMs) return@forEach
+                        if (!meshTransport.sendProjectionRequest(snapshot, pending.request)) return@forEach
+                        pending.attempts++
+                        pending.retryAtMs = now + minOf(PROJECTION_RETRY_MAX_MS,
+                            PROJECTION_RETRY_INITIAL_MS shl pending.attempts.coerceAtMost(3))
+                    }
+                }
+                if (boardRealmAvailable.get() && !runtime.isSuspendedForBulkTransfer()) {
                     coordinator.heartbeat(board, monotonicNow())
                 }
                 // The source must still time out and roll back after its board
@@ -679,16 +818,17 @@ class BoardCellManager @Inject constructor(
     private fun processControllerRecovery() {
         val snapshot = snapshot()
         if (snapshot?.availability != BoardCellAvailability.FROZEN_NEEDS_CONTROLLER ||
-            snapshot.controllerId == activeNodeId || activeNodeId !in snapshot.members) {
+            activeNodeId !in snapshot.members) {
             recoveryJob?.cancel(); recoveryJob = null; recoveryAttempt = 0
             return
         }
         if (snapshot.controllerId in runtime.directAuthenticatedPeers() || recoveryJob?.isActive == true) return
-        val candidates = (runtime.directAuthenticatedPeers().filter { it in snapshot.members } + activeNodeId)
-            .distinct().sorted()
-        val rank = candidates.indexOf(activeNodeId).takeIf { it >= 0 } ?: return
-        val delayMs = rank * RECOVERY_STAGGER_MS +
-            (recoveryAttempt.coerceAtMost(3) * RECOVERY_RETRY_STEP_MS)
+        // Direct-neighbor views differ across a multi-hop mesh and therefore
+        // cannot define a shared rank. Derive every candidate's bounded delay
+        // from the canonical snapshot instead; stale members consume at most a
+        // short slot and never serialize the whole election.
+        val delayMs = BoardCellRecoveryElection.delayMs(snapshot, activeNodeId, recoveryAttempt)
+            ?: return
         val baseTerm = snapshot.controllerTerm
         val baseHash = snapshot.stateHash
         recoveryJob = scope.launch {
@@ -737,7 +877,7 @@ class BoardCellManager @Inject constructor(
     private fun refreshSelected() {
         val next = snapshot()
         _snapshots.value = next
-        val shouldHoldBoard = next?.controllerId == activeNodeId && next.members.size > 1 &&
+        val shouldHoldBoard = next?.let { activeNodeId in it.members } == true &&
             boardConnection.connectedBoard != null
         if (shouldHoldBoard && !meshBoardKeepAliveHeld) {
             boardConnection.acquireKeepAlive(BoardConnectionOwner.BOARD_MESH)
@@ -778,9 +918,13 @@ class BoardCellManager @Inject constructor(
         @Volatile internal var current: BoardCellManager? = null
             private set
         private const val CONTROLLER_REQUEST_TIMEOUT_MS = 30_000L
-        private const val RECOVERY_STAGGER_MS = 1_500L
-        private const val RECOVERY_RETRY_STEP_MS = 2_500L
-        private const val CONTROLLER_HEARTBEAT_INTERVAL_MS = 3_000L
-        private const val CONTROLLER_LEASE_TIMEOUT_MS = 9_000L
+        private const val MEMBER_SPONSOR_RETRY_MS = 6_000L
+        private const val PROJECTION_RETRY_INITIAL_MS = 2_000L
+        private const val PROJECTION_RETRY_MAX_MS = 15_000L
+        private const val MAX_PENDING_PROJECTIONS = 128
+        private const val NEARBY_JOIN_TIMEOUT_MS = 15_000L
+        private const val CONTROLLER_HEARTBEAT_INTERVAL_MS = 2_000L
+        /** Three missed heartbeat windows trigger fenced physical recovery. */
+        private const val CONTROLLER_LEASE_TIMEOUT_MS = 6_000L
     }
 }

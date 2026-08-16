@@ -101,6 +101,9 @@ data class BleConnectionState(
     val controllerRequestBoard: DiscoveredBoard? = null,
     val controllerRequestState: ControllerRequestState = ControllerRequestState.IDLE,
     val nearbyMeshes: List<FipsNearbyMesh> = emptyList(),
+    val activeBoardCellId: String? = null,
+    val joiningBoardCellId: String? = null,
+    val meshJoinFailed: Boolean = false,
 )
 
 @HiltViewModel
@@ -157,6 +160,13 @@ class BleConnectionViewModel @Inject constructor(
             fipsMeshRuntime.startNearbyDiscovery()
             fipsMeshRuntime.nearbyMeshes.collect { meshes ->
                 _state.update { it.copy(nearbyMeshes = meshes) }
+            }
+        }
+        viewModelScope.safeLaunch(TAG) {
+            boardCellManager.snapshots.collect { snapshot ->
+                _state.update { it.copy(activeBoardCellId = snapshot?.cellId?.value,
+                    joiningBoardCellId = if (snapshot != null) null else it.joiningBoardCellId,
+                    meshJoinFailed = if (snapshot != null) false else it.meshJoinFailed) }
             }
         }
         viewModelScope.safeLaunch(TAG) {
@@ -383,6 +393,7 @@ class BleConnectionViewModel @Inject constructor(
         checkState()
         // Bug 5: Retry nearby scanner after permission grant (first app start)
         nearbyPresenceManager.retryScan()
+        fipsMeshRuntime.onPermissionsChanged()
     }
 
     fun startScan() {
@@ -545,7 +556,15 @@ class BleConnectionViewModel @Inject constructor(
         val cellId = mesh.joinableBoardCellId ?: return
         viewModelScope.safeLaunch(TAG) {
             bleScanner.stopScan()
-            boardCellManager.joinNearbyMesh(cellId, mesh.boardName)
+            _state.update { it.copy(joiningBoardCellId = cellId, meshJoinFailed = false) }
+            val joined = try {
+                boardCellManager.joinNearbyMesh(cellId, mesh.boardName)
+            } catch (failure: CancellationException) {
+                throw failure
+            } catch (_: Exception) {
+                false
+            }
+            _state.update { it.copy(joiningBoardCellId = null, meshJoinFailed = !joined) }
         }
     }
 

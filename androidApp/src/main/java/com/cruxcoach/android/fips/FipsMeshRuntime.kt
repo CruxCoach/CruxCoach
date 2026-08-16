@@ -1,6 +1,11 @@
 package com.cruxcoach.android.fips
 
 import android.content.Context
+import android.content.BroadcastReceiver
+import android.content.Intent
+import android.content.IntentFilter
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothManager
 import android.os.Build
 import com.cruxcoach.android.boardcell.AuthenticatedMeshLink
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -84,6 +89,7 @@ class FipsMeshRuntime @Inject constructor(
     private var peerJob: Job? = null
     private var permissionWatchJob: Job? = null
     private var passiveDiscovery: FipsNearbyDiscovery? = null
+    @Volatile private var discoveryRequested = false
     @Volatile private var realm: FipsRealmContext? = null
     @Volatile private var permissionPromptedRealm: String? = null
     private val permissionRequestChannel = Channel<List<String>>(Channel.CONFLATED)
@@ -94,6 +100,10 @@ class FipsMeshRuntime @Inject constructor(
     private val json = Json { ignoreUnknownKeys = false }
     private val _running = MutableStateFlow(false)
     val running = _running.asStateFlow()
+    private val _bluetoothAvailable = MutableStateFlow(
+        (context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)
+            ?.adapter?.isEnabled == true)
+    val bluetoothAvailable = _bluetoothAvailable.asStateFlow()
     private val _messages = MutableSharedFlow<AuthenticatedFipsMessage>(extraBufferCapacity = 64)
     val messages = _messages.asSharedFlow()
     private val _peers = MutableStateFlow<List<FipsPeer>>(emptyList())
@@ -105,6 +115,33 @@ class FipsMeshRuntime @Inject constructor(
      * node or admitted as transit peers. */
     val nearbyMeshes = _nearbyMeshes.asStateFlow()
     override val localNpub: String get() = if (_running.value) runCatching { NativeFips.npub() }.getOrDefault("") else ""
+
+    init {
+        context.registerReceiver(object : BroadcastReceiver() {
+            override fun onReceive(receiverContext: Context, intent: Intent) {
+                if (intent.action != BluetoothAdapter.ACTION_STATE_CHANGED) return
+                when (intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)) {
+                    BluetoothAdapter.STATE_OFF -> synchronized(this@FipsMeshRuntime) {
+                        _bluetoothAvailable.value = false
+                        passiveDiscovery?.stop(); passiveDiscovery = null
+                        if (_running.value) shutdownNative()
+                        FipsDebugLog.warning("runtime", "bluetooth_off",
+                            "ownersActive" to owners.isActive(), "realm" to FipsDebugLog.id(realm?.realmId))
+                    }
+                    BluetoothAdapter.STATE_ON -> scope.launch {
+                        _bluetoothAvailable.value = true
+                        // Give GrapheneOS/Android's BLE stack a brief settle
+                        // interval, then resume the retained realm/owner.
+                        delay(1_000)
+                        synchronized(this@FipsMeshRuntime) {
+                            if (owners.isActive()) ensureStarted()
+                            else if (discoveryRequested) startNearbyDiscovery()
+                        }
+                    }
+                }
+            }
+        }, IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED))
+    }
 
     @Synchronized
     fun activateRealm(value: FipsRealmContext): Boolean {
@@ -131,15 +168,28 @@ class FipsMeshRuntime @Inject constructor(
      * the mesh overview is enough to see public BoardCell meshes nearby. */
     @Synchronized
     fun startNearbyDiscovery() {
+        discoveryRequested = true
         if (_running.value || suspendedForBulkTransfer.get() || passiveDiscovery != null ||
             Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
         val missing = FipsPermissionPolicy.missingPermissions(context)
-        if (missing.isNotEmpty()) permissionRequestChannel.trySend(missing)
-        passiveDiscovery = FipsNearbyDiscovery(context, ::recordNearbyMesh).also { it.start() }
+        if (missing.isNotEmpty()) {
+            permissionRequestChannel.trySend(missing)
+            return
+        }
+        lateinit var candidate: FipsNearbyDiscovery
+        candidate = FipsNearbyDiscovery(context, ::recordNearbyMesh) { errorCode ->
+            passiveDiscoveryFailed(candidate, errorCode)
+        }
+        // Publish the generation before startScan: Android may report a scan
+        // failure immediately from the callback. Assigning afterwards could
+        // resurrect the already-failed scanner and wedge future retries.
+        passiveDiscovery = candidate
+        if (!candidate.start() && passiveDiscovery === candidate) passiveDiscovery = null
     }
 
     @Synchronized
     fun stopNearbyDiscovery() {
+        discoveryRequested = false
         passiveDiscovery?.stop()
         passiveDiscovery = null
     }
@@ -166,6 +216,10 @@ class FipsMeshRuntime @Inject constructor(
             return false
         }
         if (suspendedForBulkTransfer.get()) return false
+        if (!_bluetoothAvailable.value) {
+            FipsDebugLog.event("runtime", "start_blocked", "reason" to "bluetooth off")
+            return false
+        }
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             FipsDebugLog.event("runtime", "gatt_fallback_selected", "api" to Build.VERSION.SDK_INT,
                 "reason" to "FIPS L2CAP requires API 29+")
@@ -186,6 +240,10 @@ class FipsMeshRuntime @Inject constructor(
             permissionPromptedRealm = activeRealm.realmId
             permissionRequestChannel.trySend(missingPermissions)
         }
+        if (missingPermissions.isNotEmpty()) {
+            FipsDebugLog.event("runtime", "start_blocked", "reason" to "permissions missing")
+            return false
+        }
         return runCatching {
             val candidate = FipsBleRadio(context, activeRealm, ::recordNearbyMesh)
             radio = candidate
@@ -198,7 +256,6 @@ class FipsMeshRuntime @Inject constructor(
                 "maxDirectPeers" to MAX_DIRECT_CONNECTIONS, "bridge" to bridge)
             receiveJob = scope.launch { receiveLoop() }
             peerJob = scope.launch { peerLoop() }
-            if (missingPermissions.isNotEmpty()) watchForPermissionGrant(activeRealm.realmId)
             runCatching { FipsMeshService.start(context) }
             true
         }.getOrElse {
@@ -237,7 +294,10 @@ class FipsMeshRuntime @Inject constructor(
     }
 
     /** Called by the Activity result callback; also covered by the watcher for grants from other UI. */
-    fun onPermissionsChanged() { scope.launch { restartForGrantedPermissions() } }
+    fun onPermissionsChanged() { scope.launch {
+        restartForGrantedPermissions()
+        if (discoveryRequested && !_running.value) startNearbyDiscovery()
+    } }
 
     override fun send(authenticatedPeerNpub: String, payload: ByteArray): Boolean {
         if (!ensureStarted()) {
@@ -358,6 +418,24 @@ class FipsMeshRuntime @Inject constructor(
         }
     }
 
+    private fun passiveDiscoveryFailed(failed: FipsNearbyDiscovery, errorCode: Int) {
+        scope.launch {
+            val cleared = synchronized(this@FipsMeshRuntime) {
+                if (passiveDiscovery !== failed) return@synchronized false
+                failed.stop()
+                passiveDiscovery = null
+                true
+            }
+            if (cleared && discoveryRequested && !_running.value) {
+                // Android reports transient scanner contention asynchronously.
+                // Clear the wedged instance and retry instead of making every
+                // later ensureDiscovery call a no-op forever.
+                delay(if (errorCode == 6) 30_000L else 5_000L)
+                if (discoveryRequested && !_running.value) startNearbyDiscovery()
+            }
+        }
+    }
+
     private suspend fun receiveLoop() {
         while (scope.isActive && _running.value) {
             // A long bounded wait avoids polling while still letting a cancelled
@@ -445,7 +523,7 @@ class FipsMeshRuntime @Inject constructor(
         _nearbyMeshes.value = nearbyMeshTracker.prune(nowMs)
     }
 
-    /** Join hello is accepted only from a native direct BLE edge and a fresh, locally scanned nonce. */
+    /** Join hello is accepted only from a native direct BLE edge with fresh, exact full realm scope. */
     private fun acceptJoinHello(sender: String, payload: ByteArray): Boolean {
         if (!payload.startsWith(JOIN_PREFIX)) return false
         val direct = _peers.value.any { it.npub == sender && it.connected && it.transport == "ble" }
@@ -465,7 +543,7 @@ class FipsMeshRuntime @Inject constructor(
                 "fresh" to (hello?.let { DirectJoinProof.isFresh(it.issuedAtMs, System.currentTimeMillis()) } ?: false),
                 "realm" to FipsDebugLog.id(hello?.realmId), "cell" to FipsDebugLog.id(hello?.boardCellId),
                 "action" to "rebuild realm radio and close foreign edge")
-            // FIPS authenticated the node, but the full CruxCoach realm/cell/nonce did not.
+            // FIPS authenticated the node, but the full CruxCoach realm/cell proof did not.
             // Rebuilding the realm radio closes the underlying link; no foreign collision
             // is allowed to remain as a durable transit edge.
             scope.launch {

@@ -9,13 +9,16 @@ import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.os.ParcelUuid
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
 /** Read-only scanner used by the mesh overview before any realm is active. */
 @SuppressLint("MissingPermission")
 internal class FipsNearbyDiscovery(
     context: Context,
     private val onMesh: (FipsNearbyMesh) -> Unit,
+    private val onScanFailure: (Int) -> Unit = {},
 ) {
+    private val lastDiscoveryLog = ConcurrentHashMap<String, Long>()
     private val scanner = (context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)
         ?.adapter?.bluetoothLeScanner
     private val callback = object : ScanCallback() {
@@ -23,15 +26,18 @@ internal class FipsNearbyDiscovery(
         override fun onBatchScanResults(results: MutableList<ScanResult>) = results.forEach(::handle)
         override fun onScanFailed(errorCode: Int) {
             FipsDebugLog.warning("discovery", "passive_scan_failed", "code" to errorCode)
+            onScanFailure(errorCode)
         }
     }
 
-    fun start() {
+    fun start(): Boolean {
         val filter = ScanFilter.Builder().setServiceData(CRUXCOACH_FIPS_UUID, byteArrayOf()).build()
         val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_POWER).build()
-        runCatching { scanner?.startScan(listOf(filter), settings, callback) }
+        val available = scanner ?: return false
+        return runCatching { available.startScan(listOf(filter), settings, callback) }
             .onSuccess { FipsDebugLog.event("discovery", "passive_scan_started") }
             .onFailure { FipsDebugLog.warning("discovery", "passive_scan_failed", "error" to it.message) }
+            .isSuccess
     }
 
     fun stop() {
@@ -44,12 +50,20 @@ internal class FipsNearbyDiscovery(
         val advertisement = FipsAdvertisementCodec.decode(bytes) ?: return
         val boardName = result.scanRecord?.getServiceData(CRUXCOACH_FIPS_NAME_UUID)
             ?.decodeToString()?.trim()?.takeIf(String::isNotEmpty)
+        val now = System.currentTimeMillis()
+        val logKey = "${result.device.address}:${advertisement.joinableBoardCellId ?: advertisement.cellTag.toHex()}"
+        if (now - (lastDiscoveryLog.put(logKey, now) ?: 0L) >= DISCOVERY_LOG_INTERVAL_MS) {
+            FipsDebugLog.event("discovery", "nearby_mesh_discovered",
+                "address" to result.device.address,
+                "cell" to FipsDebugLog.id(advertisement.joinableBoardCellId),
+                "boardName" to boardName, "rssi" to result.rssi)
+        }
         onMesh(FipsNearbyMesh(
             address = result.device.address,
             realmTag = advertisement.realmTag.toHex(),
             cellTag = advertisement.cellTag.toHex(),
             rssi = result.rssi,
-            lastSeenMs = System.currentTimeMillis(),
+            lastSeenMs = now,
             matchesActiveRealm = false,
             joinableBoardCellId = advertisement.joinableBoardCellId,
             boardName = boardName,
@@ -59,6 +73,7 @@ internal class FipsNearbyDiscovery(
     private fun ByteArray.toHex() = joinToString("") { "%02x".format(it) }
 
     companion object {
+        private const val DISCOVERY_LOG_INTERVAL_MS = 10_000L
         private val CRUXCOACH_FIPS_UUID =
             ParcelUuid(UUID.fromString("0000ccf1-0000-1000-8000-00805f9b34fb"))
         private val CRUXCOACH_FIPS_NAME_UUID =

@@ -7,6 +7,21 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class BoardCellCoordinatorTest {
+    @Test fun `projection request rebases over heartbeat but not user-visible state changes`() {
+        val base = BoardCellSnapshot(BoardCellId("cell"), PhysicalBoardId("board"), 1, 4,
+            "controller", lineageId = "lineage", members = setOf("controller", "member"),
+            projection = BoardProjection("old", 40), playlistRevision = 7).withComputedHash()
+        val request = BoardProjectionRequest("projection-command", BoardProjection("next", 40),
+            base.sequence, base.projection, base.playlistRevision)
+        val heartbeat = BoardCellReplica.reduce(base, BoardCellEvent.ControllerHeartbeat(1), 5)
+
+        assertEquals(heartbeat.sequence, request.semanticBaseSequence(heartbeat))
+        assertEquals(base.sequence, request.semanticBaseSequence(
+            heartbeat.copy(projection = BoardProjection("other", 40))))
+        assertEquals(base.sequence, request.semanticBaseSequence(
+            heartbeat.copy(playlistRevision = 8)))
+    }
+
     private class RecordingTransport : BoardCellTransport {
         val events = mutableListOf<BoardCellEnvelope>()
         val snapshots = mutableListOf<BoardCellSnapshot>()
@@ -95,6 +110,62 @@ class BoardCellCoordinatorTest {
         assertEquals("source", replica.snapshot(board)!!.controllerId)
     }
 
+    @Test fun `authenticated controller control traffic renews local lease`() = runTest {
+        val board = PhysicalBoardId("moon:serial:control-liveness")
+        val (source) = settled("source", board, now = 100)
+        source.joinMember(board, "replica")
+        val replica = BoardCellCoordinator("replica", settleMs = 0, heartbeatTimeoutMs = 100)
+        replica.restoreTrustedSnapshot(source.snapshot(board)!!, 1_000)
+
+        assertTrue(replica.observeControllerActivity(board, "source", 1_099))
+        replica.expireLocalDeadlines(1_100)
+        assertEquals(BoardCellAvailability.ACTIVE, replica.snapshot(board)!!.availability)
+        assertFalse(replica.observeControllerActivity(board, "replica", 1_150))
+        replica.expireLocalDeadlines(1_199)
+        assertEquals(BoardCellAvailability.FROZEN_NEEDS_CONTROLLER,
+            replica.snapshot(board)!!.availability)
+    }
+
+    @Test fun `snapshot gap does not prevent controller recovery after controller disappears`() = runTest {
+        val board = PhysicalBoardId("moon:serial:gap-then-failure")
+        val (source) = settled("source", board, now = 100)
+        source.joinMember(board, "replica")
+        val initial = source.snapshot(board)!!
+        val replica = BoardCellCoordinator("replica", settleMs = 0, heartbeatTimeoutMs = 100)
+        replica.restoreTrustedSnapshot(initial, 1_000)
+        val event = BoardCellEvent.ControllerHeartbeat(initial.controllerHeartbeat + 2)
+        val skipped = BoardCellReplica.reduce(initial, event, initial.sequence + 2)
+        val gap = BoardCellEnvelope(initial.cellId, board, initial.epoch, initial.controllerTerm,
+            skipped.sequence, initial.stateHash, event, skipped.stateHash)
+
+        assertTrue(replica.acceptEvent("source", gap, 1_050) is BoardCellApplyResult.NeedSnapshot)
+        assertEquals(BoardCellAvailability.FROZEN_NEEDS_SNAPSHOT,
+            replica.snapshot(board)!!.availability)
+        replica.expireLocalDeadlines(1_150)
+        assertEquals(BoardCellAvailability.FROZEN_NEEDS_CONTROLLER,
+            replica.snapshot(board)!!.availability)
+        assertNotNull(replica.recoverController(board, "exclusive-gatt-proof", 1_151))
+    }
+
+    @Test fun `recovery priority is canonical despite divergent direct peer views`() {
+        val members = (1..24).mapTo(sortedSetOf()) { "member-$it" } + "controller"
+        val snapshot = BoardCellSnapshot(BoardCellId("cell"), PhysicalBoardId("board"), 1, 7,
+            "controller", controllerTerm = 3, lineageId = "lineage", members = members)
+            .withComputedHash()
+        // These nodes may each see only themselves/directly adjacent peers;
+        // delay calculation deliberately receives no topology view at all.
+        val delays = members.filter { it != "controller" }.associateWith {
+            BoardCellRecoveryElection.delayMs(snapshot, it, retry = 0)!!
+        }
+        assertEquals(delays, members.filter { it != "controller" }.associateWith {
+            BoardCellRecoveryElection.delayMs(snapshot, it, retry = 0)!!
+        })
+        assertEquals(250L, delays.values.minOrNull())
+        assertTrue(delays.values.maxOrNull()!! <= 2_750L)
+        assertEquals(delays.getValue("member-1") + 1_500L,
+            BoardCellRecoveryElection.delayMs(snapshot, "member-1", retry = 1))
+    }
+
     @Test fun `controller recovery requires frozen state and advances one canonical term`() = runTest {
         val board = PhysicalBoardId("kilter:serial:recovery")
         val sourceTransport = RecordingTransport()
@@ -118,6 +189,65 @@ class BoardCellCoordinatorTest {
         assertTrue(observer.acceptControllerRecovery("candidate", recovery, 112) is BoardCellApplyResult.Applied)
         assertEquals("candidate", observer.snapshot(board)!!.controllerId)
         assertNull(observer.recoverController(board, "second-proof", 113))
+    }
+
+    @Test fun `same controller reclaims board after bluetooth restart with next term`() = runTest {
+        val board = PhysicalBoardId("kilter:serial:bluetooth-restart")
+        val (controller) = settled("controller", board, now = 100)
+        controller.expireLocalDeadlines(200)
+        assertEquals(BoardCellAvailability.FROZEN_NEEDS_CONTROLLER,
+            controller.snapshot(board)!!.availability)
+        val oldTerm = controller.snapshot(board)!!.controllerTerm
+
+        assertNotNull(controller.recoverController(board, "reconnected-board-proof", 201))
+        assertEquals("controller", controller.snapshot(board)!!.controllerId)
+        assertEquals(oldTerm + 1, controller.snapshot(board)!!.controllerTerm)
+        assertEquals(BoardCellAvailability.ACTIVE, controller.snapshot(board)!!.availability)
+        assertEquals(0L, BoardCellRecoveryElection.delayMs(
+            controller.snapshot(board)!!.copy(controllerTerm = oldTerm), "controller", 0))
+    }
+
+    @Test fun `snapshot repairs a missed controller recovery event after reconnect`() = runTest {
+        val board = PhysicalBoardId("kilter:serial:recovery-snapshot")
+        val (source) = settled("source", board, now = 100)
+        source.joinMember(board, "candidate")
+        source.joinMember(board, "observer")
+        val base = source.snapshot(board)!!
+        val candidate = BoardCellCoordinator("candidate", settleMs = 0, heartbeatTimeoutMs = 10)
+        val observer = BoardCellCoordinator("observer", settleMs = 0, heartbeatTimeoutMs = 10)
+        candidate.restoreTrustedSnapshot(base, 100)
+        observer.restoreTrustedSnapshot(base, 100)
+        candidate.expireLocalDeadlines(111)
+        observer.expireLocalDeadlines(111)
+
+        // The recovery event is lost while the observer is partitioned.
+        candidate.recoverController(board, "exclusive-gatt-proof", 112)!!
+        candidate.heartbeat(board, 113)
+        val recoveredSnapshot = candidate.snapshot(board)!!
+
+        assertTrue(observer.acceptSnapshot("candidate", recoveredSnapshot, 114) is BoardCellApplyResult.Applied)
+        assertEquals("candidate", observer.snapshot(board)!!.controllerId)
+        assertEquals(recoveredSnapshot.stateHash, observer.snapshot(board)!!.stateHash)
+        assertEquals(BoardCellAvailability.ACTIVE, observer.snapshot(board)!!.availability)
+    }
+
+    @Test fun `member cannot disguise recovery metadata behind a legacy hash`() = runTest {
+        val board = PhysicalBoardId("kilter:serial:legacy-recovery")
+        val (source) = settled("source", board, now = 100)
+        source.joinMember(board, "member")
+        val current = source.snapshot(board)!!
+        val forged = current.copy(
+            controllerId = "member",
+            controllerTerm = current.controllerTerm + 1,
+            sequence = current.sequence + 1,
+            lastControllerRecovery = BoardCellControllerRecoveryProof(
+                "member", current.controllerId, current.controllerTerm,
+                current.sequence, current.stateHash, "made-up-proof",
+            ),
+            stateHash = "",
+        )
+        val legacyHash = BoardCellHash.computeLegacyV3(forged)
+        assertFalse(forged.copy(stateHash = legacyHash).hasValidHash())
     }
 
     @Test fun `handover requires prepared target readiness commit and completion across two coordinators`() = runTest {

@@ -60,8 +60,11 @@ discovery or relays for BoardCell state.
   a full snapshot. It never skips a delta.
 - Absolute timestamps are never compared between phones. The snapshot carries
   a persisted controller term and ordered heartbeat counter; each receiver
-  derives expiry only from its own monotonic clock. Missing heartbeats freeze
-  writes and never elect a replacement.
+  derives expiry only from its own monotonic clock. After three missed
+  heartbeat windows, members immediately race a staggered, fenced recovery.
+  Only a claimant that acquired the exclusive physical board connection may
+  advance the controller term, minimizing controllerless time without allowing
+  an unfenced logical writer.
 - Controller transfer is `PREPARED -> TARGET_READY -> COMMITTED -> COMPLETED`.
   The source explicitly selects a member. The target may emit readiness only
   after acquiring the session HOST role, board keep-alive and a connected-board

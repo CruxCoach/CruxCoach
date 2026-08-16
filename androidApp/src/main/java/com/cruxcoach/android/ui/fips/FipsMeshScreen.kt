@@ -54,6 +54,8 @@ fun FipsMeshScreen(
     viewModel: FipsMeshViewModel = hiltViewModel(),
 ) {
     val state = viewModel.state.collectAsStateWithLifecycle().value
+    val joiningBoardCellId by viewModel.joiningBoardCellId.collectAsStateWithLifecycle()
+    val joinFailed by viewModel.joinFailed.collectAsStateWithLifecycle()
     val incomingControllerRequest by viewModel.incomingControllerRequest.collectAsStateWithLifecycle()
     var showConnectionSheet by remember { mutableStateOf(false) }
     incomingControllerRequest?.let { request ->
@@ -111,15 +113,23 @@ fun FipsMeshScreen(
                 items(state.peers, key = { it.npub }) { PeerCard(it) }
             }
             item { SectionTitle(stringResource(R.string.fips_mesh_nearby_meshes)) }
-            if (!state.running) {
-                item { EmptyCard(stringResource(R.string.fips_mesh_connect_board_hint)) }
-            } else if (state.nearbyMeshes.isEmpty()) {
+            if (joinFailed) {
+                item {
+                    Text(stringResource(R.string.fips_mesh_join_failed),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error)
+                }
+            }
+            if (state.nearbyMeshes.isEmpty()) {
                 item { EmptyCard(stringResource(R.string.fips_mesh_no_nearby_meshes)) }
             } else {
                 items(
                     state.nearbyMeshes,
                     key = { "${it.address}:${it.realmTag}:${it.cellTag}" },
-                ) { mesh -> NearbyMeshCard(mesh, onJoin = { viewModel.join(mesh) }) }
+                ) { mesh -> NearbyMeshCard(mesh,
+                    joining = joiningBoardCellId == mesh.joinableBoardCellId,
+                    joinEnabled = joiningBoardCellId == null,
+                    onJoin = { viewModel.join(mesh) }) }
             }
             item { Spacer(Modifier.size(20.dp)) }
         }
@@ -128,7 +138,10 @@ fun FipsMeshScreen(
 
 @Composable
 private fun CurrentMeshCard(state: FipsMeshUiState, onConnect: () -> Unit) {
-    val active = state.running && state.cellId != null
+    // Membership survives a temporary Bluetooth/transport outage. Keep the
+    // card as the current mesh and surface the radio error separately instead
+    // of telling the user their mesh disappeared.
+    val active = state.cellId != null
     MeshCard(container = if (active) SuccessGreen.copy(alpha = 0.10f) else InfoBlue.copy(alpha = 0.08f)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Hub, contentDescription = null, tint = if (active) SuccessGreen else InfoBlue)
@@ -149,6 +162,11 @@ private fun CurrentMeshCard(state: FipsMeshUiState, onConnect: () -> Unit) {
             Detail(stringResource(R.string.fips_mesh_state), state.availability.orEmpty())
             Detail(stringResource(R.string.fips_mesh_own_node), shortNpub(state.localNpub))
             Detail(stringResource(R.string.fips_mesh_controller), shortNpub(state.controllerNpub))
+            if (!state.bluetoothAvailable) {
+                Text(stringResource(R.string.board_bt_off_message),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error)
+            }
         } else {
             Text(
                 stringResource(R.string.fips_mesh_connect_board_hint),
@@ -190,7 +208,12 @@ private fun PeerCard(peer: FipsMeshPeerUi) {
 }
 
 @Composable
-private fun NearbyMeshCard(mesh: NearbyFipsMeshUi, onJoin: () -> Unit) {
+private fun NearbyMeshCard(
+    mesh: NearbyFipsMeshUi,
+    joining: Boolean,
+    joinEnabled: Boolean,
+    onJoin: () -> Unit,
+) {
     MeshCard(container = if (mesh.currentMesh) OrangeAccent.copy(alpha = 0.10f) else Color.Unspecified) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Hub, contentDescription = null, tint = OrangeAccent)
@@ -210,8 +233,10 @@ private fun NearbyMeshCard(mesh: NearbyFipsMeshUi, onJoin: () -> Unit) {
         }
         Detail(stringResource(R.string.fips_mesh_signal), "${mesh.rssi} dBm")
         if (!mesh.currentMesh && mesh.joinableBoardCellId != null) {
-            Button(onClick = onJoin, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.fips_mesh_join_action))
+            Button(onClick = onJoin, enabled = joinEnabled, modifier = Modifier.fillMaxWidth()) {
+                Text(if (joining) stringResource(R.string.fips_mesh_joining,
+                    mesh.boardName ?: stringResource(R.string.fips_mesh_nearby_other))
+                else stringResource(R.string.fips_mesh_join_action))
             }
         }
     }

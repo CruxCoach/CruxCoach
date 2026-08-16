@@ -449,6 +449,9 @@ fun BleConnectionSheet(
                         isScanning = state.isScanning,
                         boards = state.discoveredBoards,
                         nearbyMeshes = state.nearbyMeshes,
+                        activeBoardCellId = state.activeBoardCellId,
+                        joiningBoardCellId = state.joiningBoardCellId,
+                        meshJoinFailed = state.meshJoinFailed,
                         nearbySessions = state.nearbySessions,
                         lastUsedBoardAddresses = state.lastUsedBoardAddresses,
                         bleShareState = bleShareState,
@@ -864,6 +867,9 @@ private fun ScanContent(
     isScanning: Boolean,
     boards: List<DiscoveredBoard>,
     nearbyMeshes: List<FipsNearbyMesh>,
+    activeBoardCellId: String?,
+    joiningBoardCellId: String?,
+    meshJoinFailed: Boolean,
     nearbySessions: List<NearbySession>,
     lastUsedBoardAddresses: Map<BoardBrand, String>,
     bleShareState: com.cruxcoach.android.data.BleShareUiState,
@@ -920,13 +926,18 @@ private fun ScanContent(
         }
     }
 
-    val meshNames = nearbyMeshes.mapNotNull { it.boardName?.trim()?.lowercase() }.toSet()
+    if (meshJoinFailed) {
+        Text(stringResource(R.string.fips_mesh_join_failed),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error)
+    }
+
     val meshCells = nearbyMeshes.mapNotNull { it.joinableBoardCellId }.toSet()
     val standaloneBoards = boards.filter { board ->
         val cell = runCatching {
             BoardCellId.forPhysical(PhysicalBoardIdentity.resolve(board)).value
         }.getOrNull()
-        cell !in meshCells && board.displayName.trim().lowercase() !in meshNames
+        cell !in meshCells
     }
     if (standaloneBoards.isNotEmpty() || nearbyMeshes.isNotEmpty() || nearbySessions.isNotEmpty()) {
         LazyColumn(
@@ -934,7 +945,11 @@ private fun ScanContent(
             modifier = Modifier.heightIn(max = 300.dp)
         ) {
             items(nearbyMeshes, key = { "mesh:${it.realmTag}:${it.cellTag}" }) { mesh ->
-                MeshBoardItem(mesh = mesh, onClick = { onJoinMesh(mesh) })
+                MeshBoardItem(mesh = mesh,
+                    joined = mesh.joinableBoardCellId == activeBoardCellId,
+                    joining = mesh.joinableBoardCellId == joiningBoardCellId,
+                    joinEnabled = joiningBoardCellId == null,
+                    onClick = { onJoinMesh(mesh) })
             }
             items(standaloneBoards, key = { it.address }) { board ->
                 BoardItem(
@@ -998,10 +1013,16 @@ private fun ScanContent(
 }
 
 @Composable
-private fun MeshBoardItem(mesh: FipsNearbyMesh, onClick: () -> Unit) {
+private fun MeshBoardItem(
+    mesh: FipsNearbyMesh,
+    joined: Boolean,
+    joining: Boolean,
+    joinEnabled: Boolean,
+    onClick: () -> Unit,
+) {
     Card(
         onClick = onClick,
-        enabled = mesh.joinableBoardCellId != null && !mesh.matchesActiveRealm,
+        enabled = mesh.joinableBoardCellId != null && !joined && joinEnabled,
         modifier = Modifier.fillMaxWidth().testTag("mesh_board_item"),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)),
@@ -1014,7 +1035,9 @@ private fun MeshBoardItem(mesh: FipsNearbyMesh, onClick: () -> Unit) {
             Column(Modifier.weight(1f)) {
                 Text(mesh.boardName ?: stringResource(R.string.fips_mesh_nearby_other),
                     style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
-                Text(if (mesh.matchesActiveRealm)
+                Text(if (joining) stringResource(R.string.fips_mesh_joining,
+                    mesh.boardName ?: stringResource(R.string.fips_mesh_nearby_other))
+                else if (joined)
                     stringResource(R.string.fips_mesh_nearby_own)
                 else stringResource(R.string.fips_mesh_nearby_other),
                     style = MaterialTheme.typography.bodySmall,

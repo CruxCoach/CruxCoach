@@ -71,9 +71,14 @@ fun BleStatusArea(
     val state by bleShareManager.uiState.collectAsStateWithLifecycle()
     val meshViewModel: FipsMeshViewModel = hiltViewModel()
     val meshState by meshViewModel.state.collectAsStateWithLifecycle()
-    val joiningMeshName by meshViewModel.joiningMeshName.collectAsStateWithLifecycle()
+    val joiningBoardCellId by meshViewModel.joiningBoardCellId.collectAsStateWithLifecycle()
+    val meshJoinFailed by meshViewModel.joinFailed.collectAsStateWithLifecycle()
     val incomingControllerRequest by meshViewModel.incomingControllerRequest.collectAsStateWithLifecycle()
     val nearbyMeshes = meshState.nearbyMeshes.filterNot { it.currentMesh }
+    val joiningMeshName = joiningBoardCellId?.let { cellId ->
+        meshState.nearbyMeshes.firstOrNull { it.joinableBoardCellId == cellId }?.boardName
+            ?: stringResource(com.cruxcoach.android.R.string.fips_mesh_nearby_other)
+    }
     LaunchedEffect(meshState.running) {
         if (!meshState.running) meshViewModel.ensureDiscovery()
     }
@@ -132,7 +137,8 @@ fun BleStatusArea(
     // the regular chip instead.
     val hasContent = effectiveOnBoard != null || state.boardOccupiedCount > 0 ||
         state.nearbySessions.isNotEmpty() || state.ownSession != null ||
-        relayState.enabled || nearbyMeshes.isNotEmpty() || joiningMeshName != null || meshState.cellId != null
+        relayState.enabled || nearbyMeshes.isNotEmpty() || joiningMeshName != null ||
+        meshState.cellId != null || meshJoinFailed
 
     // Terminal relay errors (BOARD_LOST, a failed start) land AFTER the
     // sharing sheet's error surface is gone — show them here so the stop
@@ -145,6 +151,12 @@ fun BleStatusArea(
                 onDismiss = { relayManager.clearError() }
             )
         }
+    }
+    if (meshJoinFailed) {
+        RelayErrorRow(
+            text = stringResource(com.cruxcoach.android.R.string.fips_mesh_join_failed),
+            onDismiss = meshViewModel::dismissJoinError,
+        )
     }
 
     if (!hasContent) return
@@ -179,7 +191,7 @@ fun BleStatusArea(
             relayClientCount = relayClientCount,
             onStopRelay = stopRelay,
             nearbyMeshes = nearbyMeshes,
-            onJoinMesh = meshViewModel::join,
+            onJoinMesh = if (joiningBoardCellId == null) meshViewModel::join else null,
             joiningMeshName = joiningMeshName,
         )
     } else {

@@ -22,10 +22,11 @@ class BoardCellWireTest {
         override val localNpub: String,
         var direct: Set<String> = emptySet(),
         private val realm: String = "cell",
+        var acceptsSends: Boolean = true,
     ) : AuthenticatedMeshLink {
         val sent = mutableListOf<Pair<String, ByteArray>>()
         override fun send(authenticatedPeerNpub: String, payload: ByteArray): Boolean {
-            sent += authenticatedPeerNpub to payload; return true
+            sent += authenticatedPeerNpub to payload; return acceptsSends
         }
         override fun directAuthenticatedPeers() = direct
         override fun activeRealmId() = realm
@@ -133,6 +134,78 @@ class BoardCellWireTest {
         assertTrue(BoardCellWireCodec.decode(link.sent.last().second).message is BoardCellWireMessage.SnapshotRequest)
     }
 
+    @Test fun `controller anti entropy pushes canonical snapshot to stale member`() = runTest {
+        val link = Link("host")
+        val transport = BoardCellMeshTransport(link)
+        val coordinator = BoardCellCoordinator("host", transport, settleMs = 0)
+        transport.attach(coordinator)
+        val board = PhysicalBoardId("board")
+        coordinator.beginClaim(board, BoardCellId("cell"), 1)
+        coordinator.settle(board, 1)
+        coordinator.joinMember(board, "member")
+        val snapshot = coordinator.snapshot(board)!!
+        transport.rememberSnapshot(snapshot)
+        link.sent.clear()
+
+        val stale = BoardCellWireMessage.AntiEntropy(snapshot.sequence - 1, "stale-hash")
+        assertNull(transport.receive("member", frame("member", stale, snapshot.epoch,
+            snapshot.controllerTerm, "anti-entropy-stale"), 2))
+
+        assertEquals("member", link.sent.single().first)
+        val response = BoardCellWireCodec.decode(link.sent.single().second).message
+        assertTrue(response is BoardCellWireMessage.Snapshot)
+        assertEquals(snapshot.stateHash, (response as BoardCellWireMessage.Snapshot).value.stateHash)
+    }
+
+    @Test fun `periodic anti entropy never occupies durable outbox`() = runTest {
+        val link = Link("host", acceptsSends = false)
+        val transport = BoardCellMeshTransport(link)
+        val snapshot = BoardCellSnapshot(BoardCellId("cell"), PhysicalBoardId("board"), 1, 0,
+            "host", lineageId = "lineage", members = setOf("host", "offline")).withComputedHash()
+        transport.rememberSnapshot(snapshot)
+
+        repeat(20) { transport.antiEntropy() }
+        assertEquals(20, link.sent.size)
+        link.acceptsSends = true
+        transport.retryOutbox()
+        assertEquals("best-effort digests must not be replayed", 20, link.sent.size)
+    }
+
+    @Test fun `realm switch drops old snapshots and queued frames`() = runTest {
+        val link = Link("host", acceptsSends = false)
+        val transport = BoardCellMeshTransport(link)
+        val snapshot = BoardCellSnapshot(BoardCellId("cell"), PhysicalBoardId("board"), 1, 0,
+            "host", lineageId = "lineage", members = setOf("host", "offline")).withComputedHash()
+
+        transport.publishSnapshot(snapshot)
+        assertEquals(1, link.sent.size)
+        transport.resetForRealm()
+        link.acceptsSends = true
+        transport.retryOutbox()
+        transport.antiEntropy()
+
+        assertEquals("old realm state must never be retried in the new realm", 1, link.sent.size)
+    }
+
+    @Test fun `superseded controller heartbeats never occupy durable outbox`() = runTest {
+        val link = Link("host", acceptsSends = false)
+        val transport = BoardCellMeshTransport(link)
+        val snapshot = BoardCellSnapshot(BoardCellId("cell"), PhysicalBoardId("board"), 1, 0,
+            "host", lineageId = "lineage", members = setOf("host", "offline")).withComputedHash()
+        transport.rememberSnapshot(snapshot)
+        repeat(20) { index ->
+            val event = BoardCellEvent.ControllerHeartbeat(index.toLong() + 1)
+            val next = BoardCellReplica.reduce(snapshot, event, index.toLong() + 1)
+            transport.publishEvent(BoardCellEnvelope(snapshot.cellId, snapshot.physicalBoardId,
+                snapshot.epoch, snapshot.controllerTerm, next.sequence, snapshot.stateHash,
+                event, next.stateHash))
+        }
+        assertEquals(20, link.sent.size)
+        link.acceptsSends = true
+        transport.retryOutbox()
+        assertEquals("superseded heartbeats must not be replayed", 20, link.sent.size)
+    }
+
     @Test fun `only a member can request control and only controller can decide`() = runTest {
         val hostLink = Link("host")
         val hostTransport = BoardCellMeshTransport(hostLink)
@@ -172,5 +245,71 @@ class BoardCellWireTest {
         assertTrue(memberTransport.receive("other", frame("other",
             BoardCellWireMessage.ControllerDecision(accepted), snapshot.epoch,
             snapshot.controllerTerm, "decision-forged")) is BoardCellApplyResult.Rejected)
+    }
+
+    @Test fun `direct neighbor can sponsor permissionless join through a non-controller member`() = runTest {
+        val board = PhysicalBoardId("board")
+        val hostLink = Link("host")
+        val hostTransport = BoardCellMeshTransport(hostLink)
+        val host = BoardCellCoordinator("host", hostTransport, settleMs = 0)
+        hostTransport.attach(host)
+        host.beginClaim(board, BoardCellId("cell"), 1)
+        host.settle(board, 1)
+        host.joinMember(board, "sponsor")
+        val shared = host.snapshot(board)!!
+        hostTransport.rememberSnapshot(shared)
+
+        val sponsorLink = Link("sponsor", direct = setOf("candidate"))
+        val sponsorTransport = BoardCellMeshTransport(sponsorLink)
+        val sponsor = BoardCellCoordinator("sponsor", sponsorTransport, settleMs = 0)
+        sponsorTransport.attach(sponsor)
+        sponsor.restoreTrustedSnapshot(shared, 2)
+        sponsorTransport.rememberSnapshot(shared)
+
+        assertTrue(sponsorTransport.sponsorMember(shared, "candidate"))
+        val (target, encoded) = sponsorLink.sent.single()
+        assertEquals("host", target)
+        val sponsoredFrame = BoardCellWireCodec.decode(encoded)
+        assertTrue(sponsoredFrame.message is BoardCellWireMessage.MemberJoinRequest)
+        assertNull(hostTransport.receive("sponsor", encoded, 3))
+        assertTrue("candidate" in host.snapshot(board)!!.members)
+
+        // Process restart keeps the per-realm npub but loses in-memory state.
+        // Sponsoring that existing identity must deliver a full snapshot.
+        hostLink.sent.clear()
+        val rejoin = BoardCellJoinRequest("join-reconnect-01", "candidate", "sponsor")
+        assertNull(hostTransport.receive("sponsor", frame("sponsor",
+            BoardCellWireMessage.MemberJoinRequest(rejoin), shared.epoch,
+            shared.controllerTerm, "join-reconnect-frame"), 4))
+        assertEquals("candidate", hostLink.sent.single().first)
+        assertTrue(BoardCellWireCodec.decode(hostLink.sent.single().second).message is
+            BoardCellWireMessage.Snapshot)
+
+        val forged = BoardCellJoinRequest("join-forged-01", "other", "sponsor")
+        assertTrue(hostTransport.receive("attacker", frame("attacker",
+            BoardCellWireMessage.MemberJoinRequest(forged), shared.epoch,
+            shared.controllerTerm, "join-forged-frame"), 4) is BoardCellApplyResult.Rejected)
+    }
+
+    @Test fun `frozen controller cannot extend membership on a stale history`() = runTest {
+        val board = PhysicalBoardId("board")
+        val link = Link("host", direct = setOf("member", "candidate"))
+        val transport = BoardCellMeshTransport(link)
+        val coordinator = BoardCellCoordinator("host", transport, settleMs = 0,
+            heartbeatTimeoutMs = 10)
+        transport.attach(coordinator)
+        coordinator.beginClaim(board, BoardCellId("cell"), 1)
+        coordinator.settle(board, 1)
+        coordinator.joinMember(board, "member")
+        coordinator.expireLocalDeadlines(20)
+        val frozen = coordinator.snapshot(board)!!
+        transport.rememberSnapshot(frozen)
+
+        assertEquals(BoardCellAvailability.FROZEN_NEEDS_CONTROLLER, frozen.availability)
+        assertNull(coordinator.joinMember(board, "candidate"))
+
+        val memberLink = Link("member", direct = setOf("candidate"))
+        val memberTransport = BoardCellMeshTransport(memberLink)
+        assertFalse(memberTransport.sponsorMember(frozen, "candidate"))
     }
 }

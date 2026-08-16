@@ -1,4 +1,4 @@
-schema_version = 1
+schema_version = 2
 protocol = "org.apktrack.project"
 
 [project]
@@ -13,21 +13,27 @@ profile = "existing"
 blossom = ["https://blossom.primal.net"]
 event_servers = ["wss://relay.damus.io", "wss://nos.lol"]
 nsite_gateway = "https://npub1uux22z2rhhcvk9fs9dp60k3uc5f7frdqy5chrsemsxwgnyl0y9dqhx0gem.nsite.lol"
+validator_pubkey = "8c8095b72c35e5658db62cc8ccb3bb06398d8ce12aca523b4143764db1d64936"
 
 [apktrack]
-url = "http://127.0.0.1:18080"
-token_env = "APKTRACK_AGENT_TOKEN"
+url = "https://stats.cruxcoach.org/apktrack"
+nsec_env = "APKTRACK_AGENT_NSEC_HEX"
+upload_token_env = "APKTRACK_AGENT_TOKEN"
 build_command = "./gradlew :androidApp:assembleDebug"
 artifact_glob = "androidApp/build/outputs/apk/debug/androidApp-debug.apk"
 
 [[android.scope]]
 role = "production"
 package = "com.cruxcoach.android"
+package_patterns = []
 certificate_sha256 = "7f8308e8fe25e41aad0c7f0ac087775acd7d8c6a23da3a824212a8f3fe1bc2c4"
 tracks = ["stable"]
+track_patterns = []
 
 [[android.scope]]
 role = "development"
 package = "com.cruxcoach.android.dev.feat.board_cell_mesh_mvp"
+package_patterns = ["com.cruxcoach.android.dev.*"]
 certificate_sha256 = "7c79e883b332269c8a36f4edb981f734d2844fc057cfcc15aec4bc04e3c3e6a5"
 tracks = ["fips"]
+track_patterns = ["feat*"]

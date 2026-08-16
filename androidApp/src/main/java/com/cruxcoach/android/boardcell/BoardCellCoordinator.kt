@@ -143,6 +143,17 @@ class BoardCellCoordinator(
             incoming.resolvedLineages.size >= 2 &&
             incoming.lineageId == BoardCellLineage.resolvedId(incoming.cellId, incoming.resolvedLineages) &&
             incoming.availability == BoardCellAvailability.FROZEN_WRITE_RECOVERY
+        val recovery = incoming.lastControllerRecovery
+        val repairsMissedRecovery = current != null &&
+            current.availability == BoardCellAvailability.FROZEN_NEEDS_CONTROLLER &&
+            senderId == incoming.controllerId && senderId in current.members &&
+            incoming.lineageId == current.lineageId && incoming.epoch == current.epoch &&
+            incoming.controllerTerm == current.controllerTerm + 1 &&
+            incoming.sequence > current.sequence && recovery != null &&
+            recovery.claimantId == senderId && recovery.baseControllerId == current.controllerId &&
+            recovery.baseControllerTerm == current.controllerTerm &&
+            recovery.baseSequence == current.sequence && recovery.baseHash == current.stateHash &&
+            recovery.connectionProof.isNotBlank()
         if (current != null && incoming.lineageId != current.lineageId && !resolvesCurrentFork) {
             observedForkLineages.getOrPut(incoming.physicalBoardId) { mutableSetOf(current.lineageId) }
                 .add(incoming.lineageId)
@@ -157,7 +168,7 @@ class BoardCellCoordinator(
             val authorizedTransfer = incoming.controllerTerm > current.controllerTerm &&
                 incoming.handover?.phase in setOf(HandoverPhase.COMMITTED, HandoverPhase.COMPLETED) &&
                 incoming.handover?.targetControllerId == senderId
-            if (!authorizedTransfer && !resolvesCurrentFork)
+            if (!authorizedTransfer && !resolvesCurrentFork && !repairsMissedRecovery)
                 return@withLock BoardCellApplyResult.Rejected("snapshot not ordered by canonical controller")
         }
         val replica = replicas.getOrPut(incoming.physicalBoardId) { BoardCellReplica(nodeId) }
@@ -169,6 +180,11 @@ class BoardCellCoordinator(
                     durableStore.recordAck(ack(commandId, BoardCommandStatus.COMMITTED, it.snapshot))
                 }
                 BoardCellScopeRegistry.joinCell(incoming.physicalBoardId, incoming.cellId)
+            } else if (it is BoardCellApplyResult.IgnoredStale &&
+                senderId == current?.controllerId) {
+                // An authenticated duplicate still proves that the canonical
+                // controller is alive during reordering/reconnect.
+                controllerObservedAt[incoming.physicalBoardId] = nowMonotonicMs
             }
         }
     }
@@ -179,6 +195,9 @@ class BoardCellCoordinator(
         val current = replica.snapshot ?: return@withLock BoardCellApplyResult.NeedSnapshot(0, envelope.sequence)
         if (senderId != current.controllerId || senderId !in current.members)
             return@withLock BoardCellApplyResult.Rejected("event sender is not canonical controller")
+        // A correctly scoped packet proves controller liveness even when its
+        // event is duplicate or reveals a gap that needs snapshot repair.
+        controllerObservedAt[envelope.physicalBoardId] = nowMonotonicMs
         val result = replica.applyEvent(envelope)
         if (result is BoardCellApplyResult.Applied) {
             controllerObservedAt[envelope.physicalBoardId] = nowMonotonicMs
@@ -190,6 +209,18 @@ class BoardCellCoordinator(
             transport.requestSnapshot(envelope.cellId, result.expectedSequence - 1)
         }
         result
+    }
+
+    /** Records authenticated control-plane traffic without mutating history. */
+    suspend fun observeControllerActivity(
+        boardId: PhysicalBoardId,
+        senderId: String,
+        nowMonotonicMs: Long,
+    ): Boolean = mutex.withLock {
+        val current = replicas[boardId]?.snapshot ?: return@withLock false
+        if (senderId != current.controllerId || senderId !in current.members) return@withLock false
+        controllerObservedAt[boardId] = nowMonotonicMs
+        true
     }
 
     private fun eventCommandId(event: BoardCellEvent): String? = when (event) {
@@ -280,10 +311,17 @@ class BoardCellCoordinator(
 
     suspend fun joinMember(boardId: PhysicalBoardId, memberId: String): BoardCellEnvelope? = mutex.withLock {
         val current = replicas[boardId]?.snapshot ?: return@withLock null
-        if (current.controllerId != nodeId || memberId.isBlank() || memberId in current.members) return@withLock null
+        if (current.controllerId != nodeId || current.availability != BoardCellAvailability.ACTIVE ||
+            memberId.isBlank() || memberId in current.members ||
+            current.members.size >= MAX_MEMBERS) return@withLock null
         commitCanonical(boardId, BoardCellEvent.MemberJoined(memberId)).also {
             replicas[boardId]?.snapshot?.let { snapshot -> transport.publishSnapshot(snapshot) }
         }
+    }
+
+    companion object {
+        /** Must stay aligned with the bounded wire snapshot decoder. */
+        const val MAX_MEMBERS = 128
     }
 
     suspend fun project(
@@ -475,8 +513,14 @@ class BoardCellCoordinator(
             // A released source intentionally has no physical board heartbeat
             // while it waits for the target. The handover deadline, not the
             // shorter controller heartbeat, governs this bounded interval.
-            if (!transferInProgress && current.availability == BoardCellAvailability.ACTIVE &&
-                nowMonotonicMs - last > heartbeatTimeoutMs) {
+            // A member waiting for a missing snapshot must still be able to
+            // recover when the controller subsequently disappears. Leaving it
+            // in FROZEN_NEEDS_SNAPSHOT forever would strand the whole cell.
+            if (!transferInProgress && current.availability in setOf(
+                    BoardCellAvailability.ACTIVE,
+                    BoardCellAvailability.FROZEN_NEEDS_SNAPSHOT,
+                ) &&
+                nowMonotonicMs - last >= heartbeatTimeoutMs) {
                 replica.freeze(BoardCellAvailability.FROZEN_NEEDS_CONTROLLER)
                 replica.snapshot?.let(durableStore::persistSnapshot)
             }
@@ -527,7 +571,7 @@ class BoardCellCoordinator(
         val replica = replicas[boardId] ?: return@withLock null
         val current = replica.snapshot ?: return@withLock null
         if (current.availability != BoardCellAvailability.FROZEN_NEEDS_CONTROLLER ||
-            current.controllerId == nodeId || nodeId !in current.members || connectionProof.isBlank()) {
+            nodeId !in current.members || connectionProof.isBlank()) {
             return@withLock null
         }
         val event = BoardCellEvent.ControllerRecovered(nodeId, current.controllerTerm + 1, connectionProof)

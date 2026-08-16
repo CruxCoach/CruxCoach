@@ -113,6 +113,7 @@ class BoardCellReplica(val localMemberId: String, initial: BoardCellSnapshot? = 
                     controllerTerm = event.targetTerm,
                     controllerHeartbeat = 0,
                     handover = current.handover?.copy(phase = HandoverPhase.COMMITTED),
+                    lastControllerRecovery = null,
                 )
                 is BoardCellEvent.HandoverCompleted -> current.copy(
                     handover = current.handover?.copy(phase = HandoverPhase.COMPLETED))
@@ -124,6 +125,14 @@ class BoardCellReplica(val localMemberId: String, initial: BoardCellSnapshot? = 
                     controllerHeartbeat = 0,
                     availability = BoardCellAvailability.ACTIVE,
                     handover = null,
+                    lastControllerRecovery = BoardCellControllerRecoveryProof(
+                        claimantId = event.controllerId,
+                        baseControllerId = current.controllerId,
+                        baseControllerTerm = current.controllerTerm,
+                        baseSequence = current.sequence,
+                        baseHash = current.stateHash,
+                        connectionProof = event.connectionProof,
+                    ),
                 )
                 is BoardCellEvent.ProjectionRecoveryRequired -> current.copy(
                     projection = null, projectionKnown = false,
@@ -134,7 +143,8 @@ class BoardCellReplica(val localMemberId: String, initial: BoardCellSnapshot? = 
                     resolvedLineages = event.resolvedLineages,
                     members = current.members + event.resolvedMembers,
                     projection = null, projectionKnown = false,
-                    availability = BoardCellAvailability.FROZEN_WRITE_RECOVERY, handover = null)
+                    availability = BoardCellAvailability.FROZEN_WRITE_RECOVERY, handover = null,
+                    lastControllerRecovery = null)
             }
             val commandId = when (event) {
                 is BoardCellEvent.ProjectCommitted -> event.commandId

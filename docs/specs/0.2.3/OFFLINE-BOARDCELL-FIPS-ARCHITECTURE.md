@@ -159,13 +159,19 @@ A peer is admitted only when all of the following hold:
 
 1. FIPS authenticated its cryptographic identity;
 2. the complete realm ID and BoardCell ID match;
-3. the nonce is fresh and was scanned locally by this phone;
-4. the sender is a direct BLE peer at that time.
+3. the CCJ1 hello is fresh (a locally observed nonce strengthens it when
+   Android scanning is symmetric, but is not required on the listener);
+4. the sender is a direct BLE peer at that time. The joining side must have
+   discovered the member it dialed; the listener need not also discover the
+   initiator before accepting its authenticated inbound L2CAP channel.
 
-An admitted member may later send application data over multiple FIPS hops,
-but it cannot relay the discovery or join proof for a remote device. A random
-collision of the short advertisement tags is insufficient: full validation
-rejects the link before it becomes a durable realm edge.
+An admitted member may later send application data over multiple FIPS hops. It
+may also sponsor a directly FIPS-authenticated, full-scope-validated neighbor to the
+canonical controller, so joining does not require a direct controller edge.
+The normal client emits sponsorship only for its current validated direct BLE
+peer. A random collision of the short
+advertisement tags is insufficient: full validation rejects the link before it
+becomes a durable realm edge.
 
 This is the boundary that prevents receiving events from “somewhere else.”
 Physical proximity is required for initial direct admission. After admission,
@@ -218,7 +224,12 @@ known climb and stays frozen until an operator deliberately reprojects.
 Controller liveness never uses a serialized wall-clock deadline. The history
 contains a generation/term and heartbeat number. Each phone records receipt
 against `elapsedRealtime()` and applies only its local timeout. Clock skew
-cannot transfer authority; timeout freezes and never elects.
+cannot transfer authority. After three missed heartbeat windows, eligible
+members start a short staggered recovery race. A claimant advances the term
+only after acquiring the physical board connection, which acts as the fencing
+token; peers validate the exact previous controller, term, sequence and hash.
+The recovery base remains in the hashed snapshot so a peer that missed the
+recovery event can still converge after reconnect.
 
 Controller handover is durable and explicit:
 
@@ -235,17 +246,22 @@ the persisted phase. An unavailable committed target causes waiting/freeze,
 not rollback or election.
 
 When a replica observes a sequence gap, hash mismatch, or newer epoch, it never
-skips ahead. It freezes and requests a complete snapshot. Devices additionally
-compare their `(cell, epoch, sequence, hash)` positions every five seconds.
-Persisted snapshots support recovery after process and radio interruptions.
+skips ahead. It freezes and requests a complete snapshot. If the controller
+then disappears, that snapshot-wait state also advances into fenced controller
+recovery instead of remaining stuck. Devices additionally compare their
+`(cell, epoch, sequence, hash)` positions periodically. These digests are
+best-effort and coalescing by nature, so offline peers cannot crowd canonical
+events or snapshots out of the durable outbox. Persisted snapshots support
+recovery after process and radio interruptions.
 
 “Eventual consistency” therefore means:
 
 - reachable members receive the same ordered history;
 - a temporarily unreachable member may wait and catch up from a snapshot;
-- a missing controller does not cause speculative election of another writer;
-- a partition freezes new writes until the old controller returns or had
-  previously ordered a transfer to another member.
+- a missing controller is replaced quickly, but only by a member that wins the
+  physical-board connection fence and publishes the exact next term;
+- a partition cannot create an accepted logical writer without that same
+  physical fence, and merge-time anti-entropy repairs missed recovery events.
 
 Safety and an unambiguous physical board state take priority over availability.
 

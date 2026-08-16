@@ -9,12 +9,14 @@ import kotlin.test.assertTrue
 
 class FipsRealmSecurityTest {
     private class MemoryStorage : RealmSecretStorage {
-        override var realmId: String? = null
-        override var secretHex: String? = null
-        override fun clear() { realmId = null; secretHex = null }
+        val values = mutableMapOf<String, String>()
+        override fun secretHex(realmId: String) = values[realmId]
+        override fun putSecret(realmId: String, secretHex: String) { values[realmId] = secretHex }
+        override fun realmIds() = values.keys.toSet()
+        override fun remove(realmId: String) { values.remove(realmId) }
     }
 
-    @Test fun `realm credential persists reconnect and rotates on realm switch and end`() {
+    @Test fun `realm credential persists reconnect realm switches and transport end`() {
         val storage = MemoryStorage()
         var seed = 1
         fun ledger() = FipsRealmCredentialLedger(storage) { ByteArray(32) { seed.toByte() }.also { seed++ } }
@@ -22,10 +24,20 @@ class FipsRealmSecurityTest {
         assertEquals(cellKey, ledger().activate("cell-a")) // process/Bluetooth restart
         val competitionKey = ledger().activate("competition-1")
         assertNotEquals(cellKey, competitionKey)
-        val rotatedCellKey = ledger().activate("cell-a")
-        assertNotEquals(cellKey, rotatedCellKey)
+        val restoredCellKey = ledger().activate("cell-a")
+        assertEquals(cellKey, restoredCellKey)
         ledger().end("cell-a")
-        assertNotEquals(rotatedCellKey, ledger().activate("cell-a"))
+        assertEquals(cellKey, ledger().activate("cell-a"))
+    }
+
+    @Test fun `realm credential storage is bounded`() {
+        val storage = MemoryStorage()
+        var seed = 1
+        val ledger = FipsRealmCredentialLedger(storage,
+            newSecret = { ByteArray(32) { seed.toByte() }.also { seed++ } }, maxRealms = 3)
+        repeat(4) { ledger.activate("cell-$it") }
+        assertEquals(3, storage.values.size)
+        assertTrue("cell-3" in storage.values)
     }
 
     @Test fun `fips secret is independent of an account secret`() {
@@ -44,13 +56,16 @@ class FipsRealmSecurityTest {
         assertFalse(first.realmTag.contentEquals(competition.realmTag))
     }
 
-    @Test fun `join proof requires fresh direct one hop observation and exact full scope`() {
+    @Test fun `join proof requires fresh direct edge and exact full scope without symmetric scan`() {
         val now = 100_000L
         val realm = FipsRealmContext("cell-a", "cell-a")
         val nonce = ByteArray(16) { it.toByte() }
         val hello = DirectJoinHello("cell-a", "cell-a", DirectJoinProof.run { nonce.toHex() }, now)
         val observed = mapOf(DirectJoinProof.run { nonceTag(nonce).toHex() } to now)
         assertTrue(DirectJoinProof.validate(realm, hello, observed, true, now))
+        assertTrue(DirectJoinProof.validate(realm, hello, emptyMap(), true, now))
+        assertTrue(DirectJoinProof.validate(realm, hello,
+            observed.mapValues { now - DirectJoinProof.MAX_AGE_MS - 1 }, true, now))
         assertFalse(DirectJoinProof.validate(realm, hello, observed, false, now)) // relayed proof
         assertFalse(DirectJoinProof.validate(realm, hello.copy(realmId = "cell-b"), observed, true, now))
         assertFalse(DirectJoinProof.validate(realm, hello, observed, true, now + DirectJoinProof.MAX_AGE_MS + 1))

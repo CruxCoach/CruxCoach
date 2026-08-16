@@ -2436,6 +2436,7 @@
     <string name="fips_mesh_join_action">Join mesh</string>
     <string name="fips_nearby_meshes_count">%1$d board meshes nearby</string>
     <string name="fips_mesh_joining">Joining %1$s…</string>
+    <string name="fips_mesh_join_failed">Could not join the mesh. It remains available nearby; check Bluetooth and try again.</string>
     <string name="mesh_controller_required_title">Board already controlled</string>
     <string name="mesh_controller_required_text">%1$s belongs to this mesh and is controlled by another device. CruxCoach will not open a second board connection.</string>
     <string name="mesh_status_via_controller">%1$s · ready via mesh</string>
