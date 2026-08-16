@@ -25,6 +25,7 @@ import com.cruxcoach.android.data.OnBoardClimbEntry
 import com.cruxcoach.android.data.OnBoardSource
 import com.cruxcoach.android.data.OwnSessionState
 import com.cruxcoach.android.ui.theme.OrangeAccent
+import com.cruxcoach.android.ui.fips.FipsMeshUiState
 import com.cruxcoach.android.ui.fips.NearbyFipsMeshUi
 
 @Composable
@@ -40,6 +41,7 @@ internal fun BleStatusExpanded(
     /** Non-null while this phone is relaying for other apps. */
     relayClientCount: Int? = null,
     onStopRelay: (() -> Unit)? = null,
+    activeMesh: FipsMeshUiState? = null,
     nearbyMeshes: List<NearbyFipsMeshUi> = emptyList(),
     onJoinMesh: ((NearbyFipsMeshUi) -> Unit)? = null,
     joiningMeshName: String? = null,
@@ -127,6 +129,11 @@ internal fun BleStatusExpanded(
                 Spacer(Modifier.height(8.dp))
             }
 
+            if (activeMesh != null) {
+                ActiveMeshSection(activeMesh)
+                Spacer(Modifier.height(8.dp))
+            }
+
             if (nearbyMeshes.isNotEmpty()) {
                 NearbyMeshesSection(nearbyMeshes, onJoinMesh)
                 Spacer(Modifier.height(8.dp))
@@ -155,6 +162,50 @@ internal fun BleStatusExpanded(
         // one strip that belonged to neither container.
         if (relayClientCount != null && onStopRelay != null) {
             RelaySharingLine(clientCount = relayClientCount, onStop = onStopRelay)
+        }
+    }
+}
+
+@Composable
+private fun ActiveMeshSection(mesh: FipsMeshUiState) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Default.CellTower, null, tint = OrangeAccent, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(8.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                mesh.boardName ?: stringResource(R.string.fips_mesh_nearby_own),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+            )
+            Text(
+                buildString {
+                    append(stringResource(
+                        if (mesh.controllerNpub != null && mesh.controllerNpub == mesh.localNpub) {
+                            R.string.fips_mesh_peer_controller
+                        } else {
+                            R.string.fips_mesh_peer_member
+                        },
+                    ))
+                    append(" · ")
+                    append(stringResource(R.string.fips_mesh_members))
+                    append(": ")
+                    append(mesh.memberCount)
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                stringResource(
+                    if (mesh.availability == "ACTIVE") R.string.fips_mesh_own_active
+                    else R.string.fips_mesh_own_inactive,
+                ),
+                style = MaterialTheme.typography.labelSmall,
+                color = if (mesh.availability == "ACTIVE") OrangeAccent
+                else MaterialTheme.colorScheme.error,
+            )
         }
     }
 }

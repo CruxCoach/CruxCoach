@@ -20,6 +20,25 @@ BLE address, wall-clock start/end, and the three log files. A pass requires no
 process crash/ANR and identical visible queue/current climb on all joined
 phones after every recovery step.
 
+## Two-device smoke gate
+
+Before the larger matrix, run this gate on two API-29+ phones with the same APK:
+
+1. Start a BoardCell on A. On B, verify exactly one card for that cell appears
+   under Nearby and A's own current cell is not duplicated under Nearby.
+2. Join from B. The button must progress through discovery, Bluetooth,
+   authentication, admission and sync without returning to an earlier phase.
+   Verify A and B show the same Cell ID, controller and member count.
+3. Leave from B. Within the liveness window A must remove B; B must return to
+   discovery and be able to join normally again.
+4. End the cell on A while B is not a member. B's Nearby card must disappear
+   within eight seconds without restarting the screen. A tap racing shutdown
+   must fail in the discovery phase and must not leave a spinner or active
+   realm behind.
+5. Repeat with A and B swapped, then toggle Bluetooth off on the member. It
+   must leave locally, disappear canonically after the liveness window and
+   require an ordinary explicit join after Bluetooth returns.
+
 ## Matrix
 
 1. Connect A to board 1 and C to board 2. Start simultaneous joinable sessions;

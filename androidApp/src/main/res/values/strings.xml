@@ -2436,6 +2436,11 @@
     <string name="fips_mesh_join_action">Join mesh</string>
     <string name="fips_nearby_meshes_count">%1$d board meshes nearby</string>
     <string name="fips_mesh_joining">Joining %1$s…</string>
+    <string name="fips_mesh_join_stage_starting">Finding mesh…</string>
+    <string name="fips_mesh_join_stage_connecting">Connecting via Bluetooth…</string>
+    <string name="fips_mesh_join_stage_authenticating">Securing mesh connection…</string>
+    <string name="fips_mesh_join_stage_admitting">Joining mesh…</string>
+    <string name="fips_mesh_join_stage_syncing">Syncing mesh…</string>
     <string name="fips_mesh_join_failed">Could not join the mesh. It remains available nearby; check Bluetooth and try again.</string>
     <string name="fips_mesh_leave_action">Leave mesh</string>
     <string name="fips_mesh_leaving">Leaving mesh…</string>

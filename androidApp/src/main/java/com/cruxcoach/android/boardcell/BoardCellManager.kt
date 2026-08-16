@@ -6,6 +6,7 @@ import android.os.SystemClock
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.BoardConnectionOwner
 import com.cruxcoach.android.fips.FipsMeshRuntime
+import com.cruxcoach.android.fips.FipsConnectionStage
 import com.cruxcoach.android.fips.FipsRealmContext
 import com.cruxcoach.android.fips.FipsDebugLog
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -533,28 +534,61 @@ class BoardCellManager @Inject constructor(
         FipsDebugLog.event("boardcell", "nearby_mesh_join_started",
             "cell" to FipsDebugLog.id(cell.value), "node" to FipsDebugLog.id(activeNodeId))
         refreshSelected()
-        val joined = try {
-            withTimeoutOrNull(NEARBY_JOIN_TIMEOUT_MS) {
-                snapshots.filterNotNull().first { it.cellId == cell && activeNodeId in it.members }
-            } != null
+        val failedPhase = try {
+            JOIN_PHASES.firstOrNull { phase ->
+                !awaitNearbyJoinPhase(cell, phase.stage, phase.timeoutMs)
+            }
         } catch (failure: CancellationException) {
             rollbackNearbyJoin(cell)
             _membershipTransition.value = MeshMembershipTransition.IDLE
             throw failure
         }
+        val joined = failedPhase == null && snapshot()?.let {
+            it.cellId == cell && activeNodeId in it.members
+        } == true
         if (joined) {
             _membershipTransition.value = MeshMembershipTransition.IDLE
             val current = snapshot()
+            runtime.settleActiveMembership(cell.value)
             FipsDebugLog.event("boardcell", "nearby_mesh_join_succeeded",
                 "cell" to FipsDebugLog.id(cell.value), "members" to current?.members?.size,
                 "controller" to FipsDebugLog.id(current?.controllerId))
         } else {
             _membershipTransition.value = MeshMembershipTransition.ERROR
             FipsDebugLog.warning("boardcell", "nearby_mesh_join_timed_out",
-                "cell" to FipsDebugLog.id(cell.value), "timeoutMs" to NEARBY_JOIN_TIMEOUT_MS)
+                "cell" to FipsDebugLog.id(cell.value),
+                "phase" to (failedPhase?.name ?: "membership_snapshot"),
+                "timeoutMs" to failedPhase?.timeoutMs)
             rollbackNearbyJoin(cell)
         }
         return joined
+    }
+
+    private suspend fun awaitNearbyJoinPhase(
+        cell: BoardCellId,
+        expectedStage: FipsConnectionStage?,
+        timeoutMs: Long,
+    ): Boolean {
+        val reached = withTimeoutOrNull(timeoutMs) {
+            while (true) {
+                val current = snapshot()
+                if (current?.cellId == cell && activeNodeId in current.members) return@withTimeoutOrNull true
+                if (expectedStage != null) {
+                    val progress = runtime.connectionProgress.value
+                    if (progress.cellId == cell.value && progress.stage.ordinal >= expectedStage.ordinal) {
+                        return@withTimeoutOrNull true
+                    }
+                }
+                delay(JOIN_PHASE_POLL_MS)
+            }
+            @Suppress("UNREACHABLE_CODE") false
+        } == true
+        FipsDebugLog.event("boardcell", if (reached) "nearby_mesh_join_phase_reached"
+            else "nearby_mesh_join_phase_timed_out",
+            "cell" to FipsDebugLog.id(cell.value),
+            "phase" to (expectedStage?.name ?: "MEMBERSHIP_SNAPSHOT"),
+            "timeoutMs" to timeoutMs)
+        return reached
     }
 
     /** Voluntary leave is canonical when reachable and converges through the
@@ -1050,6 +1084,9 @@ class BoardCellManager @Inject constructor(
     private fun refreshSelected() {
         val next = snapshot()
         _snapshots.value = next
+        if (next != null && activeNodeId in next.members) {
+            runtime.settleActiveMembership(next.cellId.value)
+        }
         if (next != null && activeNodeId !in next.members && !pendingLocalLeave.get() &&
             localRemovalCleanup.compareAndSet(false, true)) {
             scope.launch {
@@ -1102,12 +1139,25 @@ class BoardCellManager @Inject constructor(
         private const val PROJECTION_RETRY_INITIAL_MS = 2_000L
         private const val PROJECTION_RETRY_MAX_MS = 15_000L
         private const val MAX_PENDING_PROJECTIONS = 128
-        private const val NEARBY_JOIN_TIMEOUT_MS = 15_000L
+        private const val JOIN_PHASE_POLL_MS = 100L
         private const val REJOIN_SPONSOR_GRACE_MS = 6_000L
         private const val MEMBER_LEAVE_TIMEOUT_MS = 7_000L
         private const val HANDOVER_LEAVE_TIMEOUT_MS = 50_000L
         private const val HANDOVER_SOURCE_CLEANUP_TIMEOUT_MS = 5_000L
         private const val CONTROLLER_HEARTBEAT_INTERVAL_MS = 2_000L
+
+        private data class NearbyJoinPhase(
+            val name: String,
+            val stage: FipsConnectionStage?,
+            val timeoutMs: Long,
+        )
+        private val JOIN_PHASES = listOf(
+            NearbyJoinPhase("advertisement", FipsConnectionStage.ADVERTISEMENT_SEEN, 8_000L),
+            NearbyJoinPhase("l2cap_channel", FipsConnectionStage.CHANNEL_OPEN, 12_000L),
+            NearbyJoinPhase("fips_peer", FipsConnectionStage.PEER_AUTHENTICATED, 20_000L),
+            NearbyJoinPhase("direct_admission", FipsConnectionStage.DIRECT_AUTHENTICATED, 12_000L),
+            NearbyJoinPhase("membership_snapshot", null, 12_000L),
+        )
         /** Three missed heartbeat windows trigger fenced physical recovery. */
         private const val CONTROLLER_LEASE_TIMEOUT_MS = 6_000L
         private const val MEMBER_LIVENESS_TIMEOUT_MS = 6_000L

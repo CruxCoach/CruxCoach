@@ -190,6 +190,7 @@ fun BleStatusArea(
             onOpenQueueSheet = { showQueueSheet = true },
             relayClientCount = relayClientCount,
             onStopRelay = stopRelay,
+            activeMesh = meshState.takeIf { it.cellId != null },
             nearbyMeshes = nearbyMeshes,
             onJoinMesh = if (joiningBoardCellId == null) meshViewModel::join else null,
             joiningMeshName = joiningMeshName,

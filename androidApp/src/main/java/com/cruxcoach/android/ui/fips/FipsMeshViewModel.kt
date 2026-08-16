@@ -6,6 +6,7 @@ import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.boardcell.BoardCellManager
 import com.cruxcoach.android.boardcell.IncomingControllerRequest
 import com.cruxcoach.android.fips.FipsMeshRuntime
+import com.cruxcoach.android.fips.FipsConnectionStage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
@@ -48,9 +49,17 @@ data class FipsMeshUiState(
     val localNpub: String? = null,
     val controllerNpub: String? = null,
     val memberCount: Int = 0,
+    val joinStage: FipsConnectionStage = FipsConnectionStage.IDLE,
     val peers: List<FipsMeshPeerUi> = emptyList(),
     val nearbyMeshes: List<NearbyFipsMeshUi> = emptyList(),
 )
+
+internal fun visibleNearbyMeshes(
+    nearby: List<com.cruxcoach.android.fips.FipsNearbyMesh>,
+    activeCellId: String?,
+): List<com.cruxcoach.android.fips.FipsNearbyMesh> = nearby.filterNot {
+    activeCellId != null && it.joinableBoardCellId == activeCellId
+}
 
 @HiltViewModel
 class FipsMeshViewModel @Inject constructor(
@@ -78,7 +87,9 @@ class FipsMeshViewModel @Inject constructor(
     }
 
     val state = combine(
-        combine(runtime.running, runtime.bluetoothAvailable) { running, bluetooth -> running to bluetooth },
+        combine(runtime.running, runtime.bluetoothAvailable, runtime.connectionProgress) { running, bluetooth, progress ->
+            Triple(running, bluetooth, progress.stage)
+        },
         runtime.peers,
         runtime.nearbyMeshes,
         boardCellManager.snapshots,
@@ -88,6 +99,7 @@ class FipsMeshViewModel @Inject constructor(
         FipsMeshUiState(
             running = transport.first,
             bluetoothAvailable = transport.second,
+            joinStage = transport.third,
             boardName = board?.displayName ?: nearby.firstOrNull { it.matchesActiveRealm }?.boardName,
             boardBrand = board?.boardBrand?.name,
             physicalBoardId = snapshot?.physicalBoardId?.value,
@@ -106,7 +118,7 @@ class FipsMeshViewModel @Inject constructor(
                     controller = peer.npub == snapshot?.controllerId,
                 )
             },
-            nearbyMeshes = nearby.map {
+            nearbyMeshes = visibleNearbyMeshes(nearby, snapshot?.cellId?.value).map {
                 NearbyFipsMeshUi(
                     address = it.address,
                     realmTag = it.realmTag,
@@ -115,7 +127,7 @@ class FipsMeshViewModel @Inject constructor(
                     lastSeenMs = it.lastSeenMs,
                     // Realm-tag equality only says the radio is currently
                     // trying that realm; it does not mean membership/ownership.
-                    currentMesh = snapshot?.cellId?.value == it.joinableBoardCellId,
+                    currentMesh = false,
                     joinableBoardCellId = it.joinableBoardCellId,
                     boardName = it.boardName,
                 )

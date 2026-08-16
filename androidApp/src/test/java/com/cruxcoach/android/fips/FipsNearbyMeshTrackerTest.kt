@@ -41,6 +41,17 @@ class FipsNearbyMeshTrackerTest {
         assertEquals("cell-id", result.single().joinableBoardCellId)
     }
 
+    @Test
+    fun `ended mesh expires without another advertisement`() {
+        val tracker = FipsNearbyMeshTracker(ttlMs = 8_000)
+        tracker.record(mesh("realm-a", "cell-a", -45, 1_000).copy(
+            joinableBoardCellId = "cell-id",
+        ))
+
+        assertEquals(1, tracker.prune(8_999).size)
+        assertTrue(tracker.prune(9_001).isEmpty())
+    }
+
     private fun mesh(
         realm: String,
         cell: String,

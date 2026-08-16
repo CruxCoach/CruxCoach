@@ -51,8 +51,9 @@ internal class FipsNearbyDiscovery(
         val boardName = result.scanRecord?.getServiceData(CRUXCOACH_FIPS_NAME_UUID)
             ?.decodeToString()?.trim()?.takeIf(String::isNotEmpty)
         val now = System.currentTimeMillis()
-        val logKey = "${result.device.address}:${advertisement.joinableBoardCellId ?: advertisement.cellTag.toHex()}"
-        if (now - (lastDiscoveryLog.put(logKey, now) ?: 0L) >= DISCOVERY_LOG_INTERVAL_MS) {
+        val logKey = "${advertisement.realmTag.toHex()}:${advertisement.cellTag.toHex()}"
+        if (now - (lastDiscoveryLog[logKey] ?: 0L) >= DISCOVERY_LOG_INTERVAL_MS) {
+            lastDiscoveryLog[logKey] = now
             FipsDebugLog.event("discovery", "nearby_mesh_discovered",
                 "address" to result.device.address,
                 "cell" to FipsDebugLog.id(advertisement.joinableBoardCellId),

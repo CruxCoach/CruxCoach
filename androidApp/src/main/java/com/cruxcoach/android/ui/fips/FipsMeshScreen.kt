@@ -43,6 +43,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
 import com.cruxcoach.android.boardcell.MeshMembershipTransition
+import com.cruxcoach.android.fips.FipsConnectionStage
 import com.cruxcoach.android.ui.board.BleConnectionSheet
 import com.cruxcoach.android.ui.theme.InfoBlue
 import com.cruxcoach.android.ui.theme.OrangeAccent
@@ -143,6 +144,7 @@ fun FipsMeshScreen(
                 ) { mesh -> NearbyMeshCard(mesh,
                     joining = joiningBoardCellId == mesh.joinableBoardCellId,
                     joinEnabled = joiningBoardCellId == null,
+                    joinStage = state.joinStage,
                     onJoin = { viewModel.join(mesh) }) }
             }
             item { Spacer(Modifier.size(20.dp)) }
@@ -238,6 +240,7 @@ private fun NearbyMeshCard(
     mesh: NearbyFipsMeshUi,
     joining: Boolean,
     joinEnabled: Boolean,
+    joinStage: FipsConnectionStage,
     onJoin: () -> Unit,
 ) {
     MeshCard(container = if (mesh.currentMesh) OrangeAccent.copy(alpha = 0.10f) else Color.Unspecified) {
@@ -260,13 +263,20 @@ private fun NearbyMeshCard(
         Detail(stringResource(R.string.fips_mesh_signal), "${mesh.rssi} dBm")
         if (!mesh.currentMesh && mesh.joinableBoardCellId != null) {
             Button(onClick = onJoin, enabled = joinEnabled, modifier = Modifier.fillMaxWidth()) {
-                Text(if (joining) stringResource(R.string.fips_mesh_joining,
-                    mesh.boardName ?: stringResource(R.string.fips_mesh_nearby_other))
-                else stringResource(R.string.fips_mesh_join_action))
+                Text(if (joining) joinStageLabel(joinStage) else stringResource(R.string.fips_mesh_join_action))
             }
         }
     }
 }
+
+@Composable
+private fun joinStageLabel(stage: FipsConnectionStage): String = stringResource(when (stage) {
+    FipsConnectionStage.IDLE -> R.string.fips_mesh_join_stage_starting
+    FipsConnectionStage.ADVERTISEMENT_SEEN -> R.string.fips_mesh_join_stage_connecting
+    FipsConnectionStage.CHANNEL_OPEN -> R.string.fips_mesh_join_stage_authenticating
+    FipsConnectionStage.PEER_AUTHENTICATED -> R.string.fips_mesh_join_stage_admitting
+    FipsConnectionStage.DIRECT_AUTHENTICATED -> R.string.fips_mesh_join_stage_syncing
+})
 
 @Composable
 private fun MeshCard(

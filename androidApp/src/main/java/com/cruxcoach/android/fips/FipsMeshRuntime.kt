@@ -31,6 +31,13 @@ import kotlinx.serialization.json.Json
 
 data class AuthenticatedFipsMessage(val senderNpub: String, val payload: ByteArray)
 data class FipsPeer(val npub: String, val connected: Boolean, val transport: String, val lastSeenMs: Long)
+enum class FipsConnectionStage { IDLE, ADVERTISEMENT_SEEN, CHANNEL_OPEN, PEER_AUTHENTICATED, DIRECT_AUTHENTICATED }
+data class FipsConnectionProgress(
+    val realmId: String? = null,
+    val cellId: String? = null,
+    val stage: FipsConnectionStage = FipsConnectionStage.IDLE,
+    val updatedAtMs: Long = 0,
+)
 data class FipsNearbyMesh(
     val address: String,
     val realmTag: String,
@@ -42,7 +49,7 @@ data class FipsNearbyMesh(
     val boardName: String? = null,
 )
 
-internal class FipsNearbyMeshTracker(private val ttlMs: Long = 45_000L) {
+internal class FipsNearbyMeshTracker(private val ttlMs: Long = 8_000L) {
     private var meshes = emptyList<FipsNearbyMesh>()
 
     @Synchronized
@@ -88,6 +95,7 @@ class FipsMeshRuntime @Inject constructor(
     private var receiveJob: Job? = null
     private var peerJob: Job? = null
     private var permissionWatchJob: Job? = null
+    private var discoveryPruneJob: Job? = null
     private var passiveDiscovery: FipsNearbyDiscovery? = null
     @Volatile private var discoveryRequested = false
     @Volatile private var realm: FipsRealmContext? = null
@@ -114,6 +122,9 @@ class FipsMeshRuntime @Inject constructor(
      * Foreign realms are visible here but are never delivered to the native
      * node or admitted as transit peers. */
     val nearbyMeshes = _nearbyMeshes.asStateFlow()
+    private val _connectionProgress = MutableStateFlow(FipsConnectionProgress())
+    val connectionProgress = _connectionProgress.asStateFlow()
+    private val outboundDiscoverySettled = AtomicBoolean(false)
     override val localNpub: String get() = if (_running.value) runCatching { NativeFips.npub() }.getOrDefault("") else ""
 
     init {
@@ -158,8 +169,12 @@ class FipsMeshRuntime @Inject constructor(
             receiveJob?.cancel(); receiveJob = null
             shutdownNative()
         }
-        if (realm != value) permissionPromptedRealm = null
+        if (realm != value) {
+            permissionPromptedRealm = null
+            outboundDiscoverySettled.set(false)
+        }
         realm = value
+        _connectionProgress.value = FipsConnectionProgress(value.realmId, value.boardCellId)
         stopNearbyDiscovery()
         return ensureStarted()
     }
@@ -185,11 +200,13 @@ class FipsMeshRuntime @Inject constructor(
         // resurrect the already-failed scanner and wedge future retries.
         passiveDiscovery = candidate
         if (!candidate.start() && passiveDiscovery === candidate) passiveDiscovery = null
+        if (passiveDiscovery === candidate) startDiscoveryPruning()
     }
 
     @Synchronized
     fun stopNearbyDiscovery() {
         discoveryRequested = false
+        discoveryPruneJob?.cancel(); discoveryPruneJob = null
         passiveDiscovery?.stop()
         passiveDiscovery = null
     }
@@ -205,6 +222,7 @@ class FipsMeshRuntime @Inject constructor(
         receiveJob?.cancel(); receiveJob = null
         shutdownNative()
         realm = null
+        outboundDiscoverySettled.set(false)
         keyStore.end(realmId)
     }
 
@@ -245,7 +263,8 @@ class FipsMeshRuntime @Inject constructor(
             return false
         }
         return runCatching {
-            val candidate = FipsBleRadio(context, activeRealm, ::recordNearbyMesh)
+            val candidate = FipsBleRadio(context, activeRealm, ::recordNearbyMesh, ::recordConnectionStage)
+            if (outboundDiscoverySettled.get()) candidate.settleMembership()
             radio = candidate
             bridge = NativeFips.bleBridgeNew(candidate)
             check(bridge != 0L)
@@ -320,6 +339,18 @@ class FipsMeshRuntime @Inject constructor(
 
     override fun activeRealmId(): String? = realm?.realmId
 
+    /** Once canonical membership exists, existing members only advertise and
+     * accept. A later explicit joiner is the sole dialer, avoiding Android's
+     * simultaneous inbound/outbound L2CAP race without disturbing live links. */
+    @Synchronized
+    fun settleActiveMembership(cellId: String) {
+        if (realm?.boardCellId != cellId || !_running.value ||
+            !outboundDiscoverySettled.compareAndSet(false, true)) return
+        radio?.settleMembership()
+        FipsDebugLog.event("runtime", "outbound_discovery_settled",
+            "cell" to FipsDebugLog.id(cellId), "mode" to "advertise_accept_and_passive_scan")
+    }
+
     @Synchronized
     fun shutdown() {
         stopNearbyDiscovery()
@@ -386,6 +417,7 @@ class FipsMeshRuntime @Inject constructor(
         _peers.value = emptyList()
         nearbyMeshTracker.clear()
         _nearbyMeshes.value = emptyList()
+        _connectionProgress.value = FipsConnectionProgress()
         synchronized(validatedDirectPeers) { validatedDirectPeers.clear() }
         synchronized(helloSentAt) { helloSentAt.clear() }
     }
@@ -424,6 +456,7 @@ class FipsMeshRuntime @Inject constructor(
                 if (passiveDiscovery !== failed) return@synchronized false
                 failed.stop()
                 passiveDiscovery = null
+                discoveryPruneJob?.cancel(); discoveryPruneJob = null
                 true
             }
             if (cleared && discoveryRequested && !_running.value) {
@@ -474,6 +507,13 @@ class FipsMeshRuntime @Inject constructor(
             _peers.value = runCatching { NativeFips.peers().lineSequence().filter(String::isNotBlank).mapNotNull { line ->
                 val p = line.split('\t'); if (p.size != 4) null else FipsPeer(p[0], p[1].toBoolean(), p[2], p[3].toLongOrNull() ?: 0)
             }.toList() }.getOrDefault(emptyList())
+            val connectedBlePeers = _peers.value.asSequence()
+                .filter { it.connected && it.transport == "ble" }.map { it.npub }.toSet()
+            synchronized(validatedDirectPeers) { validatedDirectPeers.retainAll(connectedBlePeers) }
+            synchronized(helloSentAt) { helloSentAt.keys.retainAll(connectedBlePeers) }
+            if (_peers.value.any { it.connected && it.transport == "ble" }) {
+                recordConnectionStage(FipsConnectionStage.PEER_AUTHENTICATED)
+            }
             pruneNearbyMeshes()
             val nextSummary = _peers.value.sortedBy { it.npub }.joinToString { peer ->
                 "${FipsDebugLog.id(peer.npub)}:${peer.connected}:${peer.transport}"
@@ -534,6 +574,7 @@ class FipsMeshRuntime @Inject constructor(
             radio?.validateDirectJoin(hello) == true
         if (valid) {
             synchronized(validatedDirectPeers) { validatedDirectPeers.add(sender) }
+            recordConnectionStage(FipsConnectionStage.DIRECT_AUTHENTICATED)
             FipsDebugLog.event("admission", "direct_join_accepted", "peer" to FipsDebugLog.id(sender),
                 "realm" to FipsDebugLog.id(hello.realmId), "cell" to FipsDebugLog.id(hello.boardCellId))
         }
@@ -562,6 +603,32 @@ class FipsMeshRuntime @Inject constructor(
         val packed = ByteBuffer.allocate(fragments.sumOf { Int.SIZE_BYTES + it.size })
         fragments.forEach { packed.putInt(it.size).put(it) }
         return NativeFips.sendBatch(peer, packed.array())
+    }
+
+    @Synchronized
+    private fun recordConnectionStage(stage: FipsConnectionStage) {
+        val active = realm ?: return
+        val current = _connectionProgress.value
+        if (current.realmId == active.realmId && current.cellId == active.boardCellId &&
+            current.stage.ordinal >= stage.ordinal) return
+        _connectionProgress.value = FipsConnectionProgress(
+            realmId = active.realmId,
+            cellId = active.boardCellId,
+            stage = stage,
+            updatedAtMs = System.currentTimeMillis(),
+        )
+        FipsDebugLog.event("runtime", "connection_progress", "stage" to stage,
+            "realm" to FipsDebugLog.id(active.realmId), "cell" to FipsDebugLog.id(active.boardCellId))
+    }
+
+    private fun startDiscoveryPruning() {
+        if (discoveryPruneJob?.isActive == true) return
+        discoveryPruneJob = scope.launch {
+            while (isActive && discoveryRequested && !_running.value) {
+                delay(1_000)
+                pruneNearbyMeshes()
+            }
+        }
     }
 
     private fun ByteArray.startsWith(prefix: ByteArray): Boolean = size >= prefix.size &&

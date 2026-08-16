@@ -25,12 +25,26 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.atomic.AtomicInteger
 
+internal class FipsOutboundDialGate {
+    private var activeId: Long? = null
+    @Synchronized fun tryAcquire(connectId: Long): Boolean {
+        if (activeId != null) return false
+        activeId = connectId
+        return true
+    }
+    @Synchronized fun release(connectId: Long) {
+        if (activeId == connectId) activeId = null
+    }
+    @Synchronized fun busy(): Boolean = activeId != null
+}
+
 /** Android API 29+ L2CAP CoC radio owned by Kotlin and driven by FIPS over JNI. */
 @SuppressLint("MissingPermission")
 internal class FipsBleRadio(
     context: Context,
     private val realm: FipsRealmContext,
     private val onNearbyMesh: (FipsNearbyMesh) -> Unit = {},
+    private val onConnectionStage: (FipsConnectionStage) -> Unit = {},
 ) {
     private val adapter = (context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
     private val io = Executors.newCachedThreadPool()
@@ -45,6 +59,7 @@ internal class FipsBleRadio(
     private var advertiseRetries = 0
     private var scanRetries = 0
     @Volatile private var localNonce = newNonce()
+    @Volatile private var outboundConnectionsEnabled = true
     private var nonceRotatedAtMs = System.currentTimeMillis()
     private var nonceRotation: ScheduledFuture<*>? = null
     private var advertiseRetry: ScheduledFuture<*>? = null
@@ -53,6 +68,8 @@ internal class FipsBleRadio(
     private val scanGeneration = AtomicInteger(0)
     private val observedNonceTags = ConcurrentHashMap<String, Long>()
     private val lastDiscoveryLog = ConcurrentHashMap<String, Long>()
+    private val outboundDialGate = FipsOutboundDialGate()
+    @Volatile private var outboundSocket: BluetoothSocket? = null
 
     fun bindBridge(handle: Long) {
         bridge = handle
@@ -76,14 +93,36 @@ internal class FipsBleRadio(
 
     @RequiresApi(29)
     fun connect(connectId: Long, address: String, psm: Int) {
-        if (stopped) return
+        if (stopped) {
+            NativeFips.bleDeliverConnectResult(bridge, connectId, false, address, 0, 0)
+            return
+        }
+        if (!outboundConnectionsEnabled) {
+            FipsDebugLog.event("radio", "outbound_connect_suppressed", "connectId" to connectId,
+                "address" to address.substringAfter('/'), "reason" to "membership is settled")
+            NativeFips.bleDeliverConnectResult(bridge, connectId, false, address, 0, 0)
+            return
+        }
+        if (!outboundDialGate.tryAcquire(connectId)) {
+            FipsDebugLog.event("radio", "outbound_connect_suppressed", "connectId" to connectId,
+                "address" to address.substringAfter('/'), "reason" to "another dial is active")
+            NativeFips.bleDeliverConnectResult(bridge, connectId, false, address, 0, 0)
+            return
+        }
         FipsDebugLog.event("radio", "outbound_connect_begin", "connectId" to connectId,
             "address" to address.substringAfter('/'), "psm" to psm)
         io.execute {
             val mac = address.substringAfter('/', address)
+            var timeout: ScheduledFuture<*>? = null
             try {
                 val socket = adapter?.getRemoteDevice(mac)?.createInsecureL2capChannel(psm)
                     ?: throw IOException("BLE unavailable")
+                outboundSocket = socket
+                timeout = retry.schedule({
+                    FipsDebugLog.warning("radio", "outbound_connect_platform_timeout",
+                        "connectId" to connectId, "address" to mac)
+                    runCatching { socket.close() }
+                }, PLATFORM_CONNECT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
                 socket.connect()
                 val id = NativeFips.bleDeliverConnectResult(bridge, connectId, true, address,
                     sendMtu(socket), receiveMtu(socket))
@@ -96,6 +135,10 @@ internal class FipsBleRadio(
                 FipsDebugLog.warning("radio", "outbound_connect_failed", "connectId" to connectId,
                     "address" to mac, "psm" to psm, "error" to (e.message ?: e.javaClass.simpleName))
                 NativeFips.bleDeliverConnectResult(bridge, connectId, false, address, 0, 0)
+            } finally {
+                timeout?.cancel(false)
+                outboundSocket = null
+                outboundDialGate.release(connectId)
             }
         }
     }
@@ -239,15 +282,18 @@ internal class FipsBleRadio(
         )
         // Discovery may describe foreign CruxCoach meshes in the UI, but only
         // the exact active realm/cell is handed to FIPS for connection.
-        if (!matchesActiveRealm) return
+        if (!matchesActiveRealm || !outboundConnectionsEnabled) return
+        onConnectionStage(FipsConnectionStage.ADVERTISEMENT_SEEN)
         val nonceTag = advertisement.nonceTag.toHex()
         observedNonceTags[nonceTag] = System.currentTimeMillis()
         observedNonceTags.entries.removeAll { System.currentTimeMillis() - it.value > DirectJoinProof.MAX_AGE_MS }
         val psm = advertisement.psm
         if (psm > 0) {
             val now = System.currentTimeMillis()
-            val previousLog = lastDiscoveryLog.put(result.device.address, now) ?: 0L
+            val logKey = "${advertisement.realmTag.toHex()}:${advertisement.cellTag.toHex()}"
+            val previousLog = lastDiscoveryLog[logKey] ?: 0L
             if (now - previousLog >= DISCOVERY_LOG_INTERVAL_MS) {
+                lastDiscoveryLog[logKey] = now
                 FipsDebugLog.event("radio", "matching_peer_discovered", "address" to result.device.address,
                     "psm" to psm, "rssi" to result.rssi, "nonceTag" to nonceTag)
             }
@@ -263,6 +309,14 @@ internal class FipsBleRadio(
         FipsDebugLog.event("radio", "scan_stopped")
     }
 
+    /** Preserve Nearby visibility but stop creating new outbound links once
+     * canonical membership exists. A later explicit joiner is the dialer. */
+    fun settleMembership() {
+        outboundConnectionsEnabled = false
+        FipsDebugLog.event("radio", "outbound_scan_delivery_stopped",
+            "cell" to FipsDebugLog.id(realm.boardCellId))
+    }
+
     fun localNonceHex(): String = localNonce.toHex()
 
     fun validateDirectJoin(hello: DirectJoinHello): Boolean {
@@ -276,6 +330,7 @@ internal class FipsBleRadio(
         FipsDebugLog.event("radio", "shutdown", "channels" to channels.size,
             "observedNonces" to observedNonceTags.size)
         stopped = true
+        runCatching { outboundSocket?.close() }; outboundSocket = null
         stopScanning(); stopAdvertising()
         runCatching { server?.close() }; server = null
         channels.keys.toList().forEach(::closeChannel)
@@ -302,6 +357,7 @@ internal class FipsBleRadio(
 
     private fun startChannel(id: Long, socket: BluetoothSocket) {
         channels[id] = socket
+        onConnectionStage(FipsConnectionStage.CHANNEL_OPEN)
         FipsDebugLog.event("radio", "channel_open", "channel" to id,
             "address" to socket.remoteDevice.address, "channels" to channels.size)
         io.execute { reader(id, socket) }
@@ -350,6 +406,7 @@ internal class FipsBleRadio(
         private const val DISCOVERY_LOG_INTERVAL_MS = 10_000L
         private const val EXECUTOR_STOP_SECONDS = 2L
         private const val OUTBOUND_WAIT_MS = 60_000
+        private const val PLATFORM_CONNECT_TIMEOUT_MS = 10_000L
         // A compact CruxCoach-specific 16-bit-shaped UUID keeps the legacy 31-byte
         // advertising budget; full ids and the full nonce are authenticated in CCJ1.
         private val CRUXCOACH_FIPS_UUID = ParcelUuid(UUID.fromString("0000ccf1-0000-1000-8000-00805f9b34fb"))

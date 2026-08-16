@@ -123,6 +123,10 @@ pub extern "system" fn Java_com_cruxcoach_android_fips_NativeFips_start(
         config.transports.ble = TransportInstances::Single(BleConfig {
             adapter: Some("ble0".into()),
             max_connections: Some(max_direct_connections.clamp(1, 7) as usize),
+            // Kotlin cancels an OEM BluetoothSocket connect after 10 seconds.
+            // Keep the native waiter slightly longer so it observes that
+            // explicit failure instead of leaving an orphaned 30-second dial.
+            connect_timeout_ms: Some(12_000),
             auto_connect: Some(true),
             ..Default::default()
         });

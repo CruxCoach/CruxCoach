@@ -177,6 +177,14 @@ This is the boundary that prevents receiving events from “somewhere else.”
 Physical proximity is required for initial direct admission. After admission,
 that member may use multi-hop only within the same isolated cell.
 
+The explicit joiner opens the outbound L2CAP channel. A settled member keeps
+advertising, accepting inbound channels and scanning foreign cells for the
+Nearby UI, but does not simultaneously dial advertisements for its own cell.
+This avoids the Android cross-connect race without introducing a distinguished
+admission server. Nearby entries are live observations, not saved membership:
+an advertisement that is not refreshed expires from the UI within eight
+seconds, including after the last controller ends a cell.
+
 ## 7. How every participant reaches the same state
 
 BoardCell deliberately uses neither majority consensus nor a freely mergeable

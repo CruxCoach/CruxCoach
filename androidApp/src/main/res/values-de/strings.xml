@@ -2435,6 +2435,11 @@
     <string name="fips_mesh_join_action">Mesh beitreten</string>
     <string name="fips_nearby_meshes_count">%1$d Board-Meshes in der Nähe</string>
     <string name="fips_mesh_joining">Beitritt zu %1$s…</string>
+    <string name="fips_mesh_join_stage_starting">Mesh wird gesucht…</string>
+    <string name="fips_mesh_join_stage_connecting">Bluetooth-Verbindung wird aufgebaut…</string>
+    <string name="fips_mesh_join_stage_authenticating">Mesh-Verbindung wird abgesichert…</string>
+    <string name="fips_mesh_join_stage_admitting">Mesh wird beigetreten…</string>
+    <string name="fips_mesh_join_stage_syncing">Mesh wird synchronisiert…</string>
     <string name="fips_mesh_join_failed">Mesh-Beitritt fehlgeschlagen. Es bleibt in der Nähe sichtbar; prüfe Bluetooth und versuche es erneut.</string>
     <string name="fips_mesh_leave_action">Mesh verlassen</string>
     <string name="fips_mesh_leaving">Mesh wird verlassen…</string>
