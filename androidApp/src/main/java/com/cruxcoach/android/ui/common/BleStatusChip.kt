@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.SignalCellularAlt1Bar
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -58,6 +59,9 @@ internal fun BleStatusChip(
     onStopRelay: (() -> Unit)? = null,
     nearbyMeshCount: Int = 0,
     joiningMeshName: String? = null,
+    activeMeshName: String? = null,
+    meshControllerAvailable: Boolean = true,
+    localMeshController: Boolean = false,
 ) {
     val session = state.ownSession
 
@@ -101,7 +105,15 @@ internal fun BleStatusChip(
         // Sharing alone is enough to show this block, but it has nothing to
         // say in the summary line — rendering the row anyway left a bare
         // icon + chevron above the sharing line.
+        val meshSummary = activeMeshName?.let { name ->
+            when {
+                !meshControllerAvailable -> stringResource(R.string.mesh_status_recovering, name)
+                localMeshController -> stringResource(R.string.mesh_status_direct_controller, name)
+                else -> stringResource(R.string.mesh_status_via_controller, name)
+            }
+        }
         val summary = joiningMeshName?.let { stringResource(R.string.fips_mesh_joining, it) }
+            ?: meshSummary
             ?: buildChipSummary(effectiveOnBoard, state, nearbyMeshCount)
         if (summary.isNotBlank()) {
         Row(
@@ -111,9 +123,9 @@ internal fun BleStatusChip(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                Icons.Default.CellTower,
+                if (activeMeshName != null) Icons.Default.Hub else Icons.Default.CellTower,
                 contentDescription = null,
-                tint = OrangeAccent,
+                tint = if (activeMeshName != null && meshControllerAvailable) SuccessGreen else OrangeAccent,
                 modifier = Modifier
                     .size(18.dp)
                     .alpha(if (effectiveOnBoard?.source == OnBoardSource.REMOTE_ACTIVE) iconAlpha else 1f)

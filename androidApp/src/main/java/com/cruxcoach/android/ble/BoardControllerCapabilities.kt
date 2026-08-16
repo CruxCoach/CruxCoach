@@ -18,6 +18,7 @@ internal enum class BoardConnectionCapacity {
 internal object BoardConnectionOwner {
     const val SESSION = "session"
     const val RELAY = "relay"
+    const val BOARD_MESH = "board-mesh"
 }
 
 /** What happens to the LEDs after the final controller connection closes. */

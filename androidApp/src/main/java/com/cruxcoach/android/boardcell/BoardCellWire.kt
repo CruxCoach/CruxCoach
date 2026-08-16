@@ -15,6 +15,18 @@ sealed interface BoardCellWireMessage {
     @Serializable @SerialName("snapshot_request") data class SnapshotRequest(val afterSequence: Long) : BoardCellWireMessage
     @Serializable @SerialName("anti_entropy") data class AntiEntropy(val sequence: Long, val stateHash: String) : BoardCellWireMessage
     @Serializable @SerialName("handover_ready") data class Ready(val value: HandoverReady) : BoardCellWireMessage
+    @Serializable @SerialName("controller_request") data class ControllerRequest(
+        val value: BoardCellControllerRequest,
+    ) : BoardCellWireMessage
+    @Serializable @SerialName("controller_decision") data class ControllerDecision(
+        val value: BoardCellControllerDecision,
+    ) : BoardCellWireMessage
+    @Serializable @SerialName("controller_recovery") data class ControllerRecovery(
+        val value: BoardCellControllerRecovery,
+    ) : BoardCellWireMessage
+    @Serializable @SerialName("projection_request") data class ProjectionRequest(
+        val value: BoardProjectionRequest,
+    ) : BoardCellWireMessage
     @Serializable @SerialName("fork_notice") data class ForkNotice(val value: BoardCellForkNotice) : BoardCellWireMessage
     @Serializable @SerialName("session_command") data class SessionCommand(
         val commandId: String,
@@ -40,9 +52,9 @@ data class BoardCellWireFrame(
 )
 
 object BoardCellWireCodec {
-    // V3 adds playlistRevision and semantic command preconditions. Mixing V2
-    // would silently reinterpret a global sequence as a playlist revision.
-    const val VERSION = 3
+    // V4 adds fenced controller recovery and abstract projection requests.
+    // Older peers must fail closed instead of interpreting the new authority flow.
+    const val VERSION = 4
     private val json = Json { classDiscriminator = "type"; encodeDefaults = true; ignoreUnknownKeys = false }
     fun encode(frame: BoardCellWireFrame): ByteArray = json.encodeToString(frame).encodeToByteArray()
     fun decode(bytes: ByteArray): BoardCellWireFrame {
@@ -60,6 +72,16 @@ object BoardCellWireCodec {
                 is BoardCellWireMessage.SessionCommand -> require(
                     message.commandId.length in 8..128 && message.payload.size in 1..BoardCellMeshTransport.MAX_SESSION_COMMAND_BYTES)
                 is BoardCellWireMessage.CommandAck -> require(message.value.commandId.length in 8..128)
+                is BoardCellWireMessage.ControllerRequest -> require(
+                    message.value.requestId.length in 8..128 &&
+                        message.value.requesterId.length in 1..256)
+                is BoardCellWireMessage.ControllerDecision -> require(
+                    message.value.requestId.length in 8..128)
+                is BoardCellWireMessage.ControllerRecovery -> require(
+                    message.value.claimantId.length in 1..256 &&
+                        message.value.connectionProof.length in 8..256)
+                is BoardCellWireMessage.ProjectionRequest -> require(
+                    message.value.commandId.length in 8..128)
                 else -> Unit
             }
         }
@@ -81,6 +103,11 @@ data class InboundSessionCommand(
     val context: BoardPlaylistCommandContext?,
 )
 
+data class InboundProjectionRequest(
+    val senderId: String,
+    val request: BoardProjectionRequest,
+)
+
 class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCellTransport {
     private var coordinator: BoardCellCoordinator? = null
     private val snapshots = mutableMapOf<BoardCellId, BoardCellSnapshot>()
@@ -90,6 +117,9 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
     private val seenCommands = LinkedHashMap<String, BoardCommandAck>()
     var onSessionCommand: (suspend (InboundSessionCommand) -> Unit)? = null
     var onCommandAck: (suspend (String, BoardCommandAck) -> Unit)? = null
+    var onControllerRequest: (suspend (String, BoardCellControllerRequest) -> Unit)? = null
+    var onControllerDecision: (suspend (String, BoardCellControllerDecision) -> Unit)? = null
+    var onProjectionRequest: (suspend (InboundProjectionRequest) -> Unit)? = null
 
     fun attach(value: BoardCellCoordinator) { coordinator = value }
     fun rememberSnapshot(snapshot: BoardCellSnapshot) { snapshots[snapshot.cellId] = snapshot }
@@ -129,6 +159,31 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
     override suspend fun sendHandoverReady(target: String, ready: HandoverReady) {
         val snapshot = snapshots[ready.cellId] ?: return
         sendOrQueue(target, frameFor(snapshot, BoardCellWireMessage.Ready(ready)))
+    }
+
+    fun sendControllerRequest(snapshot: BoardCellSnapshot, request: BoardCellControllerRequest): Boolean {
+        if (link.localNpub !in snapshot.members || link.localNpub == snapshot.controllerId ||
+            request.requesterId != link.localNpub) return false
+        return link.send(snapshot.controllerId, frameFor(snapshot,
+            BoardCellWireMessage.ControllerRequest(request)))
+    }
+
+    fun sendControllerDecision(target: String, snapshot: BoardCellSnapshot,
+        decision: BoardCellControllerDecision): Boolean =
+        link.send(target, frameFor(snapshot, BoardCellWireMessage.ControllerDecision(decision)))
+
+    override suspend fun publishRecovery(recovery: BoardCellControllerRecovery) {
+        val snapshot = coordinator?.snapshot(recovery.envelope.physicalBoardId) ?: return
+        snapshots[snapshot.cellId] = snapshot
+        multicast(snapshot.members, frameFor(snapshot,
+            BoardCellWireMessage.ControllerRecovery(recovery), recovery.baseControllerTerm))
+    }
+
+    fun sendProjectionRequest(snapshot: BoardCellSnapshot, request: BoardProjectionRequest): Boolean {
+        if (link.localNpub !in snapshot.members || link.localNpub == snapshot.controllerId ||
+            snapshot.availability != BoardCellAvailability.ACTIVE) return false
+        return link.send(snapshot.controllerId,
+            frameFor(snapshot, BoardCellWireMessage.ProjectionRequest(request)))
     }
 
     override suspend fun sendForkNotice(target: String, notice: BoardCellForkNotice) {
@@ -242,6 +297,39 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
             is BoardCellWireMessage.Ready -> {
                 if (target.acceptTargetReady(authenticatedSender, message.value, nowMonotonicMs))
                     target.commitHandover(message.value.physicalBoardId, message.value.transferId, nowMonotonicMs)
+                null
+            }
+            is BoardCellWireMessage.ControllerRequest -> {
+                val snapshot = snapshots[value.cellId]
+                    ?: return BoardCellApplyResult.Rejected("controller request has no local cell")
+                if (link.localNpub != snapshot.controllerId || authenticatedSender !in snapshot.members ||
+                    message.value.requesterId != authenticatedSender) {
+                    return BoardCellApplyResult.Rejected("controller request sender/role mismatch")
+                }
+                onControllerRequest?.invoke(authenticatedSender, message.value)
+                null
+            }
+            is BoardCellWireMessage.ControllerDecision -> {
+                val snapshot = snapshots[value.cellId]
+                    ?: return BoardCellApplyResult.Rejected("controller decision has no local cell")
+                if (authenticatedSender != snapshot.controllerId || link.localNpub !in snapshot.members) {
+                    return BoardCellApplyResult.Rejected("controller decision sender/role mismatch")
+                }
+                onControllerDecision?.invoke(authenticatedSender, message.value)
+                null
+            }
+            is BoardCellWireMessage.ControllerRecovery ->
+                target.acceptControllerRecovery(authenticatedSender, message.value, nowMonotonicMs).also {
+                    if (it is BoardCellApplyResult.Applied) snapshots[it.snapshot.cellId] = it.snapshot
+                }
+            is BoardCellWireMessage.ProjectionRequest -> {
+                val snapshot = snapshots[value.cellId]
+                    ?: return BoardCellApplyResult.Rejected("projection request has no local cell")
+                if (link.localNpub != snapshot.controllerId || authenticatedSender !in snapshot.members ||
+                    message.value.baseSequence > snapshot.sequence) {
+                    return BoardCellApplyResult.Rejected("projection request sender/role mismatch")
+                }
+                onProjectionRequest?.invoke(InboundProjectionRequest(authenticatedSender, message.value))
                 null
             }
             is BoardCellWireMessage.ForkNotice -> { target.acceptForkNotice(authenticatedSender, message.value); null }

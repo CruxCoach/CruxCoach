@@ -35,5 +35,9 @@ data class SemVer(
                 patch = m.groupValues[3].toInt(),
             )
         }
+
+        /** Parse the app's own version while allowing the exact debug-build suffix. */
+        fun parseInstalledOrNull(raw: String): SemVer? =
+            parseOrNull(raw.trim().removeSuffix("-dev"))
     }
 }

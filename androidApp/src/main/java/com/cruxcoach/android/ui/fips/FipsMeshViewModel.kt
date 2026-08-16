@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.boardcell.BoardCellManager
+import com.cruxcoach.android.boardcell.IncomingControllerRequest
 import com.cruxcoach.android.fips.FipsMeshRuntime
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -14,6 +15,7 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 
 data class FipsMeshPeerUi(
     val npub: String,
@@ -55,13 +57,35 @@ class FipsMeshViewModel @Inject constructor(
     private val boardCellManager: BoardCellManager,
     boardConnection: BoardBleConnection,
 ) : ViewModel() {
+    private var autoJoinAttemptedCell: String? = null
     private val _joiningMeshName = MutableStateFlow<String?>(null)
     val joiningMeshName = _joiningMeshName.asStateFlow()
+    val incomingControllerRequest = boardCellManager.incomingControllerRequest
 
     init {
         runtime.startNearbyDiscovery()
         viewModelScope.launch {
             boardCellManager.snapshots.filterNotNull().collect { _joiningMeshName.value = null }
+        }
+        viewModelScope.launch {
+            combine(runtime.nearbyMeshes, boardCellManager.snapshots) { nearby, snapshot -> nearby to snapshot }
+                .collect { (nearby, snapshot) ->
+                    if (snapshot != null) return@collect
+                    val only = nearby.filter { !it.matchesActiveRealm && it.joinableBoardCellId != null }
+                        .singleOrNull() ?: return@collect
+                    if (autoJoinAttemptedCell == only.joinableBoardCellId) return@collect
+                    delay(1_500)
+                    val stable = runtime.nearbyMeshes.value
+                        .filter { !it.matchesActiveRealm && it.joinableBoardCellId != null }.singleOrNull()
+                    if (stable?.joinableBoardCellId == only.joinableBoardCellId &&
+                        boardCellManager.snapshots.value == null) {
+                        autoJoinAttemptedCell = only.joinableBoardCellId
+                        _joiningMeshName.value = only.boardName ?: "Board-Mesh"
+                        if (!boardCellManager.joinNearbyMesh(only.joinableBoardCellId!!, only.boardName)) {
+                            _joiningMeshName.value = null
+                        }
+                    }
+                }
         }
     }
 
@@ -75,7 +99,7 @@ class FipsMeshViewModel @Inject constructor(
         val direct = runtime.directAuthenticatedPeers()
         FipsMeshUiState(
             running = running,
-            boardName = board?.displayName,
+            boardName = board?.displayName ?: nearby.firstOrNull { it.matchesActiveRealm }?.boardName,
             boardBrand = board?.boardBrand?.name,
             physicalBoardId = snapshot?.physicalBoardId?.value,
             cellId = snapshot?.cellId?.value,
@@ -112,9 +136,15 @@ class FipsMeshViewModel @Inject constructor(
         val cellId = mesh.joinableBoardCellId ?: return
         _joiningMeshName.value = mesh.boardName ?: "Board-Mesh"
         viewModelScope.launch {
-            if (!boardCellManager.joinNearbyMesh(cellId)) _joiningMeshName.value = null
+            if (!boardCellManager.joinNearbyMesh(cellId, mesh.boardName)) _joiningMeshName.value = null
         }
     }
 
     fun ensureDiscovery() = runtime.startNearbyDiscovery()
+
+    fun approveControllerTransfer(request: IncomingControllerRequest) =
+        boardCellManager.approveControllerTransfer(request.requestId)
+
+    fun denyControllerTransfer(request: IncomingControllerRequest) =
+        boardCellManager.denyControllerTransfer(request.requestId)
 }

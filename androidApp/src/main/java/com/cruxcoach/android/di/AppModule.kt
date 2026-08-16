@@ -498,6 +498,7 @@ object AppModule {
         bleConnection: BoardBleConnection,
         projectionCoordinator: BoardProjectionCoordinator,
         boardCellManager: com.cruxcoach.android.boardcell.BoardCellManager,
+        userPreferences: UserPreferences,
     ): CruxRelayManager {
         return CruxRelayManager(
             context,
@@ -506,6 +507,7 @@ object AppModule {
             bleConnection,
             projectionCoordinator,
             boardCellManager,
+            userPreferences,
         )
     }
 
@@ -550,6 +552,7 @@ object AppModule {
         sharingConfig: SharingConfig,
         fipsMeshRuntime: com.cruxcoach.android.fips.FipsMeshRuntime,
         boardCellManager: com.cruxcoach.android.boardcell.BoardCellManager,
+        boardScanner: BoardBleScanner,
     ): SessionGattBridge {
         return PerfLogger.trace("DI: SessionGattBridge") {
             SessionGattBridge(
@@ -565,6 +568,7 @@ object AppModule {
                 shouldAdvertiseIndividualClimbs = { sharingConfig.sharingEnabled.value },
                 fipsMeshRuntime = fipsMeshRuntime,
                 boardCellManager = boardCellManager,
+                boardScanner = boardScanner,
             )
         }
     }

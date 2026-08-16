@@ -190,7 +190,7 @@ class UpdaterRepository @Inject constructor(
      * successfully right up to the install Android rejects.
      */
     private suspend fun discardPendingIfNotNewer(info: UpdateInfo): Boolean {
-        val installed = SemVer.parseOrNull(BuildConfig.VERSION_NAME) ?: return false
+        val installed = SemVer.parseInstalledOrNull(BuildConfig.VERSION_NAME) ?: return false
         if (info.version > installed) return false
         Log.i(
             TAG,
@@ -864,7 +864,8 @@ class UpdaterRepository @Inject constructor(
             if (prefs.pipelineStage != PipelineStage.INSTALLING) return@launch
             val info = prefs.pendingUpdate()
             automaticInstallInFlight.set(false)
-            if (info == null || info.versionName == BuildConfig.VERSION_NAME) {
+            val installed = SemVer.parseInstalledOrNull(BuildConfig.VERSION_NAME)
+            if (info == null || installed != null && info.version == installed) {
                 Log.i(TAG, "Interrupted install actually succeeded — clearing pipeline")
                 info?.let { downloader.clearCacheFor(it.versionName) }
                 onInstallOutcome(InstallOutcome.Success)

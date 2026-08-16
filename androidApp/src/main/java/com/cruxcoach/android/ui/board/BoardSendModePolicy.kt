@@ -10,7 +10,9 @@ internal object BoardSendModePolicy {
         singleConnectionMode: BoardSendMode,
         multiConnectionMode: BoardSendMode,
         hostingForOthers: Boolean = false,
+        meshParticipant: Boolean = false,
     ): BoardSendMode = when {
+        meshParticipant -> multiConnectionMode
         // Relaying makes the wall multi-user regardless of what the physical
         // controller can do — that is the entire point of CruxRelay, and the
         // board underneath is usually SINGLE. So the climber's multi-

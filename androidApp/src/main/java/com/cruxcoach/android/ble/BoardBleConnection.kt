@@ -50,6 +50,10 @@ enum class ConnectionState {
  *  5. Always use TRANSPORT_LE, never TRANSPORT_AUTO
  */
 class BoardBleConnection(private val context: Context) {
+    /** Process-wide safety gate installed by BoardCellManager. This sits at the
+     * connection boundary so auto-connect and non-UI callers cannot bypass the
+     * single-controller rule. */
+    @Volatile var connectionGuard: ((DiscoveredBoard) -> Boolean)? = null
 
     private companion object {
         const val TAG = "BoardBleConnection"
@@ -471,6 +475,10 @@ class BoardBleConnection(private val context: Context) {
      */
     @SuppressLint("MissingPermission")
     fun connect(board: DiscoveredBoard, maxAttempts: Int = MAX_CONNECT_ATTEMPTS) {
+        if (connectionGuard?.invoke(board) == false) {
+            Log.w(TAG, "Board connection blocked by active mesh controller policy")
+            return
+        }
         BoardCellScopeRegistry.select(board)
         if (_connectionState.value != ConnectionState.DISCONNECTED) return
 

@@ -86,6 +86,27 @@ internal class BoardSendController(
             Log.d(TAG, "sendToBoard: suppressed (session queue active)")
             return
         }
+        val meshManager = com.cruxcoach.android.boardcell.BoardCellManager.current
+        if (meshManager?.canSendViaMesh() == true) {
+            val s = state.value
+            val climb = s.climb ?: return
+            val commandId = meshManager.sendProjectionRequest(BoardProjection(
+                climb.uuid,
+                s.angle,
+                BoardProjectionPolicy.projectionSurvivesDisconnect(climb.brand),
+            ))
+            state.update { current -> current.copy(
+                ble = current.ble.copy(
+                    isSending = false,
+                    success = commandId != null,
+                    error = if (commandId == null) R.string.board_send_error_send_failed else null,
+                ),
+                nearby = current.nearby.copy(
+                    debugInfo = if (commandId != null) "sent via board mesh" else "mesh send failed")
+            ) }
+            if (commandId != null) scope.launch { recordSentToHistory(s) }
+            return
+        }
         // FEAT-027: a MoonBoard climb sends an ASCII `frames` payload — it has
         // no Aurora `holds` list and no LED map. Gate on a non-blank frames
         // string and route through the dedicated MoonBoard transport.
@@ -363,7 +384,11 @@ internal class BoardSendController(
 
     /** Whether the BLE board is currently connected. */
     fun isConnected(): Boolean =
-        bleConnection.connectionState.value == ConnectionState.CONNECTED
+        bleConnection.connectionState.value == ConnectionState.CONNECTED ||
+            com.cruxcoach.android.boardcell.BoardCellManager.current?.canSendViaMesh() == true
+
+    fun isConnectedViaMesh(): Boolean =
+        com.cruxcoach.android.boardcell.BoardCellManager.current?.canSendViaMesh() == true
 
     /**
      * Whether a send from this screen would actually reach the wall.

@@ -1162,6 +1162,7 @@ private fun ClimbDetailPageContent(
                             frames = climb.frames,
                         ),
                         connectedViaRelay = state.ble.connectedViaRelay,
+                        connectedViaMesh = state.ble.connectedViaMesh,
                     )
                     // The action button vanishing after a swipe is only
                     // diagnosable from the inputs — the decision itself says
@@ -1181,6 +1182,7 @@ private fun ClimbDetailPageContent(
                         FilledTonalIconButton(
                             onClick = viewModel::deliverClimb,
                             enabled = deliveryDecision.target == BoardDeliveryTarget.SHARED_QUEUE ||
+                                deliveryDecision.target == BoardDeliveryTarget.MESH_BOARD ||
                                 !state.ble.isSending,
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
@@ -1194,7 +1196,8 @@ private fun ClimbDetailPageContent(
                                     },
                                 ),
                         ) {
-                            if (deliveryDecision.target == BoardDeliveryTarget.DIRECT_BOARD &&
+                            if (deliveryDecision.target in setOf(BoardDeliveryTarget.DIRECT_BOARD,
+                                    BoardDeliveryTarget.MESH_BOARD) &&
                                 state.ble.isSending
                             ) {
                                 CircularProgressIndicator(

@@ -36,7 +36,11 @@ class ReleaseMetadataTest {
     fun `the build identifies as this release`() {
         assertEquals("0.2.3", stringField("versionName"))
         assertEquals(9, intField("versionCode"))
-        assertEquals("0.2.3", BuildConfig.VERSION_NAME)
+        assertEquals(
+            "0.2.3",
+            BuildConfig.VERSION_NAME.removeSuffix("-dev"),
+            "debug builds may carry the configured -dev suffix",
+        )
         assertEquals(9, BuildConfig.VERSION_CODE)
     }
 
@@ -88,9 +92,10 @@ class ReleaseMetadataTest {
             .firstOrNull { it.isFile }
             ?.readText()
             ?: error("CHANGELOG.md not found")
+        val releaseVersion = BuildConfig.VERSION_NAME.removeSuffix("-dev")
         assertTrue(
-            changelog.contains("## [${BuildConfig.VERSION_NAME}]"),
-            "the changelog has no section for ${BuildConfig.VERSION_NAME}",
+            changelog.contains("## [$releaseVersion]"),
+            "the changelog has no section for $releaseVersion",
         )
     }
 }

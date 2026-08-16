@@ -91,7 +91,7 @@ class UpdaterRepositoryStalePendingTest {
 
     /** One below whatever this build is, so the test tracks VERSION_NAME. */
     private fun olderThanInstalled(): String {
-        val installed = SemVer.parseOrNull(BuildConfig.VERSION_NAME)!!
+        val installed = SemVer.parseInstalledOrNull(BuildConfig.VERSION_NAME)!!
         return if (installed.patch > 0) {
             "${installed.major}.${installed.minor}.${installed.patch - 1}"
         } else {
@@ -143,7 +143,8 @@ class UpdaterRepositoryStalePendingTest {
     fun `a pending update equal to the installed version is discarded too`() = runTest {
         // The ordinary end of a successful update: the block still describes
         // the version now running. Not newer means nothing left to do.
-        coEvery { preferences.snapshot() } returns pending(BuildConfig.VERSION_NAME)
+        val installed = SemVer.parseInstalledOrNull(BuildConfig.VERSION_NAME)!!
+        coEvery { preferences.snapshot() } returns pending(installed.toString())
         coEvery { preferences.update(any()) } just Runs
         coEvery { checker.maybeCheck(any()) } returns UpdateChecker.CheckOutcome.NoUpdate
 
@@ -156,7 +157,7 @@ class UpdaterRepositoryStalePendingTest {
     @Test
     fun `a genuinely newer pending update is still acted on`() = runTest {
         // The guard must not cost the feature it protects.
-        val installed = SemVer.parseOrNull(BuildConfig.VERSION_NAME)!!
+        val installed = SemVer.parseInstalledOrNull(BuildConfig.VERSION_NAME)!!
         val newer = "${installed.major}.${installed.minor}.${installed.patch + 1}"
         coEvery { preferences.snapshot() } returns pending(newer)
         coEvery { preferences.update(any()) } just Runs

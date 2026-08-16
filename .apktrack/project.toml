@@ -11,7 +11,7 @@ icon = ""
 [services]
 profile = "existing"
 blossom = ["https://blossom.primal.net"]
-event_servers = ["wss://relay.nsite.lol"]
+event_servers = ["wss://relay.damus.io", "wss://nos.lol"]
 nsite_gateway = "https://npub1uux22z2rhhcvk9fs9dp60k3uc5f7frdqy5chrsemsxwgnyl0y9dqhx0gem.nsite.lol"
 
 [apktrack]

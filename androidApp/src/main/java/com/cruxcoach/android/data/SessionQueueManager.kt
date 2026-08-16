@@ -932,6 +932,38 @@ class SessionQueueManager(
         return null
     }
 
+    /** Resolve and encode a mesh participant's abstract projection on the
+     * controller. Raw board frames never need to cross the mesh. */
+    suspend fun writeProjectionToPhysical(projection: BoardProjection): Boolean {
+        if (bleConnection.connectionState.value != ConnectionState.CONNECTED) return false
+        val climb = resolveClimb(projection.climbUuid, projection.angle) ?: return false
+        val connectedBrand = bleConnection.connectedBoardBrand.value
+        if (connectedBrand != null && connectedBrand != climb.brand) return false
+        return if (climb.brand == BoardBrand.MOONBOARD) {
+            if (climb.frames.isBlank()) false else {
+                val variant = com.cruxcoach.domain.board.MoonBoardVariant.fromLayoutId(climb.layoutId)
+                    ?: com.cruxcoach.domain.board.MoonBoardVariant.MOONBOARD_2016
+                bleConnection.sendMoonBoardClimb(
+                    climb.frames,
+                    variant,
+                    userPreferences.moonBoardLedMode.first(),
+                )
+            }
+        } else {
+            val holds = BoardClimbParser.parseFrames(climb.frames)
+            if (holds.isEmpty()) return false
+            val productSizeId = userPreferences.boardProductSizeId.first()
+            val brandWire = climb.brand.wireValue
+            val ledMap = boardRepository.getPlacementLedMap(productSizeId, brandWire)
+            if (ledMap.isEmpty()) return false
+            val roleColors = boardRepository.getRoleColorMapForBrand(brandWire).ifEmpty {
+                (if (climb.brand == BoardBrand.KILTER) userPreferences.ledHoldColors.first()
+                else LedHoldColors.standardFor(climb.brand)).toRoleColorMap()
+            }
+            bleConnection.sendClimb(holds, ledMap, roleColors)
+        }
+    }
+
     // ===== Protocol helpers for SessionGattBridge =====
 
     /** Page 0 — what a plain characteristic read gets; its header says how

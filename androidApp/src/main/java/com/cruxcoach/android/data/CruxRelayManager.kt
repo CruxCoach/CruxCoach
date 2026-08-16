@@ -86,6 +86,7 @@ class CruxRelayManager(
     private val bleConnection: BoardBleConnection,
     private val projectionCoordinator: BoardProjectionCoordinator,
     private val boardCellManager: BoardCellManager,
+    private val userPreferences: UserPreferences,
 ) {
     companion object {
         private const val TAG = "CruxRelay/Manager"
@@ -109,6 +110,7 @@ class CruxRelayManager(
     // — a fresh user tap — turns it on, and a lost board turns it back off so
     // a later reconnect never silently re-fronts the board.
     private val enabledFlow = MutableStateFlow(false)
+    @Volatile private var meshControllerRelayRequired = false
 
     private var running = false
     private var forwardJob: Job? = null
@@ -129,13 +131,28 @@ class CruxRelayManager(
                 enabled to st
             }.collect { (enabled, st) -> reconcile(enabled, st) }
         }
+        // Once the global Bluetooth-name disclosure has been accepted, the
+        // canonical controller is also the single CruxRelay owner. A handover
+        // stops the source relay through its board disconnect and starts it on
+        // the committed target; members can never advertise a competing relay.
+        scope.launch {
+            combine(userPreferences.relayDisclosureSeen, boardCellManager.snapshots) { consent, snapshot ->
+                consent && snapshot != null && boardCellManager.isLocalController()
+            }.collect { required ->
+                meshControllerRelayRequired = required
+                enabledFlow.value = required || enabledFlow.value
+                if (!required && boardCellManager.snapshot()?.controllerId != null) {
+                    enabledFlow.value = false
+                }
+            }
+        }
     }
 
     /** UI entry point — a deliberate user action; [init]'s collector does the rest. */
     fun enable() = setEnabled(true)
 
     fun setEnabled(enabled: Boolean) {
-        enabledFlow.value = enabled
+        enabledFlow.value = enabled || meshControllerRelayRequired
         if (enabled) _state.update { it.copy(error = null, errorDetail = null) }
     }
 

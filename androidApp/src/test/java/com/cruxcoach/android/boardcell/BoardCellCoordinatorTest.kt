@@ -11,11 +11,13 @@ class BoardCellCoordinatorTest {
         val events = mutableListOf<BoardCellEnvelope>()
         val snapshots = mutableListOf<BoardCellSnapshot>()
         val ready = mutableListOf<Pair<String, HandoverReady>>()
+        val recoveries = mutableListOf<BoardCellControllerRecovery>()
         override suspend fun publishClaim(claim: BoardCellClaim) = Unit
         override suspend fun publishEvent(envelope: BoardCellEnvelope) { events += envelope }
         override suspend fun publishSnapshot(snapshot: BoardCellSnapshot) { snapshots += snapshot }
         override suspend fun requestSnapshot(cellId: BoardCellId, afterSequence: Long) = Unit
         override suspend fun sendHandoverReady(target: String, ready: HandoverReady) { this.ready += target to ready }
+        override suspend fun publishRecovery(recovery: BoardCellControllerRecovery) { recoveries += recovery }
     }
 
     private class MemoryStore(var crashAfterPhysicalSuccess: Boolean = false) : BoardCellDurableStore {
@@ -93,6 +95,31 @@ class BoardCellCoordinatorTest {
         assertEquals("source", replica.snapshot(board)!!.controllerId)
     }
 
+    @Test fun `controller recovery requires frozen state and advances one canonical term`() = runTest {
+        val board = PhysicalBoardId("kilter:serial:recovery")
+        val sourceTransport = RecordingTransport()
+        val (source) = settled("source", board, sourceTransport, now = 100)
+        source.joinMember(board, "candidate")
+        source.joinMember(board, "observer")
+        val base = source.snapshot(board)!!
+        val candidateTransport = RecordingTransport()
+        val candidate = BoardCellCoordinator("candidate", candidateTransport,
+            settleMs = 0, heartbeatTimeoutMs = 10)
+        val observer = BoardCellCoordinator("observer", settleMs = 0, heartbeatTimeoutMs = 10)
+        candidate.restoreTrustedSnapshot(base, 100)
+        observer.restoreTrustedSnapshot(base, 100)
+        candidate.expireLocalDeadlines(111)
+        observer.expireLocalDeadlines(111)
+
+        val recovery = candidate.recoverController(board, "exclusive-gatt-proof", 112)!!
+        assertEquals("candidate", candidate.snapshot(board)!!.controllerId)
+        assertEquals(base.controllerTerm + 1, candidate.snapshot(board)!!.controllerTerm)
+        assertEquals(BoardCellAvailability.ACTIVE, candidate.snapshot(board)!!.availability)
+        assertTrue(observer.acceptControllerRecovery("candidate", recovery, 112) is BoardCellApplyResult.Applied)
+        assertEquals("candidate", observer.snapshot(board)!!.controllerId)
+        assertNull(observer.recoverController(board, "second-proof", 113))
+    }
+
     @Test fun `handover requires prepared target readiness commit and completion across two coordinators`() = runTest {
         val board = PhysicalBoardId("kilter:serial:handover")
         val sourceTransport = RecordingTransport(); val targetTransport = RecordingTransport()
@@ -103,19 +130,23 @@ class BoardCellCoordinatorTest {
 
         val prepared = source.prepareHandover(board, "target", 101, "tx")!!
         assertTrue(target.acceptEvent("source", prepared, 101) is BoardCellApplyResult.Applied)
+        target.targetReady(board, "too-early")
+        assertTrue(targetTransport.ready.isEmpty())
+        val released = source.sourceReleased(board, "tx", 102)!!
+        assertTrue(target.acceptEvent("source", released, 102) is BoardCellApplyResult.Applied)
         target.targetReady(board, "board-and-host-ready")
         val ready = targetTransport.ready.single().second
-        assertTrue(source.acceptTargetReady("target", ready, 102))
+        assertTrue(source.acceptTargetReady("target", ready, 103))
         val readyEvent = sourceTransport.events.last()
-        assertTrue(target.acceptEvent("source", readyEvent, 102) is BoardCellApplyResult.Applied)
-        val committed = source.commitHandover(board, "tx", 103)!!
-        assertTrue(target.acceptEvent("source", committed, 103) is BoardCellApplyResult.Applied)
+        assertTrue(target.acceptEvent("source", readyEvent, 103) is BoardCellApplyResult.Applied)
+        val committed = source.commitHandover(board, "tx", 104)!!
+        assertTrue(target.acceptEvent("source", committed, 104) is BoardCellApplyResult.Applied)
         assertEquals(2, target.snapshot(board)!!.controllerTerm)
-        assertTrue(source.project(board, BoardProjection("old", 40), 104) { true } is ProjectionResult.Refused)
-        val completed = target.completeHandover(board, "tx", 104)!!
-        assertTrue(source.acceptEvent("target", completed, 104) is BoardCellApplyResult.Applied)
+        assertTrue(source.project(board, BoardProjection("old", 40), 105) { true } is ProjectionResult.Refused)
+        val completed = target.completeHandover(board, "tx", 105)!!
+        assertTrue(source.acceptEvent("target", completed, 105) is BoardCellApplyResult.Applied)
         assertEquals(HandoverPhase.COMPLETED, source.snapshot(board)!!.handover!!.phase)
-        assertTrue(target.project(board, BoardProjection("new", 40), 105) { true } is ProjectionResult.Committed)
+        assertTrue(target.project(board, BoardProjection("new", 40), 106) { true } is ProjectionResult.Committed)
     }
 
     @Test fun `unready target times out and aborts only before commit`() = runTest {
@@ -123,6 +154,7 @@ class BoardCellCoordinatorTest {
         val (source) = settled("source", board, now = 100)
         source.joinMember(board, "target")
         source.prepareHandover(board, "target", 101, "timeout")
+        source.sourceReleased(board, "timeout", 102)
         source.expireLocalDeadlines(152)
         assertEquals(HandoverPhase.ABORTED, source.snapshot(board)!!.handover!!.phase)
         assertEquals("source", source.snapshot(board)!!.controllerId)
@@ -148,15 +180,20 @@ class BoardCellCoordinatorTest {
         sourceAfterPrepare.expireLocalDeadlines(1_049)
         assertEquals(HandoverPhase.PREPARED, sourceAfterPrepare.snapshot(board)!!.handover!!.phase)
 
-        // Target crash in PREPARED resumes readiness rather than self-electing.
+        // Target crash in PREPARED still cannot become ready before the source
+        // has explicitly released the single-connection board.
         val targetAfterPrepare = BoardCellCoordinator("target", targetTransport, targetStore,
             heartbeatTimeoutMs = 100)
         targetAfterPrepare.restoreTrustedSnapshot(targetStore.snapshots.getValue(board), 2_000)
         targetTransport.ready.clear()
-        targetAfterPrepare.targetReady(board, "ready-after-restart")
+        targetAfterPrepare.targetReady(board, "too-early-after-restart")
+        assertTrue(targetTransport.ready.isEmpty())
+        val released = sourceAfterPrepare.sourceReleased(board, "phase-crash", 1_049)!!
+        assertTrue(targetAfterPrepare.acceptEvent("source", released, 2_001) is BoardCellApplyResult.Applied)
+        targetAfterPrepare.targetReady(board, "ready-after-release")
         val ready = targetTransport.ready.single().second
         assertTrue(sourceAfterPrepare.acceptTargetReady("target", ready, 1_050))
-        targetAfterPrepare.acceptEvent("source", sourceTransport.events.last(), 2_001)
+        targetAfterPrepare.acceptEvent("source", sourceTransport.events.last(), 2_002)
 
         // Source crash in TARGET_READY accepts an idempotent READY retry and commits once.
         val sourceAfterReady = BoardCellCoordinator("source", sourceTransport, sourceStore,
@@ -164,7 +201,7 @@ class BoardCellCoordinatorTest {
         sourceAfterReady.restoreTrustedSnapshot(sourceStore.snapshots.getValue(board), 3_000)
         assertTrue(sourceAfterReady.acceptTargetReady("target", ready, 3_001))
         val commit = sourceAfterReady.commitHandover(board, "phase-crash", 3_002)!!
-        targetAfterPrepare.acceptEvent("source", commit, 2_002)
+        targetAfterPrepare.acceptEvent("source", commit, 2_003)
 
         // Target crash in COMMITTED resumes as the persisted new term/controller and completes.
         val targetAfterCommit = BoardCellCoordinator("target", targetTransport, targetStore,

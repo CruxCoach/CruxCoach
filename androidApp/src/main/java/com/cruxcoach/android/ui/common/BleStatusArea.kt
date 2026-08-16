@@ -1,6 +1,10 @@
 package com.cruxcoach.android.ui.common
 
 import androidx.compose.runtime.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.hilt.navigation.compose.hiltViewModel
 import android.util.Log
@@ -68,9 +72,28 @@ fun BleStatusArea(
     val meshViewModel: FipsMeshViewModel = hiltViewModel()
     val meshState by meshViewModel.state.collectAsStateWithLifecycle()
     val joiningMeshName by meshViewModel.joiningMeshName.collectAsStateWithLifecycle()
+    val incomingControllerRequest by meshViewModel.incomingControllerRequest.collectAsStateWithLifecycle()
     val nearbyMeshes = meshState.nearbyMeshes.filterNot { it.currentMesh }
     LaunchedEffect(meshState.running) {
         if (!meshState.running) meshViewModel.ensureDiscovery()
+    }
+
+    incomingControllerRequest?.let { request ->
+        AlertDialog(
+            onDismissRequest = { meshViewModel.denyControllerTransfer(request) },
+            title = { Text(stringResource(com.cruxcoach.android.R.string.mesh_controller_request_title)) },
+            text = { Text(stringResource(com.cruxcoach.android.R.string.mesh_controller_request_text)) },
+            confirmButton = {
+                TextButton(onClick = { meshViewModel.approveControllerTransfer(request) }) {
+                    Text(stringResource(com.cruxcoach.android.R.string.mesh_controller_request_approve))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { meshViewModel.denyControllerTransfer(request) }) {
+                    Text(stringResource(com.cruxcoach.android.R.string.mesh_controller_request_deny))
+                }
+            },
+        )
     }
 
     // Bug 3: Session join handled internally via CompositionLocals — works on every screen
@@ -109,7 +132,7 @@ fun BleStatusArea(
     // the regular chip instead.
     val hasContent = effectiveOnBoard != null || state.boardOccupiedCount > 0 ||
         state.nearbySessions.isNotEmpty() || state.ownSession != null ||
-        relayState.enabled || nearbyMeshes.isNotEmpty() || joiningMeshName != null
+        relayState.enabled || nearbyMeshes.isNotEmpty() || joiningMeshName != null || meshState.cellId != null
 
     // Terminal relay errors (BOARD_LOST, a failed start) land AFTER the
     // sharing sheet's error surface is gone — show them here so the stop
@@ -170,6 +193,10 @@ fun BleStatusArea(
             onStopRelay = stopRelay,
             nearbyMeshCount = nearbyMeshes.size,
             joiningMeshName = joiningMeshName,
+            activeMeshName = meshState.boardName,
+            meshControllerAvailable = meshState.availability == "ACTIVE",
+            localMeshController = meshState.controllerNpub != null &&
+                meshState.controllerNpub == meshState.localNpub,
         )
     }
 }

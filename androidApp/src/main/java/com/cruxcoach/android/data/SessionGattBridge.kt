@@ -21,16 +21,22 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.first
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import com.cruxcoach.android.ble.QueueItem
 import com.cruxcoach.android.fips.FipsMeshRuntime
 import com.cruxcoach.android.boardcell.BoardCellManager
 import com.cruxcoach.android.boardcell.BoardCellHandoverLifecycle
 import com.cruxcoach.android.boardcell.BoardCommandStatus
 import com.cruxcoach.android.boardcell.BoardPlaylistState
+import com.cruxcoach.android.boardcell.BoardCellId
+import com.cruxcoach.android.boardcell.BoardCellSnapshot
+import com.cruxcoach.android.boardcell.BoardCellScopeRegistry
+import com.cruxcoach.android.boardcell.PhysicalBoardIdentity
 
 enum class PlaylistCommandFeedbackKind { CONFLICT, UNAVAILABLE, FAILED }
 data class PlaylistCommandFeedback(val kind: PlaylistCommandFeedbackKind, val action: String)
@@ -67,6 +73,7 @@ class SessionGattBridge(
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
     private val fipsMeshRuntime: FipsMeshRuntime? = null,
     private val boardCellManager: BoardCellManager? = null,
+    private val boardScanner: BoardBleScanner? = null,
 ) {
     companion object {
         private const val TAG = "CruxBLE/Session"
@@ -74,6 +81,9 @@ class SessionGattBridge(
         private const val MIGRATION_INDEX_STEP_MS = 3000L
         private const val COMMAND_RESULT_TIMEOUT_MS = 5000L
         private const val COMMAND_RESULT_CACHE_SIZE = 256
+        private const val HANDOVER_SCAN_TIMEOUT_MS = 8_000L
+        private const val HANDOVER_CONNECT_TIMEOUT_MS = 20_000L
+        private const val HANDOVER_DISCONNECT_TIMEOUT_MS = 5_000L
     }
 
     /**
@@ -129,6 +139,7 @@ class SessionGattBridge(
     }
     /** SessionId of the host we just left — used to ignore stale advertisements during migration. */
     private var lastHostSessionId: Int = 0
+    private var releasedHandoverBoard: DiscoveredBoard? = null
 
     private fun projectionSurvivesCurrentBoardDisconnect(): Boolean =
         BoardProjectionPolicy.projectionSurvivesDisconnect(
@@ -149,12 +160,42 @@ class SessionGattBridge(
             }
         }
         boardCellManager?.installHandoverLifecycle(BoardCellHandoverLifecycle(
-            prepareTarget = {
-                if (queueManager.state.value.role != SessionRole.HOST) {
-                    queueManager.promoteToHostForBoardCell(context.getString(R.string.ble_session_name_promoted))
+            releaseSource = { snapshot ->
+                val connected = bleConnection.connectedBoard
+                if (!boardMatchesSnapshot(connected, snapshot) ||
+                    bleConnection.connectionState.value != ConnectionState.CONNECTED) {
+                    false
+                } else if (BoardControllerProfiles.forBoard(connected).connectionCapacity ==
+                    BoardConnectionCapacity.MULTIPLE) {
+                    true
+                } else {
+                    releasedHandoverBoard = connected
+                    bleConnection.disconnect()
+                    val disconnected = withTimeoutOrNull(HANDOVER_DISCONNECT_TIMEOUT_MS) {
+                        bleConnection.connectionState.first { it == ConnectionState.DISCONNECTED }
+                    } == ConnectionState.DISCONNECTED
+                    if (disconnected) {
+                        // Physical disconnect clears the UI selection. Keep the
+                        // logical mesh selected until this transfer finishes.
+                        BoardCellScopeRegistry.joinCell(snapshot.physicalBoardId, snapshot.cellId)
+                    }
+                    disconnected
                 }
-                val hostReady = ensureHostSharing()
-                hostReady && bleConnection.connectionState.value == ConnectionState.CONNECTED
+            },
+            prepareTarget = { snapshot ->
+                val boardReady = ensureHandoverBoardConnected(snapshot)
+                if (!boardReady) {
+                    false
+                } else {
+                    val needsSessionHost = queueManager.state.value.isActive ||
+                        snapshot.playlist.sessionId != null
+                    if (needsSessionHost && queueManager.state.value.role != SessionRole.HOST) {
+                        queueManager.promoteToHostForBoardCell(
+                            context.getString(R.string.ble_session_name_promoted))
+                    }
+                    val hostReady = !needsSessionHost || ensureHostSharing()
+                    hostReady && boardMatchesSnapshot(bleConnection.connectedBoard, snapshot)
+                }
             },
             completeSource = {
                 // Only HANDOVER_COMPLETED reaches this callback. The target has
@@ -162,6 +203,24 @@ class SessionGattBridge(
                 stopSharing(allowBoardRelease = true, endForEveryone = false)
                 queueManager.completeTransferredQueue()
                 boardSessionManager.endSession()
+                bleConnection.disconnect()
+                releasedHandoverBoard = null
+            },
+            abortSource = { snapshot ->
+                val board = releasedHandoverBoard
+                if (board != null && bleConnection.connectionState.value == ConnectionState.DISCONNECTED) {
+                    bleConnection.connect(board)
+                    withTimeoutOrNull(HANDOVER_CONNECT_TIMEOUT_MS) {
+                        bleConnection.connectionState.first {
+                            it == ConnectionState.CONNECTED ||
+                                (it == ConnectionState.DISCONNECTED && bleConnection.connectedBoard == null)
+                        }
+                    }
+                }
+                if (bleConnection.connectionState.value != ConnectionState.CONNECTED) {
+                    BoardCellScopeRegistry.joinCell(snapshot.physicalBoardId, snapshot.cellId)
+                }
+                releasedHandoverBoard = null
             },
             abortTarget = { snapshot ->
                 stopSharing(allowBoardRelease = false, endForEveryone = true)
@@ -169,6 +228,13 @@ class SessionGattBridge(
                     snapshot.playlist.sessionId ?: queueManager.state.value.sessionId,
                     queueManager.state.value.hostName,
                 )
+                if (boardMatchesSnapshot(bleConnection.connectedBoard, snapshot)) {
+                    bleConnection.disconnect()
+                }
+            },
+            recoverController = { snapshot ->
+                ensureHandoverBoardConnected(snapshot) &&
+                    bleConnection.connectedBoard?.isCruxRelay != true
             },
         ))
         // Auto-recover BLE when Bluetooth is toggled off/on.
@@ -188,6 +254,13 @@ class SessionGattBridge(
         }
         context.registerReceiver(btReceiver, IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED))
         boardCellManager?.let { manager ->
+            scope.launch {
+                manager.projectionRequests.collect { inbound ->
+                    manager.commitProjectionRequest(inbound) {
+                        queueManager.writeProjectionToPhysical(inbound.request.projection)
+                    }
+                }
+            }
             scope.launch {
                 manager.sessionCommands.collect { command ->
                     handleMeshCommand(command)
@@ -231,6 +304,47 @@ class SessionGattBridge(
                 }
             }
         }
+    }
+
+    /** Approval is the only entry into this path. Find the physical board whose
+     * deterministic identity belongs to the mesh; never auto-connect merely by
+     * discovery order or display name. */
+    private suspend fun ensureHandoverBoardConnected(snapshot: BoardCellSnapshot): Boolean {
+        if (boardMatchesSnapshot(bleConnection.connectedBoard, snapshot) &&
+            bleConnection.connectionState.value == ConnectionState.CONNECTED) return true
+        val scanner = boardScanner ?: return false
+        if (bleConnection.connectionState.value != ConnectionState.DISCONNECTED) {
+            bleConnection.disconnect()
+            withTimeoutOrNull(HANDOVER_DISCONNECT_TIMEOUT_MS) {
+                bleConnection.connectionState.first { it == ConnectionState.DISCONNECTED }
+            } ?: return false
+        }
+        nearbyScanner.stopScan(preserveEntries = true)
+        scanner.startScan()
+        val board = try {
+            withTimeoutOrNull(HANDOVER_SCAN_TIMEOUT_MS) {
+                scanner.discoveredBoards.first { boards ->
+                    boards.any { boardMatchesSnapshot(it, snapshot) }
+                }.first { boardMatchesSnapshot(it, snapshot) }
+            }
+        } finally {
+            scanner.stopScan()
+        } ?: return false
+        bleConnection.connect(board)
+        val result = withTimeoutOrNull(HANDOVER_CONNECT_TIMEOUT_MS) {
+            bleConnection.connectionState.first {
+                it == ConnectionState.CONNECTED || it == ConnectionState.DISCONNECTED
+            }
+        }
+        return result == ConnectionState.CONNECTED &&
+            boardMatchesSnapshot(bleConnection.connectedBoard, snapshot)
+    }
+
+    private fun boardMatchesSnapshot(board: DiscoveredBoard?, snapshot: BoardCellSnapshot): Boolean {
+        board ?: return false
+        val physical = runCatching { PhysicalBoardIdentity.resolve(board) }.getOrNull()
+        return physical == snapshot.physicalBoardId ||
+            physical?.let(BoardCellId::forPhysical) == snapshot.cellId
     }
 
     // ===== Host mode =====

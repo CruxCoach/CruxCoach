@@ -18,6 +18,10 @@ import com.cruxcoach.android.ble.BoardConnectionOwner
 import com.cruxcoach.android.ble.BoardControllerProfiles
 import com.cruxcoach.android.ble.NearbyClimbScanner
 import com.cruxcoach.android.ble.NearbySession
+import com.cruxcoach.android.boardcell.BoardCellManager
+import com.cruxcoach.android.boardcell.ControllerRequestState
+import com.cruxcoach.android.fips.FipsMeshRuntime
+import com.cruxcoach.android.fips.FipsNearbyMesh
 import com.cruxcoach.android.data.BoardSessionManager
 import com.cruxcoach.android.data.NearbyPresenceManager
 import com.cruxcoach.android.data.RememberedBoardController
@@ -92,6 +96,11 @@ data class BleConnectionState(
      *  down at service discovery (e.g. unsupported RedBear-UART MoonBoard
      *  LED-kit generation). Null = none. */
     @androidx.annotation.StringRes val connectFailureReason: Int? = null,
+    /** Set when the selected physical board already belongs to a mesh whose
+     * controller is another member. No GATT attempt has been made. */
+    val controllerRequestBoard: DiscoveredBoard? = null,
+    val controllerRequestState: ControllerRequestState = ControllerRequestState.IDLE,
+    val nearbyMeshes: List<FipsNearbyMesh> = emptyList(),
 )
 
 @HiltViewModel
@@ -107,6 +116,8 @@ class BleConnectionViewModel @Inject constructor(
     private val sessionGattBridge: SessionGattBridge,
     private val boardSessionManager: BoardSessionManager,
     private val capacityProbe: BoardCapacityProbe,
+    private val boardCellManager: BoardCellManager,
+    private val fipsMeshRuntime: FipsMeshRuntime,
 ) : ViewModel() {
 
     companion object {
@@ -142,6 +153,17 @@ class BleConnectionViewModel @Inject constructor(
     private var pendingBoard: DiscoveredBoard? = null
 
     init {
+        viewModelScope.safeLaunch(TAG) {
+            fipsMeshRuntime.startNearbyDiscovery()
+            fipsMeshRuntime.nearbyMeshes.collect { meshes ->
+                _state.update { it.copy(nearbyMeshes = meshes) }
+            }
+        }
+        viewModelScope.safeLaunch(TAG) {
+            boardCellManager.controllerRequestState.collect { requestState ->
+                _state.update { it.copy(controllerRequestState = requestState) }
+            }
+        }
         viewModelScope.safeLaunch(TAG) {
             bleScanner.discoveredBoards.collect { boards ->
                 _state.update { it.copy(discoveredBoards = boards) }
@@ -506,9 +528,39 @@ class BleConnectionViewModel @Inject constructor(
 
     fun connectToBoard(board: DiscoveredBoard, maxAttempts: Int = DEFAULT_CONNECT_ATTEMPTS) {
         if (bleConnection.connectionState.value != ConnectionState.DISCONNECTED) return
+        if (boardCellManager.requiresControllerRequest(board)) {
+            bleScanner.stopScan()
+            _state.update {
+                it.copy(controllerRequestBoard = board,
+                    controllerRequestState = ControllerRequestState.IDLE)
+            }
+            return
+        }
         pendingBoard = board
         bleScanner.stopScan()
         bleConnection.connect(board.withKnownCapacity(), maxAttempts)
+    }
+
+    fun joinBoardMesh(mesh: FipsNearbyMesh) {
+        val cellId = mesh.joinableBoardCellId ?: return
+        viewModelScope.safeLaunch(TAG) {
+            bleScanner.stopScan()
+            boardCellManager.joinNearbyMesh(cellId, mesh.boardName)
+        }
+    }
+
+    fun requestControllerTransfer() {
+        if (_state.value.controllerRequestBoard == null) return
+        if (!boardCellManager.requestControllerTransfer()) {
+            _state.update { it.copy(controllerRequestState = ControllerRequestState.DENIED) }
+        }
+    }
+
+    fun dismissControllerRequest() {
+        _state.update {
+            it.copy(controllerRequestBoard = null,
+                controllerRequestState = ControllerRequestState.IDLE)
+        }
     }
 
     /**
@@ -549,12 +601,17 @@ class BleConnectionViewModel @Inject constructor(
             _state.update { it.copy(directReconnectFailed = true) }
             return
         }
+        val rememberedBoard = remembered.toDiscoveredBoard()
+        if (boardCellManager.requiresControllerRequest(rememberedBoard)) {
+            connectToBoard(rememberedBoard, maxAttempts = DIRECT_RECONNECT_ATTEMPTS)
+            return
+        }
         directReconnectJob?.cancel()
         _state.update { it.copy(directReconnectInFlight = true, directReconnectFailed = false) }
         directReconnectJob = viewModelScope.safeLaunch(TAG) {
             try {
                 connectToBoard(
-                    remembered.toDiscoveredBoard(),
+                    rememberedBoard,
                     maxAttempts = DIRECT_RECONNECT_ATTEMPTS,
                 )
                 val outcome = withTimeoutOrNull(DIRECT_RECONNECT_TIMEOUT_MS) {
@@ -622,6 +679,7 @@ class BleConnectionViewModel @Inject constructor(
     }
 
     fun disconnect() {
+        if (boardCellManager.handoverBeforeControllerDisconnect()) return
         bleConnection.disconnect()
     }
 

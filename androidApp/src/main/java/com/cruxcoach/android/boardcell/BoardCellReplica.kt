@@ -102,6 +102,9 @@ class BoardCellReplica(val localMemberId: String, initial: BoardCellSnapshot? = 
                 is BoardCellEvent.MemberJoined -> current.copy(members = current.members + event.memberId)
                 is BoardCellEvent.ControllerHeartbeat -> current.copy(controllerHeartbeat = event.heartbeat)
                 is BoardCellEvent.HandoverPrepared -> current.copy(handover = event.value)
+                is BoardCellEvent.HandoverSourceReleased -> current.copy(
+                    handover = current.handover?.takeIf { it.transferId == event.transferId }?.copy(
+                        phase = HandoverPhase.SOURCE_RELEASED))
                 is BoardCellEvent.HandoverTargetReady -> current.copy(
                     handover = current.handover?.takeIf { it.transferId == event.transferId }?.copy(
                         phase = HandoverPhase.TARGET_READY, readinessProof = event.readinessProof))
@@ -115,6 +118,13 @@ class BoardCellReplica(val localMemberId: String, initial: BoardCellSnapshot? = 
                     handover = current.handover?.copy(phase = HandoverPhase.COMPLETED))
                 is BoardCellEvent.HandoverAborted -> current.copy(
                     handover = current.handover?.copy(phase = HandoverPhase.ABORTED))
+                is BoardCellEvent.ControllerRecovered -> current.copy(
+                    controllerId = event.controllerId,
+                    controllerTerm = event.controllerTerm,
+                    controllerHeartbeat = 0,
+                    availability = BoardCellAvailability.ACTIVE,
+                    handover = null,
+                )
                 is BoardCellEvent.ProjectionRecoveryRequired -> current.copy(
                     projection = null, projectionKnown = false,
                     availability = BoardCellAvailability.FROZEN_WRITE_RECOVERY)

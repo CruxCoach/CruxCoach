@@ -19,12 +19,14 @@ import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -52,7 +54,25 @@ fun FipsMeshScreen(
     viewModel: FipsMeshViewModel = hiltViewModel(),
 ) {
     val state = viewModel.state.collectAsStateWithLifecycle().value
+    val incomingControllerRequest by viewModel.incomingControllerRequest.collectAsStateWithLifecycle()
     var showConnectionSheet by remember { mutableStateOf(false) }
+    incomingControllerRequest?.let { request ->
+        AlertDialog(
+            onDismissRequest = { viewModel.denyControllerTransfer(request) },
+            title = { Text(stringResource(R.string.mesh_controller_request_title)) },
+            text = { Text(stringResource(R.string.mesh_controller_request_text)) },
+            confirmButton = {
+                TextButton(onClick = { viewModel.approveControllerTransfer(request) }) {
+                    Text(stringResource(R.string.mesh_controller_request_approve))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.denyControllerTransfer(request) }) {
+                    Text(stringResource(R.string.mesh_controller_request_deny))
+                }
+            },
+        )
+    }
     if (showConnectionSheet) {
         BleConnectionSheet(onDismiss = { showConnectionSheet = false })
     }

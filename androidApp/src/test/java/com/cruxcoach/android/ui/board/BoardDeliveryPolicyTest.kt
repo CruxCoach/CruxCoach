@@ -222,4 +222,19 @@ class BoardDeliveryPolicyTest {
             assertFalse(decision.showAction)
         }
     }
+
+    @Test
+    fun `mesh participant uses multi mode without a direct board connection`() {
+        val decision = BoardDeliveryPolicy.resolve(
+            sendMode = BoardSendMode.EXPLICIT,
+            sessionRole = SessionRole.NONE,
+            boardConnected = false,
+            hasDirectPayload = true,
+            connectedViaMesh = true,
+        )
+
+        assertEquals(BoardDeliveryTarget.MESH_BOARD, decision.target)
+        assertTrue(decision.showAction)
+        assertFalse(decision.dispatchAutomatically)
+    }
 }

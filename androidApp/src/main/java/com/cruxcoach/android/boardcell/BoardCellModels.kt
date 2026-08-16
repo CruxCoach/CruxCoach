@@ -64,7 +64,7 @@ enum class BoardCellAvailability {
 }
 
 @Serializable
-enum class HandoverPhase { PREPARED, TARGET_READY, COMMITTED, COMPLETED, ABORTED }
+enum class HandoverPhase { PREPARED, SOURCE_RELEASED, TARGET_READY, COMMITTED, COMPLETED, ABORTED }
 
 @Serializable
 data class BoardCellHandover(
@@ -77,6 +77,36 @@ data class BoardCellHandover(
     val baseHash: String,
     val phase: HandoverPhase,
     val readinessProof: String? = null,
+)
+
+@Serializable
+data class BoardCellControllerRequest(
+    val requestId: String,
+    val requesterId: String,
+)
+
+@Serializable
+data class BoardCellControllerDecision(
+    val requestId: String,
+    val accepted: Boolean,
+)
+
+@Serializable
+data class BoardCellControllerRecovery(
+    val claimantId: String,
+    val baseControllerId: String,
+    val baseControllerTerm: Long,
+    val baseSequence: Long,
+    val baseHash: String,
+    val connectionProof: String,
+    val envelope: BoardCellEnvelope,
+)
+
+@Serializable
+data class BoardProjectionRequest(
+    val commandId: String,
+    val projection: BoardProjection,
+    val baseSequence: Long,
 )
 
 /** Complete state. Deadlines are local monotonic observations and never cross the wire. */
@@ -120,10 +150,16 @@ sealed interface BoardCellEvent {
     @Serializable data class MemberJoined(val memberId: String) : BoardCellEvent
     @Serializable data class ControllerHeartbeat(val heartbeat: Long) : BoardCellEvent
     @Serializable data class HandoverPrepared(val value: BoardCellHandover) : BoardCellEvent
+    @Serializable data class HandoverSourceReleased(val transferId: String) : BoardCellEvent
     @Serializable data class HandoverTargetReady(val transferId: String, val readinessProof: String) : BoardCellEvent
     @Serializable data class HandoverCommitted(val transferId: String, val targetControllerId: String, val targetTerm: Long) : BoardCellEvent
     @Serializable data class HandoverCompleted(val transferId: String) : BoardCellEvent
     @Serializable data class HandoverAborted(val transferId: String, val reason: String) : BoardCellEvent
+    @Serializable data class ControllerRecovered(
+        val controllerId: String,
+        val controllerTerm: Long,
+        val connectionProof: String,
+    ) : BoardCellEvent
     @Serializable data class ProjectionRecoveryRequired(val commandId: String) : BoardCellEvent
     @Serializable data class ForkDetected(val competingLineageId: String, val competingHash: String) : BoardCellEvent
     @Serializable data class OperatorRecovered(

@@ -14,6 +14,7 @@ interface BoardCellTransport {
     suspend fun sendHandoverReady(target: String, ready: HandoverReady) = Unit
     suspend fun sendForkNotice(target: String, notice: BoardCellForkNotice) = Unit
     suspend fun publishCommandAck(target: String, ack: BoardCommandAck) = Unit
+    suspend fun publishRecovery(recovery: BoardCellControllerRecovery) = Unit
 }
 
 object NoOpBoardCellTransport : BoardCellTransport {
@@ -53,7 +54,7 @@ class BoardCellCoordinator(
     private val durableStore: BoardCellDurableStore = NoOpBoardCellDurableStore,
     private val settleMs: Long = 1_000L,
     private val heartbeatTimeoutMs: Long = 15_000L,
-    private val handoverTimeoutMs: Long = 15_000L,
+    private val handoverTimeoutMs: Long = 45_000L,
 ) {
     private val mutex = Mutex()
     private val claims = mutableMapOf<PhysicalBoardId, MutableList<BoardCellClaim>>()
@@ -105,7 +106,8 @@ class BoardCellCoordinator(
             if (it is BoardCellApplyResult.Applied) {
                 controllerObservedAt[incoming.physicalBoardId] = nowMonotonicMs
                 incoming.handover?.takeIf {
-                    it.phase == HandoverPhase.PREPARED || it.phase == HandoverPhase.TARGET_READY
+                    it.phase in setOf(HandoverPhase.PREPARED, HandoverPhase.SOURCE_RELEASED,
+                        HandoverPhase.TARGET_READY)
                 }?.let { handoverDeadlines[it.transferId] = nowMonotonicMs + handoverTimeoutMs }
                 BoardCellScopeRegistry.bindCell(incoming.physicalBoardId, incoming.cellId)
             }
@@ -386,7 +388,8 @@ class BoardCellCoordinator(
         val current = writable(boardId, nowMonotonicMs) ?: return@withLock null
         if (targetId == nodeId || targetId !in current.members) return@withLock null
         current.handover?.takeIf { it.transferId == transferId }?.let { return@withLock null }
-        if (current.handover?.phase in setOf(HandoverPhase.PREPARED, HandoverPhase.TARGET_READY, HandoverPhase.COMMITTED)) return@withLock null
+        if (current.handover?.phase in setOf(HandoverPhase.PREPARED, HandoverPhase.SOURCE_RELEASED,
+                HandoverPhase.TARGET_READY, HandoverPhase.COMMITTED)) return@withLock null
         val handover = BoardCellHandover(transferId, nodeId, targetId, current.controllerTerm,
             current.controllerTerm + 1, current.sequence, current.stateHash, HandoverPhase.PREPARED)
         handoverDeadlines[transferId] = nowMonotonicMs + handoverTimeoutMs
@@ -395,12 +398,28 @@ class BoardCellCoordinator(
         }
     }
 
-    /** Called by the prepared target only after it owns host lifecycle and has a connected board. */
+    /** The source records this only after its exclusive physical board connection is closed. */
+    suspend fun sourceReleased(
+        boardId: PhysicalBoardId,
+        transferId: String,
+        nowMonotonicMs: Long,
+    ): BoardCellEnvelope? = mutex.withLock {
+        val current = writable(boardId, nowMonotonicMs, allowHandover = true) ?: return@withLock null
+        val h = current.handover ?: return@withLock null
+        if (current.controllerId != nodeId || h.sourceControllerId != nodeId ||
+            h.transferId != transferId || h.phase != HandoverPhase.PREPARED ||
+            nowMonotonicMs > (handoverDeadlines[transferId] ?: Long.MIN_VALUE)) return@withLock null
+        commitCanonical(boardId, BoardCellEvent.HandoverSourceReleased(transferId)).also {
+            replicas[boardId]?.snapshot?.let { snapshot -> transport.publishSnapshot(snapshot) }
+        }
+    }
+
+    /** Called by the target only after the source release is canonical and its board is connected. */
     suspend fun targetReady(boardId: PhysicalBoardId, readinessProof: String) {
         mutex.withLock {
             val current = replicas[boardId]?.snapshot ?: return@withLock
             val handover = current.handover ?: return@withLock
-            if (handover.targetControllerId != nodeId || handover.phase != HandoverPhase.PREPARED || readinessProof.isBlank()) return@withLock
+            if (handover.targetControllerId != nodeId || handover.phase != HandoverPhase.SOURCE_RELEASED || readinessProof.isBlank()) return@withLock
             transport.sendHandoverReady(handover.sourceControllerId, HandoverReady(
                 handover.transferId, current.cellId, boardId, current.epoch, handover.sourceTerm,
                 handover.baseSequence, handover.baseHash, nodeId, readinessProof))
@@ -415,7 +434,7 @@ class BoardCellCoordinator(
             ready.baseSequence != h.baseSequence || ready.baseHash != h.baseHash || ready.readinessProof.isBlank() ||
             nowMonotonicMs > (handoverDeadlines[h.transferId] ?: Long.MIN_VALUE)) return@withLock false
         if (h.phase == HandoverPhase.TARGET_READY) return@withLock true
-        if (h.phase != HandoverPhase.PREPARED) return@withLock false
+        if (h.phase != HandoverPhase.SOURCE_RELEASED) return@withLock false
         commitCanonical(ready.physicalBoardId,
             BoardCellEvent.HandoverTargetReady(h.transferId, ready.readinessProof)) != null
     }
@@ -441,7 +460,8 @@ class BoardCellCoordinator(
     suspend fun abortHandover(boardId: PhysicalBoardId, transferId: String, reason: String, nowMonotonicMs: Long): BoardCellEnvelope? = mutex.withLock {
         val current = writable(boardId, nowMonotonicMs, allowHandover = true) ?: return@withLock null
         val h = current.handover ?: return@withLock null
-        if (h.transferId != transferId || h.phase !in setOf(HandoverPhase.PREPARED, HandoverPhase.TARGET_READY)) return@withLock null
+        if (h.transferId != transferId || h.phase !in setOf(HandoverPhase.PREPARED,
+                HandoverPhase.SOURCE_RELEASED, HandoverPhase.TARGET_READY)) return@withLock null
         commitCanonical(boardId, BoardCellEvent.HandoverAborted(transferId, reason))
     }
 
@@ -449,12 +469,19 @@ class BoardCellCoordinator(
         replicas.forEach { (board, replica) ->
             val current = replica.snapshot ?: return@forEach
             val last = controllerObservedAt[board] ?: nowMonotonicMs
-            if (current.availability == BoardCellAvailability.ACTIVE && nowMonotonicMs - last > heartbeatTimeoutMs) {
+            val h = current.handover
+            val transferInProgress = h?.phase in setOf(HandoverPhase.PREPARED,
+                HandoverPhase.SOURCE_RELEASED, HandoverPhase.TARGET_READY)
+            // A released source intentionally has no physical board heartbeat
+            // while it waits for the target. The handover deadline, not the
+            // shorter controller heartbeat, governs this bounded interval.
+            if (!transferInProgress && current.availability == BoardCellAvailability.ACTIVE &&
+                nowMonotonicMs - last > heartbeatTimeoutMs) {
                 replica.freeze(BoardCellAvailability.FROZEN_NEEDS_CONTROLLER)
                 replica.snapshot?.let(durableStore::persistSnapshot)
             }
-            val h = current.handover
-            if (current.controllerId == nodeId && h?.phase in setOf(HandoverPhase.PREPARED, HandoverPhase.TARGET_READY) &&
+            if (current.controllerId == nodeId && h?.phase in setOf(HandoverPhase.PREPARED,
+                    HandoverPhase.SOURCE_RELEASED, HandoverPhase.TARGET_READY) &&
                 nowMonotonicMs > (handoverDeadlines[h!!.transferId] ?: Long.MAX_VALUE)) {
                 commitCanonical(board, BoardCellEvent.HandoverAborted(h.transferId, "target readiness timeout"))
             }
@@ -490,6 +517,68 @@ class BoardCellCoordinator(
         }
     }
 
+    /** Recover only after the claimant has acquired the exclusive physical
+     * board connection. The connection is the fencing token for real boards. */
+    suspend fun recoverController(
+        boardId: PhysicalBoardId,
+        connectionProof: String,
+        nowMonotonicMs: Long,
+    ): BoardCellControllerRecovery? = mutex.withLock {
+        val replica = replicas[boardId] ?: return@withLock null
+        val current = replica.snapshot ?: return@withLock null
+        if (current.availability != BoardCellAvailability.FROZEN_NEEDS_CONTROLLER ||
+            current.controllerId == nodeId || nodeId !in current.members || connectionProof.isBlank()) {
+            return@withLock null
+        }
+        val event = BoardCellEvent.ControllerRecovered(nodeId, current.controllerTerm + 1, connectionProof)
+        val next = BoardCellReplica.reduce(current, event, current.sequence + 1)
+        val envelope = envelope(current, next, event)
+        val recovery = BoardCellControllerRecovery(
+            claimantId = nodeId,
+            baseControllerId = current.controllerId,
+            baseControllerTerm = current.controllerTerm,
+            baseSequence = current.sequence,
+            baseHash = current.stateHash,
+            connectionProof = connectionProof,
+            envelope = envelope,
+        )
+        durableStore.persistSnapshot(next)
+        check(replica.applyEvent(envelope) is BoardCellApplyResult.Applied)
+        controllerObservedAt[boardId] = nowMonotonicMs
+        transport.publishRecovery(recovery)
+        recovery
+    }
+
+    suspend fun acceptControllerRecovery(
+        senderId: String,
+        recovery: BoardCellControllerRecovery,
+        nowMonotonicMs: Long,
+    ): BoardCellApplyResult = mutex.withLock {
+        val envelope = recovery.envelope
+        val replica = replicas[envelope.physicalBoardId]
+            ?: return@withLock BoardCellApplyResult.NeedSnapshot(0, envelope.sequence)
+        val current = replica.snapshot
+            ?: return@withLock BoardCellApplyResult.NeedSnapshot(0, envelope.sequence)
+        val event = envelope.event as? BoardCellEvent.ControllerRecovered
+            ?: return@withLock BoardCellApplyResult.Rejected("recovery event required")
+        if (senderId != recovery.claimantId || senderId != event.controllerId ||
+            senderId !in current.members || recovery.connectionProof.isBlank() ||
+            event.connectionProof != recovery.connectionProof ||
+            recovery.baseControllerId != current.controllerId ||
+            recovery.baseControllerTerm != current.controllerTerm ||
+            recovery.baseSequence != current.sequence || recovery.baseHash != current.stateHash ||
+            event.controllerTerm != current.controllerTerm + 1 ||
+            current.availability != BoardCellAvailability.FROZEN_NEEDS_CONTROLLER) {
+            return@withLock BoardCellApplyResult.Rejected("invalid controller recovery")
+        }
+        replica.applyEvent(envelope).also { result ->
+            if (result is BoardCellApplyResult.Applied) {
+                controllerObservedAt[envelope.physicalBoardId] = nowMonotonicMs
+                durableStore.persistSnapshot(result.snapshot)
+            }
+        }
+    }
+
     suspend fun freezeForTransportRealmSwitch(boardId: PhysicalBoardId) = mutex.withLock {
         replicas[boardId]?.freeze(BoardCellAvailability.FROZEN_NEEDS_CONTROLLER)
         replicas[boardId]?.snapshot?.let(durableStore::persistSnapshot)
@@ -503,7 +592,8 @@ class BoardCellCoordinator(
         val current = replicas[boardId]?.snapshot ?: return null
         if (current.controllerId != nodeId || current.availability != BoardCellAvailability.ACTIVE) return null
         if (!allowHandover && current.handover?.phase in setOf(
-                HandoverPhase.PREPARED, HandoverPhase.TARGET_READY)) return null
+                HandoverPhase.PREPARED, HandoverPhase.SOURCE_RELEASED,
+                HandoverPhase.TARGET_READY)) return null
         val last = controllerObservedAt[boardId] ?: return null
         if (nowMonotonicMs - last > heartbeatTimeoutMs) {
             replicas[boardId]?.freeze(BoardCellAvailability.FROZEN_NEEDS_CONTROLLER)

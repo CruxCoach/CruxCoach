@@ -494,6 +494,7 @@ class FipsMeshRuntime @Inject constructor(
         const val OWNER_BOARD_CELL = "board-cell"
         const val OWNER_SESSION = "session"
         const val OWNER_NEARBY_BOARD_CELL = "nearby-board-cell"
+        const val OWNER_HANDOVER = "board-cell-handover"
         fun competitionOwner(compId: String) = "competition:$compId"
         private const val JOIN_RETRY_MS = 5_000L
         private const val PEER_REFRESH_MS = 2_000L

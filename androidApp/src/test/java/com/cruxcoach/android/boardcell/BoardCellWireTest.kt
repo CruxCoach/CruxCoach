@@ -132,4 +132,45 @@ class BoardCellWireTest {
         assertTrue(result is BoardCellApplyResult.NeedSnapshot)
         assertTrue(BoardCellWireCodec.decode(link.sent.last().second).message is BoardCellWireMessage.SnapshotRequest)
     }
+
+    @Test fun `only a member can request control and only controller can decide`() = runTest {
+        val hostLink = Link("host")
+        val hostTransport = BoardCellMeshTransport(hostLink)
+        val hostCoordinator = BoardCellCoordinator("host", hostTransport, settleMs = 0)
+        hostTransport.attach(hostCoordinator)
+        val board = PhysicalBoardId("board")
+        hostCoordinator.beginClaim(board, BoardCellId("cell"), 1)
+        hostCoordinator.settle(board, 1)
+        hostCoordinator.joinMember(board, "member")
+        val snapshot = hostCoordinator.snapshot(board)!!
+        hostTransport.rememberSnapshot(snapshot)
+        val received = mutableListOf<BoardCellControllerRequest>()
+        hostTransport.onControllerRequest = { _, request -> received += request }
+        val request = BoardCellControllerRequest("request-0001", "member")
+
+        assertNull(hostTransport.receive("member", frame("member",
+            BoardCellWireMessage.ControllerRequest(request), snapshot.epoch,
+            snapshot.controllerTerm, "controller-request")))
+        assertEquals(request, received.single())
+        assertTrue(hostTransport.receive("attacker", frame("attacker",
+            BoardCellWireMessage.ControllerRequest(request.copy(requesterId = "attacker")),
+            snapshot.epoch, snapshot.controllerTerm, "controller-attacker")) is BoardCellApplyResult.Rejected)
+
+        val memberLink = Link("member")
+        val memberTransport = BoardCellMeshTransport(memberLink)
+        val memberCoordinator = BoardCellCoordinator("member", memberTransport, settleMs = 0)
+        memberTransport.attach(memberCoordinator)
+        memberCoordinator.restoreTrustedSnapshot(snapshot, 2)
+        memberTransport.rememberSnapshot(snapshot)
+        val decisions = mutableListOf<BoardCellControllerDecision>()
+        memberTransport.onControllerDecision = { _, decision -> decisions += decision }
+        val accepted = BoardCellControllerDecision(request.requestId, true)
+        assertNull(memberTransport.receive("host", frame("host",
+            BoardCellWireMessage.ControllerDecision(accepted), snapshot.epoch,
+            snapshot.controllerTerm, "controller-decision")))
+        assertEquals(accepted, decisions.single())
+        assertTrue(memberTransport.receive("other", frame("other",
+            BoardCellWireMessage.ControllerDecision(accepted), snapshot.epoch,
+            snapshot.controllerTerm, "decision-forged")) is BoardCellApplyResult.Rejected)
+    }
 }

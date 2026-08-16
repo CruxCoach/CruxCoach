@@ -98,7 +98,7 @@ class UpdateChecker(
             }
         }
 
-        val installed = SemVer.parseOrNull(BuildConfig.VERSION_NAME)
+        val installed = SemVer.parseInstalledOrNull(BuildConfig.VERSION_NAME)
         if (installed == null) {
             preferences.update { it.copy(lastCheckResult = CheckResult.ERROR, lastErrorAtEpochMs = nowMs()) }
             Log.w(TAG, "Installed version '${BuildConfig.VERSION_NAME}' is not strict SemVer")
