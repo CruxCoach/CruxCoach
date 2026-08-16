@@ -86,7 +86,7 @@ android {
         applicationId = "com.cruxcoach.android"
         minSdk = 28
         targetSdk = 35
-        versionCode = 10
+        versionCode = 11
         versionName = "0.2.3"
 
         // Only bundle arm64 native libs. armeabi-v7a alone added ~10.7 MB
