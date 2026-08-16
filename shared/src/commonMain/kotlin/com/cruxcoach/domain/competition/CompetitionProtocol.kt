@@ -53,7 +53,7 @@ object CompetitionProtocol {
     val LOG_OPS = listOf(
         "lifecycle", "registration_decision", "payment_decision", "claim_decision",
         "checkin", "queue", "defer_decision", "attempt_result", "complete_turn", "correction",
-        "override", "announcement", "disqualify", "prize_decision", "config_update",
+        "override", "announcement", "disqualify", "retire", "prize_decision", "config_update",
     )
 
     val INTENT_OPS = listOf(
@@ -62,8 +62,9 @@ object CompetitionProtocol {
     )
 
     val QUEUE_ACTIONS = listOf(
-        "seed", "seed_open", "open_turn", "close_turn", "advance", "reorder", "next_climb", "next_round",
+        "seed", "seed_open", "open_turn", "close_turn", "advance", "skip_turn", "reorder", "next_climb", "next_round",
     )
+    val QUEUE_POLICIES = listOf("automatic", "custom")
     val ATTEMPT_OUTCOMES = listOf("top", "zone", "fall", "pass", "timeout")
     val PAYMENT_STATES = listOf("not_required", "pending", "settled", "failed", "expired", "refunded")
 
@@ -83,7 +84,7 @@ object CompetitionProtocol {
     /** Stable default seeding shared by every authority UI. */
     fun defaultQueueOrder(compId: String, pubkeys: List<String>): List<String> =
         pubkeys.map { pubkey ->
-            pubkey to ccjHash(JsonObject(mapOf("k" to JsonPrimitive(compId + pubkey))))
+            pubkey to CompetitionDigest.sha256Hex(compId + pubkey)
         }.sortedWith(compareBy<Pair<String, String>> { it.second }.thenBy { it.first })
             .map { it.first }
 
@@ -106,7 +107,7 @@ object CompetitionProtocol {
             at >= competition.startsAt && at <= competition.endsAt
 
     /** An audit trail whose entries do not say why is a log, not an audit trail. */
-    val REASON_REQUIRED_OPS = setOf("correction", "override", "disqualify", "config_update")
+    val REASON_REQUIRED_OPS = setOf("correction", "override", "disqualify", "retire", "config_update")
 
     private val COMP_ID = Regex("^[0-9a-f]{16}$")
     private val HEX32 = Regex("^[0-9a-f]{64}$")
@@ -467,6 +468,8 @@ data class CompetitionRules(
     val scorePoints: CompetitionScorePoints?,
     val tiebreaks: List<String>,
     val lateEntryAllowed: Boolean,
+    /** Absent v1 definitions use the legacy host-managed queue. */
+    val queuePolicy: String = "custom",
 )
 
 data class CompetitionScorePoints(val zone: Int, val top: Int, val flash: Int)
@@ -605,6 +608,7 @@ data class Competition(
                         ?: (rules.int("climb_count") ?: 0),
                     selectionUniqueness = rules.str("selection_uniqueness").orEmpty(),
                     progression = rules.str("progression").orEmpty(),
+                    queuePolicy = rules.str("queue_policy") ?: "custom",
                     attemptsPerClimb = rules.int("attempts_per_climb") ?: 0,
                     turnDeadlineSec = rules.int("turn_deadline_sec") ?: 0,
                     attemptDeadlineSec = rules.int("attempt_deadline_sec") ?: 0,

@@ -576,14 +576,27 @@ private fun OrganizerConsole(
 
             if (CompetitionProtocol.checkinWindowOpen(competition, state.status, nowSeconds) || runningNow || state.status == "paused") {
                 Text("Live-Steuerung", fontWeight = FontWeight.Bold)
-                if (state.order.isEmpty()) Button(viewModel::hostSeed, Modifier.testTag("competition_host_seed")) { Text("Queue aus Check-ins erstellen") }
+                val automaticQueue = competition.rules.queuePolicy == "automatic"
+                if (state.order.isEmpty()) {
+                    if (automaticQueue) Text("Wartet auf bestätigte Check-ins. Die Reihenfolge entsteht automatisch.")
+                    else Button(viewModel::hostSeed, Modifier.testTag("competition_host_seed")) { Text("Queue aus Check-ins erstellen") }
+                }
                 else {
                     val current = state.order.getOrNull(state.cursor)
                     Text("Zug: ${current?.let { key -> state.participant(key)?.display?.ifBlank { key.take(12) } } ?: "noch nicht geöffnet"}")
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        if (state.cursor < 0) Button({ viewModel.hostQueue("open_turn", 0) }) { Text("Ersten Zug öffnen") }
-                        else Button({ viewModel.hostQueue("advance") }, Modifier.testTag("competition_host_advance")) { Text("Weiter") }
-                        if (state.cursor >= 0) OutlinedButton({ viewModel.hostQueue("close_turn") }) { Text("Zug schließen") }
+                    if (automaticQueue) {
+                        if (runningNow && state.cursor >= 0) {
+                            OutlinedButton(
+                                { viewModel.hostQueue("skip_turn") },
+                                Modifier.testTag("competition_host_skip"),
+                            ) { Text("Diesen Zug überspringen") }
+                        }
+                    } else {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            if (state.cursor < 0) Button({ viewModel.hostQueue("open_turn", 0) }) { Text("Ersten Zug öffnen") }
+                            else Button({ viewModel.hostQueue("advance") }, Modifier.testTag("competition_host_advance")) { Text("Weiter") }
+                            if (state.cursor >= 0) OutlinedButton({ viewModel.hostQueue("close_turn") }) { Text("Zug schließen") }
+                        }
                     }
                     if (runningNow && current != null && state.currentClimbId.isNotBlank()) {
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {

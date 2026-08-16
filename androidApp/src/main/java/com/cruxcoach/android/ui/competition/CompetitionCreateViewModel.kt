@@ -148,6 +148,7 @@ class CompetitionCreateViewModel @Inject constructor(
             "rules" to JsonObject(mapOf(
                 "climb_source" to JsonPrimitive("organizer_set"), "climb_count" to JsonPrimitive(climbs.size), "counted_climb_count" to JsonPrimitive(climbs.size),
                 "selection_uniqueness" to JsonPrimitive("none"), "progression" to JsonPrimitive("asynchronous_turns"),
+                "queue_policy" to JsonPrimitive("automatic"),
                 "attempts_per_climb" to JsonPrimitive(d.attempts.toIntOrNull()?.coerceIn(1, 20) ?: 5), "turn_deadline_sec" to JsonPrimitive(d.turnSeconds.toIntOrNull()?.coerceIn(30, 1800) ?: 180),
                 "attempt_deadline_sec" to JsonPrimitive(0), "min_rest_sec" to JsonPrimitive(0), "defer_budget_per_round" to JsonPrimitive(1),
                 "max_consecutive_defers" to JsonPrimitive(1), "defer_slots" to JsonPrimitive(1), "scoring" to JsonPrimitive("tops_then_attempts"),

@@ -93,7 +93,7 @@ class CompetitionCompleteTurnTest {
         val entrants = listOf(bob, alice, "c".repeat(64))
         val first = CompetitionProtocol.defaultQueueOrder("0123456789abcdef", entrants)
         assertEquals(first, CompetitionProtocol.defaultQueueOrder("0123456789abcdef", entrants.reversed()))
-        assertEquals(listOf(alice, "c".repeat(64), bob), first, "must match the Web CCJ hash order")
+        assertEquals(listOf(bob, "c".repeat(64), alice), first, "must match the Web sha256(comp_id + pubkey) order")
         assertEquals(entrants.toSet(), first.toSet())
     }
 

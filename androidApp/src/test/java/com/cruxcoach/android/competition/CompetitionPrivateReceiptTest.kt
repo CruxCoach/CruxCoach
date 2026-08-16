@@ -45,7 +45,7 @@ class CompetitionPrivateReceiptTest {
     fun `receipt coordinate is distinct per participant and authority sequence`() {
         val first = CompetitionPrivateReceiptCodec.dTag(compId, participant, 7)
         val next = CompetitionPrivateReceiptCodec.dTag(compId, participant, 8)
-        assertEquals("cruxcoach:comp:$compId:private:abababab:000007", first)
+        assertEquals("cruxcoach:comp:$compId:private:$participant:000007", first)
         assertEquals(false, first == next)
     }
 }

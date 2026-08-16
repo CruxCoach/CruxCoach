@@ -27,7 +27,7 @@ object CompetitionPrivateReceiptCodec {
     private val eventId = Regex("^[0-9a-f]{64}$")
 
     fun dTag(compId: String, recipient: String, seq: Int): String =
-        "cruxcoach:comp:$compId:private:${recipient.take(8)}:${seq.toString().padStart(6, '0')}"
+        "cruxcoach:comp:$compId:private:$recipient:${seq.toString().padStart(6, '0')}"
 
     fun content(
         compId: String,

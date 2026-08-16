@@ -98,6 +98,32 @@ class CompetitionConformanceTest {
     }
 
     @Test
+    fun `online participant publication cannot be switched back to private`() {
+        val fixture = stream("happy-sync.json")
+        val parsed = CompetitionProtocol.parseCompetition(fixture.competitionEvent, now)
+            as CompetitionProtocol.ParsedCompetition.Valid
+        val online = Competition.from(JsonObject(parsed.competition.raw.toMutableMap().apply {
+            put("participant_data_visibility", JsonPrimitive("online"))
+        }))
+        val state = CompetitionReducer.initialState(online, fixture.competitionEvent.id)
+        val downgraded = CompetitionReducer.applyEntry(
+            state,
+            LogEntry(
+                seq = 1, prev = state.head, epoch = state.epoch, at = now,
+                op = "config_update", actor = "authority", reason = "Try to hide published copies",
+                data = JsonObject(mapOf(
+                    "revision" to JsonPrimitive(2),
+                    "impact" to JsonPrimitive("safe"),
+                    "patch" to JsonObject(mapOf("participant_data_visibility" to JsonPrimitive("local"))),
+                )),
+            ),
+            online,
+        )
+        assertEquals("config_invalid", downgraded.rejected.single().code)
+        assertEquals(1, downgraded.configRevision)
+    }
+
+    @Test
     fun `legacy unique selections never narrow the live pool or Best-N`() {
         val fixture = stream("paid-unique-async.json")
         val parsed = CompetitionProtocol.parseCompetition(fixture.competitionEvent, now)

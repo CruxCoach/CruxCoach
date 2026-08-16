@@ -132,6 +132,9 @@ object CompetitionValidation {
         if (rules.climbSource !in CLIMB_SOURCES) fail("rules.climb_source", "must be one of: ${CLIMB_SOURCES.joinToString(", ")}")
         if (rules.selectionUniqueness !in UNIQUENESS) fail("rules.selection_uniqueness", "must be one of: ${UNIQUENESS.joinToString(", ")}")
         if (rules.progression !in PROGRESSIONS) fail("rules.progression", "must be one of: ${PROGRESSIONS.joinToString(", ")}")
+        if (rules.queuePolicy !in CompetitionProtocol.QUEUE_POLICIES) {
+            fail("rules.queue_policy", "must be one of: ${CompetitionProtocol.QUEUE_POLICIES.joinToString(", ")}")
+        }
         if (rules.scoring !in SCORINGS) fail("rules.scoring", "must be one of: ${SCORINGS.joinToString(", ")}")
         if (rules.scoring == "achievement_points") {
             val points = rules.scorePoints

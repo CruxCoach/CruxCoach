@@ -97,6 +97,7 @@ data class AuditEntry(
     val reason: String?,
     val at: Long,
     val supersedesSeq: Int? = null,
+    val supersedesResults: Boolean = false,
     val revision: Int? = null,
     val impact: String? = null,
 ) {
@@ -110,6 +111,7 @@ data class AuditEntry(
         // (no supersedes_seq) and a correction must serialize differently.
         if (reason != null) fields["reason"] = JsonPrimitive(reason)
         if (supersedesSeq != null) fields["supersedes_seq"] = JsonPrimitive(supersedesSeq)
+        if (supersedesResults) fields["supersedes_results"] = JsonPrimitive(true)
         if (revision != null) fields["revision"] = JsonPrimitive(revision)
         if (impact != null) fields["impact"] = JsonPrimitive(impact)
         return JsonObject(fields)
