@@ -330,6 +330,7 @@ private fun OnBoardClimbSection(
             if (climb.isStillProjected) R.string.ble_still_visible else R.string.ble_ready_to_resend
         )
         OnBoardSource.LOCAL_ACTIVE -> stringResource(R.string.ble_your_climb)
+        OnBoardSource.MESH_ACTIVE -> stringResource(R.string.ble_mesh_climb)
         OnBoardSource.LOCAL_MANAGER -> stringResource(
             if (climb.isStillProjected) R.string.ble_still_visible else R.string.ble_ready_to_resend
         )

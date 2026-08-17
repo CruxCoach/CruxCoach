@@ -63,6 +63,11 @@ class NearbyPresenceManager @Inject constructor(
         resolveUuids(uuids)
     }
 
+    /** Resolve a canonical BoardCell projection just like a BLE observation. */
+    fun resolveMeshProjection(uuid: String, angle: Int) {
+        scope.launch { resolveUuids(listOf(uuid to angle)) }
+    }
+
     private suspend fun resolveSessionClimbNames(sessions: List<com.cruxcoach.android.ble.NearbySession>) {
         val uuids = sessions.mapNotNull { s ->
             s.currentClimbUuid?.let { it to s.currentClimbAngle }

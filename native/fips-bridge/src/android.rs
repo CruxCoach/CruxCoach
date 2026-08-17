@@ -57,7 +57,12 @@ fn apply_mobile_profile(config: &mut Config) {
             unsafe { std::env::set_var(key, "1") };
         }
     }
-    config.node.tick_interval_secs = 5;
+    // A five-second tick made a local BLE join wait for up to two complete
+    // maintenance windows: once before the peer became routable and again
+    // before the first BoardCell snapshot crossed the new route. Keep the
+    // upstream one-second cadence; the worker limits above are the meaningful
+    // mobile CPU bound, while this tick is also the join latency bound.
+    config.node.tick_interval_secs = 1;
     config.node.heartbeat_interval_secs = 20;
     config.node.link_dead_timeout_secs = 60;
 }
@@ -560,4 +565,19 @@ pub extern "system" fn Java_com_cruxcoach_android_fips_NativeFips_bleChannelNext
     timeout: jint,
 ) -> jint {
     ble::channel_next_send(env, class, h, id, out, timeout)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mobile_profile_keeps_join_maintenance_responsive() {
+        let mut config = Config::default();
+        apply_mobile_profile(&mut config);
+
+        assert_eq!(config.node.tick_interval_secs, 1);
+        assert_eq!(config.node.heartbeat_interval_secs, 20);
+        assert_eq!(config.node.link_dead_timeout_secs, 60);
+    }
 }

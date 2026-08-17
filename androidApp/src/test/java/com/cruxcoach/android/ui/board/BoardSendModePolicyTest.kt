@@ -31,6 +31,19 @@ class BoardSendModePolicyTest {
     }
 
     @Test
+    fun `single-capacity controller in a shared mesh uses multi preference`() {
+        assertEquals(
+            BoardSendMode.EXPLICIT,
+            BoardSendModePolicy.resolve(
+                BoardConnectionCapacity.SINGLE,
+                singleConnectionMode = BoardSendMode.AUTOMATIC,
+                multiConnectionMode = BoardSendMode.EXPLICIT,
+                meshParticipant = true,
+            ),
+        )
+    }
+
+    @Test
     fun `unknown controller uses shared preference when modes match`() {
         assertEquals(
             BoardSendMode.AUTOMATIC,

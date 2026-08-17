@@ -440,9 +440,10 @@ class BoardClimbDetailViewModel @Inject constructor(
         }
         viewModelScope.launch {
             var previouslyViaMesh = false
-            com.cruxcoach.android.boardcell.BoardCellManager.current?.snapshots?.collect {
+            com.cruxcoach.android.boardcell.BoardCellManager.current?.snapshots?.collect { snapshot ->
                 val viaMesh = com.cruxcoach.android.boardcell.BoardCellManager.current?.canSendViaMesh() == true
-                val meshMode = if (viaMesh) runCatching {
+                val sharedMesh = (snapshot?.members?.size ?: 0) > 1
+                val meshMode = if (sharedMesh) runCatching {
                     userPreferences.multiConnectionBoardSendMode.first()
                 }.getOrNull() else null
                 _state.update { state -> state.copy(
@@ -486,13 +487,16 @@ class BoardClimbDetailViewModel @Inject constructor(
                     userPreferences.multiConnectionBoardSendMode,
                     bleConnection.connectedBoardDescriptor,
                     cruxRelayManager.state,
-                ) { singleMode, multiMode, board, relayState ->
+                    com.cruxcoach.android.boardcell.BoardCellManager.current?.snapshots
+                        ?: kotlinx.coroutines.flow.flowOf(null),
+                ) { singleMode, multiMode, board, relayState, meshSnapshot ->
                     val capacity = BoardControllerProfiles.forBoard(board).connectionCapacity
                     BoardSendModePolicy.resolve(
                         connectionCapacity = capacity,
                         singleConnectionMode = singleMode,
                         multiConnectionMode = multiMode,
                         hostingForOthers = relayState.clientCount > 0,
+                        meshParticipant = (meshSnapshot?.members?.size ?: 0) > 1,
                     ) to capacity
                 }.distinctUntilChanged().collect { (mode, capacity) ->
                     val shouldAutoSend = BoardSendModePolicy
@@ -1331,7 +1335,8 @@ class BoardClimbDetailViewModel @Inject constructor(
                     singleConnectionMode = singleMode,
                     multiConnectionMode = multiMode,
                     hostingForOthers = _state.value.ble.hostedRelayClientCount > 0,
-                    meshParticipant = com.cruxcoach.android.boardcell.BoardCellManager.current?.canSendViaMesh() == true,
+                    meshParticipant = (com.cruxcoach.android.boardcell.BoardCellManager.current
+                        ?.snapshot()?.members?.size ?: 0) > 1,
                 )
             }.first()
         } catch (e: CancellationException) {

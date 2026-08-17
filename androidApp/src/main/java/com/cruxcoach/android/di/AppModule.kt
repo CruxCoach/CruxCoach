@@ -430,13 +430,14 @@ object AppModule {
         climbBleAdvertiser: ClimbBleAdvertiser,
         sessionQueueManager: SessionQueueManager,
         boardSessionManager: BoardSessionManager,
-        userPreferences: UserPreferences
+        userPreferences: UserPreferences,
+        boardCellManager: com.cruxcoach.android.boardcell.BoardCellManager,
     ): BleShareManager {
         return PerfLogger.trace("DI: BleShareManager") {
             BleShareManager(
                 boardStateManager, nearbyPresenceManager, nearbyClimbScanner,
                 sharingConfig, climbBleAdvertiser, sessionQueueManager, boardSessionManager,
-                userPreferences
+                userPreferences, boardCellManager,
             )
         }
     }

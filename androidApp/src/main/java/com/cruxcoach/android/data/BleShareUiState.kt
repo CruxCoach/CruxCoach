@@ -58,6 +58,7 @@ data class BleShareUiState(
                         append(if (climb.isStillProjected) " · noch sichtbar" else " · letzter Boulder")
                     }
                     OnBoardSource.LOCAL_ACTIVE -> append(" · dein Climb")
+                    OnBoardSource.MESH_ACTIVE -> append(" · im Mesh")
                     OnBoardSource.SESSION_REMOTE -> append(" · Session-Climb")
                 }
             }
@@ -84,6 +85,8 @@ data class OnBoardClimbEntry(
 )
 
 enum class OnBoardSource {
+    /** Canonical projection agreed by the active BoardCell mesh. */
+    MESH_ACTIVE,
     /** User is connected and sent this climb. */
     LOCAL_ACTIVE,
     /** Another user is connected and climbing. */

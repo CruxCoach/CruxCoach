@@ -112,9 +112,14 @@ internal fun BleStatusChip(
                 else -> stringResource(R.string.mesh_status_via_controller, name)
             }
         }
+        val nearbySummary = buildChipSummary(effectiveOnBoard, state, nearbyMeshCount)
+        // A climb/session the user can act on is more important than repeating
+        // connection state in the banner. The icon below remains the persistent
+        // mesh/board connectivity indicator.
         val summary = joiningMeshName?.let { stringResource(R.string.fips_mesh_joining, it) }
+            ?: nearbySummary.takeIf(String::isNotBlank)
             ?: meshSummary
-            ?: buildChipSummary(effectiveOnBoard, state, nearbyMeshCount)
+            ?: ""
         if (summary.isNotBlank()) {
         Row(
             modifier = Modifier
@@ -123,7 +128,8 @@ internal fun BleStatusChip(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                if (activeMeshName != null) Icons.Default.Hub else Icons.Default.CellTower,
+                if (activeMeshName != null && !localMeshController) Icons.Default.Hub
+                else Icons.Default.CellTower,
                 contentDescription = null,
                 tint = if (activeMeshName != null && meshControllerAvailable) SuccessGreen else OrangeAccent,
                 modifier = Modifier
@@ -395,6 +401,7 @@ internal fun buildChipSummary(
                 " · ${stringResource(if (onBoard.isStillProjected) R.string.ble_still_visible else R.string.ble_last_climb)}"
             )
             OnBoardSource.LOCAL_ACTIVE -> append(" · ${stringResource(R.string.ble_your_climb)}")
+            OnBoardSource.MESH_ACTIVE -> append(" · ${stringResource(R.string.ble_mesh_climb)}")
             OnBoardSource.SESSION_REMOTE -> append(" · ${stringResource(R.string.ble_session_climb)}")
         }
         // On-board climb is the primary info — skip secondary session/occupied counts

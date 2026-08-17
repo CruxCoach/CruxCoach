@@ -943,15 +943,15 @@ class BoardCellManager @Inject constructor(
                     nearbyCandidates.forEach { peer ->
                         val last = sponsoredAt[peer]
                         if (last != null && now - last < MEMBER_SPONSOR_RETRY_MS) return@forEach
-                        if (snapshot.controllerId == activeNodeId) {
-                            if (peer in snapshot.members) {
+                        if (peer in snapshot.members) {
+                            if (snapshot.controllerId == activeNodeId) {
                                 if (meshTransport.sendSnapshotTo(snapshot, peer)) sponsoredAt[peer] = now
-                            } else {
-                                FipsDebugLog.event("boardcell", "nearby_member_auto_admitted",
-                                    "peer" to FipsDebugLog.id(peer), "cell" to FipsDebugLog.id(snapshot.cellId.value))
-                                coordinator.joinMember(board, peer, now)
-                                sponsoredAt[peer] = now
                             }
+                        } else if (snapshot.controllerId == activeNodeId) {
+                            FipsDebugLog.event("boardcell", "nearby_member_auto_admitted",
+                                "peer" to FipsDebugLog.id(peer), "cell" to FipsDebugLog.id(snapshot.cellId.value))
+                            coordinator.joinMember(board, peer, now)
+                            sponsoredAt[peer] = now
                         } else {
                             if (meshTransport.sponsorMember(snapshot, peer)) {
                                 sponsoredAt[peer] = now

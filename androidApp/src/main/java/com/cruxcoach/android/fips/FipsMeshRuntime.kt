@@ -589,6 +589,7 @@ class FipsMeshRuntime @Inject constructor(
         val activeRadio = radio ?: return
         val now = System.currentTimeMillis()
         _peers.value.asSequence().filter { it.connected && it.transport == "ble" }.forEach { peer ->
+            if (synchronized(validatedDirectPeers) { peer.npub in validatedDirectPeers }) return@forEach
             val shouldSend = synchronized(helloSentAt) {
                 val last = helloSentAt[peer.npub] ?: 0L
                 if (now - last < JOIN_RETRY_MS) false else {
