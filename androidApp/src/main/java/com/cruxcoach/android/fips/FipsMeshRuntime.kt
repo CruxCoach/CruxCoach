@@ -589,10 +589,10 @@ class FipsMeshRuntime @Inject constructor(
         val activeRadio = radio ?: return
         val now = System.currentTimeMillis()
         _peers.value.asSequence().filter { it.connected && it.transport == "ble" }.forEach { peer ->
-            if (synchronized(validatedDirectPeers) { peer.npub in validatedDirectPeers }) return@forEach
+            val validated = synchronized(validatedDirectPeers) { peer.npub in validatedDirectPeers }
             val shouldSend = synchronized(helloSentAt) {
-                val last = helloSentAt[peer.npub] ?: 0L
-                if (now - last < JOIN_RETRY_MS) false else {
+                if (!DirectJoinHelloSchedule.shouldSend(helloSentAt[peer.npub], now, validated)) false
+                else {
                     helloSentAt[peer.npub] = now
                     true
                 }
@@ -695,7 +695,6 @@ class FipsMeshRuntime @Inject constructor(
         const val OWNER_NEARBY_BOARD_CELL = "nearby-board-cell"
         const val OWNER_HANDOVER = "board-cell-handover"
         fun competitionOwner(compId: String) = "competition:$compId"
-        private const val JOIN_RETRY_MS = 5_000L
         private const val PEER_REFRESH_MS = 2_000L
         private const val MAX_LOGGED_NATIVE_ATTEMPTS = 256
         private const val RECEIVE_WAIT_MS = 5_000

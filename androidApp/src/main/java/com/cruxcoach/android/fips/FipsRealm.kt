@@ -78,3 +78,22 @@ internal object DirectJoinProof {
         chunked(2).map { it.toInt(16).toByte() }.toByteArray()
     }.getOrNull()
 }
+
+/** When this node must (re-)assert its own CCJ1 scope towards a direct BLE peer. */
+internal object DirectJoinHelloSchedule {
+    const val RETRY_MS = 5_000L
+
+    /**
+     * [peerValidatedByUs] records only that the peer's hello proved *its* scope
+     * to *us*. CCJ1 is not acknowledged, so it never reports that our own hello
+     * reached the peer — and whichever side polls its peer set second observes
+     * exactly that state, because the first side's hello already arrived.
+     * Suppressing our hello there leaves admission one-directional: the peer
+     * never adds us to its direct authenticated set, so it can neither sponsor
+     * nor admit us and the join stalls at the membership snapshot. The flag is
+     * therefore deliberately not a suppression input; only the local retry
+     * throttle bounds how often an established edge is re-asserted.
+     */
+    fun shouldSend(lastSentAtMs: Long?, nowMs: Long, peerValidatedByUs: Boolean): Boolean =
+        lastSentAtMs == null || nowMs - lastSentAtMs >= RETRY_MS
+}
