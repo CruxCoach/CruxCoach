@@ -515,7 +515,7 @@ class BoardCellCoordinatorTest {
         coordinator.heartbeat(board, 102)
 
         val rebased = coordinator.applyPlaylistCommand(board, 103, "semantic-add",
-            baseRevision) { current, exact ->
+            baseRevision, "controller") { current, exact ->
             assertTrue(exact) // sequence changed, playlist revision did not
             current.copy(items = current.items + ("b" to 40))
         }
@@ -532,10 +532,10 @@ class BoardCellCoordinatorTest {
             BoardPlaylistState(7, 0, listOf("a" to 40)), 101, "initial-safe-rebase"))
         val base = coordinator.snapshot(board)!!.playlistRevision
 
-        assertNotNull(coordinator.applyPlaylistCommand(board, 102, "add-b", base) { state, _ ->
+        assertNotNull(coordinator.applyPlaylistCommand(board, 102, "add-b", base, "controller") { state, _ ->
             state.copy(items = state.items + ("b" to 40))
         })
-        assertNotNull(coordinator.applyPlaylistCommand(board, 103, "add-c", base) { state, exact ->
+        assertNotNull(coordinator.applyPlaylistCommand(board, 103, "add-c", base, "controller") { state, exact ->
             assertFalse(exact)
             state.copy(items = state.items + ("c" to 40))
         })

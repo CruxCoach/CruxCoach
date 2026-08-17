@@ -116,6 +116,68 @@ class BoardCellWireTest {
             (BoardCellWireCodec.decode(link.sent.last().second).message as BoardCellWireMessage.CommandAck).value.status)
     }
 
+    /**
+     * The gateway proxy claim is only as good as the sender behind it.
+     *
+     * It says "I am carrying a verb for an API-28 leaf of mine", and it is
+     * accepted from an authenticated cell member and nobody else — the same
+     * bar every other gateway assertion clears. What it buys is deliberately
+     * less than membership, so a stranger gains nothing by setting it.
+     */
+    @Test fun `a leaf command is admitted from a cell member and refused from a stranger`() = runTest {
+        val link = Link("host", setOf("gateway")); val transport = BoardCellMeshTransport(link)
+        val coordinator = BoardCellCoordinator("host", transport, AckStore(), settleMs = 0)
+        transport.attach(coordinator)
+        val board = PhysicalBoardId("board")
+        coordinator.beginClaim(board, BoardCellId("cell"), 1); coordinator.settle(board, 1)
+        coordinator.joinMember(board, "gateway")
+        val snapshot = coordinator.snapshot(board)!!; transport.rememberSnapshot(snapshot)
+        val admitted = mutableListOf<InboundLeafCommand>()
+        transport.onLeafCommand = { admitted += it }
+
+        // The gateway is a cell member. It never joined the playlist, and it
+        // does not have to: it is lending its authenticated hop.
+        assertNull(transport.receive("gateway", frame("gateway",
+            BoardCellWireMessage.LeafSessionCommand("leaf-command-01",
+                snapshot.playlistRevision, byteArrayOf(8)),
+            snapshot.epoch, snapshot.controllerTerm, "message-leaf")))
+        assertEquals(listOf("leaf-command-01"), admitted.map { it.commandId })
+        assertEquals("gateway", admitted.single().senderId)
+
+        // A node outside the cell gets nothing from claiming to have a leaf.
+        assertTrue(transport.receive("stranger", frame("stranger",
+            BoardCellWireMessage.LeafSessionCommand("leaf-command-02",
+                snapshot.playlistRevision, byteArrayOf(8)),
+            snapshot.epoch, snapshot.controllerTerm, "message-stranger"))
+            is BoardCellApplyResult.Rejected)
+        assertEquals(1, admitted.size)
+    }
+
+    @Test fun `a leaf retry carries no payload and is deduplicated like any command`() = runTest {
+        val link = Link("host", setOf("gateway")); val transport = BoardCellMeshTransport(link)
+        val store = AckStore()
+        val coordinator = BoardCellCoordinator("host", transport, store, settleMs = 0)
+        transport.attach(coordinator)
+        val board = PhysicalBoardId("board")
+        coordinator.beginClaim(board, BoardCellId("cell"), 1); coordinator.settle(board, 1)
+        coordinator.joinMember(board, "gateway")
+        val snapshot = coordinator.snapshot(board)!!; transport.rememberSnapshot(snapshot)
+        val admitted = mutableListOf<InboundLeafCommand>()
+        transport.onLeafCommand = { admitted += it }
+        val retry = BoardCellWireMessage.LeafRetryProjection("leaf-retry-01",
+            snapshot.playlistRevision)
+
+        assertNull(transport.receive("gateway", frame("gateway", retry,
+            snapshot.epoch, snapshot.controllerTerm, "message-retry-1")))
+        assertNull(admitted.single().payload)
+
+        // A resend of the same command id is answered from the cache rather
+        // than re-running the projection.
+        assertNull(transport.receive("gateway", frame("gateway", retry,
+            snapshot.epoch, snapshot.controllerTerm, "message-retry-2")))
+        assertEquals(1, admitted.size)
+    }
+
     @Test fun `reordered event freezes and requests full snapshot`() = runTest {
         val link = Link("member")
         val transport = BoardCellMeshTransport(link)

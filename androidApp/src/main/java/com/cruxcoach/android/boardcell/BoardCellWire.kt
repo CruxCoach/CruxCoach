@@ -43,7 +43,34 @@ sealed interface BoardCellWireMessage {
         val payload: ByteArray,
         val context: BoardPlaylistCommandContext? = null,
     ) : BoardCellWireMessage
+
+    /**
+     * A queue edit an authenticated cell member is carrying for an API-28 GATT
+     * leaf of its own.
+     *
+     * Its own message type rather than a flag on [SessionCommand], because the
+     * two mean genuinely different things and a reader should not be able to
+     * mistake one for the other: this one asserts "I have a joined leaf", and
+     * the controller answers it with strictly *less* than membership — queue
+     * verbs and projection retry, never start, end, leave, host or rest
+     * scheduling. See [BoardPlaylistAuthority] for the trust boundary.
+     */
+    @Serializable @SerialName("leaf_session_command") data class LeafSessionCommand(
+        val commandId: String,
+        val basePlaylistRevision: Long,
+        val payload: ByteArray,
+        val context: BoardPlaylistCommandContext? = null,
+    ) : BoardCellWireMessage
+
+    /** A projection retry an authenticated cell member carries for its leaf. */
+    @Serializable @SerialName("leaf_retry_projection") data class LeafRetryProjection(
+        val commandId: String,
+        val basePlaylistRevision: Long,
+    ) : BoardCellWireMessage
     @Serializable @SerialName("command_ack") data class CommandAck(val value: BoardCommandAck) : BoardCellWireMessage
+    @Serializable @SerialName("playlist_control") data class PlaylistControl(
+        val value: BoardPlaylistControl,
+    ) : BoardCellWireMessage
 }
 
 /** V1 had no authenticated realm/sender/term binding and is intentionally rejected. */
@@ -61,13 +88,19 @@ data class BoardCellWireFrame(
 )
 
 object BoardCellWireCodec {
+    // V8 makes the joinable playlist canonical: playlist host and playlist
+    // members as their own identities, per-entry rest plan, active rest,
+    // pending projection and the start/replace/append request flow. A V7 peer
+    // would read a snapshot carrying that state as a playlist with no host and
+    // no members and quietly grant everyone the host's rights, so it must fail
+    // closed — `ignoreUnknownKeys = false` plus this check does exactly that.
     // V7 makes membership live: authenticated member heartbeats, explicit
     // leave requests and canonical MemberLeft events. Older peers fail closed.
     // V6 added semantic projection bases so heartbeat-only sequence advances
     // do not spuriously reject a participant's board command. V5 added
     // permissionless, member-sponsored multi-hop BoardCell admission.
     // Older peers must fail closed instead of interpreting the new authority flow.
-    const val VERSION = 7
+    const val VERSION = 8
     private val json = Json { classDiscriminator = "type"; encodeDefaults = true; ignoreUnknownKeys = false }
     fun encode(frame: BoardCellWireFrame): ByteArray = json.encodeToString(frame).encodeToByteArray()
     fun decode(bytes: ByteArray): BoardCellWireFrame {
@@ -82,12 +115,49 @@ object BoardCellWireCodec {
                     require(message.value.members.size <= 128 && message.value.playlist.items.size <= 512 &&
                         message.value.recentCommandIds.size <= 256 &&
                         message.value.membershipRevision >= 0)
+                    requirePlaylistBounds(message.value.playlist)
                 }
-                is BoardCellWireMessage.Event -> if (message.value.event is BoardCellEvent.MemberLeft) {
-                    require(message.value.event.memberId.length in 1..256)
+                is BoardCellWireMessage.Event -> when (val event = message.value.event) {
+                    is BoardCellEvent.MemberLeft -> require(event.memberId.length in 1..256)
+                    is BoardCellEvent.PlaylistReplaced -> requirePlaylistBounds(event.playlist)
+                    else -> Unit
+                }
+                is BoardCellWireMessage.PlaylistControl -> {
+                    val control = message.value
+                    require(control.commandId.length in 8..128 && control.basePlaylistRevision >= 0)
+                    when (control) {
+                        is BoardPlaylistControl.Start -> {
+                            require(control.requestId.length in 8..BoardPlaylistPolicy.MAX_ID_LENGTH)
+                            require(control.items.size in 1..BoardPlaylistPolicy.MAX_ITEMS)
+                            require(control.restAfterSeconds.size <= BoardPlaylistPolicy.MAX_ITEMS)
+                            control.items.forEach { requireItemBounds(it) }
+                            control.restAfterSeconds.forEach { requireRestBounds(it) }
+                        }
+                        is BoardPlaylistControl.Decide ->
+                            require(control.requestId.length in 8..BoardPlaylistPolicy.MAX_ID_LENGTH)
+                        is BoardPlaylistControl.Leave -> require(
+                            control.successorId == null ||
+                                control.successorId.length in 1..BoardPlaylistPolicy.MAX_ID_LENGTH)
+                        is BoardPlaylistControl.SetRest -> {
+                            require(control.index in 0 until BoardPlaylistPolicy.MAX_ITEMS)
+                            requireRestBounds(control.seconds)
+                        }
+                        is BoardPlaylistControl.RestStarted -> {
+                            require(control.nextIndex in 0 until BoardPlaylistPolicy.MAX_ITEMS)
+                            require(control.seconds in 1..BoardPlaylistPolicy.MAX_REST_SECONDS)
+                        }
+                        is BoardPlaylistControl.ProjectionPending ->
+                            control.pending?.let { requireItemBounds(it.climbUuid to it.angle) }
+                        else -> Unit
+                    }
                 }
                 is BoardCellWireMessage.SessionCommand -> require(
                     message.commandId.length in 8..128 && message.payload.size in 1..BoardCellMeshTransport.MAX_SESSION_COMMAND_BYTES)
+                is BoardCellWireMessage.LeafSessionCommand -> require(
+                    message.commandId.length in 8..128 && message.basePlaylistRevision >= 0 &&
+                        message.payload.size in 1..BoardCellMeshTransport.MAX_SESSION_COMMAND_BYTES)
+                is BoardCellWireMessage.LeafRetryProjection -> require(
+                    message.commandId.length in 8..128 && message.basePlaylistRevision >= 0)
                 is BoardCellWireMessage.CommandAck -> require(message.value.commandId.length in 8..128)
                 is BoardCellWireMessage.ControllerRequest -> require(
                     message.value.requestId.length in 8..128 &&
@@ -109,6 +179,52 @@ object BoardCellWireCodec {
                     message.value.commandId.length in 8..128)
                 else -> Unit
             }
+        }
+    }
+
+    private fun requireItemBounds(item: Pair<String, Int>) {
+        require(item.first.length in 1..64 && item.second in 0..90)
+    }
+
+    private fun requireRestBounds(seconds: Int) {
+        require(seconds in 0..BoardPlaylistPolicy.MAX_REST_SECONDS)
+    }
+
+    /**
+     * A peer may only ever send a playlist that the local reducer would also
+     * have produced. Checking the shape here keeps an oversized or
+     * self-inconsistent playlist out of the durable store and out of the state
+     * hash, instead of relying on every later reader to be defensive.
+     */
+    private fun requirePlaylistBounds(playlist: BoardPlaylistState) {
+        require(playlist.items.size <= BoardPlaylistPolicy.MAX_ITEMS)
+        require(playlist.members.size <= BoardPlaylistPolicy.MAX_MEMBERS)
+        require(playlist.currentIndex >= -1 && playlist.currentIndex < playlist.items.size.coerceAtLeast(1))
+        playlist.items.forEach { requireItemBounds(it) }
+        playlist.restAfterSeconds.forEach { requireRestBounds(it) }
+        playlist.members.forEach { require(it.length in 1..BoardPlaylistPolicy.MAX_ID_LENGTH) }
+        playlist.hostId?.let { require(it.length in 1..BoardPlaylistPolicy.MAX_ID_LENGTH) }
+        playlist.activeRest?.let {
+            require(it.totalSeconds in 1..BoardPlaylistPolicy.MAX_REST_SECONDS)
+            require(it.generation >= 0)
+            // The start/end pair has to describe exactly the duration it
+            // claims. Bounding only the far end still allowed a "two minute"
+            // pause that ran until 2099, which every replica would then have
+            // hashed and honoured. Checking the difference needs no clock, so
+            // the verdict is the same on every device.
+            require(BoardPlaylistInstant.isWindow(it.startedAtEpochMs, it.endsAtEpochMs,
+                it.totalSeconds * 1_000L))
+        }
+        playlist.pendingProjection?.let { requireItemBounds(it.climbUuid to it.angle) }
+        playlist.proposal?.let { proposal ->
+            require(proposal.requestId.length in 8..BoardPlaylistPolicy.MAX_ID_LENGTH)
+            require(proposal.requesterId.length in 1..BoardPlaylistPolicy.MAX_ID_LENGTH)
+            require(BoardPlaylistInstant.isWindow(proposal.requestedAtEpochMs,
+                proposal.expiresAtEpochMs, BoardPlaylistPolicy.PROPOSAL_TIMEOUT_MS))
+            require(proposal.items.size in 1..BoardPlaylistPolicy.MAX_ITEMS)
+            require(proposal.restAfterSeconds.size <= BoardPlaylistPolicy.MAX_ITEMS)
+            proposal.items.forEach { requireItemBounds(it) }
+            proposal.restAfterSeconds.forEach { requireRestBounds(it) }
         }
     }
 }
@@ -133,6 +249,28 @@ data class InboundProjectionRequest(
     val request: BoardProjectionRequest,
 )
 
+data class InboundPlaylistControl(
+    val senderId: String,
+    val control: BoardPlaylistControl,
+)
+
+/**
+ * A queue edit or projection retry an authenticated cell member is carrying
+ * for its own API-28 GATT leaf.
+ *
+ * Kept as its own inbound type so the controller cannot accidentally treat it
+ * as the sender's own command: it is granted bounded proxy authority, which is
+ * strictly less than playlist membership.
+ */
+data class InboundLeafCommand(
+    val senderId: String,
+    val commandId: String,
+    val basePlaylistRevision: Long,
+    /** Null for a projection retry, which carries no queue payload. */
+    val payload: ByteArray?,
+    val context: BoardPlaylistCommandContext?,
+)
+
 class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCellTransport {
     private var coordinator: BoardCellCoordinator? = null
     private val snapshots = mutableMapOf<BoardCellId, BoardCellSnapshot>()
@@ -145,6 +283,8 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
     var onControllerRequest: (suspend (String, BoardCellControllerRequest) -> Unit)? = null
     var onControllerDecision: (suspend (String, BoardCellControllerDecision) -> Unit)? = null
     var onProjectionRequest: (suspend (InboundProjectionRequest) -> Unit)? = null
+    var onPlaylistControl: (suspend (InboundPlaylistControl) -> Unit)? = null
+    var onLeafCommand: (suspend (InboundLeafCommand) -> Unit)? = null
 
     fun attach(value: BoardCellCoordinator) { coordinator = value }
     fun rememberSnapshot(snapshot: BoardCellSnapshot) { snapshots[snapshot.cellId] = snapshot }
@@ -290,6 +430,62 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
         seenCommands["$target:${ack.commandId}"] = ack
         trimMap(seenCommands, MAX_SEEN_COMMANDS)
         sendOrQueue(target, frameFor(snapshot, BoardCellWireMessage.CommandAck(ack)))
+    }
+
+    /**
+     * Ask the controller to serialize one playlist lifecycle command.
+     *
+     * Unlike [sendSessionCommand] this is legal for every authenticated cell
+     * member, including one that is not (yet) a playlist member — starting or
+     * joining a playlist is precisely how a member stops being an outsider.
+     */
+    fun sendPlaylistControl(snapshot: BoardCellSnapshot, control: BoardPlaylistControl): Boolean {
+        if (link.localNpub !in snapshot.members || snapshot.controllerId == link.localNpub ||
+            snapshot.availability != BoardCellAvailability.ACTIVE) {
+            FipsDebugLog.warning("wire", "playlist_control_refused",
+                "command" to FipsDebugLog.id(control.commandId),
+                "localMember" to (link.localNpub in snapshot.members),
+                "localIsController" to (snapshot.controllerId == link.localNpub),
+                "availability" to snapshot.availability)
+            return false
+        }
+        val sent = link.send(snapshot.controllerId,
+            frameFor(snapshot, BoardCellWireMessage.PlaylistControl(control)))
+        FipsDebugLog.event("wire", if (sent) "playlist_control_tx" else "playlist_control_tx_failed",
+            "controller" to FipsDebugLog.id(snapshot.controllerId),
+            "command" to FipsDebugLog.id(control.commandId),
+            "kind" to control.javaClass.simpleName,
+            "baseRevision" to control.basePlaylistRevision)
+        return sent
+    }
+
+    /**
+     * Carry a joined GATT leaf's queue edit to the controller.
+     *
+     * Legal for any authenticated cell member, including one that never joined
+     * the playlist — that is the whole point: the gateway lends its
+     * authenticated hop, not its membership.
+     */
+    fun sendLeafSessionCommand(snapshot: BoardCellSnapshot, commandId: String, payload: ByteArray,
+        context: BoardPlaylistCommandContext?,
+        basePlaylistRevision: Long = snapshot.playlistRevision): Boolean {
+        if (link.localNpub !in snapshot.members || snapshot.controllerId == link.localNpub ||
+            snapshot.availability != BoardCellAvailability.ACTIVE || payload.isEmpty() ||
+            payload.size > MAX_SESSION_COMMAND_BYTES) return false
+        val sent = link.send(snapshot.controllerId, frameFor(snapshot,
+            BoardCellWireMessage.LeafSessionCommand(commandId, basePlaylistRevision, payload, context)))
+        FipsDebugLog.event("wire", if (sent) "leaf_command_tx" else "leaf_command_tx_failed",
+            "controller" to FipsDebugLog.id(snapshot.controllerId),
+            "command" to FipsDebugLog.id(commandId), "kind" to context?.kind)
+        return sent
+    }
+
+    fun sendLeafRetryProjection(snapshot: BoardCellSnapshot, commandId: String,
+        basePlaylistRevision: Long = snapshot.playlistRevision): Boolean {
+        if (link.localNpub !in snapshot.members || snapshot.controllerId == link.localNpub ||
+            snapshot.availability != BoardCellAvailability.ACTIVE) return false
+        return link.send(snapshot.controllerId, frameFor(snapshot,
+            BoardCellWireMessage.LeafRetryProjection(commandId, basePlaylistRevision)))
     }
 
     fun sendSessionCommand(snapshot: BoardCellSnapshot, commandId: String, payload: ByteArray,
@@ -491,6 +687,46 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
                 onProjectionRequest?.invoke(InboundProjectionRequest(authenticatedSender, message.value))
                 null
             }
+            is BoardCellWireMessage.LeafSessionCommand -> acceptLeafCommand(
+                authenticatedSender, value.cellId, target, message.commandId,
+                message.basePlaylistRevision, message.payload, message.context)
+            is BoardCellWireMessage.LeafRetryProjection -> acceptLeafCommand(
+                authenticatedSender, value.cellId, target, message.commandId,
+                message.basePlaylistRevision, payload = null, context = null)
+            is BoardCellWireMessage.PlaylistControl -> {
+                val snapshot = snapshots[value.cellId]
+                    ?: return BoardCellApplyResult.Rejected("playlist control has no local cell")
+                val control = message.value
+                val key = "$authenticatedSender:${control.commandId}"
+                target.commandAck(control.commandId)?.let {
+                    seenCommands[key] = it
+                    publishCommandAck(authenticatedSender, it)
+                    return null
+                }
+                seenCommands[key]?.let { publishCommandAck(authenticatedSender, it); return null }
+                if (link.localNpub != snapshot.controllerId || authenticatedSender !in snapshot.members ||
+                    control.basePlaylistRevision > snapshot.playlistRevision) {
+                    val status = if (link.localNpub != snapshot.controllerId)
+                        BoardCommandStatus.NOT_CONTROLLER else BoardCommandStatus.REJECTED_STALE
+                    val ack = BoardCommandAck(control.commandId, status, snapshot.cellId, snapshot.epoch,
+                        snapshot.controllerTerm, snapshot.sequence, snapshot.stateHash,
+                        "playlist control scope/base rejected")
+                    seenCommands[key] = ack
+                    trimMap(seenCommands, MAX_SEEN_COMMANDS)
+                    FipsDebugLog.warning("wire", "playlist_control_rejected",
+                        "command" to FipsDebugLog.id(control.commandId), "status" to status,
+                        "baseRevision" to control.basePlaylistRevision,
+                        "currentRevision" to snapshot.playlistRevision)
+                    publishCommandAck(authenticatedSender, ack)
+                    return BoardCellApplyResult.Rejected("playlist control rejected")
+                }
+                FipsDebugLog.event("wire", "playlist_control_accepted",
+                    "command" to FipsDebugLog.id(control.commandId),
+                    "sender" to FipsDebugLog.id(authenticatedSender),
+                    "kind" to control.javaClass.simpleName)
+                onPlaylistControl?.invoke(InboundPlaylistControl(authenticatedSender, control))
+                null
+            }
             is BoardCellWireMessage.ForkNotice -> { target.acceptForkNotice(authenticatedSender, message.value); null }
             is BoardCellWireMessage.SessionCommand -> {
                 val snapshot = snapshots[value.cellId]
@@ -548,6 +784,67 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
                 null
             }
         }
+    }
+
+    /**
+     * Admits a gateway's leaf command, or refuses it with the same rigour an
+     * ordinary session command gets.
+     *
+     * **Trust boundary.** The claim "I am carrying a leaf's verb" is only ever
+     * accepted from a sender the transport has already authenticated *and*
+     * that the canonical snapshot lists as a cell member — exactly the bar
+     * every other gateway assertion clears. What it buys is deliberately less
+     * than membership: the coordinator applies it under
+     * [BoardPlaylistAuthority.GATEWAY_PROXY], which permits queue verbs and a
+     * projection retry and nothing else. A stranger outside the cell gets
+     * nothing from setting it.
+     */
+    private suspend fun acceptLeafCommand(
+        authenticatedSender: String,
+        cellId: BoardCellId,
+        target: BoardCellCoordinator,
+        commandId: String,
+        basePlaylistRevision: Long,
+        payload: ByteArray?,
+        context: BoardPlaylistCommandContext?,
+    ): BoardCellApplyResult? {
+        val snapshot = snapshots[cellId]
+            ?: return BoardCellApplyResult.Rejected("leaf command has no local cell")
+        val key = "$authenticatedSender:$commandId"
+        target.commandAck(commandId)?.let {
+            seenCommands[key] = it
+            publishCommandAck(authenticatedSender, it)
+            return null
+        }
+        seenCommands[key]?.let { publishCommandAck(authenticatedSender, it); return null }
+        if (authenticatedSender !in snapshot.members || link.localNpub != snapshot.controllerId ||
+            basePlaylistRevision > snapshot.playlistRevision) {
+            val status = if (link.localNpub != snapshot.controllerId)
+                BoardCommandStatus.NOT_CONTROLLER else BoardCommandStatus.REJECTED_STALE
+            val ack = BoardCommandAck(commandId, status, snapshot.cellId, snapshot.epoch,
+                snapshot.controllerTerm, snapshot.sequence, snapshot.stateHash,
+                "leaf command scope/base rejected")
+            seenCommands[key] = ack
+            trimMap(seenCommands, MAX_SEEN_COMMANDS)
+            FipsDebugLog.warning("wire", "leaf_command_rejected",
+                "command" to FipsDebugLog.id(commandId), "status" to status,
+                "sender" to FipsDebugLog.id(authenticatedSender),
+                "senderIsMember" to (authenticatedSender in snapshot.members))
+            publishCommandAck(authenticatedSender, ack)
+            return BoardCellApplyResult.Rejected("leaf command rejected")
+        }
+        val accepted = BoardCommandAck(commandId, BoardCommandStatus.ACCEPTED, snapshot.cellId,
+            snapshot.epoch, snapshot.controllerTerm, snapshot.sequence, snapshot.stateHash)
+        seenCommands[key] = accepted
+        trimMap(seenCommands, MAX_SEEN_COMMANDS)
+        publishCommandAck(authenticatedSender, accepted)
+        FipsDebugLog.event("wire", "leaf_command_accepted",
+            "command" to FipsDebugLog.id(commandId),
+            "gateway" to FipsDebugLog.id(authenticatedSender),
+            "kind" to (context?.kind?.name ?: "retry_projection"))
+        onLeafCommand?.invoke(InboundLeafCommand(authenticatedSender, commandId,
+            basePlaylistRevision, payload, context))
+        return null
     }
 
     fun retryOutbox(limit: Int = 64) {

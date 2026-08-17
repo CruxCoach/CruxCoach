@@ -55,6 +55,15 @@ class BoardCellCoordinator(
     private val settleMs: Long = 1_000L,
     private val heartbeatTimeoutMs: Long = 15_000L,
     private val handoverTimeoutMs: Long = 45_000L,
+    /**
+     * UTC wall clock, injectable for tests.
+     *
+     * Only the node that serializes a commit ever reads it, and only to stamp
+     * a canonical instant (a rest's end, a request's expiry) that every other
+     * replica then reads rather than re-derives. Monotonic time stays local
+     * and never crosses the wire.
+     */
+    private val wallClockEpochMs: () -> Long = System::currentTimeMillis,
 ) {
     private val mutex = Mutex()
     private val claims = mutableMapOf<PhysicalBoardId, MutableList<BoardCellClaim>>()
@@ -291,10 +300,27 @@ class BoardCellCoordinator(
         nowMonotonicMs: Long,
         commandId: String,
         basePlaylistRevision: Long,
+        senderId: String,
+        authority: BoardPlaylistAuthority = BoardPlaylistAuthority.MEMBER,
         derivePlaylist: (current: BoardPlaylistState, exactRevision: Boolean) -> BoardPlaylistState?,
     ): BoardCellEnvelope? = mutex.withLock {
         durableStore.commandAck(commandId)?.let { return@withLock null }
         val current = writable(boardId, nowMonotonicMs) ?: return@withLock null
+        // Mesh membership only makes the playlist visible. Editing it needs an
+        // explicit playlist join, which is checked here rather than at any
+        // caller so no transport can route around it. A gateway proxying for
+        // its GATT leaf is the one bounded exception and must still be an
+        // authenticated cell member.
+        if (authority == BoardPlaylistAuthority.GATEWAY_PROXY && senderId !in current.members) {
+            durableStore.recordAck(ack(commandId, BoardCommandStatus.REJECTED_CONFLICT, current,
+                detail = "gateway is not a cell member"))
+            return@withLock null
+        }
+        if (!BoardPlaylistPolicy.mayEditQueue(current.playlist, senderId, authority)) {
+            durableStore.recordAck(ack(commandId, BoardCommandStatus.REJECTED_CONFLICT, current,
+                detail = "not a playlist member"))
+            return@withLock null
+        }
         if (basePlaylistRevision > current.playlistRevision) {
             durableStore.recordAck(ack(commandId, BoardCommandStatus.REJECTED_STALE, current,
                 detail = "playlist revision is ahead of controller"))
@@ -314,6 +340,85 @@ class BoardCellCoordinator(
             return@withLock null
         }
         commitCommandEvent(boardId, BoardCellEvent.PlaylistReplaced(playlist, commandId), commandId)
+    }
+
+    /**
+     * Serializes one joinable-playlist lifecycle command.
+     *
+     * The decision itself is [BoardPlaylistPolicy], which knows nothing about
+     * transport or roles — this only supplies the canonical base state, the
+     * staleness rules every other command already obeys, and the durable ack
+     * that makes a replayed command idempotent.
+     */
+    suspend fun applyPlaylistControl(
+        boardId: PhysicalBoardId,
+        nowMonotonicMs: Long,
+        senderId: String,
+        control: BoardPlaylistControl,
+        authority: BoardPlaylistAuthority = BoardPlaylistAuthority.MEMBER,
+    ): BoardCommandAck? = mutex.withLock {
+        durableStore.commandAck(control.commandId)?.let { return@withLock it }
+        val current = writable(boardId, nowMonotonicMs) ?: run {
+            val snapshot = replicas[boardId]?.snapshot ?: return@withLock null
+            return@withLock ack(control.commandId, BoardCommandStatus.NOT_CONTROLLER, snapshot,
+                detail = "not writable").also(durableStore::recordAck)
+        }
+        if (control.basePlaylistRevision > current.playlistRevision) {
+            return@withLock ack(control.commandId, BoardCommandStatus.REJECTED_STALE, current,
+                detail = "playlist revision is ahead of controller").also(durableStore::recordAck)
+        }
+        // The pending-send state reports a physical fact about this device's
+        // own board write, so only the controller may assert it. A member
+        // could otherwise make everyone's playlist claim the wall is dark.
+        if (control is BoardPlaylistControl.ProjectionPending && senderId != nodeId) {
+            return@withLock ack(control.commandId, BoardCommandStatus.REJECTED_CONFLICT, current,
+                detail = "only the controller reports the physical send")
+                .also(durableStore::recordAck)
+        }
+        // A gateway proxying for its GATT leaf must still be an authenticated
+        // cell member; the proxy authority relaxes playlist membership, never
+        // cell membership.
+        if (authority == BoardPlaylistAuthority.GATEWAY_PROXY && senderId !in current.members) {
+            return@withLock ack(control.commandId, BoardCommandStatus.REJECTED_CONFLICT, current,
+                detail = "gateway is not a cell member").also(durableStore::recordAck)
+        }
+        val outcome = BoardPlaylistPolicy.apply(current.playlist, senderId, control,
+            wallClockEpochMs(), authority)
+        when (outcome) {
+            is BoardPlaylistPolicy.Outcome.Reject ->
+                ack(control.commandId, BoardCommandStatus.REJECTED_CONFLICT, current,
+                    detail = outcome.reason).also(durableStore::recordAck)
+            is BoardPlaylistPolicy.Outcome.Accepted ->
+                ack(control.commandId, BoardCommandStatus.COMMITTED, current,
+                    detail = "already in the requested state").also(durableStore::recordAck)
+            is BoardPlaylistPolicy.Outcome.Commit -> {
+                val envelope = commitCommandEvent(boardId,
+                    BoardCellEvent.PlaylistReplaced(outcome.playlist, control.commandId),
+                    control.commandId)
+                if (envelope == null) null else durableStore.commandAck(control.commandId)
+            }
+        }
+    }
+
+    /**
+     * Resolves an unanswered playlist request once its canonical deadline has
+     * passed, as a rejection.
+     *
+     * The deadline lives in the request itself rather than in a controller's
+     * monotonic map, so a technical handover or a process restart inherits the
+     * original 30 s instead of quietly granting another one, and a controller
+     * that adopts an already-expired request declines it immediately.
+     */
+    private suspend fun expireProposal(boardId: PhysicalBoardId) {
+        val current = replicas[boardId]?.snapshot ?: return
+        val proposal = current.playlist.proposal ?: return
+        if (current.controllerId != nodeId || current.availability != BoardCellAvailability.ACTIVE) return
+        if (!proposal.hasExpired(wallClockEpochMs())) return
+        commitCanonical(boardId, BoardCellEvent.PlaylistReplaced(
+            BoardPlaylistPolicy.resolve(current.playlist, proposal,
+                BoardPlaylistProposalDecision.REJECT),
+            "playlist-proposal-timeout:${proposal.requestId}",
+        ))
     }
 
     suspend fun joinMember(
@@ -608,6 +713,7 @@ class BoardCellCoordinator(
     }
 
     suspend fun expireLocalDeadlines(nowMonotonicMs: Long) = mutex.withLock {
+        replicas.keys.toList().forEach { board -> expireProposal(board) }
         replicas.forEach { (board, replica) ->
             val current = replica.snapshot ?: return@forEach
             val last = controllerObservedAt[board] ?: nowMonotonicMs
@@ -795,4 +901,18 @@ class BoardCellCoordinator(
 
     fun snapshot(boardId: PhysicalBoardId): BoardCellSnapshot? = replicas[boardId]?.snapshot
     fun commandAck(commandId: String): BoardCommandAck? = durableStore.commandAck(commandId)
+
+    /**
+     * How long since any authenticated traffic from the canonical controller,
+     * or null when nothing has ever been observed for this board.
+     *
+     * This is the canonical liveness fact — the same observation that freezes
+     * the cell after three missed heartbeat windows. Fenced recovery reads it
+     * instead of asking the native radio whether the controller is still a
+     * direct peer: that set is a transport cache and kept a dead controller in
+     * it for a further minute after its L2CAP channel had already closed,
+     * which stalled the election for exactly that long.
+     */
+    fun controllerSilentForMs(boardId: PhysicalBoardId, nowMonotonicMs: Long): Long? =
+        controllerObservedAt[boardId]?.let { nowMonotonicMs - it }
 }

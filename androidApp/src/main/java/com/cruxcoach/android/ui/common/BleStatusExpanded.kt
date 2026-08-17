@@ -27,6 +27,7 @@ import com.cruxcoach.android.data.OwnSessionState
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.fips.FipsMeshUiState
 import com.cruxcoach.android.ui.fips.NearbyFipsMeshUi
+import com.cruxcoach.android.ui.fips.canJoinPlaylist
 
 @Composable
 internal fun BleStatusExpanded(
@@ -45,6 +46,8 @@ internal fun BleStatusExpanded(
     nearbyMeshes: List<NearbyFipsMeshUi> = emptyList(),
     onJoinMesh: ((NearbyFipsMeshUi) -> Unit)? = null,
     joiningMeshName: String? = null,
+    /** Explicit join of the BoardCell's running joinable playlist. */
+    onJoinPlaylist: (() -> Unit)? = null,
 ) {
     Card(
         modifier = Modifier
@@ -130,7 +133,7 @@ internal fun BleStatusExpanded(
             }
 
             if (activeMesh != null) {
-                ActiveMeshSection(activeMesh)
+                ActiveMeshSection(activeMesh, onJoinPlaylist)
                 Spacer(Modifier.height(8.dp))
             }
 
@@ -167,7 +170,7 @@ internal fun BleStatusExpanded(
 }
 
 @Composable
-private fun ActiveMeshSection(mesh: FipsMeshUiState) {
+private fun ActiveMeshSection(mesh: FipsMeshUiState, onJoinPlaylist: (() -> Unit)?) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -206,6 +209,29 @@ private fun ActiveMeshSection(mesh: FipsMeshUiState) {
                 color = if (mesh.availability == "ACTIVE") OrangeAccent
                 else MaterialTheme.colorScheme.error,
             )
+            // Being in the mesh makes the playlist visible; it never joins it.
+            // Without this line there was no way to find out a playlist was
+            // running, let alone take part in one.
+            mesh.playlist?.let { playlist ->
+                Text(
+                    buildString {
+                        append(stringResource(R.string.mesh_playlist_running, playlist.itemCount))
+                        append(" · ")
+                        append(stringResource(R.string.mesh_playlist_members, playlist.memberCount))
+                        if (playlist.localIsHost) {
+                            append(" · ")
+                            append(stringResource(R.string.mesh_playlist_you_host))
+                        }
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        if (mesh.canJoinPlaylist && onJoinPlaylist != null) {
+            TextButton(onClick = onJoinPlaylist) {
+                Text(stringResource(R.string.mesh_playlist_join))
+            }
         }
     }
 }

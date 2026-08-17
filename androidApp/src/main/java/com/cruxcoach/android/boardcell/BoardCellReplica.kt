@@ -89,30 +89,66 @@ class BoardCellReplica(val localMemberId: String, initial: BoardCellSnapshot? = 
     }
 
     companion object {
+        /**
+         * Only a joinable playlist is normalized. A legacy, controller-local
+         * [BoardCellManager.replacePlaylist] state has no host and no members,
+         * and normalizing it would read its missing host as "no playlist" and
+         * wipe it.
+         */
+        private fun canonical(playlist: BoardPlaylistState): BoardPlaylistState =
+            if (playlist.isJoinable) BoardPlaylistPolicy.normalize(playlist) else playlist
+
+        private fun BoardPlaylistState.clearingPendingFor(projection: BoardProjection):
+            BoardPlaylistState {
+            val pending = pendingProjection ?: return this
+            return if (pending.climbUuid == projection.climbUuid && pending.angle == projection.angle)
+                copy(pendingProjection = null) else this
+        }
+
+        /**
+         * Applies a playlist change and advances [BoardCellSnapshot.playlistRevision]
+         * exactly when the playlist really moved, so heartbeats and membership
+         * churn cannot stale a member's in-flight command.
+         */
+        private fun BoardCellSnapshot.withPlaylist(
+            base: BoardCellSnapshot,
+            playlist: BoardPlaylistState,
+            forceRevision: Boolean = false,
+        ): BoardCellSnapshot = copy(
+            playlist = playlist,
+            playlistRevision = base.playlistRevision +
+                if (forceRevision || playlist != base.playlist) 1 else 0,
+        )
+
         fun reduce(current: BoardCellSnapshot, event: BoardCellEvent, sequence: Long): BoardCellSnapshot {
             val next = when (event) {
+                // A successful physical write is the canonical proof that the
+                // pending-send state is over; nothing has to remember to clear
+                // it, and a retry that lands twice clears it only once.
                 is BoardCellEvent.ProjectCommitted -> current.copy(
                     projection = event.projection,
                     projectionKnown = true,
                     availability = if (event.recoversUnknownProjection &&
                         current.availability == BoardCellAvailability.FROZEN_WRITE_RECOVERY)
                         BoardCellAvailability.ACTIVE else current.availability,
-                )
+                ).withPlaylist(current, current.playlist.clearingPendingFor(event.projection))
                 is BoardCellEvent.ProjectUnknown -> current.copy(projection = null, projectionKnown = false)
-                is BoardCellEvent.PlaylistReplaced -> current.copy(
-                    playlist = event.playlist,
-                    playlistRevision = current.playlistRevision + 1,
-                )
+                is BoardCellEvent.PlaylistReplaced ->
+                    current.withPlaylist(current, canonical(event.playlist), forceRevision = true)
                 is BoardCellEvent.MemberJoined -> current.copy(
                     members = current.members + event.memberId,
                     membershipRevision = current.membershipRevision +
                         if (event.memberId in current.members) 0 else 1,
                 )
+                // Leaving the mesh also leaves the playlist. Host succession
+                // and the "last member ends it" rule therefore need no extra
+                // packet and cannot be lost with one.
                 is BoardCellEvent.MemberLeft -> current.copy(
                     members = current.members - event.memberId,
                     membershipRevision = current.membershipRevision +
                         if (event.memberId in current.members) 1 else 0,
-                )
+                ).withPlaylist(current,
+                    BoardPlaylistPolicy.withoutMember(current.playlist, event.memberId))
                 is BoardCellEvent.ControllerHeartbeat -> current.copy(controllerHeartbeat = event.heartbeat)
                 is BoardCellEvent.HandoverPrepared -> current.copy(handover = event.value)
                 is BoardCellEvent.HandoverSourceReleased -> current.copy(
@@ -132,6 +168,9 @@ class BoardCellReplica(val localMemberId: String, initial: BoardCellSnapshot? = 
                     handover = current.handover?.copy(phase = HandoverPhase.COMPLETED))
                 is BoardCellEvent.HandoverAborted -> current.copy(
                     handover = current.handover?.copy(phase = HandoverPhase.ABORTED))
+                // Recovery evicts the unreachable controller from the mesh, so
+                // its playlist membership goes with it. The technical role
+                // moving on its own never touches playlist host or rights.
                 is BoardCellEvent.ControllerRecovered -> current.copy(
                     controllerId = event.controllerId,
                     controllerTerm = event.controllerTerm,
@@ -142,6 +181,10 @@ class BoardCellReplica(val localMemberId: String, initial: BoardCellSnapshot? = 
                         else current.members - current.controllerId,
                     membershipRevision = current.membershipRevision +
                         if (event.controllerId == current.controllerId) 0 else 1,
+                ).withPlaylist(current,
+                    if (event.controllerId == current.controllerId) current.playlist
+                    else BoardPlaylistPolicy.withoutMember(current.playlist, current.controllerId),
+                ).copy(
                     lastControllerRecovery = BoardCellControllerRecoveryProof(
                         claimantId = event.controllerId,
                         baseControllerId = current.controllerId,

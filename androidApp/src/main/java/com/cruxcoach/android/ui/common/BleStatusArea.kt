@@ -194,6 +194,15 @@ fun BleStatusArea(
             nearbyMeshes = nearbyMeshes,
             onJoinMesh = if (joiningBoardCellId == null) meshViewModel::join else null,
             joiningMeshName = joiningMeshName,
+            // Explicit and user-driven, which is the whole rule: mesh
+            // membership only made the playlist visible above. Opening the
+            // queue straight away means the button has a visible consequence
+            // rather than silently changing state somewhere off screen.
+            onJoinPlaylist = {
+                playback.joinCanonicalPlaylist()
+                expanded = false
+                showQueueSheet = true
+            },
         )
     } else {
         BleStatusChip(

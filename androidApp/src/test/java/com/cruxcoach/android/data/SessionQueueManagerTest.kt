@@ -777,14 +777,19 @@ class SessionQueueManagerTest {
     }
 
     @Test
-    fun `endQueue clears playlist flag and rest hook`() {
+    fun `endQueue clears playlist flag but keeps the rest hook installed`() {
         queueManager.loadPlaylist("Host", listOf(QueueItem("a", 40)))
-        queueManager.onRestRequested = { }
+        val hook = { _: Int -> }
+        queueManager.onRestRequested = hook
 
         queueManager.endQueue()
 
         assertFalse(queueManager.isPlaylistQueue)
-        assertNull(queueManager.onRestRequested)
+        // The rest hooks deliberately survive. A canonical joinable playlist
+        // is adopted from a BoardCell snapshot — a join, a process restart or
+        // a playlist-host handover — without anybody calling play(), and a
+        // cleared hook would leave that session counting its pauses in silence.
+        assertSame(hook, queueManager.onRestRequested)
     }
 
     @Test

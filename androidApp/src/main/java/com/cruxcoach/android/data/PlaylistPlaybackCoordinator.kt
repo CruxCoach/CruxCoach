@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 /** What the player is doing right now. */
 sealed interface PlaybackPhase {
@@ -57,8 +58,17 @@ data class PlaylistPlaybackState(
     val elapsedSeconds: Int = 0,
     val ascentCount: Int = 0,
     val bidCount: Int = 0,
+    /** Non-null while this device follows the BoardCell's joinable playlist. */
+    val mesh: MeshPlaylistView? = null,
 ) {
     val isHost: Boolean get() = role == SessionRole.HOST
+
+    /** The canonical playlist drives the queue; local edits travel as commands. */
+    val isCanonicalPlaylist: Boolean get() = mesh != null
+
+    /** The current entry is not on the wall and will not get there by itself. */
+    val pendingProjection: com.cruxcoach.android.boardcell.BoardPlaylistPendingProjection?
+        get() = mesh?.pendingProjection
 
     /**
      * Sharing was asked for and is not in force — Bluetooth off, permission
@@ -114,7 +124,7 @@ class PlaylistPlaybackCoordinator(
     private val gattBridge: SessionGattBridge,
     private val bleShareManager: BleShareManager,
     private val bleConnection: BoardBleConnection,
-    scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
 ) {
 
     private var advanceMode: ListPlaybackAdvance = ListPlaybackAdvance.MANUAL
@@ -157,6 +167,30 @@ class PlaylistPlaybackCoordinator(
         // resolves the role itself, so there is nothing to guard.
         gattBridge.onRemoteNext = { next() }
         gattBridge.onRemotePrev = { previous() }
+        // Installed once rather than per play(): a canonical playlist can be
+        // adopted without anybody calling play() — a join, a process restart
+        // or a host handover all arrive as snapshots — and the pauses have to
+        // count down there too.
+        queueManager.onRestRequested = { seconds -> boardSessionManager.startRestTimer(seconds) }
+        queueManager.onRestCleared = { boardSessionManager.cancelRestTimer() }
+        // A rest whose canonical end has already passed when this device
+        // observes it (a late join, a reconnect, a restart) has no countdown
+        // left to run out, so nothing would otherwise clear it. Only the
+        // playlist host publishes the end, which keeps the single
+        // responsibility that stops every member sending the same command.
+        queueManager.onCanonicalRestExpired = { gattBridge.endCanonicalRest() }
+        // Exactly one device clears the canonical rest when it runs out. Every
+        // member counts the same planned duration down locally, but if they
+        // all published the end the controller would serialize a burst of
+        // identical commands for one pause.
+        scope.launch {
+            boardSessionManager.restTimer.collect { rest ->
+                val mesh = queueManager.state.value.mesh ?: return@collect
+                if (mesh.isHost && mesh.activeRest != null && rest.isFinished && !rest.isRunning) {
+                    gattBridge.endCanonicalRest()
+                }
+            }
+        }
     }
 
     private fun buildState(
@@ -190,6 +224,7 @@ class PlaylistPlaybackCoordinator(
         elapsedSeconds = session.elapsedSeconds,
         ascentCount = session.ascentCount,
         bidCount = session.bidCount,
+        mesh = queue.mesh,
     )
 
     // ── Playback control (role-aware — the ONLY place that logic lives) ──
@@ -201,6 +236,19 @@ class PlaylistPlaybackCoordinator(
      * you haven't tried yet and arm the following pause".
      */
     fun next() {
+        // In a canonical playlist there is no local shortcut: every member has
+        // the same rights and every edit is one authenticated command, so the
+        // host takes exactly the path a joiner takes.
+        if (state.value.isCanonicalPlaylist) {
+            if (state.value.phase is PlaybackPhase.Resting) {
+                Log.i(TAG, "event=transport_requested action=next effect=skip_rest scope=mesh")
+                gattBridge.endCanonicalRest()
+            } else {
+                Log.i(TAG, "event=transport_requested action=next scope=mesh")
+                gattBridge.sendNext()
+            }
+            return
+        }
         // Participants ask; they never decide. Both branches below are host
         // decisions — advancing the queue and skipping a pause — and the host
         // is the one driving the wall. A participant that resolved its own
@@ -224,6 +272,12 @@ class PlaylistPlaybackCoordinator(
      *  resume the session clock it paused — same semantics as [skipRest])
      *  and step back to the climb you just left. */
     fun previous() {
+        if (state.value.isCanonicalPlaylist) {
+            if (state.value.phase is PlaybackPhase.Resting) gattBridge.endCanonicalRest()
+            Log.i(TAG, "event=transport_requested action=prev scope=mesh")
+            gattBridge.sendPrev()
+            return
+        }
         if (state.value.isParticipant) {
             Log.i(TAG, "event=transport_requested action=prev role=participant")
             gattBridge.sendPrev()
@@ -241,7 +295,9 @@ class PlaylistPlaybackCoordinator(
     fun acknowledgeRestFinished() = boardSessionManager.dismissRestTimerFinished()
 
     fun setCurrent(index: Int) {
-        if (state.value.isParticipant) gattBridge.sendSetCurrent(index) else queueManager.setCurrentClimb(index)
+        if (state.value.isCanonicalPlaylist || state.value.isParticipant)
+            gattBridge.sendSetCurrent(index)
+        else queueManager.setCurrentClimb(index)
     }
 
     /**
@@ -254,6 +310,11 @@ class PlaylistPlaybackCoordinator(
      * wall's own countdown — was still resting.
      */
     fun skipRest() {
+        if (state.value.isCanonicalPlaylist) {
+            Log.i(TAG, "event=transport_requested action=skip_rest scope=mesh")
+            gattBridge.endCanonicalRest()
+            return
+        }
         if (state.value.isParticipant) {
             Log.i(TAG, "event=transport_requested action=skip_rest role=participant")
             gattBridge.sendNext()
@@ -266,6 +327,10 @@ class PlaylistPlaybackCoordinator(
     /** Force the current climb back onto the wall. Participants ask the host,
      * which remains the sole writer to the physical board. */
     fun resendCurrentClimb() {
+        if (state.value.isCanonicalPlaylist) {
+            gattBridge.retryPlaylistProjection()
+            return
+        }
         if (state.value.isParticipant) {
             Log.i(TAG, "event=transport_requested action=resend role=participant")
             gattBridge.sendResend()
@@ -326,15 +391,57 @@ class PlaylistPlaybackCoordinator(
     ) {
         if (items.isEmpty()) return
         advanceMode = advance
-        boardSessionManager.startSession()
-        queueManager.onRestRequested = { seconds ->
-            boardSessionManager.startRestTimer(seconds)
+        // A joinable playlist inside a BoardCell is canonical mesh state, not
+        // a local queue that is published afterwards. Start it as a command
+        // and let the canonical snapshot create the local session — that is
+        // the same path a join, a reconnect and a controller handover take, so
+        // there is one shape of "the playlist is running" instead of four.
+        if (visibility == SessionVisibility.JOINABLE && canUseCanonicalPlaylist() &&
+            gattBridge.startJoinablePlaylist(items, newSessionId())) {
+            boardSessionManager.startSession()
+            return
         }
+        boardSessionManager.startSession()
         queueManager.loadPlaylist(hostName, items, visibility)
         if (visibility == SessionVisibility.JOINABLE) {
             gattBridge.startSharing()
         }
     }
+
+    /**
+     * Whether this device can put a playlist into the mesh at all.
+     *
+     * An API-28 device answers no and keeps the legacy GATT joinable path,
+     * which is the whole hybrid: it can see, join and edit the one canonical
+     * playlist through a gateway, but it cannot start or host one.
+     */
+    private fun canUseCanonicalPlaylist(): Boolean {
+        val manager = com.cruxcoach.android.boardcell.BoardCellManager.current ?: return false
+        val snapshot = manager.snapshot()
+        return com.cruxcoach.android.boardcell.BoardCellPlatformPolicy.canStartCanonicalPlaylist(
+            apiLevel = android.os.Build.VERSION.SDK_INT,
+            cellIsActive = snapshot?.availability ==
+                com.cruxcoach.android.boardcell.BoardCellAvailability.ACTIVE,
+            localIsCellMember = snapshot != null && manager.localNodeId() in snapshot.members,
+        )
+    }
+
+    private fun newSessionId(): Int = (System.currentTimeMillis() % Int.MAX_VALUE).toInt()
+
+    /** Join the running joinable playlist of this BoardCell. */
+    fun joinCanonicalPlaylist() {
+        boardSessionManager.startSession()
+        gattBridge.joinJoinablePlaylist()
+    }
+
+    /** The playlist host answers somebody else's request to start one. */
+    fun decidePlaylistRequest(
+        requestId: String,
+        decision: com.cruxcoach.android.boardcell.BoardPlaylistProposalDecision,
+    ) = gattBridge.decidePlaylistRequest(requestId, decision)
+
+    /** Ask for the pending send to be tried again. Open to every member. */
+    fun retryPlaylistProjection() = gattBridge.retryPlaylistProjection()
 
     /**
      * Start an ad-hoc session as HOST (browser session button). Seeds
@@ -395,6 +502,21 @@ class PlaylistPlaybackCoordinator(
     fun stop(endForEveryone: Boolean = false): com.cruxcoach.data.repository.Board_sessions? {
         val queueState = queueManager.state.value
         val lastClimb = queueState.currentClimb
+        val mesh = queueState.mesh
+        if (mesh != null) {
+            // Ending is only legal with one member left; otherwise leaving is
+            // the way out, and the playlist carries on for everybody else. The
+            // canonical state — not this device — decides which happened, so a
+            // race with somebody joining cannot end a playlist under them.
+            if (endForEveryone && mesh.canEnd) gattBridge.endJoinablePlaylist()
+            else gattBridge.leaveJoinablePlaylist(successorId = preferredSuccessor(mesh))
+            val finishedMesh = boardSessionManager.endSession()
+            if (lastClimb != null) {
+                bleShareManager.setLastClimbAfterSession(lastClimb.climbUuid, lastClimb.angle)
+            }
+            advanceMode = ListPlaybackAdvance.MANUAL
+            return finishedMesh
+        }
         if (queueState.role == SessionRole.HOST) {
             if (!endForEveryone && queueState.participantCount > 1) {
                 // Keep the old host/session/board alive until the target emits
@@ -419,6 +541,16 @@ class PlaylistPlaybackCoordinator(
         advanceMode = ListPlaybackAdvance.MANUAL
         return finished
     }
+
+    /**
+     * Who a departing host hands the playlist to.
+     *
+     * The same longest-active member the canonical rule would pick anyway, so
+     * an orderly leave and a lost host converge on the same successor and the
+     * two paths cannot disagree.
+     */
+    private fun preferredSuccessor(mesh: MeshPlaylistView): String? =
+        if (!mesh.isHost) null else mesh.members.firstOrNull { it != mesh.localNodeId }
 
     private companion object {
         /** Shares the CruxBLE prefix so one logcat filter covers the whole

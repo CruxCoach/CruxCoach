@@ -52,7 +52,37 @@ data class FipsMeshUiState(
     val joinStage: FipsConnectionStage = FipsConnectionStage.IDLE,
     val peers: List<FipsMeshPeerUi> = emptyList(),
     val nearbyMeshes: List<NearbyFipsMeshUi> = emptyList(),
+    /**
+     * The BoardCell's one joinable playlist, if there is one.
+     *
+     * Being in the mesh makes this visible and nothing more: joining the
+     * playlist is a separate, explicit act, which is why the state carries
+     * both "a playlist exists" and "am I in it" rather than collapsing them.
+     */
+    val playlist: MeshPlaylistUi? = null,
 )
+
+/** The canonical joinable playlist as the mesh status strip shows it. */
+data class MeshPlaylistUi(
+    val itemCount: Int,
+    val memberCount: Int,
+    val localIsMember: Boolean,
+    val localIsHost: Boolean,
+) {
+    /**
+     * Whether to offer the join button.
+     *
+     * Only a cell member that is not already in the playlist can join, and
+     * only when there is something to join. The caller additionally gates on
+     * the cell being ACTIVE, which is what [FipsMeshUiState.canJoinPlaylist]
+     * folds in.
+     */
+    val offersJoin: Boolean get() = !localIsMember && itemCount > 0
+}
+
+/** True exactly when the join button should be offered and would work. */
+val FipsMeshUiState.canJoinPlaylist: Boolean
+    get() = availability == "ACTIVE" && playlist?.offersJoin == true
 
 internal fun visibleNearbyMeshes(
     nearby: List<com.cruxcoach.android.fips.FipsNearbyMesh>,
@@ -116,6 +146,14 @@ class FipsMeshViewModel @Inject constructor(
                     directAuthenticated = peer.npub in direct,
                     member = peer.npub in snapshot?.members.orEmpty(),
                     controller = peer.npub == snapshot?.controllerId,
+                )
+            },
+            playlist = snapshot?.playlist?.takeIf { it.isJoinable }?.let {
+                MeshPlaylistUi(
+                    itemCount = it.items.size,
+                    memberCount = it.members.size,
+                    localIsMember = runtime.localNpub in it.members,
+                    localIsHost = it.hostId == runtime.localNpub,
                 )
             },
             nearbyMeshes = visibleNearbyMeshes(nearby, snapshot?.cellId?.value).map {
