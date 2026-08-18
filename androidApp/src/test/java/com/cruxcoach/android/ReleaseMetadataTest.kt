@@ -33,7 +33,8 @@ class ReleaseMetadataTest {
     }
 
     private fun intField(name: String): Int =
-        Regex("""\b$name\s*=\s*(\d+)""").find(gradle)?.groupValues?.get(1)?.toInt()
+        Regex("""\b$name\s*=\s*(?:featureVersionCode\s*\?:\s*)?(\d+)""")
+            .find(gradle)?.groupValues?.get(1)?.toInt()
             ?: error("$name not found in the build file")
 
     private fun stringField(name: String): String =
