@@ -1,0 +1,214 @@
+--- a/src/node/mod.rs
++++ b/src/node/mod.rs
+@@ -3157,6 +3157,65 @@
+         udp_fd_rx
+     }
+ 
++    /// Set up an **app-owned identity feed**: the embedder announces the peers
++    /// it is about to address, so a packet pushed into
++    /// [`Self::enable_app_owned_tun`] can be routed on its first attempt. Call
++    /// this after [`Node::new`] and **before** [`Self::start`], like the other
++    /// app-owned seams. Arming twice returns the same sender.
++    ///
++    /// Outbound TUN packets are routed by looking the destination
++    /// `FipsAddress` prefix up in the node's identity cache
++    /// (`handle_tun_outbound`). A `FipsAddress` is a truncated hash, so the
++    /// peer's public key cannot be recovered from the packet: an address the
++    /// cache has never seen gets ICMPv6 "destination unreachable" and the
++    /// packet is dropped. On a host with a system resolver the cache is filled
++    /// as a side effect of resolving `<npub>.fips`, which is why
++    /// [`Self::dns_local_addr`] exists.
++    ///
++    /// That path does not fit an embedder that never resolves a name. An app
++    /// which already holds the peer's npub — because it learned it from its own
++    /// application-level directory, a QR code or a link-layer handshake —
++    /// synthesizes the IPv6 datagram itself and has nothing to ask DNS about.
++    /// Without this seam its only options are to run a DNS round trip purely
++    /// for its cache side effect, or to lose the first packet to every new
++    /// peer.
++    ///
++    /// The sender carries the same [`DnsResolvedIdentity`] the responder
++    /// produces and is drained by the same `run_rx_loop` arm, so a resolved
++    /// identity registers identically whichever producer supplied it. Both
++    /// producers may be active at once: a responder that starts later feeds
++    /// this channel rather than replacing its receiver.
++    ///
++    /// ```no_run
++    /// # async fn f(node: &mut fips::Node, peer: &fips::PeerIdentity) -> Result<(), Box<dyn std::error::Error>> {
++    /// let identities = node.enable_app_owned_identities();  // after new(), before start()
++    /// let (outbound, _inbound) = node.enable_app_owned_tun();
++    /// node.start().await?;
++    /// identities
++    ///     .send(fips::upper::dns::DnsResolvedIdentity {
++    ///         node_addr: *peer.node_addr(),
++    ///         pubkey: peer.pubkey_full(),
++    ///     })
++    ///     .await?;
++    /// # let _ = outbound; Ok(())
++    /// # }
++    /// ```
++    ///
++    /// Registering an identity is a routing hint, not a grant: it says "this
++    /// public key hashes to this address", which is a fact the embedder can
++    /// check itself and which the session handshake authenticates anyway. It
++    /// does not create a session, a peering or any authorization.
++    pub fn enable_app_owned_identities(&mut self) -> crate::upper::dns::DnsIdentityTx {
++        if let Some(tx) = self.supervisor.app_identity_tx.clone() {
++            return tx;
++        }
++        let size = self.config().node.buffers.dns_channel.max(1);
++        let (identity_tx, identity_rx) = tokio::sync::mpsc::channel(size);
++        self.supervisor.dns_identity_rx = Some(identity_rx);
++        self.supervisor.app_identity_tx = Some(identity_tx.clone());
++        identity_tx
++    }
++
+     /// Set up an **app-owned BLE radio**: the embedder supplies the radio the
+     /// BLE transport drives, because on this platform there is no
+     /// Rust-reachable one to open. Call this after [`Node::new`] and
+--- a/src/node/lifecycle/mod.rs
++++ b/src/node/lifecycle/mod.rs
+@@ -1782,8 +1782,22 @@
+                                     // proxies queries to us has to dial.
+                                     let local_addr = socket.local_addr().unwrap_or(bind);
+                                     let dns_channel_size = self.config().node.buffers.dns_channel;
++                                    // An embedder that armed
++                                    // `enable_app_owned_identities` already owns
++                                    // the receiver the rx_loop will drain. Feed
++                                    // its channel rather than replacing it: two
++                                    // producers of resolved identities are fine,
++                                    // two receivers are not.
+                                     let (identity_tx, identity_rx) =
+-                                        tokio::sync::mpsc::channel(dns_channel_size);
++                                        match self.supervisor.app_identity_tx.clone() {
++                                            Some(app_tx) => (app_tx, None),
++                                            None => {
++                                                let (tx, rx) = tokio::sync::mpsc::channel(
++                                                    dns_channel_size,
++                                                );
++                                                (tx, Some(rx))
++                                            }
++                                        };
+                                     let dns_ttl = self.config().dns.ttl();
+                                     let base_hosts =
+                                         crate::upper::hosts::HostMap::from_peer_configs(
+@@ -1829,7 +1843,9 @@
+                                             let _ = tx.send(Child::Dns).await;
+                                         }
+                                     });
+-                                    self.supervisor.dns_identity_rx = Some(identity_rx);
++                                    if let Some(identity_rx) = identity_rx {
++                                        self.supervisor.dns_identity_rx = Some(identity_rx);
++                                    }
+                                     self.supervisor.dns_task = Some(handle);
+                                     self.supervisor.dns_local_addr = Some(local_addr);
+                                     Event::SubstrateUp { child }
+--- a/src/node/lifecycle/supervisor.rs
++++ b/src/node/lifecycle/supervisor.rs
+@@ -688,8 +688,14 @@
+     #[cfg(any(target_os = "macos", target_os = "freebsd"))]
+     pub(in crate::node) tun_shutdown_fd: Option<std::os::unix::io::RawFd>,
+ 
+-    /// Receiver for resolved identities from the DNS responder.
++    /// Receiver for resolved identities from the DNS responder, or from an
++    /// embedder that armed [`Node::enable_app_owned_identities`].
+     pub(in crate::node) dns_identity_rx: Option<crate::upper::dns::DnsIdentityRx>,
++    /// Sender handed to an embedder by
++    /// [`Node::enable_app_owned_identities`](crate::Node::enable_app_owned_identities).
++    /// Kept so the DNS responder, if it starts later, feeds the same receiver
++    /// instead of replacing it and stranding the embedder's half.
++    pub(in crate::node) app_identity_tx: Option<crate::upper::dns::DnsIdentityTx>,
+     /// DNS responder task handle.
+     pub(in crate::node) dns_task: Option<tokio::task::JoinHandle<()>>,
+     /// Address the DNS responder actually bound, read back from the socket
+@@ -749,6 +755,7 @@
+             #[cfg(any(target_os = "macos", target_os = "freebsd"))]
+             tun_shutdown_fd: None,
+             dns_identity_rx: None,
++            app_identity_tx: None,
+             dns_task: None,
+             dns_local_addr: None,
+             #[cfg(unix)]
+--- a/src/node/tests/unit.rs
++++ b/src/node/tests/unit.rs
+@@ -3497,6 +3497,80 @@
+     );
+ }
+ 
++/// The app-owned identity seam, and its coexistence with the DNS responder.
++///
++/// An embedder that already holds a peer's npub has nothing to resolve, but
++/// still needs the identity cache warmed or `handle_tun_outbound` answers its
++/// first packet with ICMPv6 "destination unreachable". `enable_app_owned_identities`
++/// is the seam it registers through. Three things have to hold:
++///
++/// 1. Arming twice returns the same sender, so a second call cannot strand the
++///    receiver the first one installed.
++/// 2. What the embedder sends arrives on the receiver `run_rx_loop` drains,
++///    and registering it warms the cache.
++/// 3. A DNS responder starting afterwards feeds the *same* channel rather than
++///    replacing the receiver — otherwise arming the seam and enabling DNS
++///    would silently disconnect the embedder.
++#[tokio::test]
++async fn app_owned_identities_warm_the_cache_and_survive_a_dns_responder() {
++    let mut config = crate::Config::new();
++    config.transports.udp = crate::config::TransportInstances::Single(crate::config::UdpConfig {
++        bind_addr: Some("127.0.0.1:0".to_string()),
++        ..Default::default()
++    });
++    config.dns.enabled = true;
++    config.dns.bind_addr = Some("::1".to_string());
++    config.dns.port = Some(0);
++    let mut node = make_node_with(config);
++    let (_outbound_tx, _tun_rx) = node.enable_app_owned_tun();
++
++    let identities = node.enable_app_owned_identities();
++    let again = node.enable_app_owned_identities();
++    assert!(
++        identities.same_channel(&again),
++        "arming twice must hand back the same sender",
++    );
++
++    // Starting the node brings the DNS responder up. It must join this
++    // channel, not displace it.
++    node.start().await.unwrap();
++    assert!(
++        node.dns_local_addr().is_some(),
++        "the responder is up, so this test covers the coexistence case",
++    );
++
++    let peer = Identity::generate();
++    identities
++        .send(crate::upper::dns::DnsResolvedIdentity {
++            node_addr: *peer.node_addr(),
++            pubkey: peer.pubkey_full(),
++        })
++        .await
++        .expect("the receiver is still installed");
++
++    let identity = tokio::time::timeout(
++        std::time::Duration::from_secs(2),
++        node.supervisor
++            .dns_identity_rx
++            .as_mut()
++            .expect("the seam installed the identity receiver")
++            .recv(),
++    )
++    .await
++    .expect("identity published within the timeout")
++    .expect("channel is open");
++
++    assert_eq!(identity.node_addr, *peer.node_addr());
++    node.register_identity(identity.node_addr, identity.pubkey);
++    assert!(
++        node.has_cached_identity(peer.node_addr()),
++        "an app-registered identity must warm the cache exactly as a resolved \
++         one does",
++    );
++
++    node.stop().await.unwrap();
++}
++
+ /// `retract_child_publications(Dns)` clears the published address.
+ ///
+ /// Scoped to the helper deliberately, and named for that rather than for the

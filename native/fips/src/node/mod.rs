@@ -3157,6 +3157,65 @@ impl Node {
         udp_fd_rx
     }
 
+    /// Set up an **app-owned identity feed**: the embedder announces the peers
+    /// it is about to address, so a packet pushed into
+    /// [`Self::enable_app_owned_tun`] can be routed on its first attempt. Call
+    /// this after [`Node::new`] and **before** [`Self::start`], like the other
+    /// app-owned seams. Arming twice returns the same sender.
+    ///
+    /// Outbound TUN packets are routed by looking the destination
+    /// `FipsAddress` prefix up in the node's identity cache
+    /// (`handle_tun_outbound`). A `FipsAddress` is a truncated hash, so the
+    /// peer's public key cannot be recovered from the packet: an address the
+    /// cache has never seen gets ICMPv6 "destination unreachable" and the
+    /// packet is dropped. On a host with a system resolver the cache is filled
+    /// as a side effect of resolving `<npub>.fips`, which is why
+    /// [`Self::dns_local_addr`] exists.
+    ///
+    /// That path does not fit an embedder that never resolves a name. An app
+    /// which already holds the peer's npub — because it learned it from its own
+    /// application-level directory, a QR code or a link-layer handshake —
+    /// synthesizes the IPv6 datagram itself and has nothing to ask DNS about.
+    /// Without this seam its only options are to run a DNS round trip purely
+    /// for its cache side effect, or to lose the first packet to every new
+    /// peer.
+    ///
+    /// The sender carries the same [`DnsResolvedIdentity`] the responder
+    /// produces and is drained by the same `run_rx_loop` arm, so a resolved
+    /// identity registers identically whichever producer supplied it. Both
+    /// producers may be active at once: a responder that starts later feeds
+    /// this channel rather than replacing its receiver.
+    ///
+    /// ```no_run
+    /// # async fn f(node: &mut fips::Node, peer: &fips::PeerIdentity) -> Result<(), Box<dyn std::error::Error>> {
+    /// let identities = node.enable_app_owned_identities();  // after new(), before start()
+    /// let (outbound, _inbound) = node.enable_app_owned_tun();
+    /// node.start().await?;
+    /// identities
+    ///     .send(fips::upper::dns::DnsResolvedIdentity {
+    ///         node_addr: *peer.node_addr(),
+    ///         pubkey: peer.pubkey_full(),
+    ///     })
+    ///     .await?;
+    /// # let _ = outbound; Ok(())
+    /// # }
+    /// ```
+    ///
+    /// Registering an identity is a routing hint, not a grant: it says "this
+    /// public key hashes to this address", which is a fact the embedder can
+    /// check itself and which the session handshake authenticates anyway. It
+    /// does not create a session, a peering or any authorization.
+    pub fn enable_app_owned_identities(&mut self) -> crate::upper::dns::DnsIdentityTx {
+        if let Some(tx) = self.supervisor.app_identity_tx.clone() {
+            return tx;
+        }
+        let size = self.config().node.buffers.dns_channel.max(1);
+        let (identity_tx, identity_rx) = tokio::sync::mpsc::channel(size);
+        self.supervisor.dns_identity_rx = Some(identity_rx);
+        self.supervisor.app_identity_tx = Some(identity_tx.clone());
+        identity_tx
+    }
+
     /// Set up an **app-owned BLE radio**: the embedder supplies the radio the
     /// BLE transport drives, because on this platform there is no
     /// Rust-reachable one to open. Call this after [`Node::new`] and

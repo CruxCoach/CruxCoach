@@ -688,8 +688,14 @@ pub(crate) struct Supervisor {
     #[cfg(any(target_os = "macos", target_os = "freebsd"))]
     pub(in crate::node) tun_shutdown_fd: Option<std::os::unix::io::RawFd>,
 
-    /// Receiver for resolved identities from the DNS responder.
+    /// Receiver for resolved identities from the DNS responder, or from an
+    /// embedder that armed [`Node::enable_app_owned_identities`].
     pub(in crate::node) dns_identity_rx: Option<crate::upper::dns::DnsIdentityRx>,
+    /// Sender handed to an embedder by
+    /// [`Node::enable_app_owned_identities`](crate::Node::enable_app_owned_identities).
+    /// Kept so the DNS responder, if it starts later, feeds the same receiver
+    /// instead of replacing it and stranding the embedder's half.
+    pub(in crate::node) app_identity_tx: Option<crate::upper::dns::DnsIdentityTx>,
     /// DNS responder task handle.
     pub(in crate::node) dns_task: Option<tokio::task::JoinHandle<()>>,
     /// Address the DNS responder actually bound, read back from the socket
@@ -749,6 +755,7 @@ impl Supervisor {
             #[cfg(any(target_os = "macos", target_os = "freebsd"))]
             tun_shutdown_fd: None,
             dns_identity_rx: None,
+            app_identity_tx: None,
             dns_task: None,
             dns_local_addr: None,
             #[cfg(unix)]

@@ -3497,6 +3497,80 @@ async fn dns_responder_serves_a_proxying_embedder() {
     );
 }
 
+/// The app-owned identity seam, and its coexistence with the DNS responder.
+///
+/// An embedder that already holds a peer's npub has nothing to resolve, but
+/// still needs the identity cache warmed or `handle_tun_outbound` answers its
+/// first packet with ICMPv6 "destination unreachable". `enable_app_owned_identities`
+/// is the seam it registers through. Three things have to hold:
+///
+/// 1. Arming twice returns the same sender, so a second call cannot strand the
+///    receiver the first one installed.
+/// 2. What the embedder sends arrives on the receiver `run_rx_loop` drains,
+///    and registering it warms the cache.
+/// 3. A DNS responder starting afterwards feeds the *same* channel rather than
+///    replacing the receiver — otherwise arming the seam and enabling DNS
+///    would silently disconnect the embedder.
+#[tokio::test]
+async fn app_owned_identities_warm_the_cache_and_survive_a_dns_responder() {
+    let mut config = crate::Config::new();
+    config.transports.udp = crate::config::TransportInstances::Single(crate::config::UdpConfig {
+        bind_addr: Some("127.0.0.1:0".to_string()),
+        ..Default::default()
+    });
+    config.dns.enabled = true;
+    config.dns.bind_addr = Some("::1".to_string());
+    config.dns.port = Some(0);
+    let mut node = make_node_with(config);
+    let (_outbound_tx, _tun_rx) = node.enable_app_owned_tun();
+
+    let identities = node.enable_app_owned_identities();
+    let again = node.enable_app_owned_identities();
+    assert!(
+        identities.same_channel(&again),
+        "arming twice must hand back the same sender",
+    );
+
+    // Starting the node brings the DNS responder up. It must join this
+    // channel, not displace it.
+    node.start().await.unwrap();
+    assert!(
+        node.dns_local_addr().is_some(),
+        "the responder is up, so this test covers the coexistence case",
+    );
+
+    let peer = Identity::generate();
+    identities
+        .send(crate::upper::dns::DnsResolvedIdentity {
+            node_addr: *peer.node_addr(),
+            pubkey: peer.pubkey_full(),
+        })
+        .await
+        .expect("the receiver is still installed");
+
+    let identity = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        node.supervisor
+            .dns_identity_rx
+            .as_mut()
+            .expect("the seam installed the identity receiver")
+            .recv(),
+    )
+    .await
+    .expect("identity published within the timeout")
+    .expect("channel is open");
+
+    assert_eq!(identity.node_addr, *peer.node_addr());
+    node.register_identity(identity.node_addr, identity.pubkey);
+    assert!(
+        node.has_cached_identity(peer.node_addr()),
+        "an app-registered identity must warm the cache exactly as a resolved \
+         one does",
+    );
+
+    node.stop().await.unwrap();
+}
+
 /// `retract_child_publications(Dns)` clears the published address.
 ///
 /// Scoped to the helper deliberately, and named for that rather than for the

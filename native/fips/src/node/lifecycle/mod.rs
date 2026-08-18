@@ -1782,8 +1782,22 @@ impl Node {
                                     // proxies queries to us has to dial.
                                     let local_addr = socket.local_addr().unwrap_or(bind);
                                     let dns_channel_size = self.config().node.buffers.dns_channel;
+                                    // An embedder that armed
+                                    // `enable_app_owned_identities` already owns
+                                    // the receiver the rx_loop will drain. Feed
+                                    // its channel rather than replacing it: two
+                                    // producers of resolved identities are fine,
+                                    // two receivers are not.
                                     let (identity_tx, identity_rx) =
-                                        tokio::sync::mpsc::channel(dns_channel_size);
+                                        match self.supervisor.app_identity_tx.clone() {
+                                            Some(app_tx) => (app_tx, None),
+                                            None => {
+                                                let (tx, rx) = tokio::sync::mpsc::channel(
+                                                    dns_channel_size,
+                                                );
+                                                (tx, Some(rx))
+                                            }
+                                        };
                                     let dns_ttl = self.config().dns.ttl();
                                     let base_hosts =
                                         crate::upper::hosts::HostMap::from_peer_configs(
@@ -1829,7 +1843,9 @@ impl Node {
                                             let _ = tx.send(Child::Dns).await;
                                         }
                                     });
-                                    self.supervisor.dns_identity_rx = Some(identity_rx);
+                                    if let Some(identity_rx) = identity_rx {
+                                        self.supervisor.dns_identity_rx = Some(identity_rx);
+                                    }
                                     self.supervisor.dns_task = Some(handle);
                                     self.supervisor.dns_local_addr = Some(local_addr);
                                     Event::SubstrateUp { child }

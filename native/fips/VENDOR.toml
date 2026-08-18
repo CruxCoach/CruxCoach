@@ -1,13 +1,19 @@
 # Provenance of the vendored FIPS crate.
 #
-# Everything in this directory except `VENDOR.toml` is upstream source at
-# `commit`, byte for byte. Nothing is modified yet; local patches, when they
-# exist, live in `patches/` and are listed here.
+# Everything in this directory except `VENDOR.toml` and `patches/` is upstream
+# source at `commit`, with `patches/` applied in listed order and nothing else.
+# `scripts/verify_vendored_fips.py` checks both halves of that claim; its
+# offline mode runs in CI through `scripts/verify_vendored_fips_test.py`.
 #
 # Why vendored rather than a Git pin: `integration/platform` is a branch head,
 # and a Cargo `rev =` pin stays reproducible only while that object survives
 # upstream retention. The build must not depend on that. Vendoring also removes
 # the network from the native build entirely.
+#
+# Why not a CruxCoach fork of jmcorgan/fips: no such fork exists, and creating
+# one is an external repository this work has no authority to add. If one is
+# created later, the migration is mechanical — move `patches/` onto an
+# integration branch based on `commit` and point Cargo at that revision.
 
 repository = "https://github.com/jmcorgan/fips"
 # Reviewed platform-integration lineage. Head of `integration/platform` when
@@ -33,8 +39,9 @@ paths = [
     "src",
 ]
 
-patches = []
+# Applied in order to a pristine checkout of `commit`.
+patches = ["0001-node-restore-the-app-owned-identity-seam.patch"]
 
 # sha256 over `"<sha256>  <path>\n"` lines for every vendored source file,
 # sorted by path, excluding `VENDOR.toml` and `patches/`.
-vendored_sha256 = "80e43a0cae72e536b891430f2b8b0386609ee8eb1400f971d60e276716bf4ba2"
+vendored_sha256 = "b6f3e80a6a2e178cb9b702519644c2ff78cb3d0f706bf9317f8c38bdf17dca61"
