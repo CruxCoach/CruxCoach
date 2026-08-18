@@ -116,16 +116,13 @@ class BoardBrowserCatalogueRevisionTest {
         repo.moonBoardHoldSetMaskPresent = false
         seedCatalogue(hsmForWoodenClimb = 0L, hsmForHandsClimb = 0L)
 
-        // The sync is already running when the browser opens: the slot was
-        // claimed (generation moved), the MoonBoard lane is mid-import, and no
-        // data has landed yet. This is the case where syncGeneration is already
-        // the browser's baseline, so the end-of-run branch keyed on it can
-        // never fire.
+        // Establish the generation the browser will use as its baseline.
+        // Keeping the fixture idle while its existing catalogue first renders
+        // avoids conflating this revision test with the separate loading UI.
         syncState.value = BoardSyncState(
-            isSyncing = true,
+            isSyncing = false,
             syncGeneration = 7,
             catalogueRevision = 0,
-            moonBoardStep = ImportStep.ImportClimbs(0, 0, 1000),
         )
 
         val viewModel = browserViewModel(prefs)
@@ -137,6 +134,15 @@ class BoardBrowserCatalogueRevisionTest {
             "the gate is shut, so the filter must be inert",
             0L, viewModel.state.value.hsmExcludedMask,
         )
+
+        // Start a run without changing the already-baselined generation. The
+        // old end-of-run branch therefore still cannot use generation !=
+        // lastGeneration as its refresh trigger.
+        syncState.value = syncState.value.copy(
+            isSyncing = true,
+            moonBoardStep = ImportStep.ImportClimbs(0, 0, 1000),
+        )
+        awaitState(viewModel) { it.activeBrandImporting }
 
         // ── 1. The importer commits. The rows now carry a real mask. ────────
         repo.moonBoardHoldSetMaskPresent = true
@@ -279,36 +285,10 @@ class BoardBrowserCatalogueRevisionTest {
         /**
          * Wall-clock budget for the fixture to reach a given state.
          *
-         * This drives real async work — importer, DB, the ViewModel's own
-         * flows — so it cannot be advanced by a test scheduler. 5 s was
-         * enough on an idle machine but not inside the full suite on a
-         * 4-core builder: the run aborted in the *setup* wait with
-         * `isLoading=true`, i.e. the fixture was still legitimately loading
-         * rather than holding a wrong value. The budget only bounds how long
-         * a genuinely stuck state may hide — a state that never arrives
-         * still fails, just later — so it is safe to be generous here.
+         * The fixture and ViewModel perform real IO-dispatched work, so keep a
+         * generous bound for a genuinely stuck state.
          */
-        /**
-         * Wall-clock budget for the fixture to reach a given state.
-         *
-         * This drives real async work — DataStore on `Dispatchers.IO`, the
-         * importer, the view model's own flows — so no test scheduler can
-         * advance it. Measured on a 4-core builder inside the full ~1850-test
-         * suite: **typically ~3 s, occasionally over 20 s**. The spread is
-         * contention on `Dispatchers.IO`, not a stall — given room it always
-         * settles, verified by raising the budget to 120 s and watching the
-         * same run finish in 2.95 s.
-         *
-         * 120 s covers heavily contended hosted runners while still reporting
-         * a genuinely stuck state inside two minutes. The budget
-         * only bounds how long a real failure may hide; a state that never
-         * arrives still fails.
-         *
-         * The proper fix is to make the fixture deterministic — inject a test
-         * dispatcher for the preference scope instead of doing real file I/O —
-         * but that is a refactor of the fixture, not a pre-release change.
-         */
-        const val SETTLE_MS = 120_000L
+        const val SETTLE_MS = 60_000L
         const val STEP_MS = 150L
     }
 }
