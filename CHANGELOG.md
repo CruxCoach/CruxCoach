@@ -7,6 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [0.2.3] - Unreleased
 
 ### Fixed
+- **Realm-safe BoardCell and Competition mesh traffic** — every feature now
+  acquires a reference-counted, realm-scoped session and sends only named
+  protocol envelopes. Frames from another realm or an unknown protocol are
+  dropped before a feature decoder sees them, and an incompatible realm can no
+  longer evict the active board controller. Reconnects retain one lifecycle
+  lease and stale protocol subscriptions are removed on rebinding.
 - **FIPS BoardCell rejoin after both phones restart** — the previous canonical
   controller can now resume its exact verified cell lineage and send the
   membership snapshot that admits a directly authenticated peer. Ordinary
