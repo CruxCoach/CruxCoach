@@ -65,6 +65,16 @@ internal class MeshMessageRouter {
             "protocols" to removed.joinToString { it.protocol }, "handlers" to registrations.size)
     }
 
+    /** Removes only the exact subscription that is being cancelled. */
+    @Synchronized
+    fun unregister(session: Any, protocol: String, handler: Handler) {
+        val key = Key(session, protocol)
+        if (registrations[key]?.handler !== handler) return
+        registrations.remove(key)
+        MeshDebugLog.event("router", "handler_unregistered", "protocols" to protocol,
+            "handlers" to registrations.size)
+    }
+
     @Synchronized
     fun protocols(realmId: MeshRealmId): Set<String> = registrations.entries
         .filter { it.value.realmId == realmId }.mapTo(linkedSetOf()) { it.key.protocol }

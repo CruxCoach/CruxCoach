@@ -185,7 +185,7 @@ class MeshRealmManagerTest {
         assertNull(manager.session(MeshOwners.competition("comp-1")))
     }
 
-    @Test fun `re-targeting closes the superseded sessions instead of stranding them`() = runTest {
+    @Test fun `re-targeting is denied until all existing leases are explicitly released`() = runTest {
         val port = FakePort()
         val manager = manager(port)
         val boardSession = manager.acquire(MeshOwners.BOARD_CELL, board, boardMeta)
@@ -193,16 +193,16 @@ class MeshRealmManagerTest {
         port.authenticatedPeers.value = setOf("npub-remote")
         runCurrent()
 
-        val next = manager.acquire(MeshOwners.BOARD_CELL, neighbour, neighbourMeta)
+        val denied = denialOf { manager.acquire(MeshOwners.BOARD_CELL, neighbour, neighbourMeta) }
 
-        assertEquals(listOf(board, neighbour), port.activated)
-        assertEquals(listOf(board), port.ended)
-        assertEquals(neighbour, next.realmId)
-        assertNull(manager.session(MeshOwners.competition("comp-1")))
-        assertFalse(competition.send("npub-remote", MeshProtocols.COMPETITION, byteArrayOf(1)))
-        assertFalse(boardSession.send("npub-remote", MeshProtocols.BOARD_CELL, byteArrayOf(1)))
-        assertEquals(emptySet<String>(), competition.authenticatedPeers.value)
-        assertEquals(setOf(MeshOwners.BOARD_CELL), port.runtimeOwners)
+        assertEquals(MeshRealmDenial.REALM_CONFLICT, denied.denial)
+        assertEquals(listOf(board), port.activated)
+        assertTrue(port.ended.isEmpty())
+        assertEquals(board, manager.activeRealm.value)
+        assertTrue(competition.send("npub-remote", MeshProtocols.COMPETITION, byteArrayOf(1)))
+        assertTrue(boardSession.send("npub-remote", MeshProtocols.BOARD_CELL, byteArrayOf(1)))
+        assertEquals(setOf("npub-remote"), competition.authenticatedPeers.value)
+        assertEquals(setOf(MeshOwners.BOARD_CELL, MeshOwners.competition("comp-1")), port.runtimeOwners)
     }
 
     @Test fun `a refused transport leaves no lease and no active realm`() = runTest {

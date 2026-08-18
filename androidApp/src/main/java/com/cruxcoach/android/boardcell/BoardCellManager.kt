@@ -312,6 +312,11 @@ class BoardCellManager @Inject constructor(
                         releaseRealmLease(MeshOwners.NEARBY_BOARD_CELL)
                         nearbyRealmHeld = false
                     }
+                    // Realm changes are explicit. A stale physical-board lease
+                    // must be released before this board can acquire its scope.
+                    meshRealms.session(MeshOwners.BOARD_CELL)
+                        ?.takeIf { it.realmId.value != cellId.value }
+                        ?.let { releaseRealmLease(MeshOwners.BOARD_CELL) }
                 }
                 val fipsActive = meshAvailable &&
                     acquireRealmLease(MeshOwners.BOARD_CELL, cellId, board.displayName)
@@ -846,6 +851,9 @@ class BoardCellManager @Inject constructor(
         // The participant lease is its own owner: a GATT participant has no
         // board connection, so it must not be torn down by the physical-board
         // disconnect path that owns the BOARD_CELL lease.
+        meshRealms.session(MeshOwners.PARTICIPANT)
+            ?.takeIf { it.realmId.value != cell.value }
+            ?.let { releaseRealmLease(MeshOwners.PARTICIPANT) }
         if (!withContext(Dispatchers.IO) { acquireRealmLease(MeshOwners.PARTICIPANT, cell) }) return false
         activeNodeId = meshLink.localNpub
         val existing = if (::coordinator.isInitialized) coordinator.snapshot(physical) else null
@@ -1502,6 +1510,13 @@ class BoardCellManager @Inject constructor(
         cell: BoardCellId,
         boardName: String? = null,
     ): Boolean {
+        // A lifecycle lease is retained, not stacked. The manager itself stays
+        // reference-counted for clients that intentionally call acquire more
+        // than once, while reconnect/restore callbacks remain idempotent.
+        meshRealms.session(owner)?.takeIf { it.realmId.value == cell.value }?.let {
+            rebindMeshLink()
+            return true
+        }
         val session: MeshRealmSession? = meshRealms.acquireOrNull(
             owner,
             MeshRealmId(cell.value),

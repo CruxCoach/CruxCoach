@@ -82,21 +82,17 @@ class MeshRealmLedgerTest {
         assertEquals(0, ledger.references(MeshOwners.competition("comp-1"), other))
     }
 
-    @Test fun `a holder re-targeting the realm evicts the other owners explicitly`() {
+    @Test fun `even a current holder cannot re-target until every owner releases`() {
         val ledger = MeshRealmLedger()
         repeat(2) { ledger.acquire(MeshOwners.BOARD_CELL, board, boardMeta) }
         ledger.acquire(MeshOwners.competition("comp-1"), board, boardMeta)
 
         val outcome = ledger.acquire(MeshOwners.BOARD_CELL, other, otherMeta)
 
-        assertTrue(outcome is MeshAcquireOutcome.Superseded)
-        outcome as MeshAcquireOutcome.Superseded
-        assertEquals(board, outcome.previous)
-        assertEquals(setOf(MeshOwners.competition("comp-1")), outcome.evicted)
-        assertEquals(other, ledger.activeRealm())
-        // Leases live on a realm, so the old stack does not follow to the new one.
-        assertEquals(1, ledger.references(MeshOwners.BOARD_CELL, other))
-        assertEquals(0, ledger.references(MeshOwners.competition("comp-1"), other))
+        assertEquals(MeshAcquireOutcome.Denied(MeshRealmDenial.REALM_CONFLICT, board), outcome)
+        assertEquals(board, ledger.activeRealm())
+        assertEquals(2, ledger.references(MeshOwners.BOARD_CELL, board))
+        assertEquals(1, ledger.references(MeshOwners.competition("comp-1"), board))
     }
 
     @Test fun `a realm is not shared by owners meaning a different physical scope`() {

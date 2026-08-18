@@ -19,8 +19,8 @@ value class MeshRealmId(val value: String) {
 /**
  * A logical feature lease on a realm.
  *
- * Owners are reference counted and are never conflated with realms: the same
- * owner may re-target its realm, and several owners may share one realm.
+ * Owners are reference counted and are never conflated with realms. Several
+ * owners may share one realm; switching realms requires explicit release.
  */
 @JvmInline
 value class MeshOwner(val value: String) {

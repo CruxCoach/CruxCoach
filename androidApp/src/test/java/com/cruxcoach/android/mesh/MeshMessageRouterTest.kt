@@ -139,4 +139,20 @@ class MeshMessageRouterTest {
         assertTrue(leaving.received.isEmpty())
         assertEquals(1, staying.received.size)
     }
+
+    @Test fun `cancelling an old subscription cannot unregister its replacement`() = runTest {
+        val router = MeshMessageRouter()
+        val session = Any()
+        val replaced = Sink()
+        val current = Sink()
+        router.register(session, board, MeshProtocols.BOARD_CELL, replaced)
+        router.register(session, board, MeshProtocols.BOARD_CELL, current)
+
+        router.unregister(session, MeshProtocols.BOARD_CELL, replaced)
+        val result = router.route(board, frame(board))
+
+        assertEquals(MeshRouteResult.DELIVERED, result)
+        assertTrue(replaced.received.isEmpty())
+        assertEquals(1, current.received.size)
+    }
 }

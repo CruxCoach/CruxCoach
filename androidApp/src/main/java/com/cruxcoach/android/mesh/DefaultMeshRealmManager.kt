@@ -8,9 +8,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.emptyFlow
-import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.channels.awaitClose
 
 /**
  * The realm manager itself: leases, routing and lifecycle, with the radio
@@ -75,15 +75,7 @@ internal class DefaultMeshRealmManager(
                         "owners" to ledger.owners().size)
                     sessions.getOrPut(owner) { RealmSession(realmId, owner) }
                 }
-                is MeshAcquireOutcome.Activated -> activateLocked(owner, realmId, metadata, null)
-                is MeshAcquireOutcome.Superseded -> {
-                    outcome.evicted.forEach { evicted ->
-                        retireLocked(evicted, "realm superseded by ${realmId.value}")
-                        port.releaseRuntime(evicted)
-                    }
-                    retireLocked(owner, "realm re-targeted to ${realmId.value}")
-                    activateLocked(owner, realmId, metadata, outcome.previous)
-                }
+                is MeshAcquireOutcome.Activated -> activateLocked(owner, realmId, metadata)
             }
         }
         session.publishPeers(port.authenticatedPeers.value)
@@ -95,14 +87,10 @@ internal class DefaultMeshRealmManager(
         owner: MeshOwner,
         realmId: MeshRealmId,
         metadata: MeshRealmMetadata,
-        superseded: MeshRealmId?,
     ): RealmSession {
         // The runtime only starts for a registered logical owner, so the lease
         // has to exist before activation is even attempted.
         port.acquireRuntime(owner)
-        // Activation always starts from an idle transport: ending the
-        // superseded realm here keeps the port contract free of switch logic.
-        superseded?.let(port::end)
         val activated = runCatching { port.activate(realmId, metadata) }.getOrDefault(false)
         if (!activated) {
             ledger.rollback(owner, realmId)
@@ -114,10 +102,9 @@ internal class DefaultMeshRealmManager(
                 ledger.activeRealm())
         }
         _activeRealm.value = realmId
-        MeshDebugLog.event("realm", if (superseded == null) "activated" else "superseded",
+        MeshDebugLog.event("realm", "activated",
             "owner" to owner.value, "realm" to MeshDebugLog.id(realmId.value),
-            "previous" to MeshDebugLog.id(superseded?.value), "kind" to metadata.kind,
-            "cell" to MeshDebugLog.id(metadata.boardCellId))
+            "kind" to metadata.kind, "cell" to MeshDebugLog.id(metadata.boardCellId))
         return RealmSession(realmId, owner).also { sessions[owner] = it }
     }
 
@@ -191,13 +178,22 @@ internal class DefaultMeshRealmManager(
         override val authenticatedPeers: StateFlow<Set<String>> = peers.asStateFlow()
         override val incoming: Flow<MeshEnvelope> = inbox.asSharedFlow()
 
-        override fun subscribe(protocol: String): Flow<MeshEnvelope> {
-            if (!live) return emptyFlow()
-            val handler = object : MeshMessageRouter.Handler {
-                override suspend fun deliver(envelope: MeshEnvelope) = inbox.emit(envelope)
+        override fun subscribe(protocol: String): Flow<MeshEnvelope> = callbackFlow {
+            if (!live) {
+                close()
+                return@callbackFlow
             }
-            if (!router.register(this, realmId, protocol, handler)) return emptyFlow()
-            return incoming.filter { it.protocol == protocol }
+            val handler = object : MeshMessageRouter.Handler {
+                override suspend fun deliver(envelope: MeshEnvelope) {
+                    inbox.emit(envelope)
+                    trySend(envelope)
+                }
+            }
+            if (!router.register(this@RealmSession, realmId, protocol, handler)) {
+                close()
+                return@callbackFlow
+            }
+            awaitClose { router.unregister(this@RealmSession, protocol, handler) }
         }
 
         override fun send(peer: String, protocol: String, payload: ByteArray): Boolean {
