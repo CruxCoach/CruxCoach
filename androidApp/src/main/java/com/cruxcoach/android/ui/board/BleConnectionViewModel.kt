@@ -159,7 +159,11 @@ class BleConnectionViewModel @Inject constructor(
         viewModelScope.safeLaunch(TAG) {
             fipsMeshRuntime.startNearbyDiscovery()
             fipsMeshRuntime.nearbyMeshes.collect { meshes ->
-                _state.update { it.copy(nearbyMeshes = meshes) }
+                // An active FIPS radio also sees advertisements for its own
+                // realm. The BoardCell snapshot can briefly be absent while a
+                // durable controller is being restored, so filter by radio
+                // scope instead of relying only on activeBoardCellId in UI.
+                _state.update { it.copy(nearbyMeshes = meshes.filterNot(FipsNearbyMesh::matchesActiveRealm)) }
             }
         }
         viewModelScope.safeLaunch(TAG) {

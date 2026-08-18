@@ -89,6 +89,16 @@ private data class PendingProjectionRequest(
 enum class ControllerRequestState { IDLE, WAITING, ACCEPTED, DENIED, TIMED_OUT, FAILED }
 enum class MeshMembershipTransition { IDLE, LEAVING, JOINING, ERROR }
 
+/** Guards the restore window where physical ownership outlives the projected snapshot. */
+internal object BoardCellNearbyJoinPolicy {
+    fun keepsActivePhysicalRealm(
+        targetRealmId: String,
+        activeRealmId: String?,
+        runtimeRunning: Boolean,
+        physicalBoardOwnerHeld: Boolean,
+    ): Boolean = physicalBoardOwnerHeld && runtimeRunning && activeRealmId == targetRealmId
+}
+
 @Singleton
 class BoardCellManager @Inject constructor(
     @ApplicationContext context: Context,
@@ -855,6 +865,26 @@ class BoardCellManager @Inject constructor(
                 _membershipTransition.value = MeshMembershipTransition.ERROR
                 return false
             }
+        }
+        // The native radio can rediscover its own advertisement while the
+        // coordinator is restoring the durable controller snapshot. In that
+        // window snapshot() is null, but heldRuntime still proves that the
+        // physical-board lifecycle owns this exact running realm. Treat a UI
+        // join of it as an idempotent no-op. Ending/restarting here discards
+        // peers and controller state and was the root cause of the observed
+        // host becoming a nearby participant after a successful join.
+        if (BoardCellNearbyJoinPolicy.keepsActivePhysicalRealm(
+                targetRealmId = cell.value,
+                activeRealmId = runtime.activeRealmId(),
+                runtimeRunning = runtime.running.value,
+                physicalBoardOwnerHeld = heldRuntime,
+            )) {
+            FipsDebugLog.event(
+                "boardcell", "nearby_mesh_join_kept_active_controller",
+                "cell" to FipsDebugLog.id(cell.value),
+            )
+            _membershipTransition.value = MeshMembershipTransition.IDLE
+            return true
         }
         _membershipTransition.value = MeshMembershipTransition.JOINING
         if (!nearbyRealmHeld) {

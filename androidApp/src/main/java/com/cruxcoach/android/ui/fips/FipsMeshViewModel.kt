@@ -88,7 +88,11 @@ internal fun visibleNearbyMeshes(
     nearby: List<com.cruxcoach.android.fips.FipsNearbyMesh>,
     activeCellId: String?,
 ): List<com.cruxcoach.android.fips.FipsNearbyMesh> = nearby.filterNot {
-    activeCellId != null && it.joinableBoardCellId == activeCellId
+    // The active radio observes advertisements from its own realm. During a
+    // short coordinator restore window the canonical snapshot (and therefore
+    // activeCellId) can still be null. Never offer that advertisement as a
+    // fresh join: doing so would tear down the healthy controller transport.
+    it.matchesActiveRealm || (activeCellId != null && it.joinableBoardCellId == activeCellId)
 }
 
 @HiltViewModel

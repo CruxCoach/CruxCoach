@@ -14,6 +14,14 @@ class FipsNearbyVisibilityTest {
         assertEquals(listOf(own, foreign), visibleNearbyMeshes(listOf(own, foreign), null))
     }
 
+    @Test
+    fun `active radio realm is hidden while membership snapshot is restoring`() {
+        val own = mesh("own").copy(matchesActiveRealm = true)
+        val foreign = mesh("foreign")
+
+        assertEquals(listOf(foreign), visibleNearbyMeshes(listOf(own, foreign), null))
+    }
+
     private fun mesh(cell: String) = FipsNearbyMesh(
         address = cell,
         realmTag = cell,
