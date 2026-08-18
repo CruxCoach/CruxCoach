@@ -1,4 +1,4 @@
-name: Feature APK build
+name: Feature APK request
 
 on:
   push:
@@ -27,42 +27,20 @@ jobs:
       - name: Derive immutable feature identity
         id: identity
         run: python3 scripts/feature_identity.py --branch "$GITHUB_REF_NAME" --github-output "$GITHUB_OUTPUT"
-      - name: Choose monotonic Android version code
-        id: version
-        run: echo "code=$((1000000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_OUTPUT"
       - name: Test
-        run: |
-          python3 -m unittest discover -s scripts -p '*_test.py'
-          ./gradlew :shared:testDebugUnitTest :androidApp:testDebugUnitTest --console=plain
-      - name: Build branch-specific APK
         env:
           FEATURE_BRANCH: ${{ steps.identity.outputs.branch }}
           FEATURE_TRACK: ${{ steps.identity.outputs.track }}
           FEATURE_PACKAGE: ${{ steps.identity.outputs.package }}
           FEATURE_LABEL: ${{ steps.identity.outputs.label }}
-          FEATURE_VERSION_CODE: ${{ steps.version.outputs.code }}
+          # This job has no publication credentials. The trusted follow-up
+          # reserves the publishable versionCode atomically in APKTrack.
+          FEATURE_VERSION_CODE: '1000013'
         run: |
-          ./gradlew :androidApp:assembleDebug --console=plain \
+          python3 -m unittest discover -s scripts -p '*_test.py'
+          ./gradlew :shared:testDebugUnitTest :androidApp:testDebugUnitTest --console=plain \
             -PfeatureBranch="$FEATURE_BRANCH" \
             -PfeatureTrack="$FEATURE_TRACK" \
             -PfeaturePackage="$FEATURE_PACKAGE" \
             -PfeatureLabel="$FEATURE_LABEL" \
             -PfeatureVersionCode="$FEATURE_VERSION_CODE"
-      - name: Bind artifact metadata
-        env:
-          FEATURE_VERSION_CODE: ${{ steps.version.outputs.code }}
-        run: |
-          python3 scripts/feature_identity.py \
-            --branch "$GITHUB_REF_NAME" \
-            --write-metadata publication.json \
-            --apk androidApp/build/outputs/apk/debug/androidApp-debug.apk \
-            --commit "$GITHUB_SHA" \
-            --version-code "$FEATURE_VERSION_CODE"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: feature-apk
-          if-no-files-found: error
-          retention-days: 7
-          path: |
-            androidApp/build/outputs/apk/debug/androidApp-debug.apk
-            publication.json
