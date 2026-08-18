@@ -40,4 +40,30 @@ class AndroidBoardCellDurableStoreTest {
         assertNotNull(store.commandAck("command-0299"))
         assertEquals(256, prefs.all.keys.count { it.startsWith("ack:") })
     }
+
+    @Test fun `cell lookup returns exact valid snapshot and rejects ambiguous board bindings`() {
+        val store = AndroidBoardCellDurableStore(context)
+        val cell = BoardCellId("cell")
+        val first = BoardCellSnapshot(
+            cellId = cell,
+            physicalBoardId = PhysicalBoardId("board-one"),
+            epoch = 1,
+            sequence = 2,
+            controllerId = "controller",
+            lineageId = "lineage",
+            members = setOf("controller"),
+        ).withComputedHash()
+        store.persistSnapshot(first)
+
+        assertEquals(first, store.snapshotForCell(cell))
+        assertNull(store.snapshotForCell(BoardCellId("other-cell")))
+
+        // A cell id is supposed to map to one physical board. Local storage
+        // corruption must fail closed instead of depending on map iteration.
+        store.persistSnapshot(first.copy(
+            physicalBoardId = PhysicalBoardId("board-two"),
+            stateHash = "",
+        ).withComputedHash())
+        assertNull(store.snapshotForCell(cell))
+    }
 }

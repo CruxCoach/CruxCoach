@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [0.2.3] - Unreleased
 
+### Fixed
+- **FIPS BoardCell rejoin after both phones restart** — the previous canonical
+  controller can now resume its exact verified cell lineage and send the
+  membership snapshot that admits a directly authenticated peer. Ordinary
+  members, frozen replicas, ambiguous board bindings and in-progress handovers
+  still fail closed instead of creating a competing controller.
+
 ### Added
 - **Competitions** — run a comp on your board, or take part in one, with no
   account and no server. The whole competition lives on Nostr: a signed

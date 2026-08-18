@@ -53,6 +53,21 @@ class AndroidBoardCellDurableStore(context: Context) : BoardCellDurableStore {
     override fun commandAck(commandId: String): BoardCommandAck? = decode(prefs.getString(ackKey(commandId), null))
     fun snapshot(boardId: PhysicalBoardId): BoardCellSnapshot? = decode(prefs.getString(snapshotKey(boardId), null))
 
+    /**
+     * Finds the one durable replica for a discovered realm without trusting
+     * the remote advertisement to supply a physical-board identity.
+     *
+     * A cell is deterministically bound to one physical board. Returning null
+     * for an ambiguous/corrupt local store is safer than choosing a replica by
+     * preference iteration order and potentially reviving the wrong lineage.
+     */
+    fun snapshotForCell(cellId: BoardCellId): BoardCellSnapshot? = prefs.all.asSequence()
+        .filter { (key, _) -> key.startsWith(SNAPSHOT_PREFIX) }
+        .mapNotNull { (_, value) -> decode<BoardCellSnapshot>(value as? String) }
+        .filter { it.cellId == cellId && it.hasValidHash() }
+        .toList()
+        .singleOrNull()
+
     fun localFallbackNodeId(): String {
         prefs.getString(LOCAL_NODE_ID, null)?.let { return it }
         val created = "local-${UUID.randomUUID()}"
@@ -61,7 +76,7 @@ class AndroidBoardCellDurableStore(context: Context) : BoardCellDurableStore {
     }
 
     private inline fun <reified T> decode(value: String?): T? = value?.let { runCatching { json.decodeFromString<T>(it) }.getOrNull() }
-    private fun snapshotKey(board: PhysicalBoardId) = "snapshot:${board.value}"
+    private fun snapshotKey(board: PhysicalBoardId) = "$SNAPSHOT_PREFIX${board.value}"
     private fun intentKey(board: PhysicalBoardId) = "intent:${board.value}"
     private fun ackKey(commandId: String) = "ack:$commandId"
 
@@ -83,6 +98,7 @@ class AndroidBoardCellDurableStore(context: Context) : BoardCellDurableStore {
 
     private companion object {
         const val LOCAL_NODE_ID = "local_node_id"
+        const val SNAPSHOT_PREFIX = "snapshot:"
         const val ACK_INDEX = "ack_index_v3"
         const val MAX_ACKS = 256
     }

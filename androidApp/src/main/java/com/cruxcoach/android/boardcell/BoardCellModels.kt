@@ -672,6 +672,33 @@ internal object BoardCellReconnectPolicy {
     }
 }
 
+/**
+ * Narrow authority for breaking an all-peers-restarted join deadlock.
+ *
+ * A durable member list is not live membership and must not generally be
+ * resurrected. The one exception is the exact canonical controller from an
+ * ACTIVE, hash-valid snapshot: it can resume the same lineage and term long
+ * enough to admit directly authenticated former/new peers. A non-controller,
+ * frozen state, foreign realm, or in-flight handover has no such authority.
+ */
+internal object BoardCellDurableResumePolicy {
+    fun controllerSeed(
+        snapshot: BoardCellSnapshot?,
+        cellId: BoardCellId,
+        localNodeId: String,
+    ): BoardCellSnapshot? = snapshot?.takeIf {
+        it.cellId == cellId && it.hasValidHash() &&
+            it.availability == BoardCellAvailability.ACTIVE &&
+            it.controllerId == localNodeId && localNodeId in it.members &&
+            it.handover?.phase !in setOf(
+                HandoverPhase.PREPARED,
+                HandoverPhase.SOURCE_RELEASED,
+                HandoverPhase.TARGET_READY,
+                HandoverPhase.COMMITTED,
+            )
+    }
+}
+
 /** Canonical, topology-independent staggering for fenced controller recovery. */
 internal object BoardCellRecoveryElection {
     private const val EXACT_SLOTS = 8

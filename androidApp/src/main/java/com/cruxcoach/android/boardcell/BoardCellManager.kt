@@ -327,14 +327,18 @@ class BoardCellManager @Inject constructor(
                             snapshot.cellId == cellId && activeNodeId in snapshot.members
                         }
                     } != null
+                    val resumedController = knownSharedCell && !rejoined && restoreDurableControllerSeed(
+                        BoardCellDurableResumePolicy.controllerSeed(restored, cellId, activeNodeId),
+                        reason = "physical_board_reconnect",
+                    )
                     if (!knownSharedCell) {
                         FipsDebugLog.event("boardcell", "new_cell_claim_begin",
                             "cell" to FipsDebugLog.id(cellId.value), "node" to FipsDebugLog.id(activeNodeId))
                         _membershipTransition.value = if (claimAndSettle(physical, cellId) != null)
                             MeshMembershipTransition.IDLE else MeshMembershipTransition.ERROR
-                    } else if (rejoined) {
+                    } else if (rejoined || resumedController) {
                         _membershipTransition.value = MeshMembershipTransition.IDLE
-                    } else if (!rejoined) {
+                    } else {
                         // Never create a competing lineage merely because the
                         // previous live members are temporarily unreachable.
                         // The stable realm identity remains available for the
@@ -891,6 +895,12 @@ class BoardCellManager @Inject constructor(
         coordinator = BoardCellCoordinator(activeNodeId, meshTransport, durableStore,
             settleMs = 2_000, heartbeatTimeoutMs = CONTROLLER_LEASE_TIMEOUT_MS)
         meshTransport.attach(coordinator)
+        restoreDurableControllerSeed(
+            BoardCellDurableResumePolicy.controllerSeed(
+                durableStore.snapshotForCell(cell), cell, activeNodeId,
+            ),
+            reason = "nearby_mesh_join",
+        )
         boardRealmAvailable.set(false)
         FipsDebugLog.event("boardcell", "nearby_mesh_join_started",
             "cell" to FipsDebugLog.id(cell.value), "node" to FipsDebugLog.id(activeNodeId))
@@ -932,11 +942,14 @@ class BoardCellManager @Inject constructor(
     ): Boolean {
         val reached = withTimeoutOrNull(timeoutMs) {
             while (true) {
-                val current = snapshot()
-                if (current?.cellId == cell && activeNodeId in current.members) return@withTimeoutOrNull true
                 if (expectedStage != null) {
                     val progress = runtime.connectionProgress.value
                     if (progress.cellId == cell.value && progress.stage.ordinal >= expectedStage.ordinal) {
+                        return@withTimeoutOrNull true
+                    }
+                } else {
+                    val current = snapshot()
+                    if (current?.cellId == cell && activeNodeId in current.members) {
                         return@withTimeoutOrNull true
                     }
                 }
@@ -950,6 +963,32 @@ class BoardCellManager @Inject constructor(
             "phase" to (expectedStage?.name ?: "MEMBERSHIP_SNAPSHOT"),
             "timeoutMs" to timeoutMs)
         return reached
+    }
+
+    /**
+     * Restores only the canonical controller's durable ACTIVE replica. On a
+     * nearby join [boardRealmAvailable] remains false, so this grants enough
+     * authority to repair membership but never physical-board write access.
+     */
+    private suspend fun restoreDurableControllerSeed(
+        seed: BoardCellSnapshot?,
+        reason: String,
+    ): Boolean {
+        seed ?: return false
+        val restored = coordinator.restoreTrustedSnapshot(seed, monotonicNow())
+        if (restored !is BoardCellApplyResult.Applied) return false
+        meshTransport.rememberSnapshot(restored.snapshot)
+        BoardCellScopeRegistry.joinCell(restored.snapshot.physicalBoardId, restored.snapshot.cellId)
+        FipsDebugLog.event(
+            "boardcell", "durable_controller_resumed",
+            "reason" to reason,
+            "cell" to FipsDebugLog.id(restored.snapshot.cellId.value),
+            "sequence" to restored.snapshot.sequence,
+            "term" to restored.snapshot.controllerTerm,
+            "members" to restored.snapshot.members.size,
+        )
+        refreshSelected()
+        return true
     }
 
     /** Voluntary leave is canonical when reachable and converges through the

@@ -353,6 +353,42 @@ class BoardCellWireTest {
             shared.controllerTerm, "join-forged-frame"), 4) is BoardCellApplyResult.Rejected)
     }
 
+    @Test fun `resumed durable controller admits waiting direct peer and publishes full snapshot`() = runTest {
+        val board = PhysicalBoardId("board")
+        val cell = BoardCellId("cell")
+        val durable = BoardCellSnapshot(
+            cellId = cell,
+            physicalBoardId = board,
+            epoch = 1,
+            sequence = 7,
+            controllerId = "old-controller",
+            controllerTerm = 3,
+            controllerHeartbeat = 4,
+            lineageId = "existing-lineage",
+            members = setOf("old-controller"),
+        ).withComputedHash()
+        val link = Link("old-controller", direct = setOf("waiting-peer"))
+        val transport = BoardCellMeshTransport(link)
+        val resumed = BoardCellCoordinator("old-controller", transport, settleMs = 0)
+        transport.attach(resumed)
+
+        assertTrue(resumed.restoreTrustedSnapshot(durable, 100) is BoardCellApplyResult.Applied)
+        transport.rememberSnapshot(durable)
+        link.sent.clear()
+        assertNotNull(resumed.joinMember(board, "waiting-peer", 101))
+
+        val current = resumed.snapshot(board)!!
+        assertEquals(setOf("old-controller", "waiting-peer"), current.members)
+        val welcome = link.sent.asSequence()
+            .filter { it.first == "waiting-peer" }
+            .map { BoardCellWireCodec.decode(it.second).message }
+            .filterIsInstance<BoardCellWireMessage.Snapshot>()
+            .lastOrNull()
+        assertNotNull("new direct peer must receive an authoritative welcome snapshot", welcome)
+        assertEquals(current.stateHash, welcome!!.value.stateHash)
+        assertEquals(8, welcome.value.sequence)
+    }
+
     @Test fun `authenticated multi hop heartbeat keeps member live without direct peer view`() = runTest {
         val board = PhysicalBoardId("board")
         val link = Link("host", direct = emptySet())
