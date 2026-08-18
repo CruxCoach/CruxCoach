@@ -1,32 +1,35 @@
-## APKTrack publishing
+# CruxCoach agent rules
 
-- Configuration is in `.apktrack/project.toml` (schema 2). Public tracks are `stable`
-  (production, manual-only) and `fips` (development).
-- Finish agent-owned changes as a focused commit: stage only the files/hunks owned by the task,
-  inspect the cached diff, and run the relevant verification before committing. Never absorb
-  unrelated user or other-agent changes merely to make the worktree clean.
-- After every successful requested FIPS APK build, publish the result to the `fips` track. A
-  build from a dirty worktree has no honest commit provenance: stop and report the modified files
-  instead of publishing it. Never silently commit unrelated user changes.
-- Any workflow that would install a newly built FIPS APK with ADB must also publish that exact
-  committed build to the `fips` track. If ADB or the target device is unavailable, do not skip
-  APKTrack: build and publish the committed APK anyway, then report the device-install blocker.
-- Build with `./gradlew :androidApp:assembleDebug`. Exactly one artifact must exist at
-  `androidApp/build/outputs/apk/debug/androidApp-debug.apk`; stop if it is missing or ambiguous.
-- Use the lowercase full SHA from `git rev-parse HEAD` for both `--commit` and the idempotency key.
-  Use the current branch/worktree name for `--branch`.
-- Obtain the scoped secret from the local secret provider as `APKTRACK_AGENT_TOKEN`. Never print,
-  persist, commit, put in a URL, or include its value in a prompt or log.
-- Publish only after the build succeeds:
+These rules apply to every human-assisted coding agent in this repository.
 
-  ```bash
-  apktrack publish-build androidApp/build/outputs/apk/debug/androidApp-debug.apk \
-    --config .apktrack/project.toml --track fips --branch <branch-or-worktree> \
-    --commit <lowercase-full-git-sha>
-  ```
+## Contributions and branches
 
-- The command waits for the terminal state. A queued response is not success; diagnose a returned
-  job with `apktrack build-status <job-id> --server-url https://stats.cruxcoach.org/apktrack`.
-- On success report the stable track URL, APK SHA-256, branch, and commit. On failure report the
-  sanitized error. Never manually delete Blossom blobs; manifest replacement and grace-period GC
-  own their lifecycle.
+- Work on a focused `feat/*`, `fix/*`, `docs/*`, or `chore/*` branch. Never push directly to
+  `main`. A human review and the required GitHub checks own merge authority.
+- Anyone may propose a pull request. Only logins in `.github/authorized-feature-maintainers.txt`
+  may cause merged `feat/*` commits to be published. Never weaken that check from feature code.
+- Files below `.github/`, `.apktrack/`, Gradle/release configuration, signing scripts, `AGENTS.md`,
+  and `SECURITY.md` are trust-boundary files and require the project owner's review.
+
+## APKTrack feature publishing
+
+- One full `feat/*` branch maps to exactly one permanent APKTrack track and one permanent Android
+  package. Use `python3 scripts/feature_identity.py --branch <branch>`; never invent or override the
+  mapping by hand. The existing Fips override is compatibility-critical.
+- Feature branches build unsigned/debug transport APKs. GitHub and contributors never receive an
+  Android signing key. APKTrack applies the central development signature and verifies the final
+  package, certificate, branch, track, version, and hash against the Root policy.
+- Feature code never receives `APKTRACK_FEATURE_TOKEN` or `APKTRACK_FIPS_TOKEN`. Only the
+  trusted-main `workflow_run` publisher may read them, and that publisher must never execute the
+  downloaded feature artifact.
+- `stable` is production/manual-only. Never publish it from a remote agent or CI feature workflow.
+- A queued APKTrack job is not success. Success requires `status="published"` and
+  `receipt_delivered=true`.
+
+## Change hygiene
+
+- Preserve unrelated user/agent changes. Stage only task-owned hunks and inspect the cached diff.
+- Run the relevant Gradle and Python checks before committing. New UI strings must update the
+  default English and German resources together.
+- Never print, persist, commit, or place in process arguments Android keys, Nostr keys, bunker
+  connections, APKTrack tokens, signing passwords, or release credentials.

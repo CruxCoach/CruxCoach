@@ -19,7 +19,7 @@ validator_pubkey = "8c8095b72c35e5658db62cc8ccb3bb06398d8ce12aca523b4143764db1d6
 url = "https://stats.cruxcoach.org/apktrack"
 nsec_env = "APKTRACK_AGENT_NSEC_HEX"
 upload_token_env = "APKTRACK_AGENT_TOKEN"
-build_command = "./gradlew :androidApp:assembleDebug"
+build_command = "python3 scripts/feature_identity.py --branch <feat-branch> --github-output /tmp/feature-output && ./gradlew :androidApp:assembleDebug"
 artifact_glob = "androidApp/build/outputs/apk/debug/androidApp-debug.apk"
 
 [[android.scope]]

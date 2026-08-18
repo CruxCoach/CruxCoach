@@ -1,0 +1,9 @@
+schema_version = 1
+
+# Existing public stream: keep its package stable so installed Fips builds
+# remain updateable. New feat/* branches use the deterministic default mapping
+# implemented by scripts/feature_identity.py.
+[overrides."feat/board-cell-mesh-mvp-20260814"]
+track = "fips"
+package = "com.cruxcoach.android.dev.feat.board_cell_mesh_mvp"
+label = "CruxCoach Dev · Fips"

@@ -1,0 +1,80 @@
+name: Publish verified feature APK
+
+on:
+  workflow_run:
+    workflows: ['Feature APK build']
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  publish:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      startsWith(github.event.workflow_run.head_branch, 'feat/')
+    runs-on: ubuntu-latest
+    environment: apktrack-feature-publishing
+    steps:
+      # Always check out trusted main. Never execute files from the feature artifact.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: main
+          fetch-depth: 1
+      - name: Authorize feature maintainer
+        env:
+          ACTOR: ${{ github.event.workflow_run.triggering_actor.login }}
+        run: |
+          test -n "$ACTOR"
+          grep -Fvx '#' .github/authorized-feature-maintainers.txt \
+            | sed '/^[[:space:]]*$/d' \
+            | grep -Fx -- "$ACTOR"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: feature-apk
+          path: feature-artifact
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+      - name: Verify branch, commit, identity, and APK hash
+        id: identity
+        env:
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+          COMMIT: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          python3 scripts/feature_identity.py \
+            --branch "$BRANCH" \
+            --verify-metadata feature-artifact/publication.json \
+            --apk feature-artifact/androidApp/build/outputs/apk/debug/androidApp-debug.apk \
+            --commit "$COMMIT" \
+            --github-output "$GITHUB_OUTPUT"
+      - name: Install pinned APKTrack CLI
+        env:
+          WHEEL_URL: https://npub1uux22z2rhhcvk9fs9dp60k3uc5f7frdqy5chrsemsxwgnyl0y9dqhx0gem.nsite.lol/downloads/apktrack-0.2.0-py3-none-any.whl
+          WHEEL_SHA256: f0a567be8c488901b6b2d7dc196acca9938b1d7d0933b684a0e695e5d4597c9e
+        run: |
+          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+            --output "$RUNNER_TEMP/apktrack-0.2.0-py3-none-any.whl" "$WHEEL_URL"
+          echo "$WHEEL_SHA256  $RUNNER_TEMP/apktrack-0.2.0-py3-none-any.whl" | sha256sum --check --strict
+          python3 -m pip install "$RUNNER_TEMP/apktrack-0.2.0-py3-none-any.whl"
+      - name: Publish through APKTrack
+        env:
+          APKTRACK_FEATURE_TOKEN: ${{ secrets.APKTRACK_FEATURE_TOKEN }}
+          APKTRACK_FIPS_TOKEN: ${{ secrets.APKTRACK_FIPS_TOKEN }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+          COMMIT: ${{ github.event.workflow_run.head_sha }}
+          TRACK: ${{ steps.identity.outputs.track }}
+        run: |
+          if [ "$TRACK" = fips ]; then
+            APKTRACK_AGENT_TOKEN="$APKTRACK_FIPS_TOKEN"
+          else
+            APKTRACK_AGENT_TOKEN="$APKTRACK_FEATURE_TOKEN"
+          fi
+          test -n "$APKTRACK_AGENT_TOKEN"
+          export APKTRACK_AGENT_TOKEN
+          apktrack publish-build \
+            feature-artifact/androidApp/build/outputs/apk/debug/androidApp-debug.apk \
+            --config .apktrack/project.toml \
+            --track "$TRACK" \
+            --branch "$BRANCH" \
+            --commit "$COMMIT"
