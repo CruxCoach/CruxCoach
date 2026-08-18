@@ -58,6 +58,7 @@ jobs:
           echo "$WHEEL_SHA256  $RUNNER_TEMP/apktrack-0.2.0-py3-none-any.whl" | sha256sum --check --strict
           python3 -m pip install "$RUNNER_TEMP/apktrack-0.2.0-py3-none-any.whl"
       - name: Publish through APKTrack
+        id: publish
         env:
           APKTRACK_FEATURE_TOKEN: ${{ secrets.APKTRACK_FEATURE_TOKEN }}
           APKTRACK_FIPS_TOKEN: ${{ secrets.APKTRACK_FIPS_TOKEN }}
@@ -72,9 +73,47 @@ jobs:
           fi
           test -n "$APKTRACK_AGENT_TOKEN"
           export APKTRACK_AGENT_TOKEN
+          set -o pipefail
           apktrack publish-build \
             feature-artifact/androidApp/build/outputs/apk/debug/androidApp-debug.apk \
             --config .apktrack/project.toml \
             --track "$TRACK" \
             --branch "$BRANCH" \
-            --commit "$COMMIT"
+            --commit "$COMMIT" \
+            | tee "$RUNNER_TEMP/apktrack-job.json"
+          python3 - "$RUNNER_TEMP/apktrack-job.json" "$GITHUB_OUTPUT" <<'PY'
+          import json
+          import re
+          import sys
+
+          job = json.loads(open(sys.argv[1], encoding="utf-8").read())
+          digest = job.get("release_sha256")
+          if job.get("status") != "published" or job.get("receipt_delivered") is not True:
+              raise SystemExit("APKTrack did not confirm a delivered publication receipt")
+          if not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+              raise SystemExit("APKTrack returned an invalid release SHA-256")
+          with open(sys.argv[2], "a", encoding="utf-8") as output:
+              output.write(f"release_sha256={digest}\n")
+          PY
+      - name: Download and verify centrally signed APK
+        env:
+          APKTRACK_URL: https://stats.cruxcoach.org/apktrack
+          COMMIT: ${{ github.event.workflow_run.head_sha }}
+          RELEASE_SHA256: ${{ steps.publish.outputs.release_sha256 }}
+          TRACK: ${{ steps.identity.outputs.track }}
+        run: |
+          test -n "$RELEASE_SHA256"
+          mkdir -p signed-artifact
+          filename="CruxCoach-${TRACK}-${COMMIT:0:12}-signed.apk"
+          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+            --retry 5 --retry-all-errors \
+            --output "signed-artifact/$filename" \
+            "$APKTRACK_URL/v2/blobs/$RELEASE_SHA256"
+          echo "$RELEASE_SHA256  signed-artifact/$filename" | sha256sum --check --strict
+      - name: Store centrally signed APK on GitHub
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: signed-${{ steps.identity.outputs.track }}-${{ github.event.workflow_run.head_sha }}
+          path: signed-artifact/*.apk
+          if-no-files-found: error
+          retention-days: 90
