@@ -44,13 +44,13 @@ class ReleaseMetadataTest {
     fun `the build identifies as this release`() {
         requireProductionReleaseMetadata()
         assertEquals("0.2.3", stringField("versionName"))
-        assertEquals(1000012, intField("versionCode"))
+        assertEquals(1000013, intField("versionCode"))
         assertEquals(
             "0.2.3",
             BuildConfig.VERSION_NAME.removeSuffix("-dev"),
             "debug builds may carry the configured -dev suffix",
         )
-        assertEquals(1000012, BuildConfig.VERSION_CODE)
+        assertEquals(1000013, BuildConfig.VERSION_CODE)
     }
 
     @Test

@@ -99,12 +99,26 @@ enum class MeshMembershipTransition { IDLE, LEAVING, JOINING, ERROR }
 
 /** Guards the restore window where physical ownership outlives the projected snapshot. */
 internal object BoardCellNearbyJoinPolicy {
+    // Radio and FIPS authentication normally finish well before the host has
+    // reconstructed canonical BoardCell authority after a cold start. Keep an
+    // already-authenticated edge alive across that bounded recovery window so
+    // the user never has to press Join a second time merely to receive the
+    // first ACTIVE snapshot.
+    const val HOST_READINESS_TIMEOUT_MS = 45_000L
+
     fun keepsActivePhysicalRealm(
         targetRealmId: String,
         activeRealmId: String?,
         runtimeRunning: Boolean,
         physicalBoardOwnerHeld: Boolean,
     ): Boolean = physicalBoardOwnerHeld && runtimeRunning && activeRealmId == targetRealmId
+
+    fun hasActiveMembership(
+        snapshot: BoardCellSnapshot?,
+        cellId: BoardCellId,
+        localNodeId: String,
+    ): Boolean = snapshot?.cellId == cellId && localNodeId in snapshot.members &&
+        snapshot.availability == BoardCellAvailability.ACTIVE
 }
 
 /** A live connection to the exact physical board is itself the recovery fence. */
@@ -410,6 +424,12 @@ class BoardCellManager @Inject constructor(
                 }
                 refreshSelected()
                 processHandover()
+                // A durable non-controller host is restored above as a
+                // deliberately frozen recovery base. Start its fenced election
+                // immediately; waiting for the periodic maintenance tick makes
+                // host readiness depend on coroutine scheduling at exactly the
+                // moment a nearby participant may already be joining.
+                processControllerRecovery()
             }
         }
     }
@@ -1097,7 +1117,8 @@ class BoardCellManager @Inject constructor(
                     }
                 } else {
                     val current = snapshot()
-                    if (current?.cellId == cell && activeNodeId in current.members) {
+                    if (BoardCellNearbyJoinPolicy.hasActiveMembership(
+                            current, cell, activeNodeId)) {
                         return@withTimeoutOrNull true
                     }
                 }
@@ -1919,7 +1940,11 @@ class BoardCellManager @Inject constructor(
             NearbyJoinPhase("l2cap_channel", FipsConnectionStage.CHANNEL_OPEN, 12_000L),
             NearbyJoinPhase("fips_peer", FipsConnectionStage.PEER_AUTHENTICATED, 20_000L),
             NearbyJoinPhase("direct_admission", FipsConnectionStage.DIRECT_AUTHENTICATED, 12_000L),
-            NearbyJoinPhase("membership_snapshot", null, 12_000L),
+            NearbyJoinPhase(
+                "membership_snapshot",
+                null,
+                BoardCellNearbyJoinPolicy.HOST_READINESS_TIMEOUT_MS,
+            ),
         )
         /** Three missed heartbeat windows trigger fenced physical recovery. */
         private const val CONTROLLER_LEASE_TIMEOUT_MS = 6_000L
