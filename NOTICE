@@ -72,8 +72,13 @@ mapbox-android-gestures — Copyright (c) Mapbox, Inc. Transitive dependency
     mirrored in THIRD_PARTY_LICENSES.md.
 
 FIPS (Free Internetworking Peering System) — Copyright (c) Johnathan Corgan
-    and contributors. Android mesh transport is built from exact commit
-    967776079ba5ddc8fe118c3f289365b51eb03737. Licensed under MIT; full text:
+    and contributors. The Android mesh transport is built from FIPS source
+    vendored into this repository at native/fips, taken verbatim from exact
+    upstream commit 6580a806f9b05ee10497786f872fd65480ca8e5c and modified only
+    by the patch series in native/fips/patches. Provenance, the superseded
+    commit and the re-verification procedure are recorded in
+    native/fips/VENDOR.toml. Licensed under MIT; full text is preserved both
+    as the upstream file native/fips/LICENSE and as
     native/fips-bridge/LICENSE-FIPS-MIT.
 
 Myco — Copyright (c) Origami74/Myco contributors. Its MIT-licensed Android

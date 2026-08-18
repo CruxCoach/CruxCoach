@@ -236,9 +236,20 @@ These images are **not** covered by the CruxCoach GPLv3 source license.
 
 - **Used in:** `native/fips-bridge`, compiled into `libcruxcoach_fips.so`.
 - **Upstream:** https://github.com/jmcorgan/fips
-- **Pinned revision:** `967776079ba5ddc8fe118c3f289365b51eb03737`
-- **License:** MIT. Full text: `native/fips-bridge/LICENSE-FIPS-MIT`.
-- **Distribution form:** Cargo source dependency and arm64 binary in the APK.
+- **Vendored revision:** `6580a806f9b05ee10497786f872fd65480ca8e5c` (reviewed
+  platform-integration lineage; supersedes
+  `967776079ba5ddc8fe118c3f289365b51eb03737`).
+- **License:** MIT. Full text: the upstream `native/fips/LICENSE`, also
+  mirrored at `native/fips-bridge/LICENSE-FIPS-MIT`.
+- **Distribution form:** source vendored into this repository at `native/fips`
+  and an arm64 binary in the APK. It is a Cargo *path* dependency, not a Git
+  revision: the reviewed commit is a branch head, and a `rev =` pin would leave
+  the build dependent on upstream object retention.
+- **Modifications:** exactly the patch series in `native/fips/patches`, applied
+  in the order recorded by `native/fips/VENDOR.toml`. Everything else is
+  byte-identical to upstream. `python3 scripts/verify_vendored_fips.py` proves
+  the first claim offline (and runs in CI); adding
+  `--upstream <path-to-fips-clone>` proves the second against upstream itself.
 
 ### Myco Android BLE reference
 
