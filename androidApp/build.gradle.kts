@@ -16,6 +16,31 @@ val localProps = Properties().apply {
     if (f.exists()) load(FileInputStream(f))
 }
 
+// CI passes a reviewed, deterministic identity for feat/* builds. The
+// production namespace is never accepted as a feature identity, and all
+// values are validated again by APKTrack after server-side signing.
+val featureBranch = providers.gradleProperty("featureBranch").orNull
+val featureTrack = providers.gradleProperty("featureTrack").orNull
+val featurePackage = providers.gradleProperty("featurePackage").orNull
+val featureLabel = providers.gradleProperty("featureLabel").orNull
+val featureVersionCode = providers.gradleProperty("featureVersionCode").orNull?.toIntOrNull()
+val featureValues = listOf(featureBranch, featureTrack, featurePackage, featureLabel)
+require(featureValues.all { it == null } || featureValues.all { !it.isNullOrBlank() }) {
+    "featureBranch, featureTrack, featurePackage, and featureLabel must be supplied together"
+}
+if (featureBranch != null) {
+    require(featureBranch.startsWith("feat/")) { "published feature branches must start with feat/" }
+    require(featureTrack!!.matches(Regex("[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"))) {
+        "featureTrack must be an APKTrack slug"
+    }
+    require(featurePackage!!.matches(Regex("com\\.cruxcoach\\.android\\.dev(?:\\.[A-Za-z][A-Za-z0-9_]*)+"))) {
+        "featurePackage must be inside the CruxCoach development namespace"
+    }
+    require(featureVersionCode != null && featureVersionCode in 1..Int.MAX_VALUE) {
+        "featureVersionCode must be a positive Android version code"
+    }
+}
+
 android {
     namespace = "com.cruxcoach.android"
     compileSdk = 36
@@ -24,7 +49,7 @@ android {
         applicationId = "com.cruxcoach.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 7
+        versionCode = featureVersionCode ?: 7
         versionName = "0.2.1"
 
         // Only bundle arm64 native libs. armeabi-v7a alone added ~10.7 MB
@@ -159,6 +184,19 @@ android {
     }
 
     buildTypes {
+        debug {
+            if (featurePackage != null) {
+                applicationIdSuffix = featurePackage.removePrefix("com.cruxcoach.android")
+                resValue("string", "app_name", featureLabel!!)
+                buildConfigField("String", "APKTRACK_FEATURE_TRACK", "\"${featureTrack}\"")
+                buildConfigField("String", "APKTRACK_SOURCE_BRANCH", "\"${featureBranch}\"")
+            } else {
+                applicationIdSuffix = ".dev.local"
+                resValue("string", "app_name", "CruxCoach Dev · local")
+                buildConfigField("String", "APKTRACK_FEATURE_TRACK", "\"\"")
+                buildConfigField("String", "APKTRACK_SOURCE_BRANCH", "\"\"")
+            }
+        }
         release {
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
             isMinifyEnabled = true

@@ -126,9 +126,26 @@ androidApp/                # Android app (Jetpack Compose)
 └── nostr/                 # Nostr relay pool, sync, announcements
 ```
 
-### Releases & CI (maintainer only)
+### Pull requests, feature APKs, and releases
 
-The release workflow (`.forgejo/workflows/release.yml`) runs **exclusively** on the maintainer's self-hosted Forgejo runner. Pull requests do **not** receive automated build or test feedback — the maintainer runs Gradle locally during review.
+Every pull request receives secret-free unit-test, lint, and debug-build checks on a GitHub-hosted
+runner. Pull requests may target `main` or a maintained `feat/*` integration branch. Merges to
+`main` require the project owner's approval; selected feature maintainers may review and merge into
+their `feat/*` branches.
+
+Every successful push to `feat/*` produces one branch-specific APK artifact. A separate workflow
+loaded from trusted `main` verifies the authorized maintainer, branch, commit, deterministic
+track/package identity, and APK hash before sending it to APKTrack. Feature code never sees the
+upload token or an Android signing key. APKTrack signs the final APK with the central Development
+key. Each full branch name permanently maps to one APKTrack track and one Android package; run
+`python3 scripts/feature_identity.py --branch feat/example` to inspect the mapping.
+
+Production releases remain maintainer-only and manual. A merge or push to `main` never publishes a
+release. The Forgejo workflow must be started manually from `main` with `confirm_production` set to
+`RELEASE`. The Production signing key is never available to pull-request or feature-publication
+workflows.
+
+The legacy release workflow (`.forgejo/workflows/release.yml`) runs **exclusively** on the maintainer's self-hosted Forgejo runner.
 
 The runner expects two environment variables to be defined in its execution environment (e.g. via systemd `Environment=` directives or the runner's config file):
 

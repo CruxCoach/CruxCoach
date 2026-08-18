@@ -1,0 +1,13 @@
+# Trust and release boundaries always require the project owner.
+/.github/ @CruxCoach
+/.forgejo/workflows/ @CruxCoach
+/.apktrack/ @CruxCoach
+/AGENTS.md @CruxCoach
+/androidApp/build.gradle.kts @CruxCoach
+/build.gradle.kts @CruxCoach
+/settings.gradle.kts @CruxCoach
+/gradle/ @CruxCoach
+/scripts/feature_identity.py @CruxCoach
+/scripts/*release* @CruxCoach
+/zapstore.yaml @CruxCoach
+/SECURITY.md @CruxCoach
