@@ -45,6 +45,8 @@ jobs:
             -PfeaturePackage="$FEATURE_PACKAGE" \
             -PfeatureLabel="$FEATURE_LABEL" \
             -PfeatureVersionCode="$FEATURE_VERSION_CODE"
+      - name: Install pinned Rust Android target
+        run: rustup target add --toolchain 1.94.1 aarch64-linux-android
       - name: Build branch-specific APK
         env:
           FEATURE_BRANCH: ${{ steps.identity.outputs.branch }}
