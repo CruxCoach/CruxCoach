@@ -1,0 +1,23 @@
+appId: com.cruxcoach.android
+name: subflow-open-dev-chat
+---
+- runFlow: launch-browser.yaml
+- tapOn:
+    id: "board_settings_button"
+- scrollUntilVisible:
+    element:
+      id: "settings_section_dev_contact"
+    direction: DOWN
+- tapOn:
+    id: "settings_section_dev_contact"
+- scrollUntilVisible:
+    element:
+      id: "devcontact_messages"
+    direction: DOWN
+- tapOn:
+    id: "devcontact_messages"
+- assertVisible:
+    id: "dev_chat_screen"
+- assertVisible:
+    id: "dev_chat_input"
+

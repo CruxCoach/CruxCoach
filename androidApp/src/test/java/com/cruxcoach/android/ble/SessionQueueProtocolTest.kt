@@ -4,6 +4,16 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SessionQueueProtocolTest {
+    @Test
+    fun `command result round trips for GATT feedback`() {
+        SessionCommandResult.entries.forEach { result ->
+            val decoded = SessionQueueProtocol.decodeEvent(
+                SessionQueueProtocol.encodeEventCommandResult(42L, result),
+            ) as SessionEvent.CommandResult
+            assertEquals(42L, decoded.requestId)
+            assertEquals(result, decoded.result)
+        }
+    }
 
     // ===== Command roundtrip tests =====
 
@@ -17,6 +27,14 @@ class SessionQueueProtocolTest {
         // Protocol normalizes UUIDs to uppercase, no hyphens
         assertEquals(uuid.replace("-", "").uppercase(), add.climbUuid)
         assertEquals(40, add.angle)
+    }
+
+    @Test
+    fun `join optionally carries FIPS member identity`() {
+        val command = SessionQueueProtocol.decodeCommand(
+            SessionQueueProtocol.encodeJoin("Alice", "npub1example")) as SessionCommand.Join
+        assertEquals("Alice", command.displayName)
+        assertEquals("npub1example", command.memberNpub)
     }
 
     @Test
@@ -39,6 +57,12 @@ class SessionQueueProtocolTest {
     fun `encodeNext and decodeCommand roundtrip`() {
         val cmd = SessionQueueProtocol.decodeCommand(SessionQueueProtocol.encodeNext())
         assertTrue(cmd is SessionCommand.Next)
+    }
+
+    @Test
+    fun `encodeResend and decodeCommand roundtrip`() {
+        val cmd = SessionQueueProtocol.decodeCommand(SessionQueueProtocol.encodeResend())
+        assertTrue(cmd is SessionCommand.Resend)
     }
 
     @Test
@@ -116,9 +140,12 @@ class SessionQueueProtocolTest {
             QueueItem("770e8400-e29b-41d4-a716-446655440002", 55)
         )
         val encoded = SessionQueueProtocol.encodeQueueState(1, items)
-        val (index, decoded) = SessionQueueProtocol.decodeQueueState(encoded)!!
+        val page = SessionQueueProtocol.decodeQueueState(encoded)!!
+        val index = page.currentIndex
+        val decoded = page.items
 
         assertEquals(1, index)
+        assertEquals(1, page.pageCount)
         assertEquals(3, decoded.size)
         // Protocol normalizes UUIDs to uppercase, no hyphens
         assertEquals("550E8400E29B41D4A716446655440000", decoded[0].climbUuid)
@@ -132,19 +159,48 @@ class SessionQueueProtocolTest {
     @Test
     fun `encodeQueueState empty queue roundtrip`() {
         val encoded = SessionQueueProtocol.encodeQueueState(0, emptyList())
-        val (index, decoded) = SessionQueueProtocol.decodeQueueState(encoded)!!
-        assertEquals(0, index)
-        assertTrue(decoded.isEmpty())
+        val page = SessionQueueProtocol.decodeQueueState(encoded)!!
+        assertEquals(0, page.currentIndex)
+        assertTrue(page.items.isEmpty())
     }
 
     // ===== Session info roundtrip =====
 
     @Test
     fun `encodeSessionInfo and decodeSessionInfo roundtrip`() {
-        val encoded = SessionQueueProtocol.encodeSessionInfo("Host123", 3)
+        val encoded = SessionQueueProtocol.encodeSessionInfo(
+            "Host123",
+            3,
+            awaitingExplicitSend = true,
+        )
         val info = SessionQueueProtocol.decodeSessionInfo(encoded)!!
         assertEquals("Host123", info.hostName)
         assertEquals(3, info.participantCount)
+        assertTrue(info.awaitingExplicitSend)
+    }
+
+    @Test
+    fun `decodeSessionInfo accepts payload from client before explicit send flag`() {
+        val hostName = "OldHost".toByteArray(Charsets.UTF_8)
+        val legacy = byteArrayOf(2, hostName.size.toByte()) + hostName
+
+        val info = SessionQueueProtocol.decodeSessionInfo(legacy)!!
+
+        assertEquals("OldHost", info.hostName)
+        assertEquals(2, info.participantCount)
+        assertFalse(info.awaitingExplicitSend)
+    }
+
+    @Test
+    fun `session info carries board cell scope while legacy remains readable`() {
+        val scoped = SessionQueueProtocol.decodeSessionInfo(SessionQueueProtocol.encodeSessionInfo(
+            "Host", 4, "kilter:serial:abc", "cell-1", awaitingExplicitSend = true))!!
+        assertEquals("kilter:serial:abc", scoped.physicalBoardId)
+        assertEquals("cell-1", scoped.boardCellId)
+        assertTrue(scoped.awaitingExplicitSend)
+        val legacy = SessionQueueProtocol.decodeSessionInfo(SessionQueueProtocol.encodeSessionInfo("Host", 4))!!
+        assertNull(legacy.physicalBoardId)
+        assertNull(legacy.boardCellId)
     }
 
     // ===== Participant list roundtrip =====
@@ -209,6 +265,37 @@ class SessionQueueProtocolTest {
         val move = cmd as SessionCommand.Move
         assertEquals(1, move.from)
         assertEquals(3, move.to)
+    }
+
+    @Test
+    fun `semantic command request roundtrips and remains legacy-decodable`() {
+        val uuid = "550e8400-e29b-41d4-a716-446655440000"
+        val command = SessionCommand.Move(2, 0)
+        val context = SessionCommandContext(
+            sessionId = 42,
+            subject = SessionItemRef(uuid, 40, 0, 1),
+            after = SessionItemRef("660e8400-e29b-41d4-a716-446655440001", 30, 0, 1),
+        )
+
+        val encoded = SessionQueueProtocol.encodeCommandRequest(1234L, command, context)
+
+        assertEquals(command, SessionQueueProtocol.decodeCommand(encoded))
+        assertEquals(SessionCommandRequest(1234L, command, context.copy(
+            subject = context.subject!!.copy(climbUuid = uuid.replace("-", "").uppercase()),
+            after = context.after!!.copy(climbUuid = context.after.climbUuid.replace("-", "").uppercase()),
+        )), SessionQueueProtocol.decodeCommandRequest(encoded))
+    }
+
+    @Test
+    fun `targeted command result roundtrips`() {
+        val encoded = SessionQueueProtocol.encodeEventCommandResult(
+            99L, SessionCommandResult.CONFLICT,
+        )
+        assertEquals(
+            SessionEvent.CommandResult(99L, SessionCommandResult.CONFLICT),
+            SessionQueueProtocol.decodeEvent(encoded),
+        )
+        assertTrue(encoded.size <= 20)
     }
 
     // ===== UUID handling =====

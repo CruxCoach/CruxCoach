@@ -4,6 +4,7 @@ import com.cruxcoach.android.nostr.model.RelayConfig
 import com.cruxcoach.android.nostr.model.RelaySource
 import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -76,5 +77,15 @@ class NostrRelayPoolContractTest {
             setOf("wss://read-only.example.com", "wss://both.example.com"),
             p.readRelays().map { it.url }.toSet(),
         )
+    }
+
+    @Test
+    fun `stored refetch bypasses an id already seen by discovery`() {
+        val p = pool()
+        val eventId = "ab".repeat(32)
+
+        assertTrue(p.shouldDeliverEvent(eventId, skipDedup = false))
+        assertFalse(p.shouldDeliverEvent(eventId, skipDedup = false))
+        assertTrue(p.shouldDeliverEvent(eventId, skipDedup = true))
     }
 }

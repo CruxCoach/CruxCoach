@@ -7,8 +7,10 @@ import android.bluetooth.le.AdvertisingSet
 import android.bluetooth.le.AdvertisingSetCallback
 import android.bluetooth.le.AdvertisingSetParameters
 import android.content.Context
+import android.os.ParcelUuid
 import android.util.Log
 import androidx.annotation.VisibleForTesting
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -56,8 +58,16 @@ class ClimbBleAdvertiser(
     // Priority state: session > climb > boardConnected > nothing.
     // When a session queue is active, individual climb advertising is suppressed —
     // the session handles sharing via GATT, not per-climb advertising.
-    private var activeClimb: Pair<String, Int>? = null // (uuid, angle)
+    private data class ActiveClimb(
+        val uuid: String,
+        val angle: Int,
+        val projectionSurvivesDisconnect: Boolean,
+    )
+
+    private var activeClimb: ActiveClimb? = null
     private var boardConnected: Boolean = false
+    private var acceptsDisconnectRequests: Boolean = true
+    private var supportsConcurrentConnections: Boolean = false
 
     /** True when the local user has sent a climb to the board and is still connected. */
     fun hasActiveClimb(): Boolean = activeClimb != null
@@ -72,7 +82,11 @@ class ClimbBleAdvertiser(
     fun isBoardConnected(): Boolean = boardConnected
 
     /** Returns the currently active climb (uuid, angle) or null. */
-    fun getActiveClimb(): Pair<String, Int>? = activeClimb
+    fun getActiveClimb(): Pair<String, Int>? = activeClimb?.let { it.uuid to it.angle }
+
+    /** Whether the active board is expected to retain its LEDs after disconnect. */
+    fun activeProjectionSurvivesDisconnect(): Boolean =
+        activeClimb?.projectionSurvivesDisconnect ?: true
 
     /**
      * When true, [advertiseClimb] and [advertiseConnected] are suppressed and
@@ -156,9 +170,16 @@ class ClimbBleAdvertiser(
     /** Advertises a specific climb. Highest priority — takes precedence over boardConnected.
      *  Suppressed when a session queue is active ([suppressClimbAdvertising] = true). */
     @SuppressLint("MissingPermission")
-    fun advertiseClimb(climbUuid: String, angle: Int, sharingEnabled: Boolean = true): String {
-        activeClimb = climbUuid to angle
-        scope.launch { boardStateManager.setLastClimb(climbUuid, angle) }
+    fun advertiseClimb(
+        climbUuid: String,
+        angle: Int,
+        sharingEnabled: Boolean = true,
+        projectionSurvivesDisconnect: Boolean = true,
+    ): String {
+        activeClimb = ActiveClimb(climbUuid, angle, projectionSurvivesDisconnect)
+        scope.launch {
+            boardStateManager.setLastClimb(climbUuid, angle, projectionSurvivesDisconnect)
+        }
         if (suppressClimbAdvertising) {
             Log.d(TAG, "advertiseClimb: suppressed (session active)")
             return "suppressed (session active)"
@@ -170,7 +191,13 @@ class ClimbBleAdvertiser(
         advertiser ?: return "no advertiser (BT off?)"
         disconnectTimeoutJob?.cancel()
 
-        val payload = NearbyClimbProtocol.encodeClimbData(climbUuid, angle)
+        val payload = NearbyClimbProtocol.encodeClimbData(
+            climbUuid,
+            angle,
+            projectionSurvivesDisconnect,
+            acceptsDisconnectRequests,
+            supportsConcurrentConnections,
+        )
         val data = buildAdvertiseData(payload)
         Log.d(TAG, "START ClimbData uuid=${climbUuid.take(8)} angle=$angle sharing=$sharingEnabled")
 
@@ -182,8 +209,13 @@ class ClimbBleAdvertiser(
      * climb is currently being advertised (climb has higher priority).
      */
     @SuppressLint("MissingPermission")
-    fun advertiseConnected(acceptsDisconnect: Boolean = true): String {
+    fun advertiseConnected(
+        acceptsDisconnect: Boolean = acceptsDisconnectRequests,
+        supportsConcurrentConnections: Boolean = this.supportsConcurrentConnections,
+    ): String {
         boardConnected = true
+        acceptsDisconnectRequests = acceptsDisconnect
+        this.supportsConcurrentConnections = supportsConcurrentConnections
         if (suppressClimbAdvertising) {
             Log.d(TAG, "advertiseConnected: suppressed (session active)")
             return "suppressed (session active)"
@@ -198,7 +230,10 @@ class ClimbBleAdvertiser(
         advertiser ?: return "no advertiser (BT off?)"
         disconnectTimeoutJob?.cancel()
 
-        val payload = NearbyClimbProtocol.encodeBoardConnected(acceptsDisconnect)
+        val payload = NearbyClimbProtocol.encodeBoardConnected(
+            acceptsDisconnect,
+            supportsConcurrentConnections,
+        )
         val data = buildAdvertiseData(payload)
         return updateOrStartAdvertising(data)
     }
@@ -215,7 +250,10 @@ class ClimbBleAdvertiser(
             if (!BlePermissionHelper.hasAdvertisingPermission(context)) return
             advertiser ?: return
             disconnectTimeoutJob?.cancel()
-            val payload = NearbyClimbProtocol.encodeBoardConnected()
+            val payload = NearbyClimbProtocol.encodeBoardConnected(
+                acceptsDisconnectRequests,
+                supportsConcurrentConnections,
+            )
             val data = buildAdvertiseData(payload)
             updateOrStartAdvertising(data)
         } else {
@@ -225,8 +263,9 @@ class ClimbBleAdvertiser(
 
     /**
      * Called when the board disconnects. If a climb was active, switches to
-     * TYPE_LAST_CLIMB advertising (LEDs are still visible on the physical board)
-     * for [LAST_CLIMB_TIMEOUT_MS], then sends GONE and stops.
+     * TYPE_LAST_CLIMB advertising for 30 seconds, then sends GONE
+     * and stops. The payload explicitly distinguishes retained LEDs from a
+     * MoonBoard climb that is only available for reconnect/resend.
      */
     @SuppressLint("MissingPermission")
     fun onBoardDisconnected(sharingEnabled: Boolean = true) {
@@ -240,14 +279,23 @@ class ClimbBleAdvertiser(
         if (lastClimb == null && !wasConnected) return
 
         if (lastClimb != null) {
-            Log.d(TAG, "DISCONNECT lastClimb=${lastClimb.first.take(8)} wasConnected=$wasConnected → advertising LastClimb for 30s")
+            Log.d(TAG, "DISCONNECT lastClimb=${lastClimb.uuid.take(8)} retained=${lastClimb.projectionSurvivesDisconnect} wasConnected=$wasConnected → advertising LastClimb for 30s")
             // Dedup: setLastClimb was already called in advertiseClimb() (same UUID+angle → skip)
-            scope.launch { boardStateManager.setLastClimb(lastClimb.first, lastClimb.second) }
+            scope.launch {
+                boardStateManager.setLastClimb(
+                    lastClimb.uuid,
+                    lastClimb.angle,
+                    lastClimb.projectionSurvivesDisconnect,
+                )
+            }
 
             // Try BLE advertising for remote visibility (only with sharing enabled)
             if (sharingEnabled && BlePermissionHelper.hasAdvertisingPermission(context) && advertiser != null) {
-                val (uuid, angle) = lastClimb
-                val payload = NearbyClimbProtocol.encodeLastClimb(uuid, angle)
+                val payload = NearbyClimbProtocol.encodeLastClimb(
+                    lastClimb.uuid,
+                    lastClimb.angle,
+                    lastClimb.projectionSurvivesDisconnect,
+                )
                 val data = buildAdvertiseData(payload)
                 updateOrStartAdvertising(data)
                 // Bug 2: LastClimb advertising for 30s so remote scanners reliably receive it.
@@ -262,7 +310,8 @@ class ClimbBleAdvertiser(
             }
         } else if (sharingEnabled) {
             // Was connected but no climb was active — stop advertising.
-            // Manager state NOT touched — LEDs from previous climb still on board.
+            // Preserve the manager's previous last-climb metadata: a connection
+            // without a new send gives us no evidence that it was overwritten.
             sendGoneAndStop()
         }
     }
@@ -408,6 +457,93 @@ class ClimbBleAdvertiser(
         sessionSet = null
     }
 
+    // --- CruxRelay board-emulation advertising (FEAT-044) ---
+    private var relaySet: AdvertisingSet? = null
+    /** Async start result of the current [startRelayAdvertising] attempt —
+     *  completed with the controller status from [relaySetCallback] so the
+     *  relay manager can surface a failure instead of assuming success. */
+    private var relayStartResult: CompletableDeferred<Int>? = null
+    private val relaySetCallback = object : AdvertisingSetCallback() {
+        override fun onAdvertisingSetStarted(advertisingSet: AdvertisingSet?, txPower: Int, status: Int) {
+            if (status == ADVERTISE_SUCCESS) {
+                relaySet = advertisingSet
+                Log.d(TAG, "Relay advertising started (txPower=$txPower)")
+            } else {
+                Log.e(TAG, "Relay advertising failed: status=$status")
+                relaySet = null
+            }
+            relayStartResult?.complete(status)
+        }
+        override fun onAdvertisingEnabled(advertisingSet: AdvertisingSet?, enable: Boolean, status: Int) {
+            if (!enable && relaySet === advertisingSet) {
+                Log.d(TAG, "Relay advertising disabled by controller (client connected?)")
+                relaySet = null
+            }
+        }
+        override fun onAdvertisingSetStopped(advertisingSet: AdvertisingSet?) { relaySet = null }
+    }
+
+    /**
+     * Advertise as a board so the OFFICIAL Kilter app lists CruxRelay. The
+     * listing gate is the board ADVERTISING service UUID (4488B571), placed in
+     * the connectable ADV_IND; the transparent name (set on the adapter by
+     * [com.cruxcoach.android.data.CruxRelayManager]) rides the SCAN_RESPONSE —
+     * the 128-bit UUID already fills the 31-byte ADV_IND. Connectable so the app
+     * opens a GATT link to [RelayGattServer].
+     */
+    @SuppressLint("MissingPermission")
+    fun startRelayAdvertising(): String {
+        if (!BlePermissionHelper.hasAdvertisingPermission(context)) return "no permission"
+        val adv = advertiser ?: return "no advertiser (BT off?)"
+        stopRelayAdvertisingInternal()
+        val params = AdvertisingSetParameters.Builder()
+            .setLegacyMode(true)
+            .setConnectable(true)
+            .setScannable(true)
+            .setInterval(AdvertisingSetParameters.INTERVAL_LOW)
+            .setTxPowerLevel(AdvertisingSetParameters.TX_POWER_MEDIUM)
+            .build()
+        val advData = AdvertiseData.Builder()
+            .setIncludeDeviceName(false)
+            .addServiceUuid(ParcelUuid(BoardBleUuids.ADVERTISING_SERVICE))
+            .build()
+        val scanResponse = AdvertiseData.Builder()
+            .setIncludeDeviceName(true) // the adapter's (transparent) name
+            .build()
+        val started = CompletableDeferred<Int>()
+        relayStartResult = started
+        return try {
+            adv.startAdvertisingSet(params, advData, scanResponse, null, null, relaySetCallback)
+            "started"
+        } catch (e: Exception) {
+            Log.e(TAG, "startRelayAdvertising failed", e)
+            relayStartResult = null
+            "failed: ${e.message}"
+        }
+    }
+
+    /** Await the async controller result ([AdvertisingSetCallback.onAdvertisingSetStarted])
+     *  of the in-flight [startRelayAdvertising]. Null when nothing is in flight
+     *  (stopped meanwhile); otherwise the status ([AdvertisingSetCallback.ADVERTISE_SUCCESS]
+     *  = 0 on success). The caller bounds the wait with its own timeout. */
+    suspend fun awaitRelayAdvertisingStart(): Int? = relayStartResult?.await()
+
+    @SuppressLint("MissingPermission")
+    fun stopRelayAdvertising() = stopRelayAdvertisingInternal()
+
+    @SuppressLint("MissingPermission")
+    private fun stopRelayAdvertisingInternal() {
+        val adv = advertiser ?: return
+        // Unconditional stop: relaySet is only assigned in the ASYNC start
+        // callback, so a stop racing that callback would otherwise skip
+        // stopAdvertisingSet and leak a live advertising set.
+        try { adv.stopAdvertisingSet(relaySetCallback) } catch (e: Exception) {
+            Log.e(TAG, "Error stopping relay advertising", e)
+        }
+        relaySet = null
+        relayStartResult = null
+    }
+
     /** Broadcasts a disconnect response (accepted/rejected), then stops after 200ms. */
     @SuppressLint("MissingPermission")
     fun advertiseDisconnectResponse(accepted: Boolean) {
@@ -459,10 +595,18 @@ class ClimbBleAdvertiser(
      * Does NOT manage state — [BoardStateManager] is the single source of truth.
      */
     @SuppressLint("MissingPermission")
-    fun advertiseLastClimb(climbUuid: String, angle: Int) {
-        Log.d(TAG, "advertiseLastClimb: $climbUuid angle=$angle")
+    fun advertiseLastClimb(
+        climbUuid: String,
+        angle: Int,
+        projectionSurvivesDisconnect: Boolean = true,
+    ) {
+        Log.d(TAG, "advertiseLastClimb: $climbUuid angle=$angle retained=$projectionSurvivesDisconnect")
         if (BlePermissionHelper.hasAdvertisingPermission(context) && advertiser != null) {
-            val payload = NearbyClimbProtocol.encodeLastClimb(climbUuid, angle)
+            val payload = NearbyClimbProtocol.encodeLastClimb(
+                climbUuid,
+                angle,
+                projectionSurvivesDisconnect,
+            )
             val data = buildAdvertiseData(payload)
             updateOrStartAdvertising(data)
         }
@@ -472,7 +616,7 @@ class ClimbBleAdvertiser(
      *  Called when [suppressClimbAdvertising] is set to true. */
     private fun stopClimbAdvertising() {
         activeClimb = null
-        // No clearLastClimb — board state persists (LEDs still on, session takes over)
+        // Preserve last-climb metadata while the session takes over.
         disconnectTimeoutJob?.cancel()
         disconnectTimeoutJob = null
         sendGoneAndStop()
@@ -482,7 +626,7 @@ class ClimbBleAdvertiser(
     fun stopAdvertising() {
         disconnectTimeoutJob?.cancel()
         disconnectTimeoutJob = null
-        // No clearLastClimb — stopping advertising doesn't change the physical board state
+        // Advertising lifecycle is separate from saved last-climb metadata.
         sendGoneAndStop()
     }
 

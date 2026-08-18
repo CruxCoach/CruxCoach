@@ -10,10 +10,11 @@ package com.cruxcoach.domain.board
  *
  *     l#<token><serialPos>,<token><serialPos>,...#
  *
- * `l#` is the lights-only prefix. The `~D…` "lights above holds"
- * config preamble is decoder-supported but never emitted by a client,
- * so the encoder only produces the simple `l#…#` shape. Holds are
- * comma-separated; the frame is terminated by `#`.
+ * `l#` is the lights payload prefix. [MoonBoardLedMode] controls whether each
+ * token targets the known strip LED below the hold, the adjacent LED above it,
+ * or both. Finish holds always retain their below-hold LED because the upper
+ * position is intentionally unavailable for them. Holds are comma-separated;
+ * the frame is terminated by `#`.
  *
  * Roles: the catalogue carries only start / hand / finish, so the
  * encoder emits 3 tokens (S / P / E). The board's decoder accepts a
@@ -21,11 +22,23 @@ package com.cruxcoach.domain.board
  * MoonBoard climb's `frames`.
  *
  * Per-variant: the serpentine arithmetic walks `variant.gridRows` per
- * column — 18 for standard 11×18 boards, 12 for Mini 2020. The base
- * format is identical across variants. Mini-hardware dynamic-capture is
- * still outstanding; the Mini path is the natural extrapolation of
- * the documented standard-board protocol.
+ * column — 18 for standard 11×18 boards, 12 for Mini boards. The base
+ * format is identical across variants. The official LED installation
+ * sequence starts at A1, snakes column-by-column and uses 198 active
+ * standard or 132 active Mini positions; physical-controller integration
+ * remains a separate hardware test from this deterministic mapping.
  */
+enum class MoonBoardLedMode {
+    BELOW,
+    ABOVE,
+    BOTH;
+
+    companion object {
+        fun fromWire(value: String?): MoonBoardLedMode =
+            entries.firstOrNull { it.name == value } ?: BELOW
+    }
+}
+
 object MoonBoardFrameEncoder {
 
     // Aurora-aligned role codes as stored in the `frames` column
@@ -56,7 +69,7 @@ object MoonBoardFrameEncoder {
      * LED-strip position for the given [variant]. The strip snakes
      * column by column: even columns run bottom-to-top, odd columns
      * top-to-bottom. The per-column height is [MoonBoardVariant.gridRows]
-     * (18 for the standard 11×18 boards, 12 for Mini 2020).
+     * (18 for the standard 11×18 boards, 12 for Mini boards).
      *
      * Inverse of the board-protocol decoder's serial→hold mapping.
      *
@@ -86,18 +99,50 @@ object MoonBoardFrameEncoder {
      * are skipped — the wire frame can only carry what the hardware
      * understands, so a malformed entry must not abort the whole send.
      */
-    fun encode(frames: String, variant: MoonBoardVariant): ByteArray =
-        encodeToString(frames, variant).encodeToByteArray()
+    fun encode(
+        frames: String,
+        variant: MoonBoardVariant,
+        ledMode: MoonBoardLedMode = MoonBoardLedMode.BELOW,
+    ): ByteArray = encodeToString(frames, variant, ledMode).encodeToByteArray()
 
     /** [encode] without the UTF-8 step — exposed for testing + logging. */
-    fun encodeToString(frames: String, variant: MoonBoardVariant): String {
+    fun encodeToString(
+        frames: String,
+        variant: MoonBoardVariant,
+        ledMode: MoonBoardLedMode = MoonBoardLedMode.BELOW,
+    ): String {
         val maxHoldId = COLS * variant.gridRows
-        val tokens = parseHolds(frames).mapNotNull { (holdId, roleCode) ->
-            val token = roleToken(roleCode) ?: return@mapNotNull null
-            if (holdId !in 1..maxHoldId) return@mapNotNull null
-            "$token${serialPosition(holdId, variant)}"
+        val tokens = parseHolds(frames).flatMap { (holdId, roleCode) ->
+            val token = roleToken(roleCode) ?: return@flatMap emptyList()
+            if (holdId !in 1..maxHoldId) return@flatMap emptyList()
+            val below = serialPosition(holdId, variant)
+            val above = abovePosition(below, variant, roleCode)
+            val positions = when (ledMode) {
+                MoonBoardLedMode.BELOW -> listOf(below)
+                MoonBoardLedMode.ABOVE -> listOf(above ?: below)
+                MoonBoardLedMode.BOTH -> listOfNotNull(below, above).distinct()
+            }
+            positions.map { position -> "$token$position" }
         }
         return FRAME_PREFIX + tokens.joinToString(",") + FRAME_SUFFIX
+    }
+
+    /**
+     * Adjacent strip position physically above [belowPosition]. The strip runs
+     * in opposite directions in alternating columns, hence +1 / -1. The first
+     * and last LED in a column have no safe partner. Finish holds deliberately
+     * stay below, matching the MoonBoard dual-light behaviour for top holds.
+     */
+    private fun abovePosition(
+        belowPosition: Int,
+        variant: MoonBoardVariant,
+        roleCode: Int,
+    ): Int? {
+        if (roleCode == ROLE_FINISH) return null
+        val inColumn = belowPosition % variant.gridRows
+        if (inColumn == 0 || inColumn == variant.gridRows - 1) return null
+        val column = belowPosition / variant.gridRows
+        return belowPosition + if (column % 2 == 0) 1 else -1
     }
 
     /**

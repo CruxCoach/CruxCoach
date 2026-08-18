@@ -3,6 +3,7 @@ package com.cruxcoach.android.data
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import com.cruxcoach.db.board.BoardDatabase
+import com.cruxcoach.domain.board.BoardBrand
 import io.mockk.mockk
 import io.mockk.verify
 import java.io.File
@@ -32,12 +33,11 @@ import org.robolectric.RobolectricTestRunner
  *  - multi-brand climbs keep their board_brand (pre-fix: a modern source
  *    collapsed every MoonBoard/Aurora climb onto 'kilter'),
  *  - the sender's private drafts (source='local') stay private,
- *  - community provenance (origin='cruxcoach' + created_by_pubkey)
- *    survives the transfer,
+ *  - unverified community provenance is stripped at the peer boundary,
  *  - sync_states resolves the modern marker table,
- *  - on an existing install: tombstones delist, content refreshes, and
- *    geometry for a brand the receiver doesn't have yet still lands
- *    (the modern path is deliberately not gated on hasLayout).
+ *  - on an existing install: peer climb rows cannot refresh/delist existing
+ *    climbs, while new catalogue rows and public stats/geometry still land
+ *    (the modern geometry path is deliberately not gated on hasLayout).
  *
  * Same Robolectric setup rationale as [BoardChunkImportOriginUpgradeTest]:
  * ANDROID SQLDelight driver (not JDBC — DriverManager inside the
@@ -60,6 +60,11 @@ class LocalShareModernSchemaTest {
     private val draftUuid = "44444444-4444-4444-4444-000000000004"
     private val tombstoneUuid = "55555555-5555-5555-5555-000000000005"
     private val authorPubkey = "a".repeat(64)
+
+    /** MoonBoard climbing rule from 25.sqm — a public climbing semantic that
+     *  changes how the problem must be climbed, so it has to survive the peer
+     *  boundary (unlike identity/provenance columns). */
+    private val moonMethod = "method_footless_kickboard"
 
     @Before
     fun setUp() {
@@ -110,19 +115,23 @@ class LocalShareModernSchemaTest {
             fun insertClimb(
                 uuid: String, layoutId: Long, name: String, brand: String,
                 source: String, origin: String, pubkey: String?, isListed: Long,
+                method: String? = null,
             ) = db.execSQL(
                 """
                 INSERT INTO climbs(uuid, layout_id, setter_username, name, frames,
                     frames_count, is_listed, created_at, description, is_nomatch,
                     frames_pace, hsm, move_count, source, sync_status, origin,
-                    board_brand, created_by_pubkey)
+                    board_brand, created_by_pubkey, method)
                 VALUES (?, ?, 'setter', ?, 'p1100r12p1200r14', 1, ?,
-                    '2026-06-01 00:00:00', '', 0, 0, 0, 3, ?, 'synced', ?, ?, ?)
+                    '2026-06-01 00:00:00', '', 0, 0, 0, 3, ?, 'synced', ?, ?, ?, ?)
                 """.trimIndent(),
-                arrayOf<Any?>(uuid, layoutId, name, isListed, source, origin, brand, pubkey),
+                arrayOf<Any?>(uuid, layoutId, name, isListed, source, origin, brand, pubkey, method),
             )
             insertClimb(kilterUuid, 1, "Kilter Classic", "kilter", "kilter", "kilter", null, 1)
-            insertClimb(moonUuid, 100, "Moon Bench", "moonboard", "kilter", "kilter", null, 1)
+            insertClimb(
+                moonUuid, 100, "Moon Bench", "moonboard", "kilter", "kilter", null, 1,
+                method = moonMethod,
+            )
             insertClimb(communityUuid, 1, "Community Proj", "kilter", "nostr", "cruxcoach", authorPubkey, 1)
             insertClimb(draftUuid, 100, "Secret Draft", "moonboard", "local", "cruxcoach", authorPubkey, 1)
             insertClimb(tombstoneUuid, 1, "Gone Climb", "kilter", "kilter", "kilter", null, 0)
@@ -171,7 +180,7 @@ class LocalShareModernSchemaTest {
         }
 
     @Test
-    fun freshInstall_importCompletes_withBrandsDraftsAndProvenanceIntact() {
+    fun freshInstall_importCompletes_withBrandsDraftsPrivateAndProvenanceStripped() {
         val steps = mutableListOf<BoardDatabaseImporter.ImportStep>()
         importer.importFromLocalDb(srcPath) { steps += it }
 
@@ -184,12 +193,14 @@ class LocalShareModernSchemaTest {
             // Brand survives (pre-fix: everything collapsed onto 'kilter').
             assertEquals(1, countWhere(db, "climbs", "uuid = '$moonUuid' AND board_brand = 'moonboard'"))
             assertEquals(1, countWhere(db, "climbs", "uuid = '$kilterUuid' AND board_brand = 'kilter'"))
-            // Community provenance intact.
+            // A peer-controlled DB has no signed Nostr event with which to
+            // bind this UUID to its claimed author. Keep it usable as
+            // catalogue data without materialising asserted authorship.
             assertEquals(
                 1,
                 countWhere(
                     db, "climbs",
-                    "uuid = '$communityUuid' AND origin = 'cruxcoach' AND created_by_pubkey = '$authorPubkey'"
+                    "uuid = '$communityUuid' AND origin = 'kilter' AND created_by_pubkey IS NULL"
                 )
             )
             // The sender's private draft stays private; tombstones aren't materialised.
@@ -213,6 +224,154 @@ class LocalShareModernSchemaTest {
         // Modern sync-state table resolved (pre-fix: "no such table:
         // aurora_sync_state" killed the import right here).
         verify { boardRepository.upsertSyncState("climbs", "2026-07-01 00:00:00") }
+    }
+
+    @Test
+    fun freshInstall_importsEveryInteractiveBoardBrand() {
+        val additionalBrands = BoardBrand.entries.filter {
+            it.isInteractive && it != BoardBrand.KILTER && it != BoardBrand.MOONBOARD
+        }
+        SQLiteDatabase.openDatabase(
+            srcPath.absolutePath,
+            null,
+            SQLiteDatabase.OPEN_READWRITE,
+        ).use { db ->
+            additionalBrands.forEachIndexed { index, brand ->
+                db.execSQL(
+                    """
+                    INSERT INTO climbs(uuid, layout_id, setter_username, name, frames,
+                        frames_count, is_listed, created_at, description, is_nomatch,
+                        frames_pace, hsm, move_count, source, sync_status, origin,
+                        board_brand, created_by_pubkey, method)
+                    VALUES (?, 1, 'setter', ?, 'p1100r12p1200r14', 1, 1,
+                        '2026-06-01 00:00:00', '', 0, 0, 0, 2, 'kilter',
+                        'synced', 'kilter', ?, NULL, NULL)
+                    """.trimIndent(),
+                    arrayOf(
+                        "66666666-6666-6666-6666-${(index + 1).toString().padStart(12, '0')}",
+                        "${brand.displayName} Test",
+                        brand.wireValue,
+                    ),
+                )
+            }
+        }
+
+        importer.importFromLocalDb(srcPath)
+
+        openTarget().use { db ->
+            BoardBrand.entries.filter { it.isInteractive }.forEach { brand ->
+                assertTrue(
+                    "${brand.displayName} catalogue row crosses the local-share boundary",
+                    countWhere(db, "climbs", "board_brand = '${brand.wireValue}'") > 0,
+                )
+            }
+        }
+    }
+
+    // ── MoonBoard `method` (25.sqm) crosses the peer boundary ──
+    // The direct MoonBoard/Aurora snapshot paths probe + copy climbs.method,
+    // but the shared [importClimbs] path that backs importFromLocalDb did
+    // not: the column was absent from chunk_norm and from the INSERT tuple,
+    // so a current-schema sender's footless problem landed as NULL on a
+    // current-schema receiver and silently read as "feet follow hands".
+
+    @Test
+    fun freshInstall_carriesMoonBoardMethodAcrossThePeerBoundary() {
+        importer.importFromLocalDb(srcPath)
+
+        openTarget().use { db ->
+            assertEquals(
+                "MoonBoard method must survive the offline share",
+                1,
+                countWhere(db, "climbs", "uuid = '$moonUuid' AND method = '$moonMethod'"),
+            )
+            // NULL stays NULL — the column is sparse by design (95.8% of
+            // MoonBoard problems and every Aurora climb carry no method).
+            assertEquals(1, countWhere(db, "climbs", "uuid = '$kilterUuid' AND method IS NULL"))
+        }
+    }
+
+    /**
+     * A sender running a pre-25.sqm build has no `climbs.method` column at
+     * all. The receiver must still import it (the column probe falls back to
+     * NULL) rather than failing with "no such column: method".
+     */
+    @Test
+    fun olderSourceWithoutMethodColumn_stillImports_andStoresNull() {
+        degradeSourceClimbsToPre25Shape()
+
+        importer.importFromLocalDb(srcPath)
+
+        openTarget().use { db ->
+            assertEquals(3, countWhere(db, "climbs", "is_listed = 1"))
+            assertEquals(
+                "no method column on the wire → the 25.sqm default",
+                1,
+                countWhere(db, "climbs", "uuid = '$moonUuid' AND method IS NULL"),
+            )
+            // The rest of the payload is unaffected by the older shape.
+            assertEquals(1, countWhere(db, "climbs", "uuid = '$moonUuid' AND board_brand = 'moonboard'"))
+            assertEquals(0, countWhere(db, "climbs", "uuid = '$draftUuid'"))
+        }
+    }
+
+    /**
+     * `method` is public climbing semantics, but it is still peer-asserted
+     * content: an unverified share stays additive, so it may not rewrite the
+     * rule on a climb the receiver already trusts.
+     */
+    @Test
+    fun existingInstall_peerCannotOverwriteAnExistingClimbsMethod() {
+        openTarget().use { db ->
+            db.execSQL(
+                """
+                INSERT INTO climbs(uuid, layout_id, setter_username, name, frames,
+                    frames_count, is_listed, created_at, description, is_nomatch,
+                    frames_pace, hsm, move_count, source, sync_status, origin,
+                    board_brand, method)
+                VALUES ('$moonUuid', 100, 'setter', 'Moon Bench', 'p1100r12p1200r14',
+                    1, 1, '2026-01-01 00:00:00', '', 0, 0, 0, 3, 'kilter', 'synced',
+                    'kilter', 'moonboard', 'method_footless')
+                """.trimIndent()
+            )
+        }
+
+        importer.importFromLocalDb(srcPath)
+
+        openTarget().use { db ->
+            assertEquals(
+                "the trusted local rule wins over the peer's claim",
+                1,
+                countWhere(db, "climbs", "uuid = '$moonUuid' AND method = 'method_footless'"),
+            )
+            // …while a climb the receiver does not have yet still arrives:
+            // the share stays additive, it does not stop importing.
+            assertEquals(1, countWhere(db, "climbs", "uuid = '$kilterUuid' AND method IS NULL"))
+        }
+    }
+
+    /**
+     * Rebuild the source's `climbs` as a pre-25.sqm sender would have it —
+     * every column the importer reads EXCEPT `method`. `CREATE TABLE … AS
+     * SELECT` (rather than `DROP COLUMN`) keeps this independent of the
+     * SQLite version Robolectric happens to bundle.
+     */
+    private fun degradeSourceClimbsToPre25Shape() {
+        SQLiteDatabase.openDatabase(srcPath.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL("ALTER TABLE climbs RENAME TO climbs_modern")
+            db.execSQL(
+                """
+                CREATE TABLE climbs AS SELECT
+                    uuid, layout_id, setter_username, name, frames, frames_count,
+                    is_listed, edge_left, edge_right, edge_bottom, edge_top,
+                    created_at, description, is_nomatch, frames_pace, hsm,
+                    move_count, is_deleted, source, origin, created_by_pubkey,
+                    board_brand
+                FROM climbs_modern
+                """.trimIndent()
+            )
+            db.execSQL("DROP TABLE climbs_modern")
+        }
     }
 
     // ── Sender-side snapshot scrub (privacy on the wire) ──
@@ -244,6 +403,13 @@ class LocalShareModernSchemaTest {
                 VALUES ('$communityUuid', 1720000000000, 'create', 'self', 'success', 200)
                 """.trimIndent()
             )
+            // Account-linked leftovers on a row that legitimately stays on the
+            // wire: the Kilter userUuid the ownership gate keys off (22.sqm)
+            // and the raw Kilter API error body from the sender's last publish.
+            db.execSQL(
+                "UPDATE climbs SET kilter_author_uuid = ?, kilter_error = ? WHERE uuid = ?",
+                arrayOf<Any?>("sender-kilter-account-uuid", "403 {\"detail\":\"…\"}", communityUuid),
+            )
         }
 
         com.cruxcoach.android.util.scrubAndCompactBoardDbSnapshot(snapshot)
@@ -252,10 +418,24 @@ class LocalShareModernSchemaTest {
             assertEquals("draft gone", 0, countWhere(db, "climbs", "uuid = '$draftUuid'"))
             assertEquals("draft stats gone", 0, countWhere(db, "climb_stats", "climb_uuid = '$draftUuid'"))
             assertEquals("publish-attempt audit gone", 0, countWhere(db, "kilter_publish_attempts", "1=1"))
+            // The sender's Kilter account identity never reaches the wire. No
+            // receiver path reads either column, so this is pure leakage.
+            assertEquals(
+                "kilter_author_uuid scrubbed", 0,
+                countWhere(db, "climbs", "kilter_author_uuid IS NOT NULL"),
+            )
+            assertEquals(
+                "kilter_error scrubbed", 0,
+                countWhere(db, "climbs", "kilter_error IS NOT NULL"),
+            )
             // Everything shareable is untouched.
             assertEquals(1, countWhere(db, "climbs", "uuid = '$kilterUuid'"))
             assertEquals(1, countWhere(db, "climbs", "uuid = '$communityUuid' AND created_by_pubkey = '$authorPubkey'"))
             assertEquals(1, countWhere(db, "climb_stats", "climb_uuid = '$kilterUuid'"))
+            assertEquals(
+                "the shared method survives the scrub", 1,
+                countWhere(db, "climbs", "uuid = '$moonUuid' AND method = '$moonMethod'"),
+            )
         }
         // Folded + vacuumed: a single file, no WAL sidecars.
         assertTrue("no -wal sidecar", !File(snapshot.path + "-wal").exists())
@@ -292,11 +472,11 @@ class LocalShareModernSchemaTest {
     }
 
     @Test
-    fun existingInstall_mergesNewBrand_refreshesContent_andDelistsTombstones() {
+    fun existingInstall_addsNewRows_butCannotRewriteOrReclassifyExistingClimbs() {
         openTarget().use { db ->
             // Existing kilter row with stale content + a row the sender has
-            // since tombstoned. Non-empty climbs table → incremental path
-            // (UPDATE passes active).
+            // since tombstoned. A local share may add missing rows, but its
+            // unsigned claims must not activate normal catalogue UPDATEs.
             db.execSQL(
                 """
                 INSERT INTO climbs(uuid, layout_id, setter_username, name, frames,
@@ -315,15 +495,38 @@ class LocalShareModernSchemaTest {
                     1, 1, '2026-01-01 00:00:00', '', 0, 0, 0, 3, 'kilter', 'synced', 'kilter', 'kilter')
                 """.trimIndent()
             )
+            // The peer source claims this UUID is a community climb authored
+            // by authorPubkey. Existing trusted local content/provenance wins.
+            db.execSQL(
+                """
+                INSERT INTO climbs(uuid, layout_id, setter_username, name, frames,
+                    frames_count, is_listed, created_at, description, is_nomatch,
+                    frames_pace, hsm, move_count, source, sync_status, origin, board_brand)
+                VALUES ('$communityUuid', 1, 'trusted-setter', 'Trusted Existing', 'p1100r12',
+                    1, 1, '2026-01-01 00:00:00', 'trusted description', 0, 0, 0, 1,
+                    'kilter', 'synced', 'kilter', 'kilter')
+                """.trimIndent()
+            )
         }
 
         importer.importFromLocalDb(srcPath)
 
         openTarget().use { db ->
-            // Content refresh from the sender's copy.
-            assertEquals(1, countWhere(db, "climbs", "uuid = '$kilterUuid' AND name = 'Kilter Classic'"))
-            // Sender's tombstone delists the local row without wiping it.
-            assertEquals(1, countWhere(db, "climbs", "uuid = '$tombstoneUuid' AND is_listed = 0 AND name = 'Gone Climb'"))
+            // Existing catalogue content is authoritative over the unsigned
+            // peer copy, including the peer's claimed tombstone.
+            assertEquals(1, countWhere(db, "climbs", "uuid = '$kilterUuid' AND name = 'Stale Name'"))
+            assertEquals(1, countWhere(db, "climbs", "uuid = '$tombstoneUuid' AND is_listed = 1 AND name = 'Gone Climb'"))
+            // Claimed community authorship cannot reclassify/backfill an
+            // existing row or replace its trusted local fields.
+            assertEquals(
+                1,
+                countWhere(
+                    db,
+                    "climbs",
+                    "uuid = '$communityUuid' AND name = 'Trusted Existing' " +
+                        "AND frames = 'p1100r12' AND origin = 'kilter' AND created_by_pubkey IS NULL",
+                ),
+            )
             // New brand still arrives on a non-fresh install…
             assertEquals(1, countWhere(db, "climbs", "uuid = '$moonUuid' AND board_brand = 'moonboard'"))
             // …and so does its geometry (modern path has no hasLayout gate).

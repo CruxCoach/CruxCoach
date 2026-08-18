@@ -123,7 +123,6 @@ fun ClimbEditorScreen(
     if (showBleSheet) {
         BleConnectionSheet(
             onDismiss = { showBleSheet = false },
-            autoStartScan = true,
         )
     }
     // Editor-side equivalent of BoardSendController.kt's CONNECTED-collector:

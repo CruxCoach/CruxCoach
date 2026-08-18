@@ -1,0 +1,514 @@
+name: Release
+
+# The primary release pipeline. Ported from .forgejo/workflows/release.yml,
+# which is kept as a fallback until the Codeberg mirror is switched off.
+#
+# WHY ACTIONS IS ACCEPTABLE NOW
+# The standing objection to GitHub Actions was the release signing key: a
+# hosted runner would mean putting it into GitHub's secret store, and the key
+# is the one thing here whose compromise cannot be undone (a rotation is only
+# installable from 0.2.3 onwards, and only on Android 9+). This job runs on a
+# SELF-HOSTED runner, so the key stays on our own filesystem under
+# $CRUXCOACH_SECRETS_DIR and is never uploaded anywhere. No secret in this
+# workflow, and none configured in the repository, is load-bearing.
+
+# MANUAL TRIGGER ONLY, and that is a consequence of how this pipeline signs.
+#
+# The Zapstore signer is an Amber NIP-46 bunker that prompts the maintainer's
+# phone, twice per release: once for the signer proof before the build, once
+# for the publish. A push-triggered release therefore only completes if someone
+# is holding the phone at the moment of the merge. Worse, the second prompt
+# falls *after* the GitHub release is created, so an unattended run can leave
+# the release and its tag public while Zapstore has nothing — recoverable
+# through the repair path below, but publicly inconsistent until someone
+# notices.
+#
+# Making the trigger explicit puts the release at a moment the maintainer
+# chose, which is also the moment the phone is to hand. It further means a
+# merge to main by anyone else cannot start a run that needs the release
+# signing key.
+#
+# `paths-ignore` went with the push trigger — it only ever existed to stop
+# documentation commits from firing a build, and nothing fires this by itself
+# any more.
+on:
+  workflow_dispatch:
+
+# Nothing here writes through the automatic GITHUB_TOKEN. Releases, assets and
+# the tag push all authenticate with the maintainer token that the runner reads
+# off its own filesystem, so the job token only needs to clone.
+permissions:
+  contents: read
+
+# Two release runs must never overlap. They share one self-hosted runner, one
+# workspace and one tag: the second checkout would move the tree under the
+# first one's Gradle build, and both would try to publish the same version.
+# Queue instead of cancelling — a run that has already created the release and
+# is mid-Zapstore-publish must be allowed to finish, or it leaves a release
+# whose Zapstore half never happened.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Run unit tests BEFORE anything else (signing config copy, APK build,
+      # publish) so a regression hard-stops the release pipeline. Pre-fix
+      # the workflow built + published without exercising any of the 38
+      # existing tests, so a broken Schnorr-verify gate or dataKey-unwrap
+      # could ship to Zapstore unnoticed. Tests don't need any secrets, so
+      # this step runs in a clean checkout.
+      - name: Run unit tests
+        run: |
+          python3 -m unittest discover -s scripts -p '*_test.py'
+          ./gradlew :shared:testDebugUnitTest :androidApp:testDebugUnitTest --console=plain
+
+      - name: Extract version
+        id: version
+        run: |
+          VERSION_NAME=$(grep 'versionName' androidApp/build.gradle.kts | head -1 | grep -Po '"\K[^"]+')
+          BRANCH="${GITHUB_REF_NAME}"
+
+          # Dispatch lets the caller pick any ref, and every step below assumes
+          # a real release: it tags v<version>, publishes to Zapstore and moves
+          # the download server. Run from anywhere else and it would ship a
+          # feature branch under a release version number. There is only one
+          # kind of release here now, so refuse rather than guess.
+          if [ "$BRANCH" != "main" ]; then
+            echo "::error::Releases run from main only; this dispatch was on '$BRANCH'"
+            exit 1
+          fi
+
+          TAG_NAME="v${VERSION_NAME}"
+          RELEASE_NAME="v${VERSION_NAME}"
+
+          {
+            echo "version=$VERSION_NAME"
+            echo "tag=$TAG_NAME"
+            echo "release_name=$RELEASE_NAME"
+            echo "branch=$BRANCH"
+          } >> "$GITHUB_OUTPUT"
+
+          # An existing tag means a previous run got at least this far. Skipping
+          # keeps its bytes and sends the run down the Zapstore repair path
+          # rather than building a second APK under a shipped version number.
+          if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Tag $TAG_NAME already exists — skipping release"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "New release: $RELEASE_NAME"
+          fi
+
+      # A release whose notes still say "Unreleased" is what this catches, and
+      # nothing else in the pipeline would. scripts/publish-github-release.sh
+      # passes RELEASE_NOTES.md through verbatim as the release body, and
+      # zapstore.yaml points `release_notes` at the same file, so one stale
+      # heading reaches the GitHub release, the Zapstore listing and the in-app
+      # "what's new" together — and the tag then exists and blocks a rebuild.
+      # changelog-extract.sh matches on the `## [<version>]` prefix, so it is
+      # perfectly happy to extract a section headed "Unreleased".
+      #
+      # Placed before the signing config is copied: a text mistake should fail
+      # the run while the keystore is still untouched.
+      - name: Check release notes match the version
+        if: steps.version.outputs.skip == 'false' && steps.version.outputs.branch == 'main'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          # Absent heading and mistyped version look the same to this script,
+          # so it doubles as a check that the version marker was updated at all.
+          BODY="$(scripts/changelog-extract.sh "$VERSION")" \
+            || { echo "::error::CHANGELOG.md has no '## [$VERSION]' section"; exit 1; }
+          [ -n "$(printf '%s' "$BODY" | tr -d '[:space:]')" ] \
+            || { echo "::error::the CHANGELOG.md section for $VERSION is empty"; exit 1; }
+
+          HEADING="$(grep -m1 "^## \[${VERSION}\]" CHANGELOG.md || true)"
+          case "$HEADING" in
+            *Unreleased*|*unreleased*|*TBD*)
+              echo "::error::CHANGELOG.md still reads '$HEADING' — put the release date there"
+              exit 1;;
+          esac
+
+          [ -f RELEASE_NOTES.md ] || {
+            echo "::error::RELEASE_NOTES.md is missing — it is both the release body and the Zapstore release_notes"
+            exit 1
+          }
+          NOTES_HEADING="$(head -1 RELEASE_NOTES.md)"
+          case "$NOTES_HEADING" in
+            *Unreleased*|*unreleased*|*TBD*)
+              echo "::error::RELEASE_NOTES.md still reads '$NOTES_HEADING' — put the release date there"
+              exit 1;;
+          esac
+          # Catches the other direction: last release's notes under a new tag.
+          case "$NOTES_HEADING" in
+            *"$VERSION"*) ;;
+            *) echo "::error::RELEASE_NOTES.md heading does not mention $VERSION: '$NOTES_HEADING'"; exit 1;;
+          esac
+
+          echo "Release notes and changelog both look like $VERSION"
+
+      # Do this before the keystore is copied, the APK is built, and — most
+      # importantly — scripts/publish-github-release.sh makes the release
+      # public.  zsp's .env format is deliberately NOT sourced as shell: the
+      # provisioned bunker URL contains '&', which a shell treats as a control
+      # operator.  The helper reads it with zsp's literal KEY=value semantics,
+      # rejects interactive/unsigned signer modes, checks the cached NIP-46
+      # client key, and pins the signer to zapstore.yaml's publisher npub.
+      - name: Preflight Zapstore signer
+        if: steps.version.outputs.skip == 'false' && steps.version.outputs.branch == 'main'
+        run: |
+          set -euo pipefail
+          : "${CRUXCOACH_SECRETS_DIR:?CRUXCOACH_SECRETS_DIR must be set on the runner}"
+          scripts/zapstore-signer.py \
+            --env-file "$CRUXCOACH_SECRETS_DIR/.env" \
+            --config zapstore.yaml
+
+      - name: Copy signing config
+        if: steps.version.outputs.skip == 'false'
+        run: |
+          : "${CRUXCOACH_SECRETS_DIR:?CRUXCOACH_SECRETS_DIR must be set on the runner — see CONTRIBUTING.md 'Releases & CI (maintainer only)'}"
+          cp "$CRUXCOACH_SECRETS_DIR/local.properties" local.properties
+          cp -r "$CRUXCOACH_SECRETS_DIR/.signing" .signing
+
+      - name: Build release APK
+        if: steps.version.outputs.skip == 'false'
+        env:
+          REPOSITORY_SLUG: ${{ github.repository }}
+        run: |
+          METRICS_ARGS=()
+          if [ "$REPOSITORY_SLUG" = "CruxCoach/CruxCoach" ]; then
+            METRICS_ARGS+=("-PANONYMOUS_METRICS_ENDPOINT=https://stats.cruxcoach.org/v1/app-event")
+          fi
+          ./gradlew :androidApp:assembleRelease "${METRICS_ARGS[@]}"
+
+      # Apply a signing-certificate lineage, if one has been provisioned.
+      #
+      # Inert until the rotation: with no lineage.bin present this step does
+      # nothing and the APK keeps AGP's signature. It exists now so the
+      # rotation release does not have to invent a signing pipeline under
+      # time pressure — AGP has no lineage DSL, so re-signing with apksigner
+      # is the only way to produce a rotated APK that installs over an
+      # existing one. See docs/KEY_ROTATION.md.
+      - name: Apply signing lineage (rotation only)
+        if: steps.version.outputs.skip == 'false'
+        run: |
+          : "${CRUXCOACH_SECRETS_DIR:?CRUXCOACH_SECRETS_DIR must be set on the runner}"
+          : "${ANDROID_SDK_ROOT:?ANDROID_SDK_ROOT must be set on the runner}"
+          LINEAGE="$CRUXCOACH_SECRETS_DIR/lineage.bin"
+          if [ ! -f "$LINEAGE" ]; then
+            echo "No lineage.bin — not a rotation build, keeping AGP signature"
+            exit 0
+          fi
+          for f in old.jks old-ks-pass.txt old-key-pass.txt old-key-alias.txt \
+                   new.jks new-ks-pass.txt new-key-pass.txt new-key-alias.txt \
+                   rotation-min-sdk.txt; do
+            [ -f "$CRUXCOACH_SECRETS_DIR/$f" ] || { echo "::error::lineage.bin present but $f missing"; exit 1; }
+          done
+          APKSIGNER=$(find "$ANDROID_SDK_ROOT/build-tools" -mindepth 2 -maxdepth 2 \
+            -type f -name apksigner -print | sort -V | tail -1)
+          [ -x "$APKSIGNER" ] || { echo "apksigner not found under $ANDROID_SDK_ROOT/build-tools/"; exit 1; }
+          APK=androidApp/build/outputs/apk/release/androidApp-release.apk
+          # BOTH signers are required. Signing with only the new key plus a
+          # lineage fails outright while v1 is enabled:
+          #   "v1 signing enabled but the oldest signer in the
+          #    SigningCertificateLineage is missing"
+          # The old key signs v1/v2 (consumed by devices below the rotation
+          # boundary), the new key signs v3 — that split is what makes the
+          # rotation seamless. Verified against apksigner 36.0.0.
+          # Passwords via file: so they never appear in the process list.
+          "$APKSIGNER" sign \
+            --ks "$CRUXCOACH_SECRETS_DIR/old.jks" \
+            --ks-key-alias "$(cat "$CRUXCOACH_SECRETS_DIR/old-key-alias.txt")" \
+            --ks-pass "file:$CRUXCOACH_SECRETS_DIR/old-ks-pass.txt" \
+            --key-pass "file:$CRUXCOACH_SECRETS_DIR/old-key-pass.txt" \
+            --next-signer \
+            --ks "$CRUXCOACH_SECRETS_DIR/new.jks" \
+            --ks-key-alias "$(cat "$CRUXCOACH_SECRETS_DIR/new-key-alias.txt")" \
+            --ks-pass "file:$CRUXCOACH_SECRETS_DIR/new-ks-pass.txt" \
+            --key-pass "file:$CRUXCOACH_SECRETS_DIR/new-key-pass.txt" \
+            --lineage "$LINEAGE" \
+            --rotation-min-sdk-version "$(cat "$CRUXCOACH_SECRETS_DIR/rotation-min-sdk.txt")" \
+            --v1-signing-enabled true \
+            --v2-signing-enabled true \
+            --v3-signing-enabled true \
+            "$APK"
+          echo "Re-signed with rotated key + lineage"
+
+      # scripts/publish-github-release.sh repeats these checks before it
+      # uploads anything, deliberately: it is also the by-hand path and cannot
+      # assume a pipeline ran first. Keeping them here too means a bad build
+      # fails at the build stage, annotated, instead of at the publish stage.
+      - name: Verify APK signature
+        if: steps.version.outputs.skip == 'false'
+        run: |
+          : "${ANDROID_SDK_ROOT:?ANDROID_SDK_ROOT must be set on the runner}"
+          APKSIGNER=$(find "$ANDROID_SDK_ROOT/build-tools" -mindepth 2 -maxdepth 2 \
+            -type f -name apksigner -print | sort -V | tail -1)
+          [ -x "$APKSIGNER" ] || { echo "apksigner not found under $ANDROID_SDK_ROOT/build-tools/"; exit 1; }
+          APK=androidApp/build/outputs/apk/release/androidApp-release.apk
+          OUT=$("$APKSIGNER" verify --print-certs -v "$APK") || exit 1
+          echo "$OUT"
+
+          # v3 carries the SigningCertificateLineage. Without it a future key
+          # rotation cannot be installed by anyone, and the failure would only
+          # surface during the rotation itself — far too late. A config
+          # regression that silently drops v3 must break the build here.
+          echo "$OUT" | grep -q "^Verified using v3 scheme (APK Signature Scheme v3): true$" \
+            || { echo "::error::v3 signing is OFF — key rotation would be impossible. See androidApp/build.gradle.kts signingConfigs."; exit 1; }
+
+          # Pin the expected signer so a wrong keystore on the runner cannot
+          # ship silently. On a deliberate rotation, update EXPECTED_SIGNERS
+          # in the same commit that provisions lineage.bin — in BOTH this file
+          # and scripts/publish-github-release.sh.
+          EXPECTED_SIGNERS="7f8308e8fe25e41aad0c7f0ac087775acd7d8c6a23da3a824212a8f3fe1bc2c4"
+          MATCHED=0
+          for want in $EXPECTED_SIGNERS; do
+            echo "$OUT" | grep -qi "certificate SHA-256 digest: $want" && MATCHED=1
+          done
+          [ "$MATCHED" = "1" ] \
+            || { echo "::error::APK signer is not in EXPECTED_SIGNERS — refusing to publish."; exit 1; }
+
+          echo "APK verified successfully (v3 on, signer as expected)"
+
+      # Static validation catches a wrong/malformed key before the build. This
+      # second gate proves the remote bunker is reachable and answers. --offline
+      # still asks the signer to sign the finished release events, but neither
+      # uploads the APK nor publishes an event. An unreachable or unapproved
+      # signer therefore blocks here, before GitHub is public — which is also
+      # where the first of the two Amber prompts appears.
+      - name: Prove Zapstore signer is available
+        if: steps.version.outputs.skip == 'false' && steps.version.outputs.branch == 'main'
+        run: |
+          set -euo pipefail
+          rm -f .env
+          ZAPSTORE_ENV="$CRUXCOACH_SECRETS_DIR/.env"
+          SIGN_WITH="$(scripts/zapstore-signer.py \
+            --env-file "$ZAPSTORE_ENV" \
+            --config zapstore.yaml \
+            --emit-value)"
+          echo "::add-mask::$SIGN_WITH"
+          export SIGN_WITH
+          # This raises the first of two Amber prompts for a release — this
+          # proof, and the publish itself further down. Both wait on a human,
+          # so keep the two timeouts in step when changing either.
+          if ! timeout 300 zsp publish zapstore.yaml \
+            --offline --quiet --skip-preview --skip-certificate-linking \
+            >/dev/null 2>&1; then
+            echo "::error::Zapstore signer did not complete a headless offline signature within 300 seconds — was the request approved in Amber?"
+            exit 1
+          fi
+          echo "Zapstore signer completed a headless offline signature (nothing published)"
+
+      # One implementation of "publish a release", called from here and usable
+      # by hand. The script pushes the tag, creates the release, uploads the
+      # SHA-256 sidecar BEFORE the APK, and reads the result back to compare
+      # stored asset sizes against the bytes sent. That ordering is the subtle
+      # part — the updater ignores a release unless both assets exist — and it
+      # is the reason this step is a call and not a copy.
+      #
+      # The token comes from the runner's filesystem; nothing is passed in.
+      - name: Create GitHub release
+        if: steps.version.outputs.skip == 'false'
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          REPO_SLUG: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          ARGS=(--repo "$REPO_SLUG")
+          # Release notes come from the tagged working tree, so the release
+          # body says the same thing the in-app "what's new" does.
+          if [ -f RELEASE_NOTES.md ]; then
+            ARGS+=(--notes-file RELEASE_NOTES.md)
+          fi
+          # Nothing here is ever a prerelease: dev prereleases were dropped
+          # along with the push trigger, so every run publishes a full release.
+          scripts/publish-github-release.sh "$TAG" "${ARGS[@]}"
+
+      # A previous run may have completed the release and then failed while
+      # publishing the mirror. Re-use that exact tagged APK so a retry can
+      # repair Zapstore without rebuilding different bytes under the same
+      # version number.
+      - name: Prepare existing release for Zapstore repair
+        if: steps.version.outputs.skip == 'true' && steps.version.outputs.branch == 'main'
+        env:
+          REPO_SLUG: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.version.outputs.tag }}"
+          APK="androidApp/build/outputs/apk/release/androidApp-release.apk"
+          # Release assets are served from github.com, not api.github.com, and
+          # need no token on a public repository.
+          BASE="https://github.com/${REPO_SLUG}/releases/download/${TAG}"
+          mkdir -p "$(dirname "$APK")"
+
+          curl --fail --location --retry 4 --retry-all-errors \
+            --connect-timeout 10 --max-time 180 \
+            "${BASE}/CruxCoach-${TAG}.apk" --output "$APK"
+          EXPECTED_SHA=$(curl --fail --location --retry 4 --retry-all-errors \
+            --connect-timeout 10 --max-time 30 \
+            "${BASE}/CruxCoach-${TAG}.apk.sha256" | awk '/^[0-9a-fA-F]{64}/ { print tolower($1); exit }')
+          ACTUAL_SHA=$(sha256sum "$APK" | awk '{ print $1 }')
+          if [ -z "$EXPECTED_SHA" ] || [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+            echo "::error::Existing GitHub release APK does not match its SHA-256 sidecar"
+            exit 1
+          fi
+
+          # zsp reads these files from the checkout. Use the tagged metadata,
+          # not potentially newer unreleased text from the current main commit.
+          git show "${TAG}:zapstore.yaml" > zapstore.yaml
+          git show "${TAG}:RELEASE_NOTES.md" > RELEASE_NOTES.md
+
+      - name: Ensure verified Zapstore APK fallback
+        if: steps.version.outputs.branch == 'main'
+        run: |
+          set -euo pipefail
+          APK="androidApp/build/outputs/apk/release/androidApp-release.apk"
+          [ -s "$APK" ] || { echo "::error::Release APK is missing"; exit 1; }
+          APK_SHA=$(sha256sum "$APK" | awk '{ print $1 }')
+          APK_SIZE=$(stat -c '%s' "$APK")
+          CDN_URL="https://cdn.zapstore.dev/${APK_SHA}"
+          CDN_APK=$(mktemp)
+          trap 'rm -f "$CDN_APK"' EXIT
+
+          # zsp reads .env from the working directory when it is there, and it
+          # takes precedence over nothing — it simply supplies the variables. A
+          # copy left behind in the workspace by a run that was SIGKILLed (a
+          # trap does not fire for that) would therefore be picked up silently
+          # by the next release, and could sign it with a superseded key. The
+          # workspace is reused across jobs on a self-hosted runner, so remove
+          # any such leftover before publishing rather than trusting that none
+          # exists. This workflow never creates one — see below.
+          rm -f .env
+
+          verify_cdn_apk() {
+            rm -f "$CDN_APK"
+            curl --fail --location --silent --show-error \
+              --retry 3 --retry-all-errors --connect-timeout 10 --max-time 180 \
+              "$CDN_URL" --output "$CDN_APK" || return 1
+            [ "$(stat -c '%s' "$CDN_APK")" = "$APK_SIZE" ] || return 1
+            printf '%s  %s\n' "$APK_SHA" "$CDN_APK" | sha256sum --check --status
+          }
+
+          if verify_cdn_apk; then
+            echo "Zapstore CDN already contains the exact release APK"
+            exit 0
+          fi
+
+          # ---- Zapstore signing ------------------------------------------
+          # zsp signs the release event with whatever SIGN_WITH names. An nsec,
+          # a hex private key or a provisioned bunker:// URL can work headlessly.
+          # An npub only produces unsigned output in zsp 0.4.8, while `browser`
+          # requires a human using NIP-07.
+          #
+          # Here SIGN_WITH is a bunker:// URL served by Amber, which prompts the
+          # maintainer's phone rather than auto-approving — so this step waits on
+          # a human and a release cannot run unattended. See docs/RELEASE_GITHUB.md.
+          # Amber's other role, signing *user* identities inside the app, is
+          # unrelated work; do not conflate the two.
+          #
+          # The value is read out of the runner's own filesystem, deliberately
+          # NOT out of GitHub's secret store — same reasoning as the keystore
+          # (see the header): nothing in the GitHub secret store is load-bearing
+          # for a release, so a GitHub-side compromise cannot sign as us.
+          #
+          # It is exported into this step's environment instead of being copied
+          # to ./.env, so the publisher credential never lands in the git
+          # worktree, where a killed job would leave it for every later job to
+          # read.  The helper treats .env as data — never as shell code — and
+          # emits the value only into command substitution after validating it.
+          : "${CRUXCOACH_SECRETS_DIR:?CRUXCOACH_SECRETS_DIR must be set on the runner}"
+          ZAPSTORE_ENV="$CRUXCOACH_SECRETS_DIR/.env"
+          SIGN_WITH="$(scripts/zapstore-signer.py \
+            --env-file "$ZAPSTORE_ENV" \
+            --config zapstore.yaml \
+            --emit-value)"
+          # Belt and braces: keep it out of the log if zsp ever echoes it back.
+          echo "::add-mask::$SIGN_WITH"
+          export SIGN_WITH
+
+          # SIGN_WITH is an Amber NIP-46 bunker that prompts on the maintainer's
+          # phone, so an attempt has to outlast a human noticing the
+          # notification, unlocking and tapping. At 120s the request expired
+          # while the phone was still being unlocked, and the retry then raised
+          # a second prompt for the same release.
+          PUBLISHED=false
+          for ATTEMPT in 1 2 3; do
+            echo "Zapstore publish attempt $ATTEMPT/3 (approve the request in Amber)..."
+            if timeout 300 zsp publish --skip-preview --skip-certificate-linking --quiet; then
+              PUBLISHED=true
+              break
+            fi
+            echo "Attempt $ATTEMPT failed (timeout or error), retrying in 10s..."
+            sleep 10
+          done
+          [ "$PUBLISHED" = true ] \
+            || { echo "::error::Zapstore publish failed after 3 attempts"; exit 1; }
+
+          # CDN publication can lag behind the signed Nostr event. Do not mark
+          # the release green until the fallback actually serves identical bytes.
+          for ATTEMPT in 1 2 3 4 5 6; do
+            if verify_cdn_apk; then
+              echo "Zapstore fallback verified: ${CDN_URL} (${APK_SIZE} bytes)"
+              exit 0
+            fi
+            echo "Waiting for Zapstore CDN propagation ($ATTEMPT/6)..."
+            sleep 10
+          done
+          echo "::error::Zapstore CDN did not serve the verified release APK"
+          exit 1
+
+      # Until now a release reached the website only at the next nightly cron:
+      # for up to a day cruxcoach.org advertised the previous version, and the
+      # download selector served an APK nobody had been told about. The runner
+      # is on the same host as the download server and already holds the exact
+      # release bytes, so both halves belong here, at the moment they are true.
+      #
+      # Neither half is allowed to fail the release. The release itself is
+      # already published and immutable at this point; the nightly refresh runs
+      # the same script and repairs whatever did not work. A warning is the
+      # right volume — loud enough to notice, not loud enough to undo a release.
+      - name: Publish the release to the download server and the website
+        if: steps.version.outputs.branch == 'main'
+        run: |
+          set -uo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          APK="androidApp/build/outputs/apk/release/androidApp-release.apk"
+          APK_DIR="${CRUXCOACH_APK_LOCAL_DIR:-$HOME/cruxcoach-dlstats/apk}"
+          PAGES_DIR="${CRUXCOACH_PAGES_DIR:-$HOME/cruxcoach-pages}"
+
+          # These bytes were signature-verified and published a few steps ago,
+          # so the selector's copy is a file copy — no download, no digest race
+          # against a CDN that may still be propagating. Staged next to the
+          # target and moved into place, so a concurrent read never catches a
+          # half-written APK.
+          if mkdir -p "$APK_DIR"; then
+            TMP="$APK_DIR/.CruxCoach-v${VERSION}.apk.tmp"
+            if cp "$APK" "$TMP" && chmod 0644 "$TMP" \
+               && mv -f "$TMP" "$APK_DIR/CruxCoach-v${VERSION}.apk"; then
+              echo "Local APK copy installed: $APK_DIR/CruxCoach-v${VERSION}.apk"
+            else
+              rm -f "$TMP"
+              echo "::warning::Could not install the local APK copy — the selector falls back to the forge"
+            fi
+          fi
+
+          # Download links, JSON-LD, llms.txt, sitemap and the selector
+          # manifest. The same script the nightly refresh runs, deliberately:
+          # one publishing path, exercised on every release rather than only
+          # in the dark.
+          if [ -x "$PAGES_DIR/tools/publish-release.sh" ]; then
+            (cd "$PAGES_DIR" && ./tools/publish-release.sh) \
+              || echo "::warning::Website publish failed — the nightly refresh will retry"
+          else
+            echo "::warning::$PAGES_DIR/tools/publish-release.sh is missing — website not updated"
+          fi

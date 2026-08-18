@@ -166,7 +166,9 @@ object BoardStatsComputer {
         return ascents.filter { it.climbedAt.take(10) >= cutoff }
     }
 
-    private fun computeGradePyramid(
+    /** Shared with [SessionSummaryBuilder] so the session summary groups its
+     *  pyramid exactly like the stats sheet. */
+    fun computeGradePyramid(
         sends: List<AscentWithClimb>,
         gradeScale: GradeScale
     ): List<BoardGradePyramidEntry> {

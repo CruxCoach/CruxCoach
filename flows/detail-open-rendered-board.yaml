@@ -1,0 +1,16 @@
+appId: com.cruxcoach.android
+name: detail-open-rendered-board
+tags:
+  - release-gate
+---
+- runFlow: subflows/open-first-climb.yaml
+- assertVisible:
+    id: "boarddetail_name"
+- assertVisible:
+    id: "boarddetail_visualization"
+- assertVisible:
+    id: "boarddetail_ble_connect_button"
+- pressKey: Back
+- assertVisible:
+    id: "board_filter_toggle"
+

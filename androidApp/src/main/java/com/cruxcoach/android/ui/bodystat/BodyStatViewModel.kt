@@ -160,7 +160,9 @@ class BodyStatViewModel @Inject constructor(
                         )
                     )
                 }
-                val label = StatRegistry.labelDe(key)
+                // Same table the screens read; the registry's own label is
+                // German-only and this string goes straight to the user.
+                val label = BodyStatLabels.label(key)?.let { context.getString(it) } ?: key
                 _state.update { it.copy(
                     inputs = it.inputs - key,
                     savedMessage = context.getString(R.string.bodystat_stat_saved, label)

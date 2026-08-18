@@ -1,0 +1,65 @@
+appId: com.cruxcoach.android
+name: browse-zone-search
+tags:
+  - release-gate
+  - extended
+  - mutates-state
+---
+# Capture the unfiltered count, draw a large-but-bounded zone, and prove its
+# computed result is non-empty and strictly smaller. Counts remain dynamic so
+# catalogue refreshes do not make the assertion brittle.
+- runFlow: subflows/reset-browser-filters.yaml
+- tapOn:
+    id: "board_filter_toggle"
+- copyTextFrom:
+    id: "board_filter_result_count"
+- evalScript: ${output.unfilteredCount = parseInt((maestro.copiedText.match(/\d+/) || [])[0], 10)}
+- evalScript: ${if (!(output.unfilteredCount > 1)) throw new Error('Unfiltered catalogue count is not usable')}
+- pressKey: Back
+- tapOn:
+    id: "board_search_fab"
+- tapOn:
+    id: "board_hold_search"
+- assertVisible:
+    id: "hold_search_sheet"
+- tapOn:
+    id: "hold_search_zone_mode"
+- swipe:
+    start: "10%,40%"
+    end: "90%,90%"
+    duration: 1000
+- extendedWaitUntil:
+    visible:
+      id: "hold_search_match_count"
+    timeout: 30000
+- copyTextFrom:
+    id: "hold_search_match_count"
+- evalScript: ${output.zoneCount = parseInt((maestro.copiedText.match(/\d+/) || [])[0], 10)}
+- evalScript: ${if (!(output.zoneCount > 0 && output.zoneCount < output.unfilteredCount)) throw new Error('Zone did not strictly reduce a non-empty catalogue')}
+- assertVisible:
+    id: "hold_search_zone_active"
+    checked: true
+- assertVisible:
+    id: "hold_search_apply"
+    enabled: true
+- tapOn:
+    id: "hold_search_apply"
+- extendedWaitUntil:
+    visible:
+      id: "hold_search_action_bar"
+    timeout: 30000
+- assertVisible:
+    id: "board_climb_card"
+- tapOn:
+    id: "hold_search_change"
+- assertVisible:
+    id: "hold_search_zone_active"
+- tapOn:
+    id: "hold_search_reset"
+- pressKey: Back
+- assertNotVisible:
+    id: "hold_search_action_bar"
+- tapOn:
+    id: "board_search_fab"
+- assertNotVisible:
+    id: "board_search_field"

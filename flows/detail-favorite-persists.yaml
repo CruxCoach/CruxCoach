@@ -1,6 +1,7 @@
 appId: com.cruxcoach.android
 name: detail-favorite-persists
 tags:
+  - release-gate
   - smoke
   - mutates-state
 ---
@@ -9,35 +10,56 @@ tags:
 # favorite state survived the process restart. Catches DB
 # write/read regressions in the favorites pipeline that an in-
 # session toggle wouldn't catch.
-- launchApp:
-    stopApp: false
-- waitForAnimationToEnd:
-    timeout: 5000
-# First climb on the default sort — stable across cold starts.
+- runFlow: subflows/open-first-climb.yaml
+- copyTextFrom:
+    id: "boarddetail_name"
+- evalScript: ${output.favoriteTarget = maestro.copiedText}
+- runFlow:
+    when:
+      visible: "Von Favoriten entfernen"
+    commands:
+      - tapOn:
+          id: "boarddetail_favorite_button"
+- assertVisible: "Zu Favoriten hinzufügen"
 - tapOn:
-    text: "[0-9]+ Züge"
-    index: 0
-- assertVisible: "Zurück"
-- tapOn: "Zu Favoriten hinzufügen"
+    id: "boarddetail_favorite_button"
 - assertVisible: "Von Favoriten entfernen"
 - pressKey: Back
-- assertVisible: "Filter"
+- assertVisible:
+    id: "board_filter_toggle"
 # Force-restart the app process. clearState defaults to false so DB
 # + DataStore persist; only the Activity / NavHost in-memory state
 # resets, which means we should land on the Browser start-destination.
-- stopApp
-- launchApp
-- waitForAnimationToEnd:
-    timeout: 5000
-- assertVisible: "Filter"
+- runFlow: subflows/launch-browser.yaml
+# Resolve the same dynamic entity after restart; do not assume card order.
 - tapOn:
-    text: "[0-9]+ Züge"
+    id: "board_search_fab"
+- tapOn:
+    id: "board_search_field"
+- inputText: ${output.favoriteTarget}
+- extendedWaitUntil:
+    visible: ${output.favoriteTarget}
+    timeout: 15000
+- tapOn:
+    id: "board_climb_card"
     index: 0
-- assertVisible: "Zurück"
+- assertVisible: ${output.favoriteTarget}
 # THE assertion: favorite state survived the process restart.
 - assertVisible: "Von Favoriten entfernen"
 # Idempotency cleanup — restore favorite-off state.
-- tapOn: "Von Favoriten entfernen"
+- tapOn:
+    id: "boarddetail_favorite_button"
 - assertVisible: "Zu Favoriten hinzufügen"
 - pressKey: Back
-- assertVisible: "Filter"
+- tapOn:
+    id: "board_search_field"
+- eraseText: 200
+- hideKeyboard
+- extendedWaitUntil:
+    visible:
+      id: "board_climb_card"
+    timeout: 15000
+- tapOn:
+    id: "board_search_fab"
+- assertNotVisible:
+    id: "board_search_field"

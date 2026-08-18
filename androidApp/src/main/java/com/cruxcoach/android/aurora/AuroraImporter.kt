@@ -530,6 +530,7 @@ class AuroraImporter @Inject constructor(
                             added_at = createdAtIso,
                         )
                     }
+                    q.prunePlaybackStepsOutsideMembership(listId)
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Circuit '${circuit.name}' import failed", e)

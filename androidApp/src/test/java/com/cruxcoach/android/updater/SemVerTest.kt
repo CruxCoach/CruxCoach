@@ -31,6 +31,13 @@ class SemVerTest {
     }
 
     @Test
+    fun `installed debug version accepts only the app dev suffix`() {
+        assertEquals(SemVer(0, 1, 2), SemVer.parseInstalledOrNull("0.1.2-dev"))
+        assertNull(SemVer.parseInstalledOrNull("0.1.2-rc.1"))
+        assertNull(SemVer.parseInstalledOrNull("0.1.2-dev.abc1234"))
+    }
+
+    @Test
     fun `incomplete tuples are rejected`() {
         assertNull(SemVer.parseOrNull("v0.1"))
         assertNull(SemVer.parseOrNull("v1"))

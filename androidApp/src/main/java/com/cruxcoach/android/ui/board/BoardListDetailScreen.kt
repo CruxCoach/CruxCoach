@@ -1,5 +1,7 @@
 package com.cruxcoach.android.ui.board
 
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -10,8 +12,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -22,6 +30,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.cruxcoach.android.ui.common.RestTimerBannerSlot
+import com.cruxcoach.android.ui.common.SessionVisibilityDialog
 import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
 import com.cruxcoach.android.ui.common.BleStatusArea
 import androidx.compose.ui.res.stringResource
@@ -29,17 +38,100 @@ import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.*
 import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.data.repository.Climb_list_entries
+import com.cruxcoach.data.repository.ListPlaybackAdvance
+import com.cruxcoach.data.repository.ListPlaybackOrder
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.IntensityZones
+import com.cruxcoach.android.ui.settings.DurationStepper
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BoardListDetailScreen(
     onNavigateBack: () -> Unit,
     onNavigateToClimb: (climbUuid: String, angle: Int) -> Unit,
+    onNavigateToPlaybackPlan: (Long) -> Unit,
+    onPlayed: () -> Unit,
     viewModel: BoardListDetailViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val bleConnectionViewModel: BleConnectionViewModel = hiltViewModel()
+    var menuExpanded by remember { mutableStateOf(false) }
+    var showSessionVisibilityDialog by rememberSaveable { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val queueTitle = stringResource(R.string.board_queue_title)
+    val notificationPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { _ -> }
+    fun requestNotificationPermissionIfNeeded() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            val granted = androidx.core.content.ContextCompat.checkSelfPermission(
+                context, android.Manifest.permission.POST_NOTIFICATIONS
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            if (!granted) {
+                notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+    }
+
+    if (state.showPlaybackOptions) {
+        PlaybackOptionsSheet(
+            state = state,
+            onDismiss = viewModel::dismissPlaybackOptions,
+            onUsePlanChange = viewModel::setUsePlaybackPlan,
+            onOrderChange = viewModel::setPlaybackOrder,
+            onAdvanceChange = viewModel::setPlaybackAdvance,
+            onRestChange = viewModel::setPlaybackRestSeconds,
+            onEditPlan = {
+                viewModel.dismissPlaybackOptions()
+                viewModel.preparePlaybackPlan { onNavigateToPlaybackPlan(state.listId) }
+            },
+            onStart = {
+                viewModel.dismissPlaybackOptions()
+                showSessionVisibilityDialog = true
+            },
+        )
+    }
+
+    if (showSessionVisibilityDialog) {
+        SessionVisibilityDialog(
+            onDismiss = { showSessionVisibilityDialog = false },
+            onSelect = { visibility ->
+                showSessionVisibilityDialog = false
+                requestNotificationPermissionIfNeeded()
+                // Lists and generated plans share the same playlist player:
+                // always try the remembered physical controller before the
+                // queue changes this screen into session-host mode.
+                bleConnectionViewModel.reconnectRememberedBoard()
+                viewModel.startPlayback(queueTitle, visibility, onPlayed)
+            },
+        )
+    }
+
+    if (state.showRenameDialog) {
+        AlertDialog(
+            onDismissRequest = viewModel::dismissRenameDialog,
+            title = { Text(stringResource(R.string.board_lists_list_name), fontWeight = FontWeight.Bold) },
+            text = {
+                OutlinedTextField(
+                    value = state.renameValue,
+                    onValueChange = viewModel::updateRenameValue,
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = viewModel::confirmRename,
+                    enabled = state.renameValue.isNotBlank(),
+                ) { Text(stringResource(R.string.action_save)) }
+            },
+            dismissButton = {
+                TextButton(onClick = viewModel::dismissRenameDialog) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            },
+        )
+    }
 
     // Refresh entries on return so an edit/delete/publish done on a climb's
     // detail reflects instantly (the ViewModel is retained across back-nav).
@@ -61,13 +153,70 @@ fun BoardListDetailScreen(
                         IconButton(onClick = onNavigateBack) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                         }
-                    }
+                    },
+                    actions = {
+                        if (!state.isIgnored && state.totalCount > 0) {
+                            IconButton(
+                                onClick = {
+                                    viewModel.preparePlaybackPlan {
+                                        onNavigateToPlaybackPlan(state.listId)
+                                    }
+                                },
+                                modifier = Modifier.testTag("list_edit_training_plan"),
+                            ) {
+                                Icon(
+                                    Icons.Default.Tune,
+                                    contentDescription = stringResource(R.string.list_playback_edit_plan),
+                                )
+                            }
+                        }
+                        if (!state.isBuiltin) {
+                            IconButton(onClick = { menuExpanded = true }) {
+                                Icon(
+                                    Icons.Default.MoreVert,
+                                    contentDescription = stringResource(R.string.action_more_options),
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = menuExpanded,
+                                onDismissRequest = { menuExpanded = false },
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.playlist_rename)) },
+                                    leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
+                                    onClick = {
+                                        menuExpanded = false
+                                        viewModel.showRenameDialog()
+                                    },
+                                )
+                            }
+                        }
+                    },
                 )
                 RestTimerBannerSlot()
                 SyncStatusBannerSlot()
                 BleStatusArea()
             }
-        }
+        },
+        floatingActionButton = {
+            if (!state.isIgnored && state.totalCount > 0) {
+                ExtendedFloatingActionButton(
+                    onClick = viewModel::showPlaybackOptions,
+                    containerColor = OrangeAccent,
+                    icon = {
+                        Icon(Icons.Default.PlayArrow, contentDescription = null, tint = DarkBackground)
+                    },
+                    text = {
+                        Text(
+                            stringResource(R.string.list_playback_start),
+                            color = DarkBackground,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    },
+                    modifier = Modifier.testTag("list_play_fab"),
+                )
+            }
+        },
     ) { padding ->
         when {
             state.isLoading -> {
@@ -147,7 +296,12 @@ fun BoardListDetailScreen(
 
                     LazyColumn(
                         state = listState,
-                        contentPadding = PaddingValues(16.dp),
+                        contentPadding = PaddingValues(
+                            start = 16.dp,
+                            top = 16.dp,
+                            end = 16.dp,
+                            bottom = 96.dp,
+                        ),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         items(state.entries, key = { it.climb.uuid }) { entry ->
@@ -168,6 +322,230 @@ fun BoardListDetailScreen(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PlaybackOptionsSheet(
+    state: BoardListDetailState,
+    onDismiss: () -> Unit,
+    onUsePlanChange: (Boolean) -> Unit,
+    onOrderChange: (ListPlaybackOrder) -> Unit,
+    onAdvanceChange: (ListPlaybackAdvance) -> Unit,
+    onRestChange: (Long) -> Unit,
+    onEditPlan: () -> Unit,
+    onStart: () -> Unit,
+) {
+    val visibleBoardCount = state.entries
+        .map { it.climb.boardBrand to it.climb.layoutId }
+        .distinct()
+        .size
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.9f),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp)
+                    // The fixed action below must never cover the final option.
+                    .padding(bottom = 88.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+            Text(
+                stringResource(R.string.list_playback_title),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+            )
+
+            if (state.hasPlaybackPlan) {
+                Text(
+                    stringResource(R.string.list_playback_source),
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    listOf(false, true).forEachIndexed { index, usePlan ->
+                        SegmentedButton(
+                            selected = state.usePlaybackPlan == usePlan,
+                            onClick = { onUsePlanChange(usePlan) },
+                            shape = SegmentedButtonDefaults.itemShape(index, 2),
+                            label = {
+                                Text(
+                                    stringResource(
+                                        if (usePlan) R.string.list_playback_source_plan
+                                        else R.string.list_playback_source_list
+                                    )
+                                )
+                            },
+                        )
+                    }
+                }
+            }
+
+            if (state.usePlaybackPlan) {
+                PlaybackInfoBox(
+                    text = stringResource(R.string.list_playback_plan_info),
+                    actionLabel = stringResource(R.string.list_playback_edit_plan),
+                    onAction = onEditPlan,
+                )
+            } else {
+                Text(
+                    stringResource(R.string.list_playback_order),
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    ListPlaybackOrder.entries.forEachIndexed { index, order ->
+                        SegmentedButton(
+                            selected = state.playbackOrder == order,
+                            onClick = { onOrderChange(order) },
+                            shape = SegmentedButtonDefaults.itemShape(index, ListPlaybackOrder.entries.size),
+                            label = {
+                                Text(
+                                    stringResource(
+                                        if (order == ListPlaybackOrder.LIST) {
+                                            R.string.list_playback_order_list
+                                        } else R.string.list_playback_order_shuffle
+                                    )
+                                )
+                            },
+                        )
+                    }
+                }
+                Text(
+                    stringResource(R.string.list_playback_default_rest),
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                DurationStepper(
+                    seconds = state.playbackRestSeconds.toInt(),
+                    onChange = { onRestChange(it.toLong()) },
+                    minSeconds = 0,
+                    maxSeconds = 3600,
+                    minuteLabel = stringResource(R.string.settings_duration_minutes_label),
+                    secondLabel = stringResource(R.string.settings_duration_seconds_label),
+                )
+            }
+
+            HorizontalDivider()
+            Text(
+                stringResource(R.string.list_playback_advance),
+                style = MaterialTheme.typography.labelLarge,
+            )
+            ListPlaybackAdvance.entries.forEach { advance ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RadioButton(
+                        selected = state.playbackAdvance == advance,
+                        onClick = { onAdvanceChange(advance) },
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            stringResource(
+                                when (advance) {
+                                    ListPlaybackAdvance.MANUAL -> R.string.list_playback_advance_manual
+                                    ListPlaybackAdvance.AFTER_SEND -> R.string.list_playback_advance_send
+                                    ListPlaybackAdvance.AFTER_LOG -> R.string.list_playback_advance_log
+                                }
+                            ),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                }
+            }
+
+            if (!state.usePlaybackPlan && visibleBoardCount > 1) {
+                PlaybackInfoBox(stringResource(R.string.list_playback_multiple_boards_hint))
+            }
+            if (state.unavailableCount > 0) {
+                PlaybackInfoBox(
+                    stringResource(R.string.list_playback_unavailable_hint, state.unavailableCount)
+                )
+            }
+            state.playbackStartError?.let { error ->
+                PlaybackInfoBox(
+                    text = stringResource(
+                        when (error) {
+                            PlaybackStartError.EMPTY -> R.string.list_playback_error_empty
+                            PlaybackStartError.MULTIPLE_BOARDS -> R.string.list_playback_error_multiple_boards
+                        }
+                    ),
+                    isError = true,
+                )
+            }
+            }
+
+            Button(
+                onClick = onStart,
+                enabled = !state.isStartingPlayback &&
+                    (state.usePlaybackPlan || (state.entries.isNotEmpty() && visibleBoardCount == 1)),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(horizontal = 20.dp, vertical = 12.dp)
+                    .fillMaxWidth()
+                    .testTag("list_playback_confirm"),
+                colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
+                shape = RoundedCornerShape(8.dp),
+            ) {
+                if (state.isStartingPlayback) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                        color = DarkBackground,
+                    )
+                } else {
+                    Icon(Icons.Default.PlayArrow, contentDescription = null, tint = DarkBackground)
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        stringResource(R.string.list_playback_start),
+                        color = DarkBackground,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlaybackInfoBox(
+    text: String,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null,
+    isError: Boolean = false,
+) {
+    val color = if (isError) MaterialTheme.colorScheme.error else InfoBlue
+    Surface(
+        color = color.copy(alpha = 0.10f),
+        shape = RoundedCornerShape(8.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Default.Info, contentDescription = null, tint = color, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(10.dp))
+            Text(
+                text,
+                style = MaterialTheme.typography.bodySmall,
+                color = color,
+                modifier = Modifier.weight(1f),
+            )
+            if (actionLabel != null && onAction != null) {
+                TextButton(onClick = onAction) { Text(actionLabel) }
             }
         }
     }
@@ -277,33 +655,17 @@ private fun ListEntryCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Per-entry board type, analogous to the logbook badge.
-                    BoardBrandBadge(BoardBrand.fromWire(climb.boardBrand), climb.layoutId)
-                    climb.setterUsername?.let {
-                        Text(
-                            stringResource(R.string.board_climb_by_setter, it),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    if (climb.isRoute) {
-                        Text(
-                            stringResource(R.string.board_climb_frames, climb.framesCount),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    } else {
-                        Text(
-                            stringResource(R.string.board_climb_moves, moveCount),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
+                ClimbMetaLine(
+                    setter = climb.setterUsername,
+                    isRoute = climb.isRoute,
+                    framesCount = climb.framesCount,
+                    moveCount = moveCount,
+                    spacing = 8.dp,
+                    leading = {
+                        // Per-entry board type, analogous to the logbook badge.
+                        BoardBrandBadge(BoardBrand.fromWire(climb.boardBrand), climb.layoutId)
+                    },
+                )
             }
 
             Column(horizontalAlignment = Alignment.End) {
@@ -328,4 +690,3 @@ private fun ListEntryCard(
         }
     }
 }
-

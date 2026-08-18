@@ -1,0 +1,12 @@
+appId: com.cruxcoach.android
+name: subflow-delete-first-logbook-entry
+---
+- tapOn:
+    id: "logbook_ascent_select_.*"
+    index: 0
+- tapOn:
+    id: "logbook_delete_selected"
+- assertVisible:
+    id: "logbook_delete_dialog"
+- tapOn:
+    id: "logbook_delete_confirm"

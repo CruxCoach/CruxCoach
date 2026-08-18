@@ -1,0 +1,5 @@
+# Each button press must finish discovery; a manual trigger never enters the
+# automatic two-hour throttle branch.
+2+::event=(check_not_modified|check_no_update|check_error|update_available).*trigger=MANUAL
+!event=check_throttled trigger=MANUAL
+

@@ -1,0 +1,127 @@
+appId: com.cruxcoach.android
+name: logbook-honest-flash-and-stats
+tags:
+  - release-gate
+  - extended
+  - mutates-state
+---
+# Infrastructure attempts share E2E_RUN_ID. Pre-clean only markers from a
+# possible prior attempt so replay cannot change the first-contact semantics.
+- runFlow: subflows/launch-browser.yaml
+- tapOn:
+    id: "board_logbook_icon"
+- runFlow:
+    when:
+      visible: "E2E-HONEST-SEND-${E2E_RUN_ID}"
+    commands:
+      - tapOn:
+          id: "logbook_ascent_select_.*"
+          index: 0
+      - tapOn:
+          id: "logbook_delete_selected"
+      - tapOn:
+          id: "logbook_delete_confirm"
+- runFlow:
+    when:
+      visible: "E2E-HONEST-ATTEMPT-${E2E_RUN_ID}"
+    commands:
+      - tapOn:
+          id: "logbook_ascent_select_.*"
+          index: 0
+      - tapOn:
+          id: "logbook_delete_selected"
+      - tapOn:
+          id: "logbook_delete_confirm"
+- pressKey: Back
+# First contact: an open project with three attempts.
+- runFlow: subflows/open-first-climb.yaml
+- tapOn:
+    id: "boarddetail_log_button"
+- tapOn:
+    id: "ascent_type_attempt"
+- tapOn:
+    id: "ascent_attempts_up"
+- tapOn:
+    id: "ascent_attempts_up"
+- tapOn:
+    id: "ascent_comment"
+- inputText: "E2E-HONEST-ATTEMPT-${E2E_RUN_ID}"
+- hideKeyboard
+- tapOn:
+    id: "ascent_save"
+# Later first-try send at the same climb+angle: must not become a Flash.
+- tapOn:
+    id: "boarddetail_log_button"
+- tapOn:
+    id: "ascent_type_send"
+- tapOn:
+    id: "ascent_comment"
+- inputText: "E2E-HONEST-SEND-${E2E_RUN_ID}"
+- hideKeyboard
+- tapOn:
+    id: "ascent_save"
+- stopApp
+- launchApp
+- waitForAnimationToEnd:
+    timeout: 5000
+- tapOn:
+    id: "board_logbook_icon"
+- extendedWaitUntil:
+    visible: "E2E-HONEST-SEND-${E2E_RUN_ID}"
+    timeout: 15000
+- assertVisible: "E2E-HONEST-ATTEMPT-${E2E_RUN_ID}"
+- assertVisible: "Offen · 3 Versuche"
+- assertVisible: "Top · 1. Versuch"
+- assertNotVisible: "Flash"
+# Numeric summary cards must be non-zero after the controlled attempt + send.
+# Existing unrelated logbook rows may increase the values, so these assertions
+# deliberately prove lower bounds instead of pinning disposable-device totals.
+- assertVisible:
+    id: "board_stats_summary_sends_value"
+    text: "[1-9][0-9]*"
+- assertVisible:
+    id: "board_stats_summary_attempts_value"
+    text: "[1-9][0-9]*"
+- assertVisible:
+    id: "board_stats_summary_sessions_value"
+    text: "[1-9][0-9]*"
+- assertVisible:
+    id: "board_stats_summary_unique_value"
+    text: "[1-9][0-9]*"
+# Device-visible personal-record numbers; full eight-week-window and grade
+# aggregation math remain independently exact in BoardStatsComputerTest.
+- tapOn:
+    id: "logbook_stats_button"
+- assertVisible:
+    id: "board_stats_sheet"
+- assertVisible: "Sessions/Woche (8 W.)"
+- assertVisible:
+    id: "board_stats_avg_sessions_value"
+    text: "([1-9][0-9]*[,.][0-9]|0[,.][1-9])"
+- assertVisible: "Wochen-Serie"
+- assertVisible:
+    id: "board_stats_week_streak_value"
+    text: "[1-9][0-9]*"
+- assertVisible:
+    id: "board_stats_most_sends_value"
+    text: "[1-9][0-9]*"
+- assertVisible: "Grad-Pyramide"
+- pressKey: Back
+# Cleanup exactly the two entries created above.
+- tapOn:
+    id: "logbook_ascent_select_.*"
+    index: 0
+- tapOn:
+    id: "logbook_ascent_select_.*"
+    index: 1
+- tapOn:
+    id: "logbook_delete_selected"
+- tapOn:
+    id: "logbook_delete_confirm"
+- extendedWaitUntil:
+    notVisible: "E2E-HONEST-SEND-${E2E_RUN_ID}"
+    timeout: 10000
+- assertNotVisible: "E2E-HONEST-ATTEMPT-${E2E_RUN_ID}"
+- pressKey: Back
+- assertVisible:
+    id: "board_filter_toggle"

@@ -9,7 +9,7 @@ import android.util.Log
  * Hard-disables the in-app updater when CruxCoach was installed via a
  * recognized app store (currently only Zapstore — §6.6). Detection runs
  * on every check, not cached: a user can uninstall Zapstore and reinstall
- * from Codeberg later, and the gate must reflect the current install
+ * by direct sideload later, and the gate must reflect the current install
  * source immediately.
  */
 class InstallSourceGate(private val context: Context) {

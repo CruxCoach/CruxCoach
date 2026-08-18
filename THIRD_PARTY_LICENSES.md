@@ -29,6 +29,22 @@ or APK.
 
 Used to decompress board manifests downloaded from Blossom relays.
 
+### MoonBoard hold-set cell map — BoardSesh
+
+- **Location:** [`MoonBoardHoldSets.kt`](shared/src/commonMain/kotlin/com/cruxcoach/domain/board/MoonBoardHoldSets.kt)
+- **Upstream:** https://github.com/boardsesh/boardsesh —
+  `MOONBOARD_CELL_SETS` and `MOONBOARD_SETS` in
+  `packages/shared/board-config/src`
+- **License:** Apache License 2.0
+- **License text:** https://www.apache.org/licenses/LICENSE-2.0
+- **Distribution form:** the mapping data (hold-set ids, product names, and
+  which grid cell belongs to which set, for all seven MoonBoard layouts) is
+  transcribed into Kotlin literals; no BoardSesh code is copied.
+
+Used to show which holds a MoonBoard hold set covers, and to derive the
+`climbs.hsm` hold-set mask for locally authored and peer-received MoonBoard
+climbs (FEAT-049).
+
 ---
 
 ## Bundled Assets
@@ -47,6 +63,21 @@ Used to decompress board manifests downloaded from Blossom relays.
 - **Takedown:** Kilter Grips, LLC (or a prior rights holder) may request
   removal or replacement at any time via the contacts in
   [`SECURITY.md`](SECURITY.md). Requests will be handled promptly.
+
+### MoonBoard 2010 and Mini MoonBoard 2025 layout images
+
+- **Location:** [`androidApp/src/main/assets/board_images/`](androidApp/src/main/assets/board_images/)
+- **Files:** `moonboard_2010_*.png`, `mini_moonboard_2025_*.png`
+- **Source:** extracted unchanged from the official MoonBoard Android app
+  (`1.3.56`); one board plate plus the fixed transparent hold layers for each
+  complete configuration.
+- **Rights holder:** Moon Climbing Ltd
+- **Basis for bundling:** referential offline visualization and hardware
+  interoperability; see [`LEGAL.md`](LEGAL.md#bundled-moonboard-layout-images).
+- **Details:** [`board_images/README.md`](androidApp/src/main/assets/board_images/README.md)
+- **Takedown:** Moon Climbing Ltd may request removal or replacement at any
+  time via the contacts in [`SECURITY.md`](SECURITY.md). Requests will be
+  handled promptly.
 
 ### Aurora-family board layout images
 
@@ -198,6 +229,25 @@ These images are **not** covered by the CruxCoach GPLv3 source license.
 - **Distribution form:** not vendored into the repository tree; the backported
   implementations are compiled into the app's DEX by D8/L8 at build time (the
   `l8DexDesugarLibRelease` task) and therefore ship inside the APK.
+
+---
+
+### FIPS (Free Internetworking Peering System)
+
+- **Used in:** `native/fips-bridge`, compiled into `libcruxcoach_fips.so`.
+- **Upstream:** https://github.com/jmcorgan/fips
+- **Pinned revision:** `967776079ba5ddc8fe118c3f289365b51eb03737`
+- **License:** MIT. Full text: `native/fips-bridge/LICENSE-FIPS-MIT`.
+- **Distribution form:** Cargo source dependency and arm64 binary in the APK.
+
+### Myco Android BLE reference
+
+- **Used as:** build/protocol reference for Android L2CAP ownership and the
+  FIPS JNI bridge; CruxCoach maintains its implementation in its own package.
+- **Upstream:** https://github.com/Origami74/myco
+- **Reference revision:** `85316faf80fda48bfef8977584ab4ad68203de02`
+- **License:** MIT. Full text: `native/fips-bridge/LICENSE-MYCO-MIT`.
+  No Myco binary or asset is bundled.
 
 ---
 

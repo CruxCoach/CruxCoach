@@ -10,9 +10,17 @@ package com.cruxcoach.domain.board
  * Kilter chunk — e.g. Tension TB2 sets {8,9,10,11} → set 8 = bit0, 9 = bit1,
  * 10 = bit2, 11 = bit3; a climb using sets {8,11} carries hsm 9.
  *
- * `hsm = 0` means UNKNOWN (~10% of Kilter rows, all MoonBoard rows). Such
- * climbs must always pass the filter; the SQL predicate
+ * `hsm = 0` means UNKNOWN — never "no sets". On the Kilter side that is ~10%
+ * of rows. It used to be every MoonBoard row as well; since FEAT-049 the
+ * MoonBoard catalogue carries a real mask computed in the build pipeline, and
+ * 0 is left only where the sets genuinely cannot be resolved: a locally
+ * authored or peer-received climb whose cells the on-device map does not
+ * carry. Such climbs must always pass the filter; the SQL predicate
  * `(hsm & excludedMask) = 0` gives that leniency for free.
+ *
+ * The two sides differ only in where the set universe comes from: Kilter and
+ * the Aurora family read it from `board_images`/`placements`, MoonBoard from
+ * [MoonBoardHoldSets]. The bit rule below is shared and unchanged.
  */
 object HoldSetMask {
 

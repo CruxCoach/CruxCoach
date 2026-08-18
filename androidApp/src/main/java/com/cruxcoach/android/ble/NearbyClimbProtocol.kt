@@ -3,12 +3,25 @@ package com.cruxcoach.android.ble
 import android.util.Log
 
 sealed class NearbyPayload {
-    data class ClimbData(val climbUuid: String, val angle: Int) : NearbyPayload()
-    /** Like ClimbData, but the sender is no longer connected — LEDs still visible on the board. */
-    data class LastClimb(val climbUuid: String, val angle: Int) : NearbyPayload()
+    data class ClimbData(
+        val climbUuid: String,
+        val angle: Int,
+        val projectionSurvivesDisconnect: Boolean = true,
+        val acceptsDisconnect: Boolean = true,
+        val supportsConcurrentConnections: Boolean = false,
+    ) : NearbyPayload()
+    /** The sender's last projection. [projectionSurvivesDisconnect] says whether its LEDs remain on. */
+    data class LastClimb(
+        val climbUuid: String,
+        val angle: Int,
+        val projectionSurvivesDisconnect: Boolean = true,
+    ) : NearbyPayload()
     data object DisconnectRequest : NearbyPayload()
     /** Board connected without a specific climb. Bit 0 of flags byte = acceptsDisconnectRequests. */
-    data class BoardConnected(val acceptsDisconnect: Boolean = true) : NearbyPayload()
+    data class BoardConnected(
+        val acceptsDisconnect: Boolean = true,
+        val supportsConcurrentConnections: Boolean = false,
+    ) : NearbyPayload()
     /** Signals that the sender is going away — scanner should remove entries immediately. */
     data object Gone : NearbyPayload()
     /** A nearby device is hosting a Session Queue that can be joined. */
@@ -37,35 +50,82 @@ object NearbyClimbProtocol {
     private const val TYPE_LAST_CLIMB_STRING: Byte = 0x07
     private const val TYPE_SESSION: Byte = 0x08
     private const val TYPE_DISCONNECT_RESPONSE: Byte = 0x09
-
-    // UUID binary format: [4 magic][1 type=0x01][1 angle+flag][16 uuid] = 22 bytes
+    // UUID format: [4 magic][1 type][1 angle+format][16 uuid][optional 1 flags].
+    // The extension carries projection retention and disconnect rejection; old
+    // readers consume the stable 22-byte prefix and ignore it.
     private const val UUID_PAYLOAD_SIZE = 22
     private const val UUID_HYPHEN_FLAG = 0x80 // bit 7 of angle byte
+    private const val PROJECTION_RETAINED_FLAG = 0x01
+    private const val DISCONNECT_REJECTED_FLAG = 0x02
+    private const val CONCURRENT_CONNECTIONS_FLAG = 0x04
 
-    // String format: [4 magic][1 type=0x03][1 angle][1 len][N utf8] = 7+N bytes
+    // String format: [4 magic][1 type][1 angle][1 len+flags][N utf8].
     private const val STRING_HEADER_SIZE = 7
     private const val MAX_STRING_ID_LENGTH = 17 // 24 budget - 7 header
+    private const val STRING_VOLATILE_FLAG = 0x80
+    private const val STRING_DISCONNECT_REJECTED_FLAG = 0x40
+    private const val STRING_CONCURRENT_CONNECTIONS_FLAG = 0x20
 
     // Disconnect: [4 magic][1 type=0x02][1 zero] = 6 bytes
     private const val DISCONNECT_SIZE = 6
 
-    fun encodeClimbData(climbId: String, angle: Int): ByteArray {
+    fun encodeClimbData(
+        climbId: String,
+        angle: Int,
+        projectionSurvivesDisconnect: Boolean = true,
+        acceptsDisconnect: Boolean = true,
+        supportsConcurrentConnections: Boolean = false,
+    ): ByteArray {
         val uuid = parseUuid(climbId)
         return if (uuid != null) {
             val hasHyphens = climbId.contains('-')
-            encodeAsUuid(uuid, angle, hasHyphens, TYPE_CLIMB_UUID)
+            encodeAsUuid(
+                uuid,
+                angle,
+                hasHyphens,
+                TYPE_CLIMB_UUID,
+                projectionSurvivesDisconnect,
+                acceptsDisconnect,
+                supportsConcurrentConnections,
+            )
         } else {
-            encodeAsString(climbId, angle, TYPE_CLIMB_STRING)
+            encodeAsString(
+                climbId,
+                angle,
+                TYPE_CLIMB_STRING,
+                projectionSurvivesDisconnect,
+                acceptsDisconnect,
+                supportsConcurrentConnections,
+            )
         }
     }
 
-    fun encodeLastClimb(climbId: String, angle: Int): ByteArray {
+    fun encodeLastClimb(
+        climbId: String,
+        angle: Int,
+        projectionSurvivesDisconnect: Boolean = true,
+    ): ByteArray {
         val uuid = parseUuid(climbId)
         return if (uuid != null) {
             val hasHyphens = climbId.contains('-')
-            encodeAsUuid(uuid, angle, hasHyphens, TYPE_LAST_CLIMB_UUID)
+            encodeAsUuid(
+                uuid,
+                angle,
+                hasHyphens,
+                TYPE_LAST_CLIMB_UUID,
+                projectionSurvivesDisconnect,
+                true,
+                false,
+            )
         } else {
-            encodeAsString(climbId, angle, TYPE_LAST_CLIMB_STRING)
+            encodeAsString(
+                climbId,
+                angle,
+                TYPE_LAST_CLIMB_STRING,
+                projectionSurvivesDisconnect,
+                true,
+                false,
+            )
         }
     }
 
@@ -77,11 +137,19 @@ object NearbyClimbProtocol {
         return buf
     }
 
-    fun encodeBoardConnected(acceptsDisconnect: Boolean = true): ByteArray {
+    fun encodeBoardConnected(
+        acceptsDisconnect: Boolean = true,
+        supportsConcurrentConnections: Boolean = false,
+    ): ByteArray {
         val buf = ByteArray(DISCONNECT_SIZE) // same size: [4 magic][1 type][1 flags]
         MAGIC.copyInto(buf, 0)
         buf[4] = TYPE_BOARD_CONNECTED
-        buf[5] = if (acceptsDisconnect) 0x01 else 0x00
+        // 0x00 remains the legacy "unspecified/accept" value. Use the
+        // explicit 0x02 rejection flag so modern peers do not disconnect a
+        // multi-client controller unnecessarily.
+        val disconnectFlag = if (acceptsDisconnect) 0x01 else 0x02
+        val capacityFlag = if (supportsConcurrentConnections) CONCURRENT_CONNECTIONS_FLAG else 0
+        buf[5] = (disconnectFlag or capacityFlag).toByte()
         return buf
     }
 
@@ -139,7 +207,11 @@ object NearbyClimbProtocol {
                 val flags = if (data.size > 5) data[5].toInt() and 0xFF else 0
                 // 0x00 = legacy (main sends no flag) or missing byte → default true for backward compat
                 // 0x01 = explicitly accepts, 0x02 = explicitly rejects
-                NearbyPayload.BoardConnected(acceptsDisconnect = flags != 0x02)
+                NearbyPayload.BoardConnected(
+                    acceptsDisconnect = (flags and DISCONNECT_REJECTED_FLAG) == 0,
+                    supportsConcurrentConnections =
+                        (flags and CONCURRENT_CONNECTIONS_FLAG) != 0,
+                )
             }
             TYPE_GONE -> NearbyPayload.Gone
             TYPE_SESSION -> decodeSessionAdvertisement(data)
@@ -171,8 +243,22 @@ object NearbyClimbProtocol {
 
     // --- UUID binary encoding (16 bytes) ---
 
-    private fun encodeAsUuid(uuid: java.util.UUID, angle: Int, hasHyphens: Boolean, type: Byte): ByteArray {
-        val buf = ByteArray(UUID_PAYLOAD_SIZE)
+    private fun encodeAsUuid(
+        uuid: java.util.UUID,
+        angle: Int,
+        hasHyphens: Boolean,
+        type: Byte,
+        projectionSurvivesDisconnect: Boolean,
+        acceptsDisconnect: Boolean,
+        supportsConcurrentConnections: Boolean,
+    ): ByteArray {
+        // Non-default projection/ownership capabilities append one flags byte.
+        // Legacy decoders require only the first 22 bytes and ignore the
+        // extension, so they continue to discover the climb.
+        val hasFlags = !projectionSurvivesDisconnect ||
+            !acceptsDisconnect ||
+            supportsConcurrentConnections
+        val buf = ByteArray(UUID_PAYLOAD_SIZE + if (hasFlags) 1 else 0)
         MAGIC.copyInto(buf, 0)
         buf[4] = type
         val angleBits = angle.coerceIn(0, 70)
@@ -183,6 +269,12 @@ object NearbyClimbProtocol {
         for (i in 0 until 8) {
             buf[6 + i] = (msb shr (56 - i * 8)).toByte()
             buf[14 + i] = (lsb shr (56 - i * 8)).toByte()
+        }
+        if (hasFlags) {
+            val retained = if (projectionSurvivesDisconnect) PROJECTION_RETAINED_FLAG else 0
+            val rejects = if (acceptsDisconnect) 0 else DISCONNECT_REJECTED_FLAG
+            val concurrent = if (supportsConcurrentConnections) CONCURRENT_CONNECTIONS_FLAG else 0
+            buf[UUID_PAYLOAD_SIZE] = (retained or rejects or concurrent).toByte()
         }
         return buf
     }
@@ -204,20 +296,50 @@ object NearbyClimbProtocol {
         } else {
             uuid.toString().replace("-", "").uppercase()
         }
-        return if (last) NearbyPayload.LastClimb(formatted, angle)
-        else NearbyPayload.ClimbData(formatted, angle)
+        val projectionSurvivesDisconnect = data.size == UUID_PAYLOAD_SIZE ||
+            (data[UUID_PAYLOAD_SIZE].toInt() and PROJECTION_RETAINED_FLAG) != 0
+        val acceptsDisconnect = data.size == UUID_PAYLOAD_SIZE ||
+            (data[UUID_PAYLOAD_SIZE].toInt() and DISCONNECT_REJECTED_FLAG) == 0
+        val supportsConcurrentConnections = data.size > UUID_PAYLOAD_SIZE &&
+            (data[UUID_PAYLOAD_SIZE].toInt() and CONCURRENT_CONNECTIONS_FLAG) != 0
+        return if (last) {
+            NearbyPayload.LastClimb(formatted, angle, projectionSurvivesDisconnect)
+        } else {
+            NearbyPayload.ClimbData(
+                formatted,
+                angle,
+                projectionSurvivesDisconnect,
+                acceptsDisconnect,
+                supportsConcurrentConnections,
+            )
+        }
     }
 
     // --- UTF-8 string encoding (for numeric IDs) ---
 
-    private fun encodeAsString(climbId: String, angle: Int, type: Byte): ByteArray {
+    private fun encodeAsString(
+        climbId: String,
+        angle: Int,
+        type: Byte,
+        projectionSurvivesDisconnect: Boolean,
+        acceptsDisconnect: Boolean,
+        supportsConcurrentConnections: Boolean,
+    ): ByteArray {
         val idBytes = climbId.toByteArray(Charsets.UTF_8)
         val len = idBytes.size.coerceAtMost(MAX_STRING_ID_LENGTH)
         val buf = ByteArray(STRING_HEADER_SIZE + len)
         MAGIC.copyInto(buf, 0)
         buf[4] = type
         buf[5] = angle.coerceIn(0, 70).toByte()
-        buf[6] = len.toByte()
+        // Bit 7 is outside the valid length range (max 17), so it can mark a
+        // volatile projection without spending another advertising byte.
+        // Legacy decoders coerce the flagged length to the available bytes and
+        // therefore still recover the full climb ID.
+        val volatileFlag = if (projectionSurvivesDisconnect) 0 else STRING_VOLATILE_FLAG
+        val rejectFlag = if (acceptsDisconnect) 0 else STRING_DISCONNECT_REJECTED_FLAG
+        val concurrentFlag =
+            if (supportsConcurrentConnections) STRING_CONCURRENT_CONNECTIONS_FLAG else 0
+        buf[6] = (len or volatileFlag or rejectFlag or concurrentFlag).toByte()
         idBytes.copyInto(buf, STRING_HEADER_SIZE, 0, len)
         return buf
     }
@@ -225,11 +347,25 @@ object NearbyClimbProtocol {
     private fun decodeString(data: ByteArray, last: Boolean): NearbyPayload? {
         if (data.size < STRING_HEADER_SIZE) return null
         val angle = data[5].toInt() and 0xFF
-        val idLen = (data[6].toInt() and 0xFF).coerceAtMost(data.size - STRING_HEADER_SIZE)
+        val rawLength = data[6].toInt() and 0xFF
+        val projectionSurvivesDisconnect = (rawLength and STRING_VOLATILE_FLAG) == 0
+        val acceptsDisconnect = (rawLength and STRING_DISCONNECT_REJECTED_FLAG) == 0
+        val supportsConcurrentConnections =
+            (rawLength and STRING_CONCURRENT_CONNECTIONS_FLAG) != 0
+        val idLen = (rawLength and 0x1F).coerceAtMost(data.size - STRING_HEADER_SIZE)
         if (idLen == 0) return null
         val climbId = String(data, STRING_HEADER_SIZE, idLen, Charsets.UTF_8)
-        return if (last) NearbyPayload.LastClimb(climbId, angle)
-        else NearbyPayload.ClimbData(climbId, angle)
+        return if (last) {
+            NearbyPayload.LastClimb(climbId, angle, projectionSurvivesDisconnect)
+        } else {
+            NearbyPayload.ClimbData(
+                climbId,
+                angle,
+                projectionSurvivesDisconnect,
+                acceptsDisconnect,
+                supportsConcurrentConnections,
+            )
+        }
     }
 
     // --- Helpers ---

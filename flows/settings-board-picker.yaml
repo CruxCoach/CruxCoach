@@ -1,32 +1,40 @@
 appId: com.cruxcoach.android
 name: settings-board-picker
 tags:
+  - release-gate
   - smoke
 ---
-- launchApp:
-    stopApp: false
-- waitForAnimationToEnd:
-    timeout: 5000
-- tapOn: "Einstellungen"
-# Settings landing — same anchor as settings-navigate.
-- assertVisible: "Board-Einstellungen"
+- runFlow: subflows/launch-browser.yaml
+- tapOn:
+    id: "board_settings_button"
+# Settings landing — same stable anchor as settings-navigate.
+- scrollUntilVisible:
+    element:
+      id: "settings_section_board"
+    direction: DOWN
 # Open the FEAT-007 board-model dialog via the "Ändern" button next to
 # the "Board-Größe" row. The label "Ändern" appears only on this row
 # in the visible Settings viewport (other change buttons in the
 # expanded settings list are below the fold).
-- tapOn: "Ändern"
+- tapOn:
+    id: "settings_section_board"
+- tapOn:
+    id: "settings_board_change"
 - waitForAnimationToEnd:
     timeout: 2000
 # Dialog title is uniquely worded so it can't be confused with any
 # other modal in the app.
-- assertVisible: "Welches Kilter Board hast du?"
+- assertVisible:
+    id: "board_picker_dialog"
 # Cancel — the dialog supports an explicit dismiss button labelled
 # "Schließen" (action_close).
 - pressKey: Back
 - waitForAnimationToEnd:
     timeout: 2000
 # Back on the Settings landing.
-- assertVisible: "Board-Einstellungen"
+- assertVisible:
+    id: "settings_section_board"
 - pressKey: Back
 # Back on the BoardBrowser.
-- assertVisible: "Filter"
+- assertVisible:
+    id: "board_filter_toggle"

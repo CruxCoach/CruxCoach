@@ -1,6 +1,9 @@
 package com.cruxcoach.android.ui.settings
 
 import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import android.text.format.DateUtils
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -15,6 +18,10 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -38,7 +45,14 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
 import com.cruxcoach.android.updater.PipelineStage
+import com.cruxcoach.android.updater.UpdateAutomationMode
 import com.cruxcoach.android.updater.UpdateNotificationReliabilityHelper
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.text.style.TextOverflow
 
 /**
  * Settings section for the in-app updater (§6.15). Layout matches the
@@ -62,9 +76,46 @@ internal fun UpdaterSettingsSection(
         return
     }
 
+    // End of support outranks every other state here: no toggle below this
+    // point can change the outcome, and showing update controls that will
+    // never do anything again would be actively misleading.
+    if (!viewModel.receivesFutureUpdates) {
+        Card(
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.errorContainer,
+            ),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.updater_settings_end_of_support_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                )
+                Text(
+                    text = stringResource(
+                        R.string.updater_settings_end_of_support_body,
+                        viewModel.requiredAndroidVersionName,
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                )
+            }
+        }
+        return
+    }
+
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) viewModel.refreshNotificationNudge()
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshNotificationNudge()
+                viewModel.refreshInstallPermission()
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
@@ -75,6 +126,7 @@ internal fun UpdaterSettingsSection(
     val nudgeVisible by viewModel.notificationNudgeVisible.collectAsStateWithLifecycle()
     val downloadProgress by viewModel.downloadProgress.collectAsStateWithLifecycle()
     val dialogRequested by viewModel.downloadDialogRequested.collectAsStateWithLifecycle()
+    val installPermissionGranted by viewModel.installPermissionGranted.collectAsStateWithLifecycle()
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (nudgeVisible) {
@@ -139,6 +191,81 @@ internal fun UpdaterSettingsSection(
             }
         }
 
+        ToggleSettingRow(
+            title = stringResource(R.string.updater_settings_auto_check),
+            description = stringResource(R.string.updater_settings_auto_check_desc),
+            checked = state.autoCheckEnabled,
+            onCheckedChange = viewModel::setAutoCheck,
+        )
+
+        if (state.autoCheckEnabled) {
+            Text(
+                text = stringResource(R.string.updater_settings_automation_title),
+                fontWeight = FontWeight.Bold,
+            )
+            val modes = UpdateAutomationMode.entries
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                modes.forEachIndexed { index, mode ->
+                    val label = when (mode) {
+                        UpdateAutomationMode.NOTIFY -> R.string.updater_mode_notify
+                        UpdateAutomationMode.AUTO_DOWNLOAD -> R.string.updater_mode_download
+                        UpdateAutomationMode.AUTO_INSTALL -> R.string.updater_mode_install
+                    }
+                    SegmentedButton(
+                        selected = state.automationMode == mode,
+                        onClick = { viewModel.setAutomationMode(mode) },
+                        shape = SegmentedButtonDefaults.itemShape(index, modes.size),
+                        label = { Text(stringResource(label)) },
+                    )
+                }
+            }
+            Text(
+                text = stringResource(
+                    when (state.automationMode) {
+                        UpdateAutomationMode.NOTIFY -> R.string.updater_mode_notify_desc
+                        UpdateAutomationMode.AUTO_DOWNLOAD -> R.string.updater_mode_download_desc
+                        UpdateAutomationMode.AUTO_INSTALL -> R.string.updater_mode_install_desc
+                    },
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            if (state.automationMode != UpdateAutomationMode.NOTIFY) {
+                ToggleSettingRow(
+                    title = stringResource(R.string.updater_settings_auto_mobile),
+                    description = stringResource(R.string.updater_settings_auto_mobile_desc),
+                    checked = state.autoDownloadOnMobile,
+                    onCheckedChange = viewModel::setAutoDownloadOnMobile,
+                )
+            }
+
+            if (state.automationMode == UpdateAutomationMode.AUTO_INSTALL) {
+                AutomaticInstallInfo(
+                    permissionGranted = installPermissionGranted,
+                    onGrantPermission = {
+                        val intent = Intent(
+                            Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                            Uri.parse("package:${context.packageName}"),
+                        )
+                        runCatching { context.startActivity(intent) }
+                            .onFailure {
+                                context.startActivity(Intent(Settings.ACTION_SECURITY_SETTINGS))
+                            }
+                    },
+                )
+            }
+        }
+
+        if (viewModel.anonymousUpdateMetricsAvailable) {
+            ToggleSettingRow(
+                title = stringResource(R.string.updater_settings_anonymous_metrics),
+                description = stringResource(R.string.updater_settings_anonymous_metrics_desc),
+                checked = state.anonymousUpdateMetricsEnabled,
+                onCheckedChange = viewModel::setAnonymousUpdateMetricsEnabled,
+            )
+        }
+
         var downloadConfirmFor by remember { mutableStateOf<com.cruxcoach.android.updater.UpdateInfo?>(null) }
 
         val info = state.pendingUpdate()
@@ -169,6 +296,7 @@ internal fun UpdaterSettingsSection(
                     sizeBytes = info.apkSizeBytes,
                     stage = state.pipelineStage,
                     downloadProgress = downloadProgress,
+                    releaseNotesMarkdown = info.releaseNotesMarkdown,
                     onDownload = { downloadConfirmFor = info },
                     onInstall = viewModel::installPending,
                 )
@@ -206,11 +334,71 @@ internal fun UpdaterSettingsSection(
 }
 
 @Composable
+private fun ToggleSettingRow(
+    title: String,
+    description: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(text = title, fontWeight = FontWeight.Medium)
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+}
+
+@Composable
+private fun AutomaticInstallInfo(
+    permissionGranted: Boolean,
+    onGrantPermission: () -> Unit,
+) {
+    Card(
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        ),
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                text = stringResource(R.string.updater_auto_install_info_title),
+                fontWeight = FontWeight.Bold,
+            )
+            val body = when {
+                Build.VERSION.SDK_INT < Build.VERSION_CODES.S ->
+                    R.string.updater_auto_install_legacy_desc
+                permissionGranted -> R.string.updater_auto_install_ready_desc
+                else -> R.string.updater_auto_install_permission_desc
+            }
+            Text(
+                text = stringResource(body),
+                style = MaterialTheme.typography.bodySmall,
+            )
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !permissionGranted) {
+                OutlinedButton(onClick = onGrantPermission) {
+                    Text(stringResource(R.string.updater_auto_install_permission_action))
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun PendingUpdateRow(
     version: String,
     sizeBytes: Long,
     stage: PipelineStage,
     downloadProgress: Int?,
+    releaseNotesMarkdown: String?,
     onDownload: () -> Unit,
     onInstall: () -> Unit,
 ) {
@@ -228,6 +416,43 @@ private fun PendingUpdateRow(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            // Fetched from the release since 0.2.2, carried through the
+            // DataStore, and read by nobody — so "download update?" offered a
+            // size and nothing about what changes, and AUTO_INSTALL asked
+            // nothing at all. Collapsed by default: changelogs run long, and
+            // an update row should not push the rest of the screen away.
+            if (!releaseNotesMarkdown.isNullOrBlank()) {
+                var expanded by rememberSaveable(version) { mutableStateOf(false) }
+                Text(
+                    text = stringResource(R.string.updater_settings_pending_release_notes),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = releaseNotesMarkdown.trim(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = if (expanded) Int.MAX_VALUE else COLLAPSED_NOTES_LINES,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = if (expanded) {
+                        Modifier.heightIn(max = EXPANDED_NOTES_MAX_HEIGHT).verticalScroll(
+                            rememberScrollState()
+                        )
+                    } else Modifier,
+                )
+                TextButton(
+                    onClick = { expanded = !expanded },
+                    contentPadding = PaddingValues(0.dp),
+                ) {
+                    Text(
+                        stringResource(
+                            if (expanded) R.string.updater_settings_release_notes_less
+                            else R.string.updater_settings_release_notes_more
+                        ),
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                }
+            }
             when (stage) {
                 PipelineStage.READY_TO_INSTALL -> {
                     OutlinedButton(onClick = onInstall) {
@@ -242,6 +467,15 @@ private fun PendingUpdateRow(
                     )
                     androidx.compose.material3.LinearProgressIndicator(
                         progress = { pct / 100f },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                PipelineStage.INSTALLING -> {
+                    Text(
+                        text = stringResource(R.string.updater_settings_installing),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    androidx.compose.material3.LinearProgressIndicator(
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
@@ -288,3 +522,7 @@ private fun humanSize(bytes: Long): String {
     val mb = bytes.toDouble() / (1024.0 * 1024.0)
     return "%.1f MB".format(mb)
 }
+
+/** Enough to see what kind of release it is without taking over the screen. */
+private const val COLLAPSED_NOTES_LINES = 4
+private val EXPANDED_NOTES_MAX_HEIGHT = 220.dp

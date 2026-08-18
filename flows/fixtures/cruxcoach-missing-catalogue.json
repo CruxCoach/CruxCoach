@@ -1,0 +1,15 @@
+{
+  "version": 3,
+  "app": "CruxCoach",
+  "exportedAt": "2026-07-24T12:00:00Z",
+  "climbLists": [
+    {
+      "name": "E2E-MISSING-CATALOG-022",
+      "isBuiltin": false,
+      "createdAt": "2026-07-24T12:00:00Z",
+      "entries": [
+        "e2200220-ffff-4fff-8fff-000000000001"
+      ]
+    }
+  ]
+}

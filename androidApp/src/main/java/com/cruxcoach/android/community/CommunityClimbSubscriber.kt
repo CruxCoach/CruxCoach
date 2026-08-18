@@ -584,9 +584,22 @@ class CommunityClimbSubscriber @Inject constructor(
         // First-author wins; subsequent events from a different pubkey
         // are dropped at the door so the local DB stays consistent with
         // the relay-side (pubkey,kind,d-tag) namespacing.
-        val existingAuthor = runCatching {
+        var existingAuthor = runCatching {
             boardRepository.getClimbAuthorPubkey(parsedClimb.uuid)
         }.getOrNull()
+        if (!CommunityClimbValidation.authorOwnershipMatches(existingAuthor, parsedClimb.pubkey)) {
+            val removedForeignShell = runCatching {
+                boardRepository.removeForeignTombstoneShell(parsedClimb.uuid, parsedClimb.pubkey)
+            }.getOrDefault(false)
+            if (removedForeignShell) {
+                Log.w(
+                    TAG,
+                    "removed foreign tombstone shell uuid=${parsedClimb.uuid} " +
+                        "shellAuthor=${existingAuthor?.take(8)} genuineAuthor=${parsedClimb.pubkey.take(8)}",
+                )
+                existingAuthor = null
+            }
+        }
         if (!CommunityClimbValidation.authorOwnershipMatches(existingAuthor, parsedClimb.pubkey)) {
             Log.w(
                 TAG,

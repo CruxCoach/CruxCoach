@@ -63,12 +63,10 @@ private const val IMAGE_HOLD_RADIUS_FRACTION = 0.028f
  *
  * [MoonBoardAssetState.Ready] draws the real board image full-bleed and
  * highlights each climb hold at its measured position from the asset's
- * coordinate map. [MoonBoardAssetState.Unavailable] — variants without a
- * bundled image (Masters 2017 / 2019) — draws a generic, procedurally-
- * rendered 11×N grid instead (N = the [variant]'s row count: 18 for the
- * standard board, 12 for Mini MoonBoard 2020). [MoonBoardAssetState.Loading] draws a
- * blank card, so the procedural grid never flashes before the real
- * image decodes on first open.
+ * coordinate map. [MoonBoardAssetState.Unavailable] draws a generic,
+ * procedurally-rendered 11×N grid when a bundle cannot decode (N = 18 for a
+ * standard board, 12 for a Mini). [MoonBoardAssetState.Loading] draws a blank
+ * card, so the procedural grid never flashes before the real image decodes.
  *
  * When [onHoldTapped] is supplied the board becomes INTERACTIVE (the climb
  * editor): a tap maps to the nearest lattice hold and is reported back so the
@@ -82,9 +80,11 @@ internal fun MoonBoardVisualization(
     modifier: Modifier = Modifier,
     editable: Boolean = false,
     onHoldTapped: ((holdId: Int) -> Unit)? = null,
+    /** Optional competition zone hold, emphasized with an orange outer ring. */
+    highlightedHoldId: Int? = null,
     /** Resolved MoonBoard variant — supplies the per-variant grid row count
-     *  for the procedural (no-photo) fallback: Mini MoonBoard 2020 has 12 rows,
-     *  every other variant 18. Null falls back to the standard 18-row grid. */
+     *  for the procedural (no-photo) fallback: Mini variants have 12 rows,
+     *  standard variants 18. Null falls back to the standard 18-row grid. */
     variant: MoonBoardVariant? = null,
 ) {
     val climbHolds = remember(frames) { MoonBoardFrameEncoder.parseHolds(frames) }
@@ -126,9 +126,18 @@ internal fun MoonBoardVisualization(
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Fit,
                     )
+                    asset.overlays.forEach { overlay ->
+                        Image(
+                            bitmap = overlay,
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Fit,
+                        )
+                    }
                     Canvas(modifier = Modifier.fillMaxSize()) {
                         if (showLattice) drawTappableLatticeMapped(asset)
                         drawClimbHoldsMapped(asset, climbHolds)
+                        highlightedHoldId?.let { drawHighlightedHoldMapped(asset, it) }
                     }
                 }
 
@@ -137,6 +146,7 @@ internal fun MoonBoardVisualization(
                         val grid = gridRect(size)
                         drawGenericRaster(grid, gridRows)
                         drawClimbHolds(grid, climbHolds, gridRows)
+                        highlightedHoldId?.let { drawHighlightedHold(grid, it, gridRows) }
                     }
                 }
 
@@ -151,7 +161,7 @@ internal fun MoonBoardVisualization(
 /**
  * Map a tap (in [boxSize] pixel space) to the nearest MoonBoard hold id, or
  * null if the tap is too far from any lattice point. Ready → nearest measured
- * coordinate from the asset map; Unavailable → nearest 11x18 lattice point.
+ * coordinate from the asset map; Unavailable → nearest 11xN lattice point.
  */
 private fun holdIdAt(offset: Offset, boxSize: IntSize, assetState: MoonBoardAssetState, gridRows: Int): Int? {
     if (boxSize.width <= 0 || boxSize.height <= 0) return null
@@ -294,4 +304,30 @@ private fun DrawScope.drawClimbHoldsMapped(
         val norm = asset.holdXy[holdId] ?: return@forEach
         drawHoldMarker(Offset(norm.x * size.width, norm.y * size.height), color, radius)
     }
+}
+
+private val ZoneHighlightColor = Color(0xFFFF8A3D)
+
+private fun DrawScope.drawHighlightedHold(grid: Rect, holdId: Int, gridRows: Int) {
+    if (holdId !in 1..(MoonBoardVariant.GRID_COLUMNS * gridRows)) return
+    val column = (holdId - 1) % MoonBoardVariant.GRID_COLUMNS
+    val rowIndex = (holdId - 1) / MoonBoardVariant.GRID_COLUMNS
+    val radius = cellSpacing(grid, gridRows) * 0.48f
+    drawCircle(
+        color = ZoneHighlightColor,
+        radius = radius,
+        center = holdCentre(grid, column, rowIndex, gridRows),
+        style = Stroke(width = radius * 0.22f),
+    )
+}
+
+private fun DrawScope.drawHighlightedHoldMapped(asset: MoonBoardRenderAsset, holdId: Int) {
+    val norm = asset.holdXy[holdId] ?: return
+    val radius = size.width * IMAGE_HOLD_RADIUS_FRACTION * 1.42f
+    drawCircle(
+        color = ZoneHighlightColor,
+        radius = radius,
+        center = Offset(norm.x * size.width, norm.y * size.height),
+        style = Stroke(width = radius * 0.22f),
+    )
 }

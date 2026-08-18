@@ -71,8 +71,8 @@ class UpdateNotifier(private val context: Context) {
      * §5.5 — surface a pending install-consent dialog as a tappable
      * notification. The tap fires the [PackageInstaller] consent IntentSender
      * with a fresh background-activity-start grant (see
-     * [UpdaterRepository.onConsentRequired]); reuses the "ready to install"
-     * copy so no new strings are needed.
+     * [UpdaterRepository.onConsentRequired]). It stays ongoing because
+     * dismissing the only consent handle would strand the committed session.
      */
     fun showConsentRequired(info: UpdateInfo, consentIntent: Intent) {
         consentIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -84,8 +84,8 @@ class UpdateNotifier(private val context: Context) {
         )
         val builder = base(info)
             .setContentTitle(context.getString(R.string.updater_notif_ready_title, info.versionName))
-            .setContentText(context.getString(R.string.updater_notif_ready_body))
-            .setOngoing(false)
+            .setContentText(context.getString(R.string.updater_notif_consent_body))
+            .setOngoing(true)
             .setContentIntent(consentPi)
             .addAction(
                 NotificationCompat.Action.Builder(
@@ -154,8 +154,51 @@ class UpdateNotifier(private val context: Context) {
         notify(builder)
     }
 
+    /**
+     * One-time notice that this device will not be offered further releases.
+     *
+     * Deliberately not `setOngoing` and dismissible: it is information, not a
+     * task. It carries no update action because there is nothing installable
+     * to offer — tapping it opens Settings, where the same message is
+     * repeated permanently for anyone who swipes this away.
+     */
+    fun showEndOfSupport(requiredSdkInt: Int) {
+        val body = context.getString(
+            R.string.updater_notif_end_of_support_body,
+            androidVersionName(requiredSdkInt),
+        )
+        val builder = NotificationCompat.Builder(context, AppNotificationService.Channel.UPDATER)
+            .setSmallIcon(android.R.drawable.stat_sys_warning)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setAutoCancel(true)
+            .setOngoing(false)
+            .setContentTitle(context.getString(R.string.updater_notif_end_of_support_title))
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setContentIntent(settingsPendingIntent())
+        notify(builder)
+    }
+
     fun cancel() {
         manager.cancel(AppNotificationService.Id.UPDATE)
+    }
+
+    /**
+     * Marketing version for an API level, so the message can say "Android 9"
+     * instead of "API 28". Only the levels this app can actually run on need
+     * an entry; anything else degrades to the raw number rather than lying.
+     */
+    private fun androidVersionName(sdkInt: Int): String = when (sdkInt) {
+        26 -> "8.0"
+        27 -> "8.1"
+        28 -> "9"
+        29 -> "10"
+        30 -> "11"
+        31, 32 -> "12"
+        33 -> "13"
+        34 -> "14"
+        35 -> "15"
+        else -> "API $sdkInt"
     }
 
     private fun base(@Suppress("UNUSED_PARAMETER") info: UpdateInfo): NotificationCompat.Builder {

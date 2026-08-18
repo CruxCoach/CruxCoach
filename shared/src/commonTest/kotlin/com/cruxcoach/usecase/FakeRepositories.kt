@@ -152,6 +152,7 @@ class FakeBoardRepository : BoardRepository {
     override fun getClimbCountsByBrand(): Map<String, Long> = emptyMap()
     override fun hasAnyClimbs(): Boolean = storedClimbs.isNotEmpty()
     override fun hasClimbsForBrand(boardBrand: String): Boolean = storedClimbs.isNotEmpty()
+    override fun hasMoonBoardHoldSetMask(): Boolean = false
     override fun getStatCount(): Long = 0L
     override fun countOrphanStats(): Long = 0L
     override fun countListedClimbsWithoutStats(): Long = 0L
@@ -203,6 +204,15 @@ class FakeBoardRepository : BoardRepository {
     override fun getHoldSetIdsForLayout(layoutId: Int, boardBrand: String): List<Long> = emptyList()
     override fun getHoldSetIdsForLayoutSize(layoutId: Int, productSizeId: Int, boardBrand: String): List<Long> = emptyList()
     override fun getPlacementLedMap(productSizeId: Int, boardBrand: String): Map<Int, Int> = emptyMap()
+    override fun findClimbCandidatesByFrames(
+        boardBrand: String,
+        layoutId: Int,
+        minLength: Int,
+        maxLength: Int,
+        anchor1: String?,
+        anchor2: String?,
+    ): List<com.cruxcoach.data.repository.RelayClimbCandidate> = emptyList()
+    override fun ensureRelayLookupIndex(): Boolean = false
     override fun getRoleColorMapForBrand(boardBrand: String): Map<Int, Int> = emptyMap()
     override fun getMirrorPlacementMap(productSizeId: Int, boardBrand: String): Map<Int, Int> = emptyMap()
     override fun countLeds(): Long = 0L
@@ -239,6 +249,8 @@ class FakeBoardRepository : BoardRepository {
     override fun getAllStatKeys(): Map<Pair<String, Long>, Long?> = emptyMap()
     override fun runInTransaction(block: () -> Unit) { block() }
     override fun deleteAllBoardData() { storedClimbs.clear(); syncStates.clear() }
+    override fun deleteBoardDataForBrands(brands: Set<String>) {}
+    override fun getClimbBrandsForUuids(uuids: Collection<String>): Map<String, String> = emptyMap()
 
     // -- CommunityClimbQueries (FEAT-003) --
 

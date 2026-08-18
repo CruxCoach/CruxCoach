@@ -1,0 +1,8 @@
+# Fast, non-destructive orientation suite.
+smoke
+browser-search
+browser-filter-sheet
+detail-open
+editor-open
+settings-navigate
+lists-navigate

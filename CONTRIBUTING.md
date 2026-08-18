@@ -126,37 +126,33 @@ androidApp/                # Android app (Jetpack Compose)
 └── nostr/                 # Nostr relay pool, sync, announcements
 ```
 
-### Pull requests, feature APKs, and releases
+### Releases & CI (maintainer only)
 
-Every pull request receives secret-free unit-test, lint, and debug-build checks on a GitHub-hosted
-runner. Pull requests may target `main` or a maintained `feat/*` integration branch. Merges to
-`main` require the project owner's approval; selected feature maintainers may review and merge into
-their `feat/*` branches.
+The release workflow is `.github/workflows/release.yml`, and it runs **exclusively** on the maintainer's self-hosted runner — which is the whole reason GitHub Actions is acceptable for a signed release at all: the keystore stays on our own filesystem and never enters GitHub's secret store. `.forgejo/workflows/release.yml` is the Codeberg fallback and is **manual-trigger only** (`workflow_dispatch`), so a single merge cannot start two pipelines that would publish different bytes under one version number. Full rationale and migration order: [`docs/RELEASE_GITHUB.md`](docs/RELEASE_GITHUB.md).
 
-Every successful push to `feat/*` produces one branch-specific APK artifact. A separate workflow
-loaded from trusted `main` verifies the authorized maintainer, branch, commit, deterministic
-track/package identity, and APK hash before sending it to APKTrack. Feature code never sees the
-upload token or an Android signing key. APKTrack signs the final APK with the central Development
-key. Each full branch name permanently maps to one APKTrack track and one Android package; run
-`python3 scripts/feature_identity.py --branch feat/example` to inspect the mapping.
+Pull requests do **not** receive automated build or test feedback — the maintainer runs Gradle locally during review. Keep the self-hosted runner off pull-request triggers: it executes whatever a push contains, on the host that holds the signing key.
 
-Production releases remain maintainer-only and manual. A merge or push to `main` never publishes a
-release. The Forgejo workflow must be started manually from `main` with `confirm_production` set to
-`RELEASE`. The Production signing key is never available to pull-request or feature-publication
-workflows.
-
-The legacy release workflow (`.forgejo/workflows/release.yml`) runs **exclusively** on the maintainer's self-hosted Forgejo runner.
-
-The runner expects two environment variables to be defined in its execution environment (e.g. via systemd `Environment=` directives or the runner's config file):
+The runner expects these environment variables in its execution environment (e.g. via systemd `Environment=` directives or the runner's config file):
 
 | Variable | Purpose |
 |----------|---------|
 | `CRUXCOACH_SECRETS_DIR` | Directory containing `local.properties`, `.signing/`, and `.env` for Zapstore publishing — kept outside the repo and never committed |
-| `ANDROID_SDK_ROOT` | Standard Android SDK location; the workflow auto-discovers `build-tools/<version>/apksigner` |
+| `ANDROID_SDK_ROOT` | Standard Android SDK location; the workflow auto-discovers `build-tools/<version>/apksigner` and `aapt2` |
+| `CRUXCOACH_APK_LOCAL_DIR` | Optional. Download-server APK directory; defaults to `~/cruxcoach-dlstats/apk` |
+| `CRUXCOACH_PAGES_DIR` | Optional. Website checkout whose `tools/publish-release.sh` refreshes the download links; defaults to `~/cruxcoach-pages` |
 
-The only repository secret used is `CODEBERG_TOKEN` (for creating Codeberg releases via the Forgejo API).
+Files the runner reads off its own filesystem, none of which is a forge secret:
 
-Forks running their own Forgejo runner can reproduce the workflow by providing equivalent secrets and an `ANDROID_SDK_ROOT`; the workflow itself contains no host-specific paths.
+| Path | Purpose |
+|------|---------|
+| `$CRUXCOACH_SECRETS_DIR/local.properties` | Build config, including `RELEASE_STORE_FILE` — beware the trap documented above: an empty value makes a release build fall back to debug signing **silently** |
+| `$CRUXCOACH_SECRETS_DIR/.signing/` | Release keystore |
+| `$CRUXCOACH_SECRETS_DIR/.env` | Zapstore publishing. Mode 600; must define a headless `SIGN_WITH` (`nsec1…`, hex private key, or a provisioned `bunker://` NIP-46 signer) whose public key matches `zapstore.yaml`. A bare `npub1…` only creates unsigned output. The file uses raw zsp `KEY=value` syntax and is never sourced as shell. See [`.env.example`](.env.example) |
+| `~/.config/cruxcoach/github-release-token` | Mode 600, `Contents: Read and write` on `CruxCoach/CruxCoach`. Authenticates both the GitHub API calls and the tag push. Override with `GITHUB_TOKEN` / `GITHUB_TOKEN_FILE`, or `GITHUB_RELEASE_TOKEN` for the dev-release cleanup step |
+
+**No GitHub repository secret is required, and none is load-bearing** — that is deliberate, so a GitHub-side compromise cannot reach the signing key or the publisher identity. The Codeberg fallback still uses one repository secret, `CODEBERG_TOKEN`, for creating Codeberg releases via the Forgejo API.
+
+Forks running their own runner can reproduce the workflow by providing the equivalent directories and an `ANDROID_SDK_ROOT`; the workflows themselves contain no host-specific paths.
 
 ### Customizing for forks
 
@@ -173,22 +169,56 @@ following keys to `local.properties` — no source edits required:
 | `local.properties` key | What it sets | Default |
 |------------------------|--------------|---------|
 | `MAINTAINER_PUBKEY` | Recipient hex pubkey for in-app crash reports, dev-contact DMs, and announcement subscriptions | upstream maintainer |
-| `MAINTAINER_LIGHTNING_ADDRESS` | Lightning address shown for upstream-style donation flows | `cruxcoach@npub.cash` |
+| `MAINTAINER_LIGHTNING_ADDRESS` | Lightning address shown for upstream-style donation flows | `npub1uadpshqpn5ysf82lev8zngkvn07szmkq7mvf9lyc7ml7qxq6fqxsmrqt2s@npub.cash` |
 | `MAINTAINER_KOFI_URL` | Ko-fi donation link surfaced in the Payments UI | `https://ko-fi.com/cruxcoach` |
 | `ANNOUNCE_NAMESPACE` | Nostr `L`/`l` tag namespace for announcement events | `com.cruxcoach.announce` — change this when you fork to avoid notification cross-talk with upstream users |
-| `UPDATER_API_BASE` | Forgejo/Gitea API root that the in-app auto-updater polls for new releases | `https://codeberg.org/api/v1` |
+| `UPDATER_API_BASE` | Forge API root for the *compiled-in default* forge source. Works for Forgejo/Gitea (`https://<host>/api/v1`) and for GitHub (`https://api.github.com`) — their release JSON is field-compatible | `https://codeberg.org/api/v1` |
 | `UPDATER_REPO_OWNER` | Repository owner used by the auto-updater and the "Online" app-share QR code | `CruxCoach` |
 | `UPDATER_REPO_NAME` | Repository name used by the auto-updater and the app-share QR code; also drives the expected APK filename `<repo>-<tag>.apk` | `CruxCoach` |
-| `ZAPSTORE_APP_URL` | Zapstore listing URL surfaced as a QR code + shareable link in *Settings → Share via Zapstore* | `https://zapstore.dev/apps/com.cruxcoach.android` |
+| `UPDATE_SOURCES_URLS` | Runtime source list (FEAT-050), comma-separated; the first host that answers wins. Fetched at most daily and cached; lets you add, reorder or retire release hosts **without shipping a new APK**. Falls back to the compiled-in defaults when unreachable or unusable | `https://cruxcoach.org/update-sources.json,https://mirror.cruxcoach.org/update-sources.json` |
+| `UPDATER_MANIFEST_URLS` | Plain release pointer used as a forge-independent discovery source, comma-separated like the above | `https://cruxcoach.org/apk-target.json,https://mirror.cruxcoach.org/apk-target.json` |
+| `UPDATER_BLOSSOM_SERVERS` | Comma-separated content-addressed stores (BUD-01 `GET /<sha256>`) used as download-only last resorts | public Blossom servers |
+| `UPDATER_RELEASE_PAGE_URL` | Install page used by the cert-mismatch handoff *and* by the "Share app" QR. Deliberately not a forge URL: it survives a forge migration, always offers the current release rather than the sharing device's version, and routes through the site's health-checked download selector | `https://cruxcoach.org/#install` |
+| `ANONYMOUS_METRICS_ENDPOINT` | Identifier-free aggregate increment after a fully downloaded update passes SHA-256 and signer verification; set only to an endpoint you operate or trust | empty; the upstream release workflow injects the CruxCoach endpoint only when `github.repository == CruxCoach/CruxCoach` |
+| `ZAPSTORE_APP_URL` | Zapstore listing URL used as the manual release handoff when signed Zapstore metadata supplied the update | `https://zapstore.dev/apps/com.cruxcoach.android` |
+| `ZAPSTORE_RELAY_URL` | Relay queried for publisher-signed Zapstore release and APK metadata | `wss://relay.zapstore.dev` |
+| `ZAPSTORE_CDN_BASE_URL` | Content-addressed direct-download fallback; the path is the verified APK SHA-256 | `https://cdn.zapstore.dev` |
 | `USER_AGENT_PRODUCT` | Product token in outgoing HTTP `User-Agent` headers (`<product>/<version> (https://<host>)`). Lets Kilter operators tell forks apart from upstream traffic | `CruxCoach` |
 | `APP_LINK_HOST` | Host for shareable climb URLs (`https://<host>/c/<naddr>`) and for the Android App Link `<intent-filter>`. Forks need to host their own `/.well-known/assetlinks.json` for verification to succeed; until then App Links fall back to opening in a browser | `cruxcoach.org` |
 | `AUTO_NOTE_PTAG_MAINTAINER` | When `true`, Auto-Note Kind-1 publishes attach an unconditional `p`-tag mention of `MAINTAINER_PUBKEY` (Amethyst notification + reach amplifier for upstream). Forks usually want `false` so their users don't accidentally amplify whoever the fork's `MAINTAINER_PUBKEY` resolves to | `true` (set `AUTO_NOTE_PTAG_MAINTAINER=false` in your fork's `local.properties` to opt out) |
 | `auto_note_default_template` (string resource — `values/strings.xml:33` + `values-de/strings.xml:33`) | Editable Kind-1 template a fork user sees in *Settings → Climb Creator → Auto-Note*. The default contains `{npub_cruxcoach}`, `{cruxcoach_url}`, and the `#kilterboard` hashtag — forks should reword the template (and ideally drop the upstream-flavored token names) before publishing | upstream-flavored default |
 
+The anonymous update counter's closed client behavior, opt-out, approximate
+delivery semantics, backend requirements, and aggregate retention are specified
+in [`docs/anonymous-update-metrics.md`](docs/anonymous-update-metrics.md). A fork
+that sets `ANONYMOUS_METRICS_ENDPOINT` must keep its own disclosure and backend
+contract accurate; leaving the property empty disables the feature completely.
+
 The auto-updater is disabled automatically on Zapstore installs (Zapstore
-handles updates itself). Forks whose APKs are distributed through other
-channels need to expose releases as a Forgejo/Gitea-compatible `releases`
-API endpoint and upload two assets per release:
+handles updates itself). For direct installs it walks an **ordered list of
+release sources** (FEAT-050), stopping at the first that answers and moving on
+only when one fails — so the healthy case still costs a single request. The
+list comes from `UPDATE_SOURCES_URLS` at runtime, falling back to the
+compiled-in defaults: the configured forge, publisher-signed Zapstore/Nostr
+events, the website's release pointer, and content-addressed Blossom stores.
+
+Because that list is data rather than code, a release host can be added,
+reordered or retired for installs **already in the field**. This matters:
+compiled-in constants can never be changed retroactively, so a forge migration
+without a runtime list would strand every existing direct install.
+
+The APK may be downloaded from any source on the list, but its SHA-256 and
+signing certificate must match before it is handed to Android — the transport
+is untrusted by construction, which is what makes an open-ended source list
+safe. Note the corollary: with several sources, the **signing-certificate pin
+carries the entire security load**, because a hostile source could serve a
+matching APK *and* sidecar. Do not weaken `IntegrityVerifier`.
+
+Changing the forge does **not** invalidate the trust-on-first-use pin — that
+pin is on the APK signing certificate, not on the host. Signing with a
+different key does.
+
+Forks need to upload two assets per release:
 
 - `<repo>-<tag>.apk` — the signed release APK (must match `UPDATER_REPO_NAME`)
 - `<repo>-<tag>.apk.sha256` — a single-line `<hex>  <filename>` hash sidecar
@@ -202,6 +232,9 @@ manifest:
 - `android.permission.REQUEST_INSTALL_PACKAGES` — hands the downloaded APK to
   the system `PackageInstaller`; the user must additionally grant
   "Install unknown apps" in system settings on first use
+- `android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION` — allows the
+  opt-in automatic-install mode to request a no-interaction self-update on
+  Android 12 and newer; Android can still require confirmation
 - `android.permission.DOWNLOAD_WITHOUT_NOTIFICATION` — lets the background
   WorkManager pull the APK without surfacing a system DownloadManager
   notification (the in-app updater posts its own progress notification)

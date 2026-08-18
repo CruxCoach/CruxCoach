@@ -9,6 +9,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.History
@@ -19,6 +20,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -45,9 +47,13 @@ fun BoardListsScreen(
     onNavigateToSetters: () -> Unit = {},
     onNavigateToMyClimbs: () -> Unit = {},
     onNavigateToHistory: () -> Unit,
+    onNavigateToGenerator: () -> Unit = {},
     viewModel: BoardListsViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    var fabMenuExpanded by androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf(false)
+    }
 
     // Refresh list counts when returning from detail screen
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -65,7 +71,7 @@ fun BoardListsScreen(
         CreateListDialog(
             name = state.newListName,
             onNameChanged = { viewModel.updateNewListName(it) },
-            onCreate = { viewModel.createList() },
+            onCreate = viewModel::createList,
             onDismiss = { viewModel.dismissCreateDialog() }
         )
     }
@@ -107,12 +113,41 @@ fun BoardListsScreen(
             }
         },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = { viewModel.showCreateDialog() },
-                containerColor = OrangeAccent,
-                modifier = Modifier.testTag("board_lists_fab")
-            ) {
-                Icon(Icons.Default.Add, contentDescription = stringResource(R.string.cd_create_list), tint = DarkBackground)
+            Column(horizontalAlignment = Alignment.End) {
+                DropdownMenu(
+                    expanded = fabMenuExpanded,
+                    onDismissRequest = { fabMenuExpanded = false },
+                ) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.playlist_create_generated)) },
+                        leadingIcon = {
+                            Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = OrangeAccent)
+                        },
+                        onClick = {
+                            fabMenuExpanded = false
+                            onNavigateToGenerator()
+                        },
+                        modifier = Modifier.testTag("lists_fab_generator"),
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.board_lists_new_list)) },
+                        leadingIcon = {
+                            Icon(Icons.AutoMirrored.Filled.PlaylistAdd, contentDescription = null)
+                        },
+                        onClick = {
+                            fabMenuExpanded = false
+                            viewModel.showCreateDialog()
+                        },
+                        modifier = Modifier.testTag("lists_fab_list"),
+                    )
+                }
+                FloatingActionButton(
+                    onClick = { fabMenuExpanded = true },
+                    containerColor = OrangeAccent,
+                    modifier = Modifier.testTag("board_lists_fab")
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = stringResource(R.string.cd_create_list), tint = DarkBackground)
+                }
             }
         }
     ) { padding ->
@@ -135,6 +170,11 @@ fun BoardListsScreen(
                 MyClimbsBanner(onClick = onNavigateToMyClimbs)
                 Spacer(modifier = Modifier.height(8.dp))
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+            }
+
+            // All collections are lists. An optional training plan is shown
+            // on the same card instead of creating a second object type.
+            item(key = "lists-header") {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     stringResource(R.string.board_lists_section_title),
@@ -316,6 +356,7 @@ private fun ListCard(
                 when {
                     list.isIgnored -> Icons.Default.VisibilityOff
                     list.isBuiltin -> Icons.Default.Star
+                    list.generatorParams != null -> Icons.Default.AutoAwesome
                     else -> Icons.AutoMirrored.Filled.PlaylistAdd
                 },
                 contentDescription = null,
@@ -334,7 +375,11 @@ private fun ListCard(
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    stringResource(R.string.board_list_climb_count, list.climbCount),
+                    if (list.hasPlaybackPlan) {
+                        stringResource(R.string.board_list_climb_count_with_plan, list.climbCount)
+                    } else {
+                        stringResource(R.string.board_list_climb_count, list.climbCount)
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

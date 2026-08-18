@@ -5,14 +5,17 @@ import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.cruxcoach.db.board.BoardDatabase
 import com.cruxcoach.db.board.Climbs
+import com.cruxcoach.data.repository.BoardRepositoryImpl
 import com.cruxcoach.domain.board.FramesBinaryCodec
 import java.nio.file.Files
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * Regression tests for the tombstone path on community climbs:
@@ -34,6 +37,7 @@ class CommunityClimbTombstoneTest {
     private lateinit var dbFile: java.io.File
     private lateinit var driver: SqlDriver
     private lateinit var db: BoardDatabase
+    private lateinit var repository: BoardRepositoryImpl
 
     private val framesAdapter = object : ColumnAdapter<String, ByteArray> {
         override fun decode(databaseValue: ByteArray): String = FramesBinaryCodec.decode(databaseValue)
@@ -47,6 +51,7 @@ class CommunityClimbTombstoneTest {
         driver = JdbcSqliteDriver("jdbc:sqlite:${dbFile.absolutePath}")
         BoardDatabase.Schema.create(driver)
         db = BoardDatabase(driver, climbsAdapter = Climbs.Adapter(framesAdapter = framesAdapter))
+        repository = BoardRepositoryImpl(db)
     }
 
     @AfterTest
@@ -72,6 +77,8 @@ class CommunityClimbTombstoneTest {
             created_by_pubkey = pubkey,
             frames_hash = "hash-$uuid",
             created_at = "2026-05-01T10:00:00Z",
+            // FEAT-049: MoonBoard rows derive hsm on insert; a Kilter fixture has none.
+            hsm = 0L,
             board_brand = "kilter",
         )
         db.boardQueries.upsertClimbStat(
@@ -313,6 +320,42 @@ class CommunityClimbTombstoneTest {
         assertEquals("Test", r.name, "real row's name untouched by shell INSERT OR IGNORE")
         assertEquals(authorA, r.created_by_pubkey, "real row's author untouched")
         assertEquals(0L, r.is_deleted, "shell did not flip is_deleted (real row's value preserved)")
+    }
+
+    @Test
+    fun `foreign shell is removable so genuine author can reclaim uuid`() {
+        insertTombstoneShell("target", authorB, "cruxcoach:climb:${authorB.take(8)}:target")
+
+        assertTrue(repository.removeForeignTombstoneShell("target", authorA))
+
+        assertNull(rowFor("target"), "attacker-owned synthetic shell no longer squats the uuid")
+        insertCommunityRow("target", authorA)
+        assertEquals(authorA, rowFor("target")!!.created_by_pubkey)
+    }
+
+    @Test
+    fun `same-author shell remains and continues to absorb original replays`() {
+        insertTombstoneShell("target", authorA, "cruxcoach:climb:${authorA.take(8)}:target")
+
+        assertFalse(repository.removeForeignTombstoneShell("target", authorA))
+
+        assertNotNull(rowFor("target"), "the author's legitimate deletion memorial must remain")
+        assertTrue(isTombstoned("target"))
+    }
+
+    @Test
+    fun `real deleted climb is never mistaken for a removable shell`() {
+        insertCommunityRow("target", authorB)
+        db.boardQueries.markCommunityClimbDeleted(
+            uuid = "target",
+            pubkey = authorB,
+            tombstone_iso = "2026-05-04T13:00:00Z",
+        )
+
+        assertFalse(repository.removeForeignTombstoneShell("target", authorA))
+
+        assertEquals(authorB, rowFor("target")!!.created_by_pubkey)
+        assertTrue(isTombstoned("target"))
     }
 
     // ── Combined absorbTombstone semantics ──────────────────────────

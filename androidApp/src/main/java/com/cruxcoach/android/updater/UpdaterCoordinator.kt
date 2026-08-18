@@ -59,6 +59,14 @@ class UpdaterCoordinator @Inject constructor(
             runCatching { pinStore.getOrTofu() }.onFailure {
                 Log.w(TAG, "TOFU pin bootstrap failed", it)
             }
+            // Order matters: ensure a pin exists first, then move it forward
+            // if this start-up is the first one after a key rotation took
+            // effect. Doing it here rather than in the install callback is
+            // deliberate — a self-update replaces this package, so the new
+            // signature only becomes observable after the restart.
+            runCatching { pinStore.advanceToCurrentSignerIfRotated() }.onFailure {
+                Log.w(TAG, "Pin advance check failed", it)
+            }
         }
 
         ProcessLifecycleOwner.get().lifecycle.addObserver(this)
@@ -67,6 +75,13 @@ class UpdaterCoordinator @Inject constructor(
         // Re-attach to a download the OS may have killed us mid-way through, so
         // the pipeline can't strand in DOWNLOADING forever on killer-OEM devices.
         repository.resumePendingDownloadIfAny()
+        // INSTALLING has no callback-free way out either, and unlike the other
+        // two nothing used to catch it — a dropped PackageInstaller result
+        // left the updater dead for good.
+        repository.recoverInterruptedInstall()
+        // A verified APK may already be ready after process death or after the
+        // one-time package-install permission was granted outside the app.
+        repository.resumeAutomaticInstallIfReady()
     }
 
     override fun onStart(owner: LifecycleOwner) {

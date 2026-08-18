@@ -2,10 +2,14 @@ package com.cruxcoach.android.updater
 
 /**
  * Strict major.minor.patch tuple used by the in-app updater to compare
- * the installed [`BuildConfig.VERSION_NAME`] against the tag of a remote
- * Codeberg release. Decouples comparison from the
+ * the installed [`BuildConfig.VERSION_NAME`] against the version announced
+ * by any [ReleaseSource]. Decouples comparison from the
  * `versionCode` formula in `build.gradle.kts`, which has changed in the
  * past and may change again.
+ *
+ * Only strictly-greater versions are ever accepted
+ * ([VersionChecker.pickNewerStable]), which is what makes a downgrade
+ * attack from a hostile source impossible — see [UpdateSource].
  */
 data class SemVer(
     val major: Int,
@@ -31,5 +35,9 @@ data class SemVer(
                 patch = m.groupValues[3].toInt(),
             )
         }
+
+        /** Parse the app's own version while allowing the exact debug-build suffix. */
+        fun parseInstalledOrNull(raw: String): SemVer? =
+            parseOrNull(raw.trim().removeSuffix("-dev"))
     }
 }

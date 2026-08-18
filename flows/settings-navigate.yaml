@@ -1,18 +1,28 @@
 appId: com.cruxcoach.android
 name: settings-navigate
 tags:
+  - release-gate
   - smoke
 ---
-- launchApp:
-    stopApp: false
-- waitForAnimationToEnd:
-    timeout: 5000
-- tapOn: "Einstellungen"
-# Settings landing — top-level section headers (not nested toggles).
-# These four uniquely identify the Settings screen.
-- assertVisible: "Anzeige"
-- assertVisible: "Board-Einstellungen"
-- assertVisible: "Kilter Board Account"
-- assertVisible: "Datenverwaltung"
+- runFlow: subflows/launch-browser.yaml
+- tapOn:
+    id: "board_settings_button"
+# Settings landing — traverse stable top-level section anchors across the
+# complete scrollable screen without expanding or mutating any section.
+- assertVisible:
+    id: "settings_section_display"
+- scrollUntilVisible:
+    element:
+      id: "settings_section_board"
+    direction: DOWN
+- scrollUntilVisible:
+    element:
+      id: "settings_section_kilter"
+    direction: DOWN
+- scrollUntilVisible:
+    element:
+      id: "settings_section_data"
+    direction: DOWN
 - pressKey: Back
-- assertVisible: "Filter"
+- assertVisible:
+    id: "board_filter_toggle"

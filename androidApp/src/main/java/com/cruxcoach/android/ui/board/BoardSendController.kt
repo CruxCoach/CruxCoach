@@ -3,8 +3,12 @@ package com.cruxcoach.android.ui.board
 import android.util.Log
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ble.BoardBleConnection
+import com.cruxcoach.android.ble.BoardProjectionPolicy
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.ConnectionState
+import com.cruxcoach.android.boardcell.BoardProjection
+import com.cruxcoach.android.boardcell.ActiveBoardCellWriteGateway
+import com.cruxcoach.android.boardcell.BoardCellWriteGateway
 import com.cruxcoach.android.data.LedHoldColors
 import com.cruxcoach.android.data.SessionQueueManager
 import com.cruxcoach.android.data.UserPreferences
@@ -38,7 +42,8 @@ internal class BoardSendController(
     private val userPreferences: UserPreferences,
     private val climbAdvertiser: ClimbBleAdvertiser,
     private val sessionQueueManager: SessionQueueManager,
-    private val isSharingEnabled: () -> Boolean
+    private val isSharingEnabled: () -> Boolean,
+    private val boardCellWriteGateway: BoardCellWriteGateway = ActiveBoardCellWriteGateway,
 ) {
 
     private var sendJob: Job? = null
@@ -77,8 +82,29 @@ internal class BoardSendController(
     fun sendToBoard() {
         // When a session queue is active, the queue controls what's on the board.
         // Individual climb sends from detail views are suppressed.
-        if (sessionQueueManager.state.value.isActive) {
+        if (isBoardOwnedBySession()) {
             Log.d(TAG, "sendToBoard: suppressed (session queue active)")
+            return
+        }
+        val meshManager = com.cruxcoach.android.boardcell.BoardCellManager.current
+        if (meshManager?.canSendViaMesh() == true) {
+            val s = state.value
+            val climb = s.climb ?: return
+            val commandId = meshManager.sendProjectionRequest(BoardProjection(
+                climb.uuid,
+                s.angle,
+                BoardProjectionPolicy.projectionSurvivesDisconnect(climb.brand),
+            ))
+            state.update { current -> current.copy(
+                ble = current.ble.copy(
+                    isSending = false,
+                    success = commandId != null,
+                    error = if (commandId == null) R.string.board_send_error_send_failed else null,
+                ),
+                nearby = current.nearby.copy(
+                    debugInfo = if (commandId != null) "sent via board mesh" else "mesh send failed")
+            ) }
+            if (commandId != null) scope.launch { recordSentToHistory(s) }
             return
         }
         // FEAT-027: a MoonBoard climb sends an ASCII `frames` payload — it has
@@ -101,7 +127,12 @@ internal class BoardSendController(
         }
 
         state.update { it.copy(
-            ble = BoardSendState(connectionState = it.ble.connectionState, isSending = true),
+            ble = it.ble.copy(
+                isSending = true,
+                success = false,
+                error = null,
+                warning = null,
+            ),
             nearby = it.nearby.copy(debugInfo = "sending...")
         ) }
         Log.i(TAG, "sendToBoard: start frames=${s.holds.size}")
@@ -189,7 +220,11 @@ internal class BoardSendController(
                     ) }
                     return@launch
                 }
-                val success = bleConnection.sendClimb(s.holds, placementToLed, roleColorMap)
+                val success = boardCellWriteGateway.project(
+                    BoardProjection(s.climb!!.uuid, s.angle,
+                        BoardProjectionPolicy.projectionSurvivesDisconnect(s.climb.brand))) {
+                        bleConnection.sendClimb(s.holds, placementToLed, roleColorMap)
+                    }
                 Log.i(TAG, "sendToBoard: writes done success=$success unmapped=$unmappedHolds")
                 state.update { it.copy(
                     ble = it.ble.copy(
@@ -234,10 +269,11 @@ internal class BoardSendController(
      */
     private fun sendMoonBoardToBoard() {
         val s = state.value
-        val frames = s.climb?.frames
-        if (frames.isNullOrBlank() || s.ble.connectionState != ConnectionState.CONNECTED) {
+        val climb = s.climb ?: return
+        val frames = climb.frames
+        if (frames.isBlank() || s.ble.connectionState != ConnectionState.CONNECTED) {
             state.update { it.copy(nearby = it.nearby.copy(
-                debugInfo = "skip: frames=${frames?.length ?: 0} conn=${s.ble.connectionState}"
+                debugInfo = "skip: frames=${frames.length} conn=${s.ble.connectionState}"
             )) }
             return
         }
@@ -247,7 +283,12 @@ internal class BoardSendController(
         }
 
         state.update { it.copy(
-            ble = BoardSendState(connectionState = it.ble.connectionState, isSending = true),
+            ble = it.ble.copy(
+                isSending = true,
+                success = false,
+                error = null,
+                warning = null,
+            ),
             nearby = it.nearby.copy(debugInfo = "sending (moonboard)...")
         ) }
         Log.i(TAG, "sendMoonBoardToBoard: start frames=${frames.length}")
@@ -279,7 +320,7 @@ internal class BoardSendController(
                     return@launch
                 }
                 val activeLayout = userPreferences.boardLayoutId.first().toLong()
-                if (s.climb?.layoutId?.toLong() != null && s.climb.layoutId.toLong() != activeLayout) {
+                if (climb.layoutId != activeLayout) {
                     state.update { it.copy(
                         ble = it.ble.copy(isSending = false, error = R.string.board_send_error_moonboard_variant_mismatch),
                         nearby = it.nearby.copy(debugInfo = "moonboard variant mismatch")
@@ -292,15 +333,21 @@ internal class BoardSendController(
                 // Mini 2020), and a list / deep-link can surface a climb of a
                 // different variant than the one currently configured. Using
                 // the climb's own layout_id guarantees the wire frame matches
-                // the holds we're rendering. Falls back to the active pref,
-                // then MOONBOARD_2016, only if the climb carries no usable
-                // layout id (stale/corrupt row).
-                val layoutId = s.climb?.layoutId?.toLong()
-                    ?: userPreferences.boardLayoutId.first().toLong()
+                // the holds we're rendering. A stale/corrupt layout id falls
+                // back to MOONBOARD_2016 in the variant lookup below.
+                val layoutId = climb.layoutId
                 val variant = com.cruxcoach.domain.board.MoonBoardVariant
                     .fromLayoutId(layoutId)
                     ?: com.cruxcoach.domain.board.MoonBoardVariant.MOONBOARD_2016
-                val success = bleConnection.sendMoonBoardClimb(frames, variant)
+                val success = boardCellWriteGateway.project(
+                    BoardProjection(climb.uuid, s.angle,
+                        BoardProjectionPolicy.projectionSurvivesDisconnect(climb.brand))) {
+                        bleConnection.sendMoonBoardClimb(
+                            frames,
+                            variant,
+                            userPreferences.moonBoardLedMode.first(),
+                        )
+                    }
                 Log.i(TAG, "sendMoonBoardToBoard: writes done success=$success variant=$variant")
                 state.update { it.copy(
                     ble = it.ble.copy(
@@ -310,7 +357,19 @@ internal class BoardSendController(
                     ),
                     nearby = it.nearby.copy(debugInfo = "sent ok=$success")
                 ) }
-                if (success) recordSentToHistory(s)
+                if (success) {
+                    recordSentToHistory(s)
+                    val result = climbAdvertiser.advertiseClimb(
+                        climbUuid = climb.uuid,
+                        angle = s.angle,
+                        sharingEnabled = isSharingEnabled(),
+                        projectionSurvivesDisconnect =
+                            BoardProjectionPolicy.projectionSurvivesDisconnect(climb.brand),
+                    )
+                    state.update { it.copy(
+                        nearby = it.nearby.copy(debugInfo = "adv: $result")
+                    ) }
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -323,19 +382,28 @@ internal class BoardSendController(
         }
     }
 
-    /** Re-advertise the current climb to nearby devices (called on every climb load/switch). */
-    fun updateNearbyAdvertising(uuid: String, angle: Int) {
-        if (!isSharingEnabled()) return
-        // Only advertise when the board is connected -- browsing without connection should not share
-        if (bleConnection.connectionState.value != ConnectionState.CONNECTED) return
-        scope.launch {
-            climbAdvertiser.advertiseClimb(uuid, angle)
-        }
-    }
-
     /** Whether the BLE board is currently connected. */
     fun isConnected(): Boolean =
-        bleConnection.connectionState.value == ConnectionState.CONNECTED
+        bleConnection.connectionState.value == ConnectionState.CONNECTED ||
+            com.cruxcoach.android.boardcell.BoardCellManager.current?.canSendViaMesh() == true
+
+    fun isConnectedViaMesh(): Boolean =
+        com.cruxcoach.android.boardcell.BoardCellManager.current?.canSendViaMesh() == true
+
+    /**
+     * Whether a send from this screen would actually reach the wall.
+     *
+     * [sendToBoard] drops a request while a session queue owns the board, and
+     * a caller that only checked [isConnected] got a silent no-op: route
+     * playback ran its whole animation, frame counter and all, while every
+     * frame was discarded. Surfaces that offer a send ask this, not the
+     * connection alone.
+     */
+    fun canSendToBoard(): Boolean = isConnected() && !isBoardOwnedBySession()
+
+    private fun isBoardOwnedBySession(): Boolean =
+        sessionQueueManager.state.value.isActive ||
+            sessionQueueManager.state.value.isConnecting
 
     private companion object {
         const val TAG = "BoardSendController"

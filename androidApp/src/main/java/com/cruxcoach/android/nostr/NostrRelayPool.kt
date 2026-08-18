@@ -14,6 +14,9 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -42,6 +45,13 @@ class NostrRelayPool @Inject constructor(
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val connections = ConcurrentHashMap<String, RelayConnection>()
+    private val _connectedRelayCount = MutableStateFlow(0)
+    /** Transport health only; competition truth still comes from signed events. */
+    val connectedRelayCount: StateFlow<Int> = _connectedRelayCount.asStateFlow()
+
+    private fun updateConnectedRelayCount() {
+        _connectedRelayCount.value = connections.values.count { it.isConnected }
+    }
     private val seenEventIds: MutableMap<String, Boolean> = Collections.synchronizedMap(
         object : LinkedHashMap<String, Boolean>(100, 0.75f, true) {
             override fun removeEldestEntry(eldest: Map.Entry<String, Boolean>) = size > MAX_SEEN_IDS
@@ -73,6 +83,7 @@ class NostrRelayPool @Inject constructor(
 
         @Volatile
         private var connected = false
+        val isConnected: Boolean get() = connected && ws != null
 
         /** Guards against multiple concurrent reconnect loops for this relay. */
         private var reconnectJob: Job? = null
@@ -95,6 +106,7 @@ class NostrRelayPool @Inject constructor(
             ws = okHttpClient.newWebSocket(request, object : WebSocketListener() {
                 override fun onOpen(ws: WebSocket, response: Response) {
                     connected = true
+                    updateConnectedRelayCount()
                     deferred.complete(Unit)
                 }
 
@@ -105,6 +117,7 @@ class NostrRelayPool @Inject constructor(
                 override fun onFailure(ws: WebSocket, t: Throwable, response: Response?) {
                     connected = false
                     this@RelayConnection.ws = null
+                    updateConnectedRelayCount()
                     deferred.completeExceptionally(t)
                     failAllPending(t)
                     scheduleReconnect()
@@ -113,6 +126,7 @@ class NostrRelayPool @Inject constructor(
                 override fun onClosed(ws: WebSocket, code: Int, reason: String) {
                     connected = false
                     this@RelayConnection.ws = null
+                    updateConnectedRelayCount()
                     // Fail pending OKs immediately instead of waiting for each
                     // publisher's RELAY_TIMEOUT_MS — otherwise every in-flight
                     // sendEvent hangs and the pendingOks map piles up while
@@ -294,6 +308,7 @@ class NostrRelayPool @Inject constructor(
             reconnectJob = null
             reconnectExhausted = false
             connected = false
+            updateConnectedRelayCount()
             ws?.close(1000, "shutdown")
             ws = null
             failAllPending(Exception("Connection closed"))
@@ -378,6 +393,22 @@ class NostrRelayPool @Inject constructor(
     }
 
     /**
+     * Fetch stored events even when another screen already observed their ids.
+     *
+     * The process-wide dedup cache protects long-lived live subscriptions from
+     * duplicate delivery across relays. It must not turn an explicit historical
+     * lookup into an empty result merely because discovery saw the event first.
+     */
+    fun fetchStored(filter: String): Flow<String> = subscribe(
+        filter = filter,
+        skipDedup = true,
+        closeOnEose = true,
+    )
+
+    internal fun shouldDeliverEvent(eventId: String?, skipDedup: Boolean): Boolean =
+        skipDedup || (eventId != null && seenEventIds.putIfAbsent(eventId, true) == null)
+
+    /**
      * Subscribe to events matching [filter].
      *
      * @param skipDedup If true, bypass the [seenEventIds] cache. Use this for
@@ -406,14 +437,7 @@ class NostrRelayPool @Inject constructor(
                     }
                     return@collect
                 }
-                if (skipDedup) {
-                    trySend(eventJson)
-                } else {
-                    val eventId = extractEventId(eventJson)
-                    if (eventId != null && seenEventIds.putIfAbsent(eventId, true) == null) {
-                        trySend(eventJson)
-                    }
-                }
+                if (shouldDeliverEvent(extractEventId(eventJson), skipDedup)) trySend(eventJson)
             }
         }
 

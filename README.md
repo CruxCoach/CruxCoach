@@ -18,13 +18,19 @@ Browse climbs, control your Kilter Board or MoonBoard via Bluetooth, log ascents
   <a href="#building-from-source">
     <img src="https://img.shields.io/badge/Source-build_yourself-374151?style=for-the-badge&logo=gnu&logoColor=white" alt="Build from source">
   </a>
+  &nbsp;
+  <a href="https://cruxcoach.org/">
+    <img src="https://img.shields.io/badge/Website-cruxcoach.org-e07a4f?style=for-the-badge&logo=firefoxbrowser&logoColor=white" alt="cruxcoach.org">
+  </a>
 </p>
 
 <p align="center">
   <em>
     <a href="https://zapstore.dev/apps/com.cruxcoach.android">Zapstore</a> auto-updates, Nostr-native, verifiable builds &middot;
     <a href="https://codeberg.org/CruxCoach/CruxCoach/releases/latest">APK release</a> ships with a <code>.apk.sha256</code> sidecar &middot;
-    <a href="#building-from-source">Source build</a> reproducible from <code>main</code>
+    <a href="#building-from-source">Source build</a> reproducible from <code>main</code><br>
+    Project site: <a href="https://cruxcoach.org/">cruxcoach.org</a> &middot;
+    <a href="https://cruxcoach.org/boards/">board locations map</a>
   </em>
 </p>
 
@@ -45,7 +51,7 @@ Browse climbs, control your Kilter Board or MoonBoard via Bluetooth, log ascents
 
 **Nearby Sharing** — Share your current climb with nearby CruxCoach users over Bluetooth. No internet needed, works instantly at the Kilter Board.
 
-**Your Data, Your Device** — All personal data encrypted locally. Decentralized identity via [Nostr](https://nostr.com) — no email, no password, no central server. No cloud accounts, no telemetry, no ads.
+**Your Data, Your Device** — All personal data encrypted locally. Decentralized identity via [Nostr](https://nostr.com) — no email, no password, no central account server. No user tracking, no ads. Official builds can send an identifier-free aggregate update count only after an APK has been fully downloaded and cryptographically verified; it is disclosed and can be disabled under *Settings → Updates*.
 
 ---
 
@@ -159,6 +165,8 @@ See [LEGAL.md](LEGAL.md) for our position on interoperability and data usage.
 
 **Your identity** — a Nostr key pair. No central server can lock you out. The same key pair that is your CruxCoach Account encrypts your cloud backup, so saving it once protects both.
 
+**Anonymous update counter** — in official endpoint-enabled builds, this setting is on by default and can be disabled persistently under *Settings → Updates*. After the in-app updater fully downloads an APK and verifies both its SHA-256 and signing certificate, the app makes at most one best-effort dispatch attempt per target version containing only that version and the source (`codeberg` or `zapstore`). It creates no device, installation, account, Nostr, advertising, session, or event identifier; ordinary/fork builds have an empty endpoint unless their builder explicitly configures one. There is no retry, and failure can never affect update checking, verification, download readiness, or installation. The first-party backend immediately folds accepted requests into UTC-day aggregates, retains no raw event, request header, IP address, User-Agent, referrer, or exact timestamp, and retains the identifier-free daily aggregates and repository history without a fixed deletion period. This counts verified updater APKs, not people or successful PackageInstaller completions; Zapstore-managed store updates are excluded. See the [complete client, backend, and retention contract](docs/anonymous-update-metrics.md) and the public [privacy notice](https://cruxcoach.org/privacy.html).
+
 ---
 
 ## Contributing
@@ -180,13 +188,30 @@ CruxCoach is not affiliated with Kilter, LLC or Aurora Climbing. See [LEGAL.md](
 ## Support
 
 - **Bug Reports**: [Codeberg Issues](https://codeberg.org/CruxCoach/CruxCoach/issues) or in-app via Settings
-- **Donate** (upstream maintainer): Lightning `cruxcoach@npub.cash`
+- **Donate** (upstream maintainer): Lightning `npub1uadpshqpn5ysf82lev8zngkvn07szmkq7mvf9lyc7ml7qxq6fqxsmrqt2s@npub.cash`
 
-  <img src="docs/lightning-qr.png" alt="Lightning: cruxcoach@npub.cash" width="180">
+  <img src="docs/lightning-qr.png" alt="Lightning: npub1uadpshqpn5ysf82lev8zngkvn07szmkq7mvf9lyc7ml7qxq6fqxsmrqt2s@npub.cash" width="220">
 
   > Forks: this address routes to the upstream maintainer. Replace it via
   > `local.properties` before publishing your build — see
   > [CONTRIBUTING.md → Customizing for forks](CONTRIBUTING.md#customizing-for-forks).
+
+---
+
+## Project site
+
+[**cruxcoach.org**](https://cruxcoach.org/) — screenshots, the privacy architecture in
+full, and the FAQ people actually ask before installing.
+
+- [Board locations map](https://cruxcoach.org/boards/) — 2,800+ Kilter, MoonBoard,
+  Tension and other venues worldwide, searchable by gym, city or country
+  ([plain text directory](https://cruxcoach.org/boards/list.html) for non-JS clients)
+- [Coming from the Kilter app?](https://cruxcoach.org/kilter-board-app-alternative.html) —
+  migration and alternative guide
+- [MoonBoard app](https://cruxcoach.org/moonboard-app.html) ·
+  [Tension Board app](https://cruxcoach.org/tension-board-app.html)
+- [Privacy notice](https://cruxcoach.org/privacy.html) — what the site and the app do
+  and do not send
 
 ---
 

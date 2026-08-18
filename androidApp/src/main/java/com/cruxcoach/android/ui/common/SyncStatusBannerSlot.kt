@@ -268,6 +268,10 @@ private fun SyncErrorBanner(message: String, onDismiss: () -> Unit, onClick: () 
 
 @Composable
 private fun stepLabel(step: ImportStep?): String = when (step) {
+    is ImportStep.DiscoveringLocalShare ->
+        stringResource(R.string.board_sync_step_discover_local_share)
+    is ImportStep.PreparingSnapshot ->
+        stringResource(R.string.board_sync_step_sender_preparing)
     is ImportStep.CheckingUpdate -> stringResource(R.string.sync_checking_update)
     is ImportStep.FetchingManifest -> stringResource(R.string.sync_checking_update)
     is ImportStep.Download -> {
@@ -277,6 +281,9 @@ private fun stepLabel(step: ImportStep?): String = when (step) {
             stringResource(R.string.sync_downloading_progress, mb, totalMb)
         } else stringResource(R.string.sync_downloading)
     }
+    is ImportStep.DownloadApk -> stringResource(R.string.board_sync_step_download_apk)
+    is ImportStep.VerifyingSnapshot -> stringResource(R.string.board_sync_step_verify_db)
+    is ImportStep.VerifyingApk -> stringResource(R.string.board_sync_step_verify_apk)
     is ImportStep.DownloadChunk -> {
         if (step.cumulativeTotalBytes > 0) {
             val mb = step.cumulativeBytesRead / 1_048_576
@@ -285,6 +292,7 @@ private fun stepLabel(step: ImportStep?): String = when (step) {
         } else stringResource(R.string.sync_downloading)
     }
     is ImportStep.Extract -> stringResource(R.string.sync_extracting)
+    is ImportStep.Decompress -> stringResource(R.string.sync_extracting)
 
     is ImportStep.ImportClimbs -> {
         if (step.scanned == 0 && step.total > 0) stringResource(R.string.sync_importing_climbs_bulk, step.total)
@@ -305,7 +313,9 @@ private fun stepLabel(step: ImportStep?): String = when (step) {
 
 private fun stepProgress(step: ImportStep?): Float? = when (step) {
     is ImportStep.Download -> if (step.totalBytes > 0) step.bytesRead.toFloat() / step.totalBytes else null
+    is ImportStep.DownloadApk -> if (step.totalBytes > 0) step.bytesRead.toFloat() / step.totalBytes else null
     is ImportStep.DownloadChunk -> if (step.cumulativeTotalBytes > 0) step.cumulativeBytesRead.toFloat() / step.cumulativeTotalBytes else null
+    is ImportStep.Decompress -> if (step.totalBytes > 0) step.bytesRead.toFloat() / step.totalBytes else null
     is ImportStep.ImportClimbs -> if (step.total > 0 && step.scanned > 0) step.scanned.toFloat() / step.total else null
     is ImportStep.ImportStats -> if (step.total > 0 && step.scanned > 0) step.scanned.toFloat() / step.total else null
     else -> null

@@ -1,0 +1,2 @@
+# Schema failures must be absent from the upgrade-scoped safe database/crash log.
+!SQLiteException|SQLDelight.*(error|exception)|no such table|no such column|Migration.*failed

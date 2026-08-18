@@ -47,10 +47,10 @@ class BoardListsViewModel @Inject constructor(
     }
 
     private suspend fun refreshLists() {
-        val lists = withContext(Dispatchers.IO) {
+        val all = withContext(Dispatchers.IO) {
             personalBoardRepo.getAllClimbLists()
         }
-        _state.update { it.copy(lists = lists) }
+        _state.update { it.copy(lists = all) }
     }
 
     fun showCreateDialog() {
@@ -68,12 +68,9 @@ class BoardListsViewModel @Inject constructor(
     fun createList() {
         val name = _state.value.newListName.trim()
         if (name.isBlank()) return
-        val exists = _state.value.lists.any { it.name.equals(name, ignoreCase = true) }
-        if (exists) return
+        if (_state.value.lists.any { it.name.equals(name, ignoreCase = true) }) return
         viewModelScope.launch {
-            withContext(Dispatchers.IO) {
-                personalBoardRepo.createClimbList(name)
-            }
+            withContext(Dispatchers.IO) { personalBoardRepo.createClimbList(name) }
             _state.update { it.copy(showCreateDialog = false, newListName = "") }
             refreshLists()
         }

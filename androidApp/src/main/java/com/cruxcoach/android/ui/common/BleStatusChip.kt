@@ -13,21 +13,23 @@ import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.CellTower
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.People
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SignalCellular4Bar
 import androidx.compose.material.icons.filled.SignalCellularAlt
 import androidx.compose.material.icons.filled.SignalCellularAlt1Bar
 import androidx.compose.material.icons.filled.SkipNext
-import androidx.compose.material.icons.filled.SkipPrevious
-import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import androidx.compose.ui.draw.alpha
@@ -39,7 +41,8 @@ import com.cruxcoach.android.data.BleShareUiState
 import com.cruxcoach.android.data.OnBoardClimbEntry
 import com.cruxcoach.android.data.OnBoardSource
 import com.cruxcoach.android.data.OwnSessionState
-import com.cruxcoach.android.data.SessionRole
+import com.cruxcoach.android.ui.board.QueueDeliveryPolicy
+import com.cruxcoach.android.ui.theme.ErrorRed
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.SuccessGreen
 import com.cruxcoach.android.ui.theme.WarningYellow
@@ -50,7 +53,15 @@ internal fun BleStatusChip(
     effectiveOnBoard: OnBoardClimbEntry?,
     onExpand: () -> Unit,
     onAddToQueue: (() -> Unit)?,
-    onRandomToQueue: (() -> Unit)? = null
+    onRandomToQueue: (() -> Unit)? = null,
+    /** Client count while the board is shared, or null when it is not. */
+    relayClientCount: Int? = null,
+    onStopRelay: (() -> Unit)? = null,
+    nearbyMeshCount: Int = 0,
+    joiningMeshName: String? = null,
+    activeMeshName: String? = null,
+    meshControllerAvailable: Boolean = true,
+    localMeshController: Boolean = false,
 ) {
     val session = state.ownSession
 
@@ -59,10 +70,18 @@ internal fun BleStatusChip(
         SessionChipContent(
             session = session,
             effectiveOnBoard = effectiveOnBoard,
+            activeMeshName = activeMeshName,
+            meshControllerAvailable = meshControllerAvailable,
+            localMeshController = localMeshController,
             onExpand = onExpand,
             onAddToQueue = onAddToQueue,
             onRandomToQueue = onRandomToQueue
         )
+        // The mini-player owns its own card, so the sharing line trails it
+        // rather than sitting inside — still one block, not a detached strip.
+        if (relayClientCount != null && onStopRelay != null) {
+            RelaySharingLine(clientCount = relayClientCount, onStop = onStopRelay)
+        }
         return
     }
 
@@ -85,6 +104,26 @@ internal fun BleStatusChip(
         ),
         shape = RoundedCornerShape(14.dp)
     ) {
+      Column {
+        // Sharing alone is enough to show this block, but it has nothing to
+        // say in the summary line — rendering the row anyway left a bare
+        // icon + chevron above the sharing line.
+        val meshSummary = activeMeshName?.let { name ->
+            when {
+                !meshControllerAvailable -> stringResource(R.string.mesh_status_recovering, name)
+                localMeshController -> stringResource(R.string.mesh_status_direct_controller, name)
+                else -> stringResource(R.string.mesh_status_via_controller, name)
+            }
+        }
+        val nearbySummary = buildChipSummary(effectiveOnBoard, state, nearbyMeshCount)
+        // A climb/session the user can act on is more important than repeating
+        // connection state in the banner. The icon below remains the persistent
+        // mesh/board connectivity indicator.
+        val summary = joiningMeshName?.let { stringResource(R.string.fips_mesh_joining, it) }
+            ?: nearbySummary.takeIf(String::isNotBlank)
+            ?: meshSummary
+            ?: ""
+        if (summary.isNotBlank()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -92,16 +131,16 @@ internal fun BleStatusChip(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                Icons.Default.CellTower,
+                if (activeMeshName != null && !localMeshController) Icons.Default.Hub
+                else Icons.Default.CellTower,
                 contentDescription = null,
-                tint = OrangeAccent,
+                tint = if (activeMeshName != null && meshControllerAvailable) SuccessGreen else OrangeAccent,
                 modifier = Modifier
                     .size(18.dp)
                     .alpha(if (effectiveOnBoard?.source == OnBoardSource.REMOTE_ACTIVE) iconAlpha else 1f)
             )
             Spacer(Modifier.width(8.dp))
 
-            val summary = buildChipSummary(effectiveOnBoard, state)
             Text(
                 summary,
                 style = MaterialTheme.typography.bodySmall,
@@ -123,45 +162,41 @@ internal fun BleStatusChip(
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+        }
+        if (relayClientCount != null && onStopRelay != null) {
+            RelaySharingLine(
+                clientCount = relayClientCount,
+                onStop = onStopRelay,
+                showDivider = summary.isNotBlank(),
+            )
+        }
+      }
     }
 }
 
-/** Session chip with inline controls — Add/Prev/Next/Pause/Stop + session info. */
+/**
+ * Mini-player: the compact "playlist is running" line. One glance
+ * (timer, position, climb, participants), one shortcut (Next) — every
+ * other control lives in the player screen, which a tap opens. Replaces
+ * the old inline Prev/Pause/Stop strip that crowded the chip.
+ */
 @Composable
 internal fun SessionChipContent(
     session: OwnSessionState,
     effectiveOnBoard: OnBoardClimbEntry?,
+    activeMeshName: String? = null,
+    meshControllerAvailable: Boolean = true,
+    localMeshController: Boolean = false,
     onExpand: () -> Unit,
     onAddToQueue: (() -> Unit)?,
     onRandomToQueue: (() -> Unit)? = null
 ) {
-    val queueManager = LocalSessionQueueManager.current
-    val gattBridge = LocalSessionGattBridge.current
-    val queueState by queueManager.state.collectAsStateWithLifecycle()
-    val isParticipant = queueState.role == SessionRole.PARTICIPANT
+    val playback = LocalPlaylistPlayback.current
+    val playbackState by playback.state.collectAsStateWithLifecycle()
 
     val sessionManager = LocalBoardSessionManager.current
     val sessionState by sessionManager.state.collectAsStateWithLifecycle()
-
-    // Bug 6: Internalized pause/stop via CompositionLocals — works on every screen
-    val handleTogglePause: () -> Unit = {
-        if (sessionState.isPaused) sessionManager.resumeSession()
-        else sessionManager.pauseSession()
-    }
-    val bleShareManager = LocalBleShareManager.current
-    val handleStop: () -> Unit = {
-        val lastClimb = queueManager.state.value.currentClimb
-        if (queueState.role == SessionRole.HOST) {
-            gattBridge.stopSharing()
-            queueManager.endQueue()
-        } else {
-            gattBridge.leaveSession()
-        }
-        sessionManager.endSession()
-        if (lastClimb != null) {
-            bleShareManager.setLastClimbAfterSession(lastClimb.climbUuid, lastClimb.angle)
-        }
-    }
+    val openPlayer = LocalOpenPlaylistPlayer.current
 
     val timerColor = when {
         !sessionState.isActive -> OrangeAccent
@@ -173,19 +208,17 @@ internal fun SessionChipContent(
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { onExpand() },
+                .clickable { openPlayer() }
+                .testTag("ble_mini_player"),
             colors = CardDefaults.cardColors(containerColor = timerColor.copy(alpha = 0.12f)),
             shape = RoundedCornerShape(0.dp)
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 4.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
+                    .padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Expand chevron — left side, away from Stop to prevent accidental taps
-                Icon(Icons.Default.ExpandMore, stringResource(R.string.cd_expand), modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.width(4.dp))
 
                 // Timer
                 if (sessionState.isActive) {
@@ -203,49 +236,65 @@ internal fun SessionChipContent(
                     Spacer(Modifier.width(10.dp))
                 }
 
-                // Board climb (preferred) or queue info
-                if (effectiveOnBoard != null) {
-                    // Board was externally overwritten — show what's actually on the board
-                    Icon(Icons.Default.SignalCellularAlt, null, tint = WarningYellow, modifier = Modifier.size(18.dp))
+                // The playlist keeps this line. It used to lose it to whatever
+                // was on the wall, in a row that otherwise carries only session
+                // things — timer, participant count, next button — so an
+                // unrelated climb read as "this is what you are playing". What
+                // the wall shows is a statement about the wall; it belongs in
+                // the line below, and only when the two disagree.
+                Icon(
+                    when {
+                        activeMeshName == null -> Icons.AutoMirrored.Filled.QueueMusic
+                        localMeshController -> Icons.Default.CellTower
+                        else -> Icons.Default.Hub
+                    },
+                    contentDescription = activeMeshName,
+                    tint = when {
+                        activeMeshName == null -> OrangeAccent
+                        meshControllerAvailable -> SuccessGreen
+                        else -> WarningYellow
+                    },
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.width(5.dp))
+                if (session.queue.isEmpty()) {
+                    Text(stringResource(R.string.common_empty), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.weight(1f))
+                } else {
+                    Text(
+                        "${session.currentIndex + 1}/${session.queue.size}",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Bold,
+                        color = OrangeAccent
+                    )
                     Spacer(Modifier.width(5.dp))
                     Text(
                         buildString {
-                            append("\"${effectiveOnBoard.name ?: stringResource(R.string.ble_unknown)}\"")
-                            if (effectiveOnBoard.grade != null) append(" ${effectiveOnBoard.grade}")
-                            append(" ${effectiveOnBoard.angle}°")
+                            append(session.currentClimbName ?: "")
+                            if (session.currentClimbGrade != null) append(" ${session.currentClimbGrade}")
                         },
                         style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = WarningYellow,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
                     )
-                } else {
-                    Icon(Icons.AutoMirrored.Filled.QueueMusic, null, tint = OrangeAccent, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(5.dp))
-                    if (session.queue.isEmpty()) {
-                        Text(stringResource(R.string.common_empty), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Spacer(Modifier.weight(1f))
-                    } else {
-                        Text(
-                            "${session.currentIndex + 1}/${session.queue.size}",
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.Bold,
-                            color = OrangeAccent
-                        )
-                        Spacer(Modifier.width(5.dp))
-                        Text(
-                            buildString {
-                                append(session.currentClimbName ?: "")
-                                if (session.currentClimbGrade != null) append(" ${session.currentClimbGrade}")
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
-                        )
+                    // Re-sending the queue's climb used to live in the conflict
+                    // line, so it was reachable only once something had already
+                    // gone wrong — though wanting the wall to show your climb
+                    // again is an ordinary wish.
+                    if (QueueDeliveryPolicy.canSend(playbackState.isHost, playbackState.boardConnected)) {
+                        IconButton(
+                            onClick = { playback.resendCurrentClimb() },
+                            modifier = Modifier.size(28.dp).testTag("ble_queue_resend")
+                        ) {
+                            Icon(
+                                Icons.Default.Lightbulb,
+                                stringResource(R.string.ble_queue_resend),
+                                tint = OrangeAccent,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     }
                 }
 
@@ -272,56 +321,66 @@ internal fun SessionChipContent(
                     }
                 }
 
-                // Inline controls: Prev/Next/Pause/Stop
+                // Single shortcut: Next — the one control you want at the
+                // wall without opening the player. Routed through the
+                // coordinator so it stays phase-aware (skips a running
+                // rest instead of jumping past the upcoming climb).
                 IconButton(
-                    onClick = { if (isParticipant) gattBridge.sendPrev() else queueManager.previousClimb() },
-                    enabled = session.currentIndex > 0,
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(Icons.Default.SkipPrevious, stringResource(R.string.cd_previous), modifier = Modifier.size(22.dp))
-                }
-                IconButton(
-                    onClick = { if (isParticipant) gattBridge.sendNext() else queueManager.nextClimb() },
-                    enabled = session.currentIndex < session.queue.size - 1,
+                    onClick = { playback.next() },
+                    enabled = playbackState.hasNext,
                     modifier = Modifier.size(36.dp)
                 ) {
                     Icon(Icons.Default.SkipNext, stringResource(R.string.cd_next), modifier = Modifier.size(22.dp))
                 }
-                IconButton(onClick = handleTogglePause, modifier = Modifier.size(36.dp)) {
-                    Icon(
-                        if (sessionState.isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
-                        if (sessionState.isPaused) stringResource(R.string.cd_resume) else stringResource(R.string.cd_pause),
-                        tint = timerColor,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-                IconButton(onClick = handleStop, modifier = Modifier.size(36.dp)) {
-                    Icon(Icons.Default.Stop, stringResource(R.string.cd_stop), tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
-                }
+                // Open-player affordance.
+                Icon(
+                    Icons.Default.ChevronRight,
+                    contentDescription = stringResource(R.string.cd_open),
+                    modifier = Modifier.size(20.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.width(4.dp))
             }
         }
 
-        // Second line: queue info when board shows external climb
-        if (effectiveOnBoard != null && session.queue.isNotEmpty()) {
+        // Second line: the wall, and only when it disagrees with the queue.
+        // These two were the other way round — the queue was banished here and
+        // appeared only during a conflict, while the wall took the line above.
+        // Compared by UUID, never by name: names resolve asynchronously, so a
+        // name comparison would report a mismatch for a moment on every advance.
+        val boardDiffers = effectiveOnBoard != null &&
+            effectiveOnBoard.climbUuid.isNotBlank() &&
+            effectiveOnBoard.climbUuid != session.queue.getOrNull(session.currentIndex)?.climbUuid
+        if (session.externalBoardOverride || boardDiffers) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = OrangeAccent.copy(alpha = 0.08f)),
+                colors = CardDefaults.cardColors(containerColor = WarningYellow.copy(alpha = 0.10f)),
                 shape = RoundedCornerShape(0.dp)
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    Icon(Icons.Default.SignalCellularAlt, null, tint = WarningYellow, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
                     Text(
-                        buildString {
-                            append("Queue ${session.currentIndex + 1}/${session.queue.size}: ")
-                            append(session.currentClimbName ?: stringResource(R.string.ble_unknown))
-                            if (session.currentClimbGrade != null) append(" ${session.currentClimbGrade}")
+                        if (session.externalBoardOverride || effectiveOnBoard == null) {
+                            stringResource(R.string.ble_external_board_override)
+                        } else {
+                            stringResource(
+                                R.string.ble_board_shows_instead,
+                                buildString {
+                                    append(effectiveOnBoard.name ?: stringResource(R.string.ble_unknown))
+                                    if (effectiveOnBoard.grade != null) append(" ${effectiveOnBoard.grade}")
+                                    append(" ${effectiveOnBoard.angle}°")
+                                },
+                            )
                         },
                         style = MaterialTheme.typography.bodySmall,
-                        color = OrangeAccent,
+                        color = WarningYellow,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
                     )
                 }
             }
@@ -347,7 +406,8 @@ internal fun SignalIndicator(rssi: Int) {
 @Composable
 internal fun buildChipSummary(
     onBoard: OnBoardClimbEntry?,
-    state: BleShareUiState
+    state: BleShareUiState,
+    nearbyMeshCount: Int = 0,
 ): String = buildString {
     if (onBoard != null) {
         val name = onBoard.name ?: stringResource(R.string.ble_unknown_climb)
@@ -356,8 +416,11 @@ internal fun buildChipSummary(
         append(" ${onBoard.angle}°")
         when (onBoard.source) {
             OnBoardSource.REMOTE_ACTIVE -> append(" · ${stringResource(R.string.ble_climbing_now)}")
-            OnBoardSource.REMOTE_LAST, OnBoardSource.LOCAL_MANAGER -> append(" · ${stringResource(R.string.ble_still_visible)}")
+            OnBoardSource.REMOTE_LAST, OnBoardSource.LOCAL_MANAGER -> append(
+                " · ${stringResource(if (onBoard.isStillProjected) R.string.ble_still_visible else R.string.ble_last_climb)}"
+            )
             OnBoardSource.LOCAL_ACTIVE -> append(" · ${stringResource(R.string.ble_your_climb)}")
+            OnBoardSource.MESH_ACTIVE -> append(" · ${stringResource(R.string.ble_mesh_climb)}")
             OnBoardSource.SESSION_REMOTE -> append(" · ${stringResource(R.string.ble_session_climb)}")
         }
         // On-board climb is the primary info — skip secondary session/occupied counts
@@ -368,7 +431,17 @@ internal fun buildChipSummary(
     }
     if (state.nearbySessions.isNotEmpty()) {
         if (isNotEmpty()) append(" · ")
-        append("${state.nearbySessions.size} Session${if (state.nearbySessions.size > 1) "s" else ""}")
+        append(
+            pluralStringResource(
+                R.plurals.ble_nearby_playlists,
+                state.nearbySessions.size,
+                state.nearbySessions.size,
+            )
+        )
+    }
+    if (nearbyMeshCount > 0) {
+        if (isNotEmpty()) append(" · ")
+        append(stringResource(R.string.fips_nearby_meshes_count, nearbyMeshCount))
     }
 }
 
@@ -378,4 +451,117 @@ internal fun formatSessionTime(totalSeconds: Int): String {
     val seconds = totalSeconds % 60
     return if (hours > 0) "%d:%02d:%02d".format(hours, minutes, seconds)
     else "%d:%02d".format(minutes, seconds)
+}
+
+/**
+ * FEAT-044 §12: "board is shared" status with a one-tap stop.
+ *
+ * Rides inside the regular BLE status block rather than as a card of its own.
+ * As a separate strip it read as unrelated to the board state directly above
+ * it, and on a screen with nothing else to show the block below it collapsed
+ * entirely — the host then saw sharing but not the climb on the board.
+ *
+ * Stopping affects only relay transport; queue and board ownership stay intact.
+ */
+@Composable
+internal fun RelaySharingLine(
+    clientCount: Int,
+    onStop: () -> Unit,
+    /** Off when this line is the only content of its block. */
+    showDivider: Boolean = true,
+) {
+    if (showDivider) {
+        HorizontalDivider(
+            color = SuccessGreen.copy(alpha = 0.25f),
+            modifier = Modifier.padding(horizontal = 12.dp),
+        )
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("relay_status_chip")
+            .padding(start = 12.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+            Icon(
+                Icons.Default.CellTower,
+                contentDescription = null,
+                tint = SuccessGreen,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                stringResource(R.string.relay_chip_text, clientCount),
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                // Two lines: inside a card the German text plus the stop button
+                // never fit on one, and it was cut mid-word ("1 verbund…") —
+                // hiding the very number the line exists to report.
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+        TextButton(onClick = onStop, modifier = Modifier.testTag("relay_chip_stop")) {
+            Text(
+                stringResource(R.string.relay_chip_stop),
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+/**
+ * FEAT-044 §12: terminal relay errors (board lost, failed start) rendered by
+ * [BleStatusArea] once sharing is off — the sheet's error surface only exists
+ * while its CONNECTED branch shows, which is gone by then. Dismiss clears the
+ * error on the manager.
+ */
+@Composable
+internal fun RelayErrorRow(
+    text: String,
+    onDismiss: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .testTag("relay_error_row"),
+        colors = CardDefaults.cardColors(
+            containerColor = ErrorRed.copy(alpha = 0.10f)
+        ),
+        shape = RoundedCornerShape(14.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 12.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Default.Warning,
+                contentDescription = null,
+                tint = ErrorRed,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            TextButton(onClick = onDismiss, modifier = Modifier.testTag("relay_error_dismiss")) {
+                Text(
+                    stringResource(R.string.action_ok),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
 }

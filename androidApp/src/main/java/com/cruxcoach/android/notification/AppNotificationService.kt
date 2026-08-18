@@ -108,7 +108,13 @@ class AppNotificationService(private val context: Context) {
     }
 
     private fun showIfPermitted(id: Int, notification: Notification) {
-        if (!hasPermission()) return
+        if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS,
+            ) != PackageManager.PERMISSION_GRANTED
+        ) return
         manager.notify(id, notification)
     }
 

@@ -1,6 +1,7 @@
 appId: com.cruxcoach.android
 name: climb-type-filter-changes-list
 tags:
+  - release-gate
   - smoke
   - mutates-state
 ---
@@ -19,30 +20,44 @@ tags:
 # FILTER-STATE precondition: defaults. The flow itself is fully
 # self-contained — it sets and resets the climb-type filter
 # explicitly. Other filters are not touched.
-- launchApp:
-    stopApp: false
-- waitForAnimationToEnd:
-    timeout: 5000
+- runFlow: subflows/reset-browser-filters.yaml
 # Sanity: boulder default → "X Züge" cards visible.
 - assertVisible:
     text: "[0-9]+ Züge"
 # Switch to Routes.
-- tapOn: "Filter"
-- assertVisible: "Sortierung"
-- tapOn: "Routen"
+- tapOn:
+    id: "board_filter_toggle"
+- scrollUntilVisible:
+    element:
+      id: "board_type_route"
+    direction: DOWN
+- tapOn:
+    id: "board_type_route"
 - pressKey: Back
-- assertVisible: "Filter"
-# Routes mode → "X Frames" cards, NO "X Züge".
 - assertVisible:
-    text: "[0-9]+ Frames"
+    id: "board_filter_toggle"
+# Routes mode → "X Frames" cards, NO "X Züge".
+- extendedWaitUntil:
+    visible:
+      text: "[0-9]+ Frames"
+    timeout: 15000
 - assertNotVisible:
     text: "[0-9]+ Züge"
 # Restore default boulder filter.
-- tapOn: "Filter"
-- tapOn: "Boulder"
+- tapOn:
+    id: "board_filter_toggle"
+- scrollUntilVisible:
+    element:
+      id: "board_type_boulder"
+    direction: DOWN
+- tapOn:
+    id: "board_type_boulder"
 - pressKey: Back
-- assertVisible: "Filter"
 - assertVisible:
-    text: "[0-9]+ Züge"
+    id: "board_filter_toggle"
+- extendedWaitUntil:
+    visible:
+      text: "[0-9]+ Züge"
+    timeout: 15000
 - assertNotVisible:
     text: "[0-9]+ Frames"
