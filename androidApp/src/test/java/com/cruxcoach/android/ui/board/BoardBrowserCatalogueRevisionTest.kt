@@ -299,8 +299,8 @@ class BoardBrowserCatalogueRevisionTest {
          * settles, verified by raising the budget to 120 s and watching the
          * same run finish in 2.95 s.
          *
-         * 60 s is 20× the typical case and covers the observed outlier, while
-         * still reporting a genuinely stuck state inside a minute. The budget
+         * 120 s covers heavily contended hosted runners while still reporting
+         * a genuinely stuck state inside two minutes. The budget
          * only bounds how long a real failure may hide; a state that never
          * arrives still fails.
          *
@@ -308,7 +308,7 @@ class BoardBrowserCatalogueRevisionTest {
          * dispatcher for the preference scope instead of doing real file I/O —
          * but that is a refactor of the fixture, not a pre-release change.
          */
-        const val SETTLE_MS = 60_000L
+        const val SETTLE_MS = 120_000L
         const val STEP_MS = 150L
     }
 }
