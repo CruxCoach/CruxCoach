@@ -686,7 +686,11 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
         if (!scopeMatchesPayload) return BoardCellApplyResult.Rejected("realm/cell/board/epoch/term mismatch")
         if (local != null && local.controllerId == link.localNpub &&
             authenticatedSender in local.members && authenticatedSender != link.localNpub) {
-            target.observeMemberActivity(local.physicalBoardId, authenticatedSender, nowMonotonicMs)
+            target.observeAuthenticatedMemberFrame(
+                local.physicalBoardId,
+                authenticatedSender,
+                nowMonotonicMs,
+            )
         }
         return when (val message = value.message) {
             is BoardCellWireMessage.DirectClaim -> {
@@ -788,7 +792,11 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
                     return BoardCellApplyResult.Rejected("member heartbeat sender/role mismatch")
                 }
                 message.diagnostics?.let { logPeerDiagnostics(authenticatedSender, it) }
-                target.observeMemberActivity(snapshot.physicalBoardId, authenticatedSender, nowMonotonicMs)
+                target.observeAuthenticatedMemberFrame(
+                    snapshot.physicalBoardId,
+                    authenticatedSender,
+                    nowMonotonicMs,
+                )
                 null
             }
             is BoardCellWireMessage.PeerDiagnostics -> {

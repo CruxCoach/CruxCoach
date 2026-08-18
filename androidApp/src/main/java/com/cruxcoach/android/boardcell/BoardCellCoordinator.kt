@@ -441,8 +441,13 @@ class BoardCellCoordinator(
     }
 
     /** Any correctly realm-scoped FIPS frame proves its authenticated end
-     * source is alive, independent of how many mesh hops carried it. */
-    suspend fun observeMemberActivity(
+     * source is alive, independent of how many mesh hops carried it.
+     *
+     * Transport peer caches are deliberately not evidence here: Android/FIPS
+     * can retain a disconnected BLE peer for about a minute after the channel
+     * closed. Only the wire receive path may renew this observation.
+     */
+    suspend fun observeAuthenticatedMemberFrame(
         boardId: PhysicalBoardId,
         memberId: String,
         nowMonotonicMs: Long,

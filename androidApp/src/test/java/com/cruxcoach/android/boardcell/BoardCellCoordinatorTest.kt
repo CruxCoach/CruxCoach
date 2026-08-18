@@ -152,7 +152,7 @@ class BoardCellCoordinatorTest {
         val (controller) = settled("controller", board, now = 100)
         controller.joinMember(board, "member", 100)
 
-        assertTrue(controller.observeMemberActivity(board, "member", 105))
+        assertTrue(controller.observeAuthenticatedMemberFrame(board, "member", 105))
         assertTrue(controller.evictExpiredMembers(board, 110, 6).isEmpty())
         assertTrue("member" in controller.snapshot(board)!!.members)
         assertEquals(1, controller.evictExpiredMembers(board, 111, 6).size)

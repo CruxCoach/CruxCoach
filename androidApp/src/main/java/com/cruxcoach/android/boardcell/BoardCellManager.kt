@@ -1519,16 +1519,10 @@ class BoardCellManager @Inject constructor(
                         candidate !in nearbyCandidates
                     }
                     nearbyCandidates.forEach { peer ->
-                        // A live authenticated channel is stronger liveness evidence than
-                        // the periodic application heartbeat. In particular, a member that
-                        // has just applied our authoritative MemberJoined snapshot may spend
-                        // one maintenance window sending snapshot/control traffic before its
-                        // heartbeat loop observes the new role. Evicting it while that channel
-                        // is actively carrying authenticated frames created an admit/evict/
-                        // transport-recycle loop on real Android BLE stacks.
-                        if (snapshot.controllerId == activeNodeId && peer in snapshot.members) {
-                            coordinator.observeMemberActivity(board, peer, now)
-                        }
+                        // A native direct-peer entry is an admission fact, not liveness:
+                        // Android/FIPS may retain it for about a minute after its L2CAP
+                        // channel closed. Join seeds a full grace window and only received,
+                        // correctly scoped frames renew it in BoardCellWire.
                         val last = sponsoredAt[peer]
                         if (last != null && now - last < MEMBER_SPONSOR_RETRY_MS) return@forEach
                         if (peer in snapshot.members) {
