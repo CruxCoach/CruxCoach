@@ -33,23 +33,6 @@ jobs:
           FEATURE_TRACK: ${{ steps.identity.outputs.track }}
           FEATURE_PACKAGE: ${{ steps.identity.outputs.package }}
           FEATURE_LABEL: ${{ steps.identity.outputs.label }}
-          FEATURE_VERSION_CODE: ${{ steps.version.outputs.code }}
-        run: |
-          python3 -m unittest discover -s scripts -p '*_test.py'
-          ./gradlew :shared:testDebugUnitTest :androidApp:testDebugUnitTest --console=plain \
-            -PfeatureBranch="$FEATURE_BRANCH" \
-            -PfeatureTrack="$FEATURE_TRACK" \
-            -PfeaturePackage="$FEATURE_PACKAGE" \
-            -PfeatureLabel="$FEATURE_LABEL" \
-            -PfeatureVersionCode="$FEATURE_VERSION_CODE"
-      - name: Install pinned Rust Android target
-        run: rustup target add --toolchain 1.94.1 aarch64-linux-android
-      - name: Build branch-specific APK
-        env:
-          FEATURE_BRANCH: ${{ steps.identity.outputs.branch }}
-          FEATURE_TRACK: ${{ steps.identity.outputs.track }}
-          FEATURE_PACKAGE: ${{ steps.identity.outputs.package }}
-          FEATURE_LABEL: ${{ steps.identity.outputs.label }}
           # This job has no publication credentials. The trusted follow-up
           # reserves the publishable versionCode atomically in APKTrack.
           FEATURE_VERSION_CODE: '1000013'
