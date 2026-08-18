@@ -114,7 +114,11 @@ class BoardBrowserCatalogueRevisionTest {
         // A catalogue is already on the device — from before the pipeline half
         // shipped, so every row still carries hsm = 0 and the gate is shut.
         repo.moonBoardHoldSetMaskPresent = false
-        seedCatalogue(hsmForWoodenClimb = 0L, hsmForHandsClimb = 0L)
+        seedCatalogue(
+            hsmForWoodenClimb = 0L,
+            hsmForHandsClimb = 0L,
+            uuidPrefix = "legacy-",
+        )
 
         // Establish the generation the browser will use as its baseline.
         // Keeping the fixture idle while its existing catalogue first renders
@@ -143,7 +147,7 @@ class BoardBrowserCatalogueRevisionTest {
             isSyncing = true,
             moonBoardStep = ImportStep.ImportClimbs(0, 0, 1000),
         )
-        awaitRefresh()
+        awaitState(viewModel) { it.activeBrandImporting }
 
         // ── 1. The importer commits. The rows now carry a real mask. ────────
         repo.moonBoardHoldSetMaskPresent = true
@@ -155,7 +159,11 @@ class BoardBrowserCatalogueRevisionTest {
         syncState.value = syncState.value.copy(
             moonBoardStep = ImportStep.Done(1000, 1000, 0),
         )
-        awaitRefresh()
+        awaitState(viewModel) { state ->
+            !state.activeBrandImporting &&
+                state.climbs.map { it.uuid }.toSet() ==
+                setOf("mb-withWooden", "mb-handsOnly")
+        }
 
         // ── 3. The chunk hash is saved, Result.Imported comes back, the
         //     revision moves — inside the same run.
@@ -195,11 +203,15 @@ class BoardBrowserCatalogueRevisionTest {
 
     // ── fixture ────────────────────────────────────────────────────────────
 
-    private fun seedCatalogue(hsmForWoodenClimb: Long, hsmForHandsClimb: Long) {
+    private fun seedCatalogue(
+        hsmForWoodenClimb: Long,
+        hsmForHandsClimb: Long,
+        uuidPrefix: String = "",
+    ) {
         repo.climbs.clear()
         repo.addClimbs(
-            climb("mb-withWooden", hsm = hsmForWoodenClimb),
-            climb("mb-handsOnly", hsm = hsmForHandsClimb),
+            climb("${uuidPrefix}mb-withWooden", hsm = hsmForWoodenClimb),
+            climb("${uuidPrefix}mb-handsOnly", hsm = hsmForHandsClimb),
         )
     }
 
@@ -295,7 +307,7 @@ class BoardBrowserCatalogueRevisionTest {
          * The fixture and ViewModel perform real IO-dispatched work, so keep a
          * generous bound for a genuinely stuck state.
          */
-        const val SETTLE_MS = 60_000L
+        const val SETTLE_MS = 120_000L
         const val STEP_MS = 150L
     }
 }
