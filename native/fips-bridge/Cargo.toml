@@ -8,8 +8,16 @@ license = "GPL-3.0-or-later"
 name = "cruxcoach_fips"
 crate-type = ["lib", "cdylib"]
 
+# Host-compiled too: the control-socket client, the peer directory and the
+# diagnostics projection are plain Rust so they can be unit tested without an
+# Android device. Only the JNI/FIPS layer below is target-gated.
+[dependencies]
+serde_json = "1"
+
 [target.'cfg(target_os = "android")'.dependencies]
-fips = { git = "https://github.com/jmcorgan/fips", rev = "967776079ba5ddc8fe118c3f289365b51eb03737" }
+# Vendored in-repo at ../fips. See native/fips/VENDOR.toml for the exact
+# upstream commit, the applied patches and how to re-verify the tree.
+fips = { path = "../fips" }
 tokio = { version = "1", features = ["rt", "sync", "time"] }
 jni = "0.21"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

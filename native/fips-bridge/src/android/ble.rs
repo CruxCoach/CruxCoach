@@ -4,17 +4,61 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use fips::transport::ble::addr::BleAddr;
-use fips::transport::ble::android_io::{AndroidBleBridge, AndroidRadio, set_android_ble_bridge};
+use fips::transport::ble::android_io::{AndroidBleBridge, AndroidRadio, BleRadioSlot};
 use jni::objects::{GlobalRef, JByteArray, JClass, JObject, JString, JValue};
 use jni::sys::{jboolean, jint, jlong};
 use jni::{JNIEnv, JavaVM};
 
+use crate::radio_install::{RadioInstall, RadioSlot};
+
 static VM: OnceLock<JavaVM> = OnceLock::new();
 static BRIDGES: OnceLock<Mutex<HashMap<i64, Arc<AndroidBleBridge>>>> = OnceLock::new();
 static NEXT_BRIDGE: AtomicI64 = AtomicI64::new(1);
+static INSTALL: OnceLock<Mutex<RadioInstall<BleRadioSlot>>> = OnceLock::new();
 
 fn bridges() -> &'static Mutex<HashMap<i64, Arc<AndroidBleBridge>>> {
     BRIDGES.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// The single point where "which radio is installed in which node's slot" is
+/// decided. Kotlin creates the radio before the node exists and frees it after
+/// the node is gone, so neither side can own the reconciliation alone.
+fn install() -> &'static Mutex<RadioInstall<BleRadioSlot>> {
+    INSTALL.get_or_init(|| Mutex::new(RadioInstall::new()))
+}
+
+impl RadioSlot for BleRadioSlot {
+    type Bridge = AndroidBleBridge;
+
+    fn install(&self, bridge: Arc<AndroidBleBridge>) {
+        BleRadioSlot::install(self, bridge);
+    }
+
+    fn clear(&self) {
+        BleRadioSlot::clear(self);
+    }
+
+    fn holds(&self, bridge: &Arc<AndroidBleBridge>) -> bool {
+        self.current()
+            .is_some_and(|current| Arc::ptr_eq(&current, bridge))
+    }
+}
+
+/// Publish a freshly built node's radio slot and hand it the live radio.
+pub fn attach_radio_slot(slot: Arc<BleRadioSlot>) {
+    install()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .attach_slot(slot);
+}
+
+/// Retract a node's slot on stop or after a failed start. Owns nothing if a
+/// newer node already claimed the seat.
+pub fn detach_radio_slot(slot: &Arc<BleRadioSlot>) {
+    install()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .detach_slot(slot);
 }
 
 fn with_env<R>(default: R, f: impl FnOnce(&mut JNIEnv) -> R) -> R {
@@ -108,16 +152,26 @@ pub fn bridge_new(env: JNIEnv, _class: JClass, radio: JObject) -> jlong {
         return 0;
     };
     let value = AndroidBleBridge::new(Arc::new(KotlinRadio { radio: global }));
-    set_android_ble_bridge(Arc::clone(&value));
     let handle = NEXT_BRIDGE.fetch_add(1, Ordering::Relaxed).max(1);
-    bridges().lock().unwrap().insert(handle, value);
+    bridges().lock().unwrap().insert(handle, Arc::clone(&value));
+    // The handle is also the ownership token: a later `bridge_free` presenting
+    // a stale one cannot retract this installation.
+    install()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .install_bridge(handle, value);
     handle
 }
 
 pub fn bridge_free(_env: JNIEnv, _class: JClass, handle: jlong) {
-    if handle != 0 {
-        bridges().lock().unwrap().remove(&handle);
+    if handle == 0 {
+        return;
     }
+    install()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clear_bridge(handle);
+    bridges().lock().unwrap().remove(&handle);
 }
 
 pub fn deliver_inbound(
@@ -169,7 +223,7 @@ pub fn deliver_scan(
         return;
     };
     if let Some(a) = addr(&mut env, &value) {
-        b.deliver_scan(a, psm.max(0) as u16, rssi);
+        b.deliver_scan(a, psm.max(0) as u16, crate::scan_rssi(rssi));
     }
 }
 

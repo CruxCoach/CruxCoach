@@ -6,6 +6,11 @@
 
 use std::net::Ipv6Addr;
 
+pub mod ble_diagnostics;
+pub mod control;
+pub mod peer_directory;
+pub mod radio_install;
+
 pub const APP_PORT: u16 = 42_424;
 pub const MAX_APP_PAYLOAD: usize = 1_100;
 
@@ -81,6 +86,21 @@ fn udp_checksum(source: Ipv6Addr, destination: Ipv6Addr, udp: &[u8]) -> u16 {
     !(sum as u16)
 }
 
+/// Translate an Android `ScanResult` RSSI into FIPS' `Option<i16>`.
+///
+/// Upstream changed `AndroidBleBridge::deliver_scan` from a bare `i32` to
+/// `Option<i16>`, which is the honest shape: Android reports 127 for "RSSI not
+/// available", and passing that straight through would have described an
+/// impossibly strong signal. Anything outside `i16` is likewise treated as no
+/// reading rather than silently truncated.
+pub fn scan_rssi(rssi: i32) -> Option<i16> {
+    match rssi {
+        127 => None,
+        value if (i16::MIN as i32..=i16::MAX as i32).contains(&value) => Some(value as i16),
+        _ => None,
+    }
+}
+
 #[cfg(target_os = "android")]
 mod android;
 
@@ -96,6 +116,16 @@ mod tests {
         assert_eq!(decode_datagram(&packet).unwrap().payload, b"board-cell");
         packet[48] ^= 1;
         assert!(decode_datagram(&packet).is_none());
+    }
+
+    #[test]
+    fn an_unavailable_rssi_is_absent_rather_than_a_huge_reading() {
+        assert_eq!(scan_rssi(127), None);
+        assert_eq!(scan_rssi(-67), Some(-67));
+        assert_eq!(scan_rssi(-100), Some(-100));
+        assert_eq!(scan_rssi(0), Some(0));
+        assert_eq!(scan_rssi(i32::MIN), None);
+        assert_eq!(scan_rssi(i32::MAX), None);
     }
 
     #[test]

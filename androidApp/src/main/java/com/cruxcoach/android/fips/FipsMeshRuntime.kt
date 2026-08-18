@@ -109,7 +109,7 @@ class FipsMeshRuntime @Inject constructor(
     val permissionRequests = permissionRequestChannel.receiveAsFlow()
     private val validatedDirectPeers = mutableSetOf<String>()
     private val helloSentAt = mutableMapOf<String, Long>()
-    private val loggedNativeBleAttempts = linkedSetOf<String>()
+    private var lastTransportCounters = emptyList<FipsTransportCounter>()
     private val json = Json { ignoreUnknownKeys = false }
     private val _running = MutableStateFlow(false)
     val running = _running.asStateFlow()
@@ -276,7 +276,13 @@ class FipsMeshRuntime @Inject constructor(
             bridge = NativeFips.bleBridgeNew(candidate)
             check(bridge != 0L)
             candidate.bindBridge(bridge)
-            check(NativeFips.start(keyStore.activate(activeRealm.realmId), MAX_DIRECT_CONNECTIONS))
+            check(
+                NativeFips.start(
+                    keyStore.activate(activeRealm.realmId),
+                    MAX_DIRECT_CONNECTIONS,
+                    controlSocketDirectory().absolutePath,
+                )
+            )
             _running.value = true
             FipsDebugLog.event("runtime", "native_started", "npub" to FipsDebugLog.id(localNpub),
                 "maxDirectPeers" to MAX_DIRECT_CONNECTIONS, "bridge" to bridge)
@@ -451,6 +457,9 @@ class FipsMeshRuntime @Inject constructor(
         _connectionProgress.value = FipsConnectionProgress()
         synchronized(validatedDirectPeers) { validatedDirectPeers.clear() }
         synchronized(helloSentAt) { helloSentAt.clear() }
+        // A rebuilt node restarts its counters at zero. Dropping the baseline
+        // keeps the next poll from reading that reset as a burst of outcomes.
+        lastTransportCounters = emptyList()
         _directAuthenticatedPeers.value = emptySet()
     }
 
@@ -544,7 +553,7 @@ class FipsMeshRuntime @Inject constructor(
             _peers.value = runCatching { NativeFips.peers().lineSequence().filter(String::isNotBlank).mapNotNull { line ->
                 val p = line.split('\t'); if (p.size != 4) null else FipsPeer(p[0], p[1].toBoolean(), p[2], p[3].toLongOrNull() ?: 0)
             }.toList() }.getOrDefault(emptyList())
-            logNewNativeBleAttempts()
+            logBleTransportCounterDeltas()
             val connectedBlePeers = _peers.value.asSequence()
                 .filter { it.connected && it.transport == "ble" }.map { it.npub }.toSet()
             synchronized(validatedDirectPeers) { validatedDirectPeers.retainAll(connectedBlePeers) }
@@ -570,34 +579,35 @@ class FipsMeshRuntime @Inject constructor(
         }
     }
 
-    private fun logNewNativeBleAttempts() {
-        runCatching { NativeFips.bleAttempts() }.getOrDefault("")
-            .lineSequence().filter(String::isNotBlank).forEach { line ->
-                val isNew = synchronized(loggedNativeBleAttempts) {
-                    if (!loggedNativeBleAttempts.add(line)) false else {
-                        while (loggedNativeBleAttempts.size > MAX_LOGGED_NATIVE_ATTEMPTS) {
-                            loggedNativeBleAttempts.remove(loggedNativeBleAttempts.first())
-                        }
-                        true
-                    }
-                }
-                if (!isNew) return@forEach
-                val fields = line.split('\t')
-                if (fields.size != 7) {
-                    FipsDebugLog.warning("native_ble", "attempt_decode_failed", "fields" to fields.size)
-                    return@forEach
-                }
-                FipsDebugLog.event(
-                    "native_ble", "attempt_resolved",
-                    "atMs" to fields[0],
-                    "address" to fields[1].substringAfter('/'),
-                    "peer" to FipsDebugLog.id(fields[2]),
-                    "role" to fields[3],
-                    "discoveryMs" to fields[4],
-                    "outcome" to fields[5],
-                    "sendFailures" to fields[6],
-                )
-            }
+    /**
+     * The FIPS-side half of BLE diagnostics.
+     *
+     * Upstream deleted `transport::ble::attempts`, whose per-peer ring this
+     * used to render. What replaced it is a set of aggregate transport
+     * counters. They are logged as aggregates and nothing more: a
+     * `connect_timeouts` that moved by one says a dial timed out somewhere,
+     * not which peer it was for, and attributing it to a peer would be
+     * fabrication. The per-peer layer is [FipsBleRadio]'s channel and dial
+     * traces, which are emitted from the code that actually owns the address.
+     */
+    private fun logBleTransportCounterDeltas() {
+        val raw = runCatching { NativeFips.bleTransportCounters() }.getOrDefault("")
+        val rejected = FipsTransportCounterCodec.parseFailures(raw)
+        if (rejected > 0) {
+            FipsDebugLog.warning("native_ble", "counter_decode_failed", "lines" to rejected)
+        }
+        val current = FipsTransportCounterCodec.parse(raw)
+        val moved = FipsTransportCounterCodec.deltas(lastTransportCounters, current)
+        lastTransportCounters = current
+        moved.forEach { delta ->
+            FipsDebugLog.event(
+                "native_ble", "transport_counter",
+                "instance" to delta.counter.instance,
+                "counter" to delta.counter.name,
+                "total" to delta.counter.value,
+                "increase" to delta.increase,
+            )
+        }
     }
 
     private fun sendJoinHellosToNewDirectPeers() {
@@ -673,6 +683,16 @@ class FipsMeshRuntime @Inject constructor(
         return true // control frames are never exposed to/relayed by the BoardCell transport
     }
 
+    /**
+     * App-private home for the native node's FIPS control socket.
+     *
+     * `no_backup` because a socket is runtime state, not user data, and the
+     * name is kept short: a Unix socket path is capped at 107 bytes and the
+     * application id already spends most of the budget.
+     */
+    private fun controlSocketDirectory(): java.io.File =
+        java.io.File(context.noBackupFilesDir, "fips").also { it.mkdirs() }
+
     private fun sendFramedNative(peer: String, payload: ByteArray): Boolean =
         sendBatchNative(peer, FipsFrameCodec.fragment(payload, FipsFrameCodec.messageId(payload)))
 
@@ -716,7 +736,6 @@ class FipsMeshRuntime @Inject constructor(
     companion object {
         const val MAX_DIRECT_CONNECTIONS = 7
         private const val PEER_REFRESH_MS = 2_000L
-        private const val MAX_LOGGED_NATIVE_ATTEMPTS = 256
         private const val RECEIVE_WAIT_MS = 5_000
         private const val PERMISSION_POLL_MS = 2_000L
         private val JOIN_PREFIX = byteArrayOf(0x43, 0x43, 0x4a, 0x31) // CCJ1

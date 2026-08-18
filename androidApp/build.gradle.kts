@@ -430,10 +430,14 @@ android {
 }
 
 val fipsCrateDir = rootProject.layout.projectDirectory.dir("native/fips-bridge")
+// FIPS itself is vendored in-repo rather than fetched from a moving upstream
+// ref; see native/fips/VENDOR.toml. It is a path dependency of the bridge, so
+// it has to be an up-to-date input too or an edit there would not rebuild.
+val fipsVendorDir = rootProject.layout.projectDirectory.dir("native/fips")
 val fipsSo = layout.buildDirectory.file("generated/fipsJniLibs/arm64-v8a/libcruxcoach_fips.so")
 val buildFipsNative by tasks.registering(Exec::class) {
     group = "build"
-    description = "Build the pinned FIPS Rust bridge for arm64 Android"
+    description = "Build the vendored FIPS Rust bridge for arm64 Android"
     workingDir(fipsCrateDir)
     val ndkRoot = android.ndkDirectory.absolutePath
     val toolBin = "$ndkRoot/toolchains/llvm/prebuilt/linux-x86_64/bin"
@@ -448,6 +452,7 @@ val buildFipsNative by tasks.registering(Exec::class) {
     commandLine("${System.getProperty("user.home")}/.cargo/bin/cargo", "+1.94.1", "build",
         "--locked", "--release", "--target", "aarch64-linux-android")
     inputs.files(fileTree(fipsCrateDir) { include("Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "src/**") })
+    inputs.files(fileTree(fipsVendorDir) { include("Cargo.toml", "build.rs", "src/**", "benches/**") })
     outputs.file(fipsSo)
     doLast {
         copy {
