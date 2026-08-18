@@ -55,6 +55,7 @@ internal class FipsBleRadio(
     private val onConnectionStage: (FipsConnectionStage) -> Unit = {},
 ) {
     private val adapter = (context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
+    private val gattPresence = FipsGattPresence(context)
     private val io = Executors.newCachedThreadPool()
     private val retry = Executors.newSingleThreadScheduledExecutor()
     private val channels = ConcurrentHashMap<Long, BluetoothSocket>()
@@ -88,6 +89,7 @@ internal class FipsBleRadio(
     @RequiresApi(29)
     fun listen(): Int = try {
         if (stopped) return 0
+        gattPresence.start()
         val socket = adapter?.listenUsingInsecureL2capChannel() ?: return 0
         server = socket
         io.execute { acceptLoop(socket) }
@@ -344,6 +346,7 @@ internal class FipsBleRadio(
         stopScanning(); stopAdvertising()
         runCatching { server?.close() }; server = null
         channels.keys.toList().forEach { closeChannel(it, "runtime_shutdown") }
+        gattPresence.shutdown()
         io.shutdownNow(); retry.shutdownNow()
         runCatching { io.awaitTermination(EXECUTOR_STOP_SECONDS, TimeUnit.SECONDS) }
         runCatching { retry.awaitTermination(EXECUTOR_STOP_SECONDS, TimeUnit.SECONDS) }
@@ -372,6 +375,7 @@ internal class FipsBleRadio(
     private fun startChannel(id: Long, socket: BluetoothSocket, direction: String) {
         channels[id] = socket
         channelTraces[id] = ChannelTrace(direction, socket.remoteDevice.address)
+        gattPresence.channelOpened(socket.remoteDevice.address)
         onConnectionStage(FipsConnectionStage.CHANNEL_OPEN)
         FipsDebugLog.event("radio", "channel_open", "channel" to id,
             "address" to socket.remoteDevice.address, "direction" to direction,
@@ -439,6 +443,7 @@ internal class FipsBleRadio(
         val trace = channelTraces[id] ?: return
         if (!trace.closed.compareAndSet(false, true)) return
         channelTraces.remove(id, trace)
+        gattPresence.channelClosed(trace.address)
         FipsDebugLog.event(
             "radio", "channel_closed",
             "channel" to id,
