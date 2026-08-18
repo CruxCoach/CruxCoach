@@ -33,7 +33,6 @@ jobs:
   # The repository currently has legacy lint errors. Run the report in
   # parallel without delaying or blocking the required test/build gate.
   lint:
-    continue-on-error: true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -43,4 +42,5 @@ jobs:
           java-version: '17'
           cache: gradle
       - name: Android lint (advisory until legacy findings are baselined)
+        continue-on-error: true
         run: ./gradlew :androidApp:lintDebug --console=plain
