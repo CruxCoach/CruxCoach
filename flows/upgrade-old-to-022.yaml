@@ -1,0 +1,52 @@
+appId: com.cruxcoach.android
+name: upgrade-old-to-022
+tags:
+  - release-gate
+  - upgrade
+  - manual-prereq
+  - mutates-state
+---
+# Host precondition: install 0.2.2 in place over a completed <=0.2.0 profile.
+- launchApp:
+    stopApp: true
+- extendedWaitUntil:
+    visible:
+      id: "whatsnew_021_dialog"
+    timeout: 15000
+- assertVisible: "Neu in 0.2.1"
+- assertNotVisible: "Neu in 0.2.2"
+- pressKey: Back
+- assertVisible:
+    id: "whatsnew_021_dialog"
+- tapOn:
+    point: "3%,50%"
+- assertVisible:
+    id: "whatsnew_021_dialog"
+- tapOn:
+    id: "whatsnew_021_confirm"
+- extendedWaitUntil:
+    visible:
+      id: "whatsnew_022_dialog"
+    timeout: 10000
+- assertVisible: "Neu in 0.2.2"
+- assertNotVisible: "Neu in 0.2.1"
+- pressKey: Back
+- assertVisible:
+    id: "whatsnew_022_dialog"
+- tapOn:
+    point: "3%,50%"
+- assertVisible:
+    id: "whatsnew_022_dialog"
+- tapOn:
+    id: "whatsnew_022_confirm"
+- assertVisible:
+    id: "board_filter_toggle"
+- stopApp
+- launchApp
+- waitForAnimationToEnd:
+    timeout: 5000
+- assertNotVisible: "Neu in 0.2.1"
+- assertNotVisible: "Neu in 0.2.2"
+- assertVisible:
+    id: "board_filter_toggle"
+

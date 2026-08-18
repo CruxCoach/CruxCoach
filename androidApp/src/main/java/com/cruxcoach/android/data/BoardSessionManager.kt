@@ -11,9 +11,27 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
+/** Why a session clock is stopped — see [BoardSessionState.pauseReason]. */
+enum class PauseReason {
+    /** The climber stepped away. Board and playlist carry on. */
+    MANUAL,
+
+    /** A rest block from the playlist. Ends with the countdown, not with a
+     *  play button. */
+    PLANNED_REST,
+}
+
 data class BoardSessionState(
     val isActive: Boolean = false,
     val isPaused: Boolean = false,
+    /**
+     * Why the clock is stopped. A single boolean carried two meanings — "the
+     * user stepped away" and "the plan calls for a set rest" — and the
+     * transport button read it as the first in both cases. Pressing play
+     * during a planned rest restarted the session clock without cancelling
+     * the countdown, so the remaining rest was booked as training time.
+     */
+    val pauseReason: PauseReason? = null,
     val elapsedSeconds: Int = 0,
     val pauseSeconds: Int = 0,
     val ascentCount: Int = 0,
@@ -172,17 +190,29 @@ class BoardSessionManager(
         return savedSession
     }
 
-    fun pauseSession() {
+    fun pauseSession(reason: PauseReason = PauseReason.MANUAL) {
         if (!_state.value.isActive || _state.value.isPaused) return
         pauseStartTimeMs = System.currentTimeMillis()
-        _state.update { it.copy(isPaused = true) }
+        _state.update { it.copy(isPaused = true, pauseReason = reason) }
         persistSessionUpdate()
     }
 
-    fun resumeSession() {
+    /**
+     * Restart the session clock.
+     *
+     * A planned rest can only be resumed by ending the rest — otherwise the
+     * countdown keeps running while the clock counts again, and the remainder
+     * of the rest is recorded as training. [cancelRestTimer] is the way out of
+     * that state; it calls this with [PauseReason.PLANNED_REST].
+     */
+    fun resumeSession(from: PauseReason = PauseReason.MANUAL) {
         if (!_state.value.isActive || !_state.value.isPaused) return
+        if (_state.value.pauseReason != from) {
+            Log.d(TAG, "resumeSession($from) ignored — paused for ${_state.value.pauseReason}")
+            return
+        }
         accumulatedPauseMs += System.currentTimeMillis() - pauseStartTimeMs
-        _state.update { it.copy(isPaused = false) }
+        _state.update { it.copy(isPaused = false, pauseReason = null) }
         persistSessionUpdate()
     }
 
@@ -213,7 +243,7 @@ class BoardSessionManager(
         // Schedule Doze-safe alarm as backup
         alarmScheduler.schedule(restTimerEndMs)
         // Pause session during rest
-        pauseSession()
+        pauseSession(PauseReason.PLANNED_REST)
         ensureTickerRunning()
     }
 
@@ -223,8 +253,8 @@ class BoardSessionManager(
         _restTimer.value = RestTimerState(totalSeconds = _restTimer.value.totalSeconds)
         notificationService.cancelRestTimer()
         alarmScheduler.cancel()
-        // Resume session
-        resumeSession()
+        // Ending the rest is the only way out of a PLANNED_REST pause.
+        resumeSession(PauseReason.PLANNED_REST)
         stopTickerIfIdle()
     }
 

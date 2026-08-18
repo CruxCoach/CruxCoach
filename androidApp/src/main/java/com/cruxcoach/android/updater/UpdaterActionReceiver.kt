@@ -36,7 +36,10 @@ class UpdaterActionReceiver : BroadcastReceiver() {
                     UpdateNotifier.Action.DOWNLOAD.intentAction -> {
                         val prefs = repository.snapshot()
                         val info = prefs.pendingUpdate() ?: return@launch
-                        repository.startDownload(info, allowMobile = prefs.autoDownloadOnMobile)
+                        repository.startDownload(
+                            info,
+                            allowMobile = prefs.pendingAllowMobile || prefs.autoDownloadOnMobile,
+                        )
                     }
                     UpdateNotifier.Action.INSTALL.intentAction -> {
                         repository.installPending()

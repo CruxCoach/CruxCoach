@@ -39,7 +39,7 @@ fun DataExportScreen(
     viewModel: DataExchangeViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val exportBugReportTitle = stringResource(R.string.error_bug_report_export_title)
     val snackbarHostState = SnackbarHostState()
 
     val exportLauncher = rememberLauncherForActivityResult(
@@ -92,7 +92,7 @@ fun DataExportScreen(
                     onDismiss = { viewModel.clearMessage() },
                     onReportBug = {
                         onNavigateToBugReport(
-                            context.getString(R.string.error_bug_report_export_title),
+                            exportBugReportTitle,
                             error
                         )
                         viewModel.clearMessage()

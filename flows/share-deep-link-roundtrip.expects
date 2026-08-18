@@ -1,0 +1,5 @@
+SHARE SOURCE: ClimbDetail\([0-9a-fA-F-]+\)
+2+::NAV START: DeepLink .* ClimbDetail\(
+BOARD_CLIMB_DETAIL composable entered
+loadClimb complete \([0-9a-f-]+\)
+loadClimb start \(00000000-0000-0000-0000-000000000000\)

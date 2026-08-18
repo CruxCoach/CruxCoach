@@ -5,10 +5,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.data.AnnouncementRepository
 import com.cruxcoach.android.nostr.NostrConfig
+import com.cruxcoach.android.nostr.NostrEventPolicy
 import com.cruxcoach.android.nostr.NostrRelayPool
 import com.cruxcoach.android.notification.AnnouncementTagParser
 import com.cruxcoach.db.secure.Announcements
 import com.vitorpamplona.quartz.nip01Core.core.Event
+import com.vitorpamplona.quartz.nip01Core.crypto.verifyId
 import com.vitorpamplona.quartz.nip01Core.crypto.verifySignature
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.util.Locale
@@ -73,8 +75,17 @@ class AnnouncementsViewModel @Inject constructor(
             relayPool.subscribe(filter).collect { json ->
                 try {
                     val event = Event.fromJson(json)
-                    if (event.pubKey != NostrConfig.DEV_PUBKEY) return@collect
-                    if (!event.verifySignature()) return@collect
+                    val signatureValid = event.verifySignature()
+                    val idValid = signatureValid && event.verifyId()
+                    if (!NostrEventPolicy.accepts(
+                            actualPubkey = event.pubKey,
+                            actualKind = event.kind,
+                            expectedPubkey = NostrConfig.DEV_PUBKEY,
+                            expectedKind = 1,
+                            signatureValid = signatureValid,
+                            idValid = idValid,
+                        )
+                    ) return@collect
 
                     if (!AnnouncementTagParser.isAnnouncement(event.tags)) return@collect
 

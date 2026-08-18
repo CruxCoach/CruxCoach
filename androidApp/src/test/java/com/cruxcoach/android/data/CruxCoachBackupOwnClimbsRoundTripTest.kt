@@ -100,6 +100,8 @@ class CruxCoachBackupOwnClimbsRoundTripTest {
             created_by_pubkey = ownPubkey,
             // 64 lowercase hex characters — must match HEX64_REGEX in validate().
             frames_hash = "f".repeat(64),
+            // FEAT-049: MoonBoard rows derive hsm on insert; a Kilter fixture has none.
+            hsm = 0L,
             board_brand = boardBrand,
         )
         // Stats row at angle 40, setter grade id 18 (V5 / 6c+).

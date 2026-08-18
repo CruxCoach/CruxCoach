@@ -1,0 +1,977 @@
+package com.cruxcoach.domain.competition
+
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+
+/**
+ * Deterministic state reduction — FEAT-058 §7.
+ *
+ * The port of `competitions/app/protocol/reduce.mjs`. It must agree with that
+ * file on every fixture stream, including on which entries it *refuses*: the
+ * rejection list is part of the hashed state, so a disagreement about what is
+ * legal fails a test instead of producing two different leaderboards.
+ *
+ * Pure and synchronous: no clock, no crypto, no I/O, no randomness. Everything
+ * time-shaped comes from the entries themselves.
+ */
+object CompetitionReducer {
+
+    /**
+     * The closed set of rejection codes. Codes rather than sentences, because
+     * the sentence has to be translated into German and the hash must not be.
+     */
+    val REJECTION_CODES = listOf(
+        "already_topped", "attempt_out_of_order", "capacity_full", "climb_already_claimed",
+        "correction_bad_target", "correction_invalid_replacement", "correction_missing_replacement",
+        "defer_budget_exhausted", "defer_consecutive_limit",
+        "duplicate_in_order", "empty_announcement", "epoch_mismatch", "illegal_transition",
+        "incomplete_seed_order", "index_out_of_range", "ineligible_in_order", "no_attempts_left",
+        "no_fee", "no_order", "no_such_participant", "not_accepted_registration", "not_eligible",
+        "manual_queue_forbidden", "turn_not_open", "no_open_turn", "not_current_turn",
+        "not_in_order", "participant_inactive", "unknown_checkin_state", "unknown_climb",
+        "unknown_decision", "unknown_division", "unknown_op", "unknown_outcome",
+        "unknown_payment_state", "unknown_prize", "unknown_prize_state", "unknown_queue_action",
+        "uniqueness_not_enforced", "prize_already_awarded", "results_not_final", "wrong_status",
+        "config_bad_revision", "config_empty_patch", "config_immutable_field",
+        "config_impact_mismatch", "config_invalid", "config_referenced_climb",
+        "config_referenced_division",
+    )
+
+    private val REGISTRATION_STATES = setOf("registration_open")
+
+    data class Chained(val entry: LogEntry, val eventId: String, val createdAt: Long)
+
+    data class Reduction(
+        val state: CompetitionState,
+        val chainBreakAt: Int?,
+        val effectiveCompetition: Competition,
+    )
+
+    private data class CorrectionPlan(
+        val target: Int?,
+        val replacement: JsonObject?,
+        var error: String?,
+    )
+
+    fun initialState(competition: Competition, competitionEventId: String) = CompetitionState(
+        compId = competition.compId,
+        authority = competition.authority,
+        epoch = competition.authorityEpoch,
+        head = competitionEventId,
+        status = competition.status,
+        configRevision = competition.revision,
+    )
+
+    /**
+     * Walk the `seq`/`prev` chain and reduce.
+     *
+     * @param entries already parsed and author-checked entries, in any order.
+     */
+    fun reduce(
+        competition: Competition,
+        competitionEventId: String,
+        entries: List<Chained>,
+        snapshot: CompetitionState? = null,
+        snapshotHead: String? = null,
+    ): Reduction {
+        val baseState = snapshot?.copy(fromSnapshot = true)
+            ?: initialState(competition, competitionEventId)
+
+        val bySeq = mutableMapOf<Int, MutableList<Chained>>()
+        for (item in entries) {
+            val bucket = bySeq.getOrPut(item.entry.seq) { mutableListOf() }
+            // Duplicate deliveries of the same event collapse; two relays racing
+            // the same event must not look like a fork.
+            if (bucket.none { it.eventId == item.eventId }) bucket.add(item)
+        }
+
+        var expectedPrev = snapshotHead ?: competitionEventId
+        var seq = if (snapshot != null) snapshot.seq + 1 else 1
+        var chainBreakAt: Int? = null
+        var forkDetected = baseState.forkDetected
+        val chosenChain = mutableListOf<Chained>()
+
+        while (true) {
+            val bucket = bySeq[seq]
+            if (bucket.isNullOrEmpty()) break
+            val linked = bucket.filter { it.entry.prev == expectedPrev }
+            if (linked.isEmpty()) {
+                chainBreakAt = seq
+                break
+            }
+            val chosen = if (linked.size == 1) {
+                linked.first()
+            } else {
+                // Which branch is "right" is unknowable; that every client picks
+                // the same one is not. Lower created_at wins, ties by lower id.
+                forkDetected = true
+                linked.sortedWith(compareBy({ it.createdAt }, { it.eventId })).first()
+            }
+            chosenChain += chosen
+            expectedPrev = chosen.eventId
+            seq += 1
+        }
+
+        val available = chosenChain.associateBy { it.entry.seq }
+        val corrections = mutableMapOf<Int, CorrectionPlan>()
+        val replacements = mutableMapOf<Int, MutableList<CorrectionPlan>>()
+        for (item in chosenChain) {
+            val entry = item.entry
+            if (entry.op != "correction") continue
+            val target = entry.data.int("supersedes_seq")
+            val replacement = entry.data["replacement"] as? JsonObject
+            val replacementData = replacement?.get("data") as? JsonObject
+            val error = when {
+                replacement == null || replacementData == null -> "correction_missing_replacement"
+                target == null || target < 1 || target >= entry.seq -> "correction_bad_target"
+                snapshot != null && target <= snapshot.seq -> "correction_bad_target"
+                available[target] == null || available[target]?.entry?.op == "correction" -> "correction_bad_target"
+                replacement.str("op") !in HANDLED_OPS -> "unknown_op"
+                else -> null
+            }
+            val plan = CorrectionPlan(target, replacement, error)
+            corrections[entry.seq] = plan
+            if (error == null) replacements.getOrPut(target!!) { mutableListOf() } += plan
+        }
+
+        var state = baseState.copy(forkDetected = forkDetected)
+        for (item in chosenChain) {
+            val entry = item.entry
+            if (entry.op == "correction") {
+                val plan = corrections.getValue(entry.seq)
+                state = state.copy(
+                    audit = state.audit + AuditEntry(
+                        entry.seq,
+                        "correction",
+                        entry.reason,
+                        entry.at,
+                        supersedesSeq = entry.data.int("supersedes_seq"),
+                        supersedesResults = plan.error == null && state.status == "finished",
+                    ),
+                )
+                if (plan.error != null) state = reject(state, entry, plan.error!!)
+            } else {
+                val plans = replacements[entry.seq]
+                if (plans == null) {
+                    val effective = state.effectiveConfig?.let(Competition::from) ?: competition
+                    state = applyEntry(state, entry, effective)
+                } else {
+                    val before = state
+                    var latestValid: CompetitionState? = null
+                    for (plan in plans) {
+                        val replacement = plan.replacement!!
+                        val candidateCompetition = before.effectiveConfig?.let(Competition::from) ?: competition
+                        val candidate = applyEntry(
+                            before,
+                            entry.copy(
+                                op = replacement.str("op")!!,
+                                data = replacement["data"] as JsonObject,
+                            ),
+                            candidateCompetition,
+                        )
+                        if (candidate.rejected.size != before.rejected.size) {
+                            plan.error = "correction_invalid_replacement"
+                        } else {
+                            latestValid = candidate
+                        }
+                    }
+                    state = latestValid ?: run {
+                        val effective = before.effectiveConfig?.let(Competition::from) ?: competition
+                        applyEntry(before, entry, effective)
+                    }
+                }
+            }
+            state = state.copy(seq = entry.seq, head = item.eventId)
+        }
+
+        // "We have reached the end" and "there is a hole and more entries behind
+        // it" look identical at the stopping point and must not be conflated:
+        // the missing entry may be the disqualification that changes everything
+        // after it.
+        if (chainBreakAt == null && bySeq.keys.any { it > state.seq }) {
+            chainBreakAt = seq
+        }
+        state = state.copy(chainComplete = chainBreakAt == null)
+        val effective = state.effectiveConfig?.let(Competition::from) ?: competition
+        return Reduction(state, chainBreakAt, effective)
+    }
+
+    fun applyEntry(state: CompetitionState, entry: LogEntry, competition: Competition): CompetitionState {
+        if (entry.epoch != state.epoch) return reject(state, entry, "epoch_mismatch")
+
+        val currentBefore = state.order.getOrNull(state.cursor)
+        val rejectedBefore = state.rejected.size
+        var appliedOp = entry.op
+        var appliedData = entry.data
+        val result: CompetitionState
+
+        if (entry.op == "override") {
+            val audited = state.copy(
+                audit = state.audit + AuditEntry(entry.seq, "override", entry.reason, entry.at),
+            )
+            val wrappedOp = entry.data.str("op") ?: return reject(audited, entry, "unknown_op")
+            val wrappedData = entry.data["data"] as? JsonObject ?: return reject(audited, entry, "unknown_op")
+            if (wrappedOp !in HANDLED_OPS) return reject(audited, entry, "unknown_op")
+            appliedOp = wrappedOp
+            appliedData = wrappedData
+            result = dispatch(audited, entry.copy(op = wrappedOp, data = wrappedData), competition)
+        } else if (entry.op == "correction") {
+            val audited = state.copy(
+                audit = state.audit + AuditEntry(
+                    entry.seq, "correction", entry.reason, entry.at,
+                    supersedesSeq = entry.data.int("supersedes_seq"),
+                ),
+            )
+            if (entry.data["replacement"] !is JsonObject) {
+                return reject(audited, entry, "correction_missing_replacement")
+            }
+            return reject(audited, entry, "correction_bad_target")
+        } else {
+            if (entry.op !in HANDLED_OPS) return reject(state, entry, "unknown_op")
+            result = dispatch(state, entry, competition)
+        }
+
+        if (result.rejected.size != rejectedBefore) return result
+        val preservePostCurrent = appliedOp == "complete_turn" || appliedOp == "defer_decision" ||
+            (appliedOp == "queue" && appliedData.str("action") in listOf("skip_turn", "next_round"))
+        val effective = result.effectiveConfig?.let(Competition::from) ?: competition
+        return reconcileAutomaticQueue(result, effective, entry, currentBefore, preservePostCurrent)
+    }
+
+    /**
+     * Every op `dispatch` can actually apply.
+     *
+     * Has to stay in step with the `when` below and with the JS reducer's
+     * HANDLERS table: an op missing here is rejected as `unknown_op` even
+     * though a handler exists, which reads to a client as "your build is too
+     * old" when the truth is that this list was not updated.
+     */
+    private val HANDLED_OPS = setOf(
+        "lifecycle", "registration_decision", "payment_decision", "claim_decision",
+        "prize_decision", "checkin", "queue", "defer_decision", "attempt_result", "complete_turn",
+        "disqualify", "retire", "announcement",
+        "config_update",
+    )
+
+    private fun dispatch(state: CompetitionState, entry: LogEntry, competition: Competition) = when (entry.op) {
+        "lifecycle" -> applyLifecycle(state, entry, competition)
+        "registration_decision" -> applyRegistrationDecision(state, entry, competition)
+        "payment_decision" -> applyPaymentDecision(state, entry, competition)
+        "claim_decision" -> applyClaimDecision(state, entry, competition)
+        "prize_decision" -> applyPrizeDecision(state, entry, competition)
+        "checkin" -> applyCheckin(state, entry, competition)
+        "queue" -> applyQueue(state, entry, competition)
+        "defer_decision" -> applyDeferDecision(state, entry, competition)
+        "attempt_result" -> applyAttemptResult(state, entry, competition)
+        "complete_turn" -> applyCompleteTurn(state, entry, competition)
+        "disqualify" -> applyDisqualify(state, entry)
+        "retire" -> applyRetire(state, entry, competition)
+        "announcement" -> applyAnnouncement(state, entry)
+        "config_update" -> applyConfigUpdate(state, entry, competition)
+        else -> reject(state, entry, "unknown_op")
+    }
+
+    private fun reject(state: CompetitionState, entry: LogEntry, code: String) =
+        state.copy(rejected = state.rejected + Rejection(entry.seq, entry.op, code))
+
+    // ── operations ──
+
+    private fun applyLifecycle(state: CompetitionState, entry: LogEntry, competition: Competition): CompetitionState {
+        val next = entry.data.str("status") ?: return reject(state, entry, "illegal_transition")
+        val legal = CompetitionProtocol.LEGAL_TRANSITIONS[state.status].orEmpty()
+        if (next !in legal) return reject(state, entry, "illegal_transition")
+        var updated = state.copy(status = next, paused = next == "paused")
+        if (next == "running" && state.round == 0) {
+            updated = updated.copy(
+                round = 1,
+                currentClimbId = if (competition.rules.climbSource == "organizer_set" && competition.climbs.isNotEmpty()) {
+                    competition.climbs.first().id
+                } else {
+                    updated.currentClimbId
+                },
+            )
+        }
+        if (next == "cancelled" || next == "finished") {
+            updated = updated.copy(cursor = -1, turnDeadlineAt = 0)
+        }
+        return updated
+    }
+
+    private fun applyRegistrationDecision(
+        state: CompetitionState,
+        entry: LogEntry,
+        competition: Competition,
+    ): CompetitionState {
+        val pubkey = entry.data.str("pubkey") ?: return reject(state, entry, "no_such_participant")
+        val decision = entry.data.str("decision")
+        // The participant's withdraw intent is only a request. `withdrawn`
+        // becomes state when the authority records this decision, exactly as
+        // on the website reducer.
+        if (decision !in listOf("accepted", "waitlisted", "rejected", "withdrawn")) {
+            return reject(state, entry, "unknown_decision")
+        }
+        if (decision == "withdrawn") {
+            if (state.status in listOf("finished", "cancelled")) {
+                return reject(state, entry, "wrong_status")
+            }
+        } else if (!registrationWindowOpen(competition, state.status, entry.at)) {
+            return reject(state, entry, "wrong_status")
+        }
+        if (decision == "accepted" && competition.capacity > 0) {
+            val alreadyAccepted = state.participants.count { it.registration == "accepted" && it.pubkey != pubkey }
+            // The reducer refuses rather than trusting the authority to have
+            // counted. A capacity only the organizer enforces is not a capacity.
+            if (alreadyAccepted >= competition.capacity) return reject(state, entry, "capacity_full")
+        }
+        val division = entry.data.str("division")
+        if (division != null && competition.divisions.none { it.id == division }) {
+            return reject(state, entry, "unknown_division")
+        }
+        var participant = state.upsertParticipant(pubkey).copy(registration = decision!!)
+        if (division != null) participant = participant.copy(division = division)
+        entry.data.str("display")?.let { participant = participant.copy(display = it) }
+        participant = participant.copy(
+            waitlistPosition = if (decision == "waitlisted") entry.data.int("waitlist_position") ?: 0 else 0,
+        )
+        if (decision == "accepted" && competition.feeMsat > 0 && participant.payment == "not_required") {
+            participant = participant.copy(payment = "pending")
+        }
+        return state.withParticipant(participant)
+    }
+
+    private fun applyPaymentDecision(
+        state: CompetitionState,
+        entry: LogEntry,
+        competition: Competition,
+    ): CompetitionState {
+        val paymentState = entry.data.str("state")
+        if (paymentState == null || paymentState !in CompetitionProtocol.PAYMENT_STATES || paymentState == "not_required") {
+            return reject(state, entry, "unknown_payment_state")
+        }
+        if (competition.feeMsat == 0L) return reject(state, entry, "no_fee")
+        val pubkey = entry.data.str("pubkey")
+        val participant = pubkey?.let { state.participant(it) } ?: return reject(state, entry, "no_such_participant")
+        return state.withParticipant(participant.copy(payment = paymentState))
+    }
+
+    private fun applyClaimDecision(
+        state: CompetitionState,
+        entry: LogEntry,
+        competition: Competition,
+    ): CompetitionState {
+        if (competition.rules.selectionUniqueness != "unique_per_competition") {
+            return reject(state, entry, "uniqueness_not_enforced")
+        }
+        val decision = entry.data.str("decision")
+        if (decision !in listOf("granted", "denied")) return reject(state, entry, "unknown_decision")
+        val pubkey = entry.data.str("pubkey")
+        val participant = pubkey?.let { state.participant(it) } ?: return reject(state, entry, "no_such_participant")
+        if (decision == "denied") return state
+        val climbId = entry.data.str("climb_id") ?: return reject(state, entry, "unknown_climb")
+        val holder = state.claims[climbId]
+        // Enforced here, not merely by the authority behaving well. A double
+        // grant is visible to every client the same way, which is what makes it
+        // correctable.
+        if (holder != null && holder != pubkey) return reject(state, entry, "climb_already_claimed")
+        val selections = if (climbId in participant.selections) {
+            participant.selections
+        } else {
+            (participant.selections + climbId).sorted()
+        }
+        return state
+            .copy(claims = state.claims + (climbId to pubkey))
+            .withParticipant(participant.copy(selections = selections))
+    }
+
+    /**
+     * A prize's public status — FEAT-058 §11.7.
+     *
+     * Must agree with `applyPrizeDecision` in reduce.mjs exactly. What it
+     * refuses is the thing an organizer cannot undo: two people being told the
+     * same prize is theirs.
+     */
+    private fun applyPrizeDecision(
+        state: CompetitionState,
+        entry: LogEntry,
+        competition: Competition,
+    ): CompetitionState {
+        val prizeId = entry.data.str("prize_id")
+        val prizeState = entry.data.str("state")
+        val pubkey = entry.data.str("pubkey")
+
+        if (competition.prizes.none { it.id == prizeId }) return reject(state, entry, "unknown_prize")
+        if (prizeState == null || prizeState !in CompetitionProtocol.PRIZE_STATES) {
+            return reject(state, entry, "unknown_prize_state")
+        }
+        // Nothing about a prize is decidable before the results are.
+        if (state.status != "finished") return reject(state, entry, "results_not_final")
+
+        val held = state.prizes[prizeId]
+        val awarded = held != null && held.state in listOf("approved", "paid")
+
+        if (prizeState == "expired") {
+            if (awarded) return reject(state, entry, "prize_already_awarded")
+            return state.copy(prizes = state.prizes + (prizeId!! to PrizeStatus("", "expired")))
+        }
+
+        if (pubkey == null || state.participant(pubkey) == null) {
+            return reject(state, entry, "no_such_participant")
+        }
+        if (awarded && held!!.pubkey != pubkey) {
+            return reject(state, entry, "prize_already_awarded")
+        }
+        return state.copy(prizes = state.prizes + (prizeId!! to PrizeStatus(pubkey, prizeState)))
+    }
+
+    private fun applyCheckin(state: CompetitionState, entry: LogEntry, competition: Competition): CompetitionState {
+        val checkinState = entry.data.str("state")
+        if (checkinState !in listOf("checked_in", "no_show")) return reject(state, entry, "unknown_checkin_state")
+        if (checkinState == "checked_in" && !checkinWindowOpen(competition, state.status, entry.at)) {
+            return reject(state, entry, "wrong_status")
+        }
+        val pubkey = entry.data.str("pubkey")
+        val participant = pubkey?.let { state.participant(it) } ?: return reject(state, entry, "no_such_participant")
+        if (participant.registration != "accepted") return reject(state, entry, "not_accepted_registration")
+        val updated = participant.copy(
+            checkin = checkinState!!,
+            result = if (checkinState == "no_show") "dns" else participant.result,
+        )
+        return state.withParticipant(updated)
+    }
+
+    private fun registrationWindowOpen(competition: Competition, status: String, at: Long): Boolean =
+        CompetitionProtocol.registrationWindowOpen(competition, status, at)
+
+    private fun checkinWindowOpen(competition: Competition, status: String, at: Long): Boolean =
+        CompetitionProtocol.checkinWindowOpen(competition, status, at)
+
+    private fun isEligible(
+        state: CompetitionState,
+        competition: Competition,
+        pubkey: String,
+        atSeconds: Long,
+    ): Boolean {
+        val participant = state.participant(pubkey) ?: return false
+        if (participant.registration != "accepted") return false
+        if (participant.checkin != "checked_in") return false
+        if (participant.result != "active") return false
+        if (competition.feeMsat > 0 && participant.payment != "settled") return false
+        val rest = competition.rules.minRestSec
+        if (rest > 0 && participant.lastAttemptAt > 0 && atSeconds - participant.lastAttemptAt < rest) return false
+        return true
+    }
+
+    private fun isQueueMember(state: CompetitionState, competition: Competition, pubkey: String): Boolean {
+        val participant = state.participant(pubkey) ?: return false
+        return participant.registration == "accepted" && participant.checkin == "checked_in" &&
+            participant.result == "active" && (competition.feeMsat <= 0 || participant.payment == "settled")
+    }
+
+    private fun readyAt(
+        state: CompetitionState,
+        competition: Competition,
+        pubkey: String,
+        floor: Long,
+    ): Long {
+        val participant = state.participant(pubkey)
+        val restReady = if (participant != null && participant.lastAttemptAt > 0) {
+            participant.lastAttemptAt + competition.rules.minRestSec
+        } else {
+            floor
+        }
+        return maxOf(floor, restReady)
+    }
+
+    private fun installAutomaticTurn(
+        state: CompetitionState,
+        competition: Competition,
+        at: Long,
+        anchorPubkey: String? = null,
+    ): CompetitionState {
+        val floor = maxOf(at, competition.startsAt)
+        if (state.order.isEmpty()) {
+            return state.copy(cursor = -1, turnOpenedAt = 0, turnDeadlineAt = 0)
+        }
+        val key: (String) -> String = { CompetitionDigest.sha256Hex(competition.compId + it) }
+        val anchorKey = anchorPubkey?.let(key)
+        val candidates = state.order.mapIndexed { index, pubkey -> pubkey to index }
+        val afterAnchor = if (anchorKey == null) {
+            candidates
+        } else {
+            candidates.filter { key(it.first) > anchorKey } + candidates.filter { key(it.first) <= anchorKey }
+        }
+        val selected = afterAnchor.firstOrNull { readyAt(state, competition, it.first, floor) <= floor }
+            ?: candidates.minWithOrNull(compareBy<Pair<String, Int>>(
+                { readyAt(state, competition, it.first, floor) },
+                { it.second },
+            ))!!
+        val openedAt = readyAt(state, competition, selected.first, floor)
+        val wrapped = anchorKey != null && key(selected.first) <= anchorKey
+        return state.copy(
+            round = state.round + if (wrapped) 1 else 0,
+            cursor = selected.second,
+            turnOpenedAt = openedAt,
+            turnDeadlineAt = openedAt + competition.rules.turnDeadlineSec,
+            participants = if (wrapped) state.participants.map {
+                it.copy(defersUsedThisRound = 0, consecutiveDefers = 0)
+            } else state.participants,
+        )
+    }
+
+    private fun reconcileAutomaticQueue(
+        state: CompetitionState,
+        competition: Competition,
+        entry: LogEntry,
+        currentBefore: String?,
+        preservePostCurrent: Boolean,
+    ): CompetitionState {
+        if (competition.rules.queuePolicy != "automatic" || state.status in listOf("finished", "cancelled")) {
+            return state
+        }
+        val postCurrent = state.order.getOrNull(state.cursor)
+        val order = CompetitionProtocol.defaultQueueOrder(
+            competition.compId,
+            state.participants.filter { isQueueMember(state, competition, it.pubkey) }.map { it.pubkey },
+        )
+        var updated = state.copy(order = order)
+        if (updated.round == 0 && order.isNotEmpty()) {
+            updated = updated.copy(
+                round = 1,
+                currentClimbId = if (updated.currentClimbId.isBlank() &&
+                    competition.rules.climbSource == "organizer_set"
+                ) competition.climbs.firstOrNull()?.id.orEmpty() else updated.currentClimbId,
+            )
+        }
+        val current = if (preservePostCurrent) postCurrent else currentBefore
+        if (current != null && current in order) return updated.copy(cursor = order.indexOf(current))
+        return installAutomaticTurn(updated, competition, entry.at, currentBefore)
+    }
+
+    private fun nextEligibleIndex(
+        state: CompetitionState,
+        competition: Competition,
+        from: Int,
+        atSeconds: Long,
+    ): Int {
+        for (index in (from + 1) until state.order.size) {
+            if (isEligible(state, competition, state.order[index], atSeconds)) return index
+        }
+        return -1
+    }
+
+    private fun applyQueue(state: CompetitionState, entry: LogEntry, competition: Competition): CompetitionState {
+        val action = entry.data.str("action")
+        if (action == null || action !in CompetitionProtocol.QUEUE_ACTIONS) {
+            return reject(state, entry, "unknown_queue_action")
+        }
+        if (!CompetitionProtocol.competitionRunning(competition, state.status, entry.at) &&
+            !checkinWindowOpen(competition, state.status, entry.at)
+        ) return reject(state, entry, "wrong_status")
+        if (competition.rules.queuePolicy == "automatic" && action in listOf(
+                "seed", "seed_open", "open_turn", "close_turn", "advance", "reorder", "next_round",
+            )
+        ) return reject(state, entry, "manual_queue_forbidden")
+
+        var working = state
+        if (working.round == 0) {
+            working = working.copy(
+                round = 1,
+                currentClimbId = if (competition.rules.climbSource == "organizer_set") {
+                    competition.climbs.firstOrNull()?.id.orEmpty()
+                } else working.currentClimbId,
+            )
+        }
+
+        if (action == "seed" || action == "seed_open" || action == "reorder") {
+            val orderArray = entry.data["order"] as? JsonArray ?: return reject(state, entry, "no_order")
+            val order = orderArray.mapNotNull { (it as? JsonPrimitive)?.contentOrNullSafe() }
+            if (order.size != orderArray.size) return reject(state, entry, "no_order")
+            val eligible = working.participants
+                .filter { it.registration == "accepted" && it.checkin == "checked_in" && it.result == "active" }
+                .map { it.pubkey }
+            if (order.toSet().size != order.size) return reject(state, entry, "duplicate_in_order")
+            if (order.any { it !in eligible }) return reject(state, entry, "ineligible_in_order")
+            if (action != "reorder" && order.size != eligible.size) return reject(state, entry, "incomplete_seed_order")
+            val seeded = working.copy(
+                order = order,
+                cursor = -1,
+                round = if (state.round == 0) 1 else state.round,
+                currentClimbId = if (state.currentClimbId.isBlank() && competition.rules.climbSource == "organizer_set") {
+                    competition.climbs.firstOrNull()?.id.orEmpty()
+                } else state.currentClimbId,
+            )
+            if (action != "seed_open") return seeded
+            val first = nextEligibleIndex(seeded, competition, -1, entry.at)
+            return if (first < 0) seeded.copy(
+                turnOpenedAt = 0,
+                turnDeadlineAt = 0,
+            ) else seeded.copy(
+                cursor = first,
+                turnOpenedAt = entry.at,
+                turnDeadlineAt = entry.at + competition.rules.turnDeadlineSec,
+            )
+        }
+
+        if (action == "open_turn") {
+            val index = entry.data.int("index") ?: return reject(state, entry, "index_out_of_range")
+            if (index < 0 || index >= working.order.size) return reject(state, entry, "index_out_of_range")
+            if (!isEligible(working, competition, working.order[index], entry.at)) {
+                return reject(state, entry, "not_eligible")
+            }
+            return working.copy(
+                cursor = index,
+                turnOpenedAt = entry.at,
+                turnDeadlineAt = entry.at + competition.rules.turnDeadlineSec,
+            )
+        }
+
+        if (action == "close_turn") return working.copy(cursor = -1, turnDeadlineAt = 0)
+
+        if (action == "advance") {
+            val next = nextEligibleIndex(working, competition, working.cursor, entry.at)
+            if (next == -1) return working.copy(cursor = -1, turnDeadlineAt = 0)
+            return working.copy(
+                cursor = next,
+                turnOpenedAt = entry.at,
+                turnDeadlineAt = entry.at + competition.rules.turnDeadlineSec,
+            )
+        }
+
+        if (action == "skip_turn") {
+            if (working.cursor !in working.order.indices || working.turnOpenedAt <= 0) {
+                return reject(state, entry, "no_open_turn")
+            }
+            if (entry.at < working.turnOpenedAt) return reject(state, entry, "turn_not_open")
+            var next = nextEligibleIndex(working, competition, working.cursor, entry.at)
+            if (next == -1) {
+                working = working.copy(
+                    round = working.round + 1,
+                    participants = working.participants.map {
+                        it.copy(defersUsedThisRound = 0, consecutiveDefers = 0)
+                    },
+                )
+                next = nextEligibleIndex(working, competition, -1, entry.at)
+            }
+            return if (next == -1) {
+                working.copy(cursor = -1, turnOpenedAt = 0, turnDeadlineAt = 0)
+            } else {
+                working.copy(
+                    cursor = next,
+                    turnOpenedAt = entry.at,
+                    turnDeadlineAt = entry.at + competition.rules.turnDeadlineSec,
+                )
+            }
+        }
+
+        if (action == "next_climb") {
+            val climbId = entry.data.str("climb_id") ?: return reject(state, entry, "unknown_climb")
+            if (competition.climb(climbId) == null) {
+                return reject(state, entry, "unknown_climb")
+            }
+            return working.copy(currentClimbId = climbId, cursor = -1, turnDeadlineAt = 0)
+        }
+
+        // next_round
+        return working.copy(
+            round = working.round + 1,
+            cursor = -1,
+            turnDeadlineAt = 0,
+            participants = working.participants.map { it.copy(defersUsedThisRound = 0, consecutiveDefers = 0) },
+        )
+    }
+
+    private fun applyDeferDecision(
+        state: CompetitionState,
+        entry: LogEntry,
+        competition: Competition,
+    ): CompetitionState {
+        val decision = entry.data.str("decision")
+        if (decision !in listOf("granted", "denied")) return reject(state, entry, "unknown_decision")
+        val pubkey = entry.data.str("pubkey")
+        val participant = pubkey?.let { state.participant(it) } ?: return reject(state, entry, "no_such_participant")
+        if (decision == "denied") return state
+
+        val rules = competition.rules
+        if (participant.defersUsedThisRound >= rules.deferBudgetPerRound) {
+            return reject(state, entry, "defer_budget_exhausted")
+        }
+        if (participant.consecutiveDefers >= rules.maxConsecutiveDefers) {
+            return reject(state, entry, "defer_consecutive_limit")
+        }
+        val current = state.order.indexOf(pubkey)
+        if (current == -1) return reject(state, entry, "not_in_order")
+
+        if (competition.rules.queuePolicy == "automatic") {
+            if (state.cursor != current) return reject(state, entry, "not_current_turn")
+            if (state.turnOpenedAt <= 0) return reject(state, entry, "no_open_turn")
+            if (entry.at < state.turnOpenedAt) return reject(state, entry, "turn_not_open")
+            val deferred = state.withParticipant(
+                participant.copy(
+                    defersUsedThisRound = participant.defersUsedThisRound + 1,
+                    consecutiveDefers = participant.consecutiveDefers + 1,
+                ),
+            )
+            return installAutomaticTurn(deferred, competition, entry.at, pubkey)
+        }
+
+        // Move back by exactly defer_slots, never to the end of the round.
+        val target = minOf(current + rules.deferSlots, state.order.size - 1)
+        val order = state.order.toMutableList()
+        order.removeAt(current)
+        order.add(target, pubkey)
+
+        return state
+            .copy(order = order, cursor = -1, turnDeadlineAt = 0)
+            .withParticipant(
+                participant.copy(
+                    defersUsedThisRound = participant.defersUsedThisRound + 1,
+                    consecutiveDefers = participant.consecutiveDefers + 1,
+                ),
+            )
+    }
+
+    private fun applyAttemptResult(
+        state: CompetitionState,
+        entry: LogEntry,
+        competition: Competition,
+    ): CompetitionState {
+        if (!CompetitionProtocol.competitionRunning(competition, state.status, entry.at)) {
+            return reject(state, entry, "wrong_status")
+        }
+        val outcome = entry.data.str("outcome")
+        if (outcome == null || outcome !in CompetitionProtocol.ATTEMPT_OUTCOMES) {
+            return reject(state, entry, "unknown_outcome")
+        }
+        val pubkey = entry.data.str("pubkey")
+        val participant = pubkey?.let { state.participant(it) } ?: return reject(state, entry, "no_such_participant")
+        if (participant.result != "active") return reject(state, entry, "participant_inactive")
+        val climbId = entry.data.str("climb_id") ?: return reject(state, entry, "unknown_climb")
+
+        // The climb has to be one this competition actually runs. Without this an
+        // attempt on any string at all would score: under `organizer_set` a climb
+        // that is not in the competition, and under `participant_choice` a climb
+        // Legacy claims/selections remain in state for hash compatibility, but
+        // never gate live access: everybody may attempt the complete pool.
+        if (competition.climb(climbId) == null) return reject(state, entry, "unknown_climb")
+        val existing = participant.climb(climbId) ?: ClimbProgress(climbId = climbId)
+        if (existing.outcome == "top") return reject(state, entry, "already_topped")
+        val attemptNo = entry.data.int("attempt_no")
+        if (attemptNo == null || attemptNo != existing.attemptsUsed + 1) {
+            return reject(state, entry, "attempt_out_of_order")
+        }
+        if (existing.attemptsUsed >= competition.rules.attemptsPerClimb) {
+            return reject(state, entry, "no_attempts_left")
+        }
+
+        val attemptsUsed = existing.attemptsUsed + 1
+        // A pass or a timeout consumes an attempt but is not a zone.
+        var nextOutcome = when {
+            outcome == "top" -> "top"
+            outcome == "zone" && existing.outcome != "top" -> "zone"
+            existing.outcome == "none" -> "attempted"
+            else -> existing.outcome
+        }
+        if (nextOutcome != "top" && attemptsUsed >= competition.rules.attemptsPerClimb) {
+            nextOutcome = if (nextOutcome == "zone") "zone" else "dnf"
+        }
+
+        val updated = participant
+            .withClimb(ClimbProgress(climbId, attemptsUsed, nextOutcome, entry.at))
+            .copy(lastAttemptAt = entry.at, consecutiveDefers = 0)
+        return state.withParticipant(updated)
+    }
+
+    /**
+     * Atomic authority operation used by current hosts. Legacy attempt_result
+     * remains replayable, but new hosts cannot leave a scored turn open or
+     * publish the queue movement without its result.
+     */
+    private fun applyCompleteTurn(
+        state: CompetitionState,
+        entry: LogEntry,
+        competition: Competition,
+    ): CompetitionState {
+        if (state.cursor !in state.order.indices || state.turnOpenedAt <= 0) {
+            return reject(state, entry, "no_open_turn")
+        }
+        if (entry.at < state.turnOpenedAt) return reject(state, entry, "turn_not_open")
+        val pubkey = entry.data.str("pubkey")
+        if (pubkey == null || state.order[state.cursor] != pubkey) {
+            return reject(state, entry, "not_current_turn")
+        }
+
+        val attempted = applyAttemptResult(state, entry, competition)
+        if (attempted.rejected.size > state.rejected.size) return attempted
+
+        if (competition.rules.queuePolicy == "automatic") {
+            return installAutomaticTurn(attempted, competition, entry.at, pubkey)
+        }
+
+        val next = nextEligibleIndex(attempted, competition, state.cursor, entry.at)
+        if (next >= 0) {
+            return attempted.copy(
+                cursor = next,
+                turnOpenedAt = entry.at,
+                turnDeadlineAt = entry.at + competition.rules.turnDeadlineSec,
+            )
+        }
+
+        val nextRound = attempted.copy(
+            round = attempted.round + 1,
+            cursor = -1,
+            turnOpenedAt = 0,
+            turnDeadlineAt = 0,
+            participants = attempted.participants.map {
+                it.copy(defersUsedThisRound = 0, consecutiveDefers = 0)
+            },
+        )
+        val first = nextEligibleIndex(nextRound, competition, -1, entry.at)
+        return if (first < 0) nextRound else nextRound.copy(
+            cursor = first,
+            turnOpenedAt = entry.at,
+            turnDeadlineAt = entry.at + competition.rules.turnDeadlineSec,
+        )
+    }
+
+    private fun applyDisqualify(state: CompetitionState, entry: LogEntry): CompetitionState {
+        val pubkey = entry.data.str("pubkey")
+        val participant = pubkey?.let { state.participant(it) } ?: return reject(state, entry, "no_such_participant")
+        val order = state.order.filterNot { it == pubkey }
+        var updated = state.withParticipant(participant.copy(result = "disqualified")).copy(order = order)
+        if (updated.cursor >= order.size) updated = updated.copy(cursor = -1, turnDeadlineAt = 0)
+        return updated
+    }
+
+    private fun applyRetire(
+        state: CompetitionState,
+        entry: LogEntry,
+        competition: Competition,
+    ): CompetitionState {
+        val pubkey = entry.data.str("pubkey")
+        val participant = pubkey?.let(state::participant) ?: return reject(state, entry, "no_such_participant")
+        if (participant.result != "active") return reject(state, entry, "participant_inactive")
+        val removedIndex = state.order.indexOf(pubkey)
+        val wasCurrent = removedIndex >= 0 && removedIndex == state.cursor
+        val order = state.order.filterNot { it == pubkey }
+        var updated = state.withParticipant(participant.copy(result = "finished")).copy(order = order)
+        if (competition.rules.queuePolicy == "automatic") return updated
+        if (removedIndex >= 0 && removedIndex < updated.cursor) updated = updated.copy(cursor = updated.cursor - 1)
+        if (wasCurrent) {
+            var next = if (removedIndex in order.indices && isEligible(updated, competition, order[removedIndex], entry.at)) {
+                removedIndex
+            } else {
+                -1
+            }
+            if (next == -1) next = nextEligibleIndex(updated, competition, removedIndex - 1, entry.at)
+            if (next == -1) {
+                updated = updated.copy(
+                    round = updated.round + 1,
+                    participants = updated.participants.map {
+                        it.copy(defersUsedThisRound = 0, consecutiveDefers = 0)
+                    },
+                )
+                next = nextEligibleIndex(updated, competition, -1, entry.at)
+            }
+            updated = if (next == -1) {
+                updated.copy(cursor = -1, turnOpenedAt = 0, turnDeadlineAt = 0)
+            } else {
+                updated.copy(
+                    cursor = next,
+                    turnOpenedAt = entry.at,
+                    turnDeadlineAt = entry.at + competition.rules.turnDeadlineSec,
+                )
+            }
+        } else if (updated.cursor >= order.size) {
+            updated = updated.copy(cursor = -1, turnOpenedAt = 0, turnDeadlineAt = 0)
+        }
+        return updated
+    }
+
+    private fun applyAnnouncement(state: CompetitionState, entry: LogEntry): CompetitionState {
+        val text = entry.data.str("text")
+        if (text.isNullOrEmpty()) return reject(state, entry, "empty_announcement")
+        return state.copy(announcements = state.announcements + Announcement(entry.seq, text, entry.at))
+    }
+
+    private fun applyConfigUpdate(
+        state: CompetitionState,
+        entry: LogEntry,
+        competition: Competition,
+    ): CompetitionState {
+        val revision = entry.data.int("revision")
+        if (revision == null || revision != state.configRevision + 1) {
+            return reject(state, entry, "config_bad_revision")
+        }
+        val patch = entry.data["patch"] as? JsonObject
+            ?: return reject(state, entry, "config_empty_patch")
+        if (patch.isEmpty()) return reject(state, entry, "config_empty_patch")
+        val impact = CompetitionConfigUpdate.impact(patch)
+            ?: return reject(state, entry, "config_immutable_field")
+        if (entry.data.str("impact") != impact) return reject(state, entry, "config_impact_mismatch")
+        if (CompetitionProtocol.participantDataOnline(competition) &&
+            patch.containsKey("participant_data_visibility") &&
+            patch.str("participant_data_visibility") != "online"
+        ) return reject(state, entry, "config_invalid")
+
+        val current = state.effectiveConfig ?: CompetitionConfigUpdate.rootConfig(competition)
+        val merged = CompetitionConfigUpdate.merge(current, patch).toMutableMap().also {
+            it["revision"] = JsonPrimitive(revision)
+        }.let(::JsonObject)
+        val next = runCatching { Competition.from(merged) }.getOrNull()
+            ?: return reject(state, entry, "config_invalid")
+        if (CompetitionValidation.validate(next).isNotEmpty()) return reject(state, entry, "config_invalid")
+
+        val referencedClimbs = buildSet {
+            if (state.currentClimbId.isNotEmpty()) add(state.currentClimbId)
+            addAll(state.claims.keys)
+            state.participants.forEach { participant ->
+                addAll(participant.selections)
+                addAll(participant.climbs.map { it.climbId })
+            }
+        }
+        val nextClimbs = (next.climbs + next.climbPool).map { it.id }.toSet()
+        if (referencedClimbs.any { it !in nextClimbs }) {
+            return reject(state, entry, "config_referenced_climb")
+        }
+        fun climbObjects(config: JsonObject): Map<String, JsonObject> {
+            val fixed = (config["climbs"] as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }
+            val pool = ((config["climb_pool"] as? JsonObject)?.get("options") as? JsonArray)
+                .orEmpty().mapNotNull { it as? JsonObject }
+            return (fixed + pool).mapNotNull { climb -> climb.str("id")?.let { it to climb } }.toMap()
+        }
+        val beforeById = climbObjects(current)
+        val afterById = climbObjects(merged)
+        if (referencedClimbs.any { id ->
+                val before = beforeById[id]
+                val after = afterById[id]
+                before != null && after != null && (
+                    before.str("climb_uuid") != after.str("climb_uuid") ||
+                        before.int("angle") != after.int("angle") ||
+                        before.str("board_cell_id") != after.str("board_cell_id")
+                    )
+            }
+        ) return reject(state, entry, "config_referenced_climb")
+        fun boardIdentity(config: JsonObject): List<String?> {
+            val board = config["board"] as? JsonObject
+            return listOf(
+                board?.str("brand"), board?.str("model"), board?.int("layout_id")?.toString(), board?.str("size"),
+            )
+        }
+        if (referencedClimbs.isNotEmpty() && boardIdentity(current) != boardIdentity(merged)) {
+            return reject(state, entry, "config_referenced_climb")
+        }
+        val nextDivisions = next.divisions.map { it.id }.toSet()
+        if (state.participants.any { it.division.isNotEmpty() && it.division !in nextDivisions }) {
+            return reject(state, entry, "config_referenced_division")
+        }
+        return state.copy(
+            effectiveConfig = merged,
+            configRevision = revision,
+            audit = state.audit + AuditEntry(
+                entry.seq, "config_update", entry.reason, entry.at,
+                revision = revision, impact = impact,
+            ),
+        )
+    }
+}

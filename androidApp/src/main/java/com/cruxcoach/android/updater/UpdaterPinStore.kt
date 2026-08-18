@@ -46,8 +46,39 @@ class UpdaterPinStore(private val context: Context) {
         return pin
     }
 
-    /** Reads the SHA-256 of the currently installed app's signing cert, or null. */
-    fun currentInstalledCertSha256Hex(): String? {
+    /**
+     * SHA-256 of the certificate the installed app is signed with **right
+     * now**, or null.
+     *
+     * After a v3 rotation `signingCertificateHistory` holds the whole chain
+     * ordered oldest-first, so the *last* entry is the certificate currently
+     * in force. That is deliberately what we pin: once a device has
+     * installed a rotated release, the new certificate is its trust anchor —
+     * exactly the view Android itself takes — and a later rotation chains on
+     * from there.
+     *
+     * Pinning the *oldest* entry instead would keep accepting APKs signed
+     * with the superseded key, which is the one thing a rotation is supposed
+     * to stop. Android would still refuse to install them, so it would not
+     * be a compromise, but this gate would have stopped contributing.
+     */
+    fun currentInstalledCertSha256Hex(): String? = installedSignerChain()?.lastOrNull()
+
+    /**
+     * The installed app's certificate chain, **oldest first**, as SHA-256
+     * hex. A single entry when the key was never rotated.
+     *
+     * The ordering is load-bearing — [currentInstalledCertSha256Hex] and
+     * [advanceToCurrentSignerIfRotated] both take the last entry, and
+     * getting it backwards would move the pin onto the superseded key. It
+     * was confirmed on a rotated install (HTC U11, Android 9), where the
+     * platform reported:
+     *
+     *   signatures:[<new>]  past signatures:[<old> flags:17, <new> flags:17]
+     *
+     * i.e. the history ends with the certificate currently in force.
+     */
+    fun installedSignerChain(): List<String>? {
         val pm = context.packageManager
         val pkg = context.packageName
         return try {
@@ -61,11 +92,39 @@ class UpdaterPinStore(private val context: Context) {
                     ?: return null
             }
             if (signers.isEmpty()) return null
-            sha256Hex(signers[0].toByteArray())
+            signers.map { sha256Hex(it.toByteArray()) }
         } catch (e: Exception) {
             Log.w(TAG, "Could not read own signing certificate", e)
             null
         }
+    }
+
+    /**
+     * Move the pin forward onto the installed app's current signer after a
+     * key rotation has actually taken effect on this device.
+     *
+     * Called at start-up rather than right after the install completes: a
+     * self-update replaces this very package, so the running process still
+     * reports the *old* signature — the rotation is only observable once the
+     * app has been restarted with the new APK.
+     *
+     * The advance is conditional on the existing pin appearing in the
+     * installed chain. That is the whole safety property: we only ever
+     * follow a lineage we already trusted, verified by PackageManager, and
+     * never adopt whatever happens to be installed. If the pin is absent
+     * from the chain, something is wrong and the pin stays put so the
+     * mismatch surfaces instead of being papered over.
+     *
+     * @return true when the pin was moved.
+     */
+    @Synchronized
+    fun advanceToCurrentSignerIfRotated(): Boolean {
+        val chain = installedSignerChain() ?: return false
+        val pin = readSealed() ?: return false // no pin yet: getOrTofu will set it
+        val next = nextPinAfterRotation(pin.certSha256Hex, chain) ?: return false
+        writeSealed(Pin(certSha256Hex = next, pinnedAtEpochSec = System.currentTimeMillis() / 1000))
+        Log.i(TAG, "event=pin_advanced_after_rotation chainLength=${chain.size}")
+        return true
     }
 
     /** Same hash function applied to a downloaded APK's signer for comparison. */
@@ -145,6 +204,28 @@ class UpdaterPinStore(private val context: Context) {
         private const val TAG = "UpdaterPinStore"
         private const val ANDROID_KEYSTORE = "AndroidKeyStore"
         private const val KEY_ALIAS = "cruxcoach.updater.pin.hmac.v1"
+
+        /**
+         * Where the pin should move to, given the certificate chain the
+         * installed app currently proves — or null to leave it alone.
+         *
+         * Isolated from file and PackageManager access so the rule itself is
+         * testable. Every "no" here is deliberate:
+         *
+         *  - a chain of one means nothing was rotated;
+         *  - a pin already equal to the current signer needs no write;
+         *  - **a pin that is absent from the chain must never advance.**
+         *    That is the case where something is genuinely wrong, and
+         *    silently adopting whatever is installed would turn the pin from
+         *    a check into a rubber stamp.
+         */
+        internal fun nextPinAfterRotation(pinCertSha256Hex: String?, chain: List<String>): String? {
+            if (pinCertSha256Hex.isNullOrBlank() || chain.size < 2) return null
+            val current = chain.last()
+            if (current.equals(pinCertSha256Hex, ignoreCase = true)) return null
+            if (chain.none { it.equals(pinCertSha256Hex, ignoreCase = true) }) return null
+            return current
+        }
 
         internal fun sha256Hex(bytes: ByteArray): String {
             val digest = MessageDigest.getInstance("SHA-256").digest(bytes)

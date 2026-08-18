@@ -1,0 +1,27 @@
+flow	contract	note
+backup-import-legacy	self-cleaning	fixture UUIDs and named lists are pre-cleaned and removed exactly
+backup-json-roundtrip	destructive-reset	controlled clear-state round-trip removes its exact shared file
+browse-newest-sort	self-cleaning	filter and sort state reset to defaults
+browse-zone-empty	self-cleaning	hold-search state reset before sheet dismissal
+browse-zone-plus-hold	self-cleaning	hold-search state reset after assertion
+browse-zone-search	self-cleaning	hold-search state reset after assertion
+climb-type-filter-changes-list	self-cleaning	climb type restored to boulder
+detail-add-to-list	self-cleaning	favorite membership forced off before and after
+detail-favorite-persists	self-cleaning	favorite forced off before and after process-death proof
+detail-favorite-toggle	self-cleaning	favorite forced off before and after
+draft-badge-consistency	self-cleaning	named local draft pre-cleaned and deleted
+kilter-login-error-onboarding	destructive-reset	fresh app state deliberately ends at onboarding
+list-playback-smoke	self-cleaning	playback stopped and temporary favorite removed
+lists-cross-board	self-cleaning	three test memberships forced off before and after
+lists-missing-catalogue	self-cleaning	named custom list pre-cleaned and deleted
+logbook-create-send	self-cleaning	run-scoped ascent pre-cleaned and deleted
+logbook-honest-flash-and-stats	self-cleaning	run-scoped ascent pair pre-cleaned and deleted
+migration-021-verify	self-cleaning	verifies then removes migration ascent and favorite markers
+migration-old-verify	self-cleaning	verifies two-dialog migration then removes ascent and favorite markers
+migration-predecessor-setup	manual-prereq	fresh historical state intentionally feeds the in-place upgrade step
+moonboard-adjustable-angles	self-cleaning	board and angle restored to Kilter Original at 40 degrees
+nostr-dm-delivery	recipient-retained-one-shot	one authorized private DM; local state cleared only after the suite
+nostr-dm-force-stop	recipient-retained-one-shot	one authorized private DM; local state cleared only after the suite
+release-fresh-onboarding	destructive-reset	fresh state establishes the common populated baseline
+upgrade-021-to-022	manual-prereq	preinstalled matching-signer predecessor required
+upgrade-old-to-022	manual-prereq	preinstalled matching-signer predecessor required

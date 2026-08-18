@@ -1,0 +1,55 @@
+appId: com.cruxcoach.android
+name: updater-manual-check
+tags:
+  - release-gate
+  - extended
+  - network
+---
+# Two consecutive explicit checks must each perform real discovery. MANUAL is
+# intentionally outside the two-hour automatic throttle; scoped Logcat checks
+# count both completions and forbid a throttled manual outcome.
+- runFlow: subflows/launch-browser.yaml
+- tapOn:
+    id: "board_settings_button"
+- scrollUntilVisible:
+    element:
+      id: "settings_section_updater"
+    direction: DOWN
+- tapOn:
+    id: "settings_section_updater"
+- assertVisible:
+    id: "updater_settings_content"
+- assertNotVisible:
+    id: "updater_store_gated"
+- assertVisible:
+    id: "updater_auto_check"
+    checked: true
+- tapOn:
+    id: "updater_check_now"
+- extendedWaitUntil:
+    visible:
+      id: "updater_check_now"
+      enabled: false
+    timeout: 10000
+- extendedWaitUntil:
+    visible:
+      id: "updater_check_now"
+      enabled: true
+    timeout: 90000
+- tapOn:
+    id: "updater_check_now"
+- extendedWaitUntil:
+    visible:
+      id: "updater_check_now"
+      enabled: false
+    timeout: 10000
+- extendedWaitUntil:
+    visible:
+      id: "updater_check_now"
+      enabled: true
+    timeout: 90000
+- assertVisible:
+    id: "updater_last_check"
+- pressKey: Back
+- assertVisible:
+    id: "board_filter_toggle"

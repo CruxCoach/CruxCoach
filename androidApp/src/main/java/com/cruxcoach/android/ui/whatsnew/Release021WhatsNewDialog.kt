@@ -1,5 +1,7 @@
 package com.cruxcoach.android.ui.whatsnew
 
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
@@ -40,7 +42,11 @@ internal fun Release021WhatsNewDialog(
             Text(stringResource(R.string.whatsnew_021_title))
         },
         text = {
-            Column {
+            // AlertDialog clips its text slot rather than scrolling it, and
+            // these dialogs cannot be dismissed by tapping outside — so on a
+            // short screen, or at a large system font size, the part below the
+            // fold was simply unreachable.
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 Text(
                     stringResource(R.string.whatsnew_021_body),
                     style = MaterialTheme.typography.bodyMedium,

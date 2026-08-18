@@ -549,6 +549,27 @@ class BlossomUploader @Inject constructor(
          * against a fresh backup; nostr.download + cdn.hzrd149.com are
          * confirmed 200 for clients and remain the durable pair. A third
          * client-verified mirror can be re-added once vetted.
+         *
+         * **2026-08-07 — nostr.download is DOWN, and deliberately kept
+         * anyway.** Probed from the pipeline host: DNS resolves
+         * (185.18.221.87) but ICMP, TCP/80 and TCP/443 all fail, while
+         * hzrd149 / primal / cruxcoach.org answer 200 in under a second
+         * from the same egress. It also holds 0 of the 208 board-DB
+         * chunks. So it contributes nothing right now.
+         *
+         * It stays in the list regardless, because dropping it would
+         * leave exactly ONE default server. [upload] fans out with
+         * `async`/`awaitAll`, so a dead entry does not delay the path to
+         * a healthy one — it only imposes a ~10 s floor per backup (the
+         * `@Named("nostr")` client's connectTimeout) and one logged
+         * `upload_server_failed`. A single-server default would be the
+         * strictly worse trade: any hzrd149 outage means no backup at
+         * all, and the pipeline requires `ok >= 1` to publish a pointer.
+         *
+         * Remove it only together with a client-vetted replacement, using
+         * the same end-to-end procedure as above (fresh identity, BUD-01 +
+         * BUD-06 upload, GET-verify, DELETE-cleanup). Until then a dead
+         * spare beats no spare.
          */
         val DEFAULT_SERVERS: List<String> = listOf(
             "https://nostr.download",

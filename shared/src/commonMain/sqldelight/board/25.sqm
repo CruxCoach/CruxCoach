@@ -1,0 +1,31 @@
+-- Migration version 24 → 25: MoonBoard problem method.
+--
+-- A MoonBoard problem can carry a method that changes how it must be climbed:
+-- footless, footless with kickboard, or feet-follow-hands but no kickboard.
+-- BoardSesh exposes it as a structured characteristic and the catalogue build
+-- fetched it — but the blob had nowhere to put it, so 11,794 problems (4.2%)
+-- looked exactly like ordinary ones and the rule only became apparent at the
+-- wall.
+--
+-- NULL is the default ("feet follow hands"), which keeps the column sparse and
+-- matches how the source stores it. Aurora-family climbs never carry one.
+ALTER TABLE climbs ADD COLUMN method TEXT;
+
+-- The browse view is a projection of `climbs`, so it has to be rebuilt to
+-- expose the new column. Mirrors 24.sqm's recreation.
+DROP VIEW climb_browse;
+
+CREATE VIEW climb_browse AS
+SELECT
+    c.uuid, c.name, c.setter_username, c.frames_count, cs.layout_id,
+    c.board_brand,
+    COALESCE(c.description, '') AS description,
+    c.is_nomatch, c.method, c.frames_pace, c.hsm, c.move_count,
+    c.source, c.created_by_pubkey, c.sync_status, c.origin, c.kilter_status,
+    c.nostr_event_id,
+    c.created_at,
+    cs.angle, cs.difficulty_average, cs.quality_average,
+    cs.ascensionist_count, cs.benchmark_difficulty
+FROM climbs c
+INNER JOIN climb_stats cs ON c.uuid = cs.climb_uuid
+WHERE c.is_listed = 1;

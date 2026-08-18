@@ -19,6 +19,8 @@ import com.cruxcoach.android.data.BoardSyncManager
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.SessionGattBridge
 import com.cruxcoach.android.data.SessionQueueManager
+import com.cruxcoach.android.data.SessionRole
+import com.cruxcoach.android.data.SessionVisibility
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.IntensityZone
@@ -39,6 +41,7 @@ import com.cruxcoach.domain.board.BoardZoneFilter
 import com.cruxcoach.domain.board.HoldHeatmapComputer
 import com.cruxcoach.domain.board.HoldSetMask
 import com.cruxcoach.domain.board.HoldRole
+import com.cruxcoach.domain.board.MoonBoardHoldSets
 import com.cruxcoach.domain.board.KilterGradeMapper
 import com.cruxcoach.android.util.PerfLogger
 import com.cruxcoach.util.GradeConverter
@@ -290,13 +293,50 @@ data class BoardBrowserState(
     val boardSize: com.cruxcoach.data.repository.BoardSize? = null,
     val boardImages: List<com.cruxcoach.data.repository.BoardImage> = emptyList(),
     /** Hold-set leg of the always-on "fits my board" filter: bits of the
-     *  active layout's hold sets NOT mounted on [boardSize] (see
-     *  HoldSetMask.excludedMask). 0 = filter off (full board, MoonBoard,
-     *  or no size configured). Recomputed alongside [boardSize]. */
+     *  active layout's hold sets the board does NOT carry (see
+     *  HoldSetMask.excludedMask). Which sets those are comes from the
+     *  configured [boardSize] on Kilter/Aurora and from the user's own
+     *  selection on MoonBoard (FEAT-049), which has no product size.
+     *  0 = filter off (full board, complete MoonBoard setup, no size
+     *  configured, or a catalogue without hold-set data). Recomputed on
+     *  board-config change, never cached across variants. */
     val hsmExcludedMask: Long = 0,
     val filter: BrowserFilterState = BrowserFilterState(),
     val ble: BrowserBleState = BrowserBleState(),
     val holdSearch: HoldSearchState = HoldSearchState()
+)
+
+/**
+ * The board switch as ONE state transition: the new brand / layout / angle
+ * arrive together with a cleared hold-set mask (FEAT-049 edge case 3).
+ *
+ * Clearing [BoardBrowserState.hsmExcludedMask] here rather than where the new
+ * mask is computed is the whole point. That computation sits behind suspending
+ * repository calls, and every read of the filter in between — a search typed in
+ * that window, a count, a queue refresh — would see the NEW layout under the
+ * OLD board's mask. The bits are positional per layout: bit 3 is *Wooden Holds*
+ * on a Masters 2019 and *Original School Holds* on a 2017, so that window hides
+ * the wrong set rather than merely too much. Worse, if the refresh is then
+ * cancelled (a rapid second switch cancels [refreshJob]) or the repository
+ * throws, nothing ever corrects it.
+ *
+ * 0 is the documented inert value, so the window degrades to "filter off",
+ * which is the safe direction for both MoonBoard and Kilter: a climb wrongly
+ * shown costs less than one wrongly hidden.
+ */
+internal fun BoardBrowserState.onBoardSwitch(
+    angle: Int,
+    layoutId: Int,
+    boardBrand: String,
+    angleChips: List<Int>,
+): BoardBrowserState = copy(
+    hsmExcludedMask = 0L,
+    filter = filter.copy(
+        angle = angle,
+        layoutId = layoutId,
+        boardBrand = boardBrand,
+        angleChips = angleChips,
+    ),
 )
 
 @HiltViewModel
@@ -312,6 +352,8 @@ class BoardBrowserViewModel @Inject constructor(
     private val sessionQueueManager: SessionQueueManager,
     private val bleShareManager: BleShareManager,
     private val nostrSigner: NostrSigner,
+    private val playbackCoordinator:
+        com.cruxcoach.android.data.PlaylistPlaybackCoordinator,
     val climbNavState: com.cruxcoach.android.ui.navigation.ClimbNavigationState
 ) : ViewModel() {
 
@@ -563,6 +605,11 @@ class BoardBrowserViewModel @Inject constructor(
         // brand is stale until the first successful refresh.
         viewModelScope.safeLaunch(TAG) {
             var lastGen = syncManager.state.value.syncGeneration
+            var lastCatalogueRevision = syncManager.state.value.catalogueRevision
+            // A catalogue revision that arrived mid-run and has not been
+            // refreshed on yet — see the redemption at the bottom of the
+            // collector for why it cannot be acted on where it is seen.
+            var catalogueRevisionPending = false
             var wasImporting = false
             combine(syncManager.state, userPreferences.boardBrand) { syncState, brandWire ->
                 syncState to BoardBrand.fromWire(brandWire)
@@ -590,8 +637,39 @@ class BoardBrowserViewModel @Inject constructor(
                     refreshBoardData(force = true)
                 }
                 wasImporting = importing
-                if (syncState.syncGeneration > lastGen && !syncState.isSyncing) {
-                    lastGen = syncState.syncGeneration
+                // FEAT-049: the catalogue revision moves at the COMMIT, which
+                // every lane reaches before it publishes its terminal Done —
+                // the importer commits, then emits Done; the manager only
+                // raises the revision once the lane has returned Imported
+                // (BoardSyncManager.syncMoonBoardCatalogue). The
+                // lane-completion refresh above therefore runs one revision too
+                // early: it re-asks the gate under the very key whose "no
+                // hold-set data" answer it already cached, gets the stale 0
+                // back, and nothing after it is left to correct that.
+                //
+                // Refreshing on the spot when the revision moves is not the
+                // answer either — that is a full query set per committed chunk,
+                // queued behind the bulk importer's writer lock, for a filter
+                // that is merely too LENIENT in the meantime (mask 0 = off, the
+                // direction §3 asks us to err in). So a revision seen mid-run
+                // is HELD and redeemed the moment the run ends, where one
+                // refresh covers every commit the run made. That also does not
+                // depend on syncGeneration, which is already the browser's own
+                // baseline when it was opened after the slot was claimed.
+                //
+                // A DELETION changes the catalogue with no run at all: no
+                // generation moves, none of the branches above fire, and a gate
+                // that has just gone true → false must not keep its mask. That
+                // one is refreshed where it is seen.
+                val catalogueChanged = syncState.catalogueRevision > lastCatalogueRevision
+                if (catalogueChanged) lastCatalogueRevision = syncState.catalogueRevision
+                if (catalogueChanged && syncState.isSyncing) catalogueRevisionPending = true
+                val syncEnded = syncState.syncGeneration > lastGen && !syncState.isSyncing
+                if (syncEnded) lastGen = syncState.syncGeneration
+                if (!syncState.isSyncing &&
+                    (syncEnded || catalogueChanged || catalogueRevisionPending)
+                ) {
+                    catalogueRevisionPending = false
                     refreshBoardData(force = true)
                 }
             }
@@ -710,6 +788,13 @@ class BoardBrowserViewModel @Inject constructor(
                 val needsBoardReload = _state.value.boardSize == null || _state.value.boardSize!!.id.toInt() != prefSizeId
                     || _state.value.filter.layoutId != prefLayoutId
                     || _state.value.filter.boardBrand != prefBoardBrand
+                if (needsBoardReload) {
+                    // The hold/zone filter is board-specific: old placement ids
+                    // plus a zone rect in the old board's coordinate space would
+                    // produce an empty browse list under a stale filter banner.
+                    _state.update { it.copy(holdSearch = HoldSearchState()) }
+                    holdMatchCacheKey = null
+                }
                 // Load/reload board data (placements once, boardSize + layoutId on change)
                 if (count > 0) {
                     // Keep layout filter + brand in sync with preferences.
@@ -731,12 +816,12 @@ class BoardBrowserViewModel @Inject constructor(
                         // the nearest valid chip so we don't query an angle the
                         // board has zero climbs at.
                         val snappedAngle = BoardAnglePicker.clampAngle(prefAngle, angleChips)
-                        _state.update { it.copy(filter = it.filter.copy(
+                        _state.update { it.onBoardSwitch(
                             angle = snappedAngle,
                             layoutId = prefLayoutId,
                             boardBrand = prefBoardBrand,
                             angleChips = angleChips,
-                        )) }
+                        ) }
                     }
                     // FEAT-031: placements are namespaced by board_brand; reload
                     // them (with the active brand) on a board change, not just
@@ -769,8 +854,19 @@ class BoardBrowserViewModel @Inject constructor(
                     } else if (needsBoardReload) {
                         // MoonBoard: clear any stale Kilter board image/size so
                         // the browse list doesn't carry over Kilter geometry.
-                        // (No Aurora set data either → hsm filter off.)
-                        _state.update { it.copy(boardSize = null, boardImages = emptyList(), hsmExcludedMask = 0L) }
+                        _state.update { it.copy(boardSize = null, boardImages = emptyList()) }
+                    }
+                    if (isMoonBoard) {
+                        // FEAT-049: MoonBoard's second axis is the user's OWNED
+                        // hold sets, not a product size — there is no
+                        // product_size row to derive it from. Recomputed here
+                        // rather than cached across variants, so a 2019
+                        // selection can never be applied to a 2017.
+                        val variant = MoonBoardVariant.fromBoardSelection(prefLayoutId.toLong(), prefBrand)
+                        val moonMask = moonBoardHsmMask(variant, syncManager.state.value.catalogueRevision)
+                        if (moonMask != _state.value.hsmExcludedMask) {
+                            _state.update { it.copy(hsmExcludedMask = moonMask) }
+                        }
                     }
                 }
                 _state.update { it.copy(climbCount = count, hasBoardData = count > 0) }
@@ -1321,6 +1417,31 @@ class BoardBrowserViewModel @Inject constructor(
     // HoldSetMask). 0 = inert, exactly like selSizeId()'s 0 sentinel.
     private fun hsmMask(): Long = _state.value.hsmExcludedMask
 
+    // FEAT-049 hold-set mask for the active MoonBoard variant. Memoised — see
+    // MoonBoardMaskCache for why that is not an optimisation but a
+    // requirement.
+    private val moonBoardMaskCache = MoonBoardMaskCache()
+
+    /**
+     * The exclusion mask for [variant] given the user's mounted hold sets, or
+     * 0 while the catalogue cannot support the filter.
+     *
+     * Until a chunk with a populated `hsm` arrives, every MoonBoard row still
+     * carries 0 and `(0 & mask) = 0` passes everything — the filter would be
+     * silently ineffective rather than wrong. The picker is disabled behind
+     * the same probe, so the two never disagree.
+     */
+    private suspend fun moonBoardHsmMask(variant: MoonBoardVariant?, catalogueRevision: Int): Long =
+        moonBoardMaskCache.maskFor(
+            variant = variant,
+            ownedSetIds = variant?.let { userPreferences.getMoonBoardHoldSets(it) }.orEmpty(),
+            catalogueRevision = catalogueRevision,
+        ) {
+            PerfLogger.traceQuery("hasMoonBoardHoldSetMask") {
+                boardRepository.hasMoonBoardHoldSetMask()
+            }
+        }
+
     private suspend fun fetchPage(f: BrowserFilterState, offset: Int): List<ClimbWithStats> {
         if (f.sortField == ClimbSortField.RANDOM && f.searchQuery.isBlank()) {
             return fetchRandomPage(f, offset)
@@ -1716,15 +1837,20 @@ class BoardBrowserViewModel @Inject constructor(
                 if (frames.isEmpty() || frames.all { it.leds.isEmpty() }) {
                     return@safeLaunch
                 }
-                repeat(3) {
-                    for (frame in frames) {
-                        // sendRawLeds encodes with the CONNECTED board's
-                        // encoder (correct apiLevel), not a hardcoded @3 one.
-                        bleConnection.sendRawLeds(frame.leds)
-                        delay(250)
-                    }
-                }
-                bleConnection.clearBoard()
+                com.cruxcoach.android.boardcell.BoardCellManager.current?.projectExternal(
+                    boardWrite = {
+                        repeat(3) {
+                            for (frame in frames) {
+                                // One WAL intent covers the complete animation;
+                                // a mid-animation crash recovers as UNKNOWN.
+                                if (!bleConnection.sendRawLeds(frame.leds)) return@projectExternal false
+                                delay(250)
+                            }
+                        }
+                        bleConnection.clearBoard()
+                    },
+                    identify = { null },
+                ) ?: return@safeLaunch
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -1745,22 +1871,30 @@ class BoardBrowserViewModel @Inject constructor(
         animationJob = null
         _isAnimating.value = false
         viewModelScope.safeLaunch(TAG) {
-            runCatching { bleConnection.clearBoard() }
+            runCatching {
+                com.cruxcoach.android.boardcell.BoardCellManager.current?.projectExternal(
+                    boardWrite = { bleConnection.clearBoard() }, identify = { null })
+            }
                 .onFailure { android.util.Log.w("BoardBrowserVM", "stopAnimation clearBoard failed", it) }
         }
     }
 
     // --- Queue sharing ---
 
-    /** Start BLE sharing for the current queue (only if climb sharing is enabled). */
-    fun startQueueSharing() {
-        if (bleShareManager.uiState.value.sharingEnabled) {
-            gattBridge.startSharing()
-        }
-    }
-
-    fun stopQueueSharing() {
-        gattBridge.stopSharing()
+    /**
+     * End or leave the queue. Relay, when enabled, remains independent.
+     *
+     * Goes through the coordinator, which is where the end-vs-leave split
+     * lives. This used to be a second copy of it, and the two had drifted:
+     * the copy neither carried the current climb over into "last on board"
+     * — leaving that banner on the previous climb until the GATT sentinel
+     * caught up — nor reset the auto-advance mode, so the next playlist
+     * inherited the last one's setting.
+     */
+    fun endSharedSession(): com.cruxcoach.data.repository.Board_sessions? {
+        val session = playbackCoordinator.stop()
+        buildSessionSummary(session)
+        return session
     }
 
     fun sendPrev() = gattBridge.sendPrev()
@@ -1781,6 +1915,12 @@ class BoardBrowserViewModel @Inject constructor(
 
     fun endSession(): com.cruxcoach.data.repository.Board_sessions? {
         val session = sessionManager.endSession()
+        buildSessionSummary(session)
+        return session
+    }
+
+    /** Shared by both end paths; the summary is the browser's own concern. */
+    private fun buildSessionSummary(session: com.cruxcoach.data.repository.Board_sessions?) {
         if (session != null) {
             viewModelScope.safeLaunch(TAG) {
                 val gradeScale = userPreferences.gradeScale.first()
@@ -1788,47 +1928,15 @@ class BoardBrowserViewModel @Inject constructor(
                     val ascents = personalBoardRepo.getUserAscentsBetween(
                         session.startedAt, session.endedAt ?: session.startedAt
                     )
-                    val sends = ascents.filter { it.isSend }
-                    val diffs = sends.mapNotNull { it.difficultyAverage }
-                    val zones = zoneManager.zones.value
-                    val counts = diffs.groupBy { zones.classify(it) }
-
-                    val hardestSend = sends.maxByOrNull { it.difficultyAverage ?: 0.0 }
-                    val flashCount = sends.count { it.bidCount <= 1L }
-                    val uniqueClimbs = ascents.map { it.climbUuid }.distinct().size
-
-                    val gradePyramid = sends
-                        .filter { it.difficultyAverage != null }
-                        .groupBy { KilterGradeMapper.difficultyToVScale(it.difficultyAverage!!) }
-                        .map { (vGrade, list) ->
-                            BoardGradePyramidEntry(
-                                grade = GradeDisplayHelper.formatGrade(vGrade, gradeScale),
-                                count = list.size,
-                                difficultyInt = list.first().difficultyAverage!!.toInt()
-                            )
-                        }
-                        .sortedBy { it.difficultyInt }
-
-                    EnhancedSessionSummary(
-                        warmupCount = counts[IntensityZone.WARMUP]?.size ?: 0,
-                        optimalCount = counts[IntensityZone.OPTIMAL]?.size ?: 0,
-                        limitCount = counts[IntensityZone.LIMIT]?.size ?: 0,
-                        sessionType = IntensityZoneEngine.classifySession(diffs, zones),
-                        hardestSendGrade = hardestSend?.difficultyAverage?.let {
-                            GradeDisplayHelper.formatDifficulty(it, gradeScale)
-                        },
-                        hardestSendName = hardestSend?.climbName,
-                        flashCount = flashCount,
-                        totalSends = sends.size,
-                        totalAttempts = ascents.count { !it.isSend },
-                        uniqueClimbs = uniqueClimbs,
-                        gradeDistribution = gradePyramid
-                    )
+                    // True flashes need the FULL history — a first-try repeat
+                    // of an old project must not count as a flash.
+                    val flashUuids =
+                        BoardStatsComputer.trueFlashUuids(personalBoardRepo.getUserAscentsAll())
+                    SessionSummaryBuilder.build(ascents, zoneManager.zones.value, gradeScale, flashUuids)
                 }
                 _lastSessionSummary.value = summary
             }
         }
-        return session
     }
 
     private val _lastSessionSummary = MutableStateFlow<EnhancedSessionSummary?>(null)

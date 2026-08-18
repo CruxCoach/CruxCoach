@@ -1,0 +1,225 @@
+appId: com.cruxcoach.android
+name: lists-cross-board
+tags:
+  - release-gate
+  - extended
+  - mutates-state
+---
+# Use three dynamic catalogue entities: Kilter Original, MoonBoard 2016, and
+# MoonBoard 2024. This disposable-device root establishes each marker as
+# favorite-off before adding it, then restores favorite-off. A failed attempt
+# therefore cannot make the next attempt invert membership.
+- runFlow: subflows/launch-browser.yaml
+- runFlow: subflows/select-kilter-original.yaml
+- runFlow: subflows/reset-browser-filters.yaml
+- tapOn:
+    id: "board_climb_card"
+    index: 0
+- extendedWaitUntil:
+    visible:
+      id: "boarddetail_name"
+    timeout: 15000
+- copyTextFrom:
+    id: "boarddetail_name"
+- evalScript: ${output.kilterName = maestro.copiedText}
+- runFlow:
+    when:
+      visible: "Von Favoriten entfernen"
+    commands:
+      - tapOn:
+          id: "boarddetail_favorite_button"
+- assertVisible: "Zu Favoriten hinzufügen"
+- tapOn:
+    id: "boarddetail_favorite_button"
+- assertVisible: "Von Favoriten entfernen"
+- pressKey: Back
+
+- runFlow:
+    file: subflows/select-moonboard.yaml
+    env:
+      MOONBOARD_VARIANT: "MoonBoard 2016"
+- tapOn:
+    id: "board_climb_card"
+    index: 0
+- extendedWaitUntil:
+    visible:
+      id: "boarddetail_name"
+    timeout: 15000
+- copyTextFrom:
+    id: "boarddetail_name"
+- evalScript: ${output.moon2016Name = maestro.copiedText}
+- runFlow:
+    when:
+      visible: "Von Favoriten entfernen"
+    commands:
+      - tapOn:
+          id: "boarddetail_favorite_button"
+- assertVisible: "Zu Favoriten hinzufügen"
+- tapOn:
+    id: "boarddetail_favorite_button"
+- assertVisible: "Von Favoriten entfernen"
+- pressKey: Back
+
+- runFlow:
+    file: subflows/select-moonboard.yaml
+    env:
+      MOONBOARD_VARIANT: "MoonBoard 2024"
+- tapOn:
+    id: "board_climb_card"
+    index: 0
+- extendedWaitUntil:
+    visible:
+      id: "boarddetail_name"
+    timeout: 15000
+- copyTextFrom:
+    id: "boarddetail_name"
+- evalScript: ${output.moon2024Name = maestro.copiedText}
+- runFlow:
+    when:
+      visible: "Von Favoriten entfernen"
+    commands:
+      - tapOn:
+          id: "boarddetail_favorite_button"
+- assertVisible: "Zu Favoriten hinzufügen"
+- tapOn:
+    id: "boarddetail_favorite_button"
+- assertVisible: "Von Favoriten entfernen"
+- pressKey: Back
+
+# The list must remain board-agnostic even though MoonBoard 2024 is active.
+- tapOn:
+    id: "board_lists_button"
+- tapOn: "Favoriten"
+- extendedWaitUntil:
+    visible: ${output.kilterName}
+    timeout: 15000
+- scrollUntilVisible:
+    element:
+      id: "board_list_entry_badge_kilter_1"
+    direction: DOWN
+- scrollUntilVisible:
+    element:
+      text: ${output.moon2016Name}
+    direction: DOWN
+- scrollUntilVisible:
+    element:
+      id: "board_list_entry_badge_moonboard_2"
+    direction: DOWN
+- scrollUntilVisible:
+    element:
+      text: ${output.moon2024Name}
+    direction: DOWN
+- scrollUntilVisible:
+    element:
+      id: "board_list_entry_badge_moonboard_3"
+    direction: DOWN
+- scrollUntilVisible:
+    element:
+      id: "list_filter_all"
+    direction: UP
+- assertVisible:
+    id: "list_filter_all"
+    checked: true
+- assertVisible:
+    id: "list_entries_count_3"
+
+# One board only.
+- tapOn:
+    id: "list_filter_kilter_1"
+- extendedWaitUntil:
+    visible:
+      id: "list_entries_count_1"
+    timeout: 15000
+- assertVisible: ${output.kilterName}
+
+# Multi-select union: Kilter Original plus one specific MoonBoard variant.
+- scrollUntilVisible:
+    element:
+      id: "list_filter_moonboard_2"
+    direction: RIGHT
+- tapOn:
+    id: "list_filter_moonboard_2"
+- extendedWaitUntil:
+    visible:
+      id: "list_entries_count_2"
+    timeout: 15000
+- assertVisible: ${output.kilterName}
+- scrollUntilVisible:
+    element:
+      text: ${output.moon2016Name}
+    direction: DOWN
+
+# Brand roll-up: both MoonBoard variants, no Kilter entry.
+- scrollUntilVisible:
+    element:
+      id: "list_filter_all"
+    direction: UP
+- tapOn:
+    id: "list_filter_all"
+- scrollUntilVisible:
+    element:
+      id: "list_filter_moonboard_any"
+    direction: RIGHT
+- tapOn:
+    id: "list_filter_moonboard_any"
+- extendedWaitUntil:
+    visible:
+      id: "list_entries_count_2"
+    timeout: 15000
+- assertVisible: ${output.moon2016Name}
+- scrollUntilVisible:
+    element:
+      text: ${output.moon2024Name}
+    direction: DOWN
+- scrollUntilVisible:
+    element:
+      id: "list_filter_all"
+    direction: UP
+- tapOn:
+    id: "list_filter_all"
+- pressKey: Back
+- pressKey: Back
+- assertVisible:
+    id: "board_filter_toggle"
+
+# Restore every marker to favorite-off, then the Kilter/40 baseline.
+- tapOn:
+    id: "board_climb_card"
+    index: 0
+- extendedWaitUntil:
+    visible: ${output.moon2024Name}
+    timeout: 15000
+- assertVisible: "Von Favoriten entfernen"
+- tapOn:
+    id: "boarddetail_favorite_button"
+- assertVisible: "Zu Favoriten hinzufügen"
+- pressKey: Back
+- runFlow:
+    file: subflows/select-moonboard.yaml
+    env:
+      MOONBOARD_VARIANT: "MoonBoard 2016"
+- tapOn:
+    id: "board_climb_card"
+    index: 0
+- extendedWaitUntil:
+    visible: ${output.moon2016Name}
+    timeout: 15000
+- assertVisible: "Von Favoriten entfernen"
+- tapOn:
+    id: "boarddetail_favorite_button"
+- assertVisible: "Zu Favoriten hinzufügen"
+- pressKey: Back
+- runFlow: subflows/select-kilter-original.yaml
+- tapOn:
+    id: "board_climb_card"
+    index: 0
+- extendedWaitUntil:
+    visible: ${output.kilterName}
+    timeout: 15000
+- assertVisible: "Von Favoriten entfernen"
+- tapOn:
+    id: "boarddetail_favorite_button"
+- assertVisible: "Zu Favoriten hinzufügen"
+- pressKey: Back
+- assertVisible:
+    id: "board_filter_toggle"

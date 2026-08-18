@@ -14,6 +14,7 @@ import kotlinx.coroutines.withContext
  *  can discriminate the two built-ins; aliased here to keep call sites
  *  short. */
 private const val IGNORED_LIST_EXTERNAL_ID = PersonalBoardRepository.IGNORED_LIST_EXTERNAL_ID
+private const val MAX_PLAYBACK_ANGLE = 90L
 
 class PersonalBoardRepositoryImpl(
     private val database: SecureDatabase
@@ -511,6 +512,11 @@ class PersonalBoardRepositoryImpl(
                 createdAt = row.created_at,
                 climbCount = row.climb_count,
                 isIgnored = row.external_id == IGNORED_LIST_EXTERNAL_ID,
+                generatorParams = row.generator_params,
+                hasPlaybackPlan = row.playback_step_count > 0L,
+                playbackOrder = ListPlaybackOrder.fromWire(row.playback_order),
+                playbackAdvance = ListPlaybackAdvance.fromWire(row.playback_advance),
+                playbackRestSeconds = row.playback_rest_seconds,
             )
         }
     }
@@ -524,14 +530,23 @@ class PersonalBoardRepositoryImpl(
                 createdAt = row.created_at,
                 climbCount = row.climb_count,
                 isIgnored = row.external_id == IGNORED_LIST_EXTERNAL_ID,
+                generatorParams = row.generator_params,
+                hasPlaybackPlan = row.playback_step_count > 0L,
+                playbackOrder = ListPlaybackOrder.fromWire(row.playback_order),
+                playbackAdvance = ListPlaybackAdvance.fromWire(row.playback_advance),
+                playbackRestSeconds = row.playback_rest_seconds,
             )
         }
     }
 
-    override fun createClimbList(name: String): Long {
+    override fun createClimbList(name: String, generatorParams: String?): Long {
         val now = DateTimeUtil.nowIso()
         return database.transactionWithResult {
-            database.climbListsQueries.insertClimbList(name, 0L, now)
+            if (generatorParams == null) {
+                database.climbListsQueries.insertClimbList(name, 0L, now)
+            } else {
+                database.climbListsQueries.insertGeneratedClimbList(name, now, generatorParams)
+            }
             database.climbListsQueries.getLastInsertedListId().executeAsOne()
         }
     }
@@ -541,8 +556,11 @@ class PersonalBoardRepositoryImpl(
     }
 
     override fun deleteClimbList(id: Long) {
-        database.climbListsQueries.deleteClimbListEntries(id)
-        database.climbListsQueries.deleteClimbList(id)
+        database.transaction {
+            database.climbListsQueries.deleteListPlaybackSteps(id)
+            database.climbListsQueries.deleteClimbListEntries(id)
+            database.climbListsQueries.deleteClimbList(id)
+        }
     }
 
     override fun addClimbToList(listId: Long, climbUuid: String) {
@@ -550,8 +568,28 @@ class PersonalBoardRepositoryImpl(
         database.climbListsQueries.insertClimbListEntry(listId, climbUuid, now)
     }
 
+    override fun addClimbToListAndExtendPlayback(
+        listId: Long,
+        climbUuid: String,
+        angle: Long?,
+    ) {
+        val now = DateTimeUtil.nowIso()
+        database.transaction {
+            val wasAlreadyMember = database.climbListsQueries
+                .isClimbInList(listId, climbUuid)
+                .executeAsOne() > 0L
+            database.climbListsQueries.insertClimbListEntry(listId, climbUuid, now)
+            if (!wasAlreadyMember) {
+                appendNewMemberToPlaybackPlan(listId, climbUuid, angle)
+            }
+        }
+    }
+
     override fun removeClimbFromList(listId: Long, climbUuid: String) {
-        database.climbListsQueries.removeClimbListEntry(listId, climbUuid)
+        database.transaction {
+            database.climbListsQueries.deletePlaybackStepsForClimb(listId, climbUuid)
+            database.climbListsQueries.removeClimbListEntry(listId, climbUuid)
+        }
     }
 
     override fun getClimbListEntryUuids(listId: Long, limit: Int, offset: Int): List<Pair<String, String>> {
@@ -559,7 +597,7 @@ class PersonalBoardRepositoryImpl(
             list_id = listId,
             limit = limit.toLong(),
             offset = offset.toLong()
-        ).executeAsList().map { it.climb_uuid to it.added_at }
+        ).executeAsList().map { row -> row.climb_uuid to row.added_at }
     }
 
     override fun countClimbListEntries(listId: Long): Long {
@@ -582,9 +620,11 @@ class PersonalBoardRepositoryImpl(
         return database.transactionWithResult {
             val isFav = database.climbListsQueries.isClimbInList(favId, climbUuid).executeAsOne() > 0
             if (isFav) {
+                database.climbListsQueries.deletePlaybackStepsForClimb(favId, climbUuid)
                 database.climbListsQueries.removeClimbListEntry(favId, climbUuid)
             } else {
                 database.climbListsQueries.insertClimbListEntry(favId, climbUuid, DateTimeUtil.nowIso())
+                appendNewMemberToPlaybackPlan(favId, climbUuid, requestedAngle = null)
             }
             !isFav
         }
@@ -592,7 +632,24 @@ class PersonalBoardRepositoryImpl(
 
     override fun getClimbListEntriesRaw(): List<RawClimbListEntry> {
         return database.climbListsQueries.getClimbListEntriesRaw().executeAsList().map { row ->
-            RawClimbListEntry(listId = row.list_id, climbUuid = row.climb_uuid, addedAt = row.added_at)
+            RawClimbListEntry(
+                listId = row.list_id,
+                climbUuid = row.climb_uuid,
+                addedAt = row.added_at,
+            )
+        }
+    }
+
+    override fun getListPlaybackStepsRaw(): List<RawListPlaybackStep> {
+        return database.climbListsQueries.getAllPlaybackStepsRaw().executeAsList().map { row ->
+            RawListPlaybackStep(
+                listId = row.list_id,
+                climbUuid = row.climb_uuid,
+                position = row.position,
+                stepType = row.step_type,
+                restSeconds = row.rest_seconds,
+                angle = row.angle,
+            )
         }
     }
 
@@ -606,6 +663,10 @@ class PersonalBoardRepositoryImpl(
                 description = row.description,
                 color = row.color,
                 externalId = row.external_id,
+                generatorParams = row.generator_params,
+                playbackOrder = ListPlaybackOrder.fromWire(row.playback_order),
+                playbackAdvance = ListPlaybackAdvance.fromWire(row.playback_advance),
+                playbackRestSeconds = row.playback_rest_seconds,
             )
         }
     }
@@ -637,6 +698,197 @@ class PersonalBoardRepositoryImpl(
                 database.climbListsQueries.getLastInsertedListId().executeAsOne()
             }
         }
+    }
+
+    // ── Optional training plan + playback defaults ──────────────
+
+    override fun updateGeneratorParams(listId: Long, generatorParams: String?) {
+        database.climbListsQueries.updateGeneratorParams(generatorParams, listId)
+    }
+
+    override fun updatePlaybackSettings(
+        listId: Long,
+        order: ListPlaybackOrder,
+        advance: ListPlaybackAdvance,
+        restSeconds: Long,
+    ) {
+        database.climbListsQueries.updatePlaybackSettings(
+            playback_order = order.wireValue,
+            playback_advance = advance.wireValue,
+            playback_rest_seconds = restSeconds.coerceIn(0L, 3600L),
+            id = listId,
+        )
+    }
+
+    override fun addPlaybackClimb(listId: Long, climbUuid: String, angle: Long?): Long {
+        val now = DateTimeUtil.nowIso()
+        return database.transactionWithResult {
+            database.climbListsQueries.insertClimbListEntry(listId, climbUuid, now)
+            val next = nextPlaybackPosition(listId)
+            database.climbListsQueries.insertPlaybackClimbStep(
+                listId,
+                climbUuid,
+                next,
+                angle?.coerceIn(0L, MAX_PLAYBACK_ANGLE),
+            )
+            database.climbListsQueries.getLastInsertedPlaybackStepId().executeAsOne()
+        }
+    }
+
+    override fun addPlaybackRest(listId: Long, restSeconds: Long): Long {
+        return database.transactionWithResult {
+            val next = nextPlaybackPosition(listId)
+            database.climbListsQueries.insertPlaybackRestStep(listId, next, restSeconds.coerceIn(0L, 3600L))
+            database.climbListsQueries.getLastInsertedPlaybackStepId().executeAsOne()
+        }
+    }
+
+    override fun getPlaybackSteps(listId: Long): List<ListPlaybackStepRow> {
+        return database.climbListsQueries.getPlaybackSteps(listId).executeAsList().map { row ->
+            ListPlaybackStepRow(
+                id = row.id,
+                listId = listId,
+                position = row.position,
+                stepType = row.step_type,
+                climbUuid = row.climb_uuid,
+                restSeconds = row.rest_seconds,
+                angle = row.angle,
+            )
+        }
+    }
+
+    override fun removePlaybackStep(stepId: Long) {
+        database.climbListsQueries.deletePlaybackStepById(stepId)
+    }
+
+    override fun removePlaybackSteps(stepIds: Collection<Long>) {
+        database.transaction {
+            stepIds.distinct().forEach(database.climbListsQueries::deletePlaybackStepById)
+        }
+    }
+
+    override fun updatePlaybackRestSeconds(stepId: Long, restSeconds: Long) {
+        database.climbListsQueries.updatePlaybackStepRestSeconds(restSeconds.coerceIn(0L, 3600L), stepId)
+    }
+
+    override fun updatePlaybackRestSeconds(stepIds: Collection<Long>, restSeconds: Long) {
+        val duration = restSeconds.coerceIn(0L, 3600L)
+        database.transaction {
+            stepIds.distinct().forEach { stepId ->
+                database.climbListsQueries.updatePlaybackStepRestSeconds(duration, stepId)
+            }
+        }
+    }
+
+    override fun movePlaybackStep(listId: Long, fromIndex: Int, toIndex: Int) {
+        database.transaction {
+            val ids = database.climbListsQueries.getPlaybackSteps(listId)
+                .executeAsList().map { it.id }.toMutableList()
+            if (fromIndex !in ids.indices || toIndex !in ids.indices || fromIndex == toIndex) {
+                return@transaction
+            }
+            val moved = ids.removeAt(fromIndex)
+            ids.add(toIndex, moved)
+            // Dense re-write keeps positions gap-free so index-based moves
+            // stay trivially correct.
+            ids.forEachIndexed { index, id ->
+                database.climbListsQueries.updatePlaybackStepPosition(index.toLong(), id)
+            }
+        }
+    }
+
+    override fun reorderPlaybackSteps(listId: Long, orderedStepIds: List<Long>): Boolean {
+        return database.transactionWithResult {
+            val storedIds = database.climbListsQueries.getPlaybackSteps(listId)
+                .executeAsList()
+                .map { it.id }
+            val suppliedIds = orderedStepIds.toSet()
+            if (
+                suppliedIds.size != orderedStepIds.size ||
+                suppliedIds.size != storedIds.size ||
+                suppliedIds != storedIds.toSet()
+            ) {
+                return@transactionWithResult false
+            }
+            orderedStepIds.forEachIndexed { index, id ->
+                database.climbListsQueries.updatePlaybackStepPosition(index.toLong(), id)
+            }
+            true
+        }
+    }
+
+    override fun replacePlaybackSteps(listId: Long, steps: List<NewListPlaybackStep>) {
+        val now = DateTimeUtil.nowIso()
+        database.transaction {
+            database.climbListsQueries.deleteListPlaybackSteps(listId)
+            steps.forEachIndexed { index, step ->
+                val climbUuid = step.climbUuid
+                if (climbUuid != null) {
+                    database.climbListsQueries.insertClimbListEntry(listId, climbUuid, now)
+                    database.climbListsQueries.insertPlaybackClimbStep(
+                        listId,
+                        climbUuid,
+                        index.toLong(),
+                        step.angle?.coerceIn(0L, MAX_PLAYBACK_ANGLE),
+                    )
+                } else {
+                    database.climbListsQueries.insertPlaybackRestStep(
+                        listId, index.toLong(), (step.restSeconds ?: 0L).coerceIn(0L, 3600L),
+                    )
+                }
+            }
+        }
+    }
+
+    private fun nextPlaybackPosition(listId: Long): Long {
+        val steps = database.climbListsQueries.getPlaybackSteps(listId).executeAsList()
+        return (steps.maxOfOrNull { it.position } ?: -1L) + 1L
+    }
+
+    /**
+     * Extend an existing custom plan without conflating membership and plan
+     * removal. Called only for a newly inserted list member, inside the
+     * caller's transaction.
+     */
+    private fun appendNewMemberToPlaybackPlan(
+        listId: Long,
+        climbUuid: String,
+        requestedAngle: Long?,
+    ) {
+        val current = getPlaybackSteps(listId)
+        if (current.none { !it.isRest }) return
+
+        // Defensive spelling-agnostic check for legacy UUID forms. Normally a
+        // new membership cannot already be present in the plan because every
+        // climb step also creates membership.
+        val uuidKey = climbUuid.replace("-", "").lowercase()
+        if (current.any { row ->
+                row.climbUuid?.replace("-", "")?.lowercase() == uuidKey
+            }
+        ) {
+            return
+        }
+
+        var nextPosition = (current.maxOfOrNull { it.position } ?: -1L) + 1L
+        if (current.lastOrNull()?.isRest != true) {
+            val configuredFallback = getClimbListById(listId)?.playbackRestSeconds ?: 0L
+            val inferredRest = inferAutoPlaybackRestSeconds(
+                previousRestSeconds = current.map { it.restSeconds },
+                configuredFallbackSeconds = configuredFallback,
+            )
+            database.climbListsQueries.insertPlaybackRestStep(
+                listId,
+                nextPosition++,
+                inferredRest,
+            )
+        }
+        val inheritedAngle = current.asReversed().firstNotNullOfOrNull { it.angle }
+        database.climbListsQueries.insertPlaybackClimbStep(
+            listId,
+            climbUuid,
+            nextPosition,
+            (requestedAngle ?: inheritedAngle)?.coerceIn(0L, MAX_PLAYBACK_ANGLE),
+        )
     }
 
     // ── Ignored climbs ──────────────────────────────────────────
@@ -681,7 +933,8 @@ class PersonalBoardRepositoryImpl(
 
     override fun getIgnoredClimbUuids(): Set<String> {
         val ignoredId = ensureIgnoredListExists()
-        return database.climbListsQueries.getAllClimbUuidsInList(ignoredId).executeAsList().toSet()
+        return database.climbListsQueries.getAllClimbUuidsInList(ignoredId)
+            .executeAsList().filterNotNull().toSet()
     }
 
     // ── Denormalization refresh ─────────────────────────────────
@@ -807,9 +1060,37 @@ class PersonalBoardRepositoryImpl(
             database.ascentsQueries.deleteAllAscents()
             database.bidsQueries.deleteAllBids()
             database.boardSessionsQueries.deleteAllBoardSessions()
+            database.climbListsQueries.deleteAllPlaybackSteps()
             database.climbListsQueries.deleteAllClimbListEntries()
             database.climbListsQueries.deleteAllClimbLists()
         }
+        cachedFavoritesListId = null
+        cachedIgnoredListId = null
+    }
+
+    override fun getAllListEntryClimbUuids(): Set<String> =
+        database.climbListsQueries.getAllListEntryClimbUuids().executeAsList().toSet()
+
+    override fun deleteUserBoardDataForBrands(
+        brands: Set<String>,
+        listEntryClimbUuids: Collection<String>,
+    ) {
+        database.transaction {
+            for (brand in brands) {
+                database.ascentsQueries.deleteAscentsForBrand(brand)
+                database.bidsQueries.deleteBidsForBrand(brand)
+            }
+            // Sessions stay: brand-less aggregates, see BoardSessions.sq.
+            // Each uuid binds one SQLite host parameter — chunk well below
+            // the portable 999-variable limit.
+            listEntryClimbUuids.chunked(500).forEach {
+                database.climbListsQueries.deleteClimbListEntriesForClimbs(it)
+            }
+        }
+        // The built-in list rows survive this path, so the cached ids stay
+        // technically valid — drop them anyway, mirroring
+        // deleteAllUserBoardData, so this path can never grow a stale-cache
+        // bug if what it deletes ever changes.
         cachedFavoritesListId = null
         cachedIgnoredListId = null
     }

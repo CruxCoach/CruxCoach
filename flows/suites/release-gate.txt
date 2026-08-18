@@ -1,0 +1,51 @@
+# Every currently feasible root, in an order that establishes and then preserves
+# reproducible state. Upgrade roots require a matching-signed predecessor and
+# are intentionally absent; hardware-only cases live in the manual runbook.
+
+# Destructive invalid-login branch deliberately ends in onboarding; the genuine
+# fresh-user root immediately replaces it with the common populated baseline.
+kilter-login-error-onboarding
+release-fresh-onboarding
+
+# Existing route/render regression surface, now state-clean and tag-oriented.
+smoke
+browser-search
+browser-filter-sheet
+climb-type-filter-changes-list
+search-result-opens-correct-climb
+detail-open
+detail-favorite-toggle
+detail-favorite-persists
+detail-add-to-list
+editor-open
+editor-overflow
+drafts-drawer-open
+settings-navigate
+settings-board-picker
+map-navigate
+lists-navigate
+
+# Historical 0.2.0/0.2.1 claims and 0.2.2 replacements.
+kilter-data-info-settings
+kilter-login-error-settings
+portrait-lock
+detail-open-rendered-board
+browse-newest-sort
+browse-zone-search
+browse-zone-plus-hold
+browse-zone-empty
+moonboard-adjustable-angles
+lists-cross-board
+list-playback-smoke
+logbook-create-send
+logbook-honest-flash-and-stats
+draft-badge-consistency
+share-deep-link-roundtrip
+community-browse-detail
+updater-manual-check
+
+# File imports/exports are late because both roots prove exact cleanup; the
+# current-schema round-trip performs its own two clearState onboarding passes.
+lists-missing-catalogue
+backup-import-legacy
+backup-json-roundtrip

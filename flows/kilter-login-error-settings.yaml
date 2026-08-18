@@ -1,0 +1,40 @@
+appId: com.cruxcoach.android
+name: kilter-login-error-settings
+tags:
+  - release-gate
+  - extended
+  - live-external
+  - network
+---
+- runFlow: subflows/launch-browser.yaml
+- tapOn:
+    id: "board_settings_button"
+- scrollUntilVisible:
+    element:
+      id: "settings_section_kilter"
+    direction: DOWN
+- tapOn:
+    id: "settings_section_kilter"
+- tapOn:
+    id: "settings_kilter_connect"
+- tapOn:
+    id: "settings_kilter_email"
+- inputText: "maestro-e2e-invalid@example.invalid"
+- tapOn:
+    id: "settings_kilter_password"
+- inputText: "not-a-real-password"
+- hideKeyboard
+- tapOn:
+    id: "settings_kilter_login"
+- extendedWaitUntil:
+    visible: "Ungültige Zugangsdaten."
+    timeout: 30000
+- assertVisible:
+    id: "settings_kilter_login_sheet"
+- assertNotVisible: "Verbunden als"
+- pressKey: Back
+- assertVisible:
+    id: "settings_section_kilter"
+- pressKey: Back
+- assertVisible:
+    id: "board_filter_toggle"

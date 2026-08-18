@@ -2,9 +2,11 @@ package com.cruxcoach.android.data
 
 import android.bluetooth.BluetoothDevice
 import android.content.Context
+import com.cruxcoach.android.R
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.ConnectionState
+import com.cruxcoach.android.ble.DiscoveredBoard
 import com.cruxcoach.android.ble.GattCommand
 import com.cruxcoach.android.ble.GattConnectionEvent
 import com.cruxcoach.android.ble.NearbyClimb
@@ -16,6 +18,7 @@ import com.cruxcoach.android.ble.SessionGattClient
 import com.cruxcoach.android.ble.SessionGattServer
 import com.cruxcoach.android.ble.SessionQueueProtocol
 import com.cruxcoach.data.repository.BoardRepository
+import com.cruxcoach.domain.board.BoardBrand
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.just
@@ -25,20 +28,24 @@ import io.mockk.verify
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -70,7 +77,16 @@ class SessionGattBridgeMigrationTest {
     private lateinit var queueManager: SessionQueueManager
 
     // Mocked dependencies
-    private val mockContext = mockk<Context>(relaxed = true)
+    // Returns the resource id rather than a string, so these tests keep naming
+    // *which* error is expected without pinning a German wording that moved
+    // into strings.xml.
+    private val mockContext = mockk<Context>(relaxed = true).also {
+        every { it.getString(any()) } answers { "res:${firstArg<Int>()}" }
+        // The participant label is formatted, so it takes the vararg overload.
+        every { it.getString(any(), *anyVararg()) } answers {
+            "res:${firstArg<Int>()}:${secondArg<Array<Any>>().joinToString(",")}"
+        }
+    }
     private val mockGattServer = mockk<SessionGattServer>(relaxed = true)
     private val mockGattClient = mockk<SessionGattClient>(relaxed = true)
     private val mockAdvertiser = mockk<ClimbBleAdvertiser>(relaxed = true)
@@ -81,6 +97,19 @@ class SessionGattBridgeMigrationTest {
     private val mockClimbNameResolver = mockk<ClimbNameResolver>(relaxed = true)
     private val mockUserPreferences = mockk<UserPreferences>(relaxed = true)
     private val mockBoardSessionManager = mockk<BoardSessionManager>(relaxed = true)
+
+    /**
+     * The host broadcasts the rest phase, so the bridge now collects this.
+     *
+     * A real flow, not the relaxed mock's stand-in: `StateFlow.collect`
+     * returns `Nothing`, and a relaxed mock of that throws
+     * KotlinNothingValueException. Thrown inside the bridge's own
+     * `scope.launch` it never reaches the test that caused it — it surfaces as
+     * UncaughtExceptionsBeforeTest in whichever tests run next in the same
+     * JVM, which is how one missing stub failed nine tests across three
+     * unrelated classes.
+     */
+    private val restTimerFlow = MutableStateFlow(RestTimerState())
 
     // Controllable flows for SessionGattClient
     private val clientStateFlow = MutableStateFlow(SessionClientState.DISCONNECTED)
@@ -104,6 +133,7 @@ class SessionGattBridgeMigrationTest {
 
     private lateinit var bridge: SessionGattBridge
     private lateinit var managerScope: CoroutineScope
+    private var hostingPermissionsGranted = true
 
     @Before
     fun setup() {
@@ -111,7 +141,10 @@ class SessionGattBridgeMigrationTest {
         managerScope = CoroutineScope(SupervisorJob() + testDispatcher)
 
         every { mockBleConnection.connectionState } returns bleConnectionStateFlow
+        every { mockBleConnection.connectedBoardBrand } returns
+            MutableStateFlow<BoardBrand?>(null)
 
+        every { mockBoardSessionManager.restTimer } returns restTimerFlow
         every { mockGattClient.connectionState } returns clientStateFlow
         every { mockGattClient.queueEvents } returns queueEventsFlow
         every { mockGattClient.sessionInfoUpdates } returns sessionInfoFlow
@@ -127,6 +160,9 @@ class SessionGattBridgeMigrationTest {
         every { mockGattServer.connectionEvents } returns serverConnectionEventsFlow
         every { mockGattServer.start() } returns true
         every { mockGattServer.getConnectedCount() } returns 0
+        every {
+            mockAdvertiser.advertiseSession(any(), any(), any(), any(), any())
+        } returns "started"
 
         every { mockNearbyScanner.nearbyClimbs } returns nearbyClimbsFlow
         every { mockNearbyScanner.nearbySessions } returns nearbySessionsFlow
@@ -146,14 +182,19 @@ class SessionGattBridgeMigrationTest {
             nearbyScanner = mockNearbyScanner,
             bleConnection = mockBleConnection,
             boardStateManager = mockBoardStateManager,
-            boardSessionManager = mockBoardSessionManager
+            boardSessionManager = mockBoardSessionManager,
+            hasHostingPermissions = { hostingPermissionsGranted },
+            hostSetupDispatcher = testDispatcher,
+            scope = managerScope,
         )
     }
 
     @After
     fun tearDown() {
-        // Cancel before resetMain — see SessionQueueManagerTest.tearDown for the rationale.
-        managerScope.cancel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        runBlocking {
+            managerScope.coroutineContext[Job]?.cancelAndJoin()
+        }
         Dispatchers.resetMain()
     }
 
@@ -179,6 +220,23 @@ class SessionGattBridgeMigrationTest {
     private fun sentinelBytes(): ByteArray =
         SessionQueueProtocol.encodeSessionInfo("", 0)
 
+    private fun mockConnectedBoard(
+        brand: BoardBrand,
+        advertisesWhileConnected: Boolean,
+        apiLevel: Int = 0,
+    ) {
+        every { mockBleConnection.connectedBoardBrand } returns MutableStateFlow(brand)
+        every { mockBleConnection.connectedBoard } returns DiscoveredBoard(
+            displayName = brand.name,
+            serial = "test-controller",
+            apiLevel = apiLevel,
+            address = "AA:BB:CC:DD:EE:FF",
+            rssi = -50,
+            boardBrand = brand,
+            advertisesWhileConnected = advertisesWhileConnected,
+        )
+    }
+
     /**
      * Simulates a participant joining a session: triggers joinSession, drives the
      * CONNECTED state through the GATT client flow, and populates the queue so
@@ -196,22 +254,137 @@ class SessionGattBridgeMigrationTest {
         ))
     }
 
-    // ===== Test 1: participant sessionId is always 0 =====
+    @Test
+    fun `failed initial join ends timer and restores standalone advertising`() =
+        runTest(testDispatcher.scheduler) {
+            val hostDevice = mockDevice("AA:BB:CC:DD:EE:01")
+            nearbySessionsFlow.value = listOf(makeSession(12345, hostDevice.address, hostDevice))
+            clientStateFlow.value = SessionClientState.CONNECTING
+
+            bridge.joinSession(hostDevice)
+            clientStateFlow.value = SessionClientState.DISCONNECTED
+
+            assertEquals("res:${R.string.ble_error_connect_failed}", queueManager.state.value.error)
+            verify { mockAdvertiser.suppressClimbAdvertising = false }
+            verify(exactly = 1) { mockBoardSessionManager.endSession() }
+        }
+
+    @Test
+    fun `solo MoonBoard host keeps physical connection when sharing ends`() {
+        mockConnectedBoard(BoardBrand.MOONBOARD, advertisesWhileConnected = true)
+        queueManager.startQueue("Host")
+        bleConnectionStateFlow.value = ConnectionState.CONNECTED
+        bridge.startSharing()
+
+        bridge.stopSharing()
+
+        verify(exactly = 0) { mockBleConnection.disconnect() }
+    }
+
+    @Test
+    fun `MoonBoard host releases exclusive controller for a real successor`() {
+        mockConnectedBoard(BoardBrand.MOONBOARD, advertisesWhileConnected = true)
+        every { mockGattServer.getConnectedCount() } returns 1
+        queueManager.startQueue("Host")
+        queueManager.addParticipant("AA:BB:CC:DD:EE:02", "Teilnehmer 1")
+        bleConnectionStateFlow.value = ConnectionState.CONNECTED
+        bridge.startSharing()
+
+        bridge.stopSharing()
+
+        // Advertising while connected is no longer treated as proof that a
+        // second central can actually establish GATT. A live joined successor
+        // therefore requires the current host to release the controller.
+        verify(exactly = 1) { mockBleConnection.disconnect() }
+    }
+
+    @Test
+    fun `stale participant count does not release a solo MoonBoard`() {
+        mockConnectedBoard(BoardBrand.MOONBOARD, advertisesWhileConnected = true)
+        every { mockGattServer.getConnectedCount() } returns 0
+        queueManager.startQueue("Host")
+        queueManager.addParticipant("AA:BB:CC:DD:EE:02", "Teilnehmer 1")
+        bleConnectionStateFlow.value = ConnectionState.CONNECTED
+        bridge.startSharing()
+
+        bridge.stopSharing()
+
+        verify(exactly = 0) { mockBleConnection.disconnect() }
+    }
+
+    @Test
+    fun `legacy single-connect board is released when sharing ends`() {
+        mockConnectedBoard(
+            BoardBrand.KILTER,
+            advertisesWhileConnected = false,
+            apiLevel = 2,
+        )
+        queueManager.startQueue("Host")
+        bleConnectionStateFlow.value = ConnectionState.CONNECTED
+        bridge.startSharing()
+
+        bridge.stopSharing()
+
+        verify(exactly = 1) { mockBleConnection.disconnect() }
+    }
+
+    @Test
+    fun `failed relay startup can tear down sharing without dropping the board`() {
+        mockConnectedBoard(
+            BoardBrand.KILTER,
+            advertisesWhileConnected = false,
+            apiLevel = 2,
+        )
+        queueManager.startQueue("Host")
+        bleConnectionStateFlow.value = ConnectionState.CONNECTED
+        bridge.startSharing()
+
+        bridge.stopSharing(allowBoardRelease = false)
+
+        verify(exactly = 0) { mockBleConnection.disconnect() }
+    }
+
+    @Test
+    fun `external relay projection is not mislabeled as the queue climb on stop`() {
+        mockConnectedBoard(
+            BoardBrand.KILTER,
+            advertisesWhileConnected = false,
+            apiLevel = 2,
+        )
+        queueManager.startQueue("Host")
+        queueManager.addClimb("305ecf35-4ab5-4c9c-afd5-91af0848004b", 40)
+        queueManager.markExternalBoardWrite()
+        bleConnectionStateFlow.value = ConnectionState.CONNECTED
+        bridge.startSharing()
+
+        bridge.stopSharing()
+
+        verify(exactly = 0) {
+            mockBoardStateManager.setLastClimbQuick(any(), any(), any())
+        }
+    }
+
+    // ===== Test 1: a participant carries the host's session id =====
 
     /**
-     * Design invariant: [SessionQueueManager.setParticipantRole] is called with sessionId=0
-     * (hardcoded in [SessionGattBridge.joinSession]). Participant devices do not own the
-     * session ID — that belongs to the host. Migration must NOT use queueManager.state.sessionId
-     * as the stale-ad filter because it would always be 0, making the filter a no-op.
+     * [SessionGattBridge.joinSession] reads the host's advertised session id
+     * from the scan and hands it to [SessionQueueManager.setParticipantRole].
+     *
+     * It used to pass a literal 0, which left participants with no session
+     * identity: the on-board resolver could not tell this session's
+     * advertisement from a stranger's, and a member with an empty queue was
+     * shown someone else's climb as their own session's.
+     *
+     * Migration is unaffected — it filters stale ads on the bridge's own
+     * `lastHostSessionId`, captured at join time, not on this field.
      */
     @Test
-    fun `participant sessionId is always 0 and cannot serve as stale-session filter`() {
-        queueManager.setParticipantRole(0, "SomeHost")
+    fun `a participant carries the host session id`() {
+        queueManager.setParticipantRole(4711, "SomeHost")
 
         assertEquals(
-            "setParticipantRole passes sessionId=0, so qState.sessionId==0 for participants; " +
-                "migration must use nearbySessions to get the real host session ID",
-            0,
+            "the host's id must reach the queue state so the session can be identified",
+            4711,
             queueManager.state.value.sessionId
         )
     }
@@ -385,5 +558,89 @@ class SessionGattBridgeMigrationTest {
             SessionRole.HOST,
             queueManager.state.value.role
         )
+    }
+
+    // ===== Session command authorization =====
+
+    @Test
+    fun `promoted host without hosting permission does not touch GATT server`() =
+        runTest(testDispatcher.scheduler) {
+            hostingPermissionsGranted = false
+            queueManager.startQueue("Host", SessionVisibility.JOINABLE)
+
+            bridge.startSharing()
+
+            assertTrue(queueManager.state.value.isActive)
+            assertEquals(SessionVisibility.JOINABLE, queueManager.state.value.visibilityRequested)
+            assertEquals(SessionVisibility.LOCAL_ONLY, queueManager.state.value.visibility)
+            verify(exactly = 0) { mockGattServer.start() }
+            verify(exactly = 0) {
+                mockAdvertiser.advertiseSession(any(), any(), any(), any(), any())
+            }
+        }
+
+    @Test
+    fun `failed publication keeps the queue running but marks it local-only`() =
+        runTest(testDispatcher.scheduler) {
+            every {
+                mockAdvertiser.advertiseSession(any(), any(), any(), any(), any())
+            } returns "no permission"
+            queueManager.startQueue("Host", SessionVisibility.JOINABLE)
+
+            bridge.startSharing()
+
+            assertTrue(queueManager.state.value.isActive)
+            assertEquals(SessionVisibility.LOCAL_ONLY, queueManager.state.value.visibility)
+            assertEquals(
+                "res:${R.string.ble_error_publish_failed}",
+                queueManager.state.value.error,
+            )
+            verify { mockGattServer.stop() }
+            verify { mockAdvertiser.suppressClimbAdvertising = false }
+        }
+
+    @Test
+    fun `host drops state-changing command before authorized join`() = runTest(testDispatcher.scheduler) {
+        queueManager.startQueue("Host")
+        bridge.startSharing()
+
+        serverCommandsFlow.emit(
+            GattCommand(
+                "AA:AA:AA:AA:AA:AA",
+                SessionQueueProtocol.encodeAdd("550e8400-e29b-41d4-a716-446655440000", 40),
+            ),
+        )
+
+        assertTrue(queueManager.state.value.queue.isEmpty())
+        verify { mockGattServer.cancelDevice("AA:AA:AA:AA:AA:AA") }
+    }
+
+    @Test
+    fun `open join admits subsequent queue command`() = runTest(testDispatcher.scheduler) {
+        queueManager.startQueue("Host")
+        bridge.startSharing()
+        val address = "CC:CC:CC:CC:CC:CC"
+
+        serverCommandsFlow.emit(
+            GattCommand(address, SessionQueueProtocol.encodeJoin("")),
+        )
+        // Retries are legal at the transport layer but must be idempotent in
+        // the host's participant state.
+        serverCommandsFlow.emit(
+            GattCommand(address, SessionQueueProtocol.encodeJoin("")),
+        )
+        serverCommandsFlow.emit(
+            GattCommand(
+                address,
+                SessionQueueProtocol.encodeAdd("550e8400-e29b-41d4-a716-446655440000", 40),
+            ),
+        )
+
+        assertEquals(1, queueManager.state.value.participants.size)
+        assertEquals(
+            "res:${R.string.ble_participant_label}:1",
+            queueManager.state.value.participants.single().displayName,
+        )
+        assertEquals(1, queueManager.state.value.queue.size)
     }
 }

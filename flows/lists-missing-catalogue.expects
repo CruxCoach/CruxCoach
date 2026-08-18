@@ -1,0 +1,6 @@
+# One identity-free list is previewed and merged; no logbook or own-climb rows.
+NAV START: BoardBrowser .* ClimbDetail\(
+loadClimb complete \([0-9a-f-]+\)
+NAV COMPLETE: BoardClimbDetail\([0-9a-f-]+\)
+DataExchangeVM: event=import_preview board_sends=0 board_bids=0 climb_lists=1 pubkey_mismatch=false
+DataExchangeVM: event=import_complete board_sends=0 board_bids=0 climb_lists=1 own_climbs=0 skipped=0 mismatch_override=false

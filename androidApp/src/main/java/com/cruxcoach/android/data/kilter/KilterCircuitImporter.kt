@@ -84,6 +84,7 @@ internal class KilterCircuitImporter(
                             added_at = createdAt,
                         )
                     }
+                    q.prunePlaybackStepsOutsideMembership(listId)
                     written++
                 }
             }

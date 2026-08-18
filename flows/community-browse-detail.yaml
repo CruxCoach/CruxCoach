@@ -1,0 +1,62 @@
+appId: com.cruxcoach.android
+name: community-browse-detail
+tags:
+  - release-gate
+  - extended
+  - network
+---
+# Read-only community path: local setter aggregation -> exact setter detail ->
+# exact climb detail. No identity, publish action, or public write is touched.
+- runFlow: subflows/launch-browser.yaml
+- runFlow: subflows/select-kilter-original.yaml
+- tapOn:
+    id: "board_lists_button"
+- tapOn:
+    id: "community_setters_banner"
+- extendedWaitUntil:
+    visible:
+      id: "setters_list_row"
+    timeout: 30000
+- assertNotVisible:
+    id: "setters_list_empty"
+- copyTextFrom:
+    id: "setters_list_name"
+    index: 0
+- evalScript: ${output.setterName = maestro.copiedText}
+- tapOn:
+    id: "setters_list_row"
+    index: 0
+- extendedWaitUntil:
+    visible:
+      id: "setter_detail_climb_row"
+    timeout: 30000
+- assertVisible:
+    id: "setter_detail"
+- assertVisible: ${output.setterName}
+- copyTextFrom:
+    id: "setter_detail_climb_name"
+    index: 0
+- evalScript: ${output.communityClimbName = maestro.copiedText}
+- tapOn:
+    id: "setter_detail_climb_row"
+    index: 0
+- extendedWaitUntil:
+    visible:
+      id: "boarddetail_name"
+    timeout: 15000
+- assertVisible: ${output.communityClimbName}
+- assertVisible:
+    id: "boarddetail_visualization"
+- pressKey: Back
+- assertVisible:
+    id: "setter_detail"
+- pressKey: Back
+- assertVisible:
+    id: "setters_list"
+- pressKey: Back
+- assertVisible:
+    id: "community_setters_banner"
+- pressKey: Back
+- assertVisible:
+    id: "board_filter_toggle"
+

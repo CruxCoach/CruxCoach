@@ -30,6 +30,7 @@ class ApkInstallStatusReceiver : BroadcastReceiver() {
         val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, Int.MIN_VALUE)
         val message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
         val sessionId = intent.getIntExtra(ApkInstaller.EXTRA_SESSION_ID, -1)
+        val automatic = intent.getBooleanExtra(ApkInstaller.EXTRA_AUTOMATIC, false)
         // The handoffs below run on the repository's coroutine scope after
         // onReceive returns. goAsync() holds the process alive until that async
         // work signals completion (onDone -> pending.finish()); otherwise the
@@ -46,7 +47,7 @@ class ApkInstallStatusReceiver : BroadcastReceiver() {
                     // start can be silently dropped (API 29+, stricter 34/35).
                     // The repository surfaces the consent via a tappable
                     // notification whose tap carries a fresh BAL grant.
-                    repository.onConsentRequired(userAction) { pending.finish() }
+                    repository.onConsentRequired(userAction, automatic) { pending.finish() }
                 } else {
                     Log.w(TAG, "STATUS_PENDING_USER_ACTION without consent intent")
                     repository.onInstallOutcome(

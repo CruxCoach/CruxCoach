@@ -12,10 +12,19 @@
     <!-- Vibration for rest timer -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
-    <!-- FEAT-004 in-app updater: hand off APK to PackageInstaller. Every
-         install goes through the system consent dialog (§6.8); we do NOT
-         request UPDATE_PACKAGES_WITHOUT_USER_ACTION. -->
+    <!-- FEAT-058 competition QR scanning. Requested only when the scanner is
+         opened, never at startup, and the app runs perfectly well without it:
+         a competition can also be joined by App Link, by pasting, or from a
+         share sheet. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature
+        android:name="android.hardware.camera.any"
+        android:required="false" />
+
+    <!-- FEAT-004 in-app updater. Silent self-update is strictly opt-in and
+         available only when Android's PackageInstaller conditions are met. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
     <!-- FEAT-004 in-app updater: DownloadManager.setNotificationVisibility(
          VISIBILITY_HIDDEN) requires this permission — we post our own
          progress UI so the system notification would be a duplicate. -->
@@ -24,6 +33,8 @@
     <!-- Foreground service for background sync notifications -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <!-- Exact alarms for the rest timer. SCHEDULE_EXACT_ALARM (API 31)
          can be revoked on API 33+, silently degrading the timer to an
@@ -45,10 +56,14 @@
         android:usesPermissionFlags="neverForLocation" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
 
-    <!-- BLE scanning requires location on Android 11 and below only.
-         On Android 12+ BLUETOOTH_SCAN with neverForLocation is sufficient. -->
+    <!-- Wi-Fi Direct requires fine location through Android 12; Android 12
+         additionally requires coarse+fine to be requested as a pair. BLE
+         uses these declarations on older releases too. Android 13+ uses the
+         nearby-device permissions above instead. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"
+        android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"
-        android:maxSdkVersion="30" />
+        android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES"
@@ -105,6 +120,15 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="cruxcoach" android:host="import-board-db" />
             </intent-filter>
+            <!-- One-scan path when CruxCoach is already installed. The QR
+                 carries the ephemeral hotspot credentials and local server
+                 address; the receiving app requests that exact Wi-Fi. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="cruxcoach" android:host="offline-share" />
+            </intent-filter>
             <!-- Android App Link: https://${appLinkHost}/c/<naddr> opens the
                  climb directly in the app when installed (verified via
                  https://${appLinkHost}/.well-known/assetlinks.json).
@@ -120,6 +144,17 @@
                 <data android:scheme="https"
                       android:host="${appLinkHost}"
                       android:pathPrefix="/c/" />
+                <!-- /l/<payload>: shared playlist import (base64url-packed
+                     name + (angle, climb-uuid) sequence). -->
+                <data android:scheme="https"
+                      android:host="${appLinkHost}"
+                      android:pathPrefix="/l/" />
+                <!-- FEAT-058: a competition join link. The same URL the website
+                     serves and a QR code carries, so the phone's own camera app
+                     opens the competition here without an in-app scanner. -->
+                <data android:scheme="https"
+                      android:host="${appLinkHost}"
+                      android:pathPrefix="/comp/" />
             </intent-filter>
         </activity>
 
@@ -148,6 +183,25 @@
             android:foregroundServiceType="dataSync"
             tools:node="merge" />
 
+        <!-- FEAT-044 CruxRelay: keeps BLE advertising alive while sharing the
+             board + hosts the persistent sharing notification. -->
+        <service
+            android:name=".data.CruxRelayService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
+
+        <service
+            android:name=".fips.FipsMeshService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
+
+        <!-- Keeps the sender-side Wi-Fi hotspot and local HTTP server alive
+             while the share screen is backgrounded. -->
+        <service
+            android:name=".util.LocalShareService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
+
         <!-- Rest timer alarm receiver (fires in Doze mode) -->
         <receiver
             android:name=".notification.RestTimerAlarmReceiver"
@@ -162,6 +216,15 @@
                 <action android:name="com.cruxcoach.android.updater.ACTION_DOWNLOAD" />
                 <action android:name="com.cruxcoach.android.updater.ACTION_INSTALL" />
                 <action android:name="com.cruxcoach.android.updater.ACTION_DISMISS" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Continue verification/install even if DownloadManager outlives the app process. -->
+        <receiver
+            android:name=".updater.ApkDownloadCompleteReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.DOWNLOAD_COMPLETE" />
             </intent-filter>
         </receiver>
 
@@ -185,10 +248,6 @@
                 android:value="androidx.startup"
                 tools:node="remove" />
         </provider>
-        <service
-            android:name="androidx.work.impl.foreground.SystemForegroundService"
-            android:foregroundServiceType="dataSync"
-            tools:node="merge" />
     </application>
 
 </manifest>

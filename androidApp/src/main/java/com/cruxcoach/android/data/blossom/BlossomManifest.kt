@@ -2,6 +2,7 @@ package com.cruxcoach.android.data.blossom
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 
 @Serializable
 data class BlossomManifest(
@@ -16,7 +17,15 @@ data class BlossomManifest(
     @SerialName("product_id") val productId: Int? = null,
     @SerialName("created_at") val createdAt: Long,
     val compression: String,
-    val chunks: List<BlossomChunk>
+    val chunks: List<BlossomChunk>,
+    /**
+     * Nostr envelope metadata used only while selecting between relay answers.
+     * It is deliberately excluded from the signed manifest JSON: NIP-01 orders
+     * parameterized-replaceable events by the envelope's `created_at`, then by
+     * the lexicographically lower event id when timestamps tie.
+     */
+    @Transient val eventCreatedAt: Long = 0,
+    @Transient val eventId: String = "",
 )
 
 @Serializable

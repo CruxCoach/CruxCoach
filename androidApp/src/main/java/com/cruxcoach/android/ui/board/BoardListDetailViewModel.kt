@@ -5,13 +5,18 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.IntensityZoneManager
+import com.cruxcoach.android.data.SessionVisibility
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.IntensityZones
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.ClimbWithStats
 import com.cruxcoach.data.repository.Climb_list_entries
+import com.cruxcoach.data.repository.ListPlaybackAdvance
+import com.cruxcoach.data.repository.ListPlaybackOrder
 import com.cruxcoach.data.repository.PersonalBoardRepository
+import com.cruxcoach.data.repository.inferAutoPlaybackRestSeconds
+import com.cruxcoach.data.repository.playbackStepsWithAutoRests
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,6 +43,9 @@ data class BoardListDetailState(
     val isLoading: Boolean = true,
     val listId: Long = 0,
     val listName: String = "",
+    val isBuiltin: Boolean = false,
+    val isIgnored: Boolean = false,
+    val hasPlaybackPlan: Boolean = false,
     /** Entries currently shown — the full set narrowed by [selectedFilters]. */
     val entries: List<Climb_list_entries> = emptyList(),
     /** Total entries the user SAVED (board-agnostic; unaffected by the filter).
@@ -54,8 +62,19 @@ data class BoardListDetailState(
     val selectedFilters: Set<BoardFilterOption> = emptySet(),
     val angle: Int = 40,
     val gradeScale: GradeScale = GradeScale.V_SCALE,
-    val zones: IntensityZones? = null
+    val zones: IntensityZones? = null,
+    val showPlaybackOptions: Boolean = false,
+    val usePlaybackPlan: Boolean = false,
+    val playbackOrder: ListPlaybackOrder = ListPlaybackOrder.LIST,
+    val playbackAdvance: ListPlaybackAdvance = ListPlaybackAdvance.MANUAL,
+    val playbackRestSeconds: Long = 0L,
+    val isStartingPlayback: Boolean = false,
+    val playbackStartError: PlaybackStartError? = null,
+    val showRenameDialog: Boolean = false,
+    val renameValue: String = "",
 )
+
+enum class PlaybackStartError { EMPTY, MULTIPLE_BOARDS }
 
 @HiltViewModel
 class BoardListDetailViewModel @Inject constructor(
@@ -64,6 +83,7 @@ class BoardListDetailViewModel @Inject constructor(
     private val personalBoardRepo: PersonalBoardRepository,
     private val userPreferences: UserPreferences,
     private val zoneManager: IntensityZoneManager,
+    private val playback: com.cruxcoach.android.data.PlaylistPlaybackCoordinator,
     val climbNavState: com.cruxcoach.android.ui.navigation.ClimbNavigationState
 ) : ViewModel() {
 
@@ -118,6 +138,12 @@ class BoardListDetailViewModel @Inject constructor(
                     s.copy(
                         isLoading = false,
                         listName = list?.name ?: "",
+                        isBuiltin = list?.isBuiltin == true,
+                        isIgnored = list?.isIgnored == true,
+                        hasPlaybackPlan = list?.hasPlaybackPlan == true,
+                        playbackOrder = list?.playbackOrder ?: ListPlaybackOrder.LIST,
+                        playbackAdvance = list?.playbackAdvance ?: ListPlaybackAdvance.MANUAL,
+                        playbackRestSeconds = list?.playbackRestSeconds ?: 0L,
                         // True saved count; resolved may be smaller when an
                         // entry's board catalogue isn't downloaded — that gap is
                         // surfaced via unavailableCount, never silently dropped.
@@ -221,6 +247,202 @@ class BoardListDetailViewModel @Inject constructor(
         _state.update { it.copy(selectedFilters = emptySet(), entries = applyFilter(allEntries, emptySet())) }
     }
 
+    fun showPlaybackOptions() {
+        val state = _state.value
+        if (state.isIgnored || state.totalCount == 0L) return
+        _state.update {
+            it.copy(
+                showPlaybackOptions = true,
+                usePlaybackPlan = it.hasPlaybackPlan,
+                playbackStartError = null,
+            )
+        }
+    }
+
+    fun dismissPlaybackOptions() {
+        if (_state.value.isStartingPlayback) return
+        _state.update { it.copy(showPlaybackOptions = false, playbackStartError = null) }
+    }
+
+    fun setUsePlaybackPlan(usePlan: Boolean) {
+        _state.update {
+            it.copy(usePlaybackPlan = usePlan && it.hasPlaybackPlan, playbackStartError = null)
+        }
+    }
+
+    fun setPlaybackOrder(order: ListPlaybackOrder) {
+        _state.update { it.copy(playbackOrder = order, playbackStartError = null) }
+    }
+
+    fun setPlaybackAdvance(advance: ListPlaybackAdvance) {
+        _state.update { it.copy(playbackAdvance = advance, playbackStartError = null) }
+    }
+
+    fun setPlaybackRestSeconds(seconds: Long) {
+        _state.update { it.copy(playbackRestSeconds = seconds.coerceIn(0L, 3600L)) }
+    }
+
+    fun showRenameDialog() {
+        if (_state.value.isBuiltin) return
+        _state.update { it.copy(showRenameDialog = true, renameValue = it.listName) }
+    }
+
+    fun dismissRenameDialog() = _state.update { it.copy(showRenameDialog = false) }
+
+    fun updateRenameValue(value: String) = _state.update { it.copy(renameValue = value) }
+
+    fun confirmRename() {
+        val name = _state.value.renameValue.trim()
+        if (name.isBlank() || _state.value.isBuiltin) return
+        viewModelScope.safeLaunch(TAG) {
+            withContext(Dispatchers.IO) { personalBoardRepo.renameClimbList(listId, name) }
+            _state.update { it.copy(showRenameDialog = false, listName = name) }
+        }
+    }
+
+    /** Creates a first explicit plan from the current list order. Existing
+     *  plans are never overwritten by opening the editor. */
+    fun preparePlaybackPlan(onReady: () -> Unit) {
+        if (_state.value.hasPlaybackPlan) {
+            onReady()
+            return
+        }
+        viewModelScope.safeLaunch(TAG) {
+            val snapshot = _state.value
+            val seed = withContext(Dispatchers.IO) {
+                val climbUuids = personalBoardRepo
+                    .getClimbListEntryUuids(listId, Int.MAX_VALUE, 0)
+                    .map { it.first }
+                playbackStepsWithAutoRests(
+                    climbUuids = climbUuids,
+                    angle = snapshot.angle.toLong(),
+                    restSeconds = inferAutoPlaybackRestSeconds(
+                        previousRestSeconds = emptyList(),
+                        configuredFallbackSeconds = snapshot.playbackRestSeconds,
+                    ),
+                )
+            }
+            withContext(Dispatchers.IO) {
+                personalBoardRepo.replacePlaybackSteps(listId, seed)
+            }
+            _state.update { it.copy(hasPlaybackPlan = seed.isNotEmpty()) }
+            onReady()
+        }
+    }
+
+    /** Compile the selected list mode into the existing session queue. A
+     *  session may target exactly one concrete board configuration. */
+    fun startPlayback(
+        hostName: String,
+        visibility: SessionVisibility,
+        onStarted: () -> Unit,
+    ) {
+        val snapshot = _state.value
+        if (snapshot.isStartingPlayback) return
+        _state.update { it.copy(isStartingPlayback = true, playbackStartError = null) }
+        viewModelScope.safeLaunch(TAG) {
+            try {
+                val prepared = if (snapshot.usePlaybackPlan && snapshot.hasPlaybackPlan) {
+                    withContext(Dispatchers.IO) { preparePlanPlayback(snapshot.angle) }
+                } else {
+                    prepareListPlayback(snapshot)
+                }
+                val error = when {
+                    prepared.items.isEmpty() -> PlaybackStartError.EMPTY
+                    prepared.boardKeys.size > 1 -> PlaybackStartError.MULTIPLE_BOARDS
+                    else -> null
+                }
+                if (error != null) {
+                    _state.update { it.copy(playbackStartError = error) }
+                    return@safeLaunch
+                }
+                withContext(Dispatchers.IO) {
+                    personalBoardRepo.updatePlaybackSettings(
+                        listId = listId,
+                        order = snapshot.playbackOrder,
+                        advance = snapshot.playbackAdvance,
+                        restSeconds = snapshot.playbackRestSeconds,
+                    )
+                }
+                playback.play(
+                    hostName,
+                    prepared.items,
+                    snapshot.playbackAdvance,
+                    visibility,
+                )
+                _state.update { it.copy(showPlaybackOptions = false) }
+                onStarted()
+            } finally {
+                _state.update { it.copy(isStartingPlayback = false) }
+            }
+        }
+    }
+
+    private data class PreparedPlayback(
+        val items: List<com.cruxcoach.android.ble.QueueItem>,
+        val boardKeys: Set<Pair<String, Long>>,
+    )
+
+    private fun prepareListPlayback(state: BoardListDetailState): PreparedPlayback {
+        var entries = state.entries
+        if (state.playbackOrder == ListPlaybackOrder.SHUFFLE) entries = entries.shuffled()
+        val items = entries.mapIndexed { index, entry ->
+            com.cruxcoach.android.ble.QueueItem(
+                climbUuid = entry.climb.uuid,
+                angle = state.angle,
+                restAfterSeconds = if (index < entries.lastIndex) {
+                    state.playbackRestSeconds.toInt()
+                } else 0,
+            )
+        }
+        return PreparedPlayback(
+            items = items,
+            boardKeys = entries.map { it.climb.boardBrand to it.climb.layoutId }.toSet(),
+        )
+    }
+
+    private fun preparePlanPlayback(defaultAngle: Int): PreparedPlayback {
+        val steps = personalBoardRepo.getPlaybackSteps(listId)
+        val uuids = steps.mapNotNull { it.climbUuid }.distinct()
+        val lookupUuids = uuids.asSequence()
+            .flatMap { uuid ->
+                val bare = uuid.replace("-", "")
+                sequenceOf(uuid, bare.lowercase(), bare.uppercase())
+            }
+            .distinct()
+            .toList()
+        val byUuid = boardRepository.getClimbsByUuidsAnyAngle(lookupUuids)
+            .associateBy { normUuid(it.uuid) }
+        val items = mutableListOf<com.cruxcoach.android.ble.QueueItem>()
+        val boardKeys = linkedSetOf<Pair<String, Long>>()
+        var pendingRest = 0
+        steps.forEach { step ->
+            if (step.isRest) {
+                pendingRest += (step.restSeconds ?: 0L).toInt()
+                return@forEach
+            }
+            val uuid = step.climbUuid ?: return@forEach
+            val climb = byUuid[normUuid(uuid)] ?: return@forEach
+            if (pendingRest > 0 && items.isNotEmpty()) {
+                val last = items.removeAt(items.lastIndex)
+                items.add(last.copy(restAfterSeconds = last.restAfterSeconds + pendingRest))
+            }
+            pendingRest = 0
+            items.add(
+                com.cruxcoach.android.ble.QueueItem(
+                    climbUuid = uuid,
+                    angle = step.angle?.toInt() ?: defaultAngle,
+                )
+            )
+            boardKeys.add(climb.boardBrand to climb.layoutId)
+        }
+        if (pendingRest > 0 && items.isNotEmpty()) {
+            val last = items.removeAt(items.lastIndex)
+            items.add(last.copy(restAfterSeconds = last.restAfterSeconds + pendingRest))
+        }
+        return PreparedPlayback(items, boardKeys)
+    }
+
     fun removeFromList(climbUuid: String) {
         viewModelScope.safeLaunch(TAG) {
             withContext(Dispatchers.IO) {
@@ -252,5 +474,7 @@ class BoardListDetailViewModel @Inject constructor(
         // Sentinel layout key for brand roll-up chips + Aurora brands; never a
         // real layout_id. Negative so the UI can detect "whole brand".
         const val ANY_LAYOUT = -1L
+
+        private fun normUuid(uuid: String): String = uuid.replace("-", "").lowercase()
     }
 }

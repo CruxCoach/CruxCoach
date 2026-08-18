@@ -2,11 +2,13 @@ package com.cruxcoach.android.payment
 
 import android.util.Log
 import com.cruxcoach.android.nostr.NostrConfig
+import com.cruxcoach.android.nostr.NostrEventPolicy
 import com.cruxcoach.android.nostr.NostrPublicEventBuilder
 import com.cruxcoach.android.nostr.NostrRelayPool
 import com.cruxcoach.android.payment.model.NostrProfileData
 import com.cruxcoach.db.secure.SecureDatabase
 import com.vitorpamplona.quartz.nip01Core.core.Event
+import com.vitorpamplona.quartz.nip01Core.crypto.verifyId
 import com.vitorpamplona.quartz.nip01Core.crypto.verifySignature
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.withTimeoutOrNull
@@ -199,15 +201,15 @@ class NostrProfileManager @Inject constructor(
             } ?: emptyList()
             if (collected.isEmpty()) return null
 
-            // Parse once, pick newest by `event.createdAt`. Drop events
-            // that fail Quartz' parsing — they'd have failed verification
-            // in `parseAndCacheProfile` anyway.
-            val newest = collected.mapNotNull { json ->
+            // Try newest-first, but authenticate each candidate before it can
+            // win. A malicious relay must not suppress a genuine profile by
+            // prepending an invalid far-future event.
+            val candidates = collected.mapNotNull { json ->
                 runCatching { Event.fromJson(json) to json }.getOrNull()
-            }.maxByOrNull { it.first.createdAt }?.second
-                ?: return null
-
-            parseAndCacheProfile(pubkey, newest)
+            }.sortedByDescending { it.first.createdAt }
+            candidates.firstNotNullOfOrNull { (_, json) ->
+                parseAndCacheProfile(pubkey, json)
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to fetch profile for $pubkey", e)
             null
@@ -221,16 +223,23 @@ class NostrProfileManager @Inject constructor(
             // can return a forged kind:0 that overwrites the cached lud16
             // and redirects zaps to an attacker wallet.
             val event = Event.fromJson(eventJson)
-            if (event.kind != KIND_METADATA) {
-                Log.w(TAG, "Ignoring non-metadata event kind ${event.kind} for $pubkey")
+            val signatureValid = event.verifySignature()
+            val idValid = signatureValid && event.verifyId()
+            if (!NostrEventPolicy.accepts(
+                    actualPubkey = event.pubKey,
+                    actualKind = event.kind,
+                    expectedPubkey = pubkey,
+                    expectedKind = KIND_METADATA,
+                    signatureValid = signatureValid,
+                    idValid = idValid,
+                )
+            ) {
+                Log.w(TAG, "Profile event author/kind/signature/id invalid for ${pubkey.take(8)}")
                 return null
             }
-            if (event.pubKey != pubkey) {
-                Log.w(TAG, "Profile event pubkey mismatch: asked $pubkey, got ${event.pubKey}")
-                return null
-            }
-            if (!event.verifySignature()) {
-                Log.w(TAG, "Profile event signature invalid for $pubkey")
+            val nowSeconds = System.currentTimeMillis() / 1000
+            if (!NostrEventPolicy.isCreatedAtAcceptable(event.createdAt, nowSeconds)) {
+                Log.w(TAG, "Profile event timestamp too far in future for ${pubkey.take(8)}")
                 return null
             }
 

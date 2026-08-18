@@ -27,6 +27,12 @@
 # We must keep ALL overridden methods on every class/anonymous class that
 # extends a BLE callback base class.
 
+# --- FIPS JNI -> Kotlin radio bridge ---
+# Rust resolves these instance methods by their source names/signatures with
+# JNIEnv.call_method(). A minified APK otherwise starts successfully and then
+# crashes with NoSuchMethodError (first observed for listen()).
+-keep class com.cruxcoach.android.fips.FipsBleRadio { *; }
+
 # --- BluetoothGattCallback (GATT client) ---
 # Used by: AuroraBleConnection.gattCallback, SessionGattClient.gattCallback
 # Methods: onConnectionStateChange, onServicesDiscovered, onCharacteristicWrite,

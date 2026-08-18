@@ -344,13 +344,6 @@ private fun BoardOptionCard(option: GymWallOption, onClick: () -> Unit) {
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                 )
-                if (option.isRecommended) {
-                    Text(
-                        stringResource(R.string.feat007_gym_recommended),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = OrangeAccent,
-                    )
-                }
             }
             Icon(
                 Icons.AutoMirrored.Filled.KeyboardArrowRight,

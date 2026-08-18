@@ -182,6 +182,7 @@ fun SettingsScreen(
             CollapsibleHeader(stringResource(R.string.settings_section_board), boardSettingsExpanded) { boardSettingsExpanded = !boardSettingsExpanded }
             AnimatedVisibility(visible = boardSettingsExpanded) {
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    val activeBoardBrand = BoardBrand.fromWire(state.boardBrand)
                     // FEAT-027: for a MoonBoard show the variant name; else the
                     // Kilter board-size label. (0.1.5 dropped the standalone
                     // Original/Homewall toggle — the picker resolves layout.)
@@ -190,7 +191,7 @@ fun SettingsScreen(
                         // (FEAT-031): MoonBoard shows its variant; an Aurora board
                         // shows its name/variant + size; Kilter shows the size.
                         boardModelName = run {
-                            val brand = BoardBrand.fromWire(state.boardBrand)
+                            val brand = activeBoardBrand
                             when {
                                 brand == BoardBrand.MOONBOARD ->
                                     state.moonBoardVariant?.displayName ?: ""
@@ -206,9 +207,31 @@ fun SettingsScreen(
                         },
                         onChangeModel = { showBoardModelDialog = true },
                     )
+                    // FEAT-049: which of the variant's hold sets are actually
+                    // mounted. Renders nothing for any other brand, and none
+                    // for MoonBoard 2010 (one set, no choice).
+                    MoonBoardHoldSetSection()
+                    if (activeBoardBrand == BoardBrand.MOONBOARD) {
+                        MoonBoardLedPositionSection(
+                            ledMode = state.moonBoardLedMode,
+                            onModeChange = viewModel::updateMoonBoardLedMode,
+                        )
+                    }
+                    HorizontalDivider()
+                    BoardSendModeSection(
+                        singleConnectionMode = state.singleConnectionBoardSendMode,
+                        multiConnectionMode = state.multiConnectionBoardSendMode,
+                        boardBrand = activeBoardBrand,
+                        onSingleConnectionModeChange =
+                            viewModel::updateSingleConnectionBoardSendMode,
+                        onMultiConnectionModeChange =
+                            viewModel::updateMultiConnectionBoardSendMode,
+                    )
                     HorizontalDivider()
                     BleAutoDisconnectSection(
                         bleAutoDisconnectSeconds = state.bleAutoDisconnectSeconds,
+                        boardBrand = activeBoardBrand,
+                        unavailableInMultiMode = state.bleAutoDisconnectUnavailable,
                         onAutoDisconnectChange = { viewModel.updateBleAutoDisconnect(it) },
                     )
                     HorizontalDivider()
@@ -314,8 +337,11 @@ fun SettingsScreen(
                         showDeleteBoardDataDialog = state.showDeleteBoardDataDialog,
                         showDeleteUserDataDialog = state.showDeleteUserDataDialog,
                         isDeletingBoardData = state.isDeletingBoardData,
+                        selectedBrands = state.deleteDialogSelection,
                         onShowDeleteBoardDataDialog = { viewModel.showDeleteBoardDataDialog() },
                         onShowDeleteUserDataDialog = { viewModel.showDeleteUserDataDialog() },
+                        onToggleBrand = { viewModel.toggleDeleteDialogBrand(it) },
+                        onToggleSelectAll = { viewModel.toggleDeleteDialogSelectAll() },
                         onDismissDeleteDialog = { viewModel.dismissDeleteDialog() },
                         onDeleteBoardData = { viewModel.deleteBoardData() },
                         onDeleteUserBoardData = { viewModel.deleteUserBoardData() },
@@ -422,7 +448,11 @@ fun SettingsScreen(
             BackupSettingsState.Snackbar.RestoreFailed ->
                 stringResource(R.string.settings_backup_restore_failed)
             is BackupSettingsState.Snackbar.RestoreSucceeded ->
-                stringResource(R.string.settings_backup_restored, snackbar.ascents, snackbar.lists)
+                stringResource(
+                    R.string.settings_backup_restored,
+                    snackbar.logbookEntries,
+                    snackbar.lists,
+                )
             BackupSettingsState.Snackbar.BackupSucceeded ->
                 stringResource(R.string.settings_backup_succeeded)
             is BackupSettingsState.Snackbar.BackupFailed ->

@@ -8,17 +8,22 @@ import com.cruxcoach.android.data.kilter.formatKilterImportSummary
 import com.cruxcoach.android.data.kilter.localized
 import com.cruxcoach.android.data.kilter.localizeKilterImportError
 import com.cruxcoach.android.ble.BoardBleConnection
+import com.cruxcoach.android.ble.BoardControllerProfiles
+import com.cruxcoach.android.ble.BoardProjectionPolicy
+import com.cruxcoach.android.boardcell.BoardCellManager
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.data.AnnouncementRepository
 import com.cruxcoach.android.data.DarkModeSetting
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.BoardSyncManager
+import com.cruxcoach.android.data.BoardSendMode
 import com.cruxcoach.android.data.LedHoldColors
 import com.cruxcoach.android.data.AuroraBoardSelector
 import com.cruxcoach.android.data.SyncInterval
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.MoonBoardVariant
+import com.cruxcoach.domain.board.MoonBoardLedMode
 import com.cruxcoach.android.notification.AnnouncementTagParser
 import com.cruxcoach.android.notification.BoardSyncWorker
 import com.cruxcoach.data.repository.BoardRepository
@@ -100,6 +105,13 @@ data class SettingsState(
     val hasAssessment: Boolean = false,
     val ledColors: LedHoldColors = LedHoldColors(),
     val bleAutoDisconnectSeconds: Int = 60,
+    val bleAutoDisconnectUnavailable: Boolean = false,
+    val singleConnectionBoardSendMode: BoardSendMode = BoardSendMode.AUTOMATIC,
+    /** Mirrors UserPreferences.multiConnectionBoardSendMode's default — a
+     *  shared board is not swiped onto by accident. */
+    val multiConnectionBoardSendMode: BoardSendMode = BoardSendMode.EXPLICIT,
+    /** BELOW preserves the historic MoonBoard LED placement. */
+    val moonBoardLedMode: MoonBoardLedMode = MoonBoardLedMode.BELOW,
     val isSaving: Boolean = false,
     val saveSuccess: Boolean = false,
     val error: String? = null,
@@ -121,6 +133,10 @@ data class SettingsState(
     val productSizes: List<com.cruxcoach.data.repository.BoardSize> = emptyList(),
     val showDeleteBoardDataDialog: Boolean = false,
     val showDeleteUserDataDialog: Boolean = false,
+    /** Boards ticked in whichever delete-multiselect dialog is open (the
+     *  two dialogs are mutually exclusive, so they share one selection).
+     *  Re-seeded to all interactive boards every time a dialog opens. */
+    val deleteDialogSelection: Set<BoardBrand> = emptySet(),
     /** True while the app-scoped board-data deletion runs (~20s on a full
      *  multi-board catalogue) — disables the delete button and shows a
      *  blocking progress row instead of a silent wait. */
@@ -137,6 +153,7 @@ class SettingsViewModel @Inject constructor(
     private val syncManager: BoardSyncManager,
     private val userPreferences: UserPreferences,
     private val bleConnection: BoardBleConnection,
+    private val boardCellManager: BoardCellManager,
     private val climbAdvertiser: ClimbBleAdvertiser,
     private val auroraBoardSelector: AuroraBoardSelector,
     private val announcementRepository: AnnouncementRepository,
@@ -157,6 +174,21 @@ class SettingsViewModel @Inject constructor(
             val freq = withContext(Dispatchers.IO) { boardLocationRepository.productSizeFrequency() }
             val enabled = withContext(Dispatchers.IO) { boardLocationRepository.countWalls() > 0L }
             _state.update { it.copy(boardSizeFrequency = freq, boardSearchEnabled = enabled) }
+        }
+        viewModelScope.safeLaunch("SettingsViewModel") {
+            combine(
+                boardCellManager.snapshots,
+                bleConnection.connectedBoardDescriptor,
+                bleConnection.keepAliveActive,
+            ) { snapshot, board, keepAlive ->
+                BoardProjectionPolicy.autoDisconnectUnavailable(
+                    activeMesh = snapshot != null,
+                    featureKeepAlive = keepAlive,
+                    connectionCapacity = BoardControllerProfiles.forBoard(board).connectionCapacity,
+                )
+            }.distinctUntilChanged().collect { unavailable ->
+                _state.update { it.copy(bleAutoDisconnectUnavailable = unavailable) }
+            }
         }
         // Board-data deletion runs app-scoped in BoardSyncManager (it takes
         // ~20s and must survive leaving this screen) — mirror its progress
@@ -184,14 +216,20 @@ class SettingsViewModel @Inject constructor(
                 val boardBrand = userPreferences.boardBrand.first()
                 val boardSizeName = boardRepository.getProductSize(boardSizeId, boardBrand)
                     ?.let { BoardConstants.sizeLabel(it.id, it.name, it.boardBrand) } ?: ""
-                // MoonBoard layout ids (2/4/5) are disjoint from Kilter's,
-                // so the active variant is derived directly from the
-                // single boardLayoutId pref.
-                val moonBoardVariant = MoonBoardVariant.fromLayoutId(layoutId.toLong())
+                // Layout 1 is shared by Kilter Original and MoonBoard 2010;
+                // resolve the variant only inside the active brand's id space.
+                val moonBoardVariant = MoonBoardVariant.fromBoardSelection(
+                    layoutId.toLong(), BoardBrand.fromWire(boardBrand),
+                )
                 val interval = userPreferences.syncInterval.first()
                 val lastSync = userPreferences.lastSyncTimestamp.first()
                 val scale = userPreferences.gradeScale.first()
                 val autoDisconnect = userPreferences.bleAutoDisconnectSeconds.first()
+                val singleConnectionBoardSendMode =
+                    userPreferences.singleConnectionBoardSendMode.first()
+                val multiConnectionBoardSendMode =
+                    userPreferences.multiConnectionBoardSendMode.first()
+                val moonBoardLedMode = userPreferences.moonBoardLedMode.first()
                 val ledColors = userPreferences.ledHoldColors.first()
                 val frameSpeed = userPreferences.routeFrameSpeed.first()
                 val useSetterSpeed = userPreferences.routeUseSetterSpeed.first()
@@ -248,6 +286,9 @@ class SettingsViewModel @Inject constructor(
                     hasAssessment = hasAssessment,
                     ledColors = ledColors,
                     bleAutoDisconnectSeconds = autoDisconnect,
+                    singleConnectionBoardSendMode = singleConnectionBoardSendMode,
+                    multiConnectionBoardSendMode = multiConnectionBoardSendMode,
+                    moonBoardLedMode = moonBoardLedMode,
                     profile = profileForm,
                     routePlayback = RoutePlaybackSettings(
                         frameSpeed = frameSpeed,
@@ -287,10 +328,33 @@ class SettingsViewModel @Inject constructor(
                     )
                 )
             }
-            _state.update { initialState }
+            // The multi-mode collector starts immediately and may have
+            // already observed an active mesh while disk-backed settings are
+            // loading. Do not overwrite that live safety state with the data
+            // class default when the initial batch completes.
+            _state.update { current ->
+                initialState.copy(
+                    bleAutoDisconnectUnavailable = current.bleAutoDisconnectUnavailable,
+                )
+            }
 
             // Start collectors for live updates after initial load
             launch { userPreferences.ledHoldColors.collect { colors -> _state.update { it.copy(ledColors = colors) } } }
+            launch {
+                userPreferences.singleConnectionBoardSendMode.collect { mode ->
+                    _state.update { it.copy(singleConnectionBoardSendMode = mode) }
+                }
+            }
+            launch {
+                userPreferences.multiConnectionBoardSendMode.collect { mode ->
+                    _state.update { it.copy(multiConnectionBoardSendMode = mode) }
+                }
+            }
+            launch {
+                userPreferences.moonBoardLedMode.collect { mode ->
+                    _state.update { it.copy(moonBoardLedMode = mode) }
+                }
+            }
             launch { userPreferences.routeFrameSpeed.collect { speed -> _state.update { it.copy(routePlayback = it.routePlayback.copy(frameSpeed = speed)) } } }
             launch { userPreferences.routeUseSetterSpeed.collect { v -> _state.update { it.copy(routePlayback = it.routePlayback.copy(useSetterSpeed = v)) } } }
             launch { userPreferences.routeCountdown.collect { v -> _state.update { it.copy(routePlayback = it.routePlayback.copy(countdown = v)) } } }
@@ -315,8 +379,9 @@ class SettingsViewModel @Inject constructor(
                 ) { brand, layoutId, sizeId -> Triple(brand, layoutId, sizeId) }
                     .distinctUntilChanged()
                     .collect { (brand, layoutId, sizeId) ->
-                        val variant = MoonBoardVariant.fromLayoutId(layoutId.toLong())
-                        val name = if (BoardBrand.fromWire(brand) == BoardBrand.MOONBOARD) {
+                        val parsedBrand = BoardBrand.fromWire(brand)
+                        val variant = MoonBoardVariant.fromBoardSelection(layoutId.toLong(), parsedBrand)
+                        val name = if (parsedBrand == BoardBrand.MOONBOARD) {
                             variant?.displayName ?: ""
                         } else {
                             withContext(Dispatchers.IO) { boardRepository.getProductSize(sizeId, brand) }
@@ -516,7 +581,10 @@ class SettingsViewModel @Inject constructor(
                     finish = if (roleId == HoldRole.FINISH) colorByte else current.finish,
                     foot = if (roleId == HoldRole.FOOT) colorByte else current.foot
                 )
-                bleConnection.resendWithColors(updated.toRoleColorMap())
+                com.cruxcoach.android.boardcell.BoardCellManager.current?.projectExternal(
+                    boardWrite = { bleConnection.resendWithColors(updated.toRoleColorMap()) },
+                    identify = { com.cruxcoach.android.boardcell.BoardCellManager.current?.snapshot()?.projection },
+                )
             }
         }
     }
@@ -525,7 +593,10 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             userPreferences.resetLedColors()
             if (bleConnection.isConnected()) {
-                bleConnection.resendWithColors(LedHoldColors().toRoleColorMap())
+                com.cruxcoach.android.boardcell.BoardCellManager.current?.projectExternal(
+                    boardWrite = { bleConnection.resendWithColors(LedHoldColors().toRoleColorMap()) },
+                    identify = { com.cruxcoach.android.boardcell.BoardCellManager.current?.snapshot()?.projection },
+                )
             }
         }
     }
@@ -534,7 +605,10 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             userPreferences.setKilterColors()
             if (bleConnection.isConnected()) {
-                bleConnection.resendWithColors(LedHoldColors.kilterStandard().toRoleColorMap())
+                com.cruxcoach.android.boardcell.BoardCellManager.current?.projectExternal(
+                    boardWrite = { bleConnection.resendWithColors(LedHoldColors.kilterStandard().toRoleColorMap()) },
+                    identify = { com.cruxcoach.android.boardcell.BoardCellManager.current?.snapshot()?.projection },
+                )
             }
         }
     }
@@ -577,6 +651,21 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             userPreferences.setBleAutoDisconnectSeconds(seconds)
         }
+    }
+
+    fun updateSingleConnectionBoardSendMode(mode: BoardSendMode) {
+        _state.update { it.copy(singleConnectionBoardSendMode = mode) }
+        viewModelScope.launch { userPreferences.setSingleConnectionBoardSendMode(mode) }
+    }
+
+    fun updateMultiConnectionBoardSendMode(mode: BoardSendMode) {
+        _state.update { it.copy(multiConnectionBoardSendMode = mode) }
+        viewModelScope.launch { userPreferences.setMultiConnectionBoardSendMode(mode) }
+    }
+
+    fun updateMoonBoardLedMode(mode: MoonBoardLedMode) {
+        _state.update { it.copy(moonBoardLedMode = mode) }
+        viewModelScope.launch { userPreferences.setMoonBoardLedMode(mode) }
     }
 
     fun updateNearbyClimbSharing(enabled: Boolean) {
@@ -652,15 +741,18 @@ class SettingsViewModel @Inject constructor(
                 if (grid.isEmpty()) return@launch
                 val frames = BoardEasterAnimations.easterEgg(grid)
                 if (frames.isEmpty() || frames.all { it.leds.isEmpty() }) return@launch
-                repeat(3) {
-                    for (frame in frames) {
-                        // sendRawLeds encodes with the CONNECTED board's
-                        // encoder (correct apiLevel), not a hardcoded @3 one.
-                        bleConnection.sendRawLeds(frame.leds)
-                        delay(250)
-                    }
-                }
-                bleConnection.clearBoard()
+                com.cruxcoach.android.boardcell.BoardCellManager.current?.projectExternal(
+                    boardWrite = {
+                        repeat(3) {
+                            for (frame in frames) {
+                                if (!bleConnection.sendRawLeds(frame.leds)) return@projectExternal false
+                                delay(250)
+                            }
+                        }
+                        bleConnection.clearBoard()
+                    },
+                    identify = { null },
+                ) ?: return@launch
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -678,37 +770,93 @@ class SettingsViewModel @Inject constructor(
         animationJob?.cancel()
         animationJob = null
         _state.update { it.copy(isAnimating = false) }
-        viewModelScope.launch { bleConnection.clearBoard() }
+        viewModelScope.launch {
+            com.cruxcoach.android.boardcell.BoardCellManager.current?.projectExternal(
+                boardWrite = { bleConnection.clearBoard() }, identify = { null })
+        }
     }
 
     // ── Data management ──────────────────────────────────────────
 
-    fun showDeleteBoardDataDialog() { _state.update { it.copy(showDeleteBoardDataDialog = true) } }
-    fun showDeleteUserDataDialog() { _state.update { it.copy(showDeleteUserDataDialog = true) } }
+    /** The seven interactive boards, in declaration order — the rows of
+     *  the two delete-multiselect dialogs. Map-only families (Aurora,
+     *  12climb) ship no catalogue or logbook data to delete. */
+    private val deletableBrands: List<BoardBrand>
+        get() = BoardBrand.entries.filter { it.isInteractive }
+
+    fun showDeleteBoardDataDialog() {
+        _state.update { it.copy(showDeleteBoardDataDialog = true, deleteDialogSelection = deletableBrands.toSet()) }
+    }
+    fun showDeleteUserDataDialog() {
+        _state.update { it.copy(showDeleteUserDataDialog = true, deleteDialogSelection = deletableBrands.toSet()) }
+    }
     fun dismissDeleteDialog() { _state.update { it.copy(showDeleteBoardDataDialog = false, showDeleteUserDataDialog = false) } }
     fun dismissDeleteSuccess() { _state.update { it.copy(deleteSuccess = null) } }
 
+    /** Check/uncheck one board row in whichever delete dialog is open. */
+    fun toggleDeleteDialogBrand(brand: BoardBrand) {
+        _state.update {
+            val selection = it.deleteDialogSelection
+            it.copy(deleteDialogSelection = if (brand in selection) selection - brand else selection + brand)
+        }
+    }
+
+    /** "All boards" affordance: full selection — or none, when already full. */
+    fun toggleDeleteDialogSelectAll() {
+        _state.update {
+            val all = deletableBrands.toSet()
+            it.copy(deleteDialogSelection = if (it.deleteDialogSelection == all) emptySet() else all)
+        }
+    }
+
     fun deleteBoardData() {
+        val brands = _state.value.deleteDialogSelection
+        if (brands.isEmpty()) return
         _state.update { it.copy(showDeleteBoardDataDialog = false) }
         // Delegated to the app-scoped BoardSyncManager: the multi-table
         // delete takes ~20s, and running it in viewModelScope meant leaving
         // the Settings screen (or killing the app) cancelled the coroutine
         // and SQLite silently rolled the transaction back. The init
         // collector mirrors progress + success back into this screen.
-        syncManager.deleteAllBoardData()
+        // (Audit logging incl. the selected brands happens there too.)
+        syncManager.deleteBoardData(brands)
     }
 
     fun deleteUserBoardData() {
+        val brands = _state.value.deleteDialogSelection
+        if (brands.isEmpty()) return
         _state.update { it.copy(showDeleteUserDataDialog = false) }
         viewModelScope.launch {
-            // Audit-trail: log the destructive action with a timestamp so a
-            // user reporting "my logbook is empty" can be triaged via logcat
-            // without DB forensics.
-            Log.i(TAG, "destructive: deleteAllUserBoardData() requested at ${System.currentTimeMillis() / 1000}")
+            // Audit-trail: log the destructive action + selected boards so
+            // a user reporting "my logbook is empty" can be triaged via
+            // logcat without DB forensics.
+            val brandNames = brands.map { it.wireValue }.sorted().joinToString(",")
+            val allBoards = brands.containsAll(deletableBrands)
+            Log.i(
+                TAG,
+                "destructive: deleteUserBoardData(brands=[$brandNames], allBoards=$allBoards) " +
+                    "requested at ${System.currentTimeMillis() / 1000}"
+            )
             withContext(Dispatchers.IO) {
-                personalBoardRepo.deleteAllUserBoardData()
+                if (allBoards) {
+                    // Full selection keeps the historical behaviour: lists,
+                    // brand-less board sessions and unresolvable list
+                    // entries go too.
+                    personalBoardRepo.deleteAllUserBoardData()
+                } else {
+                    val wire = brands.map { it.wireValue }.toSet()
+                    // List entries carry no brand column — resolve each
+                    // referenced climb's board family via the board DB
+                    // (separate file, no JOIN). Unresolvable uuids (climb
+                    // not in the catalogue anymore) stay put: we cannot
+                    // prove they belong to a selected board.
+                    val entryUuids = personalBoardRepo.getAllListEntryClimbUuids()
+                    val entryBrands = boardRepository.getClimbBrandsForUuids(entryUuids)
+                    val doomedEntries = entryUuids.filter { entryBrands[it] in wire }
+                    personalBoardRepo.deleteUserBoardDataForBrands(wire, doomedEntries)
+                }
             }
-            Log.i(TAG, "destructive: deleteAllUserBoardData() done")
+            Log.i(TAG, "destructive: deleteUserBoardData(brands=[$brandNames]) done")
             _state.update { it.copy(deleteSuccess = context.getString(R.string.settings_delete_logbook_success)) }
         }
     }

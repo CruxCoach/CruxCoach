@@ -1,0 +1,67 @@
+appId: com.cruxcoach.android
+name: browse-zone-plus-hold
+tags:
+  - release-gate
+  - extended
+  - mutates-state
+---
+# Establish a broad zone first, then add a physical hold inside it. The second
+# count must be a strict subset, demonstrating AND rather than OR semantics.
+- runFlow: subflows/reset-browser-filters.yaml
+- tapOn:
+    id: "board_search_fab"
+- tapOn:
+    id: "board_hold_search"
+- tapOn:
+    id: "hold_search_zone_mode"
+- swipe:
+    start: "8%,39%"
+    end: "92%,91%"
+    duration: 1000
+- extendedWaitUntil:
+    visible:
+      id: "hold_search_match_count"
+    timeout: 30000
+- copyTextFrom:
+    id: "hold_search_match_count"
+- evalScript: ${output.zoneOnlyCount = parseInt((maestro.copiedText.match(/\d+/) || [])[0], 10)}
+- evalScript: ${if (!(output.zoneOnlyCount > 1)) throw new Error('Broad zone produced too few rows for AND proof')}
+# After the zone summary appears, the board begins around mid-screen. This tap
+# is well inside both the visualization and the committed zone; the renderer
+# snaps it to the nearest real placement rather than relying on a hold ID.
+- tapOn:
+    point: "50%,72%"
+- extendedWaitUntil:
+    visible:
+      id: "hold_search_selection_summary"
+      text: "1 Hold ausgewählt"
+    timeout: 30000
+- extendedWaitUntil:
+    visible:
+      id: "hold_search_match_count"
+    timeout: 30000
+- copyTextFrom:
+    id: "hold_search_match_count"
+- evalScript: ${output.zoneAndHoldCount = parseInt((maestro.copiedText.match(/\d+/) || [])[0], 10)}
+- evalScript: ${if (!(output.zoneAndHoldCount > 0 && output.zoneAndHoldCount < output.zoneOnlyCount)) throw new Error('Zone plus hold was not a strict non-empty AND subset')}
+- assertVisible:
+    id: "hold_search_zone_active"
+- tapOn:
+    id: "hold_search_apply"
+- extendedWaitUntil:
+    visible:
+      id: "hold_search_action_bar"
+    timeout: 30000
+- assertVisible:
+    id: "board_climb_card"
+- tapOn:
+    id: "hold_search_change"
+- tapOn:
+    id: "hold_search_reset"
+- pressKey: Back
+- assertNotVisible:
+    id: "hold_search_action_bar"
+- tapOn:
+    id: "board_search_fab"
+- assertNotVisible:
+    id: "board_search_field"

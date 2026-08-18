@@ -1,21 +1,24 @@
 appId: com.cruxcoach.android
 name: editor-open
 tags:
+  - release-gate
   - smoke
 ---
 # Open the climb-creator via the FAB. Verifies editor landmarks that
 # uniquely identify the editor screen (vs. browser/detail/settings).
-- launchApp:
-    stopApp: false
-- waitForAnimationToEnd:
-    timeout: 5000
-- tapOn: "Neuen Climb erstellen"
+- runFlow: subflows/launch-browser.yaml
+- tapOn:
+    id: "board_create_fab"
 # Editor-only TopAppBar text (commit 1599c18 shortened from "Climb
 # erstellen" to "Neuer Climb"). Co-occurring with "Editor leeren"
 # (Clear icon, climb_creator_clear) and "Weitere Optionen" (overflow,
 # action_more_options) the screen is unambiguously the editor.
-- assertVisible: "Neuer Climb"
-- assertVisible: "Editor leeren"
-- assertVisible: "Weitere Optionen"
+- assertVisible:
+    id: "climb_creator_name"
+- assertVisible:
+    id: "climb_creator_clear"
+- assertVisible:
+    id: "climb_creator_more"
 - pressKey: Back
-- assertVisible: "Filter"
+- assertVisible:
+    id: "board_filter_toggle"

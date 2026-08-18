@@ -1,0 +1,7 @@
+{
+  "pubkey": "e75a185c019d09049d5fcb0e29a2cc9bfd016ec0f6d892fc98f6ffe0181a480d",
+  "created_at": 1786830606,
+  "kind": 30078,
+  "tags": [["d", "apktrack-policy:cruxcoach"]],
+  "content": "{\"certificates\":[{\"certificate_sha256\":\"7f8308e8fe25e41aad0c7f0ac087775acd7d8c6a23da3a824212a8f3fe1bc2c4\",\"package_name\":\"com.cruxcoach.android\",\"roles\":[\"production\"],\"tracks\":[\"stable\"],\"valid_from\":null,\"valid_until\":null},{\"certificate_sha256\":\"7c79e883b332269c8a36f4edb981f734d2844fc057cfcc15aec4bc04e3c3e6a5\",\"package_name\":\"com.cruxcoach.android.dev.feat.board_cell_mesh_mvp\",\"roles\":[\"development\"],\"tracks\":[\"fips\"],\"valid_from\":null,\"valid_until\":null}],\"cross_signatures\":[],\"issued_at\":1786830606,\"previous_event_id\":null,\"project\":\"cruxcoach\",\"protocol\":\"org.apktrack.signing-policy\",\"schema_version\":1,\"valid_from\":null,\"valid_until\":null,\"version\":1}\n"
+}

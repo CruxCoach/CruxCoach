@@ -7,12 +7,14 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import com.cruxcoach.android.boardcell.BoardCellScopeRegistry
 import com.cruxcoach.android.R
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardPacketEncoder
 import com.cruxcoach.domain.board.BoardHold
 import com.cruxcoach.domain.board.HoldRole
 import com.cruxcoach.domain.board.MoonBoardFrameEncoder
+import com.cruxcoach.domain.board.MoonBoardLedMode
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -48,6 +50,10 @@ enum class ConnectionState {
  *  5. Always use TRANSPORT_LE, never TRANSPORT_AUTO
  */
 class BoardBleConnection(private val context: Context) {
+    /** Process-wide safety gate installed by BoardCellManager. This sits at the
+     * connection boundary so auto-connect and non-UI callers cannot bypass the
+     * single-controller rule. */
+    @Volatile var connectionGuard: ((DiscoveredBoard) -> Boolean)? = null
 
     private companion object {
         const val TAG = "BoardBleConnection"
@@ -110,11 +116,101 @@ class BoardBleConnection(private val context: Context) {
     // connected and which attempt (1-based) is currently running. State stays
     // CONNECTING across quiet retries so the UI shows one continuous attempt.
     private var currentBoard: DiscoveredBoard? = null
+    /** Full scan descriptor for features that must preserve the controller API level. */
+    val connectedBoard: DiscoveredBoard?
+        get() = _connectedBoardDescriptor.value
+    private val _connectedBoardDescriptor = MutableStateFlow<DiscoveredBoard?>(null)
+    val connectedBoardDescriptor: StateFlow<DiscoveredBoard?> =
+        _connectedBoardDescriptor.asStateFlow()
     private var connectAttempt = 0
+    /** Retry budget of the in-flight connect; see [connect]. */
+    private var attemptBudget = MAX_CONNECT_ATTEMPTS
 
     var autoDisconnectSeconds: Int = 0
-    /** When true, the idle timer is suppressed (e.g. during an active shared session). */
-    var suppressAutoDisconnect: Boolean = false
+        set(value) {
+            field = value
+            // Settings can change while GATT is already idle. Re-evaluate the
+            // live timer immediately instead of waiting for the next write or
+            // connection-state callback.
+            resetIdleTimer()
+        }
+    // FEAT-044 coexistence: several features (a shared session, the CruxRelay)
+    // can independently keep the board link parked. The idle timer is suppressed
+    // while ANY owner holds it; auto-disconnect fires only once ALL have
+    // released. Set semantics = idempotent per owner, so a feature may acquire
+    // more than once (e.g. startQueue + promoteToHost) and release once.
+    private val keepAliveOwners = mutableSetOf<String>()
+    private val keepAliveLock = Any()
+    private val _keepAliveActive = MutableStateFlow(false)
+    /** True while a mesh/session/relay owns the physical board connection. */
+    val keepAliveActive: StateFlow<Boolean> = _keepAliveActive.asStateFlow()
+    /** Diagnostic truth: whether the current idle countdown can disconnect GATT. */
+    val idleDisconnectArmed: Boolean get() = disconnectJob?.isActive == true
+
+    fun acquireKeepAlive(owner: String) {
+        val owners = synchronized(keepAliveLock) {
+            keepAliveOwners.add(owner)
+            _keepAliveActive.value = keepAliveOwners.isNotEmpty()
+            keepAliveOwners.toList()
+        }
+        Log.d(TAG, "keepAlive acquired by $owner — holders=$owners")
+        // A timer armed BEFORE the acquire keeps running otherwise: sharing
+        // started 3 s before a 60 s idle timer expired dropped the board out
+        // from under the relay. Suppression has to cancel what is pending,
+        // not just skip the next arming.
+        resetIdleTimer()
+    }
+
+    fun releaseKeepAlive(owner: String) {
+        val owners = synchronized(keepAliveLock) {
+            keepAliveOwners.remove(owner)
+            _keepAliveActive.value = keepAliveOwners.isNotEmpty()
+            keepAliveOwners.toList()
+        }
+        Log.d(TAG, "keepAlive released by $owner — holders=$owners")
+        if (owners.isEmpty()) resetIdleTimer() // last owner let go → allow idle-disconnect again
+    }
+
+    /** True when disconnecting for [owner] would interrupt another feature. */
+    fun hasOtherKeepAliveOwners(owner: String): Boolean =
+        synchronized(keepAliveLock) { keepAliveOwners.any { it != owner } }
+
+    private fun isKeepAliveHeld(): Boolean =
+        synchronized(keepAliveLock) { keepAliveOwners.isNotEmpty() }
+
+    /**
+     * Records what a completed advertising probe saw while we hold GATT.
+     *
+     * [advertises] true means the controller was seen advertising connectably
+     * — a peripheral is reachable exactly while it advertises, so that settles
+     * it. False is only ever passed for a scan that ran to the end and saw
+     * nothing, which is the one thing that can correct a stale "accepts
+     * several"; an inconclusive scan does not call this at all.
+     *
+     * Both directions land on the live descriptor, not just in storage. The
+     * downgrade used to be written to preferences only, so for the rest of
+     * that connection the app still treated a controller it had just proven
+     * exclusive as shared: the "share this board" control stayed hidden,
+     * idle release stayed suppressed, and the correction took effect only on
+     * the next connect.
+     */
+    fun recordAdvertisingWhileConnected(address: String, advertises: Boolean = true) {
+        if (_connectionState.value != ConnectionState.CONNECTED &&
+            _connectionState.value != ConnectionState.SENDING
+        ) return
+        val board = currentBoard?.takeIf { it.address.equals(address, ignoreCase = true) } ?: return
+        if (board.advertisesWhileConnected == advertises) return
+        val updated = board.copy(advertisesWhileConnected = advertises)
+        currentBoard = updated
+        _connectedBoardDescriptor.value = updated
+        Log.i(
+            TAG,
+            if (advertises) "Controller advertises while connected — accepts more clients"
+            else "Controller did not advertise on a completed scan — exclusive",
+        )
+        // Capacity just changed; idle release only applies to an exclusive board.
+        resetIdleTimer()
+    }
 
     // Write flow control: signaled by onCharacteristicWrite callback.
     // @Volatile: callback may arrive on a GATT-stack Binder thread on some
@@ -144,10 +240,8 @@ class BoardBleConnection(private val context: Context) {
     // Remember last sent climb for live color preview
     private var lastHolds: List<BoardHold>? = null
     private var lastPlacementToLed: Map<Int, Int>? = null
-
     private fun resetIdleTimer() {
         disconnectJob?.cancel()
-        if (suppressAutoDisconnect) return
         val seconds = autoDisconnectSeconds
         // Only arm the timer while the connection is truly idle. SENDING
         // is "writes in flight" — the send path re-arms us from its
@@ -155,7 +249,25 @@ class BoardBleConnection(private val context: Context) {
         // this guard, a small autoDisconnectSeconds (e.g. 1 s, used as
         // a replacement for the old Quick-Send macro) could fire mid-
         // send on long climbs.
-        if (seconds > 0 && _connectionState.value == ConnectionState.CONNECTED) {
+        val profile = BoardControllerProfiles.forBoard(currentBoard)
+        val suppressed = isKeepAliveHeld()
+        val arm = BoardProjectionPolicy.shouldArmIdleDisconnect(
+            seconds = seconds,
+            connectionState = _connectionState.value,
+            explicitlySuppressed = suppressed,
+            connectionCapacity = profile.connectionCapacity,
+            projectionSurvivesDisconnect =
+                profile.projectionLifetime == BoardProjectionLifetime.RETAINED_AFTER_DISCONNECT,
+        )
+        // All five inputs, because a wrong auto-disconnect is otherwise
+        // indistinguishable from a link the board dropped on its own.
+        Log.d(
+            TAG,
+            "idleTimer arm=$arm seconds=$seconds state=${_connectionState.value} " +
+                "suppressed=$suppressed capacity=${profile.connectionCapacity} " +
+                "projectionSurvives=${profile.projectionLifetime}"
+        )
+        if (arm) {
             disconnectJob = scope.launch {
                 delay(seconds * 1_000L)
                 disconnect()
@@ -320,6 +432,8 @@ class BoardBleConnection(private val context: Context) {
         _connectionState.value = ConnectionState.DISCONNECTED
         _connectedBoardName.value = null
         _connectedBoardBrand.value = null
+        currentBoard = null
+        _connectedBoardDescriptor.value = null
         gatt = null
         writeCharacteristic = null
     }
@@ -367,10 +481,24 @@ class BoardBleConnection(private val context: Context) {
      * - Stop scanners before connect (shared radio contention on single-radio controllers)
      * - Always TRANSPORT_LE, never TRANSPORT_AUTO
      */
+    /**
+     * @param maxAttempts how often a radio-level failure may be retried
+     *   quietly. The default absorbs the transient status-133 failures legacy
+     *   stacks produce. A speculative connect — "is the remembered board even
+     *   here?" — passes 1 instead: three attempts take ~32 s, and a flow that
+     *   falls back to asking for a permission cannot make the user wait that
+     *   long to find out the board is absent.
+     */
     @SuppressLint("MissingPermission")
-    fun connect(board: DiscoveredBoard) {
+    fun connect(board: DiscoveredBoard, maxAttempts: Int = MAX_CONNECT_ATTEMPTS) {
+        if (connectionGuard?.invoke(board) == false) {
+            Log.w(TAG, "Board connection blocked by active mesh controller policy")
+            return
+        }
+        BoardCellScopeRegistry.select(board)
         if (_connectionState.value != ConnectionState.DISCONNECTED) return
 
+        attemptBudget = maxAttempts.coerceIn(1, MAX_CONNECT_ATTEMPTS)
         userDisconnecting = false
         gattClosed = false
         _connectionState.value = ConnectionState.CONNECTING
@@ -379,6 +507,7 @@ class BoardBleConnection(private val context: Context) {
         // Fresh attempt — drop any failure reason from the previous one.
         _connectFailureReason.value = null
         currentBoard = board
+        _connectedBoardDescriptor.value = board
         connectAttempt = 1
         // FEAT-031: ledsPerHold (Kilter = 2, other Aurora boards = 1) feeds the
         // @2 LED power-budget scaling; harmless on @3 (where it is unused).
@@ -417,7 +546,7 @@ class BoardBleConnection(private val context: Context) {
     private fun canRetryConnect(): Boolean =
         _connectionState.value == ConnectionState.CONNECTING &&
             !userDisconnecting &&
-            connectAttempt < MAX_CONNECT_ATTEMPTS &&
+            connectAttempt < attemptBudget &&
             currentBoard != null
 
     /** Route a failed radio-level attempt: quiet retry while attempts remain,
@@ -441,7 +570,7 @@ class BoardBleConnection(private val context: Context) {
     @SuppressLint("MissingPermission")
     private fun scheduleRetry(trigger: String) {
         connectAttempt += 1
-        Log.i(TAG, "Connect attempt failed ($trigger) — retrying quietly (attempt $connectAttempt/$MAX_CONNECT_ATTEMPTS)")
+        Log.i(TAG, "Connect attempt failed ($trigger) — retrying quietly (attempt $connectAttempt/$attemptBudget)")
         connectionTimeoutJob?.cancel()
         connectionTimeoutJob = null
         gatt?.let { g ->
@@ -468,6 +597,8 @@ class BoardBleConnection(private val context: Context) {
         if (_connectionState.value != ConnectionState.CONNECTING) {
             _connectedBoardName.value = null
             _connectedBoardBrand.value = null
+            currentBoard = null
+            _connectedBoardDescriptor.value = null
             return
         }
 
@@ -486,7 +617,7 @@ class BoardBleConnection(private val context: Context) {
         // If called from a coroutine dispatcher without a Looper, callbacks are silently dropped.
         // The Handler overload (API 26+) forces callbacks onto the Main Looper.
         // Log.i so this start-of-connect marker survives R8's Log.d-stripping rule.
-        Log.i(TAG, "connectGatt() for ${board.address} (SDK=${Build.VERSION.SDK_INT}, attempt=$connectAttempt/$MAX_CONNECT_ATTEMPTS)")
+        Log.i(TAG, "connectGatt() for ${board.address} (SDK=${Build.VERSION.SDK_INT}, attempt=$connectAttempt/$attemptBudget)")
         val newGatt = device.connectGatt(
             context,
             false,
@@ -509,6 +640,8 @@ class BoardBleConnection(private val context: Context) {
                 _connectionState.value = ConnectionState.DISCONNECTED
                 _connectedBoardName.value = null
                 _connectedBoardBrand.value = null
+                currentBoard = null
+                _connectedBoardDescriptor.value = null
                 onRestartScannersAfterConnect?.invoke()
             }
             return
@@ -631,8 +764,7 @@ class BoardBleConnection(private val context: Context) {
                 encoder.encodeClimbFromHolds(holds, placementToLed)
             }
 
-            val success = writeChunks(chunks)
-            return success
+            return writeChunks(chunks)
         } finally {
             if (_connectionState.value == ConnectionState.SENDING) {
                 _connectionState.value = ConnectionState.CONNECTED
@@ -675,10 +807,13 @@ class BoardBleConnection(private val context: Context) {
      * @param variant the MoonBoard variant of the active board; drives the
      *   per-column-height serpentine arithmetic in the encoder (18 for the
      *   standard 11×18 boards, 12 for Mini 2020).
+     * @param ledMode selects the known strip position below, above, or on both
+     *   sides of each hold. Finish holds always fall back to below.
      */
     suspend fun sendMoonBoardClimb(
         frames: String,
         variant: com.cruxcoach.domain.board.MoonBoardVariant,
+        ledMode: MoonBoardLedMode = MoonBoardLedMode.BELOW,
     ): Boolean = writeMutex.withLock {
         if (_connectionState.value != ConnectionState.CONNECTED) return false
 
@@ -687,7 +822,7 @@ class BoardBleConnection(private val context: Context) {
         // Re-armed from the finally below once we flip back to CONNECTED.
         disconnectJob?.cancel()
         try {
-            val payload = MoonBoardFrameEncoder.encode(frames, variant)
+            val payload = MoonBoardFrameEncoder.encode(frames, variant, ledMode)
             val chunks = payload.toList()
                 .chunked(BoardPacketEncoder.BLE_MTU)
                 .map { it.toByteArray() }
@@ -751,6 +886,8 @@ class BoardBleConnection(private val context: Context) {
         gatt = null
         writeCharacteristic = null
         currentBoard = null
+        _connectedBoardDescriptor.value = null
+        BoardCellScopeRegistry.clearSelection()
         _connectionState.value = ConnectionState.DISCONNECTED
         _connectedBoardName.value = null
         _connectedBoardBrand.value = null

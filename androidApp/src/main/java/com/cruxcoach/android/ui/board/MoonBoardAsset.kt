@@ -20,8 +20,8 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
- * Decoded MoonBoard board asset (FEAT-027): the full, untouched board
- * image plus a per-hold coordinate map.
+ * Decoded MoonBoard board asset (FEAT-027): a board image, optional fixed
+ * transparent hold layers, and a per-hold coordinate map.
  *
  * The board image is NOT a regularised crop — real MoonBoard holds sit
  * a few percent off any perfectly-regular lattice — so hold positions
@@ -31,6 +31,8 @@ import kotlinx.serialization.json.Json
  */
 internal class MoonBoardRenderAsset(
     val image: ImageBitmap,
+    /** Transparent hold layers drawn over [image], in source order. */
+    val overlays: List<ImageBitmap>,
     /** image width / height — the board card must use this aspect so the
      *  `ContentScale.Fit` image fills the box and the map stays linear. */
     val imageAspect: Float,
@@ -60,6 +62,7 @@ internal sealed interface MoonBoardAssetState {
 internal data class MoonBoardLayoutJson(
     val variant: String,
     val image: String,
+    val overlays: List<String> = emptyList(),
     val imageAspect: Float,
     val holds: List<MoonBoardHoldJson>,
 )
@@ -78,19 +81,15 @@ private val moonBoardJson = Json { ignoreUnknownKeys = true }
 internal fun parseMoonBoardLayout(jsonText: String): MoonBoardLayoutJson =
     moonBoardJson.decodeFromString(jsonText)
 
-/** Bundled asset base name for a variant. All four v0.2.0 variants
- *  ship a real-board image; see [MoonBoardVariant]'s Mini-2020 caveat
- *  for the deferred procedural-fallback / BLE-encoder bits. */
+/** Bundled asset base name for each complete MoonBoard configuration. */
 internal fun MoonBoardVariant.assetBaseName(): String = when (this) {
     MoonBoardVariant.MOONBOARD_2016 -> "moonboard_2016"
     MoonBoardVariant.MASTERS_2017 -> "moonboard_2017"
     MoonBoardVariant.MASTERS_2019 -> "moonboard_2019"
     MoonBoardVariant.MINI_2020 -> "mini_moonboard_2020"
-    // No bundled image ships for 2024 yet (catalogue/coord-map released
-    // after the dump); [hasBundledImage] returns false for it so the
-    // renderer goes straight to the procedural 11x18 grid. Base name kept
-    // for when the coord-map lands from the board-image pipeline.
     MoonBoardVariant.MOONBOARD_2024 -> "moonboard_2024"
+    MoonBoardVariant.MINI_2025 -> "mini_moonboard_2025"
+    MoonBoardVariant.MOONBOARD_2010 -> "moonboard_2010"
 }
 
 /**
@@ -106,9 +105,7 @@ internal object MoonBoardAssetCache {
     @Volatile
     private var cached: MoonBoardRenderAsset? = null
 
-    /** True when [variant] has a bundled board image to decode. All five
-     *  variants now ship one — the four spookykat-dump boards plus MoonBoard
-     *  2024, whose coord-map was fit from the supplied 2024 board render. */
+    /** True when [variant] has a bundled board image to decode. */
     fun hasBundledImage(variant: MoonBoardVariant): Boolean = true
 
     fun get(variant: MoonBoardVariant?): MoonBoardRenderAsset? =
@@ -148,10 +145,15 @@ internal object MoonBoardAssetCache {
             Log.w(TAG, "bitmap decode returned null for $base")
             null
         } else {
+            val overlays = layout.overlays.map { filename ->
+                am.open("board_images/$filename").use { BitmapFactory.decodeStream(it) }
+                    ?.asImageBitmap()
+                    ?: error("bitmap decode returned null for $filename")
+            }
             val holdXy = layout.holds.associate { it.holdId to Offset(it.x, it.y) }
             // info-level: must survive release log stripping (Log.d does not).
             Log.i(TAG, "MOONBOARD_IMAGE_LOADED $base holds=${holdXy.size}")
-            MoonBoardRenderAsset(bitmap, layout.imageAspect, holdXy)
+            MoonBoardRenderAsset(bitmap, overlays, layout.imageAspect, holdXy)
         }
     } catch (e: Exception) {
         // Missing/corrupt asset is non-fatal: the renderer falls back to
@@ -194,7 +196,7 @@ internal fun rememberMoonBoardAsset(layoutId: Long): MoonBoardAssetState {
         current != null -> MoonBoardAssetState.Ready(current)
         // Still decoding: has an image, not yet failed.
         hasImage && !decodeFailed -> MoonBoardAssetState.Loading
-        // No bundled image, OR decode failed → procedural 11x18 grid.
+        // No bundled image, OR decode failed → correctly sized procedural grid.
         else -> MoonBoardAssetState.Unavailable
     }
 }

@@ -37,7 +37,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.cruxcoach.android.nostr.NostrMessageSending
 import com.cruxcoach.android.nostr.SendResult
 import com.cruxcoach.android.nostr.model.MessageType
@@ -90,6 +92,9 @@ class MainActivity : AppCompatActivity() {
     @Inject
     lateinit var updaterRepository: dagger.Lazy<com.cruxcoach.android.updater.UpdaterRepository>
 
+    @Inject
+    lateinit var fipsMeshRuntime: dagger.Lazy<com.cruxcoach.android.fips.FipsMeshRuntime>
+
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -98,6 +103,14 @@ class MainActivity : AppCompatActivity() {
         // Re-emit from cached state so the user sees it without waiting for
         // the 2 h throttle to expire.
         if (granted) updaterRepository.get().reNotifyPendingUpdateIfAny()
+    }
+
+    private val fipsPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) {
+        // Rebuild the L2CAP listener and scanner after a grant. A denial is
+        // deliberately not re-prompted until a new realm is entered.
+        fipsMeshRuntime.get().onPermissionsChanged()
     }
 
     // Amber approval dialogs (Intent-based NIP-55 path). Registered as a
@@ -145,13 +158,26 @@ class MainActivity : AppCompatActivity() {
         PerfLogger.trace("super.onCreate") { super.onCreate(savedInstanceState) }
         if (savedInstanceState == null) {
             pendingDeepLink.value = safeNavigateToRoute(intent)
+                ?: extractOfflineShareDeepLink(intent)
                 ?: extractBoardDbDeepLink(intent)
                 ?: extractClimbAppLink(intent)
+                ?: extractPlaylistAppLink(intent)
+            ?: extractCompetitionAppLink(intent)
+                ?: extractCompetitionAppLink(intent)
             handleUpdaterExtras(intent)
         }
         // userPreferences injected via Hilt
         PerfLogger.trace("enableEdgeToEdge") { enableEdgeToEdge() }
         requestNotificationPermissionIfNeeded()
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                fipsMeshRuntime.get().permissionRequests.collect { permissions ->
+                    if (permissions.isNotEmpty()) {
+                        fipsPermissionLauncher.launch(permissions.toTypedArray())
+                    }
+                }
+            }
+        }
         PerfLogger.startFrameMonitor()
 
         PerfLogger.milestone("MainActivity.setContent START")
@@ -316,8 +342,11 @@ class MainActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         pendingDeepLink.value = safeNavigateToRoute(intent)
+            ?: extractOfflineShareDeepLink(intent)
             ?: extractBoardDbDeepLink(intent)
             ?: extractClimbAppLink(intent)
+            ?: extractPlaylistAppLink(intent)
+            ?: extractCompetitionAppLink(intent)
         handleUpdaterExtras(intent)
     }
 
@@ -351,6 +380,7 @@ class MainActivity : AppCompatActivity() {
             raw == "announcements" -> raw
             raw == "dev_chat" -> raw
             raw == "settings" -> raw
+            raw == "app_share" -> raw
             raw.startsWith("message_thread/") &&
                 raw.removePrefix("message_thread/")
                     .matches(Regex("^[0-9a-fA-F]{1,128}$")) -> raw
@@ -382,6 +412,18 @@ class MainActivity : AppCompatActivity() {
             return null
         }
         return "board_sync?localDbUrl=${android.net.Uri.encode(url)}"
+    }
+
+    /** Validate and forward the one-scan local-share invitation. */
+    private fun extractOfflineShareDeepLink(intent: Intent?): String? {
+        val data = intent?.data ?: return null
+        val invitation = com.cruxcoach.android.util.LocalShareProtocol.parseInvitation(data)
+            ?: return null
+        if (!isAllowedLocalImportUrl(invitation.baseUrl)) {
+            android.util.Log.w("MainActivity", "Rejected offline-share invitation outside private IPv4")
+            return null
+        }
+        return "board_sync?offlineShare=${android.net.Uri.encode(data.toString())}"
     }
 
     /**
@@ -447,23 +489,52 @@ class MainActivity : AppCompatActivity() {
         return "board_climb_detail/$uuid/$angle"
     }
 
+    /**
+     * Extract a competition join link from `https://<APP_LINK_HOST>/comp/<naddr>`.
+     *
+     * The same URL the website serves and the same one a QR code carries, so
+     * scanning it with the phone's own camera lands here — no in-app scanner,
+     * no camera permission, and one link that works with or without the app.
+     *
+     * Parsing is strict (bech32 checksum, `kind == 30078`, a d-tag that is
+     * actually a competition) and a link that fails any of it falls through to
+     * the normal launcher path rather than opening a broken screen.
+     */
+    private fun extractCompetitionAppLink(intent: Intent?): String? {
+        val data = intent?.data ?: return null
+        if (data.scheme != "https" || data.host != BuildConfig.APP_LINK_HOST) return null
+        val segments = data.pathSegments
+        if (segments.size < 2 || segments[0] != "comp") return null
+        val ref = com.cruxcoach.android.competition.CompetitionShareLink.parse(segments[1])
+            ?: run {
+                android.util.Log.w("MainActivity", "App link does not address a competition")
+                return null
+            }
+        return com.cruxcoach.android.competition.CompetitionShareLink.route(ref)
+    }
+
+    /**
+     * Extract a playlist share-link from `https://<APP_LINK_HOST>/l/<payload>`.
+     * The payload is validated by [com.cruxcoach.android.util.PlaylistShareLink.parse]
+     * on the import screen; here we only shape-check (base64url charset) and
+     * route — malformed links fall through to the normal launcher path.
+     */
+    private fun extractPlaylistAppLink(intent: Intent?): String? {
+        val data = intent?.data ?: return null
+        if (data.scheme != "https" || data.host != BuildConfig.APP_LINK_HOST) return null
+        val segments = data.pathSegments
+        if (segments.size < 2 || segments[0] != "l") return null
+        val payload = segments[1]
+        if (payload.isBlank() || payload.length > 4096) return null
+        if (!payload.all { it.isLetterOrDigit() || it == '-' || it == '_' }) return null
+        return "playlist_import/${android.net.Uri.encode(payload)}"
+    }
+
     private fun isAllowedLocalImportUrl(rawUrl: String): Boolean {
         val uri = runCatching { android.net.Uri.parse(rawUrl) }.getOrNull() ?: return false
         val scheme = uri.scheme?.lowercase()
         if (scheme != "http" && scheme != "https") return false
-        val host = uri.host ?: return false
-        val parts = host.split(".")
-        if (parts.size != 4) return false
-        val octets = parts.map { it.toIntOrNull() ?: return false }
-        if (octets.any { it !in 0..255 }) return false
-        val (a, b, _, _) = octets
-        return when {
-            a == 10 -> true
-            a == 127 -> true
-            a == 192 && b == 168 -> true
-            a == 172 && b in 16..31 -> true
-            else -> false
-        }
+        return com.cruxcoach.android.util.LocalShareProtocol.isPrivateIpv4(uri.host)
     }
 
     private suspend fun sendCrashReport(crashText: String) {

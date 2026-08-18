@@ -1,0 +1,5 @@
+# Fresh startup and catalogue readiness, scoped to this flow's cleared Logcat.
+CruxCoachApp\.onCreate END
+startDestination=onboarding
+startDestination=board_browser
+FIRST CONTENT: [1-9][0-9]* climbs loaded

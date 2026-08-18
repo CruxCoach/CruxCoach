@@ -41,6 +41,7 @@ class UpdaterRepositoryDialogGateTest {
     private val installer: ApkInstaller = mockk(relaxed = true)
     private val notifier: UpdateNotifier = mockk(relaxed = true)
     private val installSourceGate: InstallSourceGate = mockk(relaxed = true)
+    private val registry: UpdateSourceRegistry = mockk(relaxed = true)
 
     @Before
     fun setUp() {
@@ -61,6 +62,7 @@ class UpdaterRepositoryDialogGateTest {
         installer = installer,
         notifier = notifier,
         installSourceGate = installSourceGate,
+        registry = registry,
         // Inject the test dispatcher so requestDownloadDialog's internal
         // `scope.launch { ... }` completes synchronously before the
         // following assertion reads `downloadDialogRequested.value`.

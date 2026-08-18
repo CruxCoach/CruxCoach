@@ -1,0 +1,84 @@
+appId: com.cruxcoach.android
+name: list-playback-smoke
+tags:
+  - release-gate
+  - extended
+  - mutates-state
+---
+- runFlow: subflows/open-first-climb.yaml
+- copyTextFrom:
+    id: "boarddetail_name"
+- evalScript: ${output.playbackTarget = maestro.copiedText}
+# Establish favorite-off first, so a failed previous run cannot invert setup.
+- runFlow:
+    when:
+      visible: "Von Favoriten entfernen"
+    commands:
+      - tapOn:
+          id: "boarddetail_favorite_button"
+- assertVisible: "Zu Favoriten hinzufügen"
+- tapOn:
+    id: "boarddetail_favorite_button"
+- assertVisible: "Von Favoriten entfernen"
+- pressKey: Back
+- tapOn:
+    id: "board_lists_button"
+- assertVisible: "Favoriten"
+- tapOn: "Favoriten"
+- extendedWaitUntil:
+    visible:
+      id: "board_list_entry_card"
+    timeout: 15000
+- tapOn:
+    id: "list_play_fab"
+- assertVisible: "Liste abspielen"
+- tapOn:
+    id: "list_playback_confirm"
+- runFlow:
+    when:
+      visible: "Zulassen"
+    commands:
+      - tapOn: "Zulassen"
+- extendedWaitUntil:
+    visible:
+      id: "player_climb_name"
+    timeout: 15000
+- assertVisible:
+    id: "player_board"
+- assertVisible:
+    id: "player_pause"
+- assertVisible:
+    id: "player_queue"
+- tapOn:
+    id: "player_pause"
+- assertVisible: "Fortsetzen"
+- tapOn:
+    id: "player_pause"
+- assertVisible: "Pausieren"
+- tapOn:
+    id: "player_stop"
+- assertVisible:
+    id: "player_stop_confirm"
+- tapOn:
+    id: "player_stop_confirm"
+- extendedWaitUntil:
+    visible: "Favoriten"
+    timeout: 15000
+- pressKey: Back
+- pressKey: Back
+- assertVisible:
+    id: "board_filter_toggle"
+# Restore favorite-off state.
+- tapOn:
+    id: "board_climb_card"
+    index: 0
+- extendedWaitUntil:
+    visible: ${output.playbackTarget}
+    timeout: 15000
+- assertVisible: "Von Favoriten entfernen"
+- tapOn:
+    id: "boarddetail_favorite_button"
+- assertVisible: "Zu Favoriten hinzufügen"
+- pressKey: Back
+- assertVisible:
+    id: "board_filter_toggle"

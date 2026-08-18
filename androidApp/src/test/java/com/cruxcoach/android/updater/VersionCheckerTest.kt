@@ -12,7 +12,7 @@ class VersionCheckerTest {
         tag: String,
         prerelease: Boolean = false,
         draft: Boolean = false,
-    ): CodebergRelease = CodebergRelease(
+    ): ForgeRelease = ForgeRelease(
         id = 1,
         tagName = tag,
         prerelease = prerelease,

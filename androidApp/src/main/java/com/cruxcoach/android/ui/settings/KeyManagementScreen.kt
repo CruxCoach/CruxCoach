@@ -73,6 +73,7 @@ fun KeyManagementScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val npubCopiedMessage = stringResource(R.string.key_toast_npub_copied)
 
     var showNsecWarning by remember { mutableStateOf(false) }
     var showBiometricUnavailable by remember { mutableStateOf(false) }
@@ -255,7 +256,7 @@ fun KeyManagementScreen(
                 isInactive = state.signerMode == SignerMode.AMBER,
                 onCopy = {
                     copyToClipboard(context, state.npubFull, "npub", sensitive = false)
-                    Toast.makeText(context, context.getString(R.string.key_toast_npub_copied), Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, npubCopiedMessage, Toast.LENGTH_SHORT).show()
                 }
             )
             Text(

@@ -1,4 +1,4 @@
-repository: https://codeberg.org/CruxCoach/CruxCoach
+repository: https://github.com/CruxCoach/CruxCoach
 name: CruxCoach
 description: |
     Browse climbs, control your board — Kilter, MoonBoard and more — via
@@ -17,7 +17,7 @@ tags:
     - nostr
     - training
 license: GPL-3.0-only
-website: https://codeberg.org/CruxCoach/CruxCoach
+website: https://github.com/CruxCoach/CruxCoach
 icon: logos/play_store_icon_512.png
 images:
     - docs/screenshots/board-browser.png

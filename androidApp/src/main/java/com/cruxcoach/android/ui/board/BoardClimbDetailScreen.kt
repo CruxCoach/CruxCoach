@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.board
 
+import android.util.Log
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -23,6 +24,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
@@ -49,6 +51,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.text.font.FontWeight
@@ -57,9 +60,11 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.cruxcoach.android.ble.BoardProjectionPolicy
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.LedHoldColors
+import com.cruxcoach.android.data.SessionRole
 import com.cruxcoach.android.ui.common.BleStatusArea
 import com.cruxcoach.android.ui.common.LocalSessionQueueManager
 import com.cruxcoach.android.ui.common.RestTimerBannerSlot
@@ -89,7 +94,7 @@ fun BoardClimbDetailScreen(
     viewModel: BoardClimbDetailViewModel = hiltViewModel()
 ) {
     PerfLogger.navMilestone("BoardClimbDetailScreen composing")
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val resources = LocalResources.current
     // collectAsState (NOT ...WithLifecycle): the detail's nav entry can stay
     // in a non-STARTED state behind the editor and not re-deliver on return,
     // leaving the climb stale after an edit even though the VM reloaded it.
@@ -127,7 +132,11 @@ fun BoardClimbDetailScreen(
     // user loses left/right swipe-paging for this screen instance,
     // but at least sees the climb they actually tapped.
     val navUuids = remember(rawNavUuids, viewModel.initialClimbUuid) {
-        if (viewModel.initialClimbUuid in rawNavUuids) rawNavUuids
+        // distinct(): the pager keys pages by uuid, and queue-sourced lists
+        // may repeat climbs (playlist attempt structure) — a duplicate key
+        // crashes the pager. Writers dedup too; this is the backstop.
+        val unique = rawNavUuids.distinct()
+        if (viewModel.initialClimbUuid in unique) unique
         else listOf(viewModel.initialClimbUuid)
     }
     val navAngle = if (navigatedFromQueue && detailQueueState.isActive && detailQueueState.queue.isNotEmpty()) {
@@ -151,8 +160,6 @@ fun BoardClimbDetailScreen(
     if (showBleSheet) {
         BleConnectionSheet(
             onDismiss = { showBleSheet = false },
-            autoStartScan = true,
-            sessionRole = detailQueueState.role
         )
     }
 
@@ -284,15 +291,15 @@ fun BoardClimbDetailScreen(
     }
 
     if (state.listDialog.show) {
-        AddToListDialog(
-            lists = state.listDialog.lists,
-            climbInListIds = state.listDialog.climbInListIds,
-            newListName = state.listDialog.newListName,
-            onToggleList = { viewModel.toggleClimbInList(it) },
-            onNewListNameChanged = { viewModel.updateNewListName(it) },
-            onCreateAndAdd = { viewModel.createNewListAndAdd() },
-            onDismiss = { viewModel.dismissAddToListDialog() }
-        )
+        // Self-contained host (same as the browser long-press): includes
+        // the "add to running playlist" shortcut and playlist-aware adds.
+        state.climb?.let { climb ->
+            AddToListDialogHost(
+                climbUuid = climb.uuid,
+                angle = state.angle,
+                onDismiss = { viewModel.dismissAddToListDialog() },
+            )
+        }
     }
 
     // Per-use custom rest-timer duration (settings value stays the
@@ -350,20 +357,20 @@ fun BoardClimbDetailScreen(
                 } else {
                     R.string.community_climb_delete_done_nostr_only
                 }
-                context.getString(template, feedback.accepted, feedback.attempted)
+                resources.getString(template, feedback.accepted, feedback.attempted)
             }
             is CommunityDeleteFeedback.LocalTombstoneFailed ->
-                context.getString(
+                resources.getString(
                     R.string.community_climb_delete_local_failed,
                     feedback.accepted, feedback.attempted,
                 )
-            CommunityDeleteFeedback.NotOwner -> context.getString(R.string.community_climb_delete_not_owner)
+            CommunityDeleteFeedback.NotOwner -> resources.getString(R.string.community_climb_delete_not_owner)
             // Defensive: NotOurClimb / NotFound shouldn't reach the user
             // because the menu item is gated on origin=cruxcoach + owner.
             // If they ever do, fall back to the generic failure message.
             CommunityDeleteFeedback.NotOurClimb,
             CommunityDeleteFeedback.NotFound,
-            CommunityDeleteFeedback.Failed -> context.getString(R.string.community_climb_delete_failed)
+            CommunityDeleteFeedback.Failed -> resources.getString(R.string.community_climb_delete_failed)
         }
         snackbarHostState.showSnackbar(msg)
         viewModel.consumeCommunityDeleteFeedback()
@@ -374,11 +381,11 @@ fun BoardClimbDetailScreen(
     LaunchedEffect(state.ownPublishFeedback) {
         val feedback = state.ownPublishFeedback ?: return@LaunchedEffect
         val msg = when (feedback) {
-            OwnPublishFeedback.Published -> context.getString(R.string.own_climb_publish_done)
-            OwnPublishFeedback.NoNostrIdentity -> context.getString(R.string.own_climb_publish_no_nostr)
-            OwnPublishFeedback.NotAuthor -> context.getString(R.string.own_climb_publish_not_author)
-            OwnPublishFeedback.AlreadyPublished -> context.getString(R.string.own_climb_publish_already)
-            OwnPublishFeedback.Failed -> context.getString(R.string.climb_creator_publish_failed)
+            OwnPublishFeedback.Published -> resources.getString(R.string.own_climb_publish_done)
+            OwnPublishFeedback.NoNostrIdentity -> resources.getString(R.string.own_climb_publish_no_nostr)
+            OwnPublishFeedback.NotAuthor -> resources.getString(R.string.own_climb_publish_not_author)
+            OwnPublishFeedback.AlreadyPublished -> resources.getString(R.string.own_climb_publish_already)
+            OwnPublishFeedback.Failed -> resources.getString(R.string.climb_creator_publish_failed)
         }
         snackbarHostState.showSnackbar(msg)
         viewModel.consumeOwnPublishFeedback()
@@ -456,14 +463,23 @@ fun BoardClimbDetailScreen(
                                 tint = if (bleConnected) SuccessGreen else MaterialTheme.colorScheme.onSurface
                             )
                         }
+                        // Logging needs the catalogue row: AscentLogger.save()
+                        // returns on a null climb. Left enabled, the dialog
+                        // opened, took the form and then ate "Save" without
+                        // closing — an app that looks frozen. Same gate as
+                        // Remix below; the body already says why the climb is
+                        // only half here.
+                        val canLogAscent = state.climb != null
                         IconButton(
                             onClick = { viewModel.showAscentDialog() },
+                            enabled = canLogAscent,
                             modifier = Modifier.testTag("boarddetail_log_button")
                         ) {
                             Icon(
                                 Icons.Default.Check,
                                 contentDescription = stringResource(R.string.cd_log_ascent),
-                                tint = OrangeAccent
+                                tint = if (canLogAscent) OrangeAccent
+                                       else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
                             )
                         }
                         // Owner gate for Edit/Delete inside the overflow.
@@ -806,12 +822,18 @@ fun BoardClimbDetailScreen(
                 val pageState = if (isActivePage) {
                     state
                 } else {
-                    pageCache[pageUuid] ?: ClimbDetailState(isLoading = true)
+                    // Same rollback as in switchClimb: a cached page carries a
+                    // frozen copy of the connection and send mode, which is
+                    // visible on the half-swiped neighbour.
+                    pageCache[pageUuid]?.withLiveDeviceState(state)
+                        ?: ClimbDetailState(isLoading = true)
                 }
 
                 ClimbDetailPageContent(
                     state = pageState,
                     isSharingEnabled = isSharingEnabled,
+                    sessionRole = detailQueueState.role,
+                    sessionConnecting = detailQueueState.isConnecting,
                     viewModel = viewModel,
                     onNavigateBack = onNavigateBack,
                     onNavigateToBugReport = onNavigateToBugReport,
@@ -822,6 +844,8 @@ fun BoardClimbDetailScreen(
             ClimbDetailPageContent(
                 state = state,
                 isSharingEnabled = isSharingEnabled,
+                sessionRole = detailQueueState.role,
+                sessionConnecting = detailQueueState.isConnecting,
                 viewModel = viewModel,
                 onNavigateBack = onNavigateBack,
                 onNavigateToBugReport = onNavigateToBugReport,
@@ -837,13 +861,16 @@ fun BoardClimbDetailScreen(
 private fun ClimbDetailPageContent(
     state: ClimbDetailState,
     isSharingEnabled: Boolean,
+    sessionRole: SessionRole,
+    sessionConnecting: Boolean,
     viewModel: BoardClimbDetailViewModel,
     onNavigateBack: () -> Unit,
     onNavigateToBugReport: (title: String, description: String) -> Unit = { _, _ -> },
     onNavigateToSetter: (pubkey: String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val climbBugReportTitle = stringResource(R.string.error_bug_report_climb_title)
+    val bleBugReportTitle = stringResource(R.string.error_bug_report_ble_title)
     when {
         state.isLoading -> {
             Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -864,7 +891,7 @@ private fun ClimbDetailPageContent(
                     onDismiss = { viewModel.clearError() },
                     onReportBug = {
                         onNavigateToBugReport(
-                            context.getString(R.string.error_bug_report_climb_title),
+                            climbBugReportTitle,
                             state.error ?: ""
                         )
                         viewModel.clearError()
@@ -1010,7 +1037,13 @@ private fun ClimbDetailPageContent(
                                         )
                                     }
                                 }
-                                MatchBadge(isNomatch = climb.isNomatch)
+                                // No badge when the match state isn't ours to
+                                // know (community + BoardSesh climbs) — see
+                                // ClimbWithStats.isMatchStateKnown.
+                                if (climb.isMatchStateKnown) {
+                                    MatchBadge(isNomatch = climb.isNomatch)
+                                }
+                                climb.method?.let { MethodBadge(it) }
                                 if (climb.benchmarkDifficulty > 0.0) {
                                     BenchmarkBadge()
                                 }
@@ -1116,6 +1149,82 @@ private fun ClimbDetailPageContent(
                             )
                         }
                     }
+                    val boardConnected = state.ble.connectionState == ConnectionState.CONNECTED ||
+                        state.ble.connectionState == ConnectionState.SENDING
+                    val deliveryDecision = BoardDeliveryPolicy.resolve(
+                        sendMode = state.boardSendMode,
+                        sessionRole = sessionRole,
+                        sessionConnecting = sessionConnecting,
+                        boardConnected = boardConnected,
+                        hasDirectPayload = BoardProjectionPolicy.hasSendablePayload(
+                            brand = climb.brand,
+                            holdCount = state.holds.size,
+                            frames = climb.frames,
+                        ),
+                        connectedViaRelay = state.ble.connectedViaRelay,
+                        connectedViaMesh = state.ble.connectedViaMesh,
+                    )
+                    // The action button vanishing after a swipe is only
+                    // diagnosable from the inputs — the decision itself says
+                    // nothing about WHY it came out NONE.
+                    LaunchedEffect(deliveryDecision, state.playback.countdownSeconds) {
+                        Log.d(
+                            "CruxBLE/Delivery",
+                            "target=${deliveryDecision.target} show=${deliveryDecision.showAction} " +
+                                "auto=${deliveryDecision.dispatchAutomatically} mode=${state.boardSendMode} " +
+                                "role=$sessionRole connecting=$sessionConnecting conn=${state.ble.connectionState} " +
+                                "holds=${state.holds.size} brand=${climb.brand} " +
+                                "relay=${state.ble.connectedViaRelay}/${state.ble.hostedRelayClientCount} " +
+                                "countdown=${state.playback.countdownSeconds}"
+                        )
+                    }
+                    if (deliveryDecision.showAction && state.playback.countdownSeconds == 0) {
+                        FilledTonalIconButton(
+                            onClick = viewModel::deliverClimb,
+                            enabled = deliveryDecision.target == BoardDeliveryTarget.SHARED_QUEUE ||
+                                deliveryDecision.target == BoardDeliveryTarget.MESH_BOARD ||
+                                !state.ble.isSending,
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(8.dp)
+                                .size(40.dp)
+                                .testTag(
+                                    if (deliveryDecision.target == BoardDeliveryTarget.SHARED_QUEUE) {
+                                        "boarddetail_add_to_shared_queue_button"
+                                    } else {
+                                        "boarddetail_light_climb_button"
+                                    },
+                                ),
+                        ) {
+                            if (deliveryDecision.target in setOf(BoardDeliveryTarget.DIRECT_BOARD,
+                                    BoardDeliveryTarget.MESH_BOARD) &&
+                                state.ble.isSending
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp,
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = if (
+                                        deliveryDecision.target == BoardDeliveryTarget.SHARED_QUEUE
+                                    ) {
+                                        Icons.AutoMirrored.Filled.PlaylistAdd
+                                    } else {
+                                        Icons.Default.Lightbulb
+                                    },
+                                    contentDescription = stringResource(
+                                        if (deliveryDecision.target == BoardDeliveryTarget.SHARED_QUEUE) {
+                                            R.string.cd_add_climb_to_shared_queue
+                                        } else {
+                                            R.string.cd_light_climb_on_board
+                                        },
+                                    ),
+                                    tint = OrangeAccent,
+                                )
+                            }
+                        }
+                    }
                 }
 
                 // Route playback controls
@@ -1162,7 +1271,7 @@ private fun ClimbDetailPageContent(
                                     color = ErrorRed,
                                     modifier = Modifier.clickable {
                                         onNavigateToBugReport(
-                                            context.getString(R.string.error_bug_report_ble_title),
+                                            bleBugReportTitle,
                                             bleErrorText
                                         )
                                     }
@@ -1344,6 +1453,32 @@ private fun StatItem(label: String, value: String) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/**
+ * MoonBoard problem method. NULL — the overwhelming majority — means "feet
+ * follow hands" and gets no badge: a marker on the normal case is noise.
+ */
+@Composable
+private fun MethodBadge(method: String) {
+    val label = when (method) {
+        "method_footless" -> R.string.board_detail_method_footless
+        "method_footless_kickboard" -> R.string.board_detail_method_footless_kickboard
+        "method_no_kickboard" -> R.string.board_detail_method_no_kickboard
+        else -> return  // unknown token from a newer catalogue: say nothing
+    }
+    Surface(
+        color = OrangeAccent.copy(alpha = 0.12f),
+        shape = RoundedCornerShape(6.dp)
+    ) {
+        Text(
+            stringResource(label),
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            color = OrangeAccent,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+        )
     }
 }
 

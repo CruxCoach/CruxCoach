@@ -1,0 +1,125 @@
+appId: com.cruxcoach.android
+name: draft-badge-consistency
+tags:
+  - release-gate
+  - extended
+  - mutates-state
+---
+# Remove the one fixed-name local draft a prior interrupted attempt could have
+# left. The name is intentionally stable so cleanup never matches real drafts.
+- runFlow: subflows/reset-browser-filters.yaml
+- tapOn:
+    id: "board_search_fab"
+- tapOn:
+    id: "board_search_field"
+- inputText: "E2E-DRAFT-022"
+- hideKeyboard
+- extendedWaitUntil:
+    visible:
+      id: "(board_climb_draft_badge|board_empty_clear_filters)"
+    timeout: 15000
+- runFlow:
+    when:
+      visible:
+        id: "board_climb_draft_badge"
+    commands:
+      - tapOn:
+          id: "board_climb_card"
+          index: 0
+      - extendedWaitUntil:
+          visible:
+            id: "boarddetail_draft_badge"
+          timeout: 15000
+      - tapOn:
+          id: "boarddetail_more_button"
+      - tapOn:
+          id: "boarddetail_delete_draft"
+      - tapOn:
+          id: "boarddetail_delete_draft_confirm"
+      - extendedWaitUntil:
+          visible:
+            id: "board_empty_clear_filters"
+          timeout: 15000
+- tapOn:
+    id: "board_search_field"
+- eraseText: 100
+- hideKeyboard
+- extendedWaitUntil:
+    visible:
+      id: "board_climb_card"
+    timeout: 15000
+# Forking a loaded catalogue climb gives this local-only test draft a valid,
+# controlled hold map without ever publishing a community event.
+- runFlow: subflows/open-first-climb.yaml
+- tapOn:
+    id: "boarddetail_more_button"
+- tapOn:
+    id: "boarddetail_fork_button"
+- extendedWaitUntil:
+    visible:
+      id: "climb_creator_name"
+    timeout: 15000
+- tapOn:
+    id: "climb_creator_name"
+- eraseText: 100
+- inputText: "E2E-DRAFT-022"
+- hideKeyboard
+- assertVisible:
+    id: "climb_creator_save_draft"
+- tapOn:
+    id: "climb_creator_save_draft"
+- assertVisible: "Entwurf gespeichert."
+- pressKey: Back
+- assertVisible:
+    id: "boarddetail_name"
+- pressKey: Back
+- assertVisible:
+    id: "board_filter_toggle"
+- tapOn:
+    id: "board_search_fab"
+- tapOn:
+    id: "board_search_field"
+- inputText: "E2E-DRAFT-022"
+- hideKeyboard
+- extendedWaitUntil:
+    visible: "E2E-DRAFT-022"
+    timeout: 15000
+- assertVisible:
+    id: "board_climb_draft_badge"
+- tapOn:
+    id: "board_climb_card"
+    index: 0
+- extendedWaitUntil:
+    visible:
+      id: "boarddetail_draft_badge"
+    timeout: 15000
+- assertVisible: "E2E-DRAFT-022"
+- assertVisible: "Entwurf"
+# Cleanup is local-only and navigates back after the confirmed delete.
+- tapOn:
+    id: "boarddetail_more_button"
+- tapOn:
+    id: "boarddetail_delete_draft"
+- assertVisible: "Entwurf löschen?"
+- tapOn:
+    id: "boarddetail_delete_draft_confirm"
+- extendedWaitUntil:
+    visible:
+      id: "board_empty_clear_filters"
+    timeout: 15000
+- assertNotVisible:
+    id: "board_climb_draft_badge"
+- assertVisible:
+    id: "board_filter_toggle"
+- tapOn:
+    id: "board_search_field"
+- eraseText: 100
+- hideKeyboard
+- extendedWaitUntil:
+    visible:
+      id: "board_climb_card"
+    timeout: 15000
+- tapOn:
+    id: "board_search_fab"
+- assertNotVisible:
+    id: "board_search_field"

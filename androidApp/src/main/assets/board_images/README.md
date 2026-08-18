@@ -3,7 +3,7 @@
 This folder bundles board-layout imagery for both Kilter and MoonBoard.
 Kilter images are described first; the **MoonBoard board images** section
 at the end covers `moonboard_*.webp` + `moonboard_*.json` and has a
-different (CruxCoach-original) origin.
+separately documented, mixed origin.
 
 ## Kilter Board Layout Images
 
@@ -100,7 +100,10 @@ When a new or renamed Kilter board size is released:
 | `moonboard_2016.webp` + `moonboard_2016.json` | MoonBoard 2016 |
 | `moonboard_2017.webp` + `moonboard_2017.json` | MoonBoard Masters 2017 |
 | `moonboard_2019.webp` + `moonboard_2019.json` | MoonBoard Masters 2019 |
-| `mini_moonboard_2020.json` (coordinate map only) | MoonBoard Mini 2020 |
+| `mini_moonboard_2020.webp` + `mini_moonboard_2020.json` | Mini MoonBoard 2020 |
+| `moonboard_2024.webp` + `moonboard_2024.json` | MoonBoard 2024 |
+| `moonboard_2010_base.png` + one hold layer + `moonboard_2010.json` | MoonBoard 2010 |
+| `mini_moonboard_2025_base.png` + four hold layers + `mini_moonboard_2025.json` | Mini MoonBoard 2025 |
 
 `moonboard_<variant>.webp` is the board image; `moonboard_<variant>.json`
 is a per-hold coordinate map. They are decoded together on-device by
@@ -108,9 +111,12 @@ is a per-hold coordinate map. They are decoded together on-device by
 `androidApp/src/main/java/com/cruxcoach/android/ui/board/MoonBoardAsset.kt`)
 and consumed by `MoonBoardVisualization`.
 
-MoonBoard Mini 2020 ships a coordinate map only (no bundled board photo),
-so it falls back to the procedural 11x18 grid; if decoding a bundled image
-fails for any variant, the renderer also falls back to that grid.
+MoonBoard 2010 and Mini MoonBoard 2025 retain the official app's layered
+representation: one board plate plus the transparent hold-set images that make
+up the complete configuration. CruxCoach always draws all listed layers; they
+are implementation assets, not user-selectable hold sets. If any required
+image fails to decode, the renderer falls back to the correctly sized
+procedural grid.
 
 ## Coordinate map (`moonboard_<variant>.json`)
 
@@ -135,24 +141,35 @@ the bottom) — the same id space `MoonBoardFrameEncoder` emits. All 198
 positions are present; `occupied: false` entries (no hold in that set)
 carry the plain grid node.
 
+## Grid and BLE-map provenance
+
+Moon's official LED installation guide starts the active chain at A1 and
+routes it up and down the columns in a zig-zag. It specifies 198 active
+positions for a standard board (200-light chain, two spares) and 132 for a
+Mini (134-light chain, two spares). `MoonBoardFrameEncoder` implements this
+same A1-first serpentine mapping with a per-variant height of 18 or 12 rows.
+
+Source: <https://moonclimbing.com/media/moonboard-pdf/NewMB_LED_Instructions_may2024.pdf>
+
+The mapping is documentation- and catalogue-validated. A physical integration
+run against both configurations remains a release/hardware check. Current
+CruxCoach BLE transport supports Nordic UART controllers; an original legacy
+RedBear controller must be upgraded to a supported controller before use.
+
 ## Origin — MoonBoard
 
-The MoonBoard board *image file* bundled here is **CruxCoach's own work** —
-created in-house, **not** extracted from the official MoonBoard app's asset
-bundle, and sharing none of its pixels. This deliberately avoids the
-third-party-asset exposure that the Kilter images carry (see *Origin*
-above) and resolves FEAT-027 §10's "hold image rendering" open question in
-favour of an original asset.
+The WebP images for the 2016, Masters 2017, Masters 2019, Mini 2020 and 2024
+configurations are CruxCoach-created renders. The PNG plate/layer bundles for
+MoonBoard 2010 and Mini MoonBoard 2025 are exceptions: they were extracted
+unchanged from the official MoonBoard Android app (`1.3.56`) because those
+complete configurations were not present in the existing asset pipeline.
 
-CruxCoach holds the rights to its own image *file*, but **not** to the
-underlying board design it portrays: the MoonBoard product, its hardware
-hold layouts, and the MoonBoard name are the property of **Moon Climbing
-Ltd**. The image is bundled solely as referential / descriptive material to
-identify the user's physical MoonBoard, in a non-commercial, open-source
-context — § 23(1) No. 3 MarkenG (referential use to indicate intended
-purpose) and the analogous nominative fair-use doctrine elsewhere, the same
-basis as the Kilter section above. CruxCoach is not affiliated with,
-endorsed by, or officially connected to Moon Climbing Ltd.
+CruxCoach holds the rights to its own image files, but not to the underlying
+board designs or the official 2010/2025 PNGs. The MoonBoard product, hardware
+layouts, official imagery and MoonBoard name are the property of **Moon
+Climbing Ltd**. The assets are bundled solely as referential material needed
+to identify and operate the corresponding board offline. CruxCoach is not
+affiliated with, endorsed by, or officially connected to Moon Climbing Ltd.
 
 ## Removal requests — MoonBoard
 
@@ -168,7 +185,7 @@ pipeline (board photo/render → perspective fit → bolt-hole lattice fit →
 per-hold centroid detection → `moonboard_<variant>.webp` + `.json`).
 When a new variant's image is produced:
 
-1. Drop `moonboard_<variant>.webp` + `moonboard_<variant>.json` here.
+1. Drop the base image, optional fixed overlay layers, and coordinate JSON here.
 2. Map the variant to its asset base name in `assetBaseName()` in
    `MoonBoardAsset.kt`.
 

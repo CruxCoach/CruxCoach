@@ -31,6 +31,7 @@ fun PostWorkoutScreen(
     viewModel: PostWorkoutViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val workoutBugReportTitle = stringResource(R.string.error_bug_report_workout_title)
 
     if (state.isSaved) {
         onComplete()
@@ -228,13 +229,12 @@ fun PostWorkoutScreen(
             }
 
             state.error?.let { error ->
-                val context = androidx.compose.ui.platform.LocalContext.current
                 com.cruxcoach.android.ui.common.ErrorCard(
                     error = error,
                     onDismiss = { viewModel.clearError() },
                     onReportBug = {
                         onNavigateToBugReport(
-                            context.getString(R.string.error_bug_report_workout_title),
+                            workoutBugReportTitle,
                             error
                         )
                         viewModel.clearError()

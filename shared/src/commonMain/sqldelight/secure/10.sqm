@@ -1,0 +1,24 @@
+-- Migration version 10 → 11 (secure/personal DB): playable lists.
+--
+-- 0.2.2 is the first release with playback, so migration 10 goes directly
+-- from the released 0.2.1 list schema to the final model. Existing unique
+-- list membership stays untouched; repetitions and pauses live in a separate
+-- optional training plan.
+
+ALTER TABLE climb_lists ADD COLUMN generator_params TEXT;
+ALTER TABLE climb_lists ADD COLUMN playback_order TEXT NOT NULL DEFAULT 'list';
+ALTER TABLE climb_lists ADD COLUMN playback_advance TEXT NOT NULL DEFAULT 'manual';
+ALTER TABLE climb_lists ADD COLUMN playback_rest_seconds INTEGER NOT NULL DEFAULT 0;
+
+CREATE TABLE list_playback_steps (
+    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    list_id INTEGER NOT NULL,
+    position INTEGER NOT NULL,
+    step_type TEXT NOT NULL DEFAULT 'climb',
+    climb_uuid TEXT,
+    rest_seconds INTEGER,
+    angle INTEGER
+);
+
+CREATE INDEX idx_list_playback_steps_list ON list_playback_steps(list_id, position);
+CREATE INDEX idx_list_playback_steps_climb ON list_playback_steps(climb_uuid);

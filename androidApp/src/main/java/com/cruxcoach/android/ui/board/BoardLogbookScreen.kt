@@ -18,6 +18,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -38,7 +39,7 @@ fun BoardLogbookScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val hasSelection = state.selectedUuids.isNotEmpty()
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val resources = LocalResources.current
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Own-Kilter-climb publish feedback (same outcome mapping as the
@@ -46,11 +47,11 @@ fun BoardLogbookScreen(
     LaunchedEffect(state.ownPublishFeedback) {
         val feedback = state.ownPublishFeedback ?: return@LaunchedEffect
         val msg = when (feedback) {
-            OwnPublishFeedback.Published -> context.getString(R.string.own_climb_publish_done)
-            OwnPublishFeedback.NoNostrIdentity -> context.getString(R.string.own_climb_publish_no_nostr)
-            OwnPublishFeedback.NotAuthor -> context.getString(R.string.own_climb_publish_not_author)
-            OwnPublishFeedback.AlreadyPublished -> context.getString(R.string.own_climb_publish_already)
-            OwnPublishFeedback.Failed -> context.getString(R.string.climb_creator_publish_failed)
+            OwnPublishFeedback.Published -> resources.getString(R.string.own_climb_publish_done)
+            OwnPublishFeedback.NoNostrIdentity -> resources.getString(R.string.own_climb_publish_no_nostr)
+            OwnPublishFeedback.NotAuthor -> resources.getString(R.string.own_climb_publish_not_author)
+            OwnPublishFeedback.AlreadyPublished -> resources.getString(R.string.own_climb_publish_already)
+            OwnPublishFeedback.Failed -> resources.getString(R.string.climb_creator_publish_failed)
         }
         snackbarHostState.showSnackbar(msg)
         viewModel.consumeOwnPublishFeedback()

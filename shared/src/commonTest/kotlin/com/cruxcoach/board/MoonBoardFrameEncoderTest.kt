@@ -1,6 +1,7 @@
 package com.cruxcoach.board
 
 import com.cruxcoach.domain.board.MoonBoardFrameEncoder
+import com.cruxcoach.domain.board.MoonBoardLedMode
 import com.cruxcoach.domain.board.MoonBoardVariant
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -9,14 +10,48 @@ import kotlin.test.assertFailsWith
 /**
  * Unit tests for [MoonBoardFrameEncoder] — the FEAT-027 MoonBoard BLE
  * wire-frame encoder. The serial-position arithmetic is verified against
- * known-good frames for the standard 11×18 boards, and against the natural
- * per-column-height extrapolation for Mini 2020 (variant gridRows = 12;
- * dynamic-capture against real Mini hardware still pending).
+ * known-good frames for the standard 11×18 boards and the documented
+ * A1-first zig-zag installation order for 11×12 Mini boards.
  */
 class MoonBoardFrameEncoderTest {
 
     private val standard = MoonBoardVariant.MOONBOARD_2016   // 11×18
     private val mini = MoonBoardVariant.MINI_2020             // 11×12
+
+    @Test
+    fun unknownStoredLedModeFallsBackBelow() {
+        assertEquals(MoonBoardLedMode.BELOW, MoonBoardLedMode.fromWire("future-mode"))
+        assertEquals(MoonBoardLedMode.BELOW, MoonBoardLedMode.fromWire(null))
+    }
+
+    @Test
+    fun `MoonBoard 2010 uses the standard 198-position wiring map`() {
+        (1..198).forEach { holdId ->
+            assertEquals(
+                MoonBoardFrameEncoder.serialPosition(holdId, standard),
+                MoonBoardFrameEncoder.serialPosition(holdId, MoonBoardVariant.MOONBOARD_2010),
+                "holdId=$holdId",
+            )
+        }
+    }
+
+    @Test
+    fun `Mini MoonBoard 2025 uses the documented 132-position Mini map`() {
+        (1..132).forEach { holdId ->
+            assertEquals(
+                MoonBoardFrameEncoder.serialPosition(holdId, mini),
+                MoonBoardFrameEncoder.serialPosition(holdId, MoonBoardVariant.MINI_2025),
+                "holdId=$holdId",
+            )
+        }
+        assertEquals(0, MoonBoardFrameEncoder.serialPosition(1, MoonBoardVariant.MINI_2025))
+        assertEquals(11, MoonBoardFrameEncoder.serialPosition(122, MoonBoardVariant.MINI_2025))
+        assertEquals(23, MoonBoardFrameEncoder.serialPosition(2, MoonBoardVariant.MINI_2025))
+        assertEquals(131, MoonBoardFrameEncoder.serialPosition(132, MoonBoardVariant.MINI_2025))
+        assertFailsWith<IllegalArgumentException> {
+            MoonBoardFrameEncoder.serialPosition(133, MoonBoardVariant.MINI_2025)
+        }
+    }
 
     // ── Serial-position arithmetic (standard 11×18 boards) ───────
 
@@ -106,6 +141,54 @@ class MoonBoardFrameEncoderTest {
     }
 
     @Test
+    fun aboveModeUsesAdjacentLedAndKeepsFinishBelow() {
+        assertEquals(
+            "l#S0,P2,E197#",
+            MoonBoardFrameEncoder.encodeToString(
+                "p1r42p12r43p198r44",
+                standard,
+                ledMode = MoonBoardLedMode.ABOVE,
+            ),
+        )
+    }
+
+    @Test
+    fun bothModeEmitsBelowAndAboveForRegularHoldsOnly() {
+        assertEquals(
+            "l#S0,P1,P2,E197#",
+            MoonBoardFrameEncoder.encodeToString(
+                "p1r42p12r43p198r44",
+                standard,
+                ledMode = MoonBoardLedMode.BOTH,
+            ),
+        )
+    }
+
+    @Test
+    fun aboveModeFollowsReverseStripDirectionOnOddColumns() {
+        assertEquals(
+            "l#P33#",
+            MoonBoardFrameEncoder.encodeToString(
+                "p13r43",
+                standard,
+                ledMode = MoonBoardLedMode.ABOVE,
+            ),
+        )
+    }
+
+    @Test
+    fun finishRoleFallsBackBelowEvenWhenAnUpperPositionExists() {
+        assertEquals(
+            "l#E1#",
+            MoonBoardFrameEncoder.encodeToString(
+                "p12r44",
+                standard,
+                ledMode = MoonBoardLedMode.ABOVE,
+            ),
+        )
+    }
+
+    @Test
     fun emptyFramesEncodeToBareWrapper() {
         assertEquals(
             "l##",
@@ -144,6 +227,18 @@ class MoonBoardFrameEncoderTest {
         assertEquals(
             "l#S1,P22,E131#",
             MoonBoardFrameEncoder.encodeToString(frames, mini),
+        )
+    }
+
+    @Test
+    fun miniAboveModeUsesItsTwelveRowColumnDirection() {
+        assertEquals(
+            "l#S2,P21,E131#",
+            MoonBoardFrameEncoder.encodeToString(
+                "p12r42p13r43p132r44",
+                mini,
+                ledMode = MoonBoardLedMode.ABOVE,
+            ),
         )
     }
 

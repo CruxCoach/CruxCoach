@@ -55,6 +55,10 @@ fun MapScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val loadingLocationsMessage = stringResource(R.string.map_loading_locations)
+    val noLocationDataMessage = stringResource(R.string.map_no_data)
+    val initErrorMessage = stringResource(R.string.map_init_error_generic)
+    val tileProviderUnavailableMessage = stringResource(R.string.map_tile_provider_unreachable)
     val isDark = isSystemInDarkTheme()
     val styleUrl = remember(isDark) { MapStyleProvider.forDarkMode(isDark) }
     val initialCamera = remember {
@@ -79,11 +83,11 @@ fun MapScreen(
     LaunchedEffect(state.locationsLoading, state.noLocationData) {
         when {
             state.locationsLoading -> snackbarHostState.showSnackbar(
-                message = context.getString(R.string.map_loading_locations),
+                message = loadingLocationsMessage,
                 duration = SnackbarDuration.Indefinite,
             )
             state.noLocationData -> snackbarHostState.showSnackbar(
-                message = context.getString(R.string.map_no_data),
+                message = noLocationDataMessage,
                 duration = SnackbarDuration.Long,
             )
         }
@@ -95,7 +99,7 @@ fun MapScreen(
         // Generic localized message — errorMessage is an internal flag, not
         // user-facing text (avoids leaking raw exception text into the UI).
         snackbarHostState.showSnackbar(
-            message = context.getString(R.string.map_init_error_generic),
+            message = initErrorMessage,
             duration = SnackbarDuration.Long,
         )
         viewModel.clearError()
@@ -108,7 +112,7 @@ fun MapScreen(
         val ok = MapStyleProvider.isReachable(styleUrl)
         if (!ok) {
             snackbarHostState.showSnackbar(
-                message = context.getString(R.string.map_tile_provider_unreachable),
+                message = tileProviderUnavailableMessage,
                 duration = SnackbarDuration.Long,
             )
         }

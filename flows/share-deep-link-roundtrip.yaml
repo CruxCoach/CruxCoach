@@ -1,0 +1,87 @@
+appId: com.cruxcoach.android
+name: share-deep-link-roundtrip
+tags:
+  - release-gate
+  - extended
+---
+# Capture the entity name independently, then capture the share URL through the
+# same clipboard path a user receives. No catalogue UUID/name is hard-coded.
+- runFlow: subflows/open-first-climb.yaml
+- copyTextFrom:
+    id: "boarddetail_name"
+- evalScript: ${output.firstName = maestro.copiedText}
+- tapOn:
+    id: "boarddetail_more_button"
+- tapOn:
+    id: "boarddetail_share_link"
+- assertVisible: "Link in die Zwischenablage kopiert"
+- pressKey: Back
+- tapOn:
+    id: "board_search_fab"
+- tapOn:
+    id: "board_search_field"
+- pasteText
+- assertVisible:
+    text: "https://cruxcoach\\.org/c/[0-9a-fA-F-]{8,64}"
+- copyTextFrom:
+    id: "board_search_field"
+- evalScript: ${output.firstLink = maestro.copiedText}
+- eraseText: 200
+- hideKeyboard
+- extendedWaitUntil:
+    visible:
+      id: "board_climb_card"
+    timeout: 15000
+- tapOn:
+    id: "board_search_fab"
+- assertNotVisible:
+    id: "board_search_field"
+# Open a different detail, then deliver the first link while it is warm.
+- scrollUntilVisible:
+    element:
+      id: "board_climb_card"
+      index: 1
+    direction: DOWN
+- tapOn:
+    id: "board_climb_card"
+    index: 1
+- extendedWaitUntil:
+    visible:
+      id: "boarddetail_name"
+    timeout: 15000
+- copyTextFrom:
+    id: "boarddetail_name"
+- evalScript: ${output.secondName = maestro.copiedText}
+- evalScript: ${if (output.secondName == output.firstName) throw new Error('Warm deep-link precondition did not open a different climb')}
+- openLink: ${output.firstLink}
+- extendedWaitUntil:
+    visible: ${output.firstName}
+    timeout: 15000
+- assertNotVisible: ${output.secondName}
+- assertVisible:
+    id: "boarddetail_visualization"
+- pressKey: Back
+- assertVisible:
+    id: "board_filter_toggle"
+# Cold delivery resolves the same URL/entity after process death.
+- stopApp
+- openLink: ${output.firstLink}
+- extendedWaitUntil:
+    visible: ${output.firstName}
+    timeout: 15000
+- assertVisible:
+    id: "boarddetail_visualization"
+- pressKey: Back
+- assertVisible:
+    id: "board_filter_toggle"
+# A syntactically valid but unknown raw UUID lands on the graceful fallback.
+- openLink: "https://cruxcoach.org/c/00000000-0000-0000-0000-000000000000"
+- extendedWaitUntil:
+    visible: "Noch nicht in der CruxCoach-Datenbank"
+    timeout: 15000
+- assertVisible: "00000000-0000-0000-0000-000000000000"
+- assertNotVisible:
+    id: "boarddetail_visualization"
+- pressKey: Back
+- assertVisible:
+    id: "board_filter_toggle"

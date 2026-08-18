@@ -5,7 +5,9 @@ import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.SupportedBoard
 
 class BoardRepositoryImpl(
-    private val database: BoardDatabase
+    private val database: BoardDatabase,
+    /** Only needed for [ensureRelayLookupIndex]; absent in tests. */
+    private val driver: app.cash.sqldelight.db.SqlDriver? = null,
 ) : BoardRepository {
 
     private val q = database.boardQueries
@@ -29,12 +31,13 @@ class BoardRepositoryImpl(
         nostrEventId: String? = null,
         boardBrand: String = "kilter",
         createdAt: String? = null,
+        method: String? = null,
     ) = ClimbWithStats(
         uuid = uuid, layoutId = layoutId, setterUsername = setterUsername,
         name = name, frames = frames, framesCount = framesCount,
         difficultyAverage = difficultyAverage, qualityAverage = qualityAverage,
         ascensionistCount = ascensionistCount, description = description,
-        isNomatch = isNomatch != 0L, framesPace = framesPace, hsm = hsm,
+        isNomatch = isNomatch != 0L, method = method, framesPace = framesPace, hsm = hsm,
         benchmarkDifficulty = benchmarkDifficulty,
         faUsername = faUsername, faAt = faAt,
         storedMoveCount = moveCount,
@@ -62,8 +65,10 @@ class BoardRepositoryImpl(
         createdByPubkey = it.created_by_pubkey,
         source = it.source,
         syncStatus = it.sync_status,
+        nostrEventId = it.nostr_event_id,
         boardBrand = it.board_brand,
         createdAt = it.created_at,
+        method = it.method,
     )
 
     override fun searchClimbsByName(query: String, angle: Int, layoutId: Int, boardBrand: String, sortField: ClimbSortField, sortDirection: SortDirection, limit: Int, offset: Int, climbType: ClimbTypeFilter, selProductSizeId: Int, hsmExcludedMask: Long): List<ClimbWithStats> {
@@ -105,6 +110,7 @@ class BoardRepositoryImpl(
                 syncStatus = it.sync_status,
                 nostrEventId = it.nostr_event_id,
                 boardBrand = it.board_brand,
+                method = it.method,
             )
         }
     }
@@ -125,6 +131,7 @@ class BoardRepositoryImpl(
                 syncStatus = it.sync_status,
                 nostrEventId = it.nostr_event_id,
                 boardBrand = it.board_brand,
+                method = it.method,
             )
         }
     }
@@ -193,6 +200,10 @@ class BoardRepositoryImpl(
 
     override fun hasClimbsForBrand(boardBrand: String): Boolean {
         return q.hasClimbsForBrand(boardBrand).executeAsOne()
+    }
+
+    override fun hasMoonBoardHoldSetMask(): Boolean {
+        return q.hasMoonBoardHoldSetMask().executeAsOne()
     }
 
     override fun getStatCount(): Long {
@@ -497,6 +508,34 @@ class BoardRepositoryImpl(
         }
     }
 
+    override fun findClimbCandidatesByFrames(
+        boardBrand: String,
+        layoutId: Int,
+        minLength: Int,
+        maxLength: Int,
+        anchor1: String?,
+        anchor2: String?,
+    ): List<RelayClimbCandidate> = q.selectClimbCandidatesByFrameLength(
+        boardBrand = boardBrand,
+        layoutId = layoutId.toLong(),
+        minLength = minLength.toLong(),
+        maxLength = maxLength.toLong(),
+        anchor1 = anchor1,
+        anchor2 = anchor2,
+    ).executeAsList().map {
+        RelayClimbCandidate(uuid = it.uuid, frames = it.frames, popularity = it.popularity)
+    }
+
+    override fun ensureRelayLookupIndex(): Boolean {
+        val d = driver ?: return false
+        return try {
+            d.execute(null, RELAY_LOOKUP_INDEX_SQL, 0).value
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     override fun getRoleColorMapForBrand(boardBrand: String): Map<Int, Int> =
         q.getPlacementRolesForBrand(boardBrand).executeAsList().mapNotNull { row ->
             val byte = com.cruxcoach.domain.board.BoardPacketEncoder.hexToColorByte(row.led_color)
@@ -691,8 +730,11 @@ class BoardRepositoryImpl(
 
     override fun deleteAllBoardData() {
         q.transaction {
-            q.deleteAllClimbStats()
-            q.deleteAllClimbs()
+            // Catalogue rows only (source='kilter'): locally-authored /
+            // community climbs are not re-downloadable, so they — and
+            // their stats — survive even the all-boards wipe.
+            q.deleteKilterSourceClimbStats()
+            q.deleteKilterSourceClimbs()
             q.deleteAllHoldPositions()
             q.deleteAllLeds()
             q.deleteAllPlacements()
@@ -702,6 +744,41 @@ class BoardRepositoryImpl(
             q.deleteAllSyncState()
             q.deleteAllBetaLinks()
         }
+    }
+
+    override fun deleteBoardDataForBrands(brands: Set<String>) {
+        q.transaction {
+            for (brand in brands) {
+                // Stats + beta links resolve through the climbs about to
+                // go — both must run before the climbs delete empties
+                // their subselect.
+                q.deleteCatalogueClimbStatsForBrand(brand)
+                q.deleteCatalogueBetaLinksForBrand(brand)
+                q.deleteCatalogueClimbsForBrand(brand)
+                q.deleteHoldPositionsForBrand(brand)
+                q.deleteLedsForBrand(brand)
+                q.deletePlacementsForBrand(brand)
+                q.deleteBoardImagesForBrand(brand)
+                q.deleteProductSizesForBrand(brand)
+                q.deleteHolesForBrand(brand)
+            }
+            if (BoardBrand.KILTER.wireValue in brands) {
+                q.deleteKilterOwnedSyncStates()
+            }
+        }
+    }
+
+    override fun getClimbBrandsForUuids(uuids: Collection<String>): Map<String, String> {
+        if (uuids.isEmpty()) return emptyMap()
+        val brands = HashMap<String, String>(uuids.size)
+        // Each element binds one SQLite host parameter; stay well below
+        // the portable 999-variable limit.
+        uuids.chunked(500).forEach { chunk ->
+            q.getClimbBrandsForUuids(chunk).executeAsList().forEach {
+                brands[it.uuid] = it.board_brand
+            }
+        }
+        return brands
     }
 
     // ── Community-climb support (FEAT-003) ──────────────────────
@@ -724,6 +801,24 @@ class BoardRepositoryImpl(
             d_tag = dTag,
             pubkey = pubkey,
         )
+    }
+
+    override fun removeForeignTombstoneShell(uuid: String, incomingPubkey: String): Boolean {
+        var removed = false
+        q.transaction {
+            val isForeignShell = q.isForeignTombstoneShell(
+                uuid = uuid,
+                incoming_pubkey = incomingPubkey,
+            ).executeAsOneOrNull() != null
+            if (isForeignShell) {
+                q.deleteForeignTombstoneShell(
+                    uuid = uuid,
+                    incoming_pubkey = incomingPubkey,
+                )
+                removed = true
+            }
+        }
+        return removed
     }
 
     override fun getCommunityClimbDeleteContext(uuid: String): CommunityClimbDeleteContext? {
@@ -931,6 +1026,12 @@ class BoardRepositoryImpl(
     private companion object {
         private val EMPTY_INT_ARRAY = IntArray(0)
         private val EMPTY_PAIR: Pair<IntArray, IntArray> = EMPTY_INT_ARRAY to EMPTY_INT_ARRAY
+
+        /** FEAT-044: without this, the relay climb lookup scans every climb
+         *  (~5 s at 660k rows); with it, the length predicate is an index seek. */
+        const val RELAY_LOOKUP_INDEX_SQL =
+            "CREATE INDEX IF NOT EXISTS idx_climbs_relay_lookup " +
+                "ON climbs(board_brand, layout_id, length(frames))"
     }
 
     /** `board_brand` wire value inferred from a layout — the FALLBACK used only
@@ -942,6 +1043,30 @@ class BoardRepositoryImpl(
     private fun brandForLayout(layoutId: Long): String =
         com.cruxcoach.domain.board.BoardBrand.fromLayoutId(layoutId).wireValue
 
+    /**
+     * The `climbs.hsm` hold-set mask for a single MoonBoard climb, derived
+     * from its own holds (FEAT-049 §6.6). Returns 0 for every other brand and
+     * whenever the sets cannot be resolved.
+     *
+     * This is a PER-ROW computation on climbs we write ourselves — a locally
+     * authored draft, a climb received from a peer — not a catalogue pass. The
+     * catalogue's masks come from the build pipeline and are overwritten by
+     * `mergeSnapshotClimbs()` on every sync, so recomputing them here would be
+     * both wasted work and short-lived. These rows are the ones the pipeline
+     * never sees, which is exactly why they would otherwise stay at 0 forever
+     * and never fit the user's board selection.
+     *
+     * 0 stays the safe answer: it means UNKNOWN and passes every mask.
+     */
+    private fun moonBoardHsm(layoutId: Long, boardBrand: String, frames: String): Long {
+        val variant = com.cruxcoach.domain.board.MoonBoardVariant.fromBoardSelection(
+            layoutId, com.cruxcoach.domain.board.BoardBrand.fromWire(boardBrand),
+        ) ?: return 0L
+        val holdIds = com.cruxcoach.domain.board.MoonBoardFrameEncoder
+            .parseHolds(frames).map { it.first }
+        return com.cruxcoach.domain.board.MoonBoardHoldSets.maskForHoldIds(variant, holdIds)
+    }
+
     override fun insertLocalDraft(
         draft: LocalClimbDraft,
         layoutId: Long,
@@ -950,6 +1075,7 @@ class BoardRepositoryImpl(
         bounds: com.cruxcoach.domain.community.ClimbBounds?,
         boardBrand: String?,
     ) {
+        val brand = boardBrand ?: brandForLayout(layoutId)
         q.transaction {
             q.insertLocalDraft(
                 uuid = draft.uuid,
@@ -957,6 +1083,7 @@ class BoardRepositoryImpl(
                 setter_username = draft.setterUsername,
                 name = draft.name,
                 frames = draft.framesText,
+                hsm = moonBoardHsm(layoutId, brand, draft.framesText),
                 edge_left = bounds?.left?.toLong(),
                 edge_right = bounds?.right?.toLong(),
                 edge_bottom = bounds?.bottom?.toLong(),
@@ -970,7 +1097,7 @@ class BoardRepositoryImpl(
                 // layout-derived guess only for Kilter/MoonBoard callers that
                 // pass null. Aurora-family drafts would otherwise be mis-tagged
                 // "kilter" and hidden from the active board's drafts drawer.
-                board_brand = boardBrand ?: brandForLayout(layoutId),
+                board_brand = brand,
             )
             // Stub climb_stats so the climb appears in the browse VIEW.
             // Setter difficulty is the only known signal; community
@@ -1011,6 +1138,7 @@ class BoardRepositoryImpl(
                 setter_username = setterUsername,
                 name = name,
                 frames = framesText,
+                hsm = moonBoardHsm(layoutId, boardBrand, framesText),
                 edge_left = bounds?.left?.toLong(),
                 edge_right = bounds?.right?.toLong(),
                 edge_bottom = bounds?.bottom?.toLong(),

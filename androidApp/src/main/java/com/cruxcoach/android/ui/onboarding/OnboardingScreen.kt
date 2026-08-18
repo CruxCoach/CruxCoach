@@ -309,6 +309,7 @@ private fun BoardSetupStep(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .testTag("onboarding_board_setup")
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp),

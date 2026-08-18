@@ -1,0 +1,16 @@
+appId: com.cruxcoach.android
+name: portrait-lock
+tags:
+  - release-gate
+---
+- runFlow: subflows/launch-browser.yaml
+- setOrientation: LANDSCAPE_LEFT
+- waitForAnimationToEnd:
+    timeout: 3000
+- assertVisible:
+    id: "board_filter_toggle"
+- assertVisible:
+    id: "board_climb_card"
+# Deliberately end while landscape is still requested. The runner audits the
+# final screencap dimensions as portrait, then restores the pre-run OS rotation
+# ledger in its mandatory cleanup phase.

@@ -1,0 +1,123 @@
+appId: com.cruxcoach.android
+name: lists-missing-catalogue
+tags:
+  - release-gate
+  - extended
+  - mutates-state
+---
+# Build one custom list around a real dynamic catalogue entity, then import one
+# deliberately nonexistent UUID into that same list. The list detail must keep
+# the saved total at two while explicitly reporting that one entry cannot be
+# shown. Teardown deletes only this clearly named custom list.
+- runFlow: subflows/launch-browser.yaml
+- tapOn:
+    id: "board_lists_button"
+- runFlow:
+    when:
+      visible: "E2E-MISSING-CATALOG-022"
+    commands:
+      - tapOn:
+          id: "board_list_delete_E2E-MISSING-CATALOG-022"
+      - assertVisible:
+          id: "board_list_delete_dialog"
+      - tapOn:
+          id: "board_list_delete_confirm"
+      - extendedWaitUntil:
+          notVisible: "E2E-MISSING-CATALOG-022"
+          timeout: 10000
+- pressKey: Back
+- runFlow: subflows/open-first-climb.yaml
+- copyTextFrom:
+    id: "boarddetail_name"
+- evalScript: ${output.availableName = maestro.copiedText}
+- tapOn:
+    id: "boarddetail_add_to_list_button"
+- assertVisible:
+    id: "add_to_list_dialog"
+- tapOn:
+    id: "add_to_list_new_name"
+- inputText: "E2E-MISSING-CATALOG-022"
+- tapOn:
+    id: "add_to_list_done"
+- pressKey: Back
+- tapOn:
+    id: "board_lists_button"
+- extendedWaitUntil:
+    visible: "E2E-MISSING-CATALOG-022"
+    timeout: 15000
+- assertVisible:
+    text: "1 Climbs"
+- tapOn: "E2E-MISSING-CATALOG-022"
+- extendedWaitUntil:
+    visible: ${output.availableName}
+    timeout: 15000
+- assertNotVisible:
+    id: "list_unavailable_count"
+- pressKey: Back
+- pressKey: Back
+
+# Import adds only the unresolved membership to the already-created list.
+- runFlow: subflows/open-data-import.yaml
+- runFlow: subflows/pick-missing-catalog-backup.yaml
+- tapOn:
+    id: "import_confirm"
+- extendedWaitUntil:
+    visible:
+      id: "import_pick_file"
+    timeout: 30000
+- assertVisible:
+    text: ".*(Imported|Importiert):.*1 (lists|Listen).*"
+- tapOn:
+    id: "data_import_back"
+- pressKey: Back
+- assertVisible:
+    id: "board_filter_toggle"
+
+# The visible entity remains and the unresolved one is counted explicitly.
+- tapOn:
+    id: "board_lists_button"
+- extendedWaitUntil:
+    visible: "E2E-MISSING-CATALOG-022"
+    timeout: 15000
+- assertVisible:
+    text: "2 Climbs"
+- tapOn: "E2E-MISSING-CATALOG-022"
+- extendedWaitUntil:
+    visible: ${output.availableName}
+    timeout: 15000
+- assertVisible:
+    id: "list_total_count"
+    text: "2 Climbs"
+- assertVisible:
+    id: "list_unavailable_count"
+    text: "1 nicht angezeigt.*Board nicht geladen"
+- pressKey: Back
+- pressKey: Back
+- runFlow: subflows/launch-browser.yaml
+- tapOn:
+    id: "board_lists_button"
+- tapOn: "E2E-MISSING-CATALOG-022"
+- extendedWaitUntil:
+    visible: ${output.availableName}
+    timeout: 15000
+- assertVisible:
+    id: "list_total_count"
+    text: "2 Climbs"
+- assertVisible:
+    id: "list_unavailable_count"
+    text: "1 nicht angezeigt.*Board nicht geladen"
+
+# Exact UI cleanup.
+- pressKey: Back
+- tapOn:
+    id: "board_list_delete_E2E-MISSING-CATALOG-022"
+- assertVisible:
+    id: "board_list_delete_dialog"
+- tapOn:
+    id: "board_list_delete_confirm"
+- extendedWaitUntil:
+    notVisible: "E2E-MISSING-CATALOG-022"
+    timeout: 10000
+- pressKey: Back
+- assertVisible:
+    id: "board_filter_toggle"
