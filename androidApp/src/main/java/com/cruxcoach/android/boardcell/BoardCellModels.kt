@@ -682,12 +682,19 @@ internal object BoardCellReconnectPolicy {
  * frozen state, foreign realm, or in-flight handover has no such authority.
  */
 internal object BoardCellDurableResumePolicy {
+    enum class Context {
+        PHYSICAL_BOARD_RECONNECT,
+        LIVE_NEARBY_JOIN,
+    }
+
     fun controllerSeed(
         snapshot: BoardCellSnapshot?,
         cellId: BoardCellId,
         localNodeId: String,
+        context: Context = Context.PHYSICAL_BOARD_RECONNECT,
     ): BoardCellSnapshot? = snapshot?.takeIf {
-        it.cellId == cellId && it.hasValidHash() &&
+        context == Context.PHYSICAL_BOARD_RECONNECT &&
+            it.cellId == cellId && it.hasValidHash() &&
             it.availability == BoardCellAvailability.ACTIVE &&
             it.controllerId == localNodeId && localNodeId in it.members &&
             it.handover?.phase !in setOf(

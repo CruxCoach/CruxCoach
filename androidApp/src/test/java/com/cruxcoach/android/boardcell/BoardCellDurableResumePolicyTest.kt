@@ -21,6 +21,12 @@ class BoardCellDurableResumePolicyTest {
 
     @Test fun `only exact active durable controller may seed a deadlocked rejoin`() {
         assertEquals(base, BoardCellDurableResumePolicy.controllerSeed(base, cell, "controller"))
+        assertNull(BoardCellDurableResumePolicy.controllerSeed(
+            base,
+            cell,
+            "controller",
+            BoardCellDurableResumePolicy.Context.LIVE_NEARBY_JOIN,
+        ))
         assertNull(BoardCellDurableResumePolicy.controllerSeed(base, cell, "member"))
         assertNull(BoardCellDurableResumePolicy.controllerSeed(base, BoardCellId("other"), "controller"))
         assertNull(BoardCellDurableResumePolicy.controllerSeed(

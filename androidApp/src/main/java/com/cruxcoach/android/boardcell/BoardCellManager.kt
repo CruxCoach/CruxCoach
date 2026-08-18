@@ -1029,9 +1029,15 @@ class BoardCellManager @Inject constructor(
         coordinator = BoardCellCoordinator(activeNodeId, meshTransport, durableStore,
             settleMs = 2_000, heartbeatTimeoutMs = CONTROLLER_LEASE_TIMEOUT_MS)
         meshTransport.attach(coordinator)
+        // A durable snapshot in which this device used to be controller is
+        // historical recovery material here, not authority to compete with
+        // the live controller whose advertisement the user selected.
         restoreDurableControllerSeed(
             BoardCellDurableResumePolicy.controllerSeed(
-                durableStore.snapshotForCell(cell), cell, activeNodeId,
+                durableStore.snapshotForCell(cell),
+                cell,
+                activeNodeId,
+                BoardCellDurableResumePolicy.Context.LIVE_NEARBY_JOIN,
             ),
             reason = "nearby_mesh_join",
         )
@@ -1472,8 +1478,21 @@ class BoardCellManager @Inject constructor(
                         } else if (snapshot.controllerId == activeNodeId) {
                             FipsDebugLog.event("boardcell", "nearby_member_auto_admitted",
                                 "peer" to FipsDebugLog.id(peer), "cell" to FipsDebugLog.id(snapshot.cellId.value))
-                            coordinator.joinMember(board, peer, now)
-                            sponsoredAt[peer] = now
+                            val admitted = coordinator.joinMember(board, peer, now) != null
+                            // A recently departed member is deliberately fenced for one
+                            // liveness window.  Do not apply the normal successful-sponsor
+                            // backoff to that rejection: doing so can move the first legal
+                            // retry just beyond the joiner's membership-snapshot timeout.
+                            if (admitted) {
+                                sponsoredAt[peer] = now
+                            } else {
+                                sponsoredAt.remove(peer)
+                                FipsDebugLog.event(
+                                    "boardcell", "nearby_member_admission_deferred",
+                                    "peer" to FipsDebugLog.id(peer),
+                                    "cell" to FipsDebugLog.id(snapshot.cellId.value),
+                                )
+                            }
                         } else {
                             if (meshTransport.sponsorMember(snapshot, peer)) {
                                 sponsoredAt[peer] = now
