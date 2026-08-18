@@ -2,6 +2,7 @@ package com.cruxcoach.android.data
 
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -9,6 +10,7 @@ import android.content.IntentFilter
 import android.util.Log
 import android.os.SystemClock
 import com.cruxcoach.android.R
+import com.cruxcoach.android.BuildConfig
 import com.cruxcoach.android.ble.*
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -32,6 +34,7 @@ import com.cruxcoach.android.ble.QueueItem
 import com.cruxcoach.android.fips.FipsMeshRuntime
 import com.cruxcoach.android.mesh.MeshOwners
 import com.cruxcoach.android.boardcell.BoardCellManager
+import com.cruxcoach.android.boardcell.BoardCellPeerDiagnostics
 import com.cruxcoach.android.boardcell.BoardCellHandoverLifecycle
 import com.cruxcoach.android.boardcell.BoardCommandAck
 import com.cruxcoach.android.boardcell.BoardCommandStatus
@@ -346,6 +349,32 @@ class SessionGattBridge(
                     queueManager.writeProjectionToPhysical(projection)
             })
         boardCellManager?.let { manager ->
+            manager.installPeerDiagnosticsProvider {
+                val session = queueManager.state.value
+                BoardCellPeerDiagnostics(
+                    appVersionCode = BuildConfig.VERSION_CODE,
+                    bluetoothEnabled = runCatching {
+                        context.getSystemService(BluetoothManager::class.java)
+                            ?.adapter?.isEnabled == true
+                    }.getOrDefault(false),
+                    meshRuntimeRunning = fipsMeshRuntime?.running?.value == true,
+                    boardConnection = bleConnection.connectionState.value.name,
+                    boardKeepAlive = bleConnection.keepAliveActive.value,
+                    idleDisconnectArmed = bleConnection.idleDisconnectArmed,
+                    autoDisconnectSeconds = bleConnection.autoDisconnectSeconds,
+                    sessionRole = session.role.name,
+                    sessionVisibility = session.visibility.name,
+                    sessionVisibilityRequested = session.visibilityRequested.name,
+                    sessionConnecting = session.isConnecting,
+                    sessionId = session.sessionId.coerceAtLeast(0),
+                    queueSize = session.queue.size,
+                    currentIndex = session.currentIndex,
+                    currentClimbId = session.currentClimb?.climbUuid,
+                    awaitingExplicitSend = session.awaitingExplicitSend,
+                    externalBoardOverride = session.externalBoardOverride,
+                    pendingCommands = _pendingCommandCount.value,
+                )
+            }
             // Resolves this device's own "waiting for the host" status from
             // canonical state rather than from a second timer: the request is
             // over the moment it is no longer open, and the answer is whether
@@ -852,11 +881,14 @@ class SessionGattBridge(
                 !it.supportsConcurrentConnections &&
                 it.acceptsDisconnectRequests
         }
-        if (currentBoardConnectionCapacity() == BoardConnectionCapacity.SINGLE ||
-            exclusiveNearbyOwner
+        val boardOwnedByMesh = boardCellManager?.snapshot() != null
+        if (!boardOwnedByMesh && (currentBoardConnectionCapacity() == BoardConnectionCapacity.SINGLE ||
+            exclusiveNearbyOwner)
         ) {
             Log.d(TAG, "Sending DisconnectRequest to free exclusive board for session host")
             advertiser.advertiseDisconnectRequest()
+        } else if (boardOwnedByMesh) {
+            Log.d(TAG, "Skipping legacy DisconnectRequest — BoardCell routes playlist commands")
         }
 
         // Start advertising session (replaces the DisconnectRequest advertising)

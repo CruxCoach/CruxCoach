@@ -29,9 +29,11 @@ internal object BoardDeliveryPolicy {
         newRole: SessionRole,
         previousRole: SessionRole,
         connectionState: ConnectionState,
+        boardRoutedByMesh: Boolean = false,
     ): Boolean = newRole == SessionRole.HOST &&
         previousRole != SessionRole.HOST &&
-        connectionState == ConnectionState.DISCONNECTED
+        connectionState == ConnectionState.DISCONNECTED &&
+        !boardRoutedByMesh
 
     fun shouldReleaseBoardForSessionParticipant(
         newRole: SessionRole,

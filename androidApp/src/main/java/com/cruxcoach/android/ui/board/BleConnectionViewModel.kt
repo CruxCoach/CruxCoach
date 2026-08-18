@@ -338,7 +338,8 @@ class BleConnectionViewModel @Inject constructor(
                 if (s.connectionState != ConnectionState.CONNECTED) return@collect
                 val isExclusive = BoardControllerProfiles.forBoard(s.connectedBoard)
                     .connectionCapacity == BoardConnectionCapacity.SINGLE
-                if (!s.allowRemoteDisconnect || !isExclusive) {
+                val boardOwnedByMesh = boardCellManager.snapshot() != null
+                if (!s.allowRemoteDisconnect || !isExclusive || boardOwnedByMesh) {
                     // Auto-reject: broadcast rejection so the sender knows immediately
                     climbAdvertiser.advertiseDisconnectResponse(accepted = false)
                     return@collect
@@ -368,6 +369,7 @@ class BleConnectionViewModel @Inject constructor(
                         newRole,
                         previousQueueRole,
                         _state.value.connectionState,
+                        boardRoutedByMesh = boardCellManager.snapshot() != null,
                     )
                 ) {
                     Log.d(TAG, "Role became $newRole while disconnected → triggering auto-connect")

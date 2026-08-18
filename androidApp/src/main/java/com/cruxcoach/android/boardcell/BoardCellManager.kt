@@ -5,6 +5,7 @@ import android.os.Build
 import android.os.SystemClock
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.BoardConnectionOwner
+import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.fips.FipsMeshRuntime
 import com.cruxcoach.android.fips.FipsConnectionStage
 import com.cruxcoach.android.fips.FipsDebugLog
@@ -106,6 +107,17 @@ internal object BoardCellNearbyJoinPolicy {
     ): Boolean = physicalBoardOwnerHeld && runtimeRunning && activeRealmId == targetRealmId
 }
 
+/** A live connection to the exact physical board is itself the recovery fence. */
+internal object BoardCellLocalControllerFence {
+    fun isHeld(
+        expectedBoard: PhysicalBoardId,
+        connectedBoard: PhysicalBoardId?,
+        connectionState: ConnectionState,
+    ): Boolean = expectedBoard == connectedBoard &&
+        (connectionState == ConnectionState.CONNECTED ||
+            connectionState == ConnectionState.SENDING)
+}
+
 @Singleton
 class BoardCellManager @Inject constructor(
     @ApplicationContext context: Context,
@@ -162,6 +174,9 @@ class BoardCellManager @Inject constructor(
     private val localRemovalCleanup = AtomicBoolean(false)
     private val playlistProjectionMutex = Mutex()
     @Volatile private var playlistProjectionWriter: BoardPlaylistProjectionWriter? = null
+    @Volatile private var peerDiagnosticsProvider: (() -> BoardCellPeerDiagnostics)? = null
+    @Volatile private var lastLocalPeerDiagnostics: BoardCellPeerDiagnostics? = null
+    @Volatile private var lastPeerDiagnosticsSentAt = 0L
     private val playlistControlChannel = Channel<InboundPlaylistControl>(64)
     private val leafCommandChannel = Channel<InboundLeafCommand>(64)
     /** Queue edits a gateway is carrying for its own joined API-28 leaf. */
@@ -435,6 +450,49 @@ class BoardCellManager @Inject constructor(
 
     fun installPlaylistProjectionWriter(value: BoardPlaylistProjectionWriter?) {
         playlistProjectionWriter = value
+    }
+
+    /** Supplies non-canonical operational state for cross-device logcat diagnosis. */
+    fun installPeerDiagnosticsProvider(value: (() -> BoardCellPeerDiagnostics)?) {
+        peerDiagnosticsProvider = value
+    }
+
+    private fun peerDiagnostics(snapshot: BoardCellSnapshot): BoardCellPeerDiagnostics {
+        val supplied = runCatching { peerDiagnosticsProvider?.invoke() }.getOrNull()
+            ?: BoardCellPeerDiagnostics()
+        val localRole = when (activeNodeId) {
+            snapshot.controllerId -> "controller"
+            in snapshot.members -> "member"
+            else -> "excluded"
+        }
+        return supplied.copy(
+            meshRole = localRole,
+            meshMemberCount = snapshot.members.size,
+            controllerAvailable = snapshot.availability == BoardCellAvailability.ACTIVE,
+            canonicalPlaylist = snapshot.playlist.isJoinable,
+            playlistHost = snapshot.playlist.hostId == activeNodeId,
+            playlistMember = activeNodeId in snapshot.playlist.members,
+        )
+    }
+
+    /** Emit immediately on a decision-relevant change, otherwise as a sparse checkpoint. */
+    private fun duePeerDiagnostics(
+        snapshot: BoardCellSnapshot,
+        nowMonotonicMs: Long,
+    ): BoardCellPeerDiagnostics? {
+        val current = peerDiagnostics(snapshot)
+        val changed = current != lastLocalPeerDiagnostics
+        if (!changed &&
+            nowMonotonicMs - lastPeerDiagnosticsSentAt < PEER_DIAGNOSTICS_CHECKPOINT_MS
+        ) return null
+        lastLocalPeerDiagnostics = current
+        lastPeerDiagnosticsSentAt = nowMonotonicMs
+        BoardCellPeerDiagnosticsLog.emit(
+            if (changed) "local_state_changed" else "local_checkpoint",
+            activeNodeId,
+            current,
+        )
+        return current
     }
 
     /**
@@ -887,6 +945,12 @@ class BoardCellManager @Inject constructor(
         nearbyJoinMutex.withLock {
         if (!BoardCellPlatformPolicy.meshAvailable(Build.VERSION.SDK_INT)) return false
         val cell = runCatching { BoardCellId(boardCellId) }.getOrNull() ?: return false
+        FipsDebugLog.event(
+            "boardcell", "nearby_mesh_join_requested",
+            "cell" to FipsDebugLog.id(cell.value),
+            "active" to FipsDebugLog.id(snapshot()?.cellId?.value),
+            "runtimeRealm" to FipsDebugLog.id(runtime.activeRealmId()),
+        )
         snapshot()?.let { active ->
             if (active.cellId == cell && activeNodeId in active.members &&
                 active.availability == BoardCellAvailability.ACTIVE && runtime.running.value) return true
@@ -952,6 +1016,11 @@ class BoardCellManager @Inject constructor(
             false
         }
         if (!activated) {
+            FipsDebugLog.warning(
+                "boardcell", "nearby_mesh_join_activation_denied",
+                "cell" to FipsDebugLog.id(cell.value),
+                "activeRealm" to FipsDebugLog.id(meshRealms.activeRealm.value?.value),
+            )
             rollbackNearbyJoin(cell)
             _membershipTransition.value = MeshMembershipTransition.ERROR
             return false
@@ -1384,6 +1453,16 @@ class BoardCellManager @Inject constructor(
                         candidate !in nearbyCandidates
                     }
                     nearbyCandidates.forEach { peer ->
+                        // A live authenticated channel is stronger liveness evidence than
+                        // the periodic application heartbeat. In particular, a member that
+                        // has just applied our authoritative MemberJoined snapshot may spend
+                        // one maintenance window sending snapshot/control traffic before its
+                        // heartbeat loop observes the new role. Evicting it while that channel
+                        // is actively carrying authenticated frames created an admit/evict/
+                        // transport-recycle loop on real Android BLE stacks.
+                        if (snapshot.controllerId == activeNodeId && peer in snapshot.members) {
+                            coordinator.observeMemberActivity(board, peer, now)
+                        }
                         val last = sponsoredAt[peer]
                         if (last != null && now - last < MEMBER_SPONSOR_RETRY_MS) return@forEach
                         if (peer in snapshot.members) {
@@ -1415,11 +1494,23 @@ class BoardCellManager @Inject constructor(
                         pending.retryAtMs = now + minOf(PROJECTION_RETRY_MAX_MS,
                             PROJECTION_RETRY_INITIAL_MS shl pending.attempts.coerceAtMost(3))
                     }
+                    val diagnostics = duePeerDiagnostics(snapshot, now)
                     if (activeNodeId in snapshot.members && snapshot.controllerId != activeNodeId &&
                         !pendingLocalLeave.get()) {
-                        meshTransport.sendMemberHeartbeat(snapshot, now / CONTROLLER_HEARTBEAT_INTERVAL_MS)
+                        meshTransport.sendMemberHeartbeat(
+                            snapshot,
+                            now / CONTROLLER_HEARTBEAT_INTERVAL_MS,
+                            diagnostics,
+                        )
                     }
                     if (snapshot.controllerId == activeNodeId) {
+                        diagnostics?.let {
+                            meshTransport.sendControllerDiagnostics(
+                                snapshot,
+                                now / CONTROLLER_HEARTBEAT_INTERVAL_MS,
+                                it,
+                            )
+                        }
                         val evicted = coordinator.evictExpiredMembers(
                             board, now, MEMBER_LIVENESS_TIMEOUT_MS,
                         )
@@ -1564,6 +1655,22 @@ class BoardCellManager @Inject constructor(
         if (board == null || !::coordinator.isInitialized) null
         else coordinator.controllerSilentForMs(board, monotonicNow())
 
+    private fun hasLocalControllerFence(snapshot: BoardCellSnapshot): Boolean {
+        val connected = boardConnection.connectedBoard
+        if (connected == null || connected.isCruxRelay) return false
+        val physical = runCatching {
+            PhysicalBoardIdentity.resolve(
+                connected,
+                boardBindings.bindingFor(connected.address),
+            )
+        }.getOrNull()
+        return BoardCellLocalControllerFence.isHeld(
+            expectedBoard = snapshot.physicalBoardId,
+            connectedBoard = physical,
+            connectionState = boardConnection.connectionState.value,
+        )
+    }
+
     private fun processControllerRecovery() {
         val snapshot = snapshot()
         if (snapshot == null || !BoardCellRecoveryFence.mayAttemptRecovery(snapshot, activeNodeId,
@@ -1602,13 +1709,19 @@ class BoardCellManager @Inject constructor(
             // and clearing this too early let that emission re-initialize the
             // cell and destroy the base being recovered.
             authorizedRecoveryBoard = current.physicalBoardId
+            val existingFence = hasLocalControllerFence(current)
             val connected = try {
-                handoverLifecycle?.recoverController?.invoke(current) == true
+                existingFence || handoverLifecycle?.recoverController?.invoke(current) == true
             } catch (failure: CancellationException) {
                 authorizedRecoveryBoard = null
                 throw failure
             }
             if (connected) {
+                FipsDebugLog.event(
+                    "boardcell", "controller_recovery_board_fenced",
+                    "existingConnection" to existingFence,
+                    "physicalBoard" to FipsDebugLog.id(current.physicalBoardId.value),
+                )
                 // Revalidate once more immediately before the commit; the
                 // connect can take seconds and the coordinator re-checks the
                 // same facts under its own lock.
@@ -1753,6 +1866,7 @@ class BoardCellManager @Inject constructor(
         /** Three missed heartbeat windows trigger fenced physical recovery. */
         private const val CONTROLLER_LEASE_TIMEOUT_MS = 6_000L
         private const val MEMBER_LIVENESS_TIMEOUT_MS = 6_000L
+        private const val PEER_DIAGNOSTICS_CHECKPOINT_MS = 10_000L
         private const val MAX_LOCAL_RECOVERY_ATTEMPTS = 3
     }
 }

@@ -351,6 +351,10 @@ fun BleConnectionSheet(
                         boardName = state.connectedBoardName ?: "Board",
                         board = state.connectedBoard,
                         isSending = state.connectionState == ConnectionState.SENDING,
+                        activeMeshName = if (state.activeBoardCellId != null) {
+                            state.activeMeshBoardName ?: state.connectedBoardName ?: "Board"
+                        } else null,
+                        activeMeshMemberCount = state.activeMeshMemberCount,
                         onDisconnect = { viewModel.disconnect() }
                     )
                     // FEAT-044 §12: "share this board" (party mode) — only
@@ -372,6 +376,20 @@ fun BleConnectionSheet(
                                 pendingScanStart = PendingScanStart.AUTO_CONNECT
                             }
                         } else null,
+                    )
+                }
+
+                // A mesh participant has a real logical board connection even
+                // though it deliberately owns no physical GATT link. Render it
+                // as that one board here, before the legacy session branch.
+                state.activeBoardCellId != null -> {
+                    ConnectedContent(
+                        boardName = state.activeMeshBoardName ?: "Board",
+                        board = null,
+                        isSending = false,
+                        activeMeshName = state.activeMeshBoardName ?: "Board",
+                        activeMeshMemberCount = state.activeMeshMemberCount,
+                        onDisconnect = { viewModel.disconnect() },
                     )
                 }
 
@@ -756,6 +774,8 @@ private fun ConnectedContent(
     boardName: String,
     board: DiscoveredBoard?,
     isSending: Boolean,
+    activeMeshName: String? = null,
+    activeMeshMemberCount: Int = 0,
     onDisconnect: () -> Unit
 ) {
     Row(
@@ -763,14 +783,17 @@ private fun ConnectedContent(
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Icon(
-            Icons.Default.BluetoothConnected,
+            if (activeMeshName != null) Icons.Default.Hub else Icons.Default.BluetoothConnected,
             contentDescription = null,
             modifier = Modifier.size(32.dp),
             tint = SuccessGreen
         )
         Column {
             Text(
-                stringResource(R.string.board_ble_connected),
+                stringResource(
+                    if (activeMeshName != null) R.string.fips_mesh_own_active
+                    else R.string.board_ble_connected,
+                ),
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Bold,
                 color = SuccessGreen
@@ -781,24 +804,32 @@ private fun ConnectedContent(
             // MoonBoard-else-Kilter check that mislabeled every Aurora board
             // (e.g. Tension) as "Kilter Board".
             Text(
-                boardName,
+                activeMeshName ?: boardName,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             // Two answers, never a third: physical controllers are treated as
             // exclusive; CruxRelay is multi-client by construction.
-            val connectionMode = when {
-                board?.isCruxRelay == true -> R.string.board_ble_connection_via_relay
-                BoardControllerProfiles.forBoard(board).connectionCapacity ==
-                    BoardConnectionCapacity.MULTIPLE ->
-                    R.string.board_ble_connection_multi
-                else -> R.string.board_ble_connection_single
+            if (activeMeshName != null) {
+                Text(
+                    "${stringResource(R.string.fips_mesh_members)}: $activeMeshMemberCount",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                val connectionMode = when {
+                    board?.isCruxRelay == true -> R.string.board_ble_connection_via_relay
+                    BoardControllerProfiles.forBoard(board).connectionCapacity ==
+                        BoardConnectionCapacity.MULTIPLE ->
+                        R.string.board_ble_connection_multi
+                    else -> R.string.board_ble_connection_single
+                }
+                Text(
+                    stringResource(connectionMode),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
-            Text(
-                stringResource(connectionMode),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 
@@ -827,7 +858,10 @@ private fun ConnectedContent(
             .testTag("ble_disconnect"),
         shape = RoundedCornerShape(12.dp)
     ) {
-        Text(stringResource(R.string.board_ble_disconnect))
+        Text(stringResource(
+            if (activeMeshName != null) R.string.fips_mesh_leave_action
+            else R.string.board_ble_disconnect,
+        ))
     }
 }
 
@@ -946,7 +980,7 @@ private fun ScanContent(
         val cell = runCatching {
             BoardCellId.forPhysical(PhysicalBoardIdentity.resolve(board)).value
         }.getOrNull()
-        cell !in meshCells
+        cell != activeBoardCellId && cell !in meshCells
     }
     if (standaloneBoards.isNotEmpty() || nearbyMeshes.isNotEmpty() || nearbySessions.isNotEmpty()) {
         LazyColumn(

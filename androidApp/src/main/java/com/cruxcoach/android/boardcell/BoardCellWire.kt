@@ -26,6 +26,11 @@ sealed interface BoardCellWireMessage {
     ) : BoardCellWireMessage
     @Serializable @SerialName("member_heartbeat") data class MemberHeartbeat(
         val tick: Long,
+        val diagnostics: BoardCellPeerDiagnostics? = null,
+    ) : BoardCellWireMessage
+    @Serializable @SerialName("peer_diagnostics") data class PeerDiagnostics(
+        val tick: Long,
+        val value: BoardCellPeerDiagnostics,
     ) : BoardCellWireMessage
     @Serializable @SerialName("member_leave_request") data class MemberLeaveRequest(
         val value: BoardCellLeaveRequest,
@@ -88,6 +93,8 @@ data class BoardCellWireFrame(
 )
 
 object BoardCellWireCodec {
+    // V9 adds bounded operational peer diagnostics to liveness frames. These
+    // values are deliberately outside canonical state and state hashing.
     // V8 makes the joinable playlist canonical: playlist host and playlist
     // members as their own identities, per-entry rest plan, active rest,
     // pending projection and the start/replace/append request flow. A V7 peer
@@ -100,7 +107,7 @@ object BoardCellWireCodec {
     // do not spuriously reject a participant's board command. V5 added
     // permissionless, member-sponsored multi-hop BoardCell admission.
     // Older peers must fail closed instead of interpreting the new authority flow.
-    const val VERSION = 8
+    const val VERSION = 9
     private val json = Json { classDiscriminator = "type"; encodeDefaults = true; ignoreUnknownKeys = false }
     fun encode(frame: BoardCellWireFrame): ByteArray = json.encodeToString(frame).encodeToByteArray()
     fun decode(bytes: ByteArray): BoardCellWireFrame {
@@ -169,7 +176,14 @@ object BoardCellWireCodec {
                         message.value.candidateId.length in 1..256 &&
                         message.value.sponsorId.length in 1..256 &&
                         message.value.candidateId != message.value.sponsorId)
-                is BoardCellWireMessage.MemberHeartbeat -> require(message.tick >= 0)
+                is BoardCellWireMessage.MemberHeartbeat -> {
+                    require(message.tick >= 0)
+                    message.diagnostics?.validate()
+                }
+                is BoardCellWireMessage.PeerDiagnostics -> {
+                    require(message.tick >= 0)
+                    message.value.validate()
+                }
                 is BoardCellWireMessage.MemberLeaveRequest -> require(
                     message.value.requestId.length in 8..128)
                 is BoardCellWireMessage.ControllerRecovery -> require(
@@ -229,6 +243,91 @@ object BoardCellWireCodec {
     }
 }
 
+/**
+ * Small operational snapshot piggy-backed on existing mesh liveness.
+ *
+ * It contains no user identity, board serial or Bluetooth address. The current
+ * climb identifier is already part of the playlist protocol and is hashed in
+ * logcat. Its only purpose is to make the state that decided routing,
+ * auto-disconnect and UI truth visible from the other phone during a test.
+ * Every field is defaulted so V9 can still decode a diagnostic payload whose
+ * sender omitted newer fields. V8 peers fail closed at the wire-version gate.
+ */
+@Serializable
+data class BoardCellPeerDiagnostics(
+    @SerialName("v") val schema: Int = 1,
+    @SerialName("b") val appVersionCode: Int = 0,
+    @SerialName("bt") val bluetoothEnabled: Boolean = false,
+    @SerialName("rt") val meshRuntimeRunning: Boolean = false,
+    @SerialName("mr") val meshRole: String = "none",
+    @SerialName("mc") val meshMemberCount: Int = 0,
+    @SerialName("ca") val controllerAvailable: Boolean = false,
+    @SerialName("bc") val boardConnection: String = "DISCONNECTED",
+    @SerialName("ka") val boardKeepAlive: Boolean = false,
+    @SerialName("ia") val idleDisconnectArmed: Boolean = false,
+    @SerialName("ad") val autoDisconnectSeconds: Int = 0,
+    @SerialName("sr") val sessionRole: String = "NONE",
+    @SerialName("sv") val sessionVisibility: String = "LOCAL_ONLY",
+    @SerialName("sw") val sessionVisibilityRequested: String = "LOCAL_ONLY",
+    @SerialName("sc") val sessionConnecting: Boolean = false,
+    @SerialName("si") val sessionId: Int = 0,
+    @SerialName("qs") val queueSize: Int = 0,
+    @SerialName("qi") val currentIndex: Int = -1,
+    @SerialName("ci") val currentClimbId: String? = null,
+    @SerialName("cp") val canonicalPlaylist: Boolean = false,
+    @SerialName("ph") val playlistHost: Boolean = false,
+    @SerialName("pm") val playlistMember: Boolean = false,
+    @SerialName("as") val awaitingExplicitSend: Boolean = false,
+    @SerialName("eo") val externalBoardOverride: Boolean = false,
+    @SerialName("pc") val pendingCommands: Int = 0,
+) {
+    internal fun validate() {
+        require(schema in 1..16)
+        require(appVersionCode >= 0)
+        require(meshRole.length <= 32 && meshMemberCount in 0..64)
+        require(boardConnection.length <= 32 && autoDisconnectSeconds in 0..86_400)
+        require(sessionRole.length <= 32)
+        require(sessionVisibility.length <= 32 && sessionVisibilityRequested.length <= 32)
+        require(sessionId >= 0 && queueSize in 0..BoardPlaylistPolicy.MAX_ITEMS)
+        require(currentIndex in -1 until BoardPlaylistPolicy.MAX_ITEMS)
+        require(currentClimbId == null || currentClimbId.length in 1..64)
+        require(pendingCommands in 0..1_024)
+    }
+}
+
+internal object BoardCellPeerDiagnosticsLog {
+    fun emit(event: String, peer: String, value: BoardCellPeerDiagnostics) {
+        FipsDebugLog.event(
+            "peer_health", event,
+            "peer" to FipsDebugLog.id(peer),
+            "build" to value.appVersionCode,
+            "bluetooth" to value.bluetoothEnabled,
+            "runtime" to value.meshRuntimeRunning,
+            "meshRole" to value.meshRole,
+            "meshMembers" to value.meshMemberCount,
+            "controllerAvailable" to value.controllerAvailable,
+            "boardConnection" to value.boardConnection,
+            "keepAlive" to value.boardKeepAlive,
+            "idleTimer" to value.idleDisconnectArmed,
+            "autoDisconnectSeconds" to value.autoDisconnectSeconds,
+            "sessionRole" to value.sessionRole,
+            "visibility" to value.sessionVisibility,
+            "visibilityWanted" to value.sessionVisibilityRequested,
+            "sessionConnecting" to value.sessionConnecting,
+            "session" to value.sessionId,
+            "queue" to value.queueSize,
+            "index" to value.currentIndex,
+            "climb" to FipsDebugLog.id(value.currentClimbId),
+            "canonicalPlaylist" to value.canonicalPlaylist,
+            "playlistHost" to value.playlistHost,
+            "playlistMember" to value.playlistMember,
+            "awaitingSend" to value.awaitingExplicitSend,
+            "externalOverride" to value.externalBoardOverride,
+            "pendingCommands" to value.pendingCommands,
+        )
+    }
+}
+
 interface AuthenticatedMeshLink {
     val localNpub: String
     fun send(authenticatedPeerNpub: String, payload: ByteArray): Boolean
@@ -278,6 +377,8 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
     private var outboxBytes = 0
     private val seenFrames = LinkedHashSet<String>()
     private val seenCommands = LinkedHashMap<String, BoardCommandAck>()
+    private val lastPeerDiagnostics =
+        mutableMapOf<String, Pair<String, BoardCellPeerDiagnostics>>()
     var onSessionCommand: (suspend (InboundSessionCommand) -> Unit)? = null
     var onCommandAck: (suspend (String, BoardCommandAck) -> Unit)? = null
     var onControllerRequest: (suspend (String, BoardCellControllerRequest) -> Unit)? = null
@@ -298,6 +399,7 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
         outboxBytes = 0
         seenFrames.clear()
         seenCommands.clear()
+        lastPeerDiagnostics.clear()
     }
 
     override suspend fun publishClaim(claim: BoardCellClaim) {
@@ -376,11 +478,37 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
     }
 
     /** Periodic authenticated end-source proof; routing may be multi-hop. */
-    fun sendMemberHeartbeat(snapshot: BoardCellSnapshot, tick: Long): Boolean {
+    fun sendMemberHeartbeat(
+        snapshot: BoardCellSnapshot,
+        tick: Long,
+        diagnostics: BoardCellPeerDiagnostics? = null,
+    ): Boolean {
         if (link.localNpub !in snapshot.members || link.localNpub == snapshot.controllerId ||
             snapshot.availability != BoardCellAvailability.ACTIVE) return false
         return link.send(snapshot.controllerId,
-            frameFor(snapshot, BoardCellWireMessage.MemberHeartbeat(tick)))
+            frameFor(snapshot, BoardCellWireMessage.MemberHeartbeat(tick, diagnostics)))
+    }
+
+    /** Controller-side diagnostics travel outside canonical state/hash. */
+    fun sendControllerDiagnostics(
+        snapshot: BoardCellSnapshot,
+        tick: Long,
+        diagnostics: BoardCellPeerDiagnostics,
+    ) {
+        if (link.localNpub != snapshot.controllerId) return
+        val frame = frameFor(snapshot, BoardCellWireMessage.PeerDiagnostics(tick, diagnostics))
+        snapshot.members.asSequence().filter { it != link.localNpub }
+            .forEach { link.send(it, frame) }
+    }
+
+    private fun logPeerDiagnostics(
+        sender: String,
+        value: BoardCellPeerDiagnostics,
+        event: String = "remote_state_changed",
+    ) {
+        val next = event to value
+        if (lastPeerDiagnostics.put(sender, next) == next) return
+        BoardCellPeerDiagnosticsLog.emit(event, sender, value)
     }
 
     fun sendMemberLeaveRequest(snapshot: BoardCellSnapshot, requestId: String): Boolean {
@@ -651,11 +779,24 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
                 if (link.localNpub != snapshot.controllerId || authenticatedSender == snapshot.controllerId ||
                     authenticatedSender !in snapshot.members) {
                     if (link.localNpub == snapshot.controllerId && authenticatedSender !in snapshot.members) {
+                        message.diagnostics?.let {
+                            logPeerDiagnostics(authenticatedSender, it, "remote_state_unadmitted")
+                        }
                         sendAuthoritativeSnapshot(snapshot, authenticatedSender)
                     }
                     return BoardCellApplyResult.Rejected("member heartbeat sender/role mismatch")
                 }
+                message.diagnostics?.let { logPeerDiagnostics(authenticatedSender, it) }
                 target.observeMemberActivity(snapshot.physicalBoardId, authenticatedSender, nowMonotonicMs)
+                null
+            }
+            is BoardCellWireMessage.PeerDiagnostics -> {
+                val snapshot = snapshots[value.cellId]
+                    ?: return BoardCellApplyResult.Rejected("peer diagnostics has no local cell")
+                if (authenticatedSender !in snapshot.members || link.localNpub !in snapshot.members) {
+                    return BoardCellApplyResult.Rejected("peer diagnostics sender/receiver mismatch")
+                }
+                logPeerDiagnostics(authenticatedSender, message.value)
                 null
             }
             is BoardCellWireMessage.MemberLeaveRequest -> {

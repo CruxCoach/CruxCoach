@@ -70,6 +70,9 @@ internal fun BleStatusChip(
         SessionChipContent(
             session = session,
             effectiveOnBoard = effectiveOnBoard,
+            activeMeshName = activeMeshName,
+            meshControllerAvailable = meshControllerAvailable,
+            localMeshController = localMeshController,
             onExpand = onExpand,
             onAddToQueue = onAddToQueue,
             onRandomToQueue = onRandomToQueue
@@ -181,6 +184,9 @@ internal fun BleStatusChip(
 internal fun SessionChipContent(
     session: OwnSessionState,
     effectiveOnBoard: OnBoardClimbEntry?,
+    activeMeshName: String? = null,
+    meshControllerAvailable: Boolean = true,
+    localMeshController: Boolean = false,
     onExpand: () -> Unit,
     onAddToQueue: (() -> Unit)?,
     onRandomToQueue: (() -> Unit)? = null
@@ -236,7 +242,20 @@ internal fun SessionChipContent(
                 // unrelated climb read as "this is what you are playing". What
                 // the wall shows is a statement about the wall; it belongs in
                 // the line below, and only when the two disagree.
-                Icon(Icons.AutoMirrored.Filled.QueueMusic, null, tint = OrangeAccent, modifier = Modifier.size(18.dp))
+                Icon(
+                    when {
+                        activeMeshName == null -> Icons.AutoMirrored.Filled.QueueMusic
+                        localMeshController -> Icons.Default.CellTower
+                        else -> Icons.Default.Hub
+                    },
+                    contentDescription = activeMeshName,
+                    tint = when {
+                        activeMeshName == null -> OrangeAccent
+                        meshControllerAvailable -> SuccessGreen
+                        else -> WarningYellow
+                    },
+                    modifier = Modifier.size(18.dp),
+                )
                 Spacer(Modifier.width(5.dp))
                 if (session.queue.isEmpty()) {
                     Text(stringResource(R.string.common_empty), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

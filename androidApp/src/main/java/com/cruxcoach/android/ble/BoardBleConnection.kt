@@ -144,6 +144,8 @@ class BoardBleConnection(private val context: Context) {
     private val _keepAliveActive = MutableStateFlow(false)
     /** True while a mesh/session/relay owns the physical board connection. */
     val keepAliveActive: StateFlow<Boolean> = _keepAliveActive.asStateFlow()
+    /** Diagnostic truth: whether the current idle countdown can disconnect GATT. */
+    val idleDisconnectArmed: Boolean get() = disconnectJob?.isActive == true
 
     fun acquireKeepAlive(owner: String) {
         val owners = synchronized(keepAliveLock) {

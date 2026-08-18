@@ -103,8 +103,40 @@ class JoinablePlaylistWireTest {
 
     // ===== Version fencing =====
 
-    @Test fun `the wire version was raised for the joinable playlist`() {
-        assertEquals(8, BoardCellWireCodec.VERSION)
+    @Test fun `the wire version includes bounded cross-device diagnostics`() {
+        assertEquals(9, BoardCellWireCodec.VERSION)
+    }
+
+    @Test fun `peer diagnostics round trip without entering canonical snapshot`() {
+        val diagnostics = BoardCellPeerDiagnostics(
+            appVersionCode = 1_000_010,
+            bluetoothEnabled = true,
+            meshRuntimeRunning = true,
+            meshRole = "member",
+            meshMemberCount = 2,
+            controllerAvailable = true,
+            boardConnection = "DISCONNECTED",
+            boardKeepAlive = true,
+            autoDisconnectSeconds = 60,
+            sessionRole = "HOST",
+            sessionVisibility = "JOINABLE",
+            sessionVisibilityRequested = "JOINABLE",
+            sessionId = 42,
+            queueSize = 2,
+            currentIndex = 1,
+            currentClimbId = "climb-123",
+            canonicalPlaylist = true,
+            playlistHost = true,
+            playlistMember = true,
+            pendingCommands = 1,
+        )
+        val decoded = BoardCellWireCodec.decode(BoardCellWireCodec.encode(frame(
+            BoardCellWireMessage.MemberHeartbeat(2, diagnostics))))
+
+        assertEquals(
+            diagnostics,
+            (decoded.message as BoardCellWireMessage.MemberHeartbeat).diagnostics,
+        )
     }
 
     @Test fun `a V7 peer frame is refused rather than read as a hostless playlist`() {

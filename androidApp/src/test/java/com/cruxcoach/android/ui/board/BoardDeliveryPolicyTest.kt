@@ -37,6 +37,18 @@ class BoardDeliveryPolicyTest {
     }
 
     @Test
+    fun `playlist host inside BoardCell never competes with technical controller`() {
+        assertFalse(
+            BoardDeliveryPolicy.shouldAutoConnectSessionHost(
+                SessionRole.HOST,
+                SessionRole.NONE,
+                ConnectionState.DISCONNECTED,
+                boardRoutedByMesh = true,
+            )
+        )
+    }
+
+    @Test
     fun `a newly joined participant releases any local physical board connection`() {
         assertTrue(
             BoardDeliveryPolicy.shouldReleaseBoardForSessionParticipant(

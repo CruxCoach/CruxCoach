@@ -12,7 +12,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   advertisement expires. The active mesh remains explicit in the status chip
   and board picker. Board auto-disconnect is now unavailable while a mesh,
   shared session, relay or known multi-client connection is active, while the
-  user's configured duration is preserved for later solo use.
+  user's configured duration is preserved for later solo use. Authenticated
+  mesh traffic now renews membership even while a peer's dedicated heartbeat
+  role is catching up, preventing the observed six-second evict/rejoin loop.
+  A playlist hosted by a mesh participant stays routed through the BoardCell
+  controller instead of asking that controller to disconnect or trying to
+  claim the physical board itself. Playlist advertisements are no longer
+  presented as proof of what reached a mesh-controlled board; the canonical
+  committed projection remains authoritative. The connection picker also
+  collapses the active mesh and its physical BLE advertisement into one board
+  entry, and session participants see the mesh hub/controller icon.
+- **Two-phone mesh diagnostics from one logcat** — bounded operational health
+  now rides on authenticated liveness traffic in both directions. A controller
+  log records each peer's app build, Bluetooth/runtime state, mesh role,
+  physical-board connection, keep-alive and idle timer, playlist role/index,
+  canonical routing state and pending commands. Values are emitted immediately
+  when they change and checkpointed sparsely, without board addresses, serials
+  or user identity and without entering canonical BoardCell state.
+- **Mesh host recovery while the board is still connected** — a controller
+  whose heartbeat loop resumes after a background scheduling pause now treats
+  its existing, identity-matched GATT connection as the physical fencing proof.
+  Recovery no longer depends on an optional session screen having initialized
+  its handover lifecycle, so the host cannot expire its own membership while
+  it still controls the exact board.
 - **Realm-safe BoardCell and Competition mesh traffic** — every feature now
   acquires a reference-counted, realm-scoped session and sends only named
   protocol envelopes. Frames from another realm or an unknown protocol are
