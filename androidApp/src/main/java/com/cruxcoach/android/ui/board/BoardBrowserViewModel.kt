@@ -604,12 +604,10 @@ class BoardBrowserViewModel @Inject constructor(
         // comes from prefs (not filter state) — after a deletion the filter
         // brand is stale until the first successful refresh.
         viewModelScope.safeLaunch(TAG) {
-            var lastGen = syncManager.state.value.syncGeneration
-            var lastCatalogueRevision = syncManager.state.value.catalogueRevision
-            // A catalogue revision that arrived mid-run and has not been
-            // refreshed on yet — see the redemption at the bottom of the
-            // collector for why it cannot be acted on where it is seen.
-            var catalogueRevisionPending = false
+            val catalogueRefreshTracker = CatalogueRefreshTracker(
+                initialGeneration = syncManager.state.value.syncGeneration,
+                initialCatalogueRevision = syncManager.state.value.catalogueRevision,
+            )
             var wasImporting = false
             combine(syncManager.state, userPreferences.boardBrand) { syncState, brandWire ->
                 syncState to BoardBrand.fromWire(brandWire)
@@ -661,15 +659,7 @@ class BoardBrowserViewModel @Inject constructor(
                 // generation moves, none of the branches above fire, and a gate
                 // that has just gone true → false must not keep its mask. That
                 // one is refreshed where it is seen.
-                val catalogueChanged = syncState.catalogueRevision > lastCatalogueRevision
-                if (catalogueChanged) lastCatalogueRevision = syncState.catalogueRevision
-                if (catalogueChanged && syncState.isSyncing) catalogueRevisionPending = true
-                val syncEnded = syncState.syncGeneration > lastGen && !syncState.isSyncing
-                if (syncEnded) lastGen = syncState.syncGeneration
-                if (!syncState.isSyncing &&
-                    (syncEnded || catalogueChanged || catalogueRevisionPending)
-                ) {
-                    catalogueRevisionPending = false
+                if (catalogueRefreshTracker.shouldRefresh(syncState)) {
                     refreshBoardData(force = true)
                 }
             }
