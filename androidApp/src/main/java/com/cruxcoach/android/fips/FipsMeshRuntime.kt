@@ -7,7 +7,6 @@ import android.content.IntentFilter
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
 import android.os.Build
-import com.cruxcoach.android.boardcell.AuthenticatedMeshLink
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.concurrent.atomic.AtomicBoolean
 import java.nio.ByteBuffer
@@ -29,7 +28,12 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
-data class AuthenticatedFipsMessage(val senderNpub: String, val payload: ByteArray)
+/** An authenticated application frame, tagged with the realm it arrived on. */
+data class AuthenticatedFipsMessage(
+    val realmId: String,
+    val senderNpub: String,
+    val payload: ByteArray,
+)
 data class FipsPeer(val npub: String, val connected: Boolean, val transport: String, val lastSeenMs: Long)
 enum class FipsConnectionStage { IDLE, ADVERTISEMENT_SEEN, CHANNEL_OPEN, PEER_AUTHENTICATED, DIRECT_AUTHENTICATED }
 data class FipsConnectionProgress(
@@ -82,7 +86,7 @@ internal class FipsNearbyMeshTracker(private val ttlMs: Long = 8_000L) {
 class FipsMeshRuntime @Inject constructor(
     @ApplicationContext private val context: Context,
     private val keyStore: FipsRealmKeyStore,
-) : AuthenticatedMeshLink {
+) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val assembler = FipsFrameAssembler()
     private val owners = FipsRuntimeOwners()
@@ -117,6 +121,9 @@ class FipsMeshRuntime @Inject constructor(
     val messages = _messages.asSharedFlow()
     private val _peers = MutableStateFlow<List<FipsPeer>>(emptyList())
     val peers = _peers.asStateFlow()
+    private val _directAuthenticatedPeers = MutableStateFlow<Set<String>>(emptySet())
+    /** Peers that are both FIPS-authenticated and proved the exact realm scope over CCJ1. */
+    val directAuthenticatedPeers = _directAuthenticatedPeers.asStateFlow()
     private val _nearbyMeshes = MutableStateFlow<List<FipsNearbyMesh>>(emptyList())
     private val nearbyMeshTracker = FipsNearbyMeshTracker()
     /** CruxCoach FIPS advertisements observed by the active low-power scan.
@@ -126,7 +133,7 @@ class FipsMeshRuntime @Inject constructor(
     private val _connectionProgress = MutableStateFlow(FipsConnectionProgress())
     val connectionProgress = _connectionProgress.asStateFlow()
     private val crossProbeModeAnnounced = AtomicBoolean(false)
-    override val localNpub: String get() = if (_running.value) runCatching { NativeFips.npub() }.getOrDefault("") else ""
+    val localNpub: String get() = if (_running.value) runCatching { NativeFips.npub() }.getOrDefault("") else ""
 
     init {
         context.registerReceiver(object : BroadcastReceiver() {
@@ -318,7 +325,7 @@ class FipsMeshRuntime @Inject constructor(
         if (discoveryRequested && !_running.value) startNearbyDiscovery()
     } }
 
-    override fun send(authenticatedPeerNpub: String, payload: ByteArray): Boolean {
+    fun send(authenticatedPeerNpub: String, payload: ByteArray): Boolean {
         if (!ensureStarted()) {
             FipsDebugLog.warning("runtime", "send_blocked", "peer" to FipsDebugLog.id(authenticatedPeerNpub),
                 "bytes" to payload.size, "reason" to "runtime unavailable")
@@ -332,23 +339,25 @@ class FipsMeshRuntime @Inject constructor(
         return sent
     }
 
-    override fun directAuthenticatedPeers(): Set<String> = _peers.value.asSequence()
-        .filter { it.connected && it.transport == "ble" && it.npub in synchronized(validatedDirectPeers) {
-            validatedDirectPeers.toSet()
-        } }.map { it.npub }.toSet()
+    fun activeRealmId(): String? = realm?.realmId
 
-    override fun activeRealmId(): String? = realm?.realmId
+    private fun refreshDirectAuthenticatedPeers() {
+        val validated = synchronized(validatedDirectPeers) { validatedDirectPeers.toSet() }
+        _directAuthenticatedPeers.value = _peers.value.asSequence()
+            .filter { it.connected && it.transport == "ble" && it.npub in validated }
+            .map { it.npub }.toSet()
+    }
 
     /** FIPS resolves simultaneous BLE probes from both peers by comparing the
      * authenticated node keys. Keep cross-probing enabled after membership is
      * established; otherwise half of all joiners lose their sole outbound
      * channel while the member never creates the required opposite channel. */
     @Synchronized
-    fun settleActiveMembership(cellId: String) {
-        if (realm?.boardCellId != cellId || !_running.value ||
+    fun settleActiveMembership(realmId: String) {
+        if (realm?.realmId != realmId || !_running.value ||
             !crossProbeModeAnnounced.compareAndSet(false, true)) return
         FipsDebugLog.event("runtime", "membership_transport_active",
-            "cell" to FipsDebugLog.id(cellId), "mode" to "fips_cross_probe")
+            "realm" to FipsDebugLog.id(realmId), "mode" to "fips_cross_probe")
     }
 
     @Synchronized
@@ -442,6 +451,7 @@ class FipsMeshRuntime @Inject constructor(
         _connectionProgress.value = FipsConnectionProgress()
         synchronized(validatedDirectPeers) { validatedDirectPeers.clear() }
         synchronized(helloSentAt) { helloSentAt.clear() }
+        _directAuthenticatedPeers.value = emptySet()
     }
 
     private fun watchForPermissionGrant(realmId: String) {
@@ -503,9 +513,14 @@ class FipsMeshRuntime @Inject constructor(
                     assembler.accept(sender, framed.copyOfRange(2 + length, framed.size))?.let { payload ->
                         FipsDebugLog.event("runtime", "payload_received", "peer" to FipsDebugLog.id(sender),
                             "bytes" to payload.size)
-                        if (!acceptJoinHello(sender, payload)) {
-                            _messages.emit(AuthenticatedFipsMessage(sender, payload))
+                        val activeRealm = realm?.realmId
+                        if (acceptJoinHello(sender, payload)) return@let
+                        if (activeRealm == null) {
+                            FipsDebugLog.warning("runtime", "payload_dropped",
+                                "peer" to FipsDebugLog.id(sender), "reason" to "no active realm")
+                            return@let
                         }
+                        _messages.emit(AuthenticatedFipsMessage(activeRealm, sender, payload))
                     }
                 }
             }
@@ -534,6 +549,7 @@ class FipsMeshRuntime @Inject constructor(
                 .filter { it.connected && it.transport == "ble" }.map { it.npub }.toSet()
             synchronized(validatedDirectPeers) { validatedDirectPeers.retainAll(connectedBlePeers) }
             synchronized(helloSentAt) { helloSentAt.keys.retainAll(connectedBlePeers) }
+            refreshDirectAuthenticatedPeers()
             if (_peers.value.any { it.connected && it.transport == "ble" }) {
                 recordConnectionStage(FipsConnectionStage.PEER_AUTHENTICATED)
             }
@@ -617,7 +633,15 @@ class FipsMeshRuntime @Inject constructor(
         _nearbyMeshes.value = nearbyMeshTracker.prune(nowMs)
     }
 
-    /** Join hello is accepted only from a native direct BLE edge with fresh, exact full realm scope. */
+    /**
+     * Join hello is accepted only from a native direct BLE edge with fresh, exact full realm scope.
+     *
+     * CCJ1 is the transport's own admission control plane, not an application
+     * protocol: it is link-local, never relayed and never surfaced. Everything
+     * else the runtime receives is an opaque application frame that it hands up
+     * tagged with its realm — which feature decodes it is decided by the
+     * registered protocol handlers above, never here.
+     */
     private fun acceptJoinHello(sender: String, payload: ByteArray): Boolean {
         if (!payload.startsWith(JOIN_PREFIX)) return false
         val direct = _peers.value.any { it.npub == sender && it.connected && it.transport == "ble" }
@@ -628,6 +652,7 @@ class FipsMeshRuntime @Inject constructor(
             radio?.validateDirectJoin(hello) == true
         if (valid) {
             synchronized(validatedDirectPeers) { validatedDirectPeers.add(sender) }
+            refreshDirectAuthenticatedPeers()
             recordConnectionStage(FipsConnectionStage.DIRECT_AUTHENTICATED)
             FipsDebugLog.event("admission", "direct_join_accepted", "peer" to FipsDebugLog.id(sender),
                 "realm" to FipsDebugLog.id(hello.realmId), "cell" to FipsDebugLog.id(hello.boardCellId))
@@ -690,11 +715,6 @@ class FipsMeshRuntime @Inject constructor(
 
     companion object {
         const val MAX_DIRECT_CONNECTIONS = 7
-        const val OWNER_BOARD_CELL = "board-cell"
-        const val OWNER_SESSION = "session"
-        const val OWNER_NEARBY_BOARD_CELL = "nearby-board-cell"
-        const val OWNER_HANDOVER = "board-cell-handover"
-        fun competitionOwner(compId: String) = "competition:$compId"
         private const val PEER_REFRESH_MS = 2_000L
         private const val MAX_LOGGED_NATIVE_ATTEMPTS = 256
         private const val RECEIVE_WAIT_MS = 5_000

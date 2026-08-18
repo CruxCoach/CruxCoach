@@ -129,7 +129,7 @@ class FipsMeshViewModel @Inject constructor(
         boardCellManager.snapshots,
         boardConnection.connectedBoardDescriptor,
     ) { transport, peers, nearby, snapshot, board ->
-        val direct = runtime.directAuthenticatedPeers()
+        val direct = runtime.directAuthenticatedPeers.value
         FipsMeshUiState(
             running = transport.first,
             bluetoothAvailable = transport.second,

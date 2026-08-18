@@ -12,6 +12,7 @@ import com.cruxcoach.android.ble.QueueItem
 import com.cruxcoach.android.ble.SessionQueueProtocol
 import com.cruxcoach.android.boardcell.BoardCellScopeRegistry
 import com.cruxcoach.android.fips.FipsMeshRuntime
+import com.cruxcoach.android.mesh.MeshOwners
 import com.cruxcoach.android.boardcell.BoardCellManager
 import com.cruxcoach.android.boardcell.BoardPlaylistInstant
 import com.cruxcoach.android.boardcell.BoardPlaylistPendingProjection
@@ -254,7 +255,7 @@ class SessionQueueManager(
         val role = if (view.isHost) SessionRole.HOST else SessionRole.PARTICIPANT
         val adopting = !current.isActive || current.mesh == null
         if (adopting) {
-            fipsMeshRuntime?.acquire(FipsMeshRuntime.OWNER_SESSION)
+            fipsMeshRuntime?.acquire(MeshOwners.SESSION.value)
             // Both are keyed by owner, so adopting on top of a local session
             // that already holds them is a no-op rather than a second claim.
             bleConnection.acquireKeepAlive(BoardConnectionOwner.SESSION)
@@ -421,7 +422,7 @@ class SessionQueueManager(
             physicalBoardId = BoardCellScopeRegistry.selected.value?.value,
             boardCellId = BoardCellScopeRegistry.selectedCellId()?.value,
         ) }
-        fipsMeshRuntime?.acquire(FipsMeshRuntime.OWNER_SESSION)
+        fipsMeshRuntime?.acquire(MeshOwners.SESSION.value)
         bleConnection.acquireKeepAlive(BoardConnectionOwner.SESSION)
         Log.d(TAG, "Queue started (sessionId=$sessionId, hostName=$hostName)")
     }
@@ -468,7 +469,7 @@ class SessionQueueManager(
         observedRestGeneration = null
         isPlaylistQueue = false
         bleConnection.releaseKeepAlive(BoardConnectionOwner.SESSION)
-        fipsMeshRuntime?.release(FipsMeshRuntime.OWNER_SESSION)
+        fipsMeshRuntime?.release(MeshOwners.SESSION.value)
         Log.d(TAG, "endQueue(): complete, state reset to NONE")
     }
 

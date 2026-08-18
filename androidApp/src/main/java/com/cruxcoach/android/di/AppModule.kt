@@ -85,6 +85,13 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 object AppModule {
+    /** The single realm-scoped entry point to the mesh for every feature. */
+    @Provides
+    @Singleton
+    fun provideMeshRealmManager(
+        impl: com.cruxcoach.android.mesh.FipsMeshRealmManager,
+    ): com.cruxcoach.android.mesh.MeshRealmManager = impl
+
 
     @Provides
     @Singleton

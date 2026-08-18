@@ -30,6 +30,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import com.cruxcoach.android.ble.QueueItem
 import com.cruxcoach.android.fips.FipsMeshRuntime
+import com.cruxcoach.android.mesh.MeshOwners
 import com.cruxcoach.android.boardcell.BoardCellManager
 import com.cruxcoach.android.boardcell.BoardCellHandoverLifecycle
 import com.cruxcoach.android.boardcell.BoardCommandAck
@@ -1172,13 +1173,13 @@ class SessionGattBridge(
                         val physical = info.physicalBoardId ?: return@let
                         val acquiredNow = !meshRealmHeldForJoin
                         if (acquiredNow) {
-                            runtime.acquire(FipsMeshRuntime.OWNER_SESSION)
+                            runtime.acquire(MeshOwners.SESSION.value)
                             meshRealmHeldForJoin = true
                         }
                         if (boardCellManager?.prepareParticipantScope(physical, cellId) != false) {
                             gattClient.sendCommand(SessionQueueProtocol.encodeJoin("", runtime.localNpub))
                         } else if (acquiredNow) {
-                            runtime.release(FipsMeshRuntime.OWNER_SESSION)
+                            runtime.release(MeshOwners.SESSION.value)
                             meshRealmHeldForJoin = false
                         }
                     }

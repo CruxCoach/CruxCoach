@@ -7,8 +7,15 @@ import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.BoardConnectionOwner
 import com.cruxcoach.android.fips.FipsMeshRuntime
 import com.cruxcoach.android.fips.FipsConnectionStage
-import com.cruxcoach.android.fips.FipsRealmContext
 import com.cruxcoach.android.fips.FipsDebugLog
+import com.cruxcoach.android.mesh.MeshOwner
+import com.cruxcoach.android.mesh.MeshOwners
+import com.cruxcoach.android.mesh.MeshRealmId
+import com.cruxcoach.android.mesh.MeshRealmKind
+import com.cruxcoach.android.mesh.MeshRealmManager
+import com.cruxcoach.android.mesh.MeshRealmMetadata
+import com.cruxcoach.android.mesh.MeshRealmSession
+import com.cruxcoach.android.mesh.acquireOrNull
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -103,10 +110,17 @@ internal object BoardCellNearbyJoinPolicy {
 class BoardCellManager @Inject constructor(
     @ApplicationContext context: Context,
     private val boardConnection: BoardBleConnection,
+    private val meshRealms: MeshRealmManager,
+    /**
+     * Radio plane only: discovery, bluetooth state, bulk-transfer suspension
+     * and join progress are process-wide and realm-agnostic. Everything realm
+     * scoped — leases, sends, inbound frames — goes through [meshRealms].
+     */
     private val runtime: FipsMeshRuntime,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val meshTransport = BoardCellMeshTransport(runtime)
+    private val meshLink = BoardCellMeshSessionLink()
+    private val meshTransport = BoardCellMeshTransport(meshLink)
     private val durableStore = AndroidBoardCellDurableStore(context)
     private lateinit var coordinator: BoardCellCoordinator
     private val boardBindings = PhysicalBoardBindingStore(context)
@@ -209,15 +223,14 @@ class BoardCellManager @Inject constructor(
             }
         }
         scope.launch {
-            runtime.messages.collect { message ->
-                if (runtime.activeRealmId() == null) {
-                    FipsDebugLog.event("boardcell", "mesh_message_dropped",
-                        "reason" to "no active realm", "sender" to FipsDebugLog.id(message.senderNpub))
-                    return@collect
-                }
-                val result = meshTransport.receive(message.senderNpub, message.payload, monotonicNow())
+            // Realm and protocol filtering happen in the router: whatever
+            // arrives here is a boardcell/v1 frame of the realm this cell
+            // currently holds.
+            meshLink.incoming.collect { envelope ->
+                val result = meshTransport.receive(envelope.sender, envelope.payload, monotonicNow())
                 FipsDebugLog.event("boardcell", "mesh_message_applied",
-                    "sender" to FipsDebugLog.id(message.senderNpub), "bytes" to message.payload.size,
+                    "sender" to FipsDebugLog.id(envelope.sender), "bytes" to envelope.payload.size,
+                    "realm" to FipsDebugLog.id(envelope.realmId.value),
                     "result" to (result?.javaClass?.simpleName ?: "control"),
                     "reason" to ((result as? BoardCellApplyResult.Rejected)?.reason ?: "-"))
                 refreshSelected()
@@ -252,14 +265,10 @@ class BoardCellManager @Inject constructor(
                     val memberStillActive = retained != null
                     if (!memberStillActive) BoardCellScopeRegistry.clearSelection()
                     if (heldRuntime && !memberStillActive) {
-                        runtime.release(FipsMeshRuntime.OWNER_BOARD_CELL)
+                        releaseRealmLease(MeshOwners.BOARD_CELL)
                         heldRuntime = false
                     }
                     return@collectLatest
-                }
-                if (nearbyRealmHeld) {
-                    runtime.release(FipsMeshRuntime.OWNER_NEARBY_BOARD_CELL)
-                    nearbyRealmHeld = false
                 }
                 val physical = PhysicalBoardIdentity.resolve(board, boardBindings.bindingFor(board.address))
                 // A reconnect that fenced recovery itself asked for must not
@@ -292,22 +301,26 @@ class BoardCellManager @Inject constructor(
                     "physicalBoard" to FipsDebugLog.id(physical.value),
                     "cell" to FipsDebugLog.id(cellId.value), "durableSnapshot" to (restored != null))
                 val meshAvailable = BoardCellPlatformPolicy.meshAvailable(Build.VERSION.SDK_INT)
-                if (meshAvailable && !heldRuntime) {
-                    runtime.acquire(FipsMeshRuntime.OWNER_BOARD_CELL)
-                    heldRuntime = true
-                }
                 if (meshAvailable) {
                     meshTransport.resetForRealm()
                     pendingProjectionRequests.clear()
+                    // A nearby lease on a *different* cell would make the board's
+                    // own realm a foreign one, so it goes first. A lease on the
+                    // same cell is kept until the board lease exists: releasing
+                    // the last reference would end the realm we are about to use.
+                    if (nearbyRealmHeld && meshRealms.activeRealm.value?.value != cellId.value) {
+                        releaseRealmLease(MeshOwners.NEARBY_BOARD_CELL)
+                        nearbyRealmHeld = false
+                    }
                 }
-                val fipsActive = meshAvailable && runtime.activateRealm(FipsRealmContext(
-                    cellId.value, cellId.value, meshName = board.displayName,
-                ))
-                if (!fipsActive && heldRuntime) {
-                    runtime.release(FipsMeshRuntime.OWNER_BOARD_CELL)
-                    heldRuntime = false
+                val fipsActive = meshAvailable &&
+                    acquireRealmLease(MeshOwners.BOARD_CELL, cellId, board.displayName)
+                heldRuntime = fipsActive
+                if (nearbyRealmHeld) {
+                    releaseRealmLease(MeshOwners.NEARBY_BOARD_CELL)
+                    nearbyRealmHeld = false
                 }
-                activeNodeId = if (fipsActive) runtime.localNpub else durableStore.localFallbackNodeId()
+                activeNodeId = if (fipsActive) meshLink.localNpub else durableStore.localFallbackNodeId()
                 FipsDebugLog.event("boardcell", "transport_selected", "api" to Build.VERSION.SDK_INT,
                     "transport" to if (fipsActive) "fips_l2cap" else "local_or_gatt_fallback",
                     "node" to FipsDebugLog.id(activeNodeId))
@@ -830,10 +843,11 @@ class BoardCellManager @Inject constructor(
         BoardCellScopeRegistry.replaceProvisionalSelection(physical)
         meshTransport.resetForRealm()
         pendingProjectionRequests.clear()
-        if (!withContext(Dispatchers.IO) {
-                runtime.activateRealm(FipsRealmContext(cell.value, cell.value))
-            }) return false
-        activeNodeId = runtime.localNpub
+        // The participant lease is its own owner: a GATT participant has no
+        // board connection, so it must not be torn down by the physical-board
+        // disconnect path that owns the BOARD_CELL lease.
+        if (!withContext(Dispatchers.IO) { acquireRealmLease(MeshOwners.PARTICIPANT, cell) }) return false
+        activeNodeId = meshLink.localNpub
         val existing = if (::coordinator.isInitialized) coordinator.snapshot(physical) else null
         if (existing?.cellId != cell || activeNodeId !in existing.members) {
             coordinator = BoardCellCoordinator(activeNodeId, meshTransport, durableStore,
@@ -887,24 +901,29 @@ class BoardCellManager @Inject constructor(
             return true
         }
         _membershipTransition.value = MeshMembershipTransition.JOINING
-        if (!nearbyRealmHeld) {
-            runtime.acquire(FipsMeshRuntime.OWNER_NEARBY_BOARD_CELL)
-            nearbyRealmHeld = true
-        }
+        // Entering another cell is an explicit realm change. This feature's own
+        // leases on the previous realm go first, so the new realm is granted
+        // instead of denied as a conflicting concurrent realm.
+        if (meshRealms.activeRealm.value?.value != cell.value) releaseAllRealmLeases()
         // A failed handover/reconnect can leave this exact realm running even
         // though the local canonical replica was cleared. Reusing it also
         // reuses old connection progress and native peer entries, which can
         // make a join skip phases or reject the new channel as a duplicate.
         // Always make an explicit join without membership a fresh transport
         // generation; the persistent realm key keeps the node identity stable.
-        if (runtime.activeRealmId() == cell.value && runtime.running.value) {
-            runtime.endRealm(cell.value)
-        }
+        val reusesLiveRealm = meshRealms.activeRealm.value?.value == cell.value && runtime.running.value
         meshTransport.resetForRealm()
         pendingProjectionRequests.clear()
         val activated = try {
             withContext(Dispatchers.IO) {
-                runtime.activateRealm(FipsRealmContext(cell.value, cell.value, meshName = boardName))
+                acquireRealmLease(MeshOwners.NEARBY_BOARD_CELL, cell, boardName).also { granted ->
+                    if (granted) {
+                        nearbyRealmHeld = true
+                        if (reusesLiveRealm) {
+                            meshLink.session?.recycleTransport("explicit nearby join")
+                        }
+                    }
+                }
             }
         } catch (failure: CancellationException) {
             rollbackNearbyJoin(cell)
@@ -921,7 +940,7 @@ class BoardCellManager @Inject constructor(
             _membershipTransition.value = MeshMembershipTransition.ERROR
             return false
         }
-        activeNodeId = runtime.localNpub
+        activeNodeId = meshLink.localNpub
         coordinator = BoardCellCoordinator(activeNodeId, meshTransport, durableStore,
             settleMs = 2_000, heartbeatTimeoutMs = CONTROLLER_LEASE_TIMEOUT_MS)
         meshTransport.attach(coordinator)
@@ -950,7 +969,7 @@ class BoardCellManager @Inject constructor(
         if (joined) {
             _membershipTransition.value = MeshMembershipTransition.IDLE
             val current = snapshot()
-            runtime.settleActiveMembership(cell.value)
+            meshLink.session?.settleMembership()
             FipsDebugLog.event("boardcell", "nearby_mesh_join_succeeded",
                 "cell" to FipsDebugLog.id(cell.value), "members" to current?.members?.size,
                 "controller" to FipsDebugLog.id(current?.controllerId))
@@ -1079,7 +1098,7 @@ class BoardCellManager @Inject constructor(
                 val target = coordinator.liveSuccessors(initial.physicalBoardId, monotonicNow(),
                     MEMBER_LIVENESS_TIMEOUT_MS).firstOrNull() ?: return false
                 if (handoverRuntimeHeld.compareAndSet(false, true)) {
-                    runtime.acquire(FipsMeshRuntime.OWNER_HANDOVER)
+                    acquireHandoverLease()
                 }
                 val prepared = coordinator.prepareHandover(initial.physicalBoardId, target, monotonicNow())
                 if (prepared == null) {
@@ -1133,16 +1152,9 @@ class BoardCellManager @Inject constructor(
             snapshot.physicalBoardId,
             clearDurableSnapshot = !preserveRejoinHint,
         )
-        if (runtime.activeRealmId() == snapshot.cellId.value) runtime.endRealm(snapshot.cellId.value)
-        if (nearbyRealmHeld) {
-            runtime.release(FipsMeshRuntime.OWNER_NEARBY_BOARD_CELL)
-            nearbyRealmHeld = false
-        }
-        if (heldRuntime) {
-            runtime.release(FipsMeshRuntime.OWNER_BOARD_CELL)
-            heldRuntime = false
-        }
-        releaseHandoverRuntime()
+        // The realm ends with its last reference; another feature holding the
+        // same realm keeps the transport, never this cell's membership.
+        releaseAllRealmLeases()
         meshTransport.resetForRealm()
         pendingProjectionRequests.clear()
         sponsoredAt.clear()
@@ -1174,11 +1186,7 @@ class BoardCellManager @Inject constructor(
         snapshot()?.takeIf { it.cellId == cell }?.let {
             if (::coordinator.isInitialized) coordinator.forgetLocalReplica(it.physicalBoardId)
         }
-        runtime.endRealm(cell.value)
-        if (nearbyRealmHeld) {
-            runtime.release(FipsMeshRuntime.OWNER_NEARBY_BOARD_CELL)
-            nearbyRealmHeld = false
-        }
+        releaseAllRealmLeases()
         meshTransport.resetForRealm()
         pendingProjectionRequests.clear()
         sponsoredAt.clear()
@@ -1238,7 +1246,7 @@ class BoardCellManager @Inject constructor(
             val snapshot = coordinator.snapshot(board) ?: return@launch
             if (snapshot.controllerId != activeNodeId || pending.requesterNpub !in snapshot.members) return@launch
             if (handoverRuntimeHeld.compareAndSet(false, true)) {
-                runtime.acquire(FipsMeshRuntime.OWNER_HANDOVER)
+                acquireHandoverLease()
             }
             val prepared = coordinator.prepareHandover(board, pending.requesterNpub, monotonicNow())
             if (prepared != null) {
@@ -1273,7 +1281,7 @@ class BoardCellManager @Inject constructor(
         if (snapshot.controllerId != activeNodeId || targetControllerId !in snapshot.members) return false
         scope.launch {
             if (handoverRuntimeHeld.compareAndSet(false, true)) {
-                runtime.acquire(FipsMeshRuntime.OWNER_HANDOVER)
+                acquireHandoverLease()
             }
             FipsDebugLog.event("handover", "requested", "source" to FipsDebugLog.id(activeNodeId),
                 "target" to FipsDebugLog.id(targetControllerId), "sequence" to snapshot.sequence,
@@ -1295,7 +1303,7 @@ class BoardCellManager @Inject constructor(
         if (snapshot.controllerId != activeNodeId) return false
         val others = snapshot.members - activeNodeId
         if (others.isEmpty()) return false
-        val target = runtime.directAuthenticatedPeers().filter { it in others }.sorted().firstOrNull()
+        val target = meshLink.directAuthenticatedPeers().filter { it in others }.sorted().firstOrNull()
             ?: return true // block disconnect; no safe reachable successor yet
         requestOrderlyHandover(target)
         return true
@@ -1355,7 +1363,7 @@ class BoardCellManager @Inject constructor(
                 val now = monotonicNow()
                 val snapshot = coordinator.snapshot(board)
                 if (snapshot != null && runtime.running.value && !runtime.isSuspendedForBulkTransfer()) {
-                    val nearbyCandidates = runtime.directAuthenticatedPeers()
+                    val nearbyCandidates = meshLink.directAuthenticatedPeers()
                     sponsoredAt.keys.removeAll { candidate ->
                         candidate !in nearbyCandidates
                     }
@@ -1407,7 +1415,7 @@ class BoardCellManager @Inject constructor(
                                 // The controller continues advertising with the
                                 // same realm identity and can accept a clean
                                 // normal join immediately afterwards.
-                                runtime.recycleIdleMeshTransport("last remote member timed out")
+                                meshLink.session?.recycleTransport("last remote member timed out")
                             }
                         }
                     }
@@ -1484,8 +1492,48 @@ class BoardCellManager @Inject constructor(
 
     private fun releaseHandoverRuntime() {
         if (handoverRuntimeHeld.compareAndSet(true, false)) {
-            runtime.release(FipsMeshRuntime.OWNER_HANDOVER)
+            meshRealms.releaseAll(MeshOwners.HANDOVER)
         }
+    }
+
+    /** Takes or shares this cell's realm and points the wire at the resulting session. */
+    private suspend fun acquireRealmLease(
+        owner: MeshOwner,
+        cell: BoardCellId,
+        boardName: String? = null,
+    ): Boolean {
+        val session: MeshRealmSession? = meshRealms.acquireOrNull(
+            owner,
+            MeshRealmId(cell.value),
+            MeshRealmMetadata(MeshRealmKind.BOARD_CELL, cell.value, boardName),
+        )
+        rebindMeshLink()
+        return session != null
+    }
+
+    /** Keeps the realm alive across a transfer without owning its wire binding. */
+    private suspend fun acquireHandoverLease() {
+        val cell = snapshot()?.cellId ?: return
+        acquireRealmLease(MeshOwners.HANDOVER, cell)
+    }
+
+    private fun releaseRealmLease(owner: MeshOwner) {
+        meshRealms.releaseAll(owner)
+        rebindMeshLink()
+    }
+
+    /** Drops every lease this cell holds; the realm ends with its last reference. */
+    private fun releaseAllRealmLeases() {
+        releaseHandoverRuntime()
+        REALM_LEASE_OWNERS.forEach(meshRealms::releaseAll)
+        heldRuntime = false
+        nearbyRealmHeld = false
+        rebindMeshLink()
+    }
+
+    /** The wire follows the strongest lease this cell holds, or nothing at all. */
+    private fun rebindMeshLink() {
+        meshLink.bind(REALM_LEASE_OWNERS.firstNotNullOfOrNull(meshRealms::session))
     }
 
     /** Canonical controller silence for the selected board, in milliseconds. */
@@ -1597,7 +1645,7 @@ class BoardCellManager @Inject constructor(
         val next = snapshot()
         _snapshots.value = next
         if (next != null && activeNodeId in next.members) {
-            runtime.settleActiveMembership(next.cellId.value)
+            meshLink.session?.settleMembership()
         }
         if (next != null && activeNodeId !in next.members && !pendingLocalLeave.get() &&
             localRemovalCleanup.compareAndSet(false, true)) {
@@ -1646,6 +1694,15 @@ class BoardCellManager @Inject constructor(
     companion object {
         @Volatile internal var current: BoardCellManager? = null
             private set
+
+        /**
+         * Every realm lease this cell can hold, in wire-binding preference
+         * order. The handover lease is deliberately absent: it keeps the realm
+         * alive across a transfer but never owns the wire.
+         */
+        private val REALM_LEASE_OWNERS = listOf(
+            MeshOwners.BOARD_CELL, MeshOwners.NEARBY_BOARD_CELL, MeshOwners.PARTICIPANT,
+        )
         private const val CONTROLLER_REQUEST_TIMEOUT_MS = 30_000L
         private const val MEMBER_SPONSOR_RETRY_MS = 6_000L
         private const val PROJECTION_RETRY_INITIAL_MS = 2_000L
