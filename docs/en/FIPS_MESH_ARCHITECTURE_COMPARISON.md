@@ -7,7 +7,7 @@
 **CruxCoach revision examined:** `feat/board-cell-mesh-mvp-20260814` at commit `ed2a4b44`<br>
 **Short answer for gym operators:** The current local CruxCoach board mesh requires **no separate FIPS node operated by the gym**. Every participating phone running CruxCoach is itself a FIPS node. A permanently installed gym device could improve availability and radio coverage in the future, but it is neither required nor automatically useful in the current model. A generic `fips-android` installation or arbitrary FIPS daemon cannot simply extend the CruxCoach board island today.
 
-![FIPS, Myco, and CruxCoach use different network boundaries](../diagrams/fips-myco-cruxcoach-mesh-slide.svg)
+![FIPS, Myco, and CruxCoach use different network boundaries](diagrams/fips-myco-cruxcoach-mesh-slide.svg)
 
 ## 1. The most important points first
 
