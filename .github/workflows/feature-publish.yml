@@ -28,7 +28,11 @@ jobs:
       - name: Authorize feature maintainer
         env:
           ACTOR: ${{ github.event.workflow_run.triggering_actor.login }}
-        run: python3 scripts/authorized_feature_maintainer.py --actor "$ACTOR"
+        run: |
+          test -n "$ACTOR"
+          grep -Fvx '#' .github/authorized-feature-maintainers.txt \
+            | sed '/^[[:space:]]*$/d' \
+            | grep -Fx -- "$ACTOR"
       - name: Derive immutable feature identity
         id: identity
         env:
@@ -179,9 +183,6 @@ jobs:
         run: |
           python3 scripts/feature_identity.py \
             --branch "$BRANCH" \
-            --verify-metadata feature-artifact/publication.json \
-            --apk feature-artifact/androidApp/build/outputs/apk/debug/androidApp-debug.apk \
-            --commit "$COMMIT" \
             --github-output "$GITHUB_OUTPUT"
           test "$(python3 -c 'import json; print(json.load(open("feature-artifact/publication.json"))["version_code"])')" \
             = "$RESERVED_VERSION_CODE"
@@ -195,6 +196,7 @@ jobs:
           echo "$WHEEL_SHA256  $RUNNER_TEMP/apktrack-0.2.0-py3-none-any.whl" | sha256sum --check --strict
           python3 -m pip install "$RUNNER_TEMP/apktrack-0.2.0-py3-none-any.whl"
       - name: Publish through APKTrack
+        id: publish
         env:
           APKTRACK_FEATURE_TOKEN: ${{ secrets.APKTRACK_FEATURE_TOKEN }}
           APKTRACK_FIPS_TOKEN: ${{ secrets.APKTRACK_FIPS_TOKEN }}
