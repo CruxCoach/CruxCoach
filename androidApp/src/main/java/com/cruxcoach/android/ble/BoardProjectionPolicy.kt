@@ -6,6 +6,18 @@ import com.cruxcoach.domain.board.BoardBrand
 internal object BoardProjectionPolicy {
 
     /**
+     * Auto-disconnect is a single-controller hand-off feature, not a generic
+     * Bluetooth timeout. Any shared feature or active BoardCell makes it
+     * unavailable while preserving the user's configured duration.
+     */
+    fun autoDisconnectUnavailable(
+        activeMesh: Boolean,
+        featureKeepAlive: Boolean,
+        connectionCapacity: BoardConnectionCapacity,
+    ): Boolean = activeMesh || featureKeepAlive ||
+        connectionCapacity == BoardConnectionCapacity.MULTIPLE
+
+    /**
      * Stock MoonBoard controllers clear their LEDs when the final GATT client
      * disconnects. Aurora-family controllers retain the last projection.
      */

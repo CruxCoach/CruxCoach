@@ -8,6 +8,9 @@ import com.cruxcoach.android.data.kilter.formatKilterImportSummary
 import com.cruxcoach.android.data.kilter.localized
 import com.cruxcoach.android.data.kilter.localizeKilterImportError
 import com.cruxcoach.android.ble.BoardBleConnection
+import com.cruxcoach.android.ble.BoardControllerProfiles
+import com.cruxcoach.android.ble.BoardProjectionPolicy
+import com.cruxcoach.android.boardcell.BoardCellManager
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.data.AnnouncementRepository
 import com.cruxcoach.android.data.DarkModeSetting
@@ -102,6 +105,7 @@ data class SettingsState(
     val hasAssessment: Boolean = false,
     val ledColors: LedHoldColors = LedHoldColors(),
     val bleAutoDisconnectSeconds: Int = 60,
+    val bleAutoDisconnectUnavailable: Boolean = false,
     val singleConnectionBoardSendMode: BoardSendMode = BoardSendMode.AUTOMATIC,
     /** Mirrors UserPreferences.multiConnectionBoardSendMode's default — a
      *  shared board is not swiped onto by accident. */
@@ -149,6 +153,7 @@ class SettingsViewModel @Inject constructor(
     private val syncManager: BoardSyncManager,
     private val userPreferences: UserPreferences,
     private val bleConnection: BoardBleConnection,
+    private val boardCellManager: BoardCellManager,
     private val climbAdvertiser: ClimbBleAdvertiser,
     private val auroraBoardSelector: AuroraBoardSelector,
     private val announcementRepository: AnnouncementRepository,
@@ -169,6 +174,21 @@ class SettingsViewModel @Inject constructor(
             val freq = withContext(Dispatchers.IO) { boardLocationRepository.productSizeFrequency() }
             val enabled = withContext(Dispatchers.IO) { boardLocationRepository.countWalls() > 0L }
             _state.update { it.copy(boardSizeFrequency = freq, boardSearchEnabled = enabled) }
+        }
+        viewModelScope.safeLaunch("SettingsViewModel") {
+            combine(
+                boardCellManager.snapshots,
+                bleConnection.connectedBoardDescriptor,
+                bleConnection.keepAliveActive,
+            ) { snapshot, board, keepAlive ->
+                BoardProjectionPolicy.autoDisconnectUnavailable(
+                    activeMesh = snapshot != null,
+                    featureKeepAlive = keepAlive,
+                    connectionCapacity = BoardControllerProfiles.forBoard(board).connectionCapacity,
+                )
+            }.distinctUntilChanged().collect { unavailable ->
+                _state.update { it.copy(bleAutoDisconnectUnavailable = unavailable) }
+            }
         }
         // Board-data deletion runs app-scoped in BoardSyncManager (it takes
         // ~20s and must survive leaving this screen) — mirror its progress
@@ -308,7 +328,15 @@ class SettingsViewModel @Inject constructor(
                     )
                 )
             }
-            _state.update { initialState }
+            // The multi-mode collector starts immediately and may have
+            // already observed an active mesh while disk-backed settings are
+            // loading. Do not overwrite that live safety state with the data
+            // class default when the initial batch completes.
+            _state.update { current ->
+                initialState.copy(
+                    bleAutoDisconnectUnavailable = current.bleAutoDisconnectUnavailable,
+                )
+            }
 
             // Start collectors for live updates after initial load
             launch { userPreferences.ledHoldColors.collect { colors -> _state.update { it.copy(ledColors = colors) } } }

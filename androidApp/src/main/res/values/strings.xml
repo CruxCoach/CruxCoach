@@ -377,6 +377,7 @@
     <string name="settings_ble_auto_disconnect_moonboard">Not used for MoonBoard: the lighting requires an active connection.</string>
     <string name="settings_ble_auto_disconnect_enable">Disconnect automatically</string>
     <string name="settings_ble_auto_disconnect_off_hint">The connection stays open until you disconnect it yourself.</string>
+    <string name="settings_ble_auto_disconnect_multi_mode">Unavailable while a mesh, shared session, relay, or multi-client connection is active. Your duration is retained.</string>
     <string name="settings_duration_minutes_label">Minutes</string>
     <string name="settings_duration_seconds_label">Seconds</string>
     <string name="settings_ble_keep_screen_on">Keep screen on</string>
@@ -2136,7 +2137,7 @@
     <string name="whatsnew_022_action_go">Got it</string>
     <string name="whatsnew_022_action_settings">Update settings</string>
     <string name="whatsnew_023_title">New in 0.2.3</string>
-    <string name="whatsnew_023_body">• Competitions — run a comp on your board, or take part in one, with no account and no server. The whole competition lives on Nostr, and every client replays it to the same standings.\n\n• Join by scanning the organiser\u2019s QR code with CruxCoach, by opening their link, or by pasting it.\n\n• Whose turn it is, how many climbers are ahead of you, how many attempts you have left, and where you stand — in that order.\n\n• Where the organiser charges an entry fee, you can pay it in the app over Lightning.</string>
+    <string name="whatsnew_023_body">• Competitions — run a comp on your board, or take part in one, with no account and no server. The whole competition lives on Nostr, and every client replays it to the same standings.\n\n• Join by scanning the organiser\u2019s QR code with CruxCoach, by opening their link, or by pasting it.\n\n• Whose turn it is, how many climbers are ahead of you, how many attempts you have left, and where you stand — in that order.\n\n• Where the organiser charges an entry fee, you can pay it in the app over Lightning.\n\n• BoardCell mesh — join another phone at the wall and send climbs through its board connection. Membership remains visible even when discovery advertisements expire.</string>
     <string name="whatsnew_023_hint">Competitions live behind the CruxCoach logo in the board browser\u2019s top bar. Android 9 or newer is required from this release on.</string>
     <string name="whatsnew_023_action_go">Got it</string>
     <string name="whatsnew_023_action_open">Open competitions</string>

@@ -215,7 +215,12 @@ fun BleStatusArea(
             onStopRelay = stopRelay,
             nearbyMeshCount = nearbyMeshes.size,
             joiningMeshName = joiningMeshName,
-            activeMeshName = meshState.boardName,
+            // Membership, not transient advertisement metadata, decides
+            // whether this is an active mesh. The fallback prevents the chip
+            // becoming an empty/disconnected-looking card after the nearby
+            // advertisement expires while the realm remains healthy.
+            activeMeshName = meshState.takeIf { it.cellId != null }?.boardName
+                ?: meshState.cellId?.let { stringResource(com.cruxcoach.android.R.string.fips_mesh_nearby_own) },
             meshControllerAvailable = meshState.availability == "ACTIVE",
             localMeshController = meshState.controllerNpub != null &&
                 meshState.controllerNpub == meshState.localNpub,

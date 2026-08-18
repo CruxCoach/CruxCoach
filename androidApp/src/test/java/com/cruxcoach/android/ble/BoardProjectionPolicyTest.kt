@@ -7,6 +7,40 @@ import org.junit.Test
 
 class BoardProjectionPolicyTest {
     @Test
+    fun `active mesh disables auto disconnect setting`() {
+        assertTrue(
+            BoardProjectionPolicy.autoDisconnectUnavailable(
+                activeMesh = true,
+                featureKeepAlive = false,
+                connectionCapacity = BoardConnectionCapacity.SINGLE,
+            ),
+        )
+    }
+
+    @Test
+    fun `shared feature and multi client controller disable auto disconnect setting`() {
+        assertTrue(BoardProjectionPolicy.autoDisconnectUnavailable(
+            activeMesh = false,
+            featureKeepAlive = true,
+            connectionCapacity = BoardConnectionCapacity.SINGLE,
+        ))
+        assertTrue(BoardProjectionPolicy.autoDisconnectUnavailable(
+            activeMesh = false,
+            featureKeepAlive = false,
+            connectionCapacity = BoardConnectionCapacity.MULTIPLE,
+        ))
+    }
+
+    @Test
+    fun `exclusive solo controller keeps auto disconnect setting available`() {
+        assertFalse(BoardProjectionPolicy.autoDisconnectUnavailable(
+            activeMesh = false,
+            featureKeepAlive = false,
+            connectionCapacity = BoardConnectionCapacity.SINGLE,
+        ))
+    }
+
+    @Test
     fun `solo MoonBoard host keeps connection after ending session`() {
         assertFalse(
             BoardProjectionPolicy.shouldReleaseBoardAfterHosting(

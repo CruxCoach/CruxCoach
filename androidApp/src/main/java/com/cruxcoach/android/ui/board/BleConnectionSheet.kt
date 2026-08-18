@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.BluetoothConnected
 import androidx.compose.material.icons.filled.BluetoothDisabled
@@ -450,6 +451,8 @@ fun BleConnectionSheet(
                         boards = state.discoveredBoards,
                         nearbyMeshes = state.nearbyMeshes,
                         activeBoardCellId = state.activeBoardCellId,
+                        activeMeshBoardName = state.activeMeshBoardName,
+                        activeMeshMemberCount = state.activeMeshMemberCount,
                         joiningBoardCellId = state.joiningBoardCellId,
                         meshJoinFailed = state.meshJoinFailed,
                         nearbySessions = state.nearbySessions,
@@ -868,6 +871,8 @@ private fun ScanContent(
     boards: List<DiscoveredBoard>,
     nearbyMeshes: List<FipsNearbyMesh>,
     activeBoardCellId: String?,
+    activeMeshBoardName: String?,
+    activeMeshMemberCount: Int,
     joiningBoardCellId: String?,
     meshJoinFailed: Boolean,
     nearbySessions: List<NearbySession>,
@@ -932,6 +937,10 @@ private fun ScanContent(
             color = MaterialTheme.colorScheme.error)
     }
 
+    if (activeBoardCellId != null) {
+        ActiveMeshBoardItem(activeMeshBoardName, activeMeshMemberCount)
+    }
+
     val meshCells = nearbyMeshes.mapNotNull { it.joinableBoardCellId }.toSet()
     val standaloneBoards = boards.filter { board ->
         val cell = runCatching {
@@ -965,7 +974,7 @@ private fun ScanContent(
                 )
             }
         }
-    } else if (!isScanning) {
+    } else if (!isScanning && activeBoardCellId == null) {
         Text(
             stringResource(R.string.board_ble_no_boards),
             style = MaterialTheme.typography.bodyMedium,
@@ -1009,6 +1018,38 @@ private fun ScanContent(
             stringResource(if (isScanning) R.string.board_ble_stop_scan else R.string.board_ble_start_scan),
             fontWeight = FontWeight.Bold
         )
+    }
+}
+
+@Composable
+private fun ActiveMeshBoardItem(boardName: String?, memberCount: Int) {
+    Card(
+        modifier = Modifier.fillMaxWidth().testTag("active_mesh_board_item"),
+        colors = CardDefaults.cardColors(
+            containerColor = SuccessGreen.copy(alpha = 0.12f),
+        ),
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Default.Hub, contentDescription = null, tint = SuccessGreen)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    boardName ?: stringResource(R.string.fips_mesh_nearby_own),
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    "${stringResource(R.string.fips_mesh_own_active)} · " +
+                        "${stringResource(R.string.fips_mesh_members)}: $memberCount",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = SuccessGreen,
+                )
+            }
+        }
     }
 }
 

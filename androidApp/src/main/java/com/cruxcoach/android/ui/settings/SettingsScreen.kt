@@ -231,6 +231,7 @@ fun SettingsScreen(
                     BleAutoDisconnectSection(
                         bleAutoDisconnectSeconds = state.bleAutoDisconnectSeconds,
                         boardBrand = activeBoardBrand,
+                        unavailableInMultiMode = state.bleAutoDisconnectUnavailable,
                         onAutoDisconnectChange = { viewModel.updateBleAutoDisconnect(it) },
                     )
                     HorizontalDivider()

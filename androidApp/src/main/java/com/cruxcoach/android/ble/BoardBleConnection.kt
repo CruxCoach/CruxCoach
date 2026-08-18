@@ -127,6 +127,13 @@ class BoardBleConnection(private val context: Context) {
     private var attemptBudget = MAX_CONNECT_ATTEMPTS
 
     var autoDisconnectSeconds: Int = 0
+        set(value) {
+            field = value
+            // Settings can change while GATT is already idle. Re-evaluate the
+            // live timer immediately instead of waiting for the next write or
+            // connection-state callback.
+            resetIdleTimer()
+        }
     // FEAT-044 coexistence: several features (a shared session, the CruxRelay)
     // can independently keep the board link parked. The idle timer is suppressed
     // while ANY owner holds it; auto-disconnect fires only once ALL have
@@ -134,10 +141,15 @@ class BoardBleConnection(private val context: Context) {
     // more than once (e.g. startQueue + promoteToHost) and release once.
     private val keepAliveOwners = mutableSetOf<String>()
     private val keepAliveLock = Any()
+    private val _keepAliveActive = MutableStateFlow(false)
+    /** True while a mesh/session/relay owns the physical board connection. */
+    val keepAliveActive: StateFlow<Boolean> = _keepAliveActive.asStateFlow()
 
     fun acquireKeepAlive(owner: String) {
         val owners = synchronized(keepAliveLock) {
-            keepAliveOwners.add(owner); keepAliveOwners.toList()
+            keepAliveOwners.add(owner)
+            _keepAliveActive.value = keepAliveOwners.isNotEmpty()
+            keepAliveOwners.toList()
         }
         Log.d(TAG, "keepAlive acquired by $owner — holders=$owners")
         // A timer armed BEFORE the acquire keeps running otherwise: sharing
@@ -149,7 +161,9 @@ class BoardBleConnection(private val context: Context) {
 
     fun releaseKeepAlive(owner: String) {
         val owners = synchronized(keepAliveLock) {
-            keepAliveOwners.remove(owner); keepAliveOwners.toList()
+            keepAliveOwners.remove(owner)
+            _keepAliveActive.value = keepAliveOwners.isNotEmpty()
+            keepAliveOwners.toList()
         }
         Log.d(TAG, "keepAlive released by $owner — holders=$owners")
         if (owners.isEmpty()) resetIdleTimer() // last owner let go → allow idle-disconnect again

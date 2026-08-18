@@ -378,6 +378,7 @@
     <string name="settings_ble_auto_disconnect_moonboard">Nicht für MoonBoard verwendet: Die Beleuchtung benötigt eine aktive Verbindung.</string>
     <string name="settings_ble_auto_disconnect_enable">Automatisch trennen</string>
     <string name="settings_ble_auto_disconnect_off_hint">Die Verbindung bleibt bestehen, bis du sie selbst trennst.</string>
+    <string name="settings_ble_auto_disconnect_multi_mode">Im Mesh-, Gruppen-, Relay- oder Multi-Connect-Modus nicht verfügbar. Deine eingestellte Dauer bleibt erhalten.</string>
     <string name="settings_duration_minutes_label">Minuten</string>
     <string name="settings_duration_seconds_label">Sekunden</string>
     <string name="settings_ble_keep_screen_on">Bildschirm anlassen</string>
@@ -2135,7 +2136,7 @@
     <string name="whatsnew_022_action_go">Alles klar</string>
     <string name="whatsnew_022_action_settings">Update-Einstellungen</string>
     <string name="whatsnew_023_title">Neu in 0.2.3</string>
-    <string name="whatsnew_023_body">• Wettk\u00e4mpfe — richte einen Wettkampf an deinem Board aus oder nimm teil, ohne Konto und ohne Server. Der ganze Wettkampf liegt auf Nostr, und jeder Client spielt ihn zur selben Wertung nach.\n\n• Mitmachen per QR-Code der Ausrichtung, \u00fcber ihren Link oder durch Einf\u00fcgen.\n\n• Wer dran ist, wie viele vor dir sind, wie viele Versuche dir bleiben und wo du stehst — in dieser Reihenfolge.\n\n• Wenn Startgeld verlangt wird, kannst du es in der App per Lightning bezahlen.</string>
+    <string name="whatsnew_023_body">• Wettk\u00e4mpfe — richte einen Wettkampf an deinem Board aus oder nimm teil, ohne Konto und ohne Server. Der ganze Wettkampf liegt auf Nostr, und jeder Client spielt ihn zur selben Wertung nach.\n\n• Mitmachen per QR-Code der Ausrichtung, \u00fcber ihren Link oder durch Einf\u00fcgen.\n\n• Wer dran ist, wie viele vor dir sind, wie viele Versuche dir bleiben und wo du stehst — in dieser Reihenfolge.\n\n• Wenn Startgeld verlangt wird, kannst du es in der App per Lightning bezahlen.\n\n• BoardCell-Mesh — tritt einem zweiten Handy am Board bei und sende Climbs über dessen Board-Verbindung. Die Mitgliedschaft bleibt sichtbar, auch wenn Discovery-Advertisements auslaufen.</string>
     <string name="whatsnew_023_hint">Wettk\u00e4mpfe liegen hinter dem CruxCoach-Logo oben im Board-Browser. Ab dieser Version ist Android 9 oder neuer n\u00f6tig.</string>
     <string name="whatsnew_023_action_go">Verstanden</string>
     <string name="whatsnew_023_action_open">Wettk\u00e4mpfe \u00f6ffnen</string>

@@ -102,6 +102,8 @@ data class BleConnectionState(
     val controllerRequestState: ControllerRequestState = ControllerRequestState.IDLE,
     val nearbyMeshes: List<FipsNearbyMesh> = emptyList(),
     val activeBoardCellId: String? = null,
+    val activeMeshBoardName: String? = null,
+    val activeMeshMemberCount: Int = 0,
     val joiningBoardCellId: String? = null,
     val meshJoinFailed: Boolean = false,
 )
@@ -163,12 +165,25 @@ class BleConnectionViewModel @Inject constructor(
                 // realm. The BoardCell snapshot can briefly be absent while a
                 // durable controller is being restored, so filter by radio
                 // scope instead of relying only on activeBoardCellId in UI.
-                _state.update { it.copy(nearbyMeshes = meshes.filterNot(FipsNearbyMesh::matchesActiveRealm)) }
+                _state.update { state ->
+                    val active = meshes.firstOrNull {
+                        it.matchesActiveRealm || it.joinableBoardCellId == state.activeBoardCellId
+                    }
+                    state.copy(
+                        nearbyMeshes = meshes.filterNot {
+                            it.matchesActiveRealm ||
+                                it.joinableBoardCellId == state.activeBoardCellId
+                        },
+                        activeMeshBoardName = active?.boardName ?: state.activeMeshBoardName,
+                    )
+                }
             }
         }
         viewModelScope.safeLaunch(TAG) {
             boardCellManager.snapshots.collect { snapshot ->
                 _state.update { it.copy(activeBoardCellId = snapshot?.cellId?.value,
+                    activeMeshBoardName = if (snapshot == null) null else it.activeMeshBoardName,
+                    activeMeshMemberCount = snapshot?.members?.size ?: 0,
                     joiningBoardCellId = if (snapshot != null) null else it.joiningBoardCellId,
                     meshJoinFailed = if (snapshot != null) false else it.meshJoinFailed) }
             }
@@ -576,6 +591,7 @@ class BleConnectionViewModel @Inject constructor(
                     controllerRequestBoard = null,
                     controllerRequestState = ControllerRequestState.IDLE,
                     joiningBoardCellId = cellId,
+                    activeMeshBoardName = mesh.boardName ?: it.activeMeshBoardName,
                     meshJoinFailed = false,
                 )
             }

@@ -7,6 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [0.2.3] - Unreleased
 
 ### Fixed
+- **Stable mesh membership UI and multi-mode board lifetime** — a joined
+  BoardCell no longer looks disconnected when its short-lived discovery
+  advertisement expires. The active mesh remains explicit in the status chip
+  and board picker. Board auto-disconnect is now unavailable while a mesh,
+  shared session, relay or known multi-client connection is active, while the
+  user's configured duration is preserved for later solo use.
 - **Realm-safe BoardCell and Competition mesh traffic** — every feature now
   acquires a reference-counted, realm-scoped session and sends only named
   protocol envelopes. Frames from another realm or an unknown protocol are
