@@ -2,6 +2,7 @@ package com.cruxcoach.android
 
 import com.cruxcoach.android.ui.whatsnew.WhatsNewItems
 import java.io.File
+import org.junit.Assume.assumeTrue
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -16,6 +17,13 @@ import kotlin.test.assertTrue
  * itself an update forever.
  */
 class ReleaseMetadataTest {
+
+    private fun requireProductionReleaseMetadata() {
+        assumeTrue(
+            "exact release metadata applies only to production builds",
+            BuildConfig.APKTRACK_FEATURE_TRACK.isEmpty(),
+        )
+    }
 
     private val gradle: String by lazy {
         listOf(File("build.gradle.kts"), File("androidApp/build.gradle.kts"))
@@ -34,6 +42,7 @@ class ReleaseMetadataTest {
 
     @Test
     fun `the build identifies as this release`() {
+        requireProductionReleaseMetadata()
         assertEquals("0.2.3", stringField("versionName"))
         assertEquals(20, intField("versionCode"))
         assertEquals(
@@ -68,6 +77,7 @@ class ReleaseMetadataTest {
 
     @Test
     fun `this release announces itself to upgrading users`() {
+        requireProductionReleaseMetadata()
         val item = WhatsNewItems.registry.singleOrNull { it.sinceVersionCode == BuildConfig.VERSION_CODE }
         assertTrue(
             item != null,
