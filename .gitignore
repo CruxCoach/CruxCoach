@@ -109,8 +109,9 @@ __pycache__/
 venv/
 .env
 
-# Maestro
-tests/
+# Maestro (the repository-root suite; anchored so it cannot swallow a
+# vendored upstream tree's own tests/ directories — see native/fips)
+/tests/
 
 # Pipeline (internal automation)
 .pipeline/

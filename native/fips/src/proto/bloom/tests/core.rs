@@ -1,0 +1,438 @@
+//! Tests for the `BloomFilter` data structure.
+
+use alloc::collections::BTreeMap;
+
+use crate::NodeAddr;
+use crate::proto::bloom::state::BloomState;
+use crate::proto::bloom::{BloomError, BloomFilter, DEFAULT_FILTER_SIZE_BITS, DEFAULT_HASH_COUNT};
+use crate::testutil::make_node_addr;
+
+#[test]
+fn test_bloom_filter_new() {
+    let filter = BloomFilter::new();
+    assert_eq!(filter.num_bits(), DEFAULT_FILTER_SIZE_BITS);
+    assert_eq!(filter.hash_count(), DEFAULT_HASH_COUNT);
+    assert_eq!(filter.count_ones(), 0);
+    assert!(filter.is_empty());
+}
+
+#[test]
+fn test_bloom_filter_insert_contains() {
+    let mut filter = BloomFilter::new();
+    let node1 = make_node_addr(1);
+    let node2 = make_node_addr(2);
+
+    assert!(!filter.contains(&node1));
+    assert!(!filter.contains(&node2));
+
+    filter.insert(&node1);
+
+    assert!(filter.contains(&node1));
+    // node2 might have false positive, but very unlikely with single insert
+    assert!(!filter.is_empty());
+}
+
+#[test]
+fn test_bloom_filter_multiple_inserts() {
+    let mut filter = BloomFilter::new();
+
+    for i in 0..100 {
+        let node = make_node_addr(i);
+        filter.insert(&node);
+    }
+
+    // All inserted items should be found
+    for i in 0..100 {
+        let node = make_node_addr(i);
+        assert!(filter.contains(&node), "Node {} not found", i);
+    }
+
+    // Fill ratio should be reasonable
+    let fill = filter.fill_ratio();
+    assert!(fill > 0.0 && fill < 0.5, "Unexpected fill ratio: {}", fill);
+}
+
+#[test]
+fn test_bloom_filter_merge() {
+    let mut filter1 = BloomFilter::new();
+    let mut filter2 = BloomFilter::new();
+
+    let node1 = make_node_addr(1);
+    let node2 = make_node_addr(2);
+
+    filter1.insert(&node1);
+    filter2.insert(&node2);
+
+    filter1.merge(&filter2).unwrap();
+
+    assert!(filter1.contains(&node1));
+    assert!(filter1.contains(&node2));
+}
+
+#[test]
+fn test_bloom_filter_union() {
+    let mut filter1 = BloomFilter::new();
+    let mut filter2 = BloomFilter::new();
+
+    let node1 = make_node_addr(1);
+    let node2 = make_node_addr(2);
+
+    filter1.insert(&node1);
+    filter2.insert(&node2);
+
+    let union = filter1.union(&filter2).unwrap();
+
+    assert!(union.contains(&node1));
+    assert!(union.contains(&node2));
+    // Original filters unchanged
+    assert!(!filter1.contains(&node2));
+    assert!(!filter2.contains(&node1));
+}
+
+#[test]
+fn test_bloom_filter_clear() {
+    let mut filter = BloomFilter::new();
+    let node = make_node_addr(1);
+
+    filter.insert(&node);
+    assert!(!filter.is_empty());
+
+    filter.clear();
+    assert!(filter.is_empty());
+    assert_eq!(filter.count_ones(), 0);
+    assert!(!filter.contains(&node));
+}
+
+#[test]
+fn test_bloom_filter_merge_size_mismatch() {
+    let mut filter1 = BloomFilter::with_params(1024, 7).unwrap();
+    let filter2 = BloomFilter::with_params(2048, 7).unwrap();
+
+    let result = filter1.merge(&filter2);
+    assert!(matches!(result, Err(BloomError::InvalidSize { .. })));
+}
+
+#[test]
+fn test_bloom_filter_custom_params() {
+    let filter = BloomFilter::with_params(1024, 5).unwrap();
+    assert_eq!(filter.num_bits(), 1024);
+    assert_eq!(filter.num_bytes(), 128);
+    assert_eq!(filter.hash_count(), 5);
+}
+
+#[test]
+fn test_bloom_filter_invalid_params() {
+    // Not byte-aligned (1001 is not divisible by 8)
+    assert!(matches!(
+        BloomFilter::with_params(1001, 7),
+        Err(BloomError::SizeNotByteAligned(1001))
+    ));
+
+    // Zero size
+    assert!(matches!(
+        BloomFilter::with_params(0, 7),
+        Err(BloomError::SizeNotByteAligned(0))
+    ));
+
+    // Zero hash count
+    assert!(matches!(
+        BloomFilter::with_params(1024, 0),
+        Err(BloomError::ZeroHashCount)
+    ));
+}
+
+#[test]
+fn test_bloom_filter_from_bytes() {
+    let original = BloomFilter::new();
+    let bytes = original.as_bytes().to_vec();
+
+    let restored = BloomFilter::from_bytes(bytes, original.hash_count()).unwrap();
+
+    assert_eq!(original, restored);
+}
+
+#[test]
+fn test_bloom_filter_estimated_count() {
+    let mut filter = BloomFilter::new();
+
+    // Empty filter
+    assert_eq!(filter.estimated_count(f64::INFINITY), Some(0.0));
+
+    // Insert some items
+    for i in 0..50 {
+        filter.insert(&make_node_addr(i));
+    }
+
+    // Estimate should be reasonably close to 50
+    let estimate = filter.estimated_count(f64::INFINITY).unwrap();
+    assert!(
+        estimate > 30.0 && estimate < 100.0,
+        "Unexpected estimate: {}",
+        estimate
+    );
+}
+
+#[test]
+fn test_bloom_filter_equality() {
+    let mut filter1 = BloomFilter::new();
+    let mut filter2 = BloomFilter::new();
+
+    assert_eq!(filter1, filter2);
+
+    filter1.insert(&make_node_addr(1));
+    assert_ne!(filter1, filter2);
+
+    filter2.insert(&make_node_addr(1));
+    assert_eq!(filter1, filter2);
+}
+
+#[test]
+fn test_bloom_filter_from_bytes_empty() {
+    let result = BloomFilter::from_bytes(vec![], 5);
+    assert!(matches!(result, Err(BloomError::SizeNotByteAligned(0))));
+}
+
+#[test]
+fn test_bloom_filter_from_bytes_zero_hash_count() {
+    let result = BloomFilter::from_bytes(vec![0u8; 128], 0);
+    assert!(matches!(result, Err(BloomError::ZeroHashCount)));
+}
+
+#[test]
+fn test_bloom_filter_from_slice() {
+    let mut original = BloomFilter::new();
+    original.insert(&make_node_addr(42));
+    let bytes = original.as_bytes();
+
+    let restored = BloomFilter::from_slice(bytes, original.hash_count()).unwrap();
+    assert_eq!(original, restored);
+}
+
+#[test]
+fn test_bloom_filter_insert_bytes_contains_bytes() {
+    let mut filter = BloomFilter::new();
+    let data1 = b"hello world";
+    let data2 = b"goodbye";
+
+    assert!(!filter.contains_bytes(data1));
+
+    filter.insert_bytes(data1);
+    assert!(filter.contains_bytes(data1));
+    assert!(!filter.contains_bytes(data2));
+
+    filter.insert_bytes(data2);
+    assert!(filter.contains_bytes(data1));
+    assert!(filter.contains_bytes(data2));
+}
+
+#[test]
+fn test_bloom_filter_estimated_count_saturated() {
+    // Create a small filter with all bits set
+    let bytes = vec![0xFF; 8]; // all bits set
+    let filter = BloomFilter::from_bytes(bytes, 3).unwrap();
+
+    // Saturated filter returns None regardless of cap (defense in depth).
+    // Previously returned f64::INFINITY.
+    assert_eq!(filter.estimated_count(f64::INFINITY), None);
+    assert_eq!(filter.estimated_count(0.05), None);
+}
+
+#[test]
+fn test_bloom_filter_estimated_count_fpr_cap_boundary() {
+    // Cap boundary: FPR = fill^k = 0.05 at k=5 ⇒ fill ≈ 0.5493
+    // 1KB filter (8192 bits). 560 bytes of 0xFF = 4480 bits set =
+    // fill 0.5469, FPR ≈ 0.04877 — just below cap.
+    // 564 bytes of 0xFF = 4512 bits set = fill 0.5508, FPR ≈ 0.05060 —
+    // just above cap.
+
+    let mut below = vec![0x00u8; 1024];
+    below[..560].fill(0xFF);
+    let below_filter = BloomFilter::from_bytes(below, DEFAULT_HASH_COUNT).unwrap();
+    assert!(
+        below_filter.estimated_count(0.05).is_some(),
+        "fill 0.5469 (FPR ≈ 0.049) must be accepted by cap 0.05"
+    );
+
+    let mut above = vec![0x00u8; 1024];
+    above[..564].fill(0xFF);
+    let above_filter = BloomFilter::from_bytes(above, DEFAULT_HASH_COUNT).unwrap();
+    assert_eq!(
+        above_filter.estimated_count(0.05),
+        None,
+        "fill 0.5508 (FPR ≈ 0.051) must be rejected by cap 0.05"
+    );
+
+    // Same above-cap filter with a looser cap is accepted.
+    assert!(
+        above_filter.estimated_count(0.10).is_some(),
+        "fill 0.5508 (FPR ≈ 0.051) must be accepted by cap 0.10"
+    );
+}
+
+#[test]
+fn test_bloom_filter_default() {
+    let default: BloomFilter = Default::default();
+    let explicit = BloomFilter::new();
+    assert_eq!(default, explicit);
+}
+
+#[test]
+fn test_bloom_filter_debug_format() {
+    let mut filter = BloomFilter::new();
+    let debug = format!("{:?}", filter);
+    assert!(debug.contains("BloomFilter"));
+    assert!(debug.contains("8192"));
+    assert!(debug.contains("hash_count"));
+
+    // With some entries
+    for i in 0..10 {
+        filter.insert(&make_node_addr(i));
+    }
+    let debug = format!("{:?}", filter);
+    assert!(debug.contains("fill_ratio"));
+    assert!(debug.contains("est_count"));
+}
+
+#[test]
+fn test_bloom_filter_bit_indices_match_double_hashing_formula() {
+    use sha2::{Digest, Sha256};
+
+    // Independently recompute the documented double-hashing bit indices:
+    // one SHA-256 digest of the input, h1 = bytes[0..8] LE, h2 = bytes[8..16]
+    // LE, then for k in 0..hash_count: (h1 + k*h2) mod num_bits. This pins
+    // bit-identical behavior regardless of the internal implementation.
+    fn expected_indices(data: &[u8], num_bits: usize, hash_count: u8) -> Vec<usize> {
+        let digest = Sha256::digest(data);
+        let h1 = u64::from_le_bytes(digest[0..8].try_into().unwrap());
+        let h2 = u64::from_le_bytes(digest[8..16].try_into().unwrap());
+        (0..hash_count)
+            .map(|k| {
+                let combined = h1.wrapping_add((k as u64).wrapping_mul(h2));
+                (combined as usize) % num_bits
+            })
+            .collect()
+    }
+
+    fn bit_is_set(filter: &BloomFilter, index: usize) -> bool {
+        let byte = filter.as_bytes()[index / 8];
+        (byte >> (index % 8)) & 1 == 1
+    }
+
+    let configs = [(1024usize, 5u8), (8192usize, 7u8)];
+    let inputs: [&[u8]; 4] = [b"", b"alpha", b"the quick brown fox", &[0u8, 1, 2, 3, 255]];
+
+    for (num_bits, hash_count) in configs {
+        for data in inputs {
+            let mut filter = BloomFilter::with_params(num_bits, hash_count).unwrap();
+            let expected = expected_indices(data, num_bits, hash_count);
+
+            filter.insert_bytes(data);
+
+            // Every expected bit is set.
+            for &idx in &expected {
+                assert!(
+                    bit_is_set(&filter, idx),
+                    "expected bit {} set for input {:?} (num_bits={}, k={})",
+                    idx,
+                    data,
+                    num_bits,
+                    hash_count
+                );
+            }
+
+            // No unexpected bits are set: the set-bit count never exceeds the
+            // number of distinct expected indices.
+            let distinct: alloc::collections::BTreeSet<usize> = expected.iter().copied().collect();
+            assert_eq!(
+                filter.count_ones(),
+                distinct.len(),
+                "unexpected bits set for input {:?}",
+                data
+            );
+
+            // contains reports the inserted item as present.
+            assert!(filter.contains_bytes(data));
+        }
+    }
+
+    // NodeAddr path uses the same formula over its byte view.
+    let node = make_node_addr(7);
+    let mut filter = BloomFilter::with_params(1024, 5).unwrap();
+    let expected = expected_indices(node.as_bytes(), 1024, 5);
+    filter.insert(&node);
+    for &idx in &expected {
+        assert!(bit_is_set(&filter, idx));
+    }
+    assert!(filter.contains(&node));
+
+    // Spot-check a definitely-absent item is reported absent.
+    let absent = make_node_addr(200);
+    assert!(!filter.contains(&absent));
+}
+
+#[test]
+fn test_compute_outgoing_filters_matches_per_peer() {
+    let node = make_node_addr(0);
+    let mut state = BloomState::new(node);
+    state.add_leaf_dependent(make_node_addr(200));
+    state.add_leaf_dependent(make_node_addr(201));
+
+    // Six contributing peers with overlapping content, plus one whose
+    // filter is a different size and must be skipped by both paths.
+    let mut peer_filters = BTreeMap::new();
+    for i in 1u8..=6 {
+        let mut filter = BloomFilter::new();
+        for j in 0..5u8 {
+            filter.insert(&make_node_addr(i.wrapping_mul(7).wrapping_add(j)));
+        }
+        peer_filters.insert(make_node_addr(i), filter);
+    }
+    let odd_peer = make_node_addr(7);
+    let mut odd = BloomFilter::with_params(4096, DEFAULT_HASH_COUNT).unwrap();
+    odd.insert(&make_node_addr(99));
+    peer_filters.insert(odd_peer, odd);
+
+    // Targets: every contributing peer, the odd-sized one, and two peers
+    // that contribute nothing (non-tree peers get announces too).
+    let mut targets: Vec<NodeAddr> = (1u8..=7).map(make_node_addr).collect();
+    targets.push(make_node_addr(120));
+    targets.push(make_node_addr(121));
+
+    let batch = state.compute_outgoing_filters(&targets, &peer_filters);
+
+    assert_eq!(batch.len(), targets.len());
+    for target in &targets {
+        let expected = state.compute_outgoing_filter(target, &peer_filters);
+        assert_eq!(
+            batch.get(target),
+            Some(&expected),
+            "batch filter for {:?} differs from per-peer computation",
+            target
+        );
+    }
+
+    // Split horizon is real, not vacuous: a contributing peer's own
+    // entries must be absent from its own outgoing filter, and present
+    // in another peer's.
+    let peer3 = make_node_addr(3);
+    let own_entry = make_node_addr(3u8.wrapping_mul(7));
+    assert!(!batch[&peer3].contains(&own_entry));
+    assert!(batch[&make_node_addr(1)].contains(&own_entry));
+}
+
+#[test]
+fn test_compute_outgoing_filters_empty_inputs() {
+    let node = make_node_addr(0);
+    let state = BloomState::new(node);
+    let peer_filters = BTreeMap::new();
+
+    assert!(
+        state
+            .compute_outgoing_filters(&[], &peer_filters)
+            .is_empty()
+    );
+
+    let target = make_node_addr(1);
+    let batch = state.compute_outgoing_filters(&[target], &peer_filters);
+    assert_eq!(batch[&target], state.base_filter());
+}

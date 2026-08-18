@@ -1,0 +1,105 @@
+//! FIPS: Free Internetworking Peering System
+//!
+//! A distributed, decentralized network routing protocol for mesh nodes
+//! connecting over arbitrary transports.
+
+// Name the `alloc` crate directly so the sans-IO protocol cores can spell their
+// heap-type imports in `no_std`-forward form (`alloc::sync::Arc`,
+// `alloc::collections::BTreeMap`). The crate remains `std`; this only reduces the
+// distance to extracting the pure cores into a `no_std` crate later.
+extern crate alloc;
+
+pub mod cache;
+pub mod config;
+pub mod control;
+#[cfg(target_os = "linux")]
+pub mod gateway;
+pub mod identity;
+// Declared before `node` (and named to sort there) because it carries
+// `#[macro_use]`: the tick instrumentation macro must be in scope for the
+// modules that follow.
+#[macro_use]
+pub(crate) mod instr;
+pub mod mdns;
+pub mod node;
+pub mod noise;
+pub mod nostr;
+pub mod peer;
+pub mod perf_profile;
+pub(crate) mod proto;
+#[cfg(test)]
+pub(crate) mod testutil;
+mod time;
+pub mod transport;
+pub mod upper;
+pub mod utils;
+pub mod version;
+
+// Re-export identity types
+pub use identity::{
+    AuthChallenge, AuthResponse, FipsAddress, Identity, IdentityError, NodeAddr, PeerIdentity,
+    decode_npub, decode_nsec, decode_secret, encode_npub, encode_nsec,
+};
+
+// Re-export config types
+pub use config::{Config, ConfigError, IdentityConfig, NymConfig, TorConfig, UdpConfig};
+pub use upper::config::{DnsConfig, TunConfig};
+
+// Re-export nostr rendezvous handoff types
+pub use nostr::{BootstrapHandoffResult, EstablishedTraversal, is_punch_packet};
+
+// Re-export tree types (relocated from tree:: to proto::stp)
+pub use proto::stp::{
+    CoordEntry, CoordError, ParentDeclaration, TreeCoordinate, TreeError, TreeState,
+};
+
+// Re-export bloom filter types (relocated from bloom:: to proto::bloom)
+pub use proto::bloom::{BloomError, BloomFilter, BloomState};
+
+// Re-export transport types
+pub use transport::udp::UdpTransport;
+pub use transport::{
+    DiscoveredPeer, Link, LinkDirection, LinkId, LinkState, LinkStats, PacketRx, PacketTx,
+    ReceivedPacket, Transport, TransportAddr, TransportError, TransportHandle, TransportId,
+    TransportState, TransportType, packet_channel,
+};
+
+// Re-export link-layer types (relocated from protocol:: to proto::link)
+pub use proto::link::{LinkMessageType, SessionDatagram};
+
+// Re-export the shared protocol error (relocated from protocol:: to proto::Error)
+pub use proto::Error;
+
+// Re-export FSP session wire types (relocated from protocol:: to proto::fsp)
+pub use proto::fsp::{SessionAck, SessionFlags, SessionMessageType, SessionSetup};
+
+// Re-export STP wire types (relocated from protocol:: to proto::stp)
+pub use proto::stp::TreeAnnounce;
+
+// Re-export bloom wire types (relocated from protocol:: to proto::bloom)
+pub use proto::bloom::FilterAnnounce;
+
+// Re-export discovery wire types (relocated from protocol:: to proto::lookup)
+pub use proto::lookup::{LookupRequest, LookupResponse};
+
+// Re-export routing wire types (relocated from protocol:: to proto::routing)
+pub use proto::routing::{
+    COORDS_REQUIRED_SIZE, CoordsRequired, MTU_EXCEEDED_SIZE, MtuExceeded, PathBroken,
+};
+
+// Re-export FMP link-framing wire type (relocated from protocol:: to proto::fmp)
+pub use proto::fmp::HandshakeMessageType;
+
+// Re-export cache types
+pub use cache::{CacheEntry, CacheError, CacheStats, CoordCache};
+
+// Re-export FMP tie-break helper and promotion result (relocated from peer:: to proto::fmp)
+pub use proto::fmp::{PromotionResult, cross_connection_winner};
+
+// Re-export peer types
+pub use peer::{ActivePeer, ConnectivityState, PeerError};
+
+// Re-export node types
+#[cfg(unix)]
+pub use node::AppOwnedUdpSocket;
+pub use node::{Node, NodeError, NodeState, UpdatePeersOutcome};

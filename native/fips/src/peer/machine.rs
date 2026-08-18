@@ -1,0 +1,3516 @@
+//! Per-peer FMP control FSM (sans-IO reducer).
+//!
+//! The unified per-peer lifecycle state machine that folds the scattered
+//! `connections`/`peers`/rekey state carriers into one place. It provides the
+//! FSM types, the machine struct (control-tier state only), and the pure `step`
+//! reducer, plus its unit tests. `step` is driven in production by the
+//! handshake handlers, the rekey-cadence and liveness-reap routers, and the
+//! dial/lifecycle paths, with the executor in
+//! `crate::node::dataplane::peer_actions` performing the returned actions.
+//! Still dormant: `PeerEvent::Timeout` is never dispatched — timer FIRING
+//! decisions stay with the shell drivers.
+//!
+//! ## Shape
+//!
+//! `step(event, now, index_allocator) -> Vec<PeerAction>` is a **pure reducer**:
+//! every lifecycle *decision* is delegated to the existing sans-IO cores in
+//! [`crate::proto::fmp`] ([`Fmp::establish_inbound`]/[`establish_outbound`],
+//! [`Fmp::poll_timeouts`]/[`poll_resends`]/[`poll_rekey`]/[`poll_rekey_resends`],
+//! and `cross_connection_winner`) — this module writes **no new decision
+//! core**. The machine only (a) builds the plain-data snapshots those cores
+//! consume from its control-tier state, (b) maps the returned
+//! [`ConnAction`]/[`InboundDecision`]/[`OutboundDecision`]/[`PromotionResult`]
+//! into the [`PeerAction`] vocabulary the driver executes, and (c) advances its
+//! own control state. Shell-side effects (the Noise wire step, `promote_connection`
+//! registry surgery, late ACL `authorize_peer`, decrypt-worker register/unregister)
+//! are **emitted as actions**, never performed here.
+//!
+//! ## Control / send-state split
+//!
+//! The machine holds **control-tier** state only. The hot send-critical state
+//! (the three epoch slots, transport target, connected-UDP handle, hot counters)
+//! becomes `PeerSendState` and is *not* built here; the machine emits
+//! actions (`PromoteToActive`, `SwapSendState`, `RegisterDecryptSession`, …) that
+//! the driver applies to the published send-state. `remote_epoch` is
+//! establish-path-only, hence control-tier, and lives here.
+//!
+//! ## Realizability notes
+//!
+//! - `SendHandshake`/`SendRekey`/`SendLinkMessage` carry **opaque bytes**
+//!   (`Vec<u8>`) — the driver applies outer wire framing / encryption. On the
+//!   resend paths the bytes are the stored wire frame; on a fresh inbound msg2 /
+//!   rekey msg2 they are the Noise payload the shell already produced
+//!   ([`WireOutcome::msg2_payload`]). A fresh outbound msg1 has no bytes the
+//!   control machine can build (the Noise step is shell-side), so it is emitted
+//!   with an empty payload and a note that the driver fills it in — that path is
+//!   not exercised by the tests.
+//! - `SendLinkMessage { msg }` is opaque plaintext (there is **no** unifying
+//!   `LinkMessage` type in the tree today — heartbeat is a bare `[0x51]` byte,
+//!   while filter/tree/disconnect are distinct concrete types). The machine
+//!   builds the real heartbeat and disconnect frames; filter/tree announce
+//!   payloads are data-plane-owned and threaded in by the driver (empty here).
+//! - `PeerSnapshot::counter` (the Noise send counter) is a send-state fact the
+//!   control machine cannot see; it is passed as `0` (the message-count rekey
+//!   trigger is threaded from `PeerSendState`). Irrelevant to every
+//!   test (cutover/drain ignore it).
+
+#![allow(dead_code)]
+
+use crate::identity::ErasingKeypair;
+use crate::noise::{self, NoiseError, NoiseSession};
+use crate::proto::fmp::{
+    ConnAction, ConnSnapshot, ConnectionState, EstablishSnapshot, Fmp, InboundDecision,
+    OutboundDecision, OutboundSnapshot, PeerSnapshot, PromotionResult, RekeyCfg,
+    RekeyResendSnapshot, WireOutcome,
+};
+use crate::proto::link::LinkMessageType;
+use crate::transport::{LinkDirection, LinkId, LinkStats, TransportAddr, TransportId};
+use crate::utils::index::{IndexAllocator, SessionIndex};
+use crate::{NodeAddr, PeerIdentity};
+use secp256k1::Keypair;
+
+// ============================================================================
+// Timing placeholders
+//
+// The `poll_*` cores already take the interval/backoff as arguments, so these
+// are only used to compute `SetTimer{at_ms}` deadlines and the
+// `Closed{backoff_deadline_ms}` park time. The handshake timers are armed
+// live at dial time from these constants: the retransmit driver fires on the
+// machine-armed deadline, while the timeout reaper keys on the timer's
+// presence with its threshold read from `NodeConfig`, which also governs the
+// reschedule cadence shell-side. The unit tests assert on timer *kinds*, not
+// exact deadlines.
+// ============================================================================
+
+const HANDSHAKE_RETRANSMIT_INTERVAL_MS: u64 = 1_000;
+const HANDSHAKE_TIMEOUT_MS: u64 = 30_000;
+const HANDSHAKE_MAX_RESENDS: u32 = 5;
+const RESEND_BACKOFF: f64 = 2.0;
+const REKEY_CADENCE_INTERVAL_MS: u64 = 60_000;
+const REKEY_RESEND_INTERVAL_MS: u64 = 1_000;
+const REKEY_MAX_RESENDS: u32 = 5;
+// `REKEY_AFTER_SECS`, `REKEY_AFTER_MESSAGES` and `LIVENESS_INTERVAL_MS` below
+// are placeholders pinned to today's `RekeyConfig` and `NodeConfig` defaults.
+// They are not a wiring to the config: nothing here reads a config value, so
+// an operator override is not tracked. They are what the machine falls back to
+// until it is wired to config. The tie to the defaults is asserted by
+// `rekey_constants_match_the_rekey_config_defaults` and
+// `liveness_interval_matches_the_heartbeat_config_default` rather than stated
+// in these declarations, because `Default for NodeConfig` is an ordinary impl
+// and cannot be called from a `const` initializer.
+const REKEY_AFTER_SECS: u64 = 120;
+const REKEY_AFTER_MESSAGES: u64 = 65_536;
+/// Drain-window deadline armed at rekey cutover. Sourced from the value that
+/// actually governs the live drain so the two cannot drift; the armed timer
+/// is currently stored and never fired (`drive_peer_timers` has no
+/// `DrainExpiry` arm), so this is a stored-value correction, not a live
+/// timing change.
+const DRAIN_WINDOW_MS: u64 = crate::proto::fsp::limits::DRAIN_WINDOW_SECS * 1_000;
+const LIVENESS_INTERVAL_MS: u64 = 10_000;
+const REKEY_DAMPEN_MS: u64 = 30_000;
+const CLOSED_BACKOFF_MS: u64 = 5_000;
+
+// ============================================================================
+// FSM types
+// ============================================================================
+
+/// The unified per-peer lifecycle state (subsumes today's `HandshakeState`,
+/// `ConnectivityState`, and the rekey flags). Keyed by `LinkId` until
+/// `Established` crystallizes the peer to its `NodeAddr`. **Terminal at
+/// `Closed`** — re-dial is the reconciler's, not a self-transition.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PeerState {
+    /// Reconciler intent recorded; no transport work started yet.
+    Discovered,
+    /// Outbound transport connect in flight (connection-oriented transports).
+    Connecting { link: LinkId },
+    /// Handshake phase; identity not yet crystallized.
+    Handshaking { link: LinkId, phase: HandshakePhase },
+    /// Handshake complete; identity crystallized; send-state published.
+    Established { addr: NodeAddr },
+    /// Steady state.
+    Active { addr: NodeAddr },
+    /// A maintenance sub-machine is running (rekey / liveness / mtu).
+    Maintaining { addr: NodeAddr, kind: MaintainKind },
+    /// Graceful teardown in flight.
+    Closing { addr: NodeAddr, reason: CloseReason },
+    /// Terminal failure; carries the diagnostic reason.
+    Failed { reason: FailReason },
+    /// Terminal; parked at the reconciler-computed backoff deadline.
+    Closed { backoff_deadline_ms: u64 },
+}
+
+/// Handshake phase (the in-progress arms of the peer lifecycle).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum HandshakePhase {
+    Initial,
+    SentMsg1,
+    ReceivedMsg1,
+}
+
+/// Map a lifecycle state to the operator-visible pending-connection handshake
+/// string. Total over `PeerState`; byte-identical to the strings the deleted
+/// leg `HandshakeState` `Display` produced. Only the `Handshaking{SentMsg1}`
+/// arm (and, via the `send_failed` flag handled by the caller, `"failed"`) is
+/// production-reachable in the IK pending-connection view — the rest are kept
+/// total for a complete mapping and the next-branch inbound window.
+fn handshake_state_str(state: PeerState) -> &'static str {
+    match state {
+        PeerState::Handshaking {
+            phase: HandshakePhase::Initial,
+            ..
+        } => "initial",
+        PeerState::Handshaking {
+            phase: HandshakePhase::SentMsg1,
+            ..
+        } => "sent_msg1",
+        PeerState::Handshaking {
+            phase: HandshakePhase::ReceivedMsg1,
+            ..
+        } => "received_msg1",
+        PeerState::Established { .. }
+        | PeerState::Active { .. }
+        | PeerState::Maintaining { .. }
+        | PeerState::Closing { .. } => "complete",
+        PeerState::Failed { .. } => "failed",
+        PeerState::Discovered | PeerState::Connecting { .. } | PeerState::Closed { .. } => {
+            "initial"
+        }
+    }
+}
+
+/// Which maintenance sub-machine `Maintaining` is running.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum MaintainKind {
+    Rekey(RekeyPhase),
+    Liveness(LivenessPhase),
+    Mtu,
+}
+
+/// Rekey negotiation / cutover phase.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum RekeyPhase {
+    /// Rekey msg1 sent (initiator) or msg2 sent (responder); negotiation in flight.
+    Msg1Sent,
+    /// A pending post-rekey session is ready; awaiting the K-bit cutover.
+    PendingCutover,
+    /// Post-cutover drain window open.
+    Draining,
+}
+
+/// Liveness sub-phase.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum LivenessPhase {
+    Stale,
+    Reconnecting,
+}
+
+/// Why a graceful close was requested.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum CloseReason {
+    /// Operator/protocol requested — no loss report.
+    Requested,
+    /// Post-rekey drain-driven close.
+    Draining,
+}
+
+/// Terminal-failure reason (diagnostic only).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum FailReason {
+    TransportFailed,
+    HandshakeTimeout,
+    HandshakeFailed,
+    AclRejected,
+    Rejected,
+    LinkDead,
+}
+
+/// A timer the machine schedules on the driver's quantized tick.
+///
+/// `Hash` lets it key the driver's per-peer timer store; `Ord` lets the driver
+/// collect due kinds deterministically. Note the driver must fire
+/// `HandshakeTimeout` before `HandshakeRetransmit` on a same-tick coincidence
+/// (a reaped leg must not be resent), which is the reverse of this declaration
+/// order — the driver orders explicitly rather than relying on the derived
+/// ascending `Ord`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) enum TimerKind {
+    HandshakeRetransmit,
+    HandshakeTimeout,
+    RekeyCadence,
+    RekeyResend,
+    DrainExpiry,
+    Liveness,
+}
+
+/// Outcome of an outbound cross-connection resolution, observed by the control
+/// machine after the shell has already applied the effect inline.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum CrossConnOutcome {
+    /// The outbound session replaced the existing inbound one: the control
+    /// shadow adopts the new local and remote session indices.
+    Swap {
+        our_index: SessionIndex,
+        their_index: SessionIndex,
+    },
+    /// The existing inbound session was kept: the control shadow is unchanged.
+    Keep,
+}
+
+/// An input to the machine. Cross-registry facts ride in the payload as
+/// plain-data snapshots ([`WireOutcome`]/[`EstablishSnapshot`]/[`OutboundSnapshot`])
+/// built shell-side; `now` is the `step` parameter, never duplicated here.
+///
+/// Not `Debug`/`PartialEq`: the reused core snapshot payloads derive neither.
+pub(crate) enum PeerEvent {
+    /// Reconciler dial intent. `connection_oriented` selects the outbound
+    /// path: connection-oriented transports open the transport first
+    /// (`OpenTransport` → `Connecting`); connectionless ones send msg1
+    /// immediately (`start_outbound_handshake` → `Handshaking`).
+    Dial {
+        transport_id: TransportId,
+        remote_addr: TransportAddr,
+        peer_identity: PeerIdentity,
+        connection_oriented: bool,
+    },
+    /// Connection-oriented transport connected.
+    TransportConnected,
+    /// Transport connect failed.
+    TransportFailed,
+    /// The transport accepted the dial but sending a stored handshake
+    /// initiation failed. The machine marks the embedded leg failed so the
+    /// stale-connection sweep reclaims it, WITHOUT leaving the handshaking
+    /// state — the retransmit driver may still resend in the window before
+    /// the sweep.
+    HandshakeSendFailed,
+    /// Inbound handshake msg1 processed shell-side (Noise + snapshot).
+    InboundMsg1 {
+        link: LinkId,
+        wire: WireOutcome,
+        est: EstablishSnapshot,
+    },
+    /// Outbound handshake completed (their msg2 received + Noise finalized).
+    Msg2 {
+        their_index: SessionIndex,
+        out: OutboundSnapshot,
+    },
+    /// Late-ACL authorization succeeded (benign confirmation).
+    Authorized,
+    /// Late-ACL authorization rejected.
+    Rejected,
+    /// `promote_connection` resolved the [`PromoteToActive`](PeerAction::PromoteToActive)
+    /// action shell-side; the machine consumes the outcome (it does not
+    /// re-decide the tie-break).
+    PromotionResolved { result: PromotionResult },
+    /// Inbound rekey msg1 (a msg1 on an established peer).
+    RekeyMsg1 {
+        wire: WireOutcome,
+        est: EstablishSnapshot,
+    },
+    /// Inbound rekey msg2 (completes our initiated rekey).
+    RekeyMsg2 { their_index: SessionIndex },
+    /// A cadence-decided rekey `ConnAction` to CONSUME. The shell ran the
+    /// batch `poll_rekey` across the whole peer set (phase-grouped, index-order
+    /// preserving) and routes each decided action here; the machine
+    /// applies the control-tier transition + emits the send-state write
+    /// (`SwapSendState`/`CompleteDrain`) WITHOUT re-polling. Carries only
+    /// `Cutover`/`Drain` (`InitiateRekey` stays inline shell-side
+    /// with a [`RekeyInitiated`](PeerEvent::RekeyInitiated) observation).
+    RekeyConsume { action: ConnAction },
+    /// OBSERVATION: the shell initiated an outbound rekey inline (the Noise msg1
+    /// leaf + index allocation are shell-side). Advances the control state to
+    /// `Maintaining{Rekey(Msg1Sent)}` so the next tick's `Cutover`/`Drain` consume
+    /// transitions from a coherent phase. Emits no action.
+    RekeyInitiated,
+    /// OBSERVATION: the shell resolved an outbound cross-connection inline (a
+    /// session swap or keep, with the registry and index surgery already
+    /// applied). Reconciles the control shadow's session indices with reality
+    /// on a swap; leaves them untouched on a keep. Emits no action.
+    CrossConnResolved { outcome: CrossConnOutcome },
+    /// Data plane observed the responder K-bit flip inline.
+    PeerKbitFlip { epoch: [u8; 8] },
+    /// A filter announce is due for this peer.
+    FilterAnnounce,
+    /// A tree announce is due for this peer.
+    TreeAnnounceDue,
+    /// MMP saw a packet from the peer.
+    PeerHeard,
+    /// A keepalive heartbeat is due.
+    HeartbeatDue,
+    /// MMP declared the link dead.
+    LinkDeadSuspected,
+    /// A machine timer fired on the tick.
+    Timeout { kind: TimerKind },
+    /// Graceful disconnect requested.
+    Disconnect { reason: CloseReason },
+    /// The periodic quantized tick.
+    Tick,
+}
+
+/// Why a peer was reported lost. Selects the reconciler reflex the executor
+/// routes the `ReportLost` token to: an un-promoted handshake attempt that
+/// failed (`HandshakeTimeout`, connected-guarded like the old `schedule_retry`)
+/// versus an established peer whose link died (`LinkDead`, unconditional like
+/// the old `schedule_reconnect`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum LostKind {
+    /// An outbound handshake attempt timed out or its dial failed before the
+    /// peer promoted — routes to the connected-guarded reflex.
+    HandshakeTimeout,
+    /// An established peer's link went dead or is being replaced — routes to
+    /// the unconditional reconnect reflex.
+    LinkDead,
+}
+
+/// An effect the driver executes on the machine's behalf. Runtime-agnostic
+/// plain data — no tokio handles, time only as `at_ms` fields.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum PeerAction {
+    /// Open a connection-oriented transport to the target.
+    OpenTransport {
+        transport_id: TransportId,
+        remote_addr: TransportAddr,
+    },
+    /// Transmit handshake bytes (driver applies outer framing; see module note).
+    SendHandshake { bytes: Vec<u8> },
+    /// Transmit rekey handshake bytes.
+    SendRekey { bytes: Vec<u8> },
+    /// Transmit an (encrypted) plaintext link-control frame. Opaque `Vec<u8>`
+    /// pending a unifying `LinkMessage` type; a future revision could type against
+    /// `proto::bloom::FilterAnnounce` / `proto::stp::TreeAnnounce` /
+    /// `proto::fmp::Disconnect` / a heartbeat marker.
+    SendLinkMessage { msg: Vec<u8> },
+    /// Crystallize identity, re-home the map key, publish send-state
+    /// (`promote_connection`). Resolves to a [`PromotionResolved`](PeerEvent::PromotionResolved).
+    PromoteToActive { link: LinkId },
+    /// A DECISION conveyed to the driver, not an effect: emitted by the
+    /// outbound-msg2 arm when the establish decision is a cross-connection
+    /// resolution. The shell intercepts it and runs the inline swap/keep
+    /// resolution; it must never reach the action executor.
+    ResolveCrossConnection { swap: bool },
+    /// Initiator-side rekey cutover: swap the published send-state to the pending
+    /// epoch.
+    SwapSendState { epoch: [u8; 8] },
+    /// Complete an initiator-side rekey drain: retire the previous session slot
+    /// (drop its `peers_by_index`/decrypt-worker entry, free its index). The
+    /// executor reads the REAL previous index from `ActivePeer::complete_drain`
+    /// (not a machine-shadow index, which can drift).
+    CompleteDrain { peer: NodeAddr },
+    /// Invalidate the published send-state (close/loss).
+    InvalidateSendState,
+    /// Register a decrypt-worker entry for `index`.
+    RegisterDecryptSession { index: SessionIndex },
+    /// Unregister the decrypt-worker entry for `index`.
+    UnregisterDecryptSession { index: SessionIndex },
+    /// Free `index` back to the shared allocator.
+    FreeIndex { index: SessionIndex },
+    /// Activate the per-peer connected-UDP plane.
+    ActivateConnectedUdp,
+    /// Tear down the per-peer connected-UDP plane.
+    TeardownConnectedUdp,
+    /// Schedule `kind` to fire at `at_ms` on the tick.
+    SetTimer { kind: TimerKind, at_ms: u64 },
+    /// Cancel a scheduled timer.
+    CancelTimer { kind: TimerKind },
+    /// Report the peer lost to the reconciler (the single loss token — there is
+    /// deliberately no `ScheduleRetry` machine action). `kind` selects the
+    /// reflex (handshake-timeout vs link-dead) the executor routes to.
+    ReportLost { peer: NodeAddr, kind: LostKind },
+}
+
+// ============================================================================
+// The machine (control tier)
+// ============================================================================
+
+/// The handshake operations are only reachable while a pending connection is
+/// attached; every path that drives the crypto attaches it first.
+fn no_pending_connection() -> NoiseError {
+    NoiseError::WrongState {
+        expected: "attached connection".to_string(),
+        got: "no connection".to_string(),
+    }
+}
+
+/// The handshake-phase Noise crypto, owned by the control machine.
+///
+/// PRESENCE OF THIS STRUCT (`PeerMachine::leg().is_some()`) IS THE
+/// HANDSHAKE-PHASE CARRIER SIGNAL — it is what `Node::connections()`,
+/// `connection_count()`, the stale-connection sweep, the transport-in-use
+/// check, and the peering budget all key on. It is attached and detached at
+/// exactly the points the pending connection was, and its presence is NOT a
+/// function of whether either handle is populated.
+///
+/// A present-but-empty value is legal and load-bearing: `mark_failed` drops
+/// the initiation handle while deliberately retaining the carrier so the
+/// sweep can reclaim it, and `take_session` empties the other. Deriving
+/// presence from handle presence would make every failed handshake invisible
+/// to the sweep — a permanent leak. See the presence tests in this module.
+pub(crate) struct HandshakeCrypto {
+    /// Noise handshake state (consumed on completion).
+    pub(crate) noise_handshake: Option<noise::HandshakeState>,
+    /// Completed Noise session (available once the handshake completes).
+    pub(crate) noise_session: Option<NoiseSession>,
+}
+
+impl HandshakeCrypto {
+    /// A fresh carrier holding neither handle, as every handshake begins.
+    pub(crate) fn new() -> Self {
+        Self {
+            noise_handshake: None,
+            noise_session: None,
+        }
+    }
+}
+
+impl std::fmt::Debug for HandshakeCrypto {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HandshakeCrypto")
+            .field("has_noise_handshake", &self.noise_handshake.is_some())
+            .field("has_noise_session", &self.noise_session.is_some())
+            .finish()
+    }
+}
+
+/// Per-peer control FSM. Holds control-tier lifecycle state only; the
+/// send-critical state is published as `PeerSendState` and mutated via the
+/// emitted [`PeerAction`]s.
+pub(crate) struct PeerMachine {
+    state: PeerState,
+    link: LinkId,
+    identity: Option<PeerIdentity>,
+    /// The handshake-phase Noise crypto this machine owns while it is in the
+    /// handshake window. `None` before the handshake begins (the dial window)
+    /// and after promotion consumes it (the machine survives as the active
+    /// peer's control machine). Its presence — not the state of the handles
+    /// inside it — is what marks this machine as carrying a pending
+    /// handshake; see [`HandshakeCrypto`].
+    leg: Option<HandshakeCrypto>,
+    /// Pure handshake-phase bookkeeping (link/direction/indices/transport/
+    /// stored handshake bytes/epoch). Reused verbatim from the FMP state core.
+    conn: ConnectionState,
+    /// Remote startup epoch (establish-path-only; NOT in send-state).
+    remote_epoch: Option<[u8; 8]>,
+    /// Inbound two-phase authorize: the opaque Noise msg2
+    /// payload stashed in Phase 1 (`InboundMsg1`) and emitted in Phase 2
+    /// (`on_authorized`), so a rejected/unauthorized msg1 allocates no index.
+    pending_msg2_payload: Option<Vec<u8>>,
+    /// A stored-handshake send failure was observed on this leg. The failure is
+    /// carried as a flag (not a `PeerState::Failed` transition) so retransmit
+    /// eligibility (`is_handshaking_sent_msg1`) survives until the
+    /// stale-connection sweep reclaims the leg. It drives both `is_failed`
+    /// (reaping) and the displayed handshake state (`"failed"`), reproducing the
+    /// pre-collapse leg `is_failed`/display signal byte-for-byte.
+    send_failed: bool,
+
+    // --- rekey negotiation sub-state (control tier; NOT the pending send slot) ---
+    rekey_in_progress: bool,
+    /// The index we allocated for our in-flight/negotiated rekey session.
+    rekey_our_index: Option<SessionIndex>,
+    /// Stored rekey msg1 wire bytes (for retransmit).
+    rekey_msg1: Option<Vec<u8>>,
+    rekey_resend_count: u32,
+    /// When we last processed a peer rekey msg1 (dampening).
+    last_peer_rekey_ms: u64,
+
+    // --- timing (control tier) ---
+    session_established_at_ms: u64,
+    authenticated_at_ms: u64,
+    rekey_jitter_secs: i64,
+    last_heartbeat_sent_ms: u64,
+
+    // --- decrypt-registration drain window ---
+    // The machine owns decrypt-worker register/unregister via actions. The
+    // currently-registered index lives on the surviving carrier (`conn`); this
+    // field tracks the previous index held open during a post-cutover drain
+    // window (to later unregister/free). Control knowledge of the registration
+    // lifecycle, distinct from the hot send-state slots.
+    /// The previous index held open during a post-cutover drain window.
+    draining_index: Option<SessionIndex>,
+}
+
+impl PeerMachine {
+    /// New outbound machine (we dial). Starts at `Discovered`; the reconciler's
+    /// `Dial` event drives the first transition.
+    pub(crate) fn new_outbound(link: LinkId, identity: PeerIdentity, now: u64) -> Self {
+        Self {
+            state: PeerState::Discovered,
+            link,
+            identity: Some(identity),
+            leg: None,
+            conn: ConnectionState::outbound(link, identity, now),
+            remote_epoch: None,
+            pending_msg2_payload: None,
+            send_failed: false,
+            rekey_in_progress: false,
+            rekey_our_index: None,
+            rekey_msg1: None,
+            rekey_resend_count: 0,
+            last_peer_rekey_ms: 0,
+            session_established_at_ms: 0,
+            authenticated_at_ms: 0,
+            rekey_jitter_secs: 0,
+            last_heartbeat_sent_ms: 0,
+            draining_index: None,
+        }
+    }
+
+    /// New inbound machine (they dialed us). Starts at `Handshaking{Initial}`.
+    pub(crate) fn new_inbound(link: LinkId, now: u64) -> Self {
+        Self {
+            state: PeerState::Handshaking {
+                link,
+                phase: HandshakePhase::Initial,
+            },
+            link,
+            identity: None,
+            leg: None,
+            conn: ConnectionState::inbound(link, now),
+            remote_epoch: None,
+            pending_msg2_payload: None,
+            send_failed: false,
+            rekey_in_progress: false,
+            rekey_our_index: None,
+            rekey_msg1: None,
+            rekey_resend_count: 0,
+            last_peer_rekey_ms: 0,
+            session_established_at_ms: 0,
+            authenticated_at_ms: 0,
+            rekey_jitter_secs: 0,
+            last_heartbeat_sent_ms: 0,
+            draining_index: None,
+        }
+    }
+
+    /// Current lifecycle state.
+    pub(crate) fn state(&self) -> PeerState {
+        self.state
+    }
+
+    /// The handshake crypto carrier, if this machine is still in the
+    /// handshake window. Presence answers "is there a pending handshake
+    /// here", independently of whether either handle is populated.
+    pub(crate) fn leg(&self) -> Option<&HandshakeCrypto> {
+        self.leg.as_ref()
+    }
+
+    /// Take the handshake crypto carrier off the machine (promotion and
+    /// teardown consume it by value).
+    pub(crate) fn take_leg(&mut self) -> Option<HandshakeCrypto> {
+        self.leg.take()
+    }
+
+    /// Attach a handshake crypto carrier to the machine.
+    pub(crate) fn set_leg(&mut self, leg: HandshakeCrypto) {
+        self.leg = Some(leg);
+    }
+
+    // === Noise handshake operations ===
+    //
+    // Mechanism, not decision: these are called by the shell, are never
+    // reached from `step()`, and no event triggers them. Each drives the
+    // Noise crypto on the pending connection and records the results on both
+    // that connection and the surviving carrier, so a reader of either sees
+    // the same value at the same point.
+
+    /// Start the handshake as initiator and generate message 1.
+    ///
+    /// For outbound connections only. Returns the handshake message to send.
+    /// The epoch is our startup epoch, encrypted into msg1 for restart detection.
+    pub(crate) fn start_handshake(
+        &mut self,
+        mut our_keypair: Keypair,
+        epoch: [u8; 8],
+        current_time_ms: u64,
+    ) -> Result<Vec<u8>, NoiseError> {
+        // The parameter is this frame's own copy of the node's long-term
+        // private key, and the state checks below return before it is used.
+        // The guard clears it on every exit path.
+        let our_keypair = ErasingKeypair::take(&mut our_keypair);
+
+        let msg1 = {
+            let direction = self.conn.direction();
+            let expected_identity = self.conn.expected_identity().copied();
+            let leg = self.leg.as_mut().ok_or_else(no_pending_connection)?;
+
+            if direction != LinkDirection::Outbound {
+                return Err(NoiseError::WrongState {
+                    expected: "outbound connection".to_string(),
+                    got: "inbound connection".to_string(),
+                });
+            }
+
+            let remote_static = expected_identity
+                .expect("outbound must have expected identity")
+                .pubkey_full();
+
+            let mut kp = *our_keypair.get();
+            let mut hs = noise::HandshakeState::new_initiator(kp, remote_static);
+            kp.non_secure_erase();
+            hs.set_local_epoch(epoch);
+            let msg1 = hs.write_message_1()?;
+
+            leg.noise_handshake = Some(hs);
+
+            msg1
+        };
+        self.conn.touch(current_time_ms);
+
+        Ok(msg1)
+    }
+
+    /// Initialize responder and process incoming message 1.
+    ///
+    /// For inbound connections only. Returns the handshake message 2 to send.
+    /// The epoch is our startup epoch, encrypted into msg2 for restart detection.
+    pub(crate) fn receive_handshake_init(
+        &mut self,
+        mut our_keypair: Keypair,
+        epoch: [u8; 8],
+        message: &[u8],
+        current_time_ms: u64,
+    ) -> Result<Vec<u8>, NoiseError> {
+        // Same as `start_handshake`: the parameter copy outlives two early
+        // returns, so the guard owns it rather than an erase per exit path.
+        let our_keypair = ErasingKeypair::take(&mut our_keypair);
+
+        let (msg2, learned_identity, remote_epoch) = {
+            let direction = self.conn.direction();
+            let leg = self.leg.as_mut().ok_or_else(no_pending_connection)?;
+
+            if direction != LinkDirection::Inbound {
+                return Err(NoiseError::WrongState {
+                    expected: "inbound connection".to_string(),
+                    got: "outbound connection".to_string(),
+                });
+            }
+
+            let mut kp = *our_keypair.get();
+            let mut hs = noise::HandshakeState::new_responder(kp);
+            kp.non_secure_erase();
+            hs.set_local_epoch(epoch);
+
+            // Process message 1 (this reveals the initiator's identity and epoch)
+            hs.read_message_1(message)?;
+
+            // Extract the discovered identity from the crypto and record it as
+            // pure data on the state.
+            let remote_static = *hs
+                .remote_static()
+                .expect("remote static available after msg1");
+            let learned_identity = PeerIdentity::from_pubkey_full(remote_static);
+
+            // Capture remote epoch from msg1
+            let remote_epoch = hs.remote_epoch();
+
+            // Generate message 2
+            let msg2 = hs.write_message_2()?;
+
+            // Handshake is complete for responder
+            let session = hs.into_session()?;
+            leg.noise_session = Some(session);
+
+            (msg2, learned_identity, remote_epoch)
+        };
+        self.conn.set_expected_identity(learned_identity);
+        self.conn.set_remote_epoch(remote_epoch);
+        self.conn.touch(current_time_ms);
+
+        Ok(msg2)
+    }
+
+    /// Complete the handshake by processing message 2.
+    ///
+    /// For outbound connections only (initiator completing handshake).
+    pub(crate) fn complete_handshake(
+        &mut self,
+        message: &[u8],
+        current_time_ms: u64,
+    ) -> Result<(), NoiseError> {
+        let remote_epoch = {
+            let leg = self.leg.as_mut().ok_or_else(no_pending_connection)?;
+
+            // The connection is at `SentMsg1` iff its Noise handshake handle is
+            // present (set by `start_handshake`, taken here on completion).
+            // Gating on the handle directly is byte-equivalent to the old
+            // `!= SentMsg1` guard for every reachable transition.
+            if leg.noise_handshake.is_none() {
+                return Err(NoiseError::WrongState {
+                    expected: "sent_msg1 state".to_string(),
+                    got: "no active handshake".to_string(),
+                });
+            }
+
+            let mut hs = leg
+                .noise_handshake
+                .take()
+                .expect("noise handshake must exist in SentMsg1 state");
+
+            hs.read_message_2(message)?;
+
+            // Capture remote epoch from msg2
+            let remote_epoch = hs.remote_epoch();
+
+            let session = hs.into_session()?;
+            leg.noise_session = Some(session);
+
+            remote_epoch
+        };
+        self.conn.set_remote_epoch(remote_epoch);
+        self.conn.touch(current_time_ms);
+
+        Ok(())
+    }
+
+    /// Take the completed Noise session.
+    ///
+    /// Returns the NoiseSession for use in ActivePeer. Can only be called
+    /// once after the handshake completes.
+    pub(crate) fn take_session(&mut self) -> Option<NoiseSession> {
+        // The session exists iff the handshake reached `Complete`, so taking it
+        // unconditionally is byte-equivalent to the old `== Complete` gate.
+        self.leg.as_mut().and_then(|leg| leg.noise_session.take())
+    }
+
+    /// Check if we have a completed session ready to take.
+    pub(crate) fn has_session(&self) -> bool {
+        self.leg
+            .as_ref()
+            .is_some_and(|leg| leg.noise_session.is_some())
+    }
+
+    /// Drop the crypto handshake handle. The failure *state* lives on this
+    /// machine; this only releases the Noise handle at the identical point it
+    /// was released before, so a subsequent `complete_handshake` still reports
+    /// `WrongState`.
+    pub(crate) fn mark_failed(&mut self) {
+        if let Some(leg) = self.leg.as_mut() {
+            leg.noise_handshake = None;
+        }
+    }
+
+    /// The session index we allocated for this peer, read from the surviving
+    /// carrier. Populated once the index is allocated on either establish path
+    /// (inbound at `on_authorized`, outbound at msg1 preparation). `None` before
+    /// allocation (and after a rejected/unauthorized msg1). The inbound cutover
+    /// reads this to perform the shell registry surgery.
+    pub(crate) fn our_index(&self) -> Option<SessionIndex> {
+        self.conn.our_index()
+    }
+
+    /// The msg1 resend count for this outbound handshake leg. The per-peer
+    /// machine is the home for this counter — the timer driver advances it via
+    /// [`record_resend`](Self::record_resend) on each successful resend, and the
+    /// control-socket connection snapshot reads it here so the operator-visible
+    /// count follows the machine rather than the (now inert) shell connection.
+    pub(crate) fn resend_count(&self) -> u32 {
+        self.conn.resend_count()
+    }
+
+    /// Record a successful msg1 resend: advance the count and store the next
+    /// backoff deadline. The driver calls this only after the resend actually
+    /// went out (record-on-success — a failed send neither advances the count
+    /// nor reschedules), matching the pre-fold shell semantics.
+    pub(crate) fn record_resend(&mut self, next_resend_at_ms: u64) {
+        self.conn.record_resend(next_resend_at_ms);
+    }
+
+    /// Connection-start timestamp of the surviving carrier — the home for the
+    /// operator-visible `started_at_ms` now that the leg no longer projects it.
+    pub(crate) fn conn_started_at(&self) -> u64 {
+        self.conn.started_at()
+    }
+
+    /// Last-activity timestamp of the surviving carrier — the home for the
+    /// operator-visible `last_activity_ms`/`idle_ms` and the idle-timeout check.
+    pub(crate) fn conn_last_activity(&self) -> u64 {
+        self.conn.last_activity()
+    }
+
+    /// Whether the carrier has been idle past `timeout_ms`.
+    pub(crate) fn conn_is_timed_out(&self, now_ms: u64, timeout_ms: u64) -> bool {
+        self.conn.is_timed_out(now_ms, timeout_ms)
+    }
+
+    /// Expected peer identity of the surviving carrier — the home for the
+    /// operator-visible `expected_peer` now that the leg no longer projects it.
+    /// Outbound carries the dial identity from construction; inbound records
+    /// the identity discovered in msg1, written here by `receive_handshake_init`
+    /// at the same point it reaches the pending connection. Everything that
+    /// names a peer mid-handshake reads this, including the stale-connection
+    /// sweep's retry address.
+    pub(crate) fn conn_expected_identity(&self) -> Option<&PeerIdentity> {
+        self.conn.expected_identity()
+    }
+
+    /// Remote startup epoch of the surviving carrier, recorded by the
+    /// handshake operations at the message that reveals it (msg1 inbound,
+    /// msg2 outbound). Promotion reads it to seed the active peer and to
+    /// detect a peer restart across a reconnect.
+    pub(crate) fn conn_remote_epoch(&self) -> Option<[u8; 8]> {
+        self.conn.remote_epoch()
+    }
+
+    /// Stored wire-format msg1 of the surviving carrier — the resend source for
+    /// the outbound handshake retransmit, now that the leg no longer carries it.
+    pub(crate) fn conn_handshake_msg1(&self) -> Option<&[u8]> {
+        self.conn.handshake_msg1()
+    }
+
+    /// Stored wire-format msg2 of the surviving carrier — the resend source for a
+    /// duplicate msg1 while the inbound handshake is still pending.
+    pub(crate) fn conn_handshake_msg2(&self) -> Option<&[u8]> {
+        self.conn.handshake_msg2()
+    }
+
+    /// Store the wire-format msg1 for resend on the surviving carrier and record
+    /// the first resend deadline, mirroring the leg's start-of-handshake write.
+    pub(crate) fn set_conn_handshake_msg1(&mut self, msg1: Vec<u8>, first_resend_at_ms: u64) {
+        self.conn.set_handshake_msg1(msg1, first_resend_at_ms);
+    }
+
+    /// Store the wire-format msg2 for duplicate-msg1 resend on the surviving
+    /// carrier, mirroring the leg's responder write.
+    pub(crate) fn set_conn_handshake_msg2(&mut self, msg2: Vec<u8>) {
+        self.conn.set_handshake_msg2(msg2);
+    }
+
+    /// The link this machine controls.
+    pub(crate) fn link_id(&self) -> LinkId {
+        self.link
+    }
+
+    /// Which side opened this connection, read from the surviving carrier.
+    /// Seeded at construction: an outbound machine carries an outbound
+    /// connection state and an inbound machine an inbound one.
+    pub(crate) fn conn_direction(&self) -> LinkDirection {
+        self.conn.direction()
+    }
+
+    /// Whether we opened this connection.
+    pub(crate) fn conn_is_outbound(&self) -> bool {
+        self.conn.is_outbound()
+    }
+
+    /// Whether the peer opened this connection.
+    pub(crate) fn conn_is_inbound(&self) -> bool {
+        self.conn.is_inbound()
+    }
+
+    /// The peer's address on this link, read from the surviving carrier.
+    /// Written at the same three points the connection's own copy was: the
+    /// inbound seed, the outbound dial, and message-2 completion.
+    pub(crate) fn conn_source_addr(&self) -> Option<&TransportAddr> {
+        self.conn.source_addr()
+    }
+
+    pub(crate) fn set_conn_source_addr(&mut self, addr: TransportAddr) {
+        self.conn.set_source_addr(addr);
+    }
+
+    /// Peer session index of the surviving carrier — the source for the
+    /// promotion hand-off now that the leg no longer projects it.
+    pub(crate) fn conn_their_index(&self) -> Option<SessionIndex> {
+        self.conn.their_index()
+    }
+
+    /// Transport ID of the surviving carrier — the source for the promotion
+    /// hand-off, the stale-connection cleanup, and the msg1 resend send.
+    pub(crate) fn conn_transport_id(&self) -> Option<TransportId> {
+        self.conn.transport_id()
+    }
+
+    /// Link statistics of the surviving carrier — the seed copied into the
+    /// active peer at promotion.
+    pub(crate) fn conn_link_stats(&self) -> &LinkStats {
+        self.conn.link_stats()
+    }
+
+    /// Record the peer session index on the surviving carrier, so the
+    /// promotion hand-off reads it from the machine.
+    pub(crate) fn set_conn_their_index(&mut self, index: SessionIndex) {
+        self.conn.set_their_index(index);
+    }
+
+    /// Record the transport ID on the surviving carrier. Written on the
+    /// inbound establish path at msg1 and on the outbound dial.
+    pub(crate) fn set_conn_transport_id(&mut self, id: TransportId) {
+        self.conn.set_transport_id(id);
+    }
+
+    /// Record our session index on the surviving carrier. The outbound establish
+    /// path allocates the index shell-side and writes it on the leg; this paired
+    /// write keeps the carrier the single index home once the leg dissolves (the
+    /// inbound path writes the carrier directly at authorize).
+    pub(crate) fn set_conn_our_index(&mut self, index: SessionIndex) {
+        self.conn.set_our_index(index);
+    }
+
+    /// Adopt an explicit connection-start timestamp on the carrier, so the
+    /// surviving state keeps the leg's start provenance rather than the
+    /// dial-time construction default.
+    pub(crate) fn set_conn_started_at(&mut self, started_at_ms: u64) {
+        self.conn.set_started_at(started_at_ms);
+    }
+
+    /// Advance the carrier's last-activity timestamp — the machine-tier paired
+    /// write for the leg's handshake `touch`.
+    pub(crate) fn touch_conn(&mut self, now_ms: u64) {
+        self.conn.touch(now_ms);
+    }
+
+    /// Whether this is an outbound leg parked at `SentMsg1` — the only state in
+    /// which a msg1 resend is due. Mirrors `on_handshake_retransmit`'s guard so
+    /// the shell timer driver can gate without reaching into machine state.
+    pub(crate) fn is_handshaking_sent_msg1(&self) -> bool {
+        matches!(
+            self.state,
+            PeerState::Handshaking {
+                phase: HandshakePhase::SentMsg1,
+                ..
+            }
+        )
+    }
+
+    /// Whether this peer's handshake has failed. The sole failure carrier now
+    /// that the leg's phase enum is gone: a terminal `PeerState::Failed`
+    /// (hard crypto/transport/ACL failures) OR the `send_failed` flag (a stored
+    /// handshake-initiation send failure that deliberately keeps the machine at
+    /// `Handshaking{SentMsg1}`). The stale-connection sweep reads this to reclaim
+    /// the leg, exactly as it read the leg's `is_failed` before.
+    pub(crate) fn is_failed(&self) -> bool {
+        matches!(self.state, PeerState::Failed { .. }) || self.send_failed
+    }
+
+    /// The operator-visible handshake-state string for the pending-connection
+    /// view, derived from the machine phase. Byte-identical to the strings the
+    /// leg's `HandshakeState` `Display` produced before the phase collapsed onto
+    /// the machine. A `send_failed` leg renders `"failed"` while its phase stays
+    /// `SentMsg1`, matching the pre-collapse leg display.
+    pub(crate) fn displayed_handshake_state(&self) -> &'static str {
+        if self.send_failed {
+            return "failed";
+        }
+        handshake_state_str(self.state)
+    }
+
+    /// Record a handshake failure that the shell observed on the leg (e.g. a
+    /// `complete_handshake` that rejected msg2), WITHOUT leaving the current
+    /// handshake phase. Mirrors the `HandshakeSendFailed` carve-out: the failure
+    /// is carried as `send_failed`, so the machine PHASE is unchanged (matching
+    /// the pre-collapse behavior, where the shell marked only the leg failed and
+    /// left the machine in place) while `is_failed`/display report the failure.
+    /// The stale-connection sweep reclaims the leg via
+    /// [`is_failed`](Self::is_failed) at the next tick, before any projection or
+    /// resend.
+    pub(crate) fn mark_send_failed(&mut self) {
+        self.send_failed = true;
+    }
+
+    /// The crystallized node address, if identity is known.
+    fn addr(&self) -> Option<NodeAddr> {
+        self.identity.map(|id| *id.node_addr())
+    }
+
+    // ------------------------------------------------------------------
+    // The reducer.
+    // ------------------------------------------------------------------
+
+    /// Advance the machine one event. Pure reducer: delegates every decision to
+    /// the sans-IO cores, maps their results into [`PeerAction`]s, and updates
+    /// control state. `index_allocator` is a synchronous capability (the
+    /// handshake/rekey need an index mid-transition), never moved in, never an
+    /// action.
+    pub(crate) fn step(
+        &mut self,
+        event: PeerEvent,
+        now: u64,
+        index_allocator: &mut IndexAllocator,
+    ) -> Vec<PeerAction> {
+        match event {
+            PeerEvent::Dial {
+                transport_id,
+                remote_addr,
+                connection_oriented,
+                ..
+            } => self.on_dial(transport_id, remote_addr, connection_oriented, now),
+            PeerEvent::TransportConnected => self.on_transport_connected(now),
+            PeerEvent::TransportFailed => self.on_transport_failed(now),
+            PeerEvent::HandshakeSendFailed => self.on_handshake_send_failed(),
+            PeerEvent::InboundMsg1 { link, wire, est } => {
+                let (_decision, actions) = self.inbound_msg1(link, &wire, est, now);
+                actions
+            }
+            PeerEvent::Msg2 { their_index, out } => {
+                self.on_msg2(their_index, out, now, index_allocator)
+            }
+            PeerEvent::Authorized => self.on_authorized(now, index_allocator),
+            PeerEvent::Rejected => self.fail(FailReason::AclRejected),
+            PeerEvent::PromotionResolved { result } => self.on_promotion_resolved(result, now),
+            PeerEvent::RekeyMsg1 { wire, est } => {
+                // A rekey msg1 is a msg1 on an established peer — same core.
+                let (_decision, actions) = self.inbound_msg1(self.link, &wire, est, now);
+                actions
+            }
+            PeerEvent::RekeyMsg2 { their_index } => self.on_rekey_msg2(their_index),
+            PeerEvent::RekeyConsume { action } => self.map_rekey_action(action, now),
+            PeerEvent::RekeyInitiated => self.on_rekey_initiated(),
+            PeerEvent::CrossConnResolved { outcome } => self.on_cross_conn_resolved(outcome),
+            PeerEvent::PeerKbitFlip { .. } => {
+                // Responder cutover is data-plane-owned: the machine only
+                // schedules the drain-window unregister. NO slot mutation.
+                vec![PeerAction::SetTimer {
+                    kind: TimerKind::DrainExpiry,
+                    at_ms: now + DRAIN_WINDOW_MS,
+                }]
+            }
+            PeerEvent::FilterAnnounce => vec![PeerAction::SendLinkMessage {
+                // Filter-announce payload is data-plane-owned; threaded in
+                // at wiring time.
+                msg: Vec::new(),
+            }],
+            PeerEvent::TreeAnnounceDue => vec![PeerAction::SendLinkMessage {
+                // Tree-announce payload is data-plane-owned.
+                msg: Vec::new(),
+            }],
+            PeerEvent::PeerHeard => self.on_peer_heard(now),
+            PeerEvent::HeartbeatDue => self.on_heartbeat_due(now),
+            PeerEvent::LinkDeadSuspected => self.on_link_dead(now),
+            PeerEvent::Timeout { kind } => self.on_timeout(kind, now),
+            PeerEvent::Disconnect { reason } => self.on_disconnect(reason, now),
+            PeerEvent::Tick => self.on_tick(now),
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Outbound establish
+    // ------------------------------------------------------------------
+
+    fn on_dial(
+        &mut self,
+        transport_id: TransportId,
+        remote_addr: TransportAddr,
+        connection_oriented: bool,
+        now: u64,
+    ) -> Vec<PeerAction> {
+        if !matches!(self.state, PeerState::Discovered) {
+            return Vec::new();
+        }
+        self.conn.set_transport_id(transport_id);
+        if connection_oriented {
+            // Connection-oriented transports open the transport first; the
+            // executor's `OpenTransport` arm connects, then feeds
+            // `TransportConnected` → `start_outbound_handshake`.
+            self.state = PeerState::Connecting { link: self.link };
+            vec![PeerAction::OpenTransport {
+                transport_id,
+                remote_addr,
+            }]
+        } else {
+            // Connectionless transports have no connect step — send msg1
+            // immediately (the executor's `SendHandshake` msg1 branch performs
+            // the Noise leaf, framing, index alloc, and send).
+            self.start_outbound_handshake(now)
+        }
+    }
+
+    fn on_transport_connected(&mut self, now: u64) -> Vec<PeerAction> {
+        if !matches!(self.state, PeerState::Connecting { .. }) {
+            return Vec::new();
+        }
+        self.start_outbound_handshake(now)
+    }
+
+    fn on_transport_failed(&mut self, now: u64) -> Vec<PeerAction> {
+        if !matches!(self.state, PeerState::Connecting { .. }) {
+            return Vec::new();
+        }
+        let mut actions = Vec::new();
+        if let Some(peer) = self.addr() {
+            // Dial failure on an un-promoted leg routes like a handshake timeout
+            // (the connected-guarded reflex). Dormant today — no `TransportFailed`
+            // event is dispatched until the connection-oriented cutover (C5).
+            actions.push(PeerAction::ReportLost {
+                peer,
+                kind: LostKind::HandshakeTimeout,
+            });
+        }
+        self.state = PeerState::Closed {
+            backoff_deadline_ms: now + CLOSED_BACKOFF_MS,
+        };
+        actions
+    }
+
+    /// A stored handshake initiation failed to send: mark the embedded leg
+    /// failed so the stale-connection sweep (which reads the leg's
+    /// `is_failed`) reclaims it. NO state flip — the machine stays in
+    /// `Handshaking{SentMsg1}` so retransmit eligibility
+    /// (`is_handshaking_sent_msg1`) survives until the sweep, and no timer
+    /// actions are emitted.
+    fn on_handshake_send_failed(&mut self) -> Vec<PeerAction> {
+        // Drop the Noise handshake handle at the identical point as before;
+        // the failure *state* is recorded on the machine.
+        self.mark_failed();
+        self.send_failed = true;
+        Vec::new()
+    }
+
+    /// Emit msg1 and arm the retransmit/timeout timers. The Noise msg1
+    /// construction and its index allocation are shell-side effects performed by
+    /// the driver when it executes this action; an empty payload is emitted (see
+    /// module note). This path is not exercised by the tests.
+    fn start_outbound_handshake(&mut self, now: u64) -> Vec<PeerAction> {
+        let bytes = Vec::new();
+        self.state = PeerState::Handshaking {
+            link: self.link,
+            phase: HandshakePhase::SentMsg1,
+        };
+        vec![
+            PeerAction::SendHandshake { bytes },
+            PeerAction::SetTimer {
+                kind: TimerKind::HandshakeRetransmit,
+                at_ms: now + HANDSHAKE_RETRANSMIT_INTERVAL_MS,
+            },
+            PeerAction::SetTimer {
+                kind: TimerKind::HandshakeTimeout,
+                at_ms: now + HANDSHAKE_TIMEOUT_MS,
+            },
+        ]
+    }
+
+    /// Outbound completion: compute the establish decision from the snapshot
+    /// via `establish_outbound`. `Promote` drives promotion via actions; the
+    /// Swap/Keep outcomes are conveyed as a
+    /// [`ResolveCrossConnection`](PeerAction::ResolveCrossConnection) decision
+    /// for the shell's inline resolution, which owns all effects (index
+    /// frees, session replacement) permanently.
+    fn on_msg2(
+        &mut self,
+        their_index: SessionIndex,
+        out: OutboundSnapshot,
+        _now: u64,
+        _alloc: &mut IndexAllocator,
+    ) -> Vec<PeerAction> {
+        self.conn.set_their_index(their_index);
+        match Fmp::new().establish_outbound(&out) {
+            OutboundDecision::Promote => {
+                // Net-new: our outbound index (allocated at dial) already sits on
+                // the surviving carrier; it is the one we register once promotion
+                // resolves.
+                // The machine survives promotion (it becomes the active peer's
+                // control machine), so cancel the outbound handshake timers here
+                // or they would linger in the driver's store. A late fire would
+                // no-op against the non-`Handshaking` state, but leaving them
+                // armed is a timer leak.
+                vec![
+                    PeerAction::CancelTimer {
+                        kind: TimerKind::HandshakeRetransmit,
+                    },
+                    PeerAction::CancelTimer {
+                        kind: TimerKind::HandshakeTimeout,
+                    },
+                    PeerAction::PromoteToActive { link: self.link },
+                ]
+            }
+            OutboundDecision::CrossConnectionSwap => {
+                // Our outbound wins: convey the decision only. The shell's
+                // inline resolution swaps the peer to the outbound session and
+                // owns the index frees and session replacement.
+                vec![PeerAction::ResolveCrossConnection { swap: true }]
+            }
+            OutboundDecision::CrossConnectionKeep => {
+                // Our outbound loses: convey the decision only. The shell's
+                // inline resolution keeps the existing inbound session and
+                // frees the unused outbound index.
+                vec![PeerAction::ResolveCrossConnection { swap: false }]
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Inbound establish
+    // ------------------------------------------------------------------
+
+    /// Inbound msg1 (fresh or rekey): compute the establish decision for the
+    /// driver, alongside any machine-phase actions. The single
+    /// `establish_inbound` evaluation happens here; the driver routes on the
+    /// returned [`InboundDecision`] and owns the effect-bearing arm bodies
+    /// (the rekey-respond abandon/alloc/send/store, the duplicate resend, the
+    /// reject bookkeeping). Only the `Promote`/`RestartThenPromote` phase-1
+    /// actions (and the fresh-context reject state flip) are machine-side.
+    pub(crate) fn inbound_msg1(
+        &mut self,
+        link: LinkId,
+        wire: &WireOutcome,
+        est: EstablishSnapshot,
+        _now: u64,
+    ) -> (InboundDecision, Vec<PeerAction>) {
+        let decision = Fmp::new().establish_inbound(&est, wire);
+        let actions = match &decision {
+            InboundDecision::Reject { .. } => {
+                // In an establish-leg context this fails the leg; on an
+                // established peer (rekey context) the msg1 is dropped and the
+                // peer keeps running (DualRekeyWon/PendingSession keep our rekey).
+                if self.is_established_context() {
+                    Vec::new()
+                } else {
+                    self.fail(FailReason::Rejected)
+                }
+            }
+            // The decision carries the stored msg2 bytes; the driver's inline
+            // resend owns the send. No machine state is touched.
+            InboundDecision::ResendMsg2 { .. } => Vec::new(),
+            // Decision-only: the driver's inline body owns the abandon, the
+            // index allocation, the framed msg2 send, the pending-session
+            // store, and the dampening stamp. The machine mutates nothing.
+            InboundDecision::RekeyRespond { .. } => Vec::new(),
+            InboundDecision::RestartThenPromote { peer } => {
+                let peer = *peer;
+                let mut actions = vec![PeerAction::InvalidateSendState];
+                if let Some(idx) = self.conn.our_index() {
+                    actions.push(PeerAction::UnregisterDecryptSession { index: idx });
+                    self.conn.clear_our_index();
+                }
+                // An established peer being replaced by a fresh inbound leg — the
+                // unconditional reconnect reflex (a live, cut-over producer).
+                actions.push(PeerAction::ReportLost {
+                    peer,
+                    kind: LostKind::LinkDead,
+                });
+                actions.extend(self.inbound_classify(link, wire));
+                actions
+            }
+            InboundDecision::Promote => self.inbound_classify(link, wire),
+        };
+        (decision, actions)
+    }
+
+    /// Inbound **Phase 1**: classify the fresh leg *without*
+    /// allocating an index. Records identity/epoch/their-index and stashes the
+    /// opaque msg2 payload, parking at `Handshaking{ReceivedMsg1}` — the
+    /// "awaiting Authorized" marker. The index allocation and the msg2/promote
+    /// emission happen in Phase 2 ([`Self::on_authorized`]) only after the
+    /// shell's late-ACL gate passes, so a rejected/unauthorized msg1 allocates
+    /// nothing (preserving the pre-refactor global index-allocation sequence).
+    fn inbound_classify(&mut self, link: LinkId, wire: &WireOutcome) -> Vec<PeerAction> {
+        self.identity = Some(wire.peer_identity);
+        self.remote_epoch = wire.remote_epoch;
+        self.conn.set_their_index(wire.their_index);
+        self.pending_msg2_payload = Some(wire.msg2_payload.clone());
+        self.state = PeerState::Handshaking {
+            link,
+            phase: HandshakePhase::ReceivedMsg1,
+        };
+        Vec::new()
+    }
+
+    /// Inbound **Phase 2**: the late-ACL gate passed shell-side.
+    /// Allocate our index NOW — the single inbound allocation point — record it
+    /// on `conn`, and emit the msg2 send + promotion. `RegisterDecryptSession`
+    /// follows on the `PromotionResolved{Promoted}` feedback. Guarded to
+    /// the inbound `ReceivedMsg1` phase so the benign outbound `Authorized`
+    /// confirmation stays a no-op (state `Handshaking{SentMsg1}` and every other
+    /// state fall through to `Vec::new()`).
+    fn on_authorized(&mut self, _now: u64, alloc: &mut IndexAllocator) -> Vec<PeerAction> {
+        if !matches!(
+            self.state,
+            PeerState::Handshaking {
+                phase: HandshakePhase::ReceivedMsg1,
+                ..
+            }
+        ) {
+            return Vec::new();
+        }
+        let our_index = match alloc.allocate() {
+            Ok(idx) => idx,
+            Err(_) => {
+                // Allocation exhausted: no index, no msg2, no promote. The shell
+                // records the reject + completes the rate-limiter bracket
+                // (mirrors the pre-refactor `handle_msg1` allocate-failure path).
+                self.state = PeerState::Failed {
+                    reason: FailReason::Rejected,
+                };
+                return Vec::new();
+            }
+        };
+        self.conn.set_our_index(our_index);
+        let bytes = self.pending_msg2_payload.take().unwrap_or_default();
+        let link = self.link;
+        vec![
+            PeerAction::SendHandshake { bytes },
+            PeerAction::PromoteToActive { link },
+        ]
+    }
+
+    // ------------------------------------------------------------------
+    // Promotion feedback
+    // ------------------------------------------------------------------
+
+    fn on_promotion_resolved(&mut self, result: PromotionResult, now: u64) -> Vec<PeerAction> {
+        match result {
+            PromotionResult::Promoted(addr) => {
+                self.identity_addr_set(addr);
+                self.crystallize(now);
+                self.register_current_index()
+            }
+            PromotionResult::CrossConnectionWon { node_addr, .. } => {
+                self.identity_addr_set(node_addr);
+                self.crystallize(now);
+                let mut actions = Vec::new();
+                // Free + unregister the old (losing) index, register ours.
+                if let Some(idx) = self.draining_index.take() {
+                    actions.push(PeerAction::UnregisterDecryptSession { index: idx });
+                    actions.push(PeerAction::FreeIndex { index: idx });
+                }
+                actions.extend(self.register_current_index());
+                actions
+            }
+            PromotionResult::CrossConnectionLost { .. } => {
+                let mut actions = Vec::new();
+                if let Some(idx) = self.conn.our_index() {
+                    actions.push(PeerAction::FreeIndex { index: idx });
+                    self.conn.clear_our_index();
+                }
+                self.state = PeerState::Failed {
+                    reason: FailReason::HandshakeFailed,
+                };
+                actions
+            }
+        }
+    }
+
+    fn register_current_index(&self) -> Vec<PeerAction> {
+        match self.conn.our_index() {
+            Some(idx) => vec![PeerAction::RegisterDecryptSession { index: idx }],
+            None => Vec::new(),
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Rekey (initiator) + cutover
+    // ------------------------------------------------------------------
+
+    fn on_rekey_msg2(&mut self, their_index: SessionIndex) -> Vec<PeerAction> {
+        // Completes our initiated rekey: a pending session is ready to cut over.
+        self.conn.set_their_index(their_index);
+        self.rekey_in_progress = false;
+        if let PeerState::Maintaining { addr, .. } = self.state {
+            self.state = PeerState::Maintaining {
+                addr,
+                kind: MaintainKind::Rekey(RekeyPhase::PendingCutover),
+            };
+        }
+        // The pending peers_by_index registration is driver-side; no action here.
+        Vec::new()
+    }
+
+    /// Observation: the shell ran `initiate_rekey` inline — the Noise msg1 leaf,
+    /// the index allocation, the wire send, and the `set_rekey_state` on the
+    /// `ActivePeer` all happened shell-side. This is a pure observation that
+    /// advances the machine's control state to `Maintaining{Rekey(Msg1Sent)}` so
+    /// the subsequent cadence `Cutover`/`Drain` consume transitions from a
+    /// coherent phase. Emits NO action (nothing left to do). No-op unless the peer
+    /// is in an established-like state (defensive; the shell only initiates on
+    /// healthy established peers).
+    fn on_rekey_initiated(&mut self) -> Vec<PeerAction> {
+        let addr = match self.addr() {
+            Some(a) => a,
+            None => return Vec::new(),
+        };
+        if !self.is_established_context() {
+            return Vec::new();
+        }
+        self.rekey_in_progress = true;
+        self.rekey_resend_count = 0;
+        self.state = PeerState::Maintaining {
+            addr,
+            kind: MaintainKind::Rekey(RekeyPhase::Msg1Sent),
+        };
+        Vec::new()
+    }
+
+    /// Observation: the shell resolved an outbound cross-connection inline. On a
+    /// session swap it adopts the new local and remote session indices into the
+    /// control shadow, mirroring the shell's in-place session replacement; on a
+    /// keep it leaves the shadow untouched. Emits NO action — the crypto effect
+    /// already ran shell-side.
+    fn on_cross_conn_resolved(&mut self, outcome: CrossConnOutcome) -> Vec<PeerAction> {
+        if let CrossConnOutcome::Swap {
+            our_index,
+            their_index,
+        } = outcome
+        {
+            self.conn.set_our_index(our_index);
+            self.conn.set_their_index(their_index);
+        }
+        Vec::new()
+    }
+
+    /// Rekey cadence: run `poll_rekey` over this one peer's snapshot and map the
+    /// phase-grouped `ConnAction`s.
+    fn on_rekey_cadence(&mut self, now: u64) -> Vec<PeerAction> {
+        let addr = match self.addr() {
+            Some(a) => a,
+            None => return Vec::new(),
+        };
+        let cfg = RekeyCfg {
+            after_secs: REKEY_AFTER_SECS,
+            after_messages: REKEY_AFTER_MESSAGES,
+        };
+        let snap = self.peer_snapshot(addr, now);
+        let mut actions = Vec::new();
+        for act in Fmp::new().poll_rekey(vec![snap], &cfg) {
+            actions.extend(self.map_rekey_action(act, now));
+        }
+        actions
+    }
+
+    fn map_rekey_action(&mut self, act: ConnAction, now: u64) -> Vec<PeerAction> {
+        match act {
+            ConnAction::Cutover { peer } => {
+                // Initiator cutover: swap to the pending epoch, register the new
+                // index, open the drain window. Slot-rotation mechanics stay in
+                // active.rs; the machine emits the action sequence.
+                self.draining_index = self.conn.our_index();
+                match self.rekey_our_index.take() {
+                    Some(idx) => self.conn.set_our_index(idx),
+                    None => self.conn.clear_our_index(),
+                }
+                self.rekey_in_progress = false;
+                self.state = PeerState::Maintaining {
+                    addr: peer,
+                    kind: MaintainKind::Rekey(RekeyPhase::Draining),
+                };
+                let mut actions = vec![PeerAction::SwapSendState {
+                    epoch: self.remote_epoch.unwrap_or_default(),
+                }];
+                if let Some(idx) = self.conn.our_index() {
+                    actions.push(PeerAction::RegisterDecryptSession { index: idx });
+                }
+                actions.push(PeerAction::SetTimer {
+                    kind: TimerKind::DrainExpiry,
+                    at_ms: now + DRAIN_WINDOW_MS,
+                });
+                actions
+            }
+            ConnAction::Drain { peer } => {
+                // The executor reads the real previous_our_index from
+                // `ActivePeer::complete_drain` and does the peers_by_index /
+                // decrypt-worker / index-free cleanup, replacing the old
+                // shadow-index emission (which could drift from the real index).
+                //
+                // Clear the shadow `draining_index` set by the Cutover arm: the
+                // real previous index is now retired by `CompleteDrain`, so a
+                // leftover `Some(stale)` would double-free if a later
+                // `CrossConnectionWon` consumed it in `on_promotion_resolved`.
+                // Post-rekey cross-connection promotion is
+                // not a live path, but clearing here removes the hazard outright.
+                self.draining_index = None;
+                self.state = PeerState::Active { addr: peer };
+                vec![PeerAction::CompleteDrain { peer }]
+            }
+            ConnAction::InitiateRekey { peer } => {
+                // Fresh outbound rekey: allocate our new index, send msg1 (Noise
+                // leaf is shell-side → empty payload here), arm the resend timer.
+                self.rekey_in_progress = true;
+                self.rekey_resend_count = 0;
+                self.rekey_msg1 = Some(Vec::new());
+                self.state = PeerState::Maintaining {
+                    addr: peer,
+                    kind: MaintainKind::Rekey(RekeyPhase::Msg1Sent),
+                };
+                vec![
+                    PeerAction::SendRekey { bytes: Vec::new() },
+                    PeerAction::SetTimer {
+                        kind: TimerKind::RekeyResend,
+                        at_ms: now + REKEY_RESEND_INTERVAL_MS,
+                    },
+                ]
+            }
+            // poll_rekey never emits the maintain/teardown-only variants.
+            _ => Vec::new(),
+        }
+    }
+
+    fn on_rekey_resend(&mut self, now: u64) -> Vec<PeerAction> {
+        let peer = match self.addr() {
+            Some(a) => a,
+            None => return Vec::new(),
+        };
+        let snap = RekeyResendSnapshot {
+            peer,
+            resend_count: self.rekey_resend_count,
+            needs_resend: true,
+            msg1: self.rekey_msg1.clone().unwrap_or_default(),
+        };
+        let mut actions = Vec::new();
+        for act in Fmp::new().poll_rekey_resends(
+            vec![snap],
+            now,
+            REKEY_RESEND_INTERVAL_MS,
+            RESEND_BACKOFF,
+            REKEY_MAX_RESENDS,
+        ) {
+            match act {
+                ConnAction::AbandonRekey { .. } => {
+                    if let Some(idx) = self.rekey_our_index.take() {
+                        actions.push(PeerAction::FreeIndex { index: idx });
+                    }
+                    self.rekey_in_progress = false;
+                    self.rekey_msg1 = None;
+                    actions.push(PeerAction::CancelTimer {
+                        kind: TimerKind::RekeyResend,
+                    });
+                }
+                ConnAction::ResendRekeyMsg1 {
+                    bytes,
+                    next_resend_at_ms,
+                    ..
+                } => {
+                    self.rekey_resend_count += 1;
+                    actions.push(PeerAction::SendRekey { bytes });
+                    actions.push(PeerAction::SetTimer {
+                        kind: TimerKind::RekeyResend,
+                        at_ms: next_resend_at_ms,
+                    });
+                }
+                _ => {}
+            }
+        }
+        actions
+    }
+
+    // ------------------------------------------------------------------
+    // Liveness
+    // ------------------------------------------------------------------
+
+    fn on_heartbeat_due(&mut self, now: u64) -> Vec<PeerAction> {
+        if !self.is_active_like() {
+            return Vec::new();
+        }
+        self.last_heartbeat_sent_ms = now;
+        vec![
+            PeerAction::SendLinkMessage {
+                msg: vec![LinkMessageType::Heartbeat.to_byte()],
+            },
+            PeerAction::SetTimer {
+                kind: TimerKind::Liveness,
+                at_ms: now + LIVENESS_INTERVAL_MS,
+            },
+        ]
+    }
+
+    fn on_peer_heard(&mut self, now: u64) -> Vec<PeerAction> {
+        if !self.is_active_like() {
+            return Vec::new();
+        }
+        vec![
+            PeerAction::CancelTimer {
+                kind: TimerKind::Liveness,
+            },
+            PeerAction::SetTimer {
+                kind: TimerKind::Liveness,
+                at_ms: now + LIVENESS_INTERVAL_MS,
+            },
+        ]
+    }
+
+    fn on_link_dead(&mut self, now: u64) -> Vec<PeerAction> {
+        // Guard the full established set (Established | Active | Maintaining), not
+        // just `is_active_like()`: a peer that never rekeyed stays parked in
+        // `Established` (the machine reaches `Active` only via a rekey `Drain`),
+        // yet the pre-refactor liveness reap tore down EVERY dead established peer.
+        // A too-narrow `is_active_like()` guard here would silently skip the common
+        // (never-rekeyed) reap target. Mirrors `on_disconnect`'s guard.
+        if !self.is_established_context() {
+            return Vec::new();
+        }
+        // `InvalidateSendState` maps to the executor's `remove_active_peer`, which
+        // unregisters the decrypt worker by the REAL current index. The machine's
+        // tracked carrier index is deliberately NOT used to unregister here: it
+        // can drift to a reused index and wrongly unregister ANOTHER peer's worker
+        // session. `TeardownConnectedUdp` is inert (the old reap had no
+        // connected-UDP teardown, so inert is neutral); `ReportLost` drives the
+        // loss reflex (`note_link_dead`).
+        let mut actions = vec![
+            PeerAction::InvalidateSendState,
+            PeerAction::TeardownConnectedUdp,
+        ];
+        if let Some(peer) = self.addr() {
+            // An established peer whose link died — the unconditional reconnect
+            // reflex (the live liveness-reap producer).
+            actions.push(PeerAction::ReportLost {
+                peer,
+                kind: LostKind::LinkDead,
+            });
+        }
+        self.state = PeerState::Closed {
+            backoff_deadline_ms: now + CLOSED_BACKOFF_MS,
+        };
+        actions
+    }
+
+    // ------------------------------------------------------------------
+    // Timeout / teardown / close
+    // ------------------------------------------------------------------
+
+    fn on_timeout(&mut self, kind: TimerKind, now: u64) -> Vec<PeerAction> {
+        match kind {
+            TimerKind::HandshakeRetransmit => self.on_handshake_retransmit(now),
+            TimerKind::HandshakeTimeout => self.on_handshake_timeout(now),
+            TimerKind::RekeyCadence => self.on_rekey_cadence(now),
+            TimerKind::RekeyResend => self.on_rekey_resend(now),
+            TimerKind::DrainExpiry => self.on_rekey_cadence(now),
+            TimerKind::Liveness => Vec::new(),
+        }
+    }
+
+    fn on_handshake_retransmit(&mut self, now: u64) -> Vec<PeerAction> {
+        if !matches!(
+            self.state,
+            PeerState::Handshaking {
+                phase: HandshakePhase::SentMsg1,
+                ..
+            }
+        ) {
+            return Vec::new();
+        }
+        let snap = self.conn_snapshot();
+        let mut actions = Vec::new();
+        for act in Fmp::new().poll_resends(
+            vec![snap],
+            now,
+            HANDSHAKE_RETRANSMIT_INTERVAL_MS,
+            RESEND_BACKOFF,
+        ) {
+            if let ConnAction::ResendMsg1 {
+                bytes,
+                next_resend_at_ms,
+                ..
+            } = act
+            {
+                self.conn.record_resend(next_resend_at_ms);
+                actions.push(PeerAction::SendHandshake { bytes });
+                actions.push(PeerAction::SetTimer {
+                    kind: TimerKind::HandshakeRetransmit,
+                    at_ms: next_resend_at_ms,
+                });
+            }
+        }
+        actions
+    }
+
+    fn on_handshake_timeout(&mut self, now: u64) -> Vec<PeerAction> {
+        if !matches!(self.state, PeerState::Handshaking { .. }) {
+            return Vec::new();
+        }
+        let snap = self.conn_snapshot();
+        // poll_timeouts emits [ScheduleRetry?, Teardown]; the machine REMAPS
+        // ScheduleRetry -> ReportLost (single loss token) and Teardown ->
+        // FreeIndex{our_index}, emitting FreeIndex before ReportLost.
+        let mut free = Vec::new();
+        let mut lost = Vec::new();
+        for act in Fmp::new().poll_timeouts(vec![snap]) {
+            match act {
+                ConnAction::ScheduleRetry { peer } => {
+                    // Handshake timeout on an un-promoted leg — the connected-
+                    // guarded reflex. Dormant today (no `Timeout` event is
+                    // dispatched until the timeout fold in C5).
+                    lost.push(PeerAction::ReportLost {
+                        peer,
+                        kind: LostKind::HandshakeTimeout,
+                    });
+                }
+                ConnAction::Teardown { .. } => {
+                    if let Some(idx) = self.conn.our_index() {
+                        free.push(PeerAction::FreeIndex { index: idx });
+                    }
+                }
+                _ => {}
+            }
+        }
+        self.state = PeerState::Closed {
+            backoff_deadline_ms: now + CLOSED_BACKOFF_MS,
+        };
+        free.extend(lost);
+        free
+    }
+
+    fn on_disconnect(&mut self, reason: CloseReason, now: u64) -> Vec<PeerAction> {
+        if !self.is_active_like() && !matches!(self.state, PeerState::Established { .. }) {
+            return Vec::new();
+        }
+        let addr = self.addr();
+        self.state = PeerState::Closing {
+            addr: addr.unwrap_or_else(zero_addr),
+            reason,
+        };
+        let mut actions = vec![PeerAction::SendLinkMessage {
+            msg: disconnect_frame(reason),
+        }];
+        actions.push(PeerAction::InvalidateSendState);
+        if let Some(idx) = self.conn.our_index() {
+            actions.push(PeerAction::UnregisterDecryptSession { index: idx });
+            self.conn.clear_our_index();
+        }
+        actions.push(PeerAction::TeardownConnectedUdp);
+        // No ReportLost on operator Requested.
+        self.state = PeerState::Closed {
+            backoff_deadline_ms: now + CLOSED_BACKOFF_MS,
+        };
+        actions
+    }
+
+    fn on_tick(&mut self, now: u64) -> Vec<PeerAction> {
+        // Dormant no-op: `PeerEvent::Tick` is not dispatched in production.
+        // The shell drivers evaluate due timer deadlines themselves, so there
+        // is no machine-side bookkeeping to advance here.
+        let _ = now;
+        Vec::new()
+    }
+
+    // ------------------------------------------------------------------
+    // Helpers
+    // ------------------------------------------------------------------
+
+    fn crystallize(&mut self, now: u64) {
+        let addr = self.addr().unwrap_or_else(zero_addr);
+        self.session_established_at_ms = now;
+        self.authenticated_at_ms = now;
+        self.state = PeerState::Established { addr };
+    }
+
+    fn identity_addr_set(&mut self, _addr: NodeAddr) {
+        // Identity is already crystallized from the wire outcome during the
+        // establish step; the PromotionResult's addr confirms it.
+    }
+
+    fn fail(&mut self, reason: FailReason) -> Vec<PeerAction> {
+        self.state = PeerState::Failed { reason };
+        Vec::new()
+    }
+
+    fn is_active_like(&self) -> bool {
+        matches!(
+            self.state,
+            PeerState::Active { .. } | PeerState::Maintaining { .. }
+        )
+    }
+
+    fn is_established_context(&self) -> bool {
+        matches!(
+            self.state,
+            PeerState::Established { .. }
+                | PeerState::Active { .. }
+                | PeerState::Maintaining { .. }
+        )
+    }
+
+    fn conn_snapshot(&self) -> ConnSnapshot {
+        ConnSnapshot {
+            link: self.conn.link_id(),
+            is_outbound: self.conn.is_outbound(),
+            retry_addr: self.conn.expected_identity().map(|id| *id.node_addr()),
+            resend_count: self.conn.resend_count(),
+            msg1: self
+                .conn
+                .handshake_msg1()
+                .map(|b| b.to_vec())
+                .unwrap_or_default(),
+        }
+    }
+
+    /// Build this peer's rekey snapshot from control-tier state. `counter` is a
+    /// send-state fact; passed as 0 here (see module note).
+    fn peer_snapshot(&self, addr: NodeAddr, now: u64) -> PeerSnapshot {
+        let phase = match self.state {
+            PeerState::Maintaining {
+                kind: MaintainKind::Rekey(p),
+                ..
+            } => Some(p),
+            _ => None,
+        };
+        let elapsed_secs = now.saturating_sub(self.session_established_at_ms) / 1000;
+        PeerSnapshot {
+            addr,
+            has_pending: phase == Some(RekeyPhase::PendingCutover),
+            rekey_in_progress: phase == Some(RekeyPhase::Msg1Sent) || self.rekey_in_progress,
+            is_draining: phase == Some(RekeyPhase::Draining),
+            drain_expired: phase == Some(RekeyPhase::Draining),
+            is_dampened: now.saturating_sub(self.last_peer_rekey_ms) < REKEY_DAMPEN_MS
+                && self.last_peer_rekey_ms != 0,
+            elapsed_secs,
+            counter: 0,
+            jitter_secs: self.rekey_jitter_secs,
+        }
+    }
+}
+
+fn zero_addr() -> NodeAddr {
+    NodeAddr::from_bytes([0u8; 16])
+}
+
+/// Build the plaintext disconnect frame the driver encrypts + sends.
+fn disconnect_frame(reason: CloseReason) -> Vec<u8> {
+    use crate::proto::fmp::{Disconnect, DisconnectReason};
+    let wire_reason = match reason {
+        CloseReason::Requested => DisconnectReason::Shutdown,
+        CloseReason::Draining => DisconnectReason::Restart,
+    };
+    Disconnect::new(wire_reason).encode().to_vec()
+}
+
+// ============================================================================
+// Unit tests — assert on ACTION SEQUENCES + STATE transitions using
+// hand-built synthetic snapshots (no real crypto sessions).
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::proto::fmp::PromotionResult;
+    use crate::{Identity, PeerIdentity};
+
+    fn peer_identity() -> PeerIdentity {
+        PeerIdentity::from_pubkey(Identity::generate().pubkey())
+    }
+
+    /// Two identities with a known NodeAddr ordering: `.0` < `.1`.
+    fn ordered_identities() -> (PeerIdentity, PeerIdentity) {
+        loop {
+            let a = peer_identity();
+            let b = peer_identity();
+            if a.node_addr() < b.node_addr() {
+                return (a, b);
+            }
+            if b.node_addr() < a.node_addr() {
+                return (b, a);
+            }
+        }
+    }
+
+    fn wire_outcome(peer: PeerIdentity, epoch: Option<[u8; 8]>, their: u32) -> WireOutcome {
+        WireOutcome {
+            peer_identity: peer,
+            remote_epoch: epoch,
+            their_index: SessionIndex::new(their),
+            msg2_payload: vec![0xAB; 8],
+        }
+    }
+
+    fn est_new_peer(our: NodeAddr) -> EstablishSnapshot {
+        EstablishSnapshot {
+            has_existing_peer: false,
+            existing_peer_epoch: None,
+            existing_session_age_secs: 0,
+            has_session: false,
+            is_healthy: false,
+            pending_new_session: false,
+            rekey_in_progress: false,
+            existing_msg2: None,
+            at_max_peers: false,
+            has_pending_outbound_to_peer: false,
+            rekey_enabled: true,
+            our_node_addr: our,
+        }
+    }
+
+    // ---- Contract: actions are runtime-agnostic data ----------------------
+    //
+    // The machine's emitted actions are the message contract between the sync
+    // decision core and the async driver. This proves the contract carries no
+    // runtime handles: the action type is Send + Sync + 'static (so it can move
+    // across a task boundary), and every variant round-trips unchanged through
+    // an async channel. Were a variant to embed a runtime handle (a task handle,
+    // a raw socket, an Arc<Runtime>), it would stop being plain owned data and
+    // this construction + equality round-trip would no longer hold.
+
+    /// Compile-time proof that the action contract crosses task boundaries as
+    /// owned, runtime-agnostic data. Fails to compile if any variant field is
+    /// not `Send + Sync + 'static`.
+    fn assert_contract_bound<T: Send + Sync + 'static>() {}
+
+    /// One value of every [`PeerAction`] variant. The wildcard-free match makes
+    /// a newly-added variant a compile error, forcing it through this contract.
+    fn all_actions() -> Vec<PeerAction> {
+        let peer = *peer_identity().node_addr();
+        let sample = vec![
+            PeerAction::OpenTransport {
+                transport_id: TransportId::new(1),
+                remote_addr: TransportAddr::from_string("127.0.0.1:9999"),
+            },
+            PeerAction::SendHandshake {
+                bytes: vec![1, 2, 3],
+            },
+            PeerAction::SendRekey {
+                bytes: vec![4, 5, 6],
+            },
+            PeerAction::SendLinkMessage { msg: vec![7, 8, 9] },
+            PeerAction::PromoteToActive {
+                link: LinkId::new(7),
+            },
+            PeerAction::ResolveCrossConnection { swap: true },
+            PeerAction::SwapSendState { epoch: [1u8; 8] },
+            PeerAction::CompleteDrain { peer },
+            PeerAction::InvalidateSendState,
+            PeerAction::RegisterDecryptSession {
+                index: SessionIndex::new(5),
+            },
+            PeerAction::UnregisterDecryptSession {
+                index: SessionIndex::new(6),
+            },
+            PeerAction::FreeIndex {
+                index: SessionIndex::new(7),
+            },
+            PeerAction::ActivateConnectedUdp,
+            PeerAction::TeardownConnectedUdp,
+            PeerAction::SetTimer {
+                kind: TimerKind::RekeyCadence,
+                at_ms: 1234,
+            },
+            PeerAction::CancelTimer {
+                kind: TimerKind::Liveness,
+            },
+            PeerAction::ReportLost {
+                peer,
+                kind: LostKind::LinkDead,
+            },
+        ];
+        for a in &sample {
+            // Exhaustiveness guard: no `_` wildcard, so adding a variant without
+            // extending `sample` above breaks the build here.
+            match a {
+                PeerAction::OpenTransport { .. }
+                | PeerAction::SendHandshake { .. }
+                | PeerAction::SendRekey { .. }
+                | PeerAction::SendLinkMessage { .. }
+                | PeerAction::PromoteToActive { .. }
+                | PeerAction::ResolveCrossConnection { .. }
+                | PeerAction::SwapSendState { .. }
+                | PeerAction::CompleteDrain { .. }
+                | PeerAction::InvalidateSendState
+                | PeerAction::RegisterDecryptSession { .. }
+                | PeerAction::UnregisterDecryptSession { .. }
+                | PeerAction::FreeIndex { .. }
+                | PeerAction::ActivateConnectedUdp
+                | PeerAction::TeardownConnectedUdp
+                | PeerAction::SetTimer { .. }
+                | PeerAction::CancelTimer { .. }
+                | PeerAction::ReportLost { .. } => {}
+            }
+        }
+        sample
+    }
+
+    /// Route every action through a single-threaded async channel and assert it
+    /// arrives unchanged. `#[tokio::test]` runs on a current-thread runtime, so
+    /// sender and receiver share one thread — mirroring the eventual control
+    /// task boundary where actions cross to the driver over a channel.
+    #[tokio::test]
+    async fn peer_actions_round_trip_through_async_channel() {
+        assert_contract_bound::<PeerAction>();
+
+        let sent = all_actions();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<PeerAction>();
+        for action in sent.iter().cloned() {
+            tx.send(action).expect("channel send");
+        }
+        drop(tx);
+
+        let mut received = Vec::new();
+        while let Some(action) = rx.recv().await {
+            received.push(action);
+        }
+        assert_eq!(received, sent, "every action must round-trip unchanged");
+    }
+
+    // ---- Test 1: rekey initiator cutover ----------------------------------
+    #[test]
+    fn rekey_initiator_cutover() {
+        let mut alloc = IndexAllocator::new();
+        let id = peer_identity();
+        let addr = *id.node_addr();
+        let mut m = PeerMachine::new_outbound(LinkId::new(1), id, 0);
+        // Arrange: a completed rekey pending cutover.
+        m.state = PeerState::Maintaining {
+            addr,
+            kind: MaintainKind::Rekey(RekeyPhase::PendingCutover),
+        };
+        m.rekey_our_index = Some(SessionIndex::new(0x2222));
+        m.conn.set_our_index(SessionIndex::new(0x1111));
+        m.remote_epoch = Some([9u8; 8]);
+        m.session_established_at_ms = 0;
+
+        let actions = m.step(
+            PeerEvent::Timeout {
+                kind: TimerKind::RekeyCadence,
+            },
+            10_000,
+            &mut alloc,
+        );
+
+        assert_eq!(
+            actions,
+            vec![
+                PeerAction::SwapSendState { epoch: [9u8; 8] },
+                PeerAction::RegisterDecryptSession {
+                    index: SessionIndex::new(0x2222)
+                },
+                PeerAction::SetTimer {
+                    kind: TimerKind::DrainExpiry,
+                    at_ms: 10_000 + DRAIN_WINDOW_MS
+                },
+            ]
+        );
+        assert_eq!(
+            m.state(),
+            PeerState::Maintaining {
+                addr,
+                kind: MaintainKind::Rekey(RekeyPhase::Draining)
+            }
+        );
+
+        // A second cadence tick from the (expired) drain window completes the
+        // drain: the machine now emits the single `CompleteDrain` send-state
+        // write (executor reads the real previous index) instead of the old
+        // shadow-index `[UnregisterDecryptSession, FreeIndex]` pair.
+        let drain_actions = m.step(
+            PeerEvent::Timeout {
+                kind: TimerKind::RekeyCadence,
+            },
+            20_000,
+            &mut alloc,
+        );
+        assert_eq!(
+            drain_actions,
+            vec![PeerAction::CompleteDrain { peer: addr }]
+        );
+        assert_eq!(m.state(), PeerState::Active { addr });
+    }
+
+    // ---- Test 2: responder cutover (data-plane owned) ---------------------
+    #[test]
+    fn responder_cutover_only_sets_drain_timer() {
+        let mut alloc = IndexAllocator::new();
+        let id = peer_identity();
+        let addr = *id.node_addr();
+        let mut m = PeerMachine::new_outbound(LinkId::new(1), id, 0);
+        m.state = PeerState::Active { addr };
+
+        let actions = m.step(
+            PeerEvent::PeerKbitFlip { epoch: [7u8; 8] },
+            5_000,
+            &mut alloc,
+        );
+
+        // ONLY the drain timer — no SwapSendState, no slot mutation.
+        assert_eq!(
+            actions,
+            vec![PeerAction::SetTimer {
+                kind: TimerKind::DrainExpiry,
+                at_ms: 5_000 + DRAIN_WINDOW_MS
+            }]
+        );
+        assert!(
+            !actions
+                .iter()
+                .any(|a| matches!(a, PeerAction::SwapSendState { .. }))
+        );
+        assert_eq!(m.state(), PeerState::Active { addr });
+    }
+
+    // ---- Test 3: dual-init tie-break, swapped addrs -----------------------
+    #[test]
+    fn dual_init_tiebreak_swapped_addrs() {
+        let (smaller, larger) = ordered_identities();
+
+        // Case A: WE are smaller -> we win -> Reject{DualRekeyWon} -> drop, keep.
+        {
+            let mut alloc = IndexAllocator::new();
+            let our = *smaller.node_addr();
+            let peer = larger;
+            let mut m = PeerMachine::new_outbound(LinkId::new(1), peer, 0);
+            let peer_addr = *peer.node_addr();
+            m.state = PeerState::Maintaining {
+                addr: peer_addr,
+                kind: MaintainKind::Rekey(RekeyPhase::Msg1Sent),
+            };
+            m.rekey_in_progress = true;
+            m.rekey_our_index = Some(SessionIndex::new(0x55));
+            let mut est = est_new_peer(our);
+            est.has_existing_peer = true;
+            est.existing_peer_epoch = Some([1u8; 8]);
+            est.has_session = true;
+            est.is_healthy = true;
+            est.existing_session_age_secs = 120;
+            est.rekey_in_progress = true;
+            let wire = wire_outcome(peer, Some([1u8; 8]), 0x77);
+
+            let actions = m.step(PeerEvent::RekeyMsg1 { wire, est }, 1_000, &mut alloc);
+            // We win the tie-break: drop the peer's msg1, no rekey response,
+            // established-context state untouched (the peer keeps running).
+            assert!(actions.is_empty());
+            assert!(
+                !actions
+                    .iter()
+                    .any(|a| matches!(a, PeerAction::SendRekey { .. }))
+            );
+            assert_eq!(
+                m.state(),
+                PeerState::Maintaining {
+                    addr: peer_addr,
+                    kind: MaintainKind::Rekey(RekeyPhase::Msg1Sent)
+                }
+            );
+        }
+
+        // Case B: PEER is smaller -> we lose -> RekeyRespond{abandon_first:true}.
+        {
+            let our = *larger.node_addr();
+            let peer = smaller;
+            let mut m = PeerMachine::new_outbound(LinkId::new(2), peer, 0);
+            let peer_addr = *peer.node_addr();
+            m.state = PeerState::Maintaining {
+                addr: peer_addr,
+                kind: MaintainKind::Rekey(RekeyPhase::Msg1Sent),
+            };
+            m.rekey_in_progress = true;
+            m.rekey_our_index = Some(SessionIndex::new(0x55));
+            let mut est = est_new_peer(our);
+            est.has_existing_peer = true;
+            est.existing_peer_epoch = Some([1u8; 8]);
+            est.has_session = true;
+            est.is_healthy = true;
+            est.existing_session_age_secs = 120;
+            est.rekey_in_progress = true;
+            let wire = wire_outcome(peer, Some([1u8; 8]), 0x77);
+
+            let (decision, actions) = m.inbound_msg1(LinkId::new(2), &wire, est, 1_000);
+            // We lose the tie-break: the decision names the responder path with
+            // the abandon flag; the machine emits nothing and mutates nothing
+            // (the driver's inline body owns the abandon/alloc/send/store).
+            assert!(matches!(
+                decision,
+                InboundDecision::RekeyRespond {
+                    abandon_first: true,
+                    ..
+                }
+            ));
+            assert!(actions.is_empty());
+            assert_eq!(
+                m.state(),
+                PeerState::Maintaining {
+                    addr: peer_addr,
+                    kind: MaintainKind::Rekey(RekeyPhase::Msg1Sent)
+                }
+            );
+            assert_eq!(m.rekey_our_index, Some(SessionIndex::new(0x55)));
+            assert!(m.rekey_in_progress);
+        }
+    }
+
+    // ---- Test 3b: duplicate msg1 -> resend decision only ------------------
+    #[test]
+    fn inbound_resend_msg2_decision_only() {
+        let peer = peer_identity();
+        let mut m = PeerMachine::new_inbound(LinkId::new(1), 0);
+        let our = *peer_identity().node_addr();
+        let mut est = est_new_peer(our);
+        est.has_existing_peer = true;
+        est.existing_peer_epoch = Some([1u8; 8]);
+        est.has_session = true;
+        est.is_healthy = true;
+        est.existing_session_age_secs = 5; // young session -> duplicate, not rekey
+        est.existing_msg2 = Some(vec![0xC4; 16]);
+        let wire = wire_outcome(peer, Some([1u8; 8]), 0x77);
+
+        let (decision, actions) = m.inbound_msg1(LinkId::new(1), &wire, est, 1_000);
+        // The decision carries the stored msg2 bytes; no SendHandshake action,
+        // no state change (the driver's inline resend owns the send).
+        assert!(matches!(
+            &decision,
+            InboundDecision::ResendMsg2 { msg2: Some(bytes) } if bytes.as_slice() == [0xC4; 16]
+        ));
+        assert!(actions.is_empty());
+        assert_eq!(
+            m.state(),
+            PeerState::Handshaking {
+                link: LinkId::new(1),
+                phase: HandshakePhase::Initial
+            }
+        );
+    }
+
+    // ---- Test 4: restart-override -----------------------------------------
+    #[test]
+    fn restart_override() {
+        let mut alloc = IndexAllocator::new();
+        let peer = peer_identity();
+        let peer_addr = *peer.node_addr();
+        let mut m = PeerMachine::new_inbound(LinkId::new(1), 0);
+        // Existing peer at a different epoch -> restart.
+        m.conn.set_our_index(SessionIndex::new(0xDEAD));
+        let our = *peer_identity().node_addr();
+        let mut est = est_new_peer(our);
+        est.has_existing_peer = true;
+        est.existing_peer_epoch = Some([1u8; 8]); // old
+        let wire = wire_outcome(peer, Some([2u8; 8]), 0x77); // new epoch
+
+        let actions = m.step(
+            PeerEvent::InboundMsg1 {
+                link: LinkId::new(1),
+                wire,
+                est,
+            },
+            1_000,
+            &mut alloc,
+        );
+
+        // Phase 1: restart tail only (invalidate, unregister old, report lost),
+        // then park at ReceivedMsg1 — no index allocated yet.
+        assert_eq!(
+            actions,
+            vec![
+                PeerAction::InvalidateSendState,
+                PeerAction::UnregisterDecryptSession {
+                    index: SessionIndex::new(0xDEAD)
+                },
+                PeerAction::ReportLost {
+                    peer: peer_addr,
+                    kind: LostKind::LinkDead,
+                },
+            ]
+        );
+        assert!(matches!(
+            m.state(),
+            PeerState::Handshaking {
+                phase: HandshakePhase::ReceivedMsg1,
+                ..
+            }
+        ));
+        assert_eq!(m.our_index(), None);
+        assert_eq!(alloc.count(), 0);
+
+        // Phase 2: late-ACL gate passed -> allocate + Promote tail.
+        let promote = m.step(PeerEvent::Authorized, 1_000, &mut alloc);
+        assert!(
+            promote
+                .iter()
+                .any(|a| matches!(a, PeerAction::SendHandshake { .. }))
+        );
+        assert!(
+            promote
+                .iter()
+                .any(|a| matches!(a, PeerAction::PromoteToActive { .. }))
+        );
+
+        // Promotion feedback -> Established.
+        let follow = m.step(
+            PeerEvent::PromotionResolved {
+                result: PromotionResult::Promoted(peer_addr),
+            },
+            1_000,
+            &mut alloc,
+        );
+        assert!(
+            follow
+                .iter()
+                .any(|a| matches!(a, PeerAction::RegisterDecryptSession { .. }))
+        );
+        assert_eq!(m.state(), PeerState::Established { addr: peer_addr });
+    }
+
+    // ---- Test 5: N:1 crystallization --------------------------------------
+    #[test]
+    fn n_to_one_crystallization() {
+        let mut alloc = IndexAllocator::new();
+        let peer = peer_identity();
+        let peer_addr = *peer.node_addr();
+
+        // Winner leg (link 1): net-new inbound promote -> Established.
+        let mut winner = PeerMachine::new_inbound(LinkId::new(1), 0);
+        let our = *peer_identity().node_addr();
+        let est_w = est_new_peer(our);
+        let wire_w = wire_outcome(peer, Some([3u8; 8]), 0x77);
+        let wp1 = winner.step(
+            PeerEvent::InboundMsg1 {
+                link: LinkId::new(1),
+                wire: wire_w,
+                est: est_w,
+            },
+            100,
+            &mut alloc,
+        );
+        assert!(wp1.is_empty()); // Phase 1 classifies without emitting.
+        let wa = winner.step(PeerEvent::Authorized, 100, &mut alloc);
+        assert!(
+            wa.iter().any(
+                |a| matches!(a, PeerAction::PromoteToActive { link } if *link == LinkId::new(1))
+            )
+        );
+        let wf = winner.step(
+            PeerEvent::PromotionResolved {
+                result: PromotionResult::Promoted(peer_addr),
+            },
+            100,
+            &mut alloc,
+        );
+        assert!(
+            wf.iter()
+                .any(|a| matches!(a, PeerAction::RegisterDecryptSession { .. }))
+        );
+        assert_eq!(winner.state(), PeerState::Established { addr: peer_addr });
+
+        // Loser leg (link 2): same identity, loses cross-connection at
+        // promote_connection -> Failed + FreeIndex, link terminates.
+        let mut loser = PeerMachine::new_inbound(LinkId::new(2), 0);
+        let est_l = est_new_peer(our);
+        let wire_l = wire_outcome(peer, Some([3u8; 8]), 0x88);
+        let lp1 = loser.step(
+            PeerEvent::InboundMsg1 {
+                link: LinkId::new(2),
+                wire: wire_l,
+                est: est_l,
+            },
+            100,
+            &mut alloc,
+        );
+        assert!(lp1.is_empty()); // Phase 1 classifies without emitting.
+        let la = loser.step(PeerEvent::Authorized, 100, &mut alloc);
+        assert!(
+            la.iter()
+                .any(|a| matches!(a, PeerAction::PromoteToActive { .. }))
+        );
+        let loser_index = loser.our_index();
+        let lf = loser.step(
+            PeerEvent::PromotionResolved {
+                result: PromotionResult::CrossConnectionLost {
+                    winner_link_id: LinkId::new(1),
+                },
+            },
+            100,
+            &mut alloc,
+        );
+        assert_eq!(
+            lf,
+            vec![PeerAction::FreeIndex {
+                index: loser_index.unwrap()
+            }]
+        );
+        assert_eq!(
+            loser.state(),
+            PeerState::Failed {
+                reason: FailReason::HandshakeFailed
+            }
+        );
+
+        // One crystallized NodeAddr (the winner); loser never crystallizes.
+        assert_eq!(winner.addr(), Some(peer_addr));
+    }
+
+    // ---- Test 6: inbound establish ----------------------------------------
+    #[test]
+    fn inbound_establish() {
+        let mut alloc = IndexAllocator::new();
+        let peer = peer_identity();
+        let peer_addr = *peer.node_addr();
+        let mut m = PeerMachine::new_inbound(LinkId::new(1), 0);
+        assert_eq!(
+            m.state(),
+            PeerState::Handshaking {
+                link: LinkId::new(1),
+                phase: HandshakePhase::Initial
+            }
+        );
+        let our = *peer_identity().node_addr();
+        let est = est_new_peer(our);
+        let wire = wire_outcome(peer, Some([4u8; 8]), 0x77);
+
+        // Phase 1 (InboundMsg1): classify only — no actions, no allocation,
+        // parked at ReceivedMsg1.
+        let phase1 = m.step(
+            PeerEvent::InboundMsg1 {
+                link: LinkId::new(1),
+                wire,
+                est,
+            },
+            200,
+            &mut alloc,
+        );
+        assert!(phase1.is_empty());
+        assert_eq!(
+            m.state(),
+            PeerState::Handshaking {
+                link: LinkId::new(1),
+                phase: HandshakePhase::ReceivedMsg1
+            }
+        );
+        assert_eq!(m.our_index(), None);
+        assert_eq!(alloc.count(), 0); // allocator untouched pre-authorize
+
+        // Phase 2 (Authorized): allocate + [SendHandshake, PromoteToActive].
+        let phase2 = m.step(PeerEvent::Authorized, 200, &mut alloc);
+        assert!(matches!(phase2[0], PeerAction::SendHandshake { .. }));
+        assert_eq!(
+            phase2[1],
+            PeerAction::PromoteToActive {
+                link: LinkId::new(1)
+            }
+        );
+        assert!(m.our_index().is_some());
+        assert_eq!(alloc.count(), 1); // exactly one index allocated
+
+        // Phase 3 (PromotionResolved{Promoted}): register + Established.
+        let phase3 = m.step(
+            PeerEvent::PromotionResolved {
+                result: PromotionResult::Promoted(peer_addr),
+            },
+            200,
+            &mut alloc,
+        );
+        assert!(matches!(
+            phase3[0],
+            PeerAction::RegisterDecryptSession { .. }
+        ));
+        assert_eq!(m.state(), PeerState::Established { addr: peer_addr });
+    }
+
+    // ---- Test 6b: inbound late-ACL rejected -> no allocation --------------
+    #[test]
+    fn inbound_authorize_rejected_no_alloc() {
+        let mut alloc = IndexAllocator::new();
+        let peer = peer_identity();
+        let mut m = PeerMachine::new_inbound(LinkId::new(1), 0);
+        let our = *peer_identity().node_addr();
+        let est = est_new_peer(our);
+        let wire = wire_outcome(peer, Some([4u8; 8]), 0x77);
+
+        // Phase 1 classifies (no alloc).
+        let phase1 = m.step(
+            PeerEvent::InboundMsg1 {
+                link: LinkId::new(1),
+                wire,
+                est,
+            },
+            200,
+            &mut alloc,
+        );
+        assert!(phase1.is_empty());
+        assert_eq!(alloc.count(), 0);
+
+        // Late-ACL rejects -> Failed{AclRejected}, still no allocation.
+        let rej = m.step(PeerEvent::Rejected, 200, &mut alloc);
+        assert!(rej.is_empty());
+        assert_eq!(
+            m.state(),
+            PeerState::Failed {
+                reason: FailReason::AclRejected
+            }
+        );
+        assert_eq!(alloc.count(), 0);
+        assert_eq!(m.our_index(), None);
+    }
+
+    // ---- Test 6c: inbound reject at max_peers -> no allocation ------------
+    #[test]
+    fn inbound_at_max_peers_reject_no_alloc() {
+        let mut alloc = IndexAllocator::new();
+        let peer = peer_identity();
+        let mut m = PeerMachine::new_inbound(LinkId::new(1), 0);
+        let our = *peer_identity().node_addr();
+        let mut est = est_new_peer(our);
+        est.at_max_peers = true;
+        let wire = wire_outcome(peer, Some([4u8; 8]), 0x77);
+
+        let actions = m.step(
+            PeerEvent::InboundMsg1 {
+                link: LinkId::new(1),
+                wire,
+                est,
+            },
+            200,
+            &mut alloc,
+        );
+        assert!(actions.is_empty());
+        assert_eq!(
+            m.state(),
+            PeerState::Failed {
+                reason: FailReason::Rejected
+            }
+        );
+        assert_eq!(alloc.count(), 0);
+        assert_eq!(m.our_index(), None);
+    }
+
+    // ---- Test 7: outbound establish (+ cross-connection) ------------------
+    #[test]
+    fn outbound_establish() {
+        let mut alloc = IndexAllocator::new();
+        let peer = peer_identity();
+        let peer_addr = *peer.node_addr();
+
+        // Net-new promote.
+        let mut m = PeerMachine::new_outbound(LinkId::new(1), peer, 0);
+        m.state = PeerState::Handshaking {
+            link: LinkId::new(1),
+            phase: HandshakePhase::SentMsg1,
+        };
+        m.conn.set_our_index(SessionIndex::new(0xABCD));
+        let out = OutboundSnapshot {
+            has_existing_peer: false,
+            our_outbound_wins: false,
+        };
+        let mut actions = m.step(
+            PeerEvent::Msg2 {
+                their_index: SessionIndex::new(0x77),
+                out,
+            },
+            300,
+            &mut alloc,
+        );
+        assert_eq!(
+            actions,
+            vec![
+                PeerAction::CancelTimer {
+                    kind: TimerKind::HandshakeRetransmit
+                },
+                PeerAction::CancelTimer {
+                    kind: TimerKind::HandshakeTimeout
+                },
+                PeerAction::PromoteToActive {
+                    link: LinkId::new(1)
+                }
+            ]
+        );
+        actions = m.step(
+            PeerEvent::PromotionResolved {
+                result: PromotionResult::Promoted(peer_addr),
+            },
+            300,
+            &mut alloc,
+        );
+        assert_eq!(
+            actions,
+            vec![PeerAction::RegisterDecryptSession {
+                index: SessionIndex::new(0xABCD)
+            }]
+        );
+        assert_eq!(m.state(), PeerState::Established { addr: peer_addr });
+
+        // Cross-connection SWAP: our outbound wins -> decision only; the
+        // shell's inline resolution owns the index frees and session
+        // replacement.
+        let mut m2 = PeerMachine::new_outbound(LinkId::new(2), peer, 0);
+        m2.state = PeerState::Handshaking {
+            link: LinkId::new(2),
+            phase: HandshakePhase::SentMsg1,
+        };
+        m2.conn.set_our_index(SessionIndex::new(0x2222)); // outbound index
+        let out_swap = OutboundSnapshot {
+            has_existing_peer: true,
+            our_outbound_wins: true,
+        };
+        let swap = m2.step(
+            PeerEvent::Msg2 {
+                their_index: SessionIndex::new(0x99),
+                out: out_swap,
+            },
+            400,
+            &mut alloc,
+        );
+        assert_eq!(
+            swap,
+            vec![PeerAction::ResolveCrossConnection { swap: true }]
+        );
+        assert!(!swap.iter().any(|a| matches!(
+            a,
+            PeerAction::FreeIndex { .. } | PeerAction::RegisterDecryptSession { .. }
+        )));
+        // The decision arm leaves the machine untouched: still Handshaking,
+        // the carrier's outbound index unchanged.
+        assert_eq!(
+            m2.state(),
+            PeerState::Handshaking {
+                link: LinkId::new(2),
+                phase: HandshakePhase::SentMsg1,
+            }
+        );
+        assert_eq!(m2.our_index(), Some(SessionIndex::new(0x2222)));
+
+        // Cross-connection KEEP: our outbound loses -> decision only; the
+        // shell's inline resolution frees the unused outbound index.
+        let mut m3 = PeerMachine::new_outbound(LinkId::new(3), peer, 0);
+        m3.state = PeerState::Handshaking {
+            link: LinkId::new(3),
+            phase: HandshakePhase::SentMsg1,
+        };
+        m3.conn.set_our_index(SessionIndex::new(0x3333));
+        let out_keep = OutboundSnapshot {
+            has_existing_peer: true,
+            our_outbound_wins: false,
+        };
+        let keep = m3.step(
+            PeerEvent::Msg2 {
+                their_index: SessionIndex::new(0x9A),
+                out: out_keep,
+            },
+            500,
+            &mut alloc,
+        );
+        assert_eq!(
+            keep,
+            vec![PeerAction::ResolveCrossConnection { swap: false }]
+        );
+        assert!(!keep.iter().any(|a| matches!(
+            a,
+            PeerAction::FreeIndex { .. } | PeerAction::RegisterDecryptSession { .. }
+        )));
+        assert_eq!(
+            m3.state(),
+            PeerState::Handshaking {
+                link: LinkId::new(3),
+                phase: HandshakePhase::SentMsg1,
+            }
+        );
+        assert_eq!(m3.our_index(), Some(SessionIndex::new(0x3333)));
+    }
+
+    // ---- Test 7b: dial-persisted outbound promote keeps the carrier index ---
+    // An outbound machine persisted at DIAL carries the allocated index on its
+    // surviving carrier (the shell writes it at msg1 preparation). On promote via
+    // msg2 the machine keeps that index, so `our_index()` reads `Some(dial_index)`
+    // through Established. A synthetic `step(InboundMsg1)` restart driven onto this
+    // map-resident machine then unregisters that index — but this is a TEST-ONLY
+    // construction: production handles inbound msg1 on a FRESH `new_inbound`
+    // machine (`handle_msg1`), never driving the promoted outbound machine through
+    // `inbound_msg1`, so the unregister never fires in production.
+    #[test]
+    fn dial_persisted_outbound_promote_keeps_carrier_index() {
+        let mut alloc = IndexAllocator::new();
+        let peer = peer_identity();
+        let peer_addr = *peer.node_addr();
+        let our = *peer_identity().node_addr();
+        let dial_index = SessionIndex::new(0x55AA);
+
+        // Persisted at dial: Discovered, with the carrier index written by the
+        // shell at msg1 preparation.
+        let mut m = PeerMachine::new_outbound(LinkId::new(1), peer, 0);
+        m.conn.set_our_index(dial_index);
+        assert_eq!(m.our_index(), Some(dial_index));
+
+        // Promote via msg2 from Discovered.
+        let out = OutboundSnapshot {
+            has_existing_peer: false,
+            our_outbound_wins: false,
+        };
+        let promote = m.step(
+            PeerEvent::Msg2 {
+                their_index: SessionIndex::new(0x77),
+                out,
+            },
+            300,
+            &mut alloc,
+        );
+        assert_eq!(
+            promote,
+            vec![
+                PeerAction::CancelTimer {
+                    kind: TimerKind::HandshakeRetransmit
+                },
+                PeerAction::CancelTimer {
+                    kind: TimerKind::HandshakeTimeout
+                },
+                PeerAction::PromoteToActive {
+                    link: LinkId::new(1)
+                }
+            ]
+        );
+        assert_eq!(m.our_index(), Some(dial_index));
+
+        // Drive promotion to Established.
+        let _ = m.step(
+            PeerEvent::PromotionResolved {
+                result: PromotionResult::Promoted(peer_addr),
+            },
+            300,
+            &mut alloc,
+        );
+        assert_eq!(m.state(), PeerState::Established { addr: peer_addr });
+        assert_eq!(m.our_index(), Some(dial_index));
+
+        // A synthetic inbound restart (peer restart, new epoch) driven onto this
+        // map-resident machine unregisters the carrier index. Test-only: production
+        // builds a fresh `new_inbound` machine for inbound msg1, so the promoted
+        // outbound machine is never driven through this path.
+        let mut est = est_new_peer(our);
+        est.has_existing_peer = true;
+        est.existing_peer_epoch = Some([1u8; 8]);
+        let wire = wire_outcome(peer, Some([2u8; 8]), 0x88);
+        let restart = m.step(
+            PeerEvent::InboundMsg1 {
+                link: LinkId::new(1),
+                wire,
+                est,
+            },
+            1_000,
+            &mut alloc,
+        );
+        assert!(
+            restart.iter().any(|a| matches!(
+                a,
+                PeerAction::UnregisterDecryptSession { index } if *index == dial_index
+            )),
+            "synthetic restart unregisters the carrier index (test-only path)"
+        );
+        assert!(
+            restart.iter().any(|a| matches!(
+                a,
+                PeerAction::ReportLost {
+                    kind: LostKind::LinkDead,
+                    ..
+                }
+            )),
+            "restart still reports the loss via the link-dead reconnect reflex"
+        );
+    }
+
+    // ---- Test 7c: connectionless dial reaches Handshaking, Msg2 neutral ----
+    // The connectionless cutover drives the outbound machine
+    // Discovered -> (Dial, connection_oriented=false) -> Handshaking{SentMsg1}
+    // BEFORE msg2, whereas the pre-cutover path stepped Msg2 while still in
+    // Discovered. `on_msg2` is state-independent, so both must yield the
+    // identical `[PromoteToActive]` and leave `our_index == None`.
+    #[test]
+    fn connectionless_dial_then_msg2_promotes_from_handshaking() {
+        let mut alloc = IndexAllocator::new();
+        let peer = peer_identity();
+
+        let mut m = PeerMachine::new_outbound(LinkId::new(1), peer, 0);
+        // Connectionless dial: no OpenTransport, straight to Handshaking{SentMsg1}.
+        let dial = m.step(
+            PeerEvent::Dial {
+                transport_id: TransportId::new(1),
+                remote_addr: TransportAddr::from_string("127.0.0.1:9999"),
+                peer_identity: peer,
+                connection_oriented: false,
+            },
+            100,
+            &mut alloc,
+        );
+        assert!(matches!(
+            m.state(),
+            PeerState::Handshaking {
+                phase: HandshakePhase::SentMsg1,
+                ..
+            }
+        ));
+        assert!(
+            dial.iter()
+                .any(|a| matches!(a, PeerAction::SendHandshake { .. }))
+        );
+        assert!(
+            !dial
+                .iter()
+                .any(|a| matches!(a, PeerAction::OpenTransport { .. })),
+            "connectionless dial emits no OpenTransport"
+        );
+
+        // Step Msg2 from Handshaking — identical promote to the Discovered path.
+        let out = OutboundSnapshot {
+            has_existing_peer: false,
+            our_outbound_wins: false,
+        };
+        let promote = m.step(
+            PeerEvent::Msg2 {
+                their_index: SessionIndex::new(0x77),
+                out,
+            },
+            200,
+            &mut alloc,
+        );
+        assert_eq!(
+            promote,
+            vec![
+                PeerAction::CancelTimer {
+                    kind: TimerKind::HandshakeRetransmit
+                },
+                PeerAction::CancelTimer {
+                    kind: TimerKind::HandshakeTimeout
+                },
+                PeerAction::PromoteToActive {
+                    link: LinkId::new(1)
+                }
+            ]
+        );
+        assert_eq!(m.our_index(), None);
+    }
+
+    // ---- Test 7d: connection-oriented dial opens transport first ----------
+    // The connection-oriented cutover drives the outbound machine
+    // Discovered -> (Dial, connection_oriented=true) -> Connecting
+    // (emitting ONLY OpenTransport, no msg1 yet), then TransportConnected ->
+    // Handshaking{SentMsg1} with the same SendHandshake + two SetTimer that
+    // `start_outbound_handshake` emits. Covers the oriented reach into
+    // `start_outbound_handshake` via `on_transport_connected` (the connectionless
+    // reach via `on_dial` is already covered by the test above).
+    #[test]
+    fn connection_oriented_dial_opens_transport_then_connected_handshakes() {
+        let mut alloc = IndexAllocator::new();
+        let peer = peer_identity();
+
+        let mut m = PeerMachine::new_outbound(LinkId::new(1), peer, 0);
+        // Connection-oriented dial: open the transport first, no msg1 yet.
+        let dial = m.step(
+            PeerEvent::Dial {
+                transport_id: TransportId::new(1),
+                remote_addr: TransportAddr::from_string("127.0.0.1:9999"),
+                peer_identity: peer,
+                connection_oriented: true,
+            },
+            100,
+            &mut alloc,
+        );
+        assert_eq!(
+            m.state(),
+            PeerState::Connecting {
+                link: LinkId::new(1)
+            }
+        );
+        assert_eq!(
+            dial,
+            vec![PeerAction::OpenTransport {
+                transport_id: TransportId::new(1),
+                remote_addr: TransportAddr::from_string("127.0.0.1:9999"),
+            }],
+            "connection-oriented dial emits exactly one OpenTransport and no msg1"
+        );
+
+        // Transport connected: now send msg1 and arm the handshake timers.
+        let connected = m.step(PeerEvent::TransportConnected, 200, &mut alloc);
+        assert!(matches!(
+            m.state(),
+            PeerState::Handshaking {
+                phase: HandshakePhase::SentMsg1,
+                ..
+            }
+        ));
+        assert_eq!(
+            connected,
+            vec![
+                PeerAction::SendHandshake { bytes: Vec::new() },
+                PeerAction::SetTimer {
+                    kind: TimerKind::HandshakeRetransmit,
+                    at_ms: 200 + HANDSHAKE_RETRANSMIT_INTERVAL_MS,
+                },
+                PeerAction::SetTimer {
+                    kind: TimerKind::HandshakeTimeout,
+                    at_ms: 200 + HANDSHAKE_TIMEOUT_MS,
+                },
+            ]
+        );
+    }
+
+    // ---- Test 7e: HandshakeSendFailed marks the leg, keeps the state ------
+    // A stored-msg1 send failure marks the embedded leg failed (the
+    // stale-connection sweep reads the leg's `is_failed`) WITHOUT leaving
+    // `Handshaking{SentMsg1}` — retransmit eligibility
+    // (`is_handshaking_sent_msg1`) must survive until the sweep — and emits
+    // no actions. On a machine with no leg it is a defensive no-op.
+    #[test]
+    fn handshake_send_failed_marks_leg_without_leaving_handshaking() {
+        let mut alloc = IndexAllocator::new();
+        let peer = peer_identity();
+
+        // Dial-persisted outbound machine carrying a prepared leg, driven to
+        // Handshaking{SentMsg1} via the connectionless dial.
+        let mut m = PeerMachine::new_outbound(LinkId::new(1), peer, 0);
+        let _ = m.step(
+            PeerEvent::Dial {
+                transport_id: TransportId::new(1),
+                remote_addr: TransportAddr::from_string("127.0.0.1:9999"),
+                peer_identity: peer,
+                connection_oriented: false,
+            },
+            100,
+            &mut alloc,
+        );
+        m.set_leg(HandshakeCrypto::new());
+        assert!(m.is_handshaking_sent_msg1());
+        assert!(!m.is_failed());
+        assert_eq!(m.displayed_handshake_state(), "sent_msg1");
+
+        let actions = m.step(PeerEvent::HandshakeSendFailed, 200, &mut alloc);
+        assert_eq!(actions, Vec::new(), "HandshakeSendFailed emits no actions");
+        assert!(
+            m.is_handshaking_sent_msg1(),
+            "retransmit eligibility survives a send failure"
+        );
+        assert!(
+            m.is_failed(),
+            "the machine carries the failed mark the sweep reads"
+        );
+        assert_eq!(
+            m.displayed_handshake_state(),
+            "failed",
+            "the send-failed leg still displays as failed"
+        );
+
+        // With no leg (e.g. after take_leg) the event stays a defensive no-op
+        // for the leg handle and keeps the state retransmit-eligible.
+        let _ = m.take_leg();
+        let actions = m.step(PeerEvent::HandshakeSendFailed, 300, &mut alloc);
+        assert_eq!(actions, Vec::new());
+        assert!(m.is_handshaking_sent_msg1());
+        assert!(m.leg().is_none());
+    }
+
+    // ---- Test 7f: handshake_state_str is a total, byte-identical mapping ---
+    // Pins the displayed-string derivation for every `PeerState` arm against the
+    // strings the deleted leg `HandshakeState` `Display` produced.
+    #[test]
+    fn handshake_state_str_total_mapping() {
+        let link = LinkId::new(1);
+        let addr = *peer_identity().node_addr();
+
+        assert_eq!(
+            handshake_state_str(PeerState::Handshaking {
+                link,
+                phase: HandshakePhase::Initial,
+            }),
+            "initial"
+        );
+        assert_eq!(
+            handshake_state_str(PeerState::Handshaking {
+                link,
+                phase: HandshakePhase::SentMsg1,
+            }),
+            "sent_msg1"
+        );
+        assert_eq!(
+            handshake_state_str(PeerState::Handshaking {
+                link,
+                phase: HandshakePhase::ReceivedMsg1,
+            }),
+            "received_msg1"
+        );
+
+        assert_eq!(
+            handshake_state_str(PeerState::Established { addr }),
+            "complete"
+        );
+        assert_eq!(handshake_state_str(PeerState::Active { addr }), "complete");
+        assert_eq!(
+            handshake_state_str(PeerState::Maintaining {
+                addr,
+                kind: MaintainKind::Mtu,
+            }),
+            "complete"
+        );
+        assert_eq!(
+            handshake_state_str(PeerState::Closing {
+                addr,
+                reason: CloseReason::Requested,
+            }),
+            "complete"
+        );
+
+        assert_eq!(
+            handshake_state_str(PeerState::Failed {
+                reason: FailReason::HandshakeFailed,
+            }),
+            "failed"
+        );
+
+        assert_eq!(handshake_state_str(PeerState::Discovered), "initial");
+        assert_eq!(
+            handshake_state_str(PeerState::Connecting { link }),
+            "initial"
+        );
+        assert_eq!(
+            handshake_state_str(PeerState::Closed {
+                backoff_deadline_ms: 0,
+            }),
+            "initial"
+        );
+    }
+
+    // ---- Test 8: liveness -> LinkDeadSuspected -> ReportLost --------------
+    #[test]
+    fn liveness_to_link_dead() {
+        let mut alloc = IndexAllocator::new();
+        let id = peer_identity();
+        let addr = *id.node_addr();
+        let mut m = PeerMachine::new_outbound(LinkId::new(1), id, 0);
+        m.state = PeerState::Active { addr };
+        m.conn.set_our_index(SessionIndex::new(0x4242));
+
+        let hb = m.step(PeerEvent::HeartbeatDue, 1_000, &mut alloc);
+        assert_eq!(
+            hb,
+            vec![
+                PeerAction::SendLinkMessage {
+                    msg: vec![LinkMessageType::Heartbeat.to_byte()]
+                },
+                PeerAction::SetTimer {
+                    kind: TimerKind::Liveness,
+                    at_ms: 1_000 + LIVENESS_INTERVAL_MS
+                },
+            ]
+        );
+
+        let dead = m.step(PeerEvent::LinkDeadSuspected, 2_000, &mut alloc);
+        assert_eq!(
+            dead,
+            vec![
+                PeerAction::InvalidateSendState,
+                PeerAction::TeardownConnectedUdp,
+                PeerAction::ReportLost {
+                    peer: addr,
+                    kind: LostKind::LinkDead,
+                },
+            ]
+        );
+        assert!(matches!(m.state(), PeerState::Closed { .. }));
+        // The exact action-sequence equality above is the "no ScheduleRetry"
+        // guarantee: loss is reported only via ReportLost, and no retry-schedule
+        // action exists in the PeerAction vocabulary at all (reconciler-owned).
+    }
+
+    // ---- Test 9: cadence CONSUME ------------------------------------------
+    // The shell polls the batch `poll_rekey` and routes each decided ConnAction
+    // as `RekeyConsume` — the machine maps it WITHOUT re-polling, yielding the
+    // same action sequence + transition as the machine-driven cadence (Test 1),
+    // and the Drain consume clears the shadow `draining_index`.
+    #[test]
+    fn rekey_consume_cutover_then_drain() {
+        let mut alloc = IndexAllocator::new();
+        let id = peer_identity();
+        let addr = *id.node_addr();
+        let mut m = PeerMachine::new_outbound(LinkId::new(1), id, 0);
+        m.state = PeerState::Maintaining {
+            addr,
+            kind: MaintainKind::Rekey(RekeyPhase::PendingCutover),
+        };
+        m.rekey_our_index = Some(SessionIndex::new(0x2222));
+        m.conn.set_our_index(SessionIndex::new(0x1111));
+        m.remote_epoch = Some([9u8; 8]);
+
+        // Consume the shell-decided Cutover: identical sequence to Test 1.
+        let cut = m.step(
+            PeerEvent::RekeyConsume {
+                action: ConnAction::Cutover { peer: addr },
+            },
+            10_000,
+            &mut alloc,
+        );
+        assert_eq!(
+            cut,
+            vec![
+                PeerAction::SwapSendState { epoch: [9u8; 8] },
+                PeerAction::RegisterDecryptSession {
+                    index: SessionIndex::new(0x2222)
+                },
+                PeerAction::SetTimer {
+                    kind: TimerKind::DrainExpiry,
+                    at_ms: 10_000 + DRAIN_WINDOW_MS
+                },
+            ]
+        );
+        assert_eq!(
+            m.state(),
+            PeerState::Maintaining {
+                addr,
+                kind: MaintainKind::Rekey(RekeyPhase::Draining)
+            }
+        );
+        // Cutover stashed the old index in the drain shadow.
+        assert_eq!(m.draining_index, Some(SessionIndex::new(0x1111)));
+
+        // Consume the shell-decided Drain: single CompleteDrain, Active, and the
+        // shadow drain index is CLEARED (double-free guard).
+        let drain = m.step(
+            PeerEvent::RekeyConsume {
+                action: ConnAction::Drain { peer: addr },
+            },
+            20_000,
+            &mut alloc,
+        );
+        assert_eq!(drain, vec![PeerAction::CompleteDrain { peer: addr }]);
+        assert_eq!(m.state(), PeerState::Active { addr });
+        assert_eq!(m.draining_index, None);
+    }
+
+    // ---- Test 10: RekeyInitiated observation ------------------------------
+    // The shell ran `initiate_rekey` inline; the obs advances control state to
+    // Msg1Sent and emits nothing.
+    #[test]
+    fn rekey_initiated_observation() {
+        let mut alloc = IndexAllocator::new();
+        let id = peer_identity();
+        let addr = *id.node_addr();
+        let mut m = PeerMachine::new_outbound(LinkId::new(1), id, 0);
+        m.state = PeerState::Established { addr };
+
+        let acts = m.step(PeerEvent::RekeyInitiated, 5_000, &mut alloc);
+        assert!(acts.is_empty());
+        assert_eq!(
+            m.state(),
+            PeerState::Maintaining {
+                addr,
+                kind: MaintainKind::Rekey(RekeyPhase::Msg1Sent)
+            }
+        );
+        assert!(m.rekey_in_progress);
+        // No index allocation happened in the machine (shell-side leaf).
+        assert_eq!(alloc.count(), 0);
+    }
+
+    // ---- Test 11: RekeyMsg2 observation -----------------------------------
+    // The shell completed the initiated rekey inline; the obs records the peer's
+    // new index, clears the in-progress flag, advances to PendingCutover, and
+    // emits nothing.
+    #[test]
+    fn rekey_msg2_observation() {
+        let mut alloc = IndexAllocator::new();
+        let id = peer_identity();
+        let addr = *id.node_addr();
+        let mut m = PeerMachine::new_outbound(LinkId::new(1), id, 0);
+        m.state = PeerState::Maintaining {
+            addr,
+            kind: MaintainKind::Rekey(RekeyPhase::Msg1Sent),
+        };
+        m.rekey_in_progress = true;
+
+        let their = SessionIndex::new(0x4444);
+        let acts = m.step(
+            PeerEvent::RekeyMsg2 { their_index: their },
+            6_000,
+            &mut alloc,
+        );
+        assert!(acts.is_empty());
+        assert_eq!(m.conn.their_index(), Some(their));
+        assert!(!m.rekey_in_progress);
+        assert_eq!(
+            m.state(),
+            PeerState::Maintaining {
+                addr,
+                kind: MaintainKind::Rekey(RekeyPhase::PendingCutover)
+            }
+        );
+        assert_eq!(alloc.count(), 0);
+    }
+
+    // ---- Test 12: CrossConnResolved observation ---------------------------
+    // A swap adopts the new local and remote indices into the control shadow and
+    // emits nothing; a keep leaves the shadow untouched and emits nothing.
+    #[test]
+    fn cross_conn_resolved_swap_updates_shadow() {
+        let mut alloc = IndexAllocator::new();
+        let id = peer_identity();
+        let addr = *id.node_addr();
+        let mut m = PeerMachine::new_outbound(LinkId::new(1), id, 0);
+        m.state = PeerState::Active { addr };
+        m.conn.set_our_index(SessionIndex::new(0x1111));
+        m.conn.set_their_index(SessionIndex::new(0x2222));
+
+        let our = SessionIndex::new(0xAAAA);
+        let their = SessionIndex::new(0xBBBB);
+        let acts = m.step(
+            PeerEvent::CrossConnResolved {
+                outcome: CrossConnOutcome::Swap {
+                    our_index: our,
+                    their_index: their,
+                },
+            },
+            7_000,
+            &mut alloc,
+        );
+        assert!(acts.is_empty());
+        assert_eq!(m.conn.our_index(), Some(our));
+        assert_eq!(m.conn.their_index(), Some(their));
+        assert_eq!(m.state(), PeerState::Active { addr });
+        assert_eq!(alloc.count(), 0);
+    }
+
+    #[test]
+    fn cross_conn_resolved_keep_is_noop() {
+        let mut alloc = IndexAllocator::new();
+        let id = peer_identity();
+        let addr = *id.node_addr();
+        let mut m = PeerMachine::new_outbound(LinkId::new(1), id, 0);
+        m.state = PeerState::Active { addr };
+        m.conn.set_our_index(SessionIndex::new(0x1111));
+        m.conn.set_their_index(SessionIndex::new(0x2222));
+
+        let acts = m.step(
+            PeerEvent::CrossConnResolved {
+                outcome: CrossConnOutcome::Keep,
+            },
+            7_000,
+            &mut alloc,
+        );
+        assert!(acts.is_empty());
+        assert_eq!(m.conn.our_index(), Some(SessionIndex::new(0x1111)));
+        assert_eq!(m.conn.their_index(), Some(SessionIndex::new(0x2222)));
+        assert_eq!(m.state(), PeerState::Active { addr });
+        assert_eq!(alloc.count(), 0);
+    }
+
+    // ---- Moved from `PeerConnection`'s own test module ---------------------
+    // These exercise the Noise handshake operations, which now live on the
+    // control machine. Constructed as a machine with a leg attached; the
+    // assertions are unchanged.
+
+    fn make_peer_identity() -> PeerIdentity {
+        let identity = Identity::generate();
+        PeerIdentity::from_pubkey(identity.pubkey())
+    }
+
+    fn make_keypair() -> Keypair {
+        let identity = Identity::generate();
+        identity.keypair()
+    }
+
+    fn make_epoch() -> [u8; 8] {
+        let mut epoch = [0u8; 8];
+        rand::Rng::fill_bytes(&mut rand::rng(), &mut epoch);
+        epoch
+    }
+
+    fn outbound_leg(
+        link_id: LinkId,
+        expected_identity: PeerIdentity,
+        current_time_ms: u64,
+    ) -> PeerMachine {
+        let mut machine = PeerMachine::new_outbound(link_id, expected_identity, current_time_ms);
+        machine.set_leg(HandshakeCrypto::new());
+        machine
+    }
+
+    fn inbound_leg(link_id: LinkId, current_time_ms: u64) -> PeerMachine {
+        let mut machine = PeerMachine::new_inbound(link_id, current_time_ms);
+        machine.set_leg(HandshakeCrypto::new());
+        machine
+    }
+
+    #[test]
+    fn test_outbound_connection() {
+        let identity = make_peer_identity();
+        let conn = outbound_leg(LinkId::new(1), identity, 1000);
+
+        assert!(conn.conn_is_outbound());
+        assert!(!conn.conn_is_inbound());
+        assert!(!conn.has_session());
+        assert!(conn.conn_expected_identity().is_some());
+        assert_eq!(conn.conn_started_at(), 1000);
+    }
+
+    #[test]
+    fn test_inbound_connection() {
+        let conn = inbound_leg(LinkId::new(2), 2000);
+
+        assert!(conn.conn_is_inbound());
+        assert!(!conn.conn_is_outbound());
+        assert!(!conn.has_session());
+        assert!(conn.conn_expected_identity().is_none());
+        assert_eq!(conn.conn_started_at(), 2000);
+    }
+
+    #[test]
+    fn test_full_handshake_flow() {
+        // Create identities
+        let initiator_identity = Identity::generate();
+        let responder_identity = Identity::generate();
+
+        let initiator_keypair = initiator_identity.keypair();
+        let responder_keypair = responder_identity.keypair();
+        let initiator_epoch = make_epoch();
+        let responder_epoch = make_epoch();
+
+        // Use from_pubkey_full to preserve parity for ECDH
+        let responder_peer_id = PeerIdentity::from_pubkey_full(responder_identity.pubkey_full());
+
+        // Create connections
+        let mut initiator_conn = outbound_leg(LinkId::new(1), responder_peer_id, 1000);
+        let mut responder_conn = inbound_leg(LinkId::new(2), 1000);
+
+        // Initiator starts handshake
+        let msg1 = initiator_conn
+            .start_handshake(initiator_keypair, initiator_epoch, 1100)
+            .unwrap();
+        // Post-msg1 the initiator holds an in-flight handshake, not yet a session.
+        assert!(!initiator_conn.has_session());
+
+        // Responder processes msg1 and sends msg2
+        let msg2 = responder_conn
+            .receive_handshake_init(responder_keypair, responder_epoch, &msg1, 1200)
+            .unwrap();
+        // The IK responder completes in one step: it now holds a session.
+        assert!(responder_conn.has_session());
+
+        // Responder learned initiator's identity
+        let discovered = responder_conn.conn_expected_identity().unwrap();
+        assert_eq!(discovered.pubkey(), initiator_identity.pubkey());
+
+        // Responder learned initiator's epoch
+        assert_eq!(responder_conn.conn_remote_epoch(), Some(initiator_epoch));
+
+        // Initiator completes handshake
+        initiator_conn.complete_handshake(&msg2, 1300).unwrap();
+        assert!(initiator_conn.has_session());
+
+        // Initiator learned responder's epoch
+        assert_eq!(initiator_conn.conn_remote_epoch(), Some(responder_epoch));
+
+        // Both have sessions
+        assert!(initiator_conn.has_session());
+        assert!(responder_conn.has_session());
+
+        // Take and verify sessions work
+        let mut init_session = initiator_conn.take_session().unwrap();
+        let mut resp_session = responder_conn.take_session().unwrap();
+
+        // Encrypt/decrypt test
+        let plaintext = b"test message";
+        let ciphertext = init_session.encrypt(plaintext).unwrap();
+        let decrypted = resp_session.decrypt(&ciphertext).unwrap();
+        assert_eq!(decrypted, plaintext);
+    }
+
+    #[test]
+    fn test_connection_failure() {
+        // `mark_failed` releases the leg's Noise handshake handle. The failure
+        // *state* now lives on the control machine, but the leg-local effect is
+        // still observable: a completion attempt afterward reports `WrongState`
+        // (the handle-presence gate) and no session is produced.
+        let identity = make_peer_identity();
+        let keypair = make_keypair();
+        let mut conn = outbound_leg(LinkId::new(1), identity, 1000);
+        conn.start_handshake(keypair, make_epoch(), 1100).unwrap();
+
+        conn.mark_failed();
+
+        assert!(!conn.has_session());
+        assert!(conn.complete_handshake(&[0u8; 96], 1200).is_err());
+    }
+
+    #[test]
+    fn test_wrong_direction_errors() {
+        let identity = make_peer_identity();
+        let keypair = make_keypair();
+
+        // Outbound can't receive_handshake_init
+        let mut outbound = outbound_leg(LinkId::new(1), identity, 1000);
+        assert!(
+            outbound
+                .receive_handshake_init(keypair, make_epoch(), &[0u8; 106], 1100)
+                .is_err()
+        );
+
+        // Inbound can't start_handshake
+        let mut inbound = inbound_leg(LinkId::new(2), 1000);
+        assert!(
+            inbound
+                .start_handshake(keypair, make_epoch(), 1100)
+                .is_err()
+        );
+    }
+
+    /// `LIVENESS_INTERVAL_MS` stays pinned to `NodeConfig`'s heartbeat default.
+    ///
+    /// The expectation is read from the default rather than repeated as a
+    /// literal, so raising or lowering `heartbeat_interval_secs` without
+    /// re-pinning the constant reds here instead of drifting unnoticed.
+    #[test]
+    fn liveness_interval_matches_the_heartbeat_config_default() {
+        assert_eq!(
+            LIVENESS_INTERVAL_MS,
+            crate::config::NodeConfig::default().heartbeat_interval_secs * 1_000
+        );
+    }
+
+    /// `REKEY_AFTER_SECS` and `REKEY_AFTER_MESSAGES` stay pinned to
+    /// `RekeyConfig`'s defaults, read from the impl for the same reason.
+    #[test]
+    fn rekey_constants_match_the_rekey_config_defaults() {
+        let defaults = crate::config::RekeyConfig::default();
+        assert_eq!(REKEY_AFTER_SECS, defaults.after_secs);
+        assert_eq!(REKEY_AFTER_MESSAGES, defaults.after_messages);
+    }
+
+    /// A rekey cutover arms the drain timer for the drain window FSP uses.
+    ///
+    /// The expected offset is the literal `10_000`: `DRAIN_WINDOW_SECS` in
+    /// `src/proto/fsp/limits.rs` is 10 seconds, and that is the value this
+    /// deadline is meant to carry. Writing it out rather than reusing
+    /// `DRAIN_WINDOW_MS` is what keeps the assertion able to fail; expressed
+    /// in terms of the constant under test it would move with any re-pointing
+    /// of that constant and assert nothing.
+    #[test]
+    fn drain_expiry_deadline_is_the_configured_drain_window() {
+        let mut alloc = IndexAllocator::new();
+        let id = peer_identity();
+        let addr = *id.node_addr();
+        let mut m = PeerMachine::new_outbound(LinkId::new(1), id, 0);
+        m.state = PeerState::Maintaining {
+            addr,
+            kind: MaintainKind::Rekey(RekeyPhase::PendingCutover),
+        };
+        m.rekey_our_index = Some(SessionIndex::new(0x2222));
+        m.conn.set_our_index(SessionIndex::new(0x1111));
+        m.remote_epoch = Some([9u8; 8]);
+        m.session_established_at_ms = 0;
+
+        let actions = m.step(
+            PeerEvent::Timeout {
+                kind: TimerKind::RekeyCadence,
+            },
+            7_000,
+            &mut alloc,
+        );
+
+        let deadline = actions
+            .iter()
+            .find_map(|a| match a {
+                PeerAction::SetTimer {
+                    kind: TimerKind::DrainExpiry,
+                    at_ms,
+                } => Some(*at_ms),
+                _ => None,
+            })
+            .expect("the cutover must arm a DrainExpiry timer");
+        assert_eq!(deadline, 7_000 + 10_000);
+    }
+
+    /// `DRAIN_WINDOW_MS` is the FSP drain limit in milliseconds.
+    ///
+    /// This is a tautology as the constant is now declared, and is not
+    /// coverage: it is an executable statement of where the value comes from.
+    /// It reds only if a later edit replaces the const expression with a
+    /// literal that disagrees with the limit.
+    #[test]
+    fn drain_window_ms_is_sourced_from_the_fsp_limit() {
+        assert_eq!(
+            DRAIN_WINDOW_MS,
+            crate::proto::fsp::limits::DRAIN_WINDOW_SECS * 1_000
+        );
+    }
+}
+
+/// T-SANSIO: the action vocabulary must stay plain, comparable data.
+///
+/// `PeerAction` is the sans-IO boundary between the pure reducer and its
+/// driver. Requiring `Clone + Eq` is a compile-time statement that no variant
+/// may carry a runtime handle (a socket, a `JoinHandle`, a channel sender),
+/// since none of those are `Clone + Eq`. If a future variant smuggles one in,
+/// this bound stops compiling.
+#[cfg(test)]
+mod action_contract {
+    use super::PeerAction;
+
+    fn assert_clone_eq<T: Clone + Eq>() {}
+
+    #[test]
+    fn peer_action_is_plain_comparable_data() {
+        assert_clone_eq::<PeerAction>();
+    }
+}

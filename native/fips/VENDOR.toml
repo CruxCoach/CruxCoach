@@ -1,0 +1,40 @@
+# Provenance of the vendored FIPS crate.
+#
+# Everything in this directory except `VENDOR.toml` is upstream source at
+# `commit`, byte for byte. Nothing is modified yet; local patches, when they
+# exist, live in `patches/` and are listed here.
+#
+# Why vendored rather than a Git pin: `integration/platform` is a branch head,
+# and a Cargo `rev =` pin stays reproducible only while that object survives
+# upstream retention. The build must not depend on that. Vendoring also removes
+# the network from the native build entirely.
+
+repository = "https://github.com/jmcorgan/fips"
+# Reviewed platform-integration lineage. Head of `integration/platform` when
+# vendored; recorded as an immutable commit, never as the branch name.
+commit = "6580a806f9b05ee10497786f872fd65480ca8e5c"
+commit_subject = "fix(node): compare a candidate address against the instance the peer is on"
+commit_date = "2026-08-18"
+license = "MIT"
+# Superseded pin, kept for the rollback path (build the predecessor branch).
+previous_commit = "967776079ba5ddc8fe118c3f289365b51eb03737"
+
+# Upstream paths copied verbatim. `docs/`, `testing/`, `packaging/`,
+# `examples/` and the nix flake are upstream tooling with no bearing on the
+# Android library build; `benches/` is here only because `Cargo.toml` declares
+# a `[[bench]]` target and the manifest is kept unmodified.
+paths = [
+    "Cargo.toml",
+    "LICENSE",
+    "README.md",
+    "build.rs",
+    "rustfmt.toml",
+    "benches",
+    "src",
+]
+
+patches = []
+
+# sha256 over `"<sha256>  <path>\n"` lines for every vendored source file,
+# sorted by path, excluding `VENDOR.toml` and `patches/`.
+vendored_sha256 = "80e43a0cae72e536b891430f2b8b0386609ee8eb1400f971d60e276716bf4ba2"

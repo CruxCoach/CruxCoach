@@ -1,0 +1,127 @@
+[package]
+name = "fips"
+version = "0.5.0-dev"
+edition = "2024"
+description = "A distributed, decentralized network routing protocol for mesh nodes connecting over arbitrary transports"
+license = "MIT"
+authors = ["Johnathan Corgan <johnathan@corganlabs.com>"]
+repository = "https://github.com/jmcorgan/fips"
+homepage = "https://fips.network"
+readme = "README.md"
+keywords = ["mesh", "p2p", "decentralized", "overlay-network", "nostr"]
+categories = ["network-programming", "command-line-utilities", "cryptography"]
+
+[features]
+default = []
+# Tick-body profiler (`src/instr`). Off by default: enabling it edits 26 call
+# sites in the rx loop's hot tick arm, and only a compile-time gate makes the
+# default build's neutrality a property of the generated code rather than of a
+# runtime check. Build with `--features profiling` for a measurement run.
+profiling = []
+
+[dependencies]
+ratatui = "0.30"
+secp256k1 = { version = "0.30", features = ["rand", "global-context"] }
+sha2 = "0.10"
+hkdf = "0.12"
+ring = "0.17"
+libm = "0.2"
+zeroize = { version = "1.9", features = ["zeroize_derive"] }
+rand = "0.10.1"
+crossbeam-channel = "0.5"
+thiserror = "2.0"
+bech32 = "0.11"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+dirs = "6.0"
+hex = "0.4"
+clap = { version = "4.6", features = ["derive"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tokio = { version = "1", features = ["rt", "macros", "signal", "sync", "net", "time", "process", "io-util"] }
+futures = "0.3"
+simple-dns = "0.11.2"
+# 0.20 picks up socket-pktinfo 0.4.1, the first release that builds on
+# FreeBSD (IP_RECVDSTADDR/IP_RECVIF instead of Linux-style IP_PKTINFO).
+mdns-sd = "0.20"
+socket2 = { version = "0.6.2", features = ["all"] }
+tokio-socks = "0.5"
+portable-atomic = { version = "1", features = ["std"] }
+
+nostr = { version = "0.44", features = ["std", "nip59"] }
+nostr-sdk = "0.44"
+arc-swap = "1"
+
+[target.'cfg(unix)'.dependencies]
+tun = { version = "0.8.7", features = ["async"] }
+libc = "0.2"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+rtnetlink = "0.21.0"
+rustables = "0.8.7"
+procfs = { version = "0.18", default-features = false }
+
+# bluer/BlueZ needs glibc — see build.rs `bluer_available` cfg gate.
+[target.'cfg(all(target_os = "linux", not(target_env = "musl")))'.dependencies]
+bluer = { version = "0.17", features = ["bluetoothd", "l2cap"] }
+
+[target.'cfg(windows)'.dependencies]
+wintun = "0.5"
+windows-service = "0.8.1"
+
+[package.metadata.deb]
+maintainer = "Johnathan Corgan <johnathan@corganlabs.com>"
+copyright = "2026 Johnathan Corgan"
+license-file = ["LICENSE", "0"]
+section = "net"
+priority = "optional"
+depends = "libc6, systemd, libdbus-1-3"
+recommends = "bluez"
+extended-description = """\
+FIPS is a distributed, decentralized network routing protocol for mesh \
+nodes connecting over arbitrary transports including UDP, TCP, Ethernet, \
+Tor, and Bluetooth (BLE). It provides encrypted peer-to-peer connectivity \
+with automatic key management, TUN-based virtual networking, and .fips DNS \
+resolution."""
+maintainer-scripts = "packaging/debian/"
+assets = [
+    ["target/release/fips", "/usr/bin/", "755"],
+    ["target/release/fipsctl", "/usr/bin/", "755"],
+    ["target/release/fipstop", "/usr/bin/", "755"],
+    ["packaging/common/fips.yaml", "/usr/share/fips/fips.yaml.example", "644"],
+    ["packaging/common/hosts", "/etc/fips/hosts", "644"],
+    ["packaging/common/fips.nft", "/etc/fips/fips.nft", "644"],
+    ["packaging/debian/fips.service", "/lib/systemd/system/fips.service", "644"],
+    ["packaging/debian/fips-dns.service", "/lib/systemd/system/fips-dns.service", "644"],
+    ["packaging/debian/fips-firewall.service", "/lib/systemd/system/fips-firewall.service", "644"],
+    ["packaging/common/fips-dns-setup", "/usr/lib/fips/fips-dns-setup", "755"],
+    ["packaging/common/fips-dns-teardown", "/usr/lib/fips/fips-dns-teardown", "755"],
+    ["packaging/debian/fips.tmpfiles", "/usr/lib/tmpfiles.d/fips.conf", "644"],
+    ["target/release/fips-gateway", "/usr/bin/", "755"],
+    ["packaging/debian/fips-gateway.service", "/lib/systemd/system/fips-gateway.service", "644"],
+    ["docs/design/fips-security.md", "/usr/share/doc/fips/fips-security.md", "644"],
+]
+conf-files = ["/etc/fips/hosts", "/etc/fips/fips.nft"]
+
+[dev-dependencies]
+tempfile = "3.15"
+criterion = { version = "0.8.2", features = ["html_reports"] }
+tokio = { version = "1", features = ["test-util"] }
+
+[[bin]]
+name = "fipsctl"
+path = "src/bin/fipsctl.rs"
+
+[[bin]]
+name = "fips-gateway"
+path = "src/bin/fips-gateway.rs"
+
+[[bin]]
+name = "fipstop"
+path = "src/bin/fipstop/main.rs"
+
+[[bench]]
+name = "routing_next_hop"
+path = "benches/routing_next_hop.rs"
+harness = false
