@@ -25,11 +25,16 @@ class BoardCellWireTest {
         var acceptsSends: Boolean = true,
     ) : AuthenticatedMeshLink {
         val sent = mutableListOf<Pair<String, ByteArray>>()
+        val recycleReasons = mutableListOf<String>()
         override fun send(authenticatedPeerNpub: String, payload: ByteArray): Boolean {
             sent += authenticatedPeerNpub to payload; return acceptsSends
         }
         override fun directAuthenticatedPeers() = direct
         override fun activeRealmId() = realm
+        override fun recycleTransport(reason: String): Boolean {
+            recycleReasons += reason
+            return true
+        }
     }
 
     private fun frame(sender: String, message: BoardCellWireMessage, epoch: Long = 1, term: Long = 1,
@@ -429,6 +434,7 @@ class BoardCellWireTest {
         assertTrue(link.sent.any { (target, bytes) -> target == "member" &&
             ((BoardCellWireCodec.decode(bytes).message as? BoardCellWireMessage.Event)?.value?.event
                 is BoardCellEvent.MemberLeft) })
+        assertEquals(listOf("last remote member left voluntarily"), link.recycleReasons)
     }
 
     @Test fun `removed stale member receives exclusion snapshot on reconnect digest`() = runTest {

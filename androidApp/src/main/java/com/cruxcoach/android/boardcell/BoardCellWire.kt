@@ -333,6 +333,7 @@ interface AuthenticatedMeshLink {
     fun send(authenticatedPeerNpub: String, payload: ByteArray): Boolean
     fun directAuthenticatedPeers(): Set<String> = emptySet()
     fun activeRealmId(): String? = null
+    fun recycleTransport(reason: String): Boolean = false
 }
 
 data class InboundSessionCommand(
@@ -809,9 +810,18 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
                     }
                     return BoardCellApplyResult.Rejected("member leave sender/role mismatch")
                 }
-                target.leaveMember(snapshot.physicalBoardId, authenticatedSender,
+                val left = target.leaveMember(snapshot.physicalBoardId, authenticatedSender,
                     BoardCellMemberLeaveReason.VOLUNTARY, nowMonotonicMs)
-                target.snapshot(snapshot.physicalBoardId)?.let { snapshots[it.cellId] = it }
+                target.snapshot(snapshot.physicalBoardId)?.let { current ->
+                    snapshots[current.cellId] = current
+                    // The native peer table can outlive the final L2CAP channel for
+                    // several seconds.  Without retiring that generation, the normal
+                    // permissionless admission loop can mistake the leaver's ghost for
+                    // a fresh explicit join as soon as the departure fence expires.
+                    if (left != null && current.members == setOf(link.localNpub)) {
+                        link.recycleTransport("last remote member left voluntarily")
+                    }
+                }
                 null
             }
             is BoardCellWireMessage.ControllerRecovery ->

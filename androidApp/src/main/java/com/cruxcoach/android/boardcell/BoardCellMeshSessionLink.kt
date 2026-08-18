@@ -47,4 +47,7 @@ class BoardCellMeshSessionLink : AuthenticatedMeshLink {
         bound.value?.authenticatedPeers?.value.orEmpty()
 
     override fun activeRealmId(): String? = bound.value?.realmId?.value
+
+    override fun recycleTransport(reason: String): Boolean =
+        bound.value?.recycleTransport(reason) == true
 }

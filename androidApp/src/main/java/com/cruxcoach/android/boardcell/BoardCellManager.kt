@@ -382,12 +382,19 @@ class BoardCellManager @Inject constructor(
                         BoardCellDurableResumePolicy.controllerSeed(restored, cellId, activeNodeId),
                         reason = "physical_board_reconnect",
                     )
+                    val restoredRecoveryBase = knownSharedCell && !rejoined && !resumedController &&
+                        restoreDurableMemberRecoveryBase(
+                            BoardCellDurableResumePolicy.memberRecoverySeed(
+                                restored, cellId, activeNodeId,
+                            ),
+                            reason = "physical_board_reconnect",
+                        )
                     if (!knownSharedCell) {
                         FipsDebugLog.event("boardcell", "new_cell_claim_begin",
                             "cell" to FipsDebugLog.id(cellId.value), "node" to FipsDebugLog.id(activeNodeId))
                         _membershipTransition.value = if (claimAndSettle(physical, cellId) != null)
                             MeshMembershipTransition.IDLE else MeshMembershipTransition.ERROR
-                    } else if (rejoined || resumedController) {
+                    } else if (rejoined || resumedController || restoredRecoveryBase) {
                         _membershipTransition.value = MeshMembershipTransition.IDLE
                     } else {
                         // Never create a competing lineage merely because the
@@ -1055,7 +1062,8 @@ class BoardCellManager @Inject constructor(
             throw failure
         }
         val joined = failedPhase == null && snapshot()?.let {
-            it.cellId == cell && activeNodeId in it.members
+            it.cellId == cell && activeNodeId in it.members &&
+                it.availability == BoardCellAvailability.ACTIVE
         } == true
         if (joined) {
             _membershipTransition.value = MeshMembershipTransition.IDLE
@@ -1126,6 +1134,37 @@ class BoardCellManager @Inject constructor(
             "sequence" to restored.snapshot.sequence,
             "term" to restored.snapshot.controllerTerm,
             "members" to restored.snapshot.members.size,
+        )
+        refreshSelected()
+        return true
+    }
+
+    /**
+     * Restore a former member only as an already-silent recovery base.  The
+     * physical board is connected on this path, but canonical authority still
+     * changes solely through the existing frozen, fenced recovery protocol.
+     */
+    private suspend fun restoreDurableMemberRecoveryBase(
+        seed: BoardCellSnapshot?,
+        reason: String,
+    ): Boolean {
+        seed ?: return false
+        val now = monotonicNow()
+        val observedAt = (now - CONTROLLER_LEASE_TIMEOUT_MS).coerceAtLeast(0L)
+        val restored = coordinator.restoreTrustedSnapshot(seed, observedAt)
+        if (restored !is BoardCellApplyResult.Applied) return false
+        coordinator.expireLocalDeadlines(now)
+        val recoveryBase = coordinator.snapshot(seed.physicalBoardId) ?: return false
+        if (recoveryBase.availability != BoardCellAvailability.FROZEN_NEEDS_CONTROLLER) return false
+        meshTransport.rememberSnapshot(recoveryBase)
+        BoardCellScopeRegistry.joinCell(recoveryBase.physicalBoardId, recoveryBase.cellId)
+        FipsDebugLog.event(
+            "boardcell", "durable_member_recovery_restored",
+            "reason" to reason,
+            "cell" to FipsDebugLog.id(recoveryBase.cellId.value),
+            "sequence" to recoveryBase.sequence,
+            "term" to recoveryBase.controllerTerm,
+            "controller" to FipsDebugLog.id(recoveryBase.controllerId),
         )
         refreshSelected()
         return true

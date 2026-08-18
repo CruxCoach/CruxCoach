@@ -704,6 +704,32 @@ internal object BoardCellDurableResumePolicy {
                 HandoverPhase.COMMITTED,
             )
     }
+
+    /**
+     * A directly connected board is the exclusive physical fence needed to
+     * recover a cell whose previous controller is gone.  Preserve a durable
+     * non-controller member only as that recovery base; it is never writable
+     * and must pass through the normal frozen/recovery transition before this
+     * device can host again.
+     */
+    fun memberRecoverySeed(
+        snapshot: BoardCellSnapshot?,
+        cellId: BoardCellId,
+        localNodeId: String,
+    ): BoardCellSnapshot? = snapshot?.takeIf {
+        it.cellId == cellId && it.hasValidHash() &&
+            it.availability in setOf(
+                BoardCellAvailability.ACTIVE,
+                BoardCellAvailability.FROZEN_NEEDS_CONTROLLER,
+            ) &&
+            localNodeId in it.members && it.controllerId != localNodeId &&
+            it.handover?.phase !in setOf(
+                HandoverPhase.PREPARED,
+                HandoverPhase.SOURCE_RELEASED,
+                HandoverPhase.TARGET_READY,
+                HandoverPhase.COMMITTED,
+            )
+    }
 }
 
 /** Distinguishes a live-mesh replica from a snapshot created without FIPS. */

@@ -51,6 +51,15 @@ class BoardCellDurableResumePolicyTest {
         )
         val prepared = base.copy(handover = handover).withComputedHash()
         assertNull(BoardCellDurableResumePolicy.controllerSeed(prepared, cell, "controller"))
+        assertNull(BoardCellDurableResumePolicy.memberRecoverySeed(prepared, cell, "member"))
+    }
+
+    @Test fun `durable non controller member may seed only fenced board recovery`() {
+        assertEquals(base, BoardCellDurableResumePolicy.memberRecoverySeed(base, cell, "member"))
+        assertNull(BoardCellDurableResumePolicy.memberRecoverySeed(base, cell, "controller"))
+        assertNull(BoardCellDurableResumePolicy.memberRecoverySeed(base, cell, "stranger"))
+        assertNull(BoardCellDurableResumePolicy.memberRecoverySeed(
+            base.copy(stateHash = "tampered"), cell, "member"))
     }
 
     @Test fun `local fallback singleton is not mistaken for a foreign mesh controller`() {
