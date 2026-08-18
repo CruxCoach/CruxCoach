@@ -134,6 +134,7 @@ class BoardBrowserCatalogueRevisionTest {
             "the gate is shut, so the filter must be inert",
             0L, viewModel.state.value.hsmExcludedMask,
         )
+        awaitSyncCollector()
 
         // Start a run without changing the already-baselined generation. The
         // old end-of-run branch therefore still cannot use generation !=
@@ -142,7 +143,7 @@ class BoardBrowserCatalogueRevisionTest {
             isSyncing = true,
             moonBoardStep = ImportStep.ImportClimbs(0, 0, 1000),
         )
-        awaitState(viewModel) { it.activeBrandImporting }
+        awaitRefresh()
 
         // ── 1. The importer commits. The rows now carry a real mask. ────────
         repo.moonBoardHoldSetMaskPresent = true
@@ -280,6 +281,12 @@ class BoardBrowserCatalogueRevisionTest {
      *  the opposite of what this test is about — a conflated
      *  `revision++ / isSyncing=false` is a case the OLD code already handled. */
     private suspend fun awaitRefresh() = delay(STEP_MS)
+
+    private suspend fun awaitSyncCollector() {
+        withTimeoutOrNull(SETTLE_MS) {
+            while (syncState.subscriptionCount.value == 0) delay(5)
+        } ?: throw AssertionError("the browser never subscribed to sync state")
+    }
 
     private companion object {
         /**
