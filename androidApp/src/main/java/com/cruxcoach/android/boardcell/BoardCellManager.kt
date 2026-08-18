@@ -347,8 +347,16 @@ class BoardCellManager @Inject constructor(
                     // resurrects the durable member set: first allow current
                     // members to sponsor this stable per-realm npub. Only an
                     // actually empty realm bootstraps after the grace period.
-                    val knownSharedCell = fipsActive && restored != null &&
-                        (restored.members - activeNodeId).isNotEmpty()
+                    val localFallbackMigration = fipsActive &&
+                        BoardCellFipsBootstrapPolicy.isLocalFallbackSingleton(restored)
+                    val knownSharedCell = fipsActive &&
+                        BoardCellFipsBootstrapPolicy.hasKnownSharedCell(restored, activeNodeId)
+                    if (localFallbackMigration) {
+                        FipsDebugLog.event("boardcell", "local_fallback_snapshot_migrated",
+                            "cell" to FipsDebugLog.id(cellId.value),
+                            "previousNode" to FipsDebugLog.id(restored?.controllerId),
+                            "fipsNode" to FipsDebugLog.id(activeNodeId))
+                    }
                     if (fipsActive && !knownSharedCell) durableStore.clearSnapshot(physical)
                     val rejoined = knownSharedCell && withTimeoutOrNull(REJOIN_SPONSOR_GRACE_MS) {
                         snapshots.filterNotNull().first { snapshot ->
@@ -374,7 +382,7 @@ class BoardCellManager @Inject constructor(
                         _membershipTransition.value = MeshMembershipTransition.ERROR
                         FipsDebugLog.warning("boardcell", "known_cell_rejoin_pending",
                             "cell" to FipsDebugLog.id(cellId.value),
-                            "knownMembers" to restored.members.size)
+                            "knownMembers" to (restored?.members?.size ?: 0))
                     }
                     coordinator.recoverPendingWrite(physical)
                 }

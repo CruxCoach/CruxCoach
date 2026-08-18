@@ -70,7 +70,7 @@ object WhatsNewItems {
     /** 0.2.3 — competitions (FEAT-058). The feature is reached from the logo
      *  menu in the board browser, which is a place nobody would look without
      *  being told, so it needs a discovery surface of its own. */
-    val RELEASE_023 = WhatsNewItem(id = "release-0.2.3", sinceVersionCode = 1000007)
+    val RELEASE_023 = WhatsNewItem(id = "release-0.2.3", sinceVersionCode = 1000008)
 
     /** FEAT-015 — Board Locations Map (0.2.0). Headline feature; users
      *  upgrading from 0.1.4 have no other entry point to discover the

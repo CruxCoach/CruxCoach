@@ -1,7 +1,9 @@
 package com.cruxcoach.android.boardcell
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BoardCellDurableResumePolicyTest {
@@ -43,5 +45,30 @@ class BoardCellDurableResumePolicyTest {
         )
         val prepared = base.copy(handover = handover).withComputedHash()
         assertNull(BoardCellDurableResumePolicy.controllerSeed(prepared, cell, "controller"))
+    }
+
+    @Test fun `local fallback singleton is not mistaken for a foreign mesh controller`() {
+        val local = base.copy(
+            controllerId = "local-device-id",
+            members = setOf("local-device-id"),
+        ).withComputedHash()
+
+        assertTrue(BoardCellFipsBootstrapPolicy.isLocalFallbackSingleton(local))
+        assertFalse(BoardCellFipsBootstrapPolicy.hasKnownSharedCell(local, "npub-new"))
+    }
+
+    @Test fun `real foreign mesh membership remains fail closed`() {
+        val foreign = base.copy(
+            controllerId = "npub-foreign",
+            members = setOf("npub-foreign"),
+        ).withComputedHash()
+
+        assertFalse(BoardCellFipsBootstrapPolicy.isLocalFallbackSingleton(foreign))
+        assertTrue(BoardCellFipsBootstrapPolicy.hasKnownSharedCell(foreign, "npub-local"))
+        assertTrue(BoardCellFipsBootstrapPolicy.hasKnownSharedCell(base, "controller"))
+        assertFalse(BoardCellFipsBootstrapPolicy.hasKnownSharedCell(
+            base.copy(members = setOf("controller")).withComputedHash(),
+            "controller",
+        ))
     }
 }

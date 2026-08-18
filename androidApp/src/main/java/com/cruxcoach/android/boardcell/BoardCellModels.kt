@@ -699,6 +699,26 @@ internal object BoardCellDurableResumePolicy {
     }
 }
 
+/** Distinguishes a live-mesh replica from a snapshot created without FIPS. */
+internal object BoardCellFipsBootstrapPolicy {
+    /**
+     * A singleton `local-*` controller was created by the process-local
+     * fallback transport and was never a remotely shared mesh membership.
+     * When FIPS becomes available it may be replaced by this device's stable
+     * realm npub. Every real foreign identity remains fail-closed.
+     */
+    fun isLocalFallbackSingleton(snapshot: BoardCellSnapshot?): Boolean = snapshot?.let {
+        it.members.size == 1 && it.members.single() == it.controllerId &&
+            it.controllerId.startsWith(LOCAL_FALLBACK_PREFIX)
+    } == true
+
+    fun hasKnownSharedCell(snapshot: BoardCellSnapshot?, activeNodeId: String): Boolean =
+        snapshot != null && !isLocalFallbackSingleton(snapshot) &&
+            (snapshot.members - activeNodeId).isNotEmpty()
+
+    private const val LOCAL_FALLBACK_PREFIX = "local-"
+}
+
 /** Canonical, topology-independent staggering for fenced controller recovery. */
 internal object BoardCellRecoveryElection {
     private const val EXACT_SLOTS = 8
