@@ -1,11 +1,16 @@
 name: Release
 
 on:
-  push:
-    branches: [main, dev]
+  workflow_dispatch:
+    inputs:
+      confirm_production:
+        description: 'Type RELEASE to publish the current main commit'
+        required: true
+        default: ''
 
 jobs:
   release:
+    if: github.ref == 'refs/heads/main' && inputs.confirm_production == 'RELEASE'
     runs-on: self-hosted
     steps:
       - name: Checkout
@@ -28,16 +33,10 @@ jobs:
         run: |
           VERSION_NAME=$(grep 'versionName' androidApp/build.gradle.kts | head -1 | grep -Po '"\K[^"]+')
           BRANCH="${GITHUB_REF_NAME}"
-          if [ "$BRANCH" = "dev" ]; then
-            SHORT_SHA=$(git rev-parse --short HEAD)
-            TAG_NAME="v${VERSION_NAME}-dev.${SHORT_SHA}"
-            RELEASE_NAME="v${VERSION_NAME}-dev (${SHORT_SHA})"
-            PRERELEASE=true
-          else
-            TAG_NAME="v${VERSION_NAME}"
-            RELEASE_NAME="v${VERSION_NAME}"
-            PRERELEASE=false
-          fi
+          test "$BRANCH" = main
+          TAG_NAME="v${VERSION_NAME}"
+          RELEASE_NAME="v${VERSION_NAME}"
+          PRERELEASE=false
 
           echo "version=$VERSION_NAME" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG_NAME" >> "$GITHUB_OUTPUT"
@@ -45,8 +44,7 @@ jobs:
           echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
           echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
 
-          # On main: skip if tag already exists. On dev: always build.
-          if [ "$BRANCH" = "main" ] && git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+          if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "Tag $TAG_NAME already exists — skipping release"
           else
@@ -94,39 +92,6 @@ jobs:
           done
           echo "::error::Zapstore publish failed after 3 attempts"
           exit 1
-
-      - name: Delete old dev release
-        if: steps.version.outputs.skip == 'false' && steps.version.outputs.branch == 'dev'
-        env:
-          CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN }}
-        run: |
-          API="https://codeberg.org/api/v1/repos/CruxCoach/CruxCoach"
-
-          # Delete existing dev releases (by tag pattern, regardless of prerelease flag)
-          RELEASES=$(curl -s -H "Authorization: token ${CODEBERG_TOKEN}" \
-            "${API}/releases?limit=50")
-          echo "$RELEASES" | sed 's/},{/}\n{/g' | while read -r entry; do
-            OLD_TAG=$(echo "$entry" | sed -n 's/.*"tag_name":"\([^"]*\)".*/\1/p')
-            echo "$OLD_TAG" | grep -q '\-dev\.' || continue
-            OLD_ID=$(echo "$entry" | grep -o '"id":[0-9]*' | head -1 | grep -o '[0-9]*')
-            DEL_CODE=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE \
-              -H "Authorization: token ${CODEBERG_TOKEN}" "${API}/releases/${OLD_ID}")
-            echo "Deleted dev release: $OLD_TAG (ID: $OLD_ID) → $DEL_CODE"
-            TAG_DEL=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE \
-              -H "Authorization: token ${CODEBERG_TOKEN}" "${API}/tags/${OLD_TAG}")
-            echo "Deleted tag: $OLD_TAG → $TAG_DEL"
-          done
-
-          # Clean up orphan dev tags (from previous failed runs)
-          TAGS=$(curl -s -H "Authorization: token ${CODEBERG_TOKEN}" "${API}/tags?limit=50")
-          echo "$TAGS" | sed 's/},{/}\n{/g' | while read -r entry; do
-            OLD_TAG=$(echo "$entry" | sed -n 's/.*"name":"\([^"]*\)".*/\1/p')
-            echo "$OLD_TAG" | grep -q '\-dev\.' || continue
-            TAG_DEL=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE \
-              -H "Authorization: token ${CODEBERG_TOKEN}" "${API}/tags/${OLD_TAG}")
-            echo "Deleted orphan dev tag: $OLD_TAG → $TAG_DEL"
-          done
-          echo "Cleanup done"
 
       - name: Create Codeberg release
         if: steps.version.outputs.skip == 'false'
