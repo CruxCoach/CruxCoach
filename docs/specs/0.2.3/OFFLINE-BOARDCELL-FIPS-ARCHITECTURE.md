@@ -452,6 +452,191 @@ Open hardware gates are OEM BLE/L2CAP and Doze behavior, multi-connect
 semantics, firmware serial/readback/fencing support, address rotation, and
 20–40-device RF/load measurements.
 
+## 14a. FIPS platform restack (August 2026)
+
+### Which FIPS, and why it is in this repository
+
+| | commit | role |
+| --- | --- | --- |
+| superseded | `967776079ba5ddc8fe118c3f289365b51eb03737` | the original pin (7 Aug 2026) |
+| current | `6580a806f9b05ee10497786f872fd65480ca8e5c` | reviewed platform-integration lineage (18 Aug 2026) |
+
+The current revision is **vendored into this repository** at `native/fips`, and
+`native/fips-bridge/Cargo.toml` depends on it by path.
+
+It was a Cargo `git`/`rev` pin before. That is reproducible only for as long as
+the upstream object survives, and `6580a80` is the head of a branch
+(`integration/platform`), not a tag or a commit on `master` — precisely the
+kind of object that moves or is pruned. A signed development APK we cannot
+rebuild from this repository alone is not something we can support. Vendoring
+also removes the network from the native build.
+
+The alternative — a CruxCoach fork of `jmcorgan/fips` carrying an immutable
+integration branch — is the better long-term shape, but no such fork exists and
+creating an external repository was outside this change's authority. Migrating
+later is mechanical: move `native/fips/patches` onto a branch based on
+`6580a80` and point Cargo at that revision.
+
+Provenance is recorded in `native/fips/VENDOR.toml`: upstream URL, exact
+commit, copied paths, the patch series, and a digest of the vendored tree.
+`scripts/verify_vendored_fips.py` checks it two ways —
+
+* offline (recompute the tree digest), which runs on every CI run through
+  `scripts/verify_vendored_fips_test.py`, and is what stops an undocumented
+  edit to a dependency no lockfile checksum covers;
+* `--upstream <path-to-a-fips-clone>`, which proves that upstream `6580a80`
+  plus exactly the recorded patches reproduces the vendored tree byte for byte.
+
+Only crate inputs are vendored. Upstream's `docs/`, `testing/`, `packaging/`,
+`examples/` and nix flake have no bearing on the Android library build.
+
+### The one patch we carry
+
+`0001-node-restore-the-app-owned-identity-seam.patch` adds
+`Node::enable_app_owned_identities()`.
+
+`6580a80` removed `Node::enable_app_owned_dns()`, which CruxCoach depended on.
+Outbound packets pushed through the app-owned TUN are routed by looking the
+destination's truncated address hash up in the node's identity cache. A
+`FipsAddress` does not carry the public key, so an address the cache has never
+seen is answered with ICMPv6 "destination unreachable" — every *first* send to
+a new BoardCell member would be lost. Upstream's remaining filler for that
+cache is the `.fips` DNS responder, which an application that already holds the
+peer's npub has nothing to ask.
+
+The patch is deliberately narrow and upstreamable: one call before `start()`,
+returning the same `DnsIdentityTx` the responder produces, drained by the same
+`run_rx_loop` arm. Arming twice returns the same sender, and a DNS responder
+starting afterwards feeds this channel instead of replacing its receiver.
+Registering an identity asserts only that a key hashes to an address; it grants
+no session, peering or authorization.
+
+`native-api-v1` was **not** adopted. It is experimental and gated to
+Linux/FreeBSD, not Android. It informed the shape of the seam and nothing more.
+
+### API migration
+
+Compilation, not a prior report, produced this list. It confirmed all six
+expected breaks and found no others; `AndroidRadio`, `AndroidBleBridge` and
+`BleAddr` are structurally unchanged.
+
+| upstream change | CruxCoach response |
+| --- | --- |
+| `android_io::set_android_ble_bridge` removed | node-owned `BleRadioSlot` via `Node::enable_app_owned_ble_radio()`, reconciled by `native/fips-bridge/src/radio_install.rs` |
+| `transport::ble::attempts` deleted | two honest diagnostic layers (below) |
+| `ControlReadHandle` / `Node::control_read_handle()` now `pub(crate)` | the supported control socket, read by a background peer directory |
+| `ControlReadHandle::peer_views()` gone | `show_peers` + `show_sessions` over that socket |
+| `Node::enable_app_owned_dns()` removed | the vendored patch above |
+| `deliver_scan` rssi `i32` → `Option<i16>` | Android's 127 "unavailable" sentinel maps to `None` |
+
+### Radio lifecycle ownership
+
+A node-owned slot is the right shape but does not by itself settle ownership,
+because CruxCoach has two independent lifetimes: the radio is built by
+`bleBridgeNew` *before* a node exists and freed *after* one is gone, while the
+node is rebuilt on every realm switch, permission restart, Bluetooth off/on and
+idle-transport recycle.
+
+`RadioInstall` is the single reconciliation point, and every withdrawal is
+guarded by an ownership token — the bridge's JNI handle, or slot pointer
+identity:
+
+* a stop that lost the race to a start presents a stale handle and is refused,
+  so it cannot disarm the radio its successor just installed;
+* publishing a new node's slot clears the previous one, so a node whose stop
+  timed out and was detached cannot keep driving the phone's radio underneath
+  its replacement, and that detached node's own late stop owns nothing;
+* a failed or timed-out `Node::start` retracts the slot but keeps the radio,
+  which Kotlin still owns and reuses on the retry;
+* a Bluetooth cycle clears and reinstalls under a node that never stopped — an
+  empty slot parks the backend rather than failing it.
+
+The logic is generic over the slot so it compiles and is tested on the host,
+where `fips` is not a dependency at all.
+
+### Inbound attribution: control socket, directory, and the hold
+
+An inbound datagram carries the sender's `FipsAddress`, which is a hash — the
+npub has to be looked up. With `peer_views()` gone, the supported source is the
+control socket, bound in app-private storage
+(`<no_backup>/fips/ctl-<generation>.sock`, `0700` directory).
+
+It is **not** queried per packet. A background refresher (1 s, plus an
+out-of-turn nudge on a miss) keeps a bounded snapshot, and `receive()` reads
+that. `show_sessions` is merged with `show_peers` because `show_peers` names
+only direct links, and a multi-hop BoardCell member that cannot be named is a
+dropped delta. Rows are keyed by the address derived locally from the npub,
+with the daemon's `ipv6_addr` used only as a cross-check, and `stale` counts as
+send-capable exactly as `ConnectivityState::can_send` does — a member that
+missed one heartbeat window still carries traffic and still needs its
+direct-join hello.
+
+A datagram whose sender is not in the directory yet is **held, not dropped**:
+on a fresh join the first frame regularly beats the peer table that describes
+it. The hold is bounded in count and in time, and every eviction and expiry is
+counted, so a lost BoardCell delta is visible rather than silent.
+
+The socket path carries a generation, so a stop that timed out cannot block the
+next start on a path its detached node still owns; stale files are removed only
+after proving nobody answers; and the path is length-checked against `sun_path`
+rather than failing obscurely at bind time.
+
+### Diagnostic semantics
+
+Upstream deleted the per-peer BLE attempt ring, and it cannot be reconstructed
+from what replaced it. CruxCoach does not substitute an empty placeholder, and
+does not fabricate per-peer attempts from aggregates. Two layers report what
+each actually knows:
+
+1. **Platform / per-peer** — the Kotlin radio owns every dial, accept, channel
+   open and close, and traces each with its address, direction, outcome and
+   lifetime. This is where per-peer attempt history genuinely lives.
+2. **FIPS / aggregate** — connect, timeout, pubkey-exchange, tie-breaker,
+   duplicate-decline, eviction, scan and advertisement counters, projected from
+   `show_transports`, reported as `instance/counter/value` and diffed between
+   polls. The bridge's own inbound-hold and directory-refresh-failure counters
+   are reported alongside.
+
+A counter the daemon does not report is omitted rather than rendered as a zero
+it never claimed; nothing identifying (adapter address, npub) is emitted; and a
+counter that resets because the node was rebuilt is not reported as activity.
+
+### BLE dial scheduling
+
+See `FipsDialScheduler` and `FipsScanCoalescer`. The short version: a locally
+suppressed dial must never be reported to FIPS as
+`bleDeliverConnectResult(.., false, ..)`, because `6580a80` feeds that into a
+per-address exponential backoff that reaches one attempt per 16 minutes.
+Redundant candidates are removed *before* the scan reaches FIPS instead, and
+the concurrency bound defers rather than lying.
+
+### What was tested — and what was not
+
+Verified without hardware: the vendored-tree provenance (offline and against
+upstream), the Rust bridge unit tests including the radio-ownership race
+matrix, the `show_peers`/`show_sessions`/`show_transports` parsers against the
+current upstream schema, the inbound hold's bounds and counters, the Kotlin
+counter model, the dial-scheduling and scan-coalescing policies, the full
+`:shared` and `:androidApp` JVM unit suites, an `aarch64-linux-android` release
+cross-build, and `assembleDebug`.
+
+**Not** verified, and the mandatory hardware gate before this ships to anyone:
+two- and three-phone join, multiple OEMs, Bluetooth toggle recovery, RPA
+rotation, simultaneous cross-probe, time-to-first-snapshot, and 30-minute
+energy behaviour. JVM tests cannot certify an OEM BLE stack.
+
+### Rollback
+
+Revert the restack commits, or build the predecessor branch
+(`feat/board-cell-mesh-reliability`), which still pins `9677760`. There is
+deliberately **no** dual-FIPS runtime: two protocol revisions in one process
+would double the surface this migration exists to keep small, and the rollback
+target is a branch that already builds.
+
+The superseded `9677760` source object is preserved outside upstream retention
+(see `native/fips/VENDOR.toml`), so the rollback build does not depend on
+GitHub keeping an unreferenced object.
+
 ## 15. Variant B: shared FIPS underlay — future evaluation
 
 Variant B would connect CruxCoach devices to a general FIPS component that may

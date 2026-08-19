@@ -23,7 +23,21 @@ commit_subject = "fix(node): compare a candidate address against the instance th
 commit_date = "2026-08-18"
 license = "MIT"
 # Superseded pin, kept for the rollback path (build the predecessor branch).
+# `feat/board-cell-mesh-reliability` still declares it as a Cargo git revision,
+# so that build depends on the upstream object still existing.
 previous_commit = "967776079ba5ddc8fe118c3f289365b51eb03737"
+
+# Both commits are mirrored outside upstream retention in a host-local bare
+# repository, under refs/cruxcoach/fips/*. See its README. This is redundancy
+# only: `commit` is fully reproducible from this repository alone, and
+# `previous_commit` is what the mirror actually protects. Promoting the mirror
+# somewhere durable off that host would mean creating an external repository,
+# which is the project owner's decision.
+archive_mirror = "/home/myuser/fips-source-archive.git"
+archive_refs = [
+    "refs/cruxcoach/fips/vendored-6580a80",
+    "refs/cruxcoach/fips/superseded-pin-9677760",
+]
 
 # Upstream paths copied verbatim. `docs/`, `testing/`, `packaging/`,
 # `examples/` and the nix flake are upstream tooling with no bearing on the

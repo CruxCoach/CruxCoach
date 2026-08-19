@@ -18,10 +18,22 @@ sequence, live members and membership revision,
 projection and playlist. Every delta names the same board/cell/epoch, advances
 exactly one sequence and binds previous/resulting SHA-256 hashes.
 
-FIPS commit `967776079ba5ddc8fe118c3f289365b51eb03737` is pinned in Cargo.lock.
+FIPS is vendored in-repo at `native/fips`, taken verbatim from upstream commit
+`6580a806f9b05ee10497786f872fd65480ca8e5c` (the reviewed platform-integration
+lineage, superseding `967776079ba5ddc8fe118c3f289365b51eb03737`) plus the one
+patch in `native/fips/patches`. It is a Cargo *path* dependency, not a `rev`
+pin: the reviewed commit is a branch head, and a released APK must be
+rebuildable from this repository alone. Provenance and its two verification
+modes are in `native/fips/VENDOR.toml`; the migration itself is documented in
+[`OFFLINE-BOARDCELL-FIPS-ARCHITECTURE.md`](OFFLINE-BOARDCELL-FIPS-ARCHITECTURE.md)
+§14a.
+
 CruxCoach synthesizes bounded IPv6/UDP application datagrams through FIPS'
 app-owned-TUN seam; it does not create an Android VPN and does not use Nostr
-discovery or relays for BoardCell state.
+discovery or relays for BoardCell state. The peer identities those datagrams
+need are announced through `Node::enable_app_owned_identities()`, and the
+sender of an inbound datagram is resolved from a bounded background snapshot of
+the node's control socket rather than a query per packet.
 
 ## Identity and bootstrap
 
@@ -138,13 +150,20 @@ official-app guests, not to the FIPS graph.
 
 The supported APK ABI is `arm64-v8a` and FIPS is enabled on API 29+. Build with
 `./gradlew :androidApp:buildFipsNative :androidApp:assembleDebug`; the task uses
-Rust 1.94.1, Cargo's locked git revision and the configured Android NDK. API 28
+Rust 1.94.1, the locked Cargo dependency graph over the vendored FIPS tree, and
+the configured Android NDK. The native node also binds a FIPS control socket in
+app-private storage; it is how the bridge reads the peer and session tables and
+is never reachable outside the app sandbox. API 28
 keeps the established GATT session lane because Android L2CAP CoC starts at 29.
 The reproducible multi-device procedure and acceptance matrix are in
 [`docs/FIPS_DEVICE_TEST_PROTOCOL.md`](../../FIPS_DEVICE_TEST_PROTOCOL.md).
 
 ## Production follow-ups
 
+- **Mandatory hardware gate for the August 2026 platform restack**, none of
+  which JVM tests can stand in for: two- and three-phone join, multiple OEMs,
+  Bluetooth toggle recovery, RPA rotation, simultaneous cross-probe,
+  time-to-first-snapshot, and 30-minute energy behaviour.
 - Test multiple real OEM phones through Doze, process death, radio toggles and
   long-running L2CAP traffic; JVM/simulator tests cannot certify OEM BLE stacks.
 - Add an explicit durable-binding UI for controllers that rotate BLE addresses.
