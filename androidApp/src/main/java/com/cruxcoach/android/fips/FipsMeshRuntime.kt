@@ -53,7 +53,7 @@ data class FipsNearbyMesh(
     val boardName: String? = null,
 )
 
-internal class FipsNearbyMeshTracker(private val ttlMs: Long = 8_000L) {
+internal class FipsNearbyMeshTracker(private val ttlMs: Long = NEARBY_MESH_TTL_MS) {
     private var meshes = emptyList<FipsNearbyMesh>()
 
     @Synchronized
@@ -80,6 +80,15 @@ internal class FipsNearbyMeshTracker(private val ttlMs: Long = 8_000L) {
 
     @Synchronized
     fun clear() { meshes = emptyList() }
+
+    companion object {
+        /**
+         * Low-power Android scans can legitimately leave gaps longer than one
+         * advertising window. Keep a card through those gaps while still
+         * removing an ended mesh well before its join proof becomes stale.
+         */
+        const val NEARBY_MESH_TTL_MS = 20_000L
+    }
 }
 
 @Singleton
@@ -271,7 +280,13 @@ class FipsMeshRuntime @Inject constructor(
             return false
         }
         return runCatching {
-            val candidate = FipsBleRadio(context, activeRealm, ::recordNearbyMesh, ::recordConnectionStage)
+            val candidate = FipsBleRadio(
+                context,
+                activeRealm,
+                ::recordNearbyMesh,
+                ::recordConnectionStage,
+                ::recordRadioChannelClosed,
+            )
             radio = candidate
             bridge = NativeFips.bleBridgeNew(candidate)
             check(bridge != 0L)
@@ -607,6 +622,33 @@ class FipsMeshRuntime @Inject constructor(
                 "total" to delta.counter.value,
                 "increase" to delta.increase,
             )
+        }
+    }
+
+    /** Capture the native peer/session state at the exact radio failure. */
+    private fun recordRadioChannelClosed(close: FipsRadioChannelClose) {
+        scope.launch {
+            val snapshot = runCatching { NativeFips.diagnosticSnapshot() }
+                .getOrElse { "diagnostic_error\t${it.message ?: it.javaClass.simpleName}" }
+            if (snapshot.isBlank()) {
+                FipsDebugLog.warning("native_ble", "close_snapshot_empty",
+                    "channel" to close.channel, "reason" to close.reason)
+                return@launch
+            }
+            snapshot.lineSequence().filter(String::isNotBlank).forEach { line ->
+                val kind = line.substringBefore('\t', "unknown")
+                val value = line.substringAfter('\t', "-")
+                FipsDebugLog.event(
+                    "native_ble", "close_snapshot",
+                    "channel" to close.channel,
+                    "address" to close.address,
+                    "direction" to close.direction,
+                    "reason" to close.reason,
+                    "kind" to kind,
+                    "value" to value,
+                )
+            }
+            logBleTransportCounterDeltas()
         }
     }
 

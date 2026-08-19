@@ -26,6 +26,9 @@ internal object NativeFips {
      */
     external fun bleTransportCounters(): String
 
+    /** Peer, session and transport JSON captured over the local control socket. */
+    external fun diagnosticSnapshot(): String
+
     external fun bleBridgeNew(radio: Any): Long
     external fun bleBridgeFree(handle: Long)
     external fun bleDeliverInbound(handle: Long, address: String, sendMtu: Int, receiveMtu: Int): Long

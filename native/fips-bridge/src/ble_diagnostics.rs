@@ -22,7 +22,7 @@ use serde_json::Value;
 /// The counters worth reporting, in a fixed order so a reader diffs a stable
 /// sequence. Every one of these is a connect-, handshake- or admission-outcome
 /// counter; raw byte/packet totals are left out as noise.
-pub const REPORTED_COUNTERS: [&str; 12] = [
+pub const REPORTED_COUNTERS: [&str; 14] = [
     "connections_established",
     "connections_accepted",
     "connections_rejected",
@@ -32,6 +32,8 @@ pub const REPORTED_COUNTERS: [&str; 12] = [
     "tiebreaker_yields",
     "tiebreaker_drops",
     "duplicate_node_declines",
+    "dynamic_psm_dials",
+    "stale_direct_dials_suppressed",
     "pool_evictions",
     "scan_results",
     "advertisements_sent",
@@ -114,6 +116,8 @@ mod tests {
                     "tiebreaker_yields": 1,
                     "tiebreaker_drops": 1,
                     "duplicate_node_declines": 7,
+                    "dynamic_psm_dials": 4,
+                    "stale_direct_dials_suppressed": 2,
                     "pool_evictions": 0,
                     "scan_results": 412,
                     "advertisements_sent": 5

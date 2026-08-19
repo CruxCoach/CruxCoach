@@ -42,6 +42,11 @@ pub struct BleStats {
     /// Connections declined because the peer was already linked on another
     /// link address (see `ConnectionPool::find_by_node`).
     pub duplicate_node_declines: AtomicU64,
+    /// Dials that used a platform-assigned PSM learned from an advertisement.
+    pub dynamic_psm_dials: AtomicU64,
+    /// Node-layer reconnects rejected because the rotating address was no
+    /// longer present in the recent scan window.
+    pub stale_direct_dials_suppressed: AtomicU64,
 }
 
 impl BleStats {
@@ -67,6 +72,8 @@ impl BleStats {
             advertisements_sent: AtomicU64::new(0),
             scan_results: AtomicU64::new(0),
             duplicate_node_declines: AtomicU64::new(0),
+            dynamic_psm_dials: AtomicU64::new(0),
+            stale_direct_dials_suppressed: AtomicU64::new(0),
         }
     }
 
@@ -176,6 +183,15 @@ impl BleStats {
         self.duplicate_node_declines.fetch_add(1, Ordering::Relaxed);
     }
 
+    pub fn record_dynamic_psm_dial(&self) {
+        self.dynamic_psm_dials.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn record_stale_direct_dial_suppressed(&self) {
+        self.stale_direct_dials_suppressed
+            .fetch_add(1, Ordering::Relaxed);
+    }
+
     /// Take a snapshot of all counters.
     pub fn snapshot(&self) -> BleStatsSnapshot {
         BleStatsSnapshot {
@@ -198,6 +214,10 @@ impl BleStats {
             advertisements_sent: self.advertisements_sent.load(Ordering::Relaxed),
             scan_results: self.scan_results.load(Ordering::Relaxed),
             duplicate_node_declines: self.duplicate_node_declines.load(Ordering::Relaxed),
+            dynamic_psm_dials: self.dynamic_psm_dials.load(Ordering::Relaxed),
+            stale_direct_dials_suppressed: self
+                .stale_direct_dials_suppressed
+                .load(Ordering::Relaxed),
         }
     }
 }
@@ -230,4 +250,6 @@ pub struct BleStatsSnapshot {
     pub advertisements_sent: u64,
     pub scan_results: u64,
     pub duplicate_node_declines: u64,
+    pub dynamic_psm_dials: u64,
+    pub stale_direct_dials_suppressed: u64,
 }

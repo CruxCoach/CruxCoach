@@ -33,6 +33,13 @@ import java.util.concurrent.atomic.AtomicLong
  * tie-breaker would wait forever for the member's suppressed outbound. */
 internal fun shouldDeliverFipsScan(matchesActiveRealm: Boolean): Boolean = matchesActiveRealm
 
+internal data class FipsRadioChannelClose(
+    val channel: Long,
+    val address: String,
+    val direction: String,
+    val reason: String,
+)
+
 /** Android API 29+ L2CAP CoC radio owned by Kotlin and driven by FIPS over JNI. */
 @SuppressLint("MissingPermission")
 internal class FipsBleRadio(
@@ -40,6 +47,7 @@ internal class FipsBleRadio(
     private val realm: FipsRealmContext,
     private val onNearbyMesh: (FipsNearbyMesh) -> Unit = {},
     private val onConnectionStage: (FipsConnectionStage) -> Unit = {},
+    private val onChannelClosed: (FipsRadioChannelClose) -> Unit = {},
 ) {
     private val adapter = (context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
     private val gattPresence = FipsGattPresence(context)
@@ -214,13 +222,7 @@ internal class FipsBleRadio(
                 FipsDebugLog.event("radio", "advertising_started", "psm" to psm,
                     "realmTag" to FipsDebugLog.tag(realm.realmTag), "cellTag" to FipsDebugLog.tag(realm.cellTag),
                     "nonceTag" to FipsDebugLog.tag(DirectJoinProof.nonceTag(localNonce)))
-                nonceRotation = retry.schedule({
-                    if (!stopped && generation == advertiseGeneration.get()) {
-                        localNonce = newNonce()
-                        nonceRotatedAtMs = System.currentTimeMillis()
-                        startAdvertising(advertisedPsm)
-                    }
-                }, NONCE_ROTATE_MS, TimeUnit.MILLISECONDS)
+                scheduleNonceRotation(generation, NONCE_ROTATE_MS)
             }
             override fun onStartFailure(errorCode: Int) {
                 if (stopped || generation != advertiseGeneration.get()) return
@@ -237,6 +239,33 @@ internal class FipsBleRadio(
             else advertiser.startAdvertising(settings, data, callback)
         }
             .onFailure { scheduleAdvertiseRetry(generation) }
+    }
+
+    /**
+     * Some Android 17 Bluetooth stacks tear down active L2CAP CoC sockets when
+     * a connectable legacy advertiser is stopped and restarted. A fresh join
+     * proof remains timestamp-bound, so it is safe to defer the advertisement
+     * nonce change while a channel is carrying authenticated traffic. Rotate
+     * at the first channel-free poll instead of risking the mesh itself.
+     */
+    private fun scheduleNonceRotation(generation: Int, delayMs: Long) {
+        nonceRotation?.cancel(false)
+        nonceRotation = retry.schedule({
+            if (stopped || generation != advertiseGeneration.get()) return@schedule
+            if (channels.isNotEmpty()) {
+                FipsDebugLog.event(
+                    "radio", "advertising_nonce_rotation_deferred",
+                    "channels" to channels.size,
+                    "nonceAgeMs" to (System.currentTimeMillis() - nonceRotatedAtMs),
+                )
+                scheduleNonceRotation(generation, NONCE_DEFER_POLL_MS)
+                return@schedule
+            }
+            localNonce = newNonce()
+            nonceRotatedAtMs = System.currentTimeMillis()
+            FipsDebugLog.event("radio", "advertising_nonce_rotation_due", "channels" to 0)
+            startAdvertising(advertisedPsm)
+        }, delayMs, TimeUnit.MILLISECONDS)
     }
 
     private fun scheduleAdvertiseRetry(generation: Int) {
@@ -503,6 +532,7 @@ internal class FipsBleRadio(
             "txBytes" to trace.txBytes.get(),
             "remaining" to channels.size,
         )
+        onChannelClosed(FipsRadioChannelClose(id, trace.address, trace.direction, reason))
     }
 
     private class ChannelTrace(val direction: String, val address: String) {
@@ -524,6 +554,7 @@ internal class FipsBleRadio(
         private const val ADAPTER = "ble0"
         private const val MAX_PACKET = 8_192
         private const val NONCE_ROTATE_MS = 30_000L
+        private const val NONCE_DEFER_POLL_MS = 5_000L
         private const val DISCOVERY_LOG_INTERVAL_MS = 10_000L
         private const val EXECUTOR_STOP_SECONDS = 2L
         private const val OUTBOUND_WAIT_MS = 60_000

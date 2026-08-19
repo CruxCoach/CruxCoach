@@ -140,6 +140,10 @@ pub struct BleTransport<I: BleIo> {
     pool: Arc<Mutex<ConnectionPool<Arc<I::Stream>>>>,
     /// Pending connection attempts.
     connecting: Arc<Mutex<HashMap<TransportAddr, ConnectingEntry>>>,
+    /// Advertisements observed by the scan loop, shared with direct node-layer
+    /// reconnects so they use the peer's current platform-assigned PSM and do
+    /// not redial an address that is no longer on air.
+    observed_adverts: Arc<Mutex<HashMap<BleAddr, ObservedAdvert>>>,
     /// Channel for delivering received packets to Node.
     packet_tx: PacketTx,
     /// Accept loop task handle.
@@ -164,6 +168,18 @@ struct ConnectingEntry {
     task: JoinHandle<()>,
 }
 
+#[derive(Clone, Copy)]
+struct ObservedAdvert {
+    psm: Option<u16>,
+    seen_at: tokio::time::Instant,
+}
+
+/// A low-power scan can pause for several seconds, but an address absent for
+/// this long must not monopolise recovery while fresh rotating addresses are
+/// being advertised. This gate applies only to node-layer direct reconnects;
+/// scan_probe_loop retains its own retry/backoff behaviour.
+const DIRECT_ADVERT_FRESHNESS: std::time::Duration = std::time::Duration::from_secs(20);
+
 impl<I: BleIo> BleTransport<I> {
     /// Create a new BLE transport.
     pub fn new(
@@ -182,6 +198,7 @@ impl<I: BleIo> BleTransport<I> {
             io: Arc::new(io),
             pool: Arc::new(Mutex::new(ConnectionPool::new(max_conns))),
             connecting: Arc::new(Mutex::new(HashMap::new())),
+            observed_adverts: Arc::new(Mutex::new(HashMap::new())),
             packet_tx,
             accept_task: None,
             scan_probe_task: None,
@@ -305,6 +322,7 @@ impl<I: BleIo> BleTransport<I> {
                         local_node_addr,
                         self.packet_tx.clone(),
                         self.transport_id,
+                        Arc::clone(&self.observed_adverts),
                     )));
                     debug!(adapter = %adapter, "BLE scan+probe loop started");
                 }
@@ -558,13 +576,14 @@ impl<I: BleIo> BleTransport<I> {
                 .ok_or_else(|| TransportError::InvalidAddress("not valid UTF-8".into()))?,
         )?;
 
+        let psm = self.direct_dial_psm(&ble_addr).await?;
+
         let io = Arc::clone(&self.io);
         let pool = Arc::clone(&self.pool);
         let connecting = Arc::clone(&self.connecting);
         let packet_tx = self.packet_tx.clone();
         let transport_id = self.transport_id;
         let stats = Arc::clone(&self.stats);
-        let psm = self.config.psm();
         let timeout_ms = self.config.connect_timeout_ms();
         let addr_clone = addr.clone();
         let local_pubkey = self.local_pubkey;
@@ -674,6 +693,34 @@ impl<I: BleIo> BleTransport<I> {
             .insert(addr.clone(), ConnectingEntry { task });
 
         Ok(())
+    }
+
+    async fn direct_dial_psm(&self, addr: &BleAddr) -> Result<u16, TransportError> {
+        let configured = self.config.psm();
+        if !self.config.scan() {
+            return Ok(configured);
+        }
+        let now = tokio::time::Instant::now();
+        let observed = self.observed_adverts.lock().await.get(addr).copied();
+        match observed.filter(|entry| now.duration_since(entry.seen_at) <= DIRECT_ADVERT_FRESHNESS) {
+            Some(entry) => {
+                let psm = entry.psm.unwrap_or(configured);
+                if psm != configured {
+                    self.stats.record_dynamic_psm_dial();
+                }
+                Ok(psm)
+            }
+            None => {
+                self.stats.record_stale_direct_dial_suppressed();
+                debug!(
+                    addr = %addr,
+                    role = "central",
+                    outcome = "stale-direct-dial-suppressed",
+                    "BLE direct reconnect ignored: address is not freshly advertised"
+                );
+                Err(TransportError::ConnectionRefused)
+            }
+        }
     }
 
     /// Query the state of a connection attempt.
@@ -1239,6 +1286,7 @@ async fn scan_probe_loop<I: io::BleIo>(
     local_node_addr: Option<NodeAddr>,
     packet_tx: PacketTx,
     transport_id: TransportId,
+    observed_adverts: Arc<Mutex<HashMap<BleAddr, ObservedAdvert>>>,
 ) {
     // Addresses discovered but not yet connected — retried after cooldown even
     // if the scanner doesn't fire again (BlueZ deduplicates), on a per-address
@@ -1259,7 +1307,6 @@ async fn scan_probe_loop<I: io::BleIo>(
     // that. A peer that advertises nothing is dialled at `configured_psm`,
     // which is every peer that predates this and every backend that does not
     // advertise service data.
-    let mut learned_psm: HashMap<BleAddr, u16> = HashMap::new();
     let retry_interval = tokio::time::interval(std::time::Duration::from_secs(cooldown_secs));
     tokio::pin!(retry_interval);
     retry_interval.tick().await; // consume initial tick
@@ -1270,9 +1317,13 @@ async fn scan_probe_loop<I: io::BleIo>(
             result = scanner.next() => {
                 match result {
                     Some(advert) => {
+                        let now = tokio::time::Instant::now();
+                        observed_adverts.lock().await.insert(advert.addr.clone(), ObservedAdvert {
+                            psm: advert.psm,
+                            seen_at: now,
+                        });
                         if let Some(psm) = advert.psm {
                             trace!(addr = %advert.addr, psm, "BLE scan: learned peer PSM");
-                            learned_psm.insert(advert.addr.clone(), psm);
                         }
                         advert.addr
                     }
@@ -1347,7 +1398,15 @@ async fn scan_probe_loop<I: io::BleIo>(
         };
 
         // L2CAP connect, at whatever PSM this peer advertised.
-        let dial_psm = learned_psm.get(&addr).copied().unwrap_or(configured_psm);
+        let dial_psm = observed_adverts
+            .lock()
+            .await
+            .get(&addr)
+            .and_then(|entry| entry.psm)
+            .unwrap_or(configured_psm);
+        if dial_psm != configured_psm {
+            stats.record_dynamic_psm_dial();
+        }
         // Stamped here so every outcome below can report how long the peer
         // took to go from advertisement to conclusion.
         let probe_started = tokio::time::Instant::now();
@@ -1369,7 +1428,9 @@ async fn scan_probe_loop<I: io::BleIo>(
                 // A learned PSM that does not answer is stale — forget it, so
                 // the next advert re-learns it and the fallback applies in the
                 // meantime. Costs one retry.
-                learned_psm.remove(&addr);
+                if let Some(entry) = observed_adverts.lock().await.get_mut(&addr) {
+                    entry.psm = None;
+                }
                 continue;
             }
             Err(_) => {
@@ -1380,7 +1441,9 @@ async fn scan_probe_loop<I: io::BleIo>(
                     psm = dial_psm, discovery_ms = probe_started.elapsed().as_millis() as u64,
                     failures, "BLE probe connect timeout"
                 );
-                learned_psm.remove(&addr);
+                if let Some(entry) = observed_adverts.lock().await.get_mut(&addr) {
+                    entry.psm = None;
+                }
                 continue;
             }
         };
@@ -2322,6 +2385,40 @@ mod tests {
         let mut transport = BleTransport::new(TransportId::new(1), None, config, io, tx);
         transport.set_local_pubkey(test_pubkey(1));
         (transport, rx)
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn test_direct_reconnect_uses_a_fresh_advertised_psm() {
+        let dials: DialLog = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let (transport, _rx) = psm_probe_transport(dials);
+        transport.observed_adverts.lock().await.insert(
+            test_addr(2),
+            ObservedAdvert {
+                psm: Some(0x00c1),
+                seen_at: tokio::time::Instant::now(),
+            },
+        );
+
+        assert_eq!(transport.direct_dial_psm(&test_addr(2)).await.unwrap(), 0x00c1);
+        assert_eq!(transport.stats.snapshot().dynamic_psm_dials, 1);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn test_direct_reconnect_refuses_an_unadvertised_or_stale_alias() {
+        let dials: DialLog = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let (transport, _rx) = psm_probe_transport(dials);
+        assert!(transport.direct_dial_psm(&test_addr(2)).await.is_err());
+
+        transport.observed_adverts.lock().await.insert(
+            test_addr(2),
+            ObservedAdvert {
+                psm: Some(0x00c1),
+                seen_at: tokio::time::Instant::now(),
+            },
+        );
+        tokio::time::advance(DIRECT_ADVERT_FRESHNESS + std::time::Duration::from_millis(1)).await;
+        assert!(transport.direct_dial_psm(&test_addr(2)).await.is_err());
+        assert_eq!(transport.stats.snapshot().stale_direct_dials_suppressed, 2);
     }
 
     /// A peer that advertises its listener PSM is dialled there, not at the

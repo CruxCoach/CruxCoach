@@ -762,6 +762,38 @@ pub extern "system" fn Java_com_cruxcoach_android_fips_NativeFips_bleTransportCo
         .unwrap_or(std::ptr::null_mut())
 }
 
+/// Point-in-time native state for a radio close. Each line is deliberately a
+/// separately tagged JSON object so Android logcat keeps peers, sessions and
+/// transports independently searchable and a large section cannot hide the
+/// others through one-line truncation.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_cruxcoach_android_fips_NativeFips_diagnosticSnapshot(
+    env: JNIEnv,
+    _class: JClass,
+) -> jstring {
+    let socket_path = running()
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|value| value.socket_path.clone());
+    let text = socket_path.map_or_else(String::new, |socket| {
+        ["show_peers", "show_sessions", "show_transports"]
+            .into_iter()
+            .map(|command| {
+                let kind = command.strip_prefix("show_").unwrap_or(command);
+                match control::query(&socket, command, CONTROL_TIMEOUT) {
+                    Ok(data) => format!("{kind}\t{data}"),
+                    Err(error) => format!("{kind}_error\t{error}"),
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    });
+    env.new_string(text)
+        .map(|s| s.into_raw())
+        .unwrap_or(std::ptr::null_mut())
+}
+
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_cruxcoach_android_fips_NativeFips_bleBridgeNew(
     env: JNIEnv,

@@ -1590,12 +1590,15 @@ class BoardCellManager @Inject constructor(
                         if (evicted.isNotEmpty()) {
                             val afterEviction = coordinator.snapshot(board)
                             if (afterEviction?.members == setOf(activeNodeId)) {
-                                // Clear native ghost links only after canonical
-                                // liveness has removed the final remote member.
-                                // The controller continues advertising with the
-                                // same realm identity and can accept a clean
-                                // normal join immediately afterwards.
-                                meshLink.session?.recycleTransport("last remote member timed out")
+                                // Keep the radio/runtime alive. Recycling here
+                                // used to discard fresh scan/PSM knowledge at
+                                // exactly the moment a distant member might
+                                // come back into range, turning a recoverable
+                                // physical outage into a permanent one.
+                                FipsDebugLog.event(
+                                    "boardcell", "last_remote_member_timed_out",
+                                    "action" to "runtime retained for rediscovery",
+                                )
                             }
                         }
                     }
@@ -1817,12 +1820,16 @@ class BoardCellManager @Inject constructor(
                     val stale = snapshot()
                     if (stale?.availability == BoardCellAvailability.FROZEN_NEEDS_CONTROLLER &&
                         activeNodeId in stale.members) {
-                        FipsDebugLog.warning("boardcell", "local_membership_expired",
-                            "reason" to "stable mesh/controller disconnect",
-                            "attempts" to recoveryAttempt)
-                        teardownLocalMembership(stale,
-                            preserveRejoinHint = (stale.members - activeNodeId).isNotEmpty())
-                        _membershipTransition.value = MeshMembershipTransition.ERROR
+                        // Failure to take the physical board is not a leave.
+                        // Preserve the canonical membership and retry at the
+                        // election's bounded maximum delay; the old behavior
+                        // converted a transient transport/OEM fault into the
+                        // misleading "mesh connection expired" state.
+                        recoveryAttempt = MAX_LOCAL_RECOVERY_ATTEMPTS
+                        FipsDebugLog.warning("boardcell", "controller_recovery_deferred",
+                            "reason" to "physical board not yet reachable",
+                            "attempts" to recoveryAttempt,
+                            "membership" to "retained")
                     }
                 }
             }
@@ -1940,9 +1947,13 @@ class BoardCellManager @Inject constructor(
                 BoardCellNearbyJoinPolicy.HOST_READINESS_TIMEOUT_MS,
             ),
         )
-        /** Three missed heartbeat windows trigger fenced physical recovery. */
-        private const val CONTROLLER_LEASE_TIMEOUT_MS = 6_000L
-        private const val MEMBER_LIVENESS_TIMEOUT_MS = 6_000L
+        /**
+         * Transport repair (RPA rotation, Android advertiser restart, cross
+         * probing) must finish inside the lease. Membership is removed only
+         * after a sustained physical outage, not three missed app heartbeats.
+         */
+        private const val CONTROLLER_LEASE_TIMEOUT_MS = 60_000L
+        private const val MEMBER_LIVENESS_TIMEOUT_MS = 60_000L
         private const val PEER_DIAGNOSTICS_CHECKPOINT_MS = 10_000L
         private const val MAX_LOCAL_RECOVERY_ATTEMPTS = 3
     }

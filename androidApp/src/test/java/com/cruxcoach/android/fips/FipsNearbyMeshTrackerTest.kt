@@ -52,6 +52,15 @@ class FipsNearbyMeshTrackerTest {
         assertTrue(tracker.prune(9_001).isEmpty())
     }
 
+    @Test
+    fun `default ttl survives an observed low power scan gap`() {
+        val tracker = FipsNearbyMeshTracker()
+        tracker.record(mesh("realm-a", "cell-a", -45, 1_000))
+
+        assertEquals(1, tracker.prune(14_500).size)
+        assertTrue(tracker.prune(21_001).isEmpty())
+    }
+
     private fun mesh(
         realm: String,
         cell: String,
