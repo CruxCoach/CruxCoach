@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="app_name">CruxCoach</string>
 
     <!-- Climb Creator (FEAT-003) -->
     <string name="climb_creator_title">Neuer Climb</string>

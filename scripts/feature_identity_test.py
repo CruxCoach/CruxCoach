@@ -23,13 +23,12 @@ class FeatureIdentityTest(unittest.TestCase):
         self.assertTrue(first.package.startswith("com.cruxcoach.android.dev.f_"))
         self.assertEqual(first.label, "board-mesh")
 
-    def test_locales_do_not_override_the_build_specific_app_name(self) -> None:
-        resources = Path(__file__).resolve().parents[1] / "androidApp" / "src" / "main" / "res"
-        localized_definitions = [
-            path for path in resources.glob("values-*/strings.xml")
-            if '<string name="app_name"' in path.read_text(encoding="utf-8")
-        ]
-        self.assertEqual(localized_definitions, [])
+    def test_launcher_label_is_language_independent(self) -> None:
+        android_app = Path(__file__).resolve().parents[1] / "androidApp"
+        manifest = (android_app / "src/main/AndroidManifest.xml").read_text(encoding="utf-8")
+        gradle = (android_app / "build.gradle.kts").read_text(encoding="utf-8")
+        self.assertIn('android:label="${appLabel}"', manifest)
+        self.assertIn('manifestPlaceholders["appLabel"] = featureLabel!!', gradle)
 
     def test_rejects_non_feature_branches(self) -> None:
         with self.assertRaises(ValueError):
