@@ -188,6 +188,10 @@ class BoardCellManager @Inject constructor(
     private var lastSnapshotTrace = ""
     private val nearbyJoinMutex = Mutex()
     private val pendingLocalLeave = AtomicBoolean(false)
+    /** Once local teardown starts, queued frames from the departed realm must
+     * not recreate the coordinator replica or its durable snapshot. Cleared
+     * only by a new explicit entry into that same cell. */
+    @Volatile private var locallyDepartedCell: BoardCellId? = null
     private val localRemovalCleanup = AtomicBoolean(false)
     private val playlistProjectionMutex = Mutex()
     @Volatile private var playlistProjectionWriter: BoardPlaylistProjectionWriter? = null
@@ -259,6 +263,18 @@ class BoardCellManager @Inject constructor(
             // arrives here is a boardcell/v1 frame of the realm this cell
             // currently holds.
             meshLink.incoming.collect { envelope ->
+                if (BoardCellLocalLeaveFrameFence.shouldDrop(
+                        locallyDepartedCell,
+                        envelope.realmId.value,
+                    )) {
+                    FipsDebugLog.event(
+                        "boardcell", "post_leave_frame_dropped",
+                        "sender" to FipsDebugLog.id(envelope.sender),
+                        "realm" to FipsDebugLog.id(envelope.realmId.value),
+                        "bytes" to envelope.payload.size,
+                    )
+                    return@collect
+                }
                 val result = meshTransport.receive(envelope.sender, envelope.payload, monotonicNow())
                 FipsDebugLog.event("boardcell", "mesh_message_applied",
                     "sender" to FipsDebugLog.id(envelope.sender), "bytes" to envelope.payload.size,
@@ -324,6 +340,8 @@ class BoardCellManager @Inject constructor(
                     return@collectLatest
                 }
                 val physical = PhysicalBoardIdentity.resolve(board, boardBindings.bindingFor(board.address))
+                val physicalCell = BoardCellId.forPhysical(physical)
+                if (locallyDepartedCell == physicalCell) locallyDepartedCell = null
                 // A reconnect that fenced recovery or handover itself asked for must not
                 // take the ordinary selection path. That path builds a fresh
                 // coordinator and re-activates the realm, which threw away the
@@ -961,6 +979,9 @@ class BoardCellManager @Inject constructor(
         }
         val physical = runCatching { PhysicalBoardId(physicalBoardId) }.getOrNull() ?: return false
         val cell = runCatching { BoardCellId(boardCellId) }.getOrNull() ?: return false
+        // The user explicitly chose this cell again, so frames for its new
+        // membership attempt are no longer post-leave stragglers.
+        if (locallyDepartedCell == cell) locallyDepartedCell = null
         if (BoardCellId.forPhysical(physical) != cell) return false
         BoardCellScopeRegistry.replaceProvisionalSelection(physical)
         meshTransport.resetForRealm()
@@ -996,6 +1017,7 @@ class BoardCellManager @Inject constructor(
         nearbyJoinMutex.withLock {
         if (!BoardCellPlatformPolicy.meshAvailable(Build.VERSION.SDK_INT)) return false
         val cell = runCatching { BoardCellId(boardCellId) }.getOrNull() ?: return false
+        if (locallyDepartedCell == cell) locallyDepartedCell = null
         FipsDebugLog.event(
             "boardcell", "nearby_mesh_join_requested",
             "cell" to FipsDebugLog.id(cell.value),
@@ -1323,6 +1345,10 @@ class BoardCellManager @Inject constructor(
         preserveRejoinHint: Boolean = false,
     ) {
         boardRealmAvailable.set(false)
+        // Set the fence before forgetting. An already queued snapshot can be
+        // delivered between forgetLocalReplica() and the realm unbind; without
+        // this fence it recreates both the in-memory and durable membership.
+        locallyDepartedCell = snapshot.cellId
         if (::coordinator.isInitialized) coordinator.forgetLocalReplica(
             snapshot.physicalBoardId,
             clearDurableSnapshot = !preserveRejoinHint,

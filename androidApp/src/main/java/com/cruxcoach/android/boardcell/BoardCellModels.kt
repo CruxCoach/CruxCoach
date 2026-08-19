@@ -672,6 +672,16 @@ internal object BoardCellReconnectPolicy {
 }
 
 /**
+ * Rejects frames which were already queued when an explicit local leave tore
+ * down the cell. They are still authenticated, but they no longer grant this
+ * device membership and must not recreate a deleted durable replica.
+ */
+internal object BoardCellLocalLeaveFrameFence {
+    fun shouldDrop(departedCell: BoardCellId?, incomingRealmId: String): Boolean =
+        departedCell?.value == incomingRealmId
+}
+
+/**
  * Narrow authority for breaking an all-peers-restarted join deadlock.
  *
  * A durable member list is not live membership and must not generally be

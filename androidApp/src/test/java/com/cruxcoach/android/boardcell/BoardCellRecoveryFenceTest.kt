@@ -171,6 +171,12 @@ class BoardCellRecoveryFenceTest {
         assertEquals(initialize, BoardCellReconnectPolicy.decide(board, board, frozen, "outsider"))
     }
 
+    @Test fun `a queued frame cannot resurrect a cell after local leave`() {
+        assertTrue(BoardCellLocalLeaveFrameFence.shouldDrop(cell, cell.value))
+        assertFalse(BoardCellLocalLeaveFrameFence.shouldDrop(cell, "another-realm"))
+        assertFalse(BoardCellLocalLeaveFrameFence.shouldDrop(null, cell.value))
+    }
+
     // ===== End to end on a real coordinator =====
 
     private class MemoryStore : BoardCellDurableStore {
