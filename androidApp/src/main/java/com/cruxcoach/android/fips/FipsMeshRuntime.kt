@@ -679,11 +679,21 @@ class FipsMeshRuntime @Inject constructor(
             }
             if (activeRealm != null && close.remainingForAddress == 0) {
                 peerAtBleAddress(snapshot, close.address)?.let { peer ->
+                    // The native peer table deliberately retains a recently
+                    // disconnected peer. It is useful diagnostic history but
+                    // no longer a direct admission fact: otherwise a freshly
+                    // recovered controller immediately re-adds the failed
+                    // controller as a ghost member. A real reconnect earns
+                    // this state again with a fresh authenticated CCJ1 hello.
+                    synchronized(validatedDirectPeers) { validatedDirectPeers.remove(peer) }
+                    synchronized(helloSentAt) { helloSentAt.remove(peer) }
+                    refreshDirectAuthenticatedPeers()
                     FipsDebugLog.event(
                         "runtime", "direct_peer_transport_lost",
                         "peer" to FipsDebugLog.id(peer),
                         "address" to close.address,
                         "reason" to close.reason,
+                        "admission" to "revoked_until_fresh_hello",
                     )
                     _directPeerTransportLosses.emit(FipsDirectPeerTransportLoss(
                         activeRealm, peer, close.reason,
