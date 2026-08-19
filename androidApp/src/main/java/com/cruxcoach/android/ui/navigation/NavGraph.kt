@@ -1,6 +1,8 @@
 package com.cruxcoach.android.ui.navigation
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -494,7 +496,16 @@ fun CruxCoachNavHost(
                 )
             }
 
-            composable(Routes.BOARD_BROWSER) {
+            composable(
+                Routes.BOARD_BROWSER,
+                // The browser and the climb detail are both expensive surfaces:
+                // the former restores a catalogue list while the latter draws
+                // hundreds of board placements.  Animating both during a pop
+                // made low-memory phones compose/draw them concurrently and
+                // blocked the main thread for seconds.  Restore the browser in
+                // one frame instead; the forward navigation may still animate.
+                popEnterTransition = { EnterTransition.None },
+            ) {
                 // The drawer wraps only this screen because this is the only
                 // place its handle lives — the logo in the browser's app bar.
                 // Wrapping the whole NavHost would put an invisible edge-swipe
@@ -696,10 +707,19 @@ fun CruxCoachNavHost(
                 )
             }
 
-            composable(Routes.BOARD_CLIMB_DETAIL) {
+            composable(
+                Routes.BOARD_CLIMB_DETAIL,
+                // Pair with BOARD_BROWSER's no-animation pop enter.  Disposing
+                // the photo-backed board renderer immediately prevents it from
+                // competing with the restored LazyColumn on constrained OEMs.
+                popExitTransition = { ExitTransition.None },
+            ) {
                 PerfLogger.navMilestone("BOARD_CLIMB_DETAIL composable entered")
                 BoardClimbDetailScreen(
-                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateBack = {
+                        PerfLogger.navStart("BoardClimbDetail", "BoardBrowser(back)")
+                        navController.popBackStack()
+                    },
                     onNavigateToClimb = { uuid, angle ->
                         navController.navigate(Routes.boardClimbDetail(uuid, angle)) {
                             popUpTo(Routes.BOARD_CLIMB_DETAIL) { inclusive = true }
