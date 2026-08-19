@@ -2487,6 +2487,16 @@
     <string name="mesh_controller_request_text">Ein Mesh-Mitglied in der Nähe möchte die physische Board-Verbindung übernehmen. Deine Verbindung bleibt aktiv, solange du nicht zustimmst.</string>
     <string name="mesh_controller_request_approve">Zustimmen</string>
     <string name="mesh_controller_request_deny">Ablehnen</string>
+    <string name="mesh_join_request_title">Beitrittsanfrage</string>
+    <string name="mesh_join_request_text">Ein Kletterer in der Nähe möchte diesem Board-Mesh beitreten.</string>
+    <string name="mesh_join_request_approve">Zulassen</string>
+    <string name="mesh_join_request_deny">Ablehnen</string>
+    <string name="mesh_join_requests_title">Offene Beitrittsanfragen</string>
+    <string name="mesh_join_request_empty">Keine offenen Anfragen.</string>
+    <string name="mesh_lineup_title">Reihenfolge</string>
+    <string name="mesh_lineup_current">Auf dem Board</string>
+    <string name="mesh_lineup_queued">Als Nächstes</string>
+    <string name="mesh_lineup_done">Erledigt</string>
     <string name="comp_title">Wettkämpfe</string>
     <string name="comp_detail_essentials">Auf einen Blick</string>
     <string name="comp_detail_starts">Beginn</string>

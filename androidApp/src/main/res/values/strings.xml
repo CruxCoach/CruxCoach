@@ -2489,6 +2489,16 @@
     <string name="mesh_controller_request_text">A nearby mesh member would like to take over the physical board connection. Your connection remains active unless you approve.</string>
     <string name="mesh_controller_request_approve">Approve</string>
     <string name="mesh_controller_request_deny">Decline</string>
+    <string name="mesh_join_request_title">Join request</string>
+    <string name="mesh_join_request_text">A nearby climber wants to join this board\'s mesh.</string>
+    <string name="mesh_join_request_approve">Admit</string>
+    <string name="mesh_join_request_deny">Deny</string>
+    <string name="mesh_join_requests_title">Pending join requests</string>
+    <string name="mesh_join_request_empty">No pending requests.</string>
+    <string name="mesh_lineup_title">Lineup</string>
+    <string name="mesh_lineup_current">On the wall</string>
+    <string name="mesh_lineup_queued">Up next</string>
+    <string name="mesh_lineup_done">Done</string>
     <string name="comp_title">Competitions</string>
     <string name="comp_detail_essentials">At a glance</string>
     <string name="comp_detail_starts">Starts</string>
