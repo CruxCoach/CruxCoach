@@ -27,19 +27,6 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 
-internal class FipsOutboundDialGate {
-    private var activeId: Long? = null
-    @Synchronized fun tryAcquire(connectId: Long): Boolean {
-        if (activeId != null) return false
-        activeId = connectId
-        return true
-    }
-    @Synchronized fun release(connectId: Long) {
-        if (activeId == connectId) activeId = null
-    }
-    @Synchronized fun busy(): Boolean = activeId != null
-}
-
 /** FIPS deliberately cross-probes BLE peers and deterministically keeps one
  * direction after exchanging node keys. Suppressing scans for an established
  * member breaks that contract: a joining node whose outbound loses the
@@ -77,7 +64,8 @@ internal class FipsBleRadio(
     private val scanGeneration = AtomicInteger(0)
     private val observedNonceTags = ConcurrentHashMap<String, Long>()
     private val lastDiscoveryLog = ConcurrentHashMap<String, Long>()
-    private val outboundDialGate = FipsOutboundDialGate()
+    private val dialScheduler = FipsDialScheduler()
+    private val scanCoalescer = FipsScanCoalescer()
     @Volatile private var outboundSocket: BluetoothSocket? = null
 
     fun bindBridge(handle: Long) {
@@ -101,33 +89,27 @@ internal class FipsBleRadio(
         0
     }
 
+    /**
+     * Begin one outbound dial.
+     *
+     * The only synthesized failure here is a stopped radio, which is a real
+     * one. Every other local decision either waits for the radio or abandons
+     * the request silently: the FIPS revision this app runs turns a reported
+     * connect failure into per-address exponential backoff, so calling a
+     * scheduling decision a radio failure would silence a reachable member for
+     * up to sixteen minutes. See [FipsDialScheduler].
+     */
     @RequiresApi(29)
     fun connect(connectId: Long, address: String, psm: Int) {
         if (stopped) {
             NativeFips.bleDeliverConnectResult(bridge, connectId, false, address, 0, 0)
             return
         }
-        // The platform dial finishing only means L2CAP opened; the FIPS
-        // pubkey/Noise handshake still runs on that channel. Do not let a
-        // rotating BLE address start a second connection to the same mesh in
-        // that window. A failed/closed channel removes its trace immediately,
-        // so the next candidate remains a fast fallback.
-        if (channelTraces.values.any { it.direction == "outbound" && !it.closed.get() }) {
-            FipsDebugLog.event("radio", "outbound_connect_suppressed", "connectId" to connectId,
-                "address" to address.substringAfter('/'), "reason" to "outbound channel is handshaking")
-            NativeFips.bleDeliverConnectResult(bridge, connectId, false, address, 0, 0)
-            return
-        }
-        if (!outboundDialGate.tryAcquire(connectId)) {
-            FipsDebugLog.event("radio", "outbound_connect_suppressed", "connectId" to connectId,
-                "address" to address.substringAfter('/'), "reason" to "another dial is active")
-            NativeFips.bleDeliverConnectResult(bridge, connectId, false, address, 0, 0)
-            return
-        }
-        FipsDebugLog.event("radio", "outbound_connect_begin", "connectId" to connectId,
-            "address" to address.substringAfter('/'), "psm" to psm)
         io.execute {
             val mac = address.substringAfter('/', address)
+            if (!awaitDialSlot(connectId, mac)) return@execute
+            FipsDebugLog.event("radio", "outbound_connect_begin", "connectId" to connectId,
+                "address" to mac, "psm" to psm)
             var timeout: ScheduledFuture<*>? = null
             try {
                 val socket = adapter?.getRemoteDevice(mac)?.createInsecureL2capChannel(psm)
@@ -153,13 +135,52 @@ internal class FipsBleRadio(
                 Log.w(TAG, "L2CAP connect failed: ${e.message}")
                 FipsDebugLog.warning("radio", "outbound_connect_failed", "connectId" to connectId,
                     "address" to mac, "psm" to psm, "error" to (e.message ?: e.javaClass.simpleName))
+                // A real radio outcome, so it is reported as one — and the
+                // coalescer stops preferring this address, or an unreachable
+                // candidate would keep masking the same member's others.
+                scanCoalescer.forget(mac)
                 NativeFips.bleDeliverConnectResult(bridge, connectId, false, address, 0, 0)
             } finally {
                 timeout?.cancel(false)
                 outboundSocket = null
-                outboundDialGate.release(connectId)
+                dialScheduler.release(connectId)
             }
         }
+    }
+
+    /**
+     * Hold the caller until a dial slot frees, or give up without answering.
+     *
+     * Returns whether the dial may proceed. A `false` deliberately leaves FIPS
+     * unanswered: its own `connect_timeout_ms` concludes the attempt, which is
+     * honest about what happened, where reporting a failure would claim the
+     * radio tried and could not reach the peer.
+     */
+    private fun awaitDialSlot(connectId: Long, mac: String): Boolean {
+        while (!stopped) {
+            when (dialScheduler.admit(connectId, System.currentTimeMillis())) {
+                FipsDialScheduler.Admission.DIAL -> return true
+                FipsDialScheduler.Admission.ABANDON -> {
+                    FipsDebugLog.warning("radio", "outbound_connect_abandoned",
+                        "connectId" to connectId, "address" to mac,
+                        "activeDials" to dialScheduler.activeDials(),
+                        "reason" to "no dial slot within the deferral budget",
+                        "reported" to "nothing; a scheduling decision is not a radio failure")
+                    return false
+                }
+                FipsDialScheduler.Admission.DEFER -> {
+                    try {
+                        Thread.sleep(FipsDialScheduler.DEFER_POLL_MS)
+                    } catch (_: InterruptedException) {
+                        Thread.currentThread().interrupt()
+                        dialScheduler.release(connectId)
+                        return false
+                    }
+                }
+            }
+        }
+        dialScheduler.release(connectId)
+        return false
     }
 
     fun startAdvertising(psm: Int) {
@@ -316,7 +337,31 @@ internal class FipsBleRadio(
                 FipsDebugLog.event("radio", "matching_peer_discovered", "address" to result.device.address,
                     "psm" to psm, "rssi" to result.rssi, "nonceTag" to nonceTag)
             }
-            NativeFips.bleDeliverScan(bridge, "$ADAPTER/${result.device.address}", psm, result.rssi)
+            // Collapse one member's rotating addresses here rather than
+            // declining the resulting dial later: a declined dial is
+            // indistinguishable, to FIPS, from a peer that would not answer.
+            when (
+                val decision = scanCoalescer.offer(
+                    realmTag = advertisedRealmTag.toHex(),
+                    cellTag = advertisedCellTag.toHex(),
+                    nonceTag = nonceTag,
+                    address = result.device.address,
+                    rssi = result.rssi,
+                    nowMs = now,
+                )
+            ) {
+                is FipsScanCoalescer.Decision.Deliver ->
+                    NativeFips.bleDeliverScan(
+                        bridge, "$ADAPTER/${result.device.address}", psm, result.rssi,
+                    )
+                is FipsScanCoalescer.Decision.Suppress ->
+                    FipsDebugLog.event(
+                        "radio", "scan_candidate_coalesced",
+                        "address" to result.device.address,
+                        "retained" to decision.retained,
+                        "reason" to decision.reason,
+                    )
+            }
         }
     }
 
@@ -342,6 +387,7 @@ internal class FipsBleRadio(
         FipsDebugLog.event("radio", "shutdown", "channels" to channels.size,
             "observedNonces" to observedNonceTags.size)
         stopped = true
+        scanCoalescer.clear()
         runCatching { outboundSocket?.close() }; outboundSocket = null
         stopScanning(); stopAdvertising()
         runCatching { server?.close() }; server = null
