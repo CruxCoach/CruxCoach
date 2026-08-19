@@ -49,6 +49,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   membership snapshot that admits a directly authenticated peer. Ordinary
   members, frozen replicas, ambiguous board bindings and in-progress handovers
   still fail closed instead of creating a competing controller.
+- **A busy radio no longer silences a reachable mesh member** — the offline
+  mesh now backs a peer's address off exponentially after failed dials, up to
+  one attempt every sixteen minutes. Two purely local scheduling decisions were
+  being reported to it as if the radio had failed, which could have kept a
+  phone that was sitting right there out of the BoardCell for that long.
+  Contention now waits for the radio instead, and one member's rotating
+  Bluetooth addresses are recognised as one member rather than dialled twice.
+
+### Changed
+- **Offline mesh rebuilt on the reviewed FIPS platform integration** — the mesh
+  transport moves to FIPS `6580a80`, which is now vendored into this repository
+  instead of fetched from a moving upstream branch, so a released build can
+  always be reproduced from the source it was built from. BoardCell behaviour,
+  membership, recovery and anti-entropy are unchanged by design; the migration
+  is behaviour-preserving. Mesh diagnostics keep both honest layers — per-dial
+  platform traces and aggregate transport outcome counters — rather than
+  losing per-peer history to a placeholder.
+  **This has not been tested on real phones yet**: multi-device join, OEM
+  coverage, Bluetooth toggle recovery, address rotation and battery behaviour
+  remain the gate before it ships.
 
 ### Added
 - **Competitions** — run a comp on your board, or take part in one, with no
