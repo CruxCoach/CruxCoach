@@ -109,6 +109,7 @@ android {
 
     defaultConfig {
         applicationId = "com.cruxcoach.android"
+        manifestPlaceholders["appLabel"] = "@string/app_name"
         minSdk = 28
         targetSdk = 35
         versionCode = featureVersionCode ?: 1000013
@@ -369,12 +370,14 @@ android {
         debug {
             if (featurePackage != null) {
                 applicationIdSuffix = featurePackage.removePrefix("com.cruxcoach.android")
+                manifestPlaceholders["appLabel"] = featureLabel!!
                 resValue("string", "app_name", featureLabel!!)
                 buildConfigField("String", "APKTRACK_FEATURE_TRACK", "\"${featureTrack}\"")
                 buildConfigField("String", "APKTRACK_SOURCE_BRANCH", "\"${featureBranch}\"")
             } else {
                 applicationIdSuffix = developmentAppIdSuffix
                 versionNameSuffix = "-dev"
+                manifestPlaceholders["appLabel"] = "CruxCoach Dev · $developmentLabelBranch"
                 resValue("string", "app_name", "CruxCoach Dev · $developmentLabelBranch")
                 buildConfigField("String", "APKTRACK_FEATURE_TRACK", "\"\"")
                 buildConfigField("String", "APKTRACK_SOURCE_BRANCH", "\"\"")
