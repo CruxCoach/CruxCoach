@@ -20,6 +20,18 @@ object PhysicalBoardIdentity {
             else -> error("Board has neither stable serial/address nor an explicit persistent binding")
         }
     }
+
+    /** Uses the same durable identity policy for discovery, handover and recovery. */
+    fun matches(
+        board: DiscoveredBoard,
+        expectedBoardId: PhysicalBoardId,
+        expectedCellId: BoardCellId,
+        persistentFallback: String? = null,
+    ): Boolean {
+        val physical = runCatching { resolve(board, persistentFallback) }.getOrNull()
+            ?: return false
+        return physical == expectedBoardId || BoardCellId.forPhysical(physical) == expectedCellId
+    }
 }
 
 /** App-private mapping populated by an explicit QR/manual board binding. */

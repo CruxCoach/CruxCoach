@@ -29,6 +29,38 @@ class BoardCellScopeTest {
             PhysicalBoardIdentity.resolve(b, "gym-wall-7"))
     }
 
+    @Test fun `handover matches only the bound board when several boards are nearby`() {
+        val expected = PhysicalBoardId("crux:gym-wall-7")
+        val cell = BoardCellId.forPhysical(expected)
+        val wrong = DiscoveredBoard(
+            "MoonBoard", "", 0, "AA:BB:CC:DD:EE:01", -20, BoardBrand.MOONBOARD)
+        val target = wrong.copy(address = "AA:BB:CC:DD:EE:02", rssi = -90)
+        val bindings = mapOf(target.address to "gym-wall-7")
+
+        val matches = listOf(wrong, target).filter { board ->
+            PhysicalBoardIdentity.matches(
+                board,
+                expected,
+                cell,
+                bindings[board.address],
+            )
+        }
+
+        assertEquals(listOf(target), matches)
+    }
+
+    @Test fun `handover cannot mistake a stronger same-name board for the canonical board`() {
+        val target = DiscoveredBoard(
+            "Kilter Board", "TARGET", 3, "AA:BB:CC:DD:EE:02", -90, BoardBrand.KILTER)
+        val wrong = target.copy(serial = "OTHER", address = "AA:BB:CC:DD:EE:01", rssi = -20)
+        val expected = PhysicalBoardIdentity.resolve(target)
+
+        assertFalse(PhysicalBoardIdentity.matches(
+            wrong, expected, BoardCellId.forPhysical(expected)))
+        assertTrue(PhysicalBoardIdentity.matches(
+            target, expected, BoardCellId.forPhysical(expected)))
+    }
+
     @Test fun `legacy unscoped nearby becomes unsafe with two boards`() {
         BoardCellScopeRegistry.observe(PhysicalBoardId("board-a"))
         assertTrue(BoardCellScopeRegistry.acceptsLegacyUnscoped())

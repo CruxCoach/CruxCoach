@@ -7,6 +7,7 @@ import com.cruxcoach.android.boardcell.BoardCellManager
 import com.cruxcoach.android.boardcell.IncomingControllerRequest
 import com.cruxcoach.android.fips.FipsMeshRuntime
 import com.cruxcoach.android.fips.FipsConnectionStage
+import com.cruxcoach.android.fips.FipsPeer
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
@@ -94,6 +95,20 @@ internal fun visibleNearbyMeshes(
     it.matchesActiveRealm || (activeCellId != null && it.joinableBoardCellId == activeCellId)
 }
 
+/**
+ * Native FIPS deliberately retains a disconnected peer for a bounded repair
+ * window. Once BoardCell has canonically removed that npub, keeping it in the
+ * "connected peers" UI is misleading. This is display-only: the native cache
+ * and admission state remain untouched, so a later MemberJoined makes the
+ * peer visible again immediately.
+ */
+internal fun visibleCanonicalPeers(
+    peers: List<FipsPeer>,
+    canonicalMembers: Set<String>?,
+): List<FipsPeer> = peers.filter { peer ->
+    peer.connected && (canonicalMembers == null || peer.npub in canonicalMembers)
+}
+
 @HiltViewModel
 class FipsMeshViewModel @Inject constructor(
     private val runtime: FipsMeshRuntime,
@@ -160,7 +175,7 @@ class FipsMeshViewModel @Inject constructor(
             localNpub = runtime.localNpub.takeIf { it.isNotBlank() },
             controllerNpub = snapshot?.controllerId,
             memberCount = snapshot?.members?.size ?: 0,
-            peers = peers.filter { it.connected }.map { peer ->
+            peers = visibleCanonicalPeers(peers, snapshot?.members).map { peer ->
                 FipsMeshPeerUi(
                     npub = peer.npub,
                     transport = peer.transport,

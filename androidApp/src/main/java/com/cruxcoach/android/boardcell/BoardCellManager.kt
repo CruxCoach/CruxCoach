@@ -964,6 +964,18 @@ class BoardCellManager @Inject constructor(
         boardBindings.bind(observedAddress, durableBindingId)
     }
 
+    /** Match a scan result against canonical cell identity, including an
+     * explicit QR/manual binding for controllers whose BLE address rotates. */
+    fun matchesPhysicalBoard(
+        board: com.cruxcoach.android.ble.DiscoveredBoard,
+        snapshot: BoardCellSnapshot,
+    ): Boolean = PhysicalBoardIdentity.matches(
+        board = board,
+        expectedBoardId = snapshot.physicalBoardId,
+        expectedCellId = snapshot.cellId,
+        persistentFallback = boardBindings.bindingFor(board.address),
+    )
+
     /**
      * GATT admission supplies the full scope before a participant has a board
      * connection. This must exist before JOIN publishes the participant npub,

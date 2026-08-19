@@ -41,7 +41,6 @@ import com.cruxcoach.android.boardcell.BoardCommandStatus
 import com.cruxcoach.android.boardcell.BoardPlaylistOps
 import com.cruxcoach.android.boardcell.BoardPlaylistState
 import com.cruxcoach.android.boardcell.BoardProjection
-import com.cruxcoach.android.boardcell.BoardCellId
 import com.cruxcoach.android.boardcell.BoardCellSnapshot
 import com.cruxcoach.android.boardcell.BoardCellScopeRegistry
 import com.cruxcoach.android.boardcell.PhysicalBoardIdentity
@@ -652,9 +651,12 @@ class SessionGattBridge(
 
     private fun boardMatchesSnapshot(board: DiscoveredBoard?, snapshot: BoardCellSnapshot): Boolean {
         board ?: return false
-        val physical = runCatching { PhysicalBoardIdentity.resolve(board) }.getOrNull()
-        return physical == snapshot.physicalBoardId ||
-            physical?.let(BoardCellId::forPhysical) == snapshot.cellId
+        return boardCellManager?.matchesPhysicalBoard(board, snapshot)
+            ?: PhysicalBoardIdentity.matches(
+                board,
+                snapshot.physicalBoardId,
+                snapshot.cellId,
+            )
     }
 
     // ===== Host mode =====
