@@ -239,6 +239,29 @@ class BoardCellCoordinator(
         true
     }
 
+    /** A last direct transport closing is stronger than an absent heartbeat,
+     * but not proof that the controller is permanently gone. Shorten the
+     * remaining lease to [failureGraceMs]; any subsequently authenticated
+     * controller frame renews the ordinary lease through the methods above. */
+    suspend fun suspectControllerTransportLoss(
+        boardId: PhysicalBoardId,
+        controllerId: String,
+        nowMonotonicMs: Long,
+        failureGraceMs: Long,
+    ): Boolean = mutex.withLock {
+        val current = replicas[boardId]?.snapshot ?: return@withLock false
+        if (current.availability != BoardCellAvailability.ACTIVE ||
+            current.controllerId == nodeId || current.controllerId != controllerId ||
+            controllerId !in current.members) return@withLock false
+        // elapsedRealtime starts near zero on a freshly booted phone. A
+        // negative synthetic observation is valid local arithmetic and keeps
+        // the grace exact even during that first lease window.
+        val acceleratedObservation = nowMonotonicMs - heartbeatTimeoutMs + failureGraceMs
+        val previous = controllerObservedAt[boardId] ?: nowMonotonicMs
+        controllerObservedAt[boardId] = minOf(previous, acceleratedObservation)
+        true
+    }
+
     private fun eventCommandId(event: BoardCellEvent): String? = when (event) {
         is BoardCellEvent.ProjectCommitted -> event.commandId
         is BoardCellEvent.ProjectUnknown -> event.commandId

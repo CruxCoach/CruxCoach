@@ -38,6 +38,7 @@ internal data class FipsRadioChannelClose(
     val address: String,
     val direction: String,
     val reason: String,
+    val remainingForAddress: Int,
 )
 
 /** Android API 29+ L2CAP CoC radio owned by Kotlin and driven by FIPS over JNI. */
@@ -519,6 +520,9 @@ internal class FipsBleRadio(
         if (!trace.closed.compareAndSet(false, true)) return
         channelTraces.remove(id, trace)
         gattPresence.channelClosed(trace.address)
+        val remainingForAddress = channelTraces.values.count {
+            !it.closed.get() && it.address.equals(trace.address, ignoreCase = true)
+        }
         FipsDebugLog.event(
             "radio", "channel_closed",
             "channel" to id,
@@ -531,8 +535,11 @@ internal class FipsBleRadio(
             "txPackets" to trace.txPackets.get(),
             "txBytes" to trace.txBytes.get(),
             "remaining" to channels.size,
+            "remainingForAddress" to remainingForAddress,
         )
-        onChannelClosed(FipsRadioChannelClose(id, trace.address, trace.direction, reason))
+        onChannelClosed(FipsRadioChannelClose(
+            id, trace.address, trace.direction, reason, remainingForAddress,
+        ))
     }
 
     private class ChannelTrace(val direction: String, val address: String) {

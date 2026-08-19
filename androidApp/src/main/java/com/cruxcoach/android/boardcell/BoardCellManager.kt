@@ -274,6 +274,27 @@ class BoardCellManager @Inject constructor(
             }
         }
         scope.launch {
+            runtime.directPeerTransportLosses.collect { loss ->
+                val board = BoardCellScopeRegistry.selected.value ?: return@collect
+                val snapshot = _snapshots.value ?: return@collect
+                if (!::coordinator.isInitialized || snapshot.physicalBoardId != board ||
+                    snapshot.cellId.value != loss.realmId) return@collect
+                if (coordinator.suspectControllerTransportLoss(
+                        board,
+                        loss.peerNpub,
+                        monotonicNow(),
+                        CONTROLLER_TRANSPORT_LOSS_GRACE_MS,
+                    )) {
+                    FipsDebugLog.warning(
+                        "boardcell", "controller_transport_loss_suspected",
+                        "controller" to FipsDebugLog.id(loss.peerNpub),
+                        "reason" to loss.reason,
+                        "graceMs" to CONTROLLER_TRANSPORT_LOSS_GRACE_MS,
+                    )
+                }
+            }
+        }
+        scope.launch {
             boardConnection.connectedBoardDescriptor.collectLatest { board ->
                 if (board == null) {
                     FipsDebugLog.event("boardcell", "physical_board_disconnected",
@@ -1953,6 +1974,7 @@ class BoardCellManager @Inject constructor(
          * after a sustained physical outage, not three missed app heartbeats.
          */
         private const val CONTROLLER_LEASE_TIMEOUT_MS = 60_000L
+        private const val CONTROLLER_TRANSPORT_LOSS_GRACE_MS = 6_000L
         private const val MEMBER_LIVENESS_TIMEOUT_MS = 60_000L
         private const val PEER_DIAGNOSTICS_CHECKPOINT_MS = 10_000L
         private const val MAX_LOCAL_RECOVERY_ATTEMPTS = 3

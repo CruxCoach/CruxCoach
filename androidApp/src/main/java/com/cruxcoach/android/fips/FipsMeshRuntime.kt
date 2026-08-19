@@ -27,6 +27,10 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 /** An authenticated application frame, tagged with the realm it arrived on. */
 data class AuthenticatedFipsMessage(
@@ -52,6 +56,26 @@ data class FipsNearbyMesh(
     val joinableBoardCellId: String? = null,
     val boardName: String? = null,
 )
+
+data class FipsDirectPeerTransportLoss(
+    val realmId: String,
+    val peerNpub: String,
+    val reason: String,
+)
+
+internal fun peerAtBleAddress(diagnosticSnapshot: String, address: String): String? = runCatching {
+    val peers = diagnosticSnapshot.lineSequence()
+        .firstOrNull { it.substringBefore('\t') == "peers" }
+        ?.substringAfter('\t') ?: return@runCatching null
+    Json.parseToJsonElement(peers).jsonObject["peers"]?.jsonArray?.firstNotNullOfOrNull { peer ->
+        val value = peer.jsonObject
+        val transportAddress = value["transport_addr"]?.jsonPrimitive?.contentOrNull
+        val npub = value["npub"]?.jsonPrimitive?.contentOrNull
+        npub?.takeIf {
+            transportAddress?.substringAfter('/')?.equals(address, ignoreCase = true) == true
+        }
+    }
+}.getOrNull()
 
 internal class FipsNearbyMeshTracker(private val ttlMs: Long = NEARBY_MESH_TTL_MS) {
     private var meshes = emptyList<FipsNearbyMesh>()
@@ -133,6 +157,10 @@ class FipsMeshRuntime @Inject constructor(
     private val _directAuthenticatedPeers = MutableStateFlow<Set<String>>(emptySet())
     /** Peers that are both FIPS-authenticated and proved the exact realm scope over CCJ1. */
     val directAuthenticatedPeers = _directAuthenticatedPeers.asStateFlow()
+    private val _directPeerTransportLosses = MutableSharedFlow<FipsDirectPeerTransportLoss>(
+        extraBufferCapacity = 16,
+    )
+    val directPeerTransportLosses = _directPeerTransportLosses.asSharedFlow()
     private val _nearbyMeshes = MutableStateFlow<List<FipsNearbyMesh>>(emptyList())
     private val nearbyMeshTracker = FipsNearbyMeshTracker()
     /** CruxCoach FIPS advertisements observed by the active low-power scan.
@@ -628,6 +656,7 @@ class FipsMeshRuntime @Inject constructor(
     /** Capture the native peer/session state at the exact radio failure. */
     private fun recordRadioChannelClosed(close: FipsRadioChannelClose) {
         scope.launch {
+            val activeRealm = realm?.realmId
             val snapshot = runCatching { NativeFips.diagnosticSnapshot() }
                 .getOrElse { "diagnostic_error\t${it.message ?: it.javaClass.simpleName}" }
             if (snapshot.isBlank()) {
@@ -647,6 +676,19 @@ class FipsMeshRuntime @Inject constructor(
                     "kind" to kind,
                     "value" to value,
                 )
+            }
+            if (activeRealm != null && close.remainingForAddress == 0) {
+                peerAtBleAddress(snapshot, close.address)?.let { peer ->
+                    FipsDebugLog.event(
+                        "runtime", "direct_peer_transport_lost",
+                        "peer" to FipsDebugLog.id(peer),
+                        "address" to close.address,
+                        "reason" to close.reason,
+                    )
+                    _directPeerTransportLosses.emit(FipsDirectPeerTransportLoss(
+                        activeRealm, peer, close.reason,
+                    ))
+                }
             }
             logBleTransportCounterDeltas()
         }

@@ -126,6 +126,27 @@ class BoardCellCoordinatorTest {
             replica.snapshot(board)!!.availability)
     }
 
+    @Test fun `last controller transport loss shortens lease but authenticated traffic cancels suspicion`() = runTest {
+        val board = PhysicalBoardId("moon:serial:transport-loss")
+        val (source) = settled("source", board, now = 100)
+        source.joinMember(board, "replica")
+        val replica = BoardCellCoordinator("replica", settleMs = 0, heartbeatTimeoutMs = 60_000)
+        replica.restoreTrustedSnapshot(source.snapshot(board)!!, 1_000)
+
+        assertTrue(replica.suspectControllerTransportLoss(board, "source", 2_000, 6_000))
+        replica.expireLocalDeadlines(7_999)
+        assertEquals(BoardCellAvailability.ACTIVE, replica.snapshot(board)!!.availability)
+        assertTrue(replica.observeControllerActivity(board, "source", 7_999))
+        replica.expireLocalDeadlines(13_999)
+        assertEquals(BoardCellAvailability.ACTIVE, replica.snapshot(board)!!.availability)
+
+        assertTrue(replica.suspectControllerTransportLoss(board, "source", 14_000, 6_000))
+        replica.expireLocalDeadlines(20_000)
+        assertEquals(BoardCellAvailability.FROZEN_NEEDS_CONTROLLER,
+            replica.snapshot(board)!!.availability)
+        assertFalse(replica.suspectControllerTransportLoss(board, "other", 20_001, 6_000))
+    }
+
     @Test fun `member is evicted only after three missed heartbeat windows`() = runTest {
         val board = PhysicalBoardId("moon:serial:member-liveness")
         val (controller, transport) = settled("controller", board, now = 100)
