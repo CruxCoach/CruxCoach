@@ -454,7 +454,7 @@ class BoardCellCoordinatorTest {
     @Test fun `playlist command and terminal rejections remain idempotent across restart`() = runTest {
         val board = PhysicalBoardId("board-playlist-acks"); val store = MemoryStore()
         val (first) = settled("controller", board, store = store, now = 100)
-        val playlist = BoardPlaylistState(42, 0, listOf("climb" to 40))
+        val playlist = BoardPlaylistState(42, 0, listOf(BoardPlaylistEntry("host", "climb", 40)))
 
         assertNotNull(first.replacePlaylist(board, playlist, 101, "playlist-ok", 0))
         assertEquals(BoardCommandStatus.COMMITTED, store.acks.getValue("playlist-ok").status)
@@ -493,23 +493,23 @@ class BoardCellCoordinatorTest {
         assertNotNull(coordinator.replacePlaylistAfterValidation(
             board, 101, "command-first", 0) {
             mutations += "first"
-            BoardPlaylistState(7, 0, listOf("first" to 40))
+            BoardPlaylistState(7, 0, listOf(BoardPlaylistEntry("host", "first", 40)))
         })
         assertNull(coordinator.replacePlaylistAfterValidation(
             board, 101, "command-second", 0) {
             mutations += "second"
-            BoardPlaylistState(7, 0, listOf("second" to 40))
+            BoardPlaylistState(7, 0, listOf(BoardPlaylistEntry("host", "second", 40)))
         })
 
         assertEquals(listOf("first"), mutations)
-        assertEquals(listOf("first" to 40), coordinator.snapshot(board)!!.playlist.items)
+        assertEquals(listOf(BoardPlaylistEntry("host", "first", 40)), coordinator.snapshot(board)!!.playlist.items)
         assertEquals(BoardCommandStatus.REJECTED_STALE, store.acks.getValue("command-second").status)
     }
 
     @Test fun `playlist revision ignores heartbeat and permits semantic rebase`() = runTest {
         val board = PhysicalBoardId("board-playlist-revision"); val store = MemoryStore()
         val (coordinator) = settled("controller", board, store = store, now = 100)
-        val initial = BoardPlaylistState(7, 0, listOf("a" to 40))
+        val initial = BoardPlaylistState(7, 0, listOf(BoardPlaylistEntry("host", "a", 40)))
         assertNotNull(coordinator.replacePlaylist(board, initial, 101, "initial"))
         val baseRevision = coordinator.snapshot(board)!!.playlistRevision
         coordinator.heartbeat(board, 102)
@@ -517,11 +517,11 @@ class BoardCellCoordinatorTest {
         val rebased = coordinator.applyPlaylistCommand(board, 103, "semantic-add",
             baseRevision, "controller") { current, exact ->
             assertTrue(exact) // sequence changed, playlist revision did not
-            current.copy(items = current.items + ("b" to 40))
+            current.copy(items = current.items + BoardPlaylistEntry("controller", "b", 40))
         }
 
         assertNotNull(rebased)
-        assertEquals(listOf("a" to 40, "b" to 40), coordinator.snapshot(board)!!.playlist.items)
+        assertEquals(listOf(BoardPlaylistEntry("host", "a", 40), BoardPlaylistEntry("controller", "b", 40)), coordinator.snapshot(board)!!.playlist.items)
         assertEquals(baseRevision + 1, coordinator.snapshot(board)!!.playlistRevision)
     }
 
@@ -529,18 +529,18 @@ class BoardCellCoordinatorTest {
         val board = PhysicalBoardId("board-safe-rebase"); val store = MemoryStore()
         val (coordinator) = settled("controller", board, store = store, now = 100)
         assertNotNull(coordinator.replacePlaylist(board,
-            BoardPlaylistState(7, 0, listOf("a" to 40)), 101, "initial-safe-rebase"))
+            BoardPlaylistState(7, 0, listOf(BoardPlaylistEntry("host", "a", 40))), 101, "initial-safe-rebase"))
         val base = coordinator.snapshot(board)!!.playlistRevision
 
         assertNotNull(coordinator.applyPlaylistCommand(board, 102, "add-b", base, "controller") { state, _ ->
-            state.copy(items = state.items + ("b" to 40))
+            state.copy(items = state.items + BoardPlaylistEntry("controller", "b", 40))
         })
         assertNotNull(coordinator.applyPlaylistCommand(board, 103, "add-c", base, "controller") { state, exact ->
             assertFalse(exact)
-            state.copy(items = state.items + ("c" to 40))
+            state.copy(items = state.items + BoardPlaylistEntry("controller", "c", 40))
         })
 
-        assertEquals(listOf("a" to 40, "b" to 40, "c" to 40),
+        assertEquals(listOf(BoardPlaylistEntry("host", "a", 40), BoardPlaylistEntry("controller", "b", 40), BoardPlaylistEntry("controller", "c", 40)),
             coordinator.snapshot(board)!!.playlist.items)
         assertEquals(BoardCommandStatus.COMMITTED, store.acks.getValue("add-b").status)
         assertEquals(BoardCommandStatus.COMMITTED, store.acks.getValue("add-c").status)

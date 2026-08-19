@@ -22,6 +22,7 @@ import com.cruxcoach.android.boardcell.BoardCellSnapshot
 import com.cruxcoach.android.boardcell.BoardCommandAck
 import com.cruxcoach.android.boardcell.BoardCommandStatus
 import com.cruxcoach.android.boardcell.BoardPlaylistAuthority
+import com.cruxcoach.android.boardcell.BoardPlaylistEntry
 import com.cruxcoach.android.boardcell.BoardPlaylistPolicy
 import com.cruxcoach.android.boardcell.BoardPlaylistRest
 import com.cruxcoach.android.boardcell.BoardPlaylistState
@@ -172,7 +173,7 @@ class JoinablePlaylistGatewayTest {
     }
 
     private fun joinable(
-        items: List<Pair<String, Int>> = listOf("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" to 40),
+        items: List<BoardPlaylistEntry> = listOf(BoardPlaylistEntry("climber-a", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", 40)),
         rests: List<Int> = listOf(120),
         rest: BoardPlaylistRest? = null,
         host: String = localNode,
@@ -193,7 +194,7 @@ class JoinablePlaylistGatewayTest {
 
     @Test fun `an Android 9 leaf reads the canonical queue and its rest plan`() = runBlocking {
         publish(joinable(
-            items = listOf("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" to 40, addedClimb to 45),
+            items = listOf(BoardPlaylistEntry("climber-a", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", 40), BoardPlaylistEntry("climber-b", addedClimb, 45)),
             rests = listOf(120, 0)))
 
         // The leaf's whole view of the playlist is the GATT queue-state frame,
@@ -257,7 +258,7 @@ class JoinablePlaylistGatewayTest {
             assertTrue("gateway must commit into BoardCell", capture.applied.isCaptured)
             val next = capture.applied.captured(snapshots.value!!.playlist, true)!!
             assertEquals(2, next.items.size)
-            assertEquals(addedClimb.uppercase() to 45, next.items[1])
+            assertEquals(BoardPlaylistEntry(localNode, addedClimb.uppercase(), 45), next.items[1])
             // Playlist host and membership are untouched by a leaf's edit.
             assertEquals(localNode, next.hostId)
             assertEquals(listOf(localNode), next.members)
@@ -290,7 +291,7 @@ class JoinablePlaylistGatewayTest {
                 capture.applied.isCaptured)
             assertEquals(BoardPlaylistAuthority.GATEWAY_PROXY, capture.authority.captured)
             val next = capture.applied.captured(snapshots.value!!.playlist, true)!!
-            assertEquals(addedClimb.uppercase() to 45, next.items[1])
+            assertEquals(BoardPlaylistEntry(localNode, addedClimb.uppercase(), 45), next.items[1])
             // The leaf changed the queue and nothing else: the playlist host
             // and its membership are exactly as they were.
             assertEquals("someone-else", next.hostId)

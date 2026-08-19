@@ -1,20 +1,21 @@
 package com.cruxcoach.android.data
 
 import com.cruxcoach.android.ble.SessionCommand
+import com.cruxcoach.android.boardcell.BoardPlaylistEntry
 import com.cruxcoach.android.boardcell.BoardPlaylistState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 
 class PlaylistCommandRebaserTest {
-    private val a = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" to 40
-    private val b = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" to 40
-    private val c = "cccccccccccccccccccccccccccccccc" to 40
-    private val d = "dddddddddddddddddddddddddddddddd" to 40
+    private val a = BoardPlaylistEntry("owner-a", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", 40)
+    private val b = BoardPlaylistEntry("owner-b", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", 40)
+    private val c = BoardPlaylistEntry("owner-c", "cccccccccccccccccccccccccccccccc", 40)
+    private val d = BoardPlaylistEntry("owner-d", "dddddddddddddddddddddddddddddddd", 40)
 
     @Test fun `concurrent adds are both safe`() {
         val base = BoardPlaylistState(7, 0, listOf(a, b))
-        val command = SessionCommand.Add(c.first, c.second)
+        val command = SessionCommand.Add(c.climbUuid, c.angle)
         val context = PlaylistCommandRebaser.context(command, base)
         val current = base.copy(items = base.items + d)
 

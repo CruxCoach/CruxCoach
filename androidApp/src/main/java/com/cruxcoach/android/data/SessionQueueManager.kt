@@ -274,7 +274,7 @@ class SessionQueueManager(
                 role = role,
                 sessionId = playlist.sessionId ?: state.sessionId,
                 queue = playlist.items.mapIndexed { index, item ->
-                    QueueItem(item.first, item.second, playlist.restAt(index))
+                    QueueItem(item.climbUuid, item.angle, playlist.restAt(index))
                 },
                 currentIndex = playlist.currentIndex,
                 visibility = SessionVisibility.JOINABLE,
@@ -541,14 +541,14 @@ class SessionQueueManager(
         if (_state.value.role != SessionRole.HOST) return
         val old = _state.value.queue
         val used = BooleanArray(old.size)
-        val aligned = canonical.items.map { pair ->
+        val aligned = canonical.items.map { entry ->
             val index = old.indices.firstOrNull { !used[it] &&
-                old[it].angle == pair.second &&
-                old[it].climbUuid.replace("-", "").equals(pair.first.replace("-", ""), true) }
+                old[it].angle == entry.angle &&
+                old[it].climbUuid.replace("-", "").equals(entry.climbUuid.replace("-", ""), true) }
             if (index != null) {
                 used[index] = true
                 old[index]
-            } else QueueItem(pair.first, pair.second)
+            } else QueueItem(entry.climbUuid, entry.angle)
         }
         _state.update { it.copy(
             sessionId = canonical.sessionId ?: it.sessionId,

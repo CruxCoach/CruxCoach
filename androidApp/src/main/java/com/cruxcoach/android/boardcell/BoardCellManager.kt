@@ -62,6 +62,12 @@ data class IncomingControllerRequest(
     val requesterNpub: String,
 )
 
+data class IncomingJoinRequest(
+    val requestId: String,
+    val candidateNpub: String,
+    val sponsorNpub: String?,
+)
+
 /**
  * A local-only playlist wants the wall while a joinable playlist is showing
  * something else. [sharedClimbUuid] is what the group currently has on it.
@@ -160,6 +166,9 @@ class BoardCellManager @Inject constructor(
     val snapshots = _snapshots.asStateFlow()
     private val _incomingControllerRequest = MutableStateFlow<IncomingControllerRequest?>(null)
     val incomingControllerRequest = _incomingControllerRequest.asStateFlow()
+    private val _incomingJoinRequests = MutableStateFlow<List<IncomingJoinRequest>>(emptyList())
+    val incomingJoinRequests = _incomingJoinRequests.asStateFlow()
+    private val handledJoinRequests = ConcurrentHashMap.newKeySet<String>()
     private val _controllerRequestState = MutableStateFlow(ControllerRequestState.IDLE)
     val controllerRequestState = _controllerRequestState.asStateFlow()
     private val _membershipTransition = MutableStateFlow(MeshMembershipTransition.IDLE)
@@ -236,6 +245,15 @@ class BoardCellManager @Inject constructor(
                         "request" to FipsDebugLog.id(request.requestId),
                         "requester" to FipsDebugLog.id(sender))
                 }
+            }
+        }
+        meshTransport.onMemberJoinRequest = { sponsor, request ->
+            val snapshot = snapshot()
+            if (snapshot?.controllerId == activeNodeId && snapshot.playlist.closed) {
+                surfaceJoinRequest(request.candidateId, sponsor)
+            } else if (snapshot?.controllerId == activeNodeId) {
+                coordinator.joinMember(snapshot.physicalBoardId, request.candidateId, monotonicNow())
+                refreshSelected()
             }
         }
         meshTransport.onControllerDecision = { _, decision ->
@@ -543,12 +561,12 @@ class BoardCellManager @Inject constructor(
         _localOverwriteRequest.value = LocalOverwriteRequest(
             climbUuid = projection.climbUuid,
             angle = projection.angle,
-            sharedClimbUuid = current.first,
+            sharedClimbUuid = current.climbUuid,
             sessionId = playlist.sessionId,
         )
         FipsDebugLog.event("playlist", "local_overwrite_confirmation_required",
             "climb" to FipsDebugLog.id(projection.climbUuid),
-            "sharedClimb" to FipsDebugLog.id(current.first))
+            "sharedClimb" to FipsDebugLog.id(current.climbUuid))
         return false
     }
 
@@ -749,29 +767,29 @@ class BoardCellManager @Inject constructor(
             val item = playlist.currentItem() ?: return@withLock false
             val projected = snapshot.projection
             val alreadyProjected = snapshot.projectionKnown && projected != null &&
-                projected.climbUuid == item.first && projected.angle == item.second
+                projected.climbUuid == item.climbUuid && projected.angle == item.angle
             val pending = playlist.pendingProjection
             val pendingForCurrent = pending != null &&
-                pending.climbUuid == item.first && pending.angle == item.second
+                pending.climbUuid == item.climbUuid && pending.angle == item.angle
             // An already-recorded pending state waits for a deliberate retry.
             // Without that, the periodic reconciliation below would turn one
             // failed write into a permanent write storm against the board.
             if (!force && (alreadyProjected || pendingForCurrent)) return@withLock alreadyProjected
             val writer = playlistProjectionWriter
-            val resolved = writer?.resolve(item.first, item.second)
+            val resolved = writer?.resolve(item.climbUuid, item.angle)
             if (writer == null || resolved == null) {
-                recordPendingProjection(BoardPlaylistPendingProjection(item.first, item.second,
+                recordPendingProjection(BoardPlaylistPendingProjection(item.climbUuid, item.angle,
                     BoardPlaylistProjectionPendingReason.CLIMB_UNAVAILABLE))
                 return@withLock false
             }
             val result = coordinator.project(board, resolved, monotonicNow(),
                 UUID.randomUUID().toString(), null) { writer.write(resolved) }
             FipsDebugLog.event("playlist", "projection_attempted",
-                "climb" to FipsDebugLog.id(item.first), "angle" to item.second,
+                "climb" to FipsDebugLog.id(item.climbUuid), "angle" to item.angle,
                 "result" to result.javaClass.simpleName, "forced" to force)
             val committed = result is ProjectionResult.Committed || result is ProjectionResult.Duplicate
             if (!committed) {
-                recordPendingProjection(BoardPlaylistPendingProjection(item.first, item.second,
+                recordPendingProjection(BoardPlaylistPendingProjection(item.climbUuid, item.angle,
                     BoardPlaylistProjectionPendingReason.BOARD_WRITE_FAILED))
             }
             refreshSelected()
@@ -1484,6 +1502,40 @@ class BoardCellManager @Inject constructor(
         } }
     }
 
+    private fun surfaceJoinRequest(candidateId: String, sponsorId: String?) {
+        if (candidateId in (snapshot()?.members ?: emptySet())) return
+        if (handledJoinRequests.contains(candidateId)) return
+        val existing = _incomingJoinRequests.value
+        if (existing.any { it.candidateNpub == candidateId }) return
+        val requestId = UUID.randomUUID().toString()
+        _incomingJoinRequests.value = existing + IncomingJoinRequest(requestId, candidateId, sponsorId)
+        FipsDebugLog.event("boardcell", "join_request_received",
+            "request" to FipsDebugLog.id(requestId),
+            "candidate" to FipsDebugLog.id(candidateId),
+            "sponsor" to (sponsorId?.let(FipsDebugLog::id) ?: "auto"))
+    }
+
+    fun approveJoinRequest(requestId: String) {
+        val pending = _incomingJoinRequests.value.firstOrNull { it.requestId == requestId } ?: return
+        if (!::coordinator.isInitialized) return
+        val board = BoardCellScopeRegistry.selected.value ?: return
+        scope.launch {
+            coordinator.joinMember(board, pending.candidateNpub, monotonicNow())
+            handledJoinRequests.add(requestId)
+            _incomingJoinRequests.value = _incomingJoinRequests.value.filterNot { it.requestId == requestId }
+            refreshSelected()
+        }
+    }
+
+    fun denyJoinRequest(requestId: String) {
+        val pending = _incomingJoinRequests.value.firstOrNull { it.requestId == requestId } ?: return
+        handledJoinRequests.add(requestId)
+        _incomingJoinRequests.value = _incomingJoinRequests.value.filterNot { it.requestId == requestId }
+        FipsDebugLog.event("boardcell", "join_request_denied",
+            "request" to FipsDebugLog.id(requestId),
+            "candidate" to FipsDebugLog.id(pending.candidateNpub))
+    }
+
     suspend fun operatorRecoverFork(): Boolean {
         val board = BoardCellScopeRegistry.selected.value ?: return false
         return coordinator.operatorRecoverFork(board, monotonicNow()) != null
@@ -1530,22 +1582,27 @@ class BoardCellManager @Inject constructor(
                                 if (meshTransport.sendSnapshotTo(snapshot, peer)) sponsoredAt[peer] = now
                             }
                         } else if (snapshot.controllerId == activeNodeId) {
-                            FipsDebugLog.event("boardcell", "nearby_member_auto_admitted",
-                                "peer" to FipsDebugLog.id(peer), "cell" to FipsDebugLog.id(snapshot.cellId.value))
-                            val admitted = coordinator.joinMember(board, peer, now) != null
-                            // A recently departed member is deliberately fenced for one
-                            // liveness window.  Do not apply the normal successful-sponsor
-                            // backoff to that rejection: doing so can move the first legal
-                            // retry just beyond the joiner's membership-snapshot timeout.
-                            if (admitted) {
+                            if (snapshot.playlist.closed) {
+                                surfaceJoinRequest(peer, null)
                                 sponsoredAt[peer] = now
                             } else {
-                                sponsoredAt.remove(peer)
-                                FipsDebugLog.event(
-                                    "boardcell", "nearby_member_admission_deferred",
-                                    "peer" to FipsDebugLog.id(peer),
-                                    "cell" to FipsDebugLog.id(snapshot.cellId.value),
-                                )
+                                FipsDebugLog.event("boardcell", "nearby_member_auto_admitted",
+                                    "peer" to FipsDebugLog.id(peer), "cell" to FipsDebugLog.id(snapshot.cellId.value))
+                                val admitted = coordinator.joinMember(board, peer, now) != null
+                                // A recently departed member is deliberately fenced for one
+                                // liveness window.  Do not apply the normal successful-sponsor
+                                // backoff to that rejection: doing so can move the first legal
+                                // retry just beyond the joiner's membership-snapshot timeout.
+                                if (admitted) {
+                                    sponsoredAt[peer] = now
+                                } else {
+                                    sponsoredAt.remove(peer)
+                                    FipsDebugLog.event(
+                                        "boardcell", "nearby_member_admission_deferred",
+                                        "peer" to FipsDebugLog.id(peer),
+                                        "cell" to FipsDebugLog.id(snapshot.cellId.value),
+                                    )
+                                }
                             }
                         } else {
                             if (meshTransport.sponsorMember(snapshot, peer)) {

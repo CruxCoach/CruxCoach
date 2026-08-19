@@ -32,7 +32,7 @@ class JoinablePlaylistWireTest {
     private fun proposal(
         requestId: String = "request-0001",
         requesterId: String = "guest-npub",
-        items: List<Pair<String, Int>> = listOf("x" to 40),
+        items: List<BoardPlaylistEntry> = listOf(BoardPlaylistEntry("guest-npub", "x", 40)),
         rests: List<Int> = listOf(60),
         requestedAtEpochMs: Long = now,
         expiresAtEpochMs: Long = requestedAtEpochMs + BoardPlaylistPolicy.PROPOSAL_TIMEOUT_MS,
@@ -44,7 +44,7 @@ class JoinablePlaylistWireTest {
             1, 1, message)
 
     private fun playlist(
-        items: List<Pair<String, Int>> = listOf("climb-a" to 40),
+        items: List<BoardPlaylistEntry> = listOf(BoardPlaylistEntry("host-npub", "climb-a", 40)),
         rests: List<Int> = listOf(120),
         host: String? = "host-npub",
         members: List<String> = listOf("host-npub"),
@@ -79,7 +79,7 @@ class JoinablePlaylistWireTest {
     @Test fun `every playlist control command round trips`() {
         val controls = listOf(
             BoardPlaylistControl.Start("command-0001", 0, "request-0001", 7,
-                listOf("a" to 40), listOf(90)),
+                listOf(BoardPlaylistEntry("sender-npub", "a", 40)), listOf(90)),
             BoardPlaylistControl.Decide("command-0002", 1, "request-0001",
                 BoardPlaylistProposalDecision.APPEND),
             BoardPlaylistControl.Join("command-0003", 1),
@@ -103,8 +103,8 @@ class JoinablePlaylistWireTest {
 
     // ===== Version fencing =====
 
-    @Test fun `the wire version includes bounded cross-device diagnostics`() {
-        assertEquals(9, BoardCellWireCodec.VERSION)
+    @Test fun `the wire version includes per-climber queue entries`() {
+        assertEquals(10, BoardCellWireCodec.VERSION)
     }
 
     @Test fun `peer diagnostics round trip without entering canonical snapshot`() {
@@ -152,7 +152,8 @@ class JoinablePlaylistWireTest {
 
     @Test fun `an oversized playlist never reaches the durable store`() {
         val bytes = BoardCellWireCodec.encode(frame(BoardCellWireMessage.Snapshot(snapshot(
-            playlist(items = List(BoardPlaylistPolicy.MAX_ITEMS + 1) { "climb$it" to 40 },
+            playlist(items = List(BoardPlaylistPolicy.MAX_ITEMS + 1) {
+                BoardPlaylistEntry("owner$it", "climb$it", 40) },
                 rests = emptyList())))))
         assertThrows(IllegalArgumentException::class.java) { BoardCellWireCodec.decode(bytes) }
     }
@@ -325,7 +326,7 @@ class JoinablePlaylistWireTest {
             cellId = cell, physicalBoardId = board, epoch = 1, sequence = 3,
             controllerId = "controller-npub", controllerTerm = 1, lineageId = "lineage",
             members = setOf("controller-npub"), membershipRevision = 4,
-            playlist = BoardPlaylistState(7, 0, listOf("legacy" to 40)),
+            playlist = BoardPlaylistState(7, 0, listOf(BoardPlaylistEntry("", "legacy", 40))),
             playlistRevision = 2,
         )
         val v5Hashed = legacy.copy(stateHash = BoardCellHash.computeLegacyV5(legacy))
@@ -359,13 +360,15 @@ class JoinablePlaylistWireTest {
         // field the joinable playlist added removed again.
         val legacyOnly = setOf("sessionId", "currentIndex", "items")
         val legacyDocument = JsonObject(
-            json.encodeToJsonElement(BoardPlaylistState(7, 1, listOf("a" to 40, "b" to 45)))
+            json.encodeToJsonElement(BoardPlaylistState(7, 1,
+                listOf(BoardPlaylistEntry("", "a", 40), BoardPlaylistEntry("", "b", 45))))
                 .jsonObject.filterKeys { it in legacyOnly })
         assertEquals(legacyOnly, legacyDocument.keys)
 
         val decoded = json.decodeFromString<BoardPlaylistState>(legacyDocument.toString())
 
-        assertEquals(listOf("a" to 40, "b" to 45), decoded.items)
+        assertEquals(listOf(BoardPlaylistEntry("", "a", 40), BoardPlaylistEntry("", "b", 45)),
+            decoded.items)
         assertEquals(1, decoded.currentIndex)
         assertFalse(decoded.isJoinable)
         assertTrue(decoded.restAfterSeconds.isEmpty())

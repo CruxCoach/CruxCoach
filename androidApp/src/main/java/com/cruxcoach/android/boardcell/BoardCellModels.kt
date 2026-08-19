@@ -180,7 +180,7 @@ data class BoardPlaylistProposal(
     val requestId: String,
     val requesterId: String,
     val sessionId: Int,
-    val items: List<Pair<String, Int>> = emptyList(),
+    val items: List<BoardPlaylistEntry> = emptyList(),
     val restAfterSeconds: List<Int> = emptyList(),
     /** UTC epoch milliseconds after which this request counts as declined. */
     val expiresAtEpochMs: Long = 0,
@@ -197,6 +197,21 @@ data class BoardPlaylistProposal(
 }
 
 /**
+ * One climber's entry in the joinable playlist queue.
+ *
+ * [ownerId] is the FIPS npub of the device that added the entry, authenticated
+ * by the transport — the policy sets it from the authenticated sender identity
+ * and never trusts an ownerId asserted in a command payload. A climber may
+ * append any number of climbs; each is a separate entry.
+ */
+@Serializable
+data class BoardPlaylistEntry(
+    val ownerId: String = "",
+    val climbUuid: String,
+    val angle: Int,
+)
+
+/**
  * The one joinable playlist of a physical BoardCell.
  *
  * A non-null [hostId] *is* the existence of a joinable playlist. Local-only
@@ -208,12 +223,17 @@ data class BoardPlaylistProposal(
  * BoardCell membership: being in the mesh only makes the playlist visible.
  * The list is kept in join order, so index 0 is the longest-active member and
  * therefore the deterministic successor when a host is lost unexpectedly.
+ *
+ * [items] is the climber queue: one entry per climber, each carrying the
+ * owner's FIPS npub, the climb UUID and the angle. Advancing the queue removes
+ * the current climber's entry so the next climber moves to the front; a
+ * climber re-enqueues to get back in line.
  */
 @Serializable
 data class BoardPlaylistState(
     val sessionId: Int? = null,
     val currentIndex: Int = -1,
-    val items: List<Pair<String, Int>> = emptyList(),
+    val items: List<BoardPlaylistEntry> = emptyList(),
     /** Planned rest after each entry, index-parallel to [items]. */
     val restAfterSeconds: List<Int> = emptyList(),
     /** Playlist host; null means no joinable playlist exists. */
@@ -223,15 +243,17 @@ data class BoardPlaylistState(
     val activeRest: BoardPlaylistRest? = null,
     val pendingProjection: BoardPlaylistPendingProjection? = null,
     val proposal: BoardPlaylistProposal? = null,
+    /** If true, new members may join only with explicit leader (controller) approval. */
+    val closed: Boolean = false,
 ) {
     val isJoinable: Boolean get() = hostId != null
     fun restAt(index: Int): Int = restAfterSeconds.getOrElse(index) { 0 }
-    fun currentItem(): Pair<String, Int>? = items.getOrNull(currentIndex)
+    fun currentItem(): BoardPlaylistEntry? = items.getOrNull(currentIndex)
 
     /** True while nothing beyond the pre-joinable fields is in use. */
     internal val usesLegacyShapeOnly: Boolean
         get() = restAfterSeconds.isEmpty() && hostId == null && members.isEmpty() &&
-            activeRest == null && pendingProjection == null && proposal == null
+            activeRest == null && pendingProjection == null && proposal == null && !closed
 }
 
 /** Identifies one occurrence without relying on an index that may have moved. */
@@ -389,6 +411,8 @@ data class BoardCellSnapshot(
      */
     fun hasValidHash(): Boolean = stateHash == BoardCellHash.compute(copy(stateHash = "")) ||
         (playlist.usesLegacyShapeOnly &&
+            stateHash == BoardCellHash.computeLegacyV6(copy(stateHash = ""))) ||
+        (playlist.usesLegacyShapeOnly &&
             stateHash == BoardCellHash.computeLegacyV5(copy(stateHash = ""))) ||
         (playlist.usesLegacyShapeOnly && membershipRevision == 0L &&
             stateHash == BoardCellHash.computeLegacyV4(copy(stateHash = ""))) ||
@@ -495,19 +519,21 @@ data class BoardWriteIntent(
 
 internal object BoardCellHash {
     fun compute(snapshot: BoardCellSnapshot): String =
-        compute(snapshot, "board-cell-v6", true, true, true, true)
+        compute(snapshot, "board-cell-v7", true, true, true, true, true)
+    fun computeLegacyV6(snapshot: BoardCellSnapshot): String =
+        compute(snapshot, "board-cell-v6", true, true, true, true, false)
     fun computeLegacyV5(snapshot: BoardCellSnapshot): String =
-        compute(snapshot, "board-cell-v5", true, true, true, false)
+        compute(snapshot, "board-cell-v5", true, true, true, false, false)
     fun computeLegacyV4(snapshot: BoardCellSnapshot): String =
-        compute(snapshot, "board-cell-v4", true, true, false, false)
+        compute(snapshot, "board-cell-v4", true, true, false, false, false)
     fun computeLegacyV3(snapshot: BoardCellSnapshot): String =
-        compute(snapshot, "board-cell-v3", true, false, false, false)
+        compute(snapshot, "board-cell-v3", true, false, false, false, false)
     fun computeLegacyV2(snapshot: BoardCellSnapshot): String =
-        compute(snapshot, "board-cell-v2", false, false, false, false)
+        compute(snapshot, "board-cell-v2", false, false, false, false, false)
 
     private fun compute(snapshot: BoardCellSnapshot, schema: String, includePlaylistRevision: Boolean,
         includeControllerRecovery: Boolean, includeMembershipRevision: Boolean,
-        includeJoinablePlaylist: Boolean): String {
+        includeJoinablePlaylist: Boolean, includeOwnerInItems: Boolean): String {
         val canonical = buildString {
             append(schema).append('\n').append(snapshot.cellId.value).append('\n')
             append(snapshot.physicalBoardId.value).append('\n').append(snapshot.epoch).append('\n')
@@ -521,7 +547,11 @@ internal object BoardCellHash {
                 ?: append("p:-\n")
             append("pk:${snapshot.projectionKnown}\n")
             append("s:${snapshot.playlist.sessionId ?: "-"}|${snapshot.playlist.currentIndex}\n")
-            snapshot.playlist.items.forEach { append("q:${it.first}|${it.second}\n") }
+            if (includeOwnerInItems) {
+                snapshot.playlist.items.forEach { append("q:${it.ownerId}|${it.climbUuid}|${it.angle}\n") }
+            } else {
+                snapshot.playlist.items.forEach { append("q:${it.climbUuid}|${it.angle}\n") }
+            }
             if (includeJoinablePlaylist) {
                 val playlist = snapshot.playlist
                 playlist.restAfterSeconds.forEach { append("qr:").append(it).append('\n') }
@@ -537,9 +567,14 @@ internal object BoardCellHash {
                 playlist.proposal?.let { proposal ->
                     append("pq:${proposal.requestId}|${proposal.requesterId}|${proposal.sessionId}")
                     append("|${proposal.requestedAtEpochMs}|${proposal.expiresAtEpochMs}\n")
-                    proposal.items.forEach { append("pqi:${it.first}|${it.second}\n") }
+                    if (includeOwnerInItems) {
+                        proposal.items.forEach { append("pqi:${it.ownerId}|${it.climbUuid}|${it.angle}\n") }
+                    } else {
+                        proposal.items.forEach { append("pqi:${it.climbUuid}|${it.angle}\n") }
+                    }
                     proposal.restAfterSeconds.forEach { append("pqr:").append(it).append('\n') }
                 } ?: append("pq:-\n")
+                append("rc:${playlist.closed}\n")
             }
             if (includePlaylistRevision) append("pr:${snapshot.playlistRevision}\n")
             if (includePlaylistRevision) snapshot.recentCommandIds.forEach { append("ci:").append(it).append('\n') }
