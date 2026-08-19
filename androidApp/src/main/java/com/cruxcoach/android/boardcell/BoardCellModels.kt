@@ -632,12 +632,11 @@ internal object BoardCellRecoveryFence {
 /**
  * What a physical-board connection means for the canonical replica.
  *
- * A reconnect the recovery election itself asked for is not the same event as
- * a user plugging into a different wall, but both arrive as one
+ * A reconnect requested by controller recovery or an approved handover is not
+ * the same event as a user plugging into a different wall, but all three arrive as one
  * `connectedBoardDescriptor` emission. Treating them alike destroyed the
- * frozen recovery base: the normal path builds a fresh coordinator and resets
- * the realm, so by the time `recoverController()` ran there was no snapshot,
- * term or membership left to recover from.
+ * canonical replica: the normal path builds a fresh coordinator and resets the
+ * realm, so the operation loses its snapshot, term, membership and handover.
  */
 internal object BoardCellReconnectPolicy {
     /**
@@ -650,25 +649,25 @@ internal object BoardCellReconnectPolicy {
      */
     sealed interface Decision {
         /** Keep coordinator, snapshot, term, membership and playlist. */
-        data class PreserveRecoveryBase(val retained: BoardCellSnapshot) : Decision
+        data class PreserveReplica(val retained: BoardCellSnapshot) : Decision
         /** Ordinary selection: build the cell for this board from scratch. */
         data object Initialize : Decision
     }
 
     fun decide(
         reconnecting: PhysicalBoardId,
-        authorizedRecoveryBoard: PhysicalBoardId?,
+        authorizedBoard: PhysicalBoardId?,
         retained: BoardCellSnapshot?,
         localNodeId: String,
     ): Decision {
-        if (authorizedRecoveryBoard == null || authorizedRecoveryBoard != reconnecting)
+        if (authorizedBoard == null || authorizedBoard != reconnecting)
             return Decision.Initialize
         if (retained == null || retained.physicalBoardId != reconnecting)
             return Decision.Initialize
         // Only a member has a base worth preserving; anything else would be
         // reviving state this device has no standing in.
         if (localNodeId !in retained.members) return Decision.Initialize
-        return Decision.PreserveRecoveryBase(retained)
+        return Decision.PreserveReplica(retained)
     }
 }
 

@@ -181,7 +181,10 @@ class BoardCellManager @Inject constructor(
     private var recoveryAttempt = 0
     private val sponsoredAt = ConcurrentHashMap<String, Long>()
     private val pendingProjectionRequests = ConcurrentHashMap<String, PendingProjectionRequest>()
-    @Volatile private var authorizedRecoveryBoard: PhysicalBoardId? = null
+    /** A physical reconnect explicitly requested by controller recovery or a
+     * handover target. Its descriptor emission must preserve the live replica
+     * instead of looking like a new, unrelated board selection. */
+    @Volatile private var authorizedReplicaPreservingBoard: PhysicalBoardId? = null
     private var lastSnapshotTrace = ""
     private val nearbyJoinMutex = Mutex()
     private val pendingLocalLeave = AtomicBoolean(false)
@@ -321,20 +324,20 @@ class BoardCellManager @Inject constructor(
                     return@collectLatest
                 }
                 val physical = PhysicalBoardIdentity.resolve(board, boardBindings.bindingFor(board.address))
-                // A reconnect that fenced recovery itself asked for must not
+                // A reconnect that fenced recovery or handover itself asked for must not
                 // take the ordinary selection path. That path builds a fresh
                 // coordinator and re-activates the realm, which threw away the
                 // frozen snapshot, term and membership the recovery was about
                 // to commit against — the cell then had nothing left to
                 // recover and fell back to a new claim.
-                val reconnect = BoardCellReconnectPolicy.decide(physical, authorizedRecoveryBoard,
+                val reconnect = BoardCellReconnectPolicy.decide(physical, authorizedReplicaPreservingBoard,
                     _snapshots.value, activeNodeId)
-                if (reconnect is BoardCellReconnectPolicy.Decision.PreserveRecoveryBase) {
+                if (reconnect is BoardCellReconnectPolicy.Decision.PreserveReplica) {
                     // Act on the snapshot the decision was made about. Reading
                     // the flow again here would race a concurrent update or a
                     // teardown, and bind either a different cell or nothing.
                     val retained = reconnect.retained
-                    FipsDebugLog.event("boardcell", "recovery_reconnect_preserved",
+                    FipsDebugLog.event("boardcell", "replica_reconnect_preserved",
                         "physicalBoard" to FipsDebugLog.id(physical.value),
                         "cell" to FipsDebugLog.id(retained.cellId.value),
                         "sequence" to retained.sequence, "term" to retained.controllerTerm)
@@ -1381,7 +1384,7 @@ class BoardCellManager @Inject constructor(
         val physical = runCatching {
             PhysicalBoardIdentity.resolve(board, boardBindings.bindingFor(board.address))
         }.getOrNull() ?: return false
-        if (physical == authorizedRecoveryBoard) return false
+        if (physical == authorizedReplicaPreservingBoard) return false
         return physical == snapshot.physicalBoardId
     }
 
@@ -1666,12 +1669,43 @@ class BoardCellManager @Inject constructor(
                 else handledHandoverPhase.remove(phaseKey)
             }
             h.targetControllerId == activeNodeId && h.phase == HandoverPhase.SOURCE_RELEASED -> {
-                val ready = lifecycle?.prepareTarget?.invoke(snapshot) == true && boardRealmAvailable.get()
-                if (ready) coordinator.targetReady(board, "host-board-ready:${h.transferId}")
-                else handledHandoverPhase.remove(phaseKey)
+                // The requested GATT connection emits connectedBoardDescriptor
+                // asynchronously. Fence that emission exactly like controller
+                // recovery: reinitializing here destroys the SOURCE_RELEASED
+                // replica before TARGET_READY can be sent.
+                authorizedReplicaPreservingBoard = snapshot.physicalBoardId
+                val boardReady = try {
+                    lifecycle?.prepareTarget?.invoke(snapshot) == true
+                } finally {
+                    authorizedReplicaPreservingBoard = null
+                }
+                val realmReady = boardRealmAvailable.get()
+                val snapshotRetained = coordinator.snapshot(board)
+                    ?.handover?.transferId == h.transferId
+                FipsDebugLog.event(
+                    "handover", "target_prepare_result",
+                    "transfer" to FipsDebugLog.id(h.transferId),
+                    "boardReady" to boardReady,
+                    "realmReady" to realmReady,
+                    "snapshotRetained" to snapshotRetained,
+                )
+                if (boardReady && realmReady && snapshotRetained) {
+                    coordinator.targetReady(board, "host-board-ready:${h.transferId}")
+                    FipsDebugLog.event(
+                        "handover", "target_ready_sent",
+                        "transfer" to FipsDebugLog.id(h.transferId),
+                        "source" to FipsDebugLog.id(h.sourceControllerId),
+                    )
+                } else handledHandoverPhase.remove(phaseKey)
             }
             h.targetControllerId == activeNodeId && h.phase == HandoverPhase.COMMITTED -> {
-                val ready = lifecycle?.prepareTarget?.invoke(snapshot) == true && boardRealmAvailable.get()
+                authorizedReplicaPreservingBoard = snapshot.physicalBoardId
+                val boardReady = try {
+                    lifecycle?.prepareTarget?.invoke(snapshot) == true
+                } finally {
+                    authorizedReplicaPreservingBoard = null
+                }
+                val ready = boardReady && boardRealmAvailable.get()
                 if (ready) {
                     coordinator.completeHandover(board, h.transferId, monotonicNow())
                     _controllerRequestState.value = ControllerRequestState.IDLE
@@ -1805,12 +1839,12 @@ class BoardCellManager @Inject constructor(
             // reconnect surfaces asynchronously on connectedBoardDescriptor,
             // and clearing this too early let that emission re-initialize the
             // cell and destroy the base being recovered.
-            authorizedRecoveryBoard = current.physicalBoardId
+            authorizedReplicaPreservingBoard = current.physicalBoardId
             val existingFence = hasLocalControllerFence(current)
             val connected = try {
                 existingFence || handoverLifecycle?.recoverController?.invoke(current) == true
             } catch (failure: CancellationException) {
-                authorizedRecoveryBoard = null
+                authorizedReplicaPreservingBoard = null
                 throw failure
             }
             if (connected) {
@@ -1832,10 +1866,10 @@ class BoardCellManager @Inject constructor(
                     FipsDebugLog.warning("boardcell", "recovery_abandoned_before_commit",
                         "reason" to "term/hash/liveness moved on")
                 }
-                authorizedRecoveryBoard = null
+                authorizedReplicaPreservingBoard = null
                 refreshSelected()
             } else {
-                authorizedRecoveryBoard = null
+                authorizedReplicaPreservingBoard = null
                 recoveryAttempt++
                 if (recoveryAttempt >= MAX_LOCAL_RECOVERY_ATTEMPTS) {
                     val stale = snapshot()

@@ -112,7 +112,7 @@ class BoardCellRecoveryFenceTest {
             base.stateHash, 60_000, leaseTimeoutMs))
     }
 
-    // ===== The authorized reconnect must preserve the recovery base =====
+    // ===== An authorized reconnect must preserve the canonical replica =====
 
     @Test fun `the reconnect recovery asked for preserves the exact frozen base`() {
         val frozen = snapshot()
@@ -123,9 +123,34 @@ class BoardCellRecoveryFenceTest {
         // not re-read the live flow afterwards: a concurrent update or
         // teardown between deciding and acting would otherwise bind a
         // different cell, or dereference a value that had become null.
-        val preserve = decision as BoardCellReconnectPolicy.Decision.PreserveRecoveryBase
+        val preserve = decision as BoardCellReconnectPolicy.Decision.PreserveReplica
         assertSame(frozen, preserve.retained)
         assertEquals(cell, preserve.retained.cellId)
+    }
+
+    @Test fun `the handover target board connect preserves source released state`() {
+        val transfer = BoardCellHandover(
+            transferId = "pixel-to-nokia",
+            sourceControllerId = "pixel",
+            targetControllerId = "nokia",
+            sourceTerm = 1,
+            targetTerm = 2,
+            baseSequence = 12,
+            baseHash = "base-hash",
+            phase = HandoverPhase.SOURCE_RELEASED,
+        )
+        val released = snapshot(
+            availability = BoardCellAvailability.ACTIVE,
+            controller = "pixel",
+            members = setOf("pixel", "nokia"),
+        ).copy(handover = transfer).withComputedHash()
+
+        val decision = BoardCellReconnectPolicy.decide(board, board, released, "nokia")
+
+        val preserve = decision as BoardCellReconnectPolicy.Decision.PreserveReplica
+        assertSame(released, preserve.retained)
+        assertEquals(HandoverPhase.SOURCE_RELEASED, preserve.retained.handover?.phase)
+        assertEquals("pixel-to-nokia", preserve.retained.handover?.transferId)
     }
 
     @Test fun `an ordinary board selection still initializes from scratch`() {
