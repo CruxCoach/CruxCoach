@@ -12,6 +12,7 @@ class FeatureIdentityTest(unittest.TestCase):
         identity = identity_for("feat/board-cell-mesh-mvp-20260814")
         self.assertEqual(identity.track, "fips")
         self.assertEqual(identity.package, "com.cruxcoach.android.dev.feat.board_cell_mesh_mvp")
+        self.assertEqual(identity.label, "FIPS")
 
     def test_new_branches_are_unique_and_deterministic(self) -> None:
         first = identity_for("feat/board-mesh")
@@ -20,6 +21,15 @@ class FeatureIdentityTest(unittest.TestCase):
         self.assertNotEqual(first.package, identity_for("feat/board_mesh").package)
         self.assertTrue(first.track.startswith("feat-board-mesh-"))
         self.assertTrue(first.package.startswith("com.cruxcoach.android.dev.f_"))
+        self.assertEqual(first.label, "board-mesh")
+
+    def test_locales_do_not_override_the_build_specific_app_name(self) -> None:
+        resources = Path(__file__).resolve().parents[1] / "androidApp" / "src" / "main" / "res"
+        localized_definitions = [
+            path for path in resources.glob("values-*/strings.xml")
+            if '<string name="app_name"' in path.read_text(encoding="utf-8")
+        ]
+        self.assertEqual(localized_definitions, [])
 
     def test_rejects_non_feature_branches(self) -> None:
         with self.assertRaises(ValueError):
