@@ -633,9 +633,12 @@ deliberately **no** dual-FIPS runtime: two protocol revisions in one process
 would double the surface this migration exists to keep small, and the rollback
 target is a branch that already builds.
 
-The superseded `9677760` source object is preserved outside upstream retention
-(see `native/fips/VENDOR.toml`), so the rollback build does not depend on
-GitHub keeping an unreferenced object.
+The superseded `9677760` source object is additionally mirrored outside
+upstream retention on the operator/build host, under the refs named in
+`native/fips/VENDOR.toml`, so the rollback build does not depend on GitHub
+keeping an object nothing references. Placing that mirror somewhere durable
+off that host would mean creating an external repository, which is the project
+owner's call rather than this change's.
 
 ## 15. Variant B: shared FIPS underlay — future evaluation
 

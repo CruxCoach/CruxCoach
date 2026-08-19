@@ -27,13 +27,14 @@ license = "MIT"
 # so that build depends on the upstream object still existing.
 previous_commit = "967776079ba5ddc8fe118c3f289365b51eb03737"
 
-# Both commits are mirrored outside upstream retention in a host-local bare
-# repository, under refs/cruxcoach/fips/*. See its README. This is redundancy
-# only: `commit` is fully reproducible from this repository alone, and
-# `previous_commit` is what the mirror actually protects. Promoting the mirror
-# somewhere durable off that host would mean creating an external repository,
-# which is the project owner's decision.
-archive_mirror = "/home/myuser/fips-source-archive.git"
+# Both commits are additionally mirrored, outside upstream retention, in a bare
+# repository on the operator/build host under these refs. That mirror is
+# redundancy only, and its location is deliberately not recorded here: it is
+# host state, not repository state. `commit` is fully reproducible from this
+# repository alone; `previous_commit` is the one the mirror actually protects,
+# because the predecessor branch still declares it as a Cargo git revision.
+# Promoting the mirror somewhere durable off that host would mean creating an
+# external repository, which is the project owner's decision.
 archive_refs = [
     "refs/cruxcoach/fips/vendored-6580a80",
     "refs/cruxcoach/fips/superseded-pin-9677760",
