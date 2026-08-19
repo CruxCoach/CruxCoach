@@ -38,8 +38,9 @@ sealed interface BoardPlaylistControl {
         override val basePlaylistRevision: Long,
         val requestId: String,
         val sessionId: Int,
-        val items: List<Pair<String, Int>>,
+        val items: List<BoardPlaylistEntry>,
         val restAfterSeconds: List<Int> = emptyList(),
+        val closed: Boolean = false,
     ) : BoardPlaylistControl
 
     /** The playlist host answers an open [Start] proposal. */
@@ -228,8 +229,8 @@ object BoardPlaylistPolicy {
         // that had since been projected perfectly well.
         val pending = playlist.pendingProjection?.takeIf { candidate ->
             val currentItem = items.getOrNull(index)
-            currentItem != null && currentItem.first == candidate.climbUuid &&
-                currentItem.second == candidate.angle
+            currentItem != null && currentItem.climbUuid == candidate.climbUuid &&
+                currentItem.angle == candidate.angle
         }
         val proposal = playlist.proposal?.takeIf {
             it.requestId.isNotBlank() && it.requesterId.isNotBlank() && it.items.isNotEmpty() &&
@@ -254,6 +255,7 @@ object BoardPlaylistPolicy {
             activeRest = rest,
             pendingProjection = pending,
             proposal = proposal,
+            closed = playlist.closed,
         )
     }
 
@@ -274,6 +276,7 @@ object BoardPlaylistPolicy {
         return normalize(playlist.copy(
             hostId = host,
             members = remaining,
+            closed = playlist.closed,
             // A pending question the departed host can no longer answer must
             // not survive as an unanswerable dialog on the new host.
             proposal = playlist.proposal?.takeIf { playlist.hostId != memberId },
@@ -299,7 +302,7 @@ object BoardPlaylistPolicy {
         if (!playlist.isJoinable) return false
         if (localNodeId in playlist.members) return false
         val current = playlist.currentItem() ?: return false
-        if (current.first == climbUuid && current.second == angle) return false
+        if (current.climbUuid == climbUuid && current.angle == angle) return false
         return confirmedSessionId != playlist.sessionId
     }
 
@@ -367,9 +370,12 @@ object BoardPlaylistPolicy {
         control: BoardPlaylistControl.Start,
         nowEpochMs: Long,
     ): Outcome {
-        val items = control.items.take(MAX_ITEMS)
-        if (items.isEmpty()) return Outcome.Reject("playlist is empty")
+        val rawItems = control.items.take(MAX_ITEMS)
+        if (rawItems.isEmpty()) return Outcome.Reject("playlist is empty")
         if (control.requestId.length !in 8..MAX_ID_LENGTH) return Outcome.Reject("invalid request id")
+        // The owner of every entry is the authenticated sender; an ownerId
+        // asserted in the payload is never trusted.
+        val items = rawItems.map { it.copy(ownerId = senderId) }
         if (!current.isJoinable) {
             // Nothing is running: this is a plain start, and the initiator is
             // the playlist host and its first member. No technical controller
@@ -381,6 +387,7 @@ object BoardPlaylistPolicy {
                 restAfterSeconds = control.restAfterSeconds,
                 hostId = senderId,
                 members = listOf(senderId),
+                closed = control.closed,
             )))
         }
         current.proposal?.let { open ->
@@ -568,10 +575,15 @@ object BoardPlaylistPolicy {
  * directly and the local queue is a projection of the result.
  */
 object BoardPlaylistOps {
-    fun add(current: BoardPlaylistState, climbUuid: String, angle: Int): BoardPlaylistState? {
-        if (climbUuid.isBlank() || current.items.size >= BoardPlaylistPolicy.MAX_ITEMS) return null
+    /**
+     * Enqueue one climber's route. A climber may append any number of climbs;
+     * each call adds a new entry at the back of the queue.
+     */
+    fun add(current: BoardPlaylistState, ownerId: String, climbUuid: String, angle: Int): BoardPlaylistState? {
+        if (climbUuid.isBlank() || ownerId.isBlank()) return null
+        if (current.items.size >= BoardPlaylistPolicy.MAX_ITEMS) return null
         return BoardPlaylistPolicy.normalize(current.copy(
-            items = current.items + (climbUuid to angle),
+            items = current.items + BoardPlaylistEntry(ownerId, climbUuid, angle),
             restAfterSeconds = current.restAfterSeconds + 0,
             currentIndex = if (current.currentIndex < 0) 0 else current.currentIndex,
         ))
@@ -615,10 +627,11 @@ object BoardPlaylistOps {
      * Advancing arms the planned rest of the entry being left, in the same
      * canonical step that moves the index.
      *
-     * One event rather than an advance followed by a separate rest command:
-     * the pair could otherwise be split by a reconnect or a controller
-     * handover, and a peer would show the next climb ready to go while the
-     * rest of the group was resting in front of the wall.
+     * The queue stays intact so everyone can see history; the current-climb
+     * pointer simply moves forward. One event rather than an advance followed
+     * by a separate rest command: the pair could otherwise be split by a
+     * reconnect or a controller handover, and a peer would show the next climb
+     * ready to go while the rest of the group was resting in front of the wall.
      */
     fun next(current: BoardPlaylistState, nowEpochMs: Long): BoardPlaylistState? {
         if (current.currentIndex !in 0 until current.items.lastIndex) return null

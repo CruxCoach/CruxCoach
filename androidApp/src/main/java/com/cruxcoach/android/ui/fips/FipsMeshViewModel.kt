@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.boardcell.BoardCellManager
 import com.cruxcoach.android.boardcell.IncomingControllerRequest
+import com.cruxcoach.android.boardcell.IncomingJoinRequest
 import com.cruxcoach.android.fips.FipsMeshRuntime
 import com.cruxcoach.android.fips.FipsConnectionStage
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -61,12 +62,23 @@ data class FipsMeshUiState(
     val playlist: MeshPlaylistUi? = null,
 )
 
+/** One entry in the climber lineup. */
+data class MeshLineupEntryUi(
+    val ownerNpub: String,
+    val climbUuid: String,
+    val angle: Int,
+    val isCurrent: Boolean,
+    val isDone: Boolean,
+)
+
 /** The canonical joinable playlist as the mesh status strip shows it. */
 data class MeshPlaylistUi(
     val itemCount: Int,
     val memberCount: Int,
     val localIsMember: Boolean,
     val localIsHost: Boolean,
+    val closed: Boolean = false,
+    val lineup: List<MeshLineupEntryUi> = emptyList(),
 ) {
     /**
      * Whether to offer the join button.
@@ -110,6 +122,7 @@ class FipsMeshViewModel @Inject constructor(
     private val _activeBoardName = MutableStateFlow<String?>(null)
     val membershipTransition = boardCellManager.membershipTransition
     val incomingControllerRequest = boardCellManager.incomingControllerRequest
+    val incomingJoinRequests = boardCellManager.incomingJoinRequests
 
     init {
         runtime.startNearbyDiscovery()
@@ -170,12 +183,22 @@ class FipsMeshViewModel @Inject constructor(
                     controller = peer.npub == snapshot?.controllerId,
                 )
             },
-            playlist = snapshot?.playlist?.takeIf { it.isJoinable }?.let {
+            playlist = snapshot?.playlist?.takeIf { it.isJoinable }?.let { pl ->
                 MeshPlaylistUi(
-                    itemCount = it.items.size,
-                    memberCount = it.members.size,
-                    localIsMember = runtime.localNpub in it.members,
-                    localIsHost = it.hostId == runtime.localNpub,
+                    itemCount = pl.items.size,
+                    memberCount = pl.members.size,
+                    localIsMember = runtime.localNpub in pl.members,
+                    localIsHost = pl.hostId == runtime.localNpub,
+                    closed = pl.closed,
+                    lineup = pl.items.mapIndexed { index, entry ->
+                        MeshLineupEntryUi(
+                            ownerNpub = entry.ownerId,
+                            climbUuid = entry.climbUuid,
+                            angle = entry.angle,
+                            isCurrent = index == pl.currentIndex,
+                            isDone = pl.currentIndex >= 0 && index < pl.currentIndex,
+                        )
+                    },
                 )
             },
             nearbyMeshes = visibleNearbyMeshes(nearby, snapshot?.cellId?.value).map {
@@ -232,4 +255,10 @@ class FipsMeshViewModel @Inject constructor(
 
     fun denyControllerTransfer(request: IncomingControllerRequest) =
         boardCellManager.denyControllerTransfer(request.requestId)
+
+    fun approveJoinRequest(request: IncomingJoinRequest) =
+        boardCellManager.approveJoinRequest(request.requestId)
+
+    fun denyJoinRequest(request: IncomingJoinRequest) =
+        boardCellManager.denyJoinRequest(request.requestId)
 }

@@ -9,6 +9,7 @@ import com.cruxcoach.android.boardcell.BoardCellManager
 import com.cruxcoach.android.boardcell.BoardCellScopeRegistry
 import com.cruxcoach.android.boardcell.BoardCellSnapshot
 import com.cruxcoach.android.boardcell.BoardCellWriteGateway
+import com.cruxcoach.android.boardcell.BoardPlaylistEntry
 import com.cruxcoach.android.boardcell.BoardPlaylistPendingProjection
 import com.cruxcoach.android.boardcell.BoardPlaylistPolicy
 import com.cruxcoach.android.boardcell.BoardPlaylistProjectionPendingReason
@@ -103,7 +104,7 @@ class JoinablePlaylistAdapterTest {
     }
 
     private fun joinable(
-        items: List<Pair<String, Int>> = listOf("a" to 40, "b" to 45),
+        items: List<BoardPlaylistEntry> = listOf(BoardPlaylistEntry(localNode, "a", 40), BoardPlaylistEntry("other-npub", "b", 45)),
         rests: List<Int> = listOf(120, 0),
         index: Int = 0,
         host: String = localNode,
@@ -184,7 +185,7 @@ class JoinablePlaylistAdapterTest {
 
     @Test fun `a canonical update replaces the projection rather than merging into it`() {
         publish(joinable())
-        publish(joinable(items = listOf("x" to 40), rests = listOf(0)), revision = 2)
+        publish(joinable(items = listOf(BoardPlaylistEntry(localNode, "x", 40)), rests = listOf(0)), revision = 2)
 
         assertEquals(listOf("x"), queueManager.state.value.queue.map { it.climbUuid })
     }

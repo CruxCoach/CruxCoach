@@ -178,7 +178,7 @@ class BoardCellRecoveryFenceTest {
     @Test fun `recovery keeps the canonical playlist, term and membership`() = runTest {
         val playlist = BoardPlaylistPolicy.normalize(BoardPlaylistState(
             sessionId = 7, currentIndex = 1,
-            items = listOf("climb-a" to 40, "climb-b" to 45), restAfterSeconds = listOf(120, 0),
+            items = listOf(BoardPlaylistEntry("pixel", "climb-a", 40), BoardPlaylistEntry("nokia", "climb-b", 45)), restAfterSeconds = listOf(120, 0),
             hostId = "pixel", members = listOf("pixel", "nokia")))
         val frozen = snapshot(playlist = playlist)
         val coordinator = BoardCellCoordinator("nokia", NoOpBoardCellTransport, MemoryStore(),
@@ -197,13 +197,13 @@ class BoardCellRecoveryFenceTest {
         assertFalse("old-controller" in recovered.members)
         assertEquals("pixel", recovered.playlist.hostId)
         assertEquals(listOf("pixel", "nokia"), recovered.playlist.members)
-        assertEquals(listOf("climb-a" to 40, "climb-b" to 45), recovered.playlist.items)
+        assertEquals(listOf(BoardPlaylistEntry("pixel", "climb-a", 40), BoardPlaylistEntry("nokia", "climb-b", 45)), recovered.playlist.items)
         assertEquals(1, recovered.playlist.currentIndex)
     }
 
     @Test fun `losing the old controller hands the playlist on when it was the host`() = runTest {
         val playlist = BoardPlaylistPolicy.normalize(BoardPlaylistState(
-            sessionId = 7, currentIndex = 0, items = listOf("climb-a" to 40),
+            sessionId = 7, currentIndex = 0, items = listOf(BoardPlaylistEntry("old-controller", "climb-a", 40)),
             hostId = "old-controller", members = listOf("old-controller", "pixel", "nokia")))
         val frozen = snapshot(playlist = playlist)
         val coordinator = BoardCellCoordinator("nokia", NoOpBoardCellTransport, MemoryStore(),

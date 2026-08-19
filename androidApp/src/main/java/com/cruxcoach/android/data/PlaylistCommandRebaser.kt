@@ -3,6 +3,7 @@ package com.cruxcoach.android.data
 import com.cruxcoach.android.ble.SessionCommand
 import com.cruxcoach.android.boardcell.BoardPlaylistCommandContext
 import com.cruxcoach.android.boardcell.BoardPlaylistCommandKind
+import com.cruxcoach.android.boardcell.BoardPlaylistEntry
 import com.cruxcoach.android.boardcell.BoardPlaylistItemRef
 import com.cruxcoach.android.boardcell.BoardPlaylistState
 
@@ -129,22 +130,22 @@ object PlaylistCommandRebaser {
         is SessionCommand.Join, SessionCommand.Leave -> null
     }
 
-    private fun referenceAt(items: List<Pair<String, Int>>, index: Int): BoardPlaylistItemRef? {
+    private fun referenceAt(items: List<BoardPlaylistEntry>, index: Int): BoardPlaylistItemRef? {
         val item = items.getOrNull(index) ?: return null
         val matching = items.indices.filter { same(items[it], item) }
-        return BoardPlaylistItemRef(item.first, item.second, matching.indexOf(index), matching.size)
+        return BoardPlaylistItemRef(item.climbUuid, item.angle, matching.indexOf(index), matching.size)
     }
 
-    private fun resolve(items: List<Pair<String, Int>>, ref: BoardPlaylistItemRef): Int? {
-        val matching = items.indices.filter { same(items[it], ref.climbUuid to ref.angle) }
+    private fun resolve(items: List<BoardPlaylistEntry>, ref: BoardPlaylistItemRef): Int? {
+        val matching = items.indices.filter { same(items[it], BoardPlaylistEntry("", ref.climbUuid, ref.angle)) }
         // Duplicate additions/removals make occurrence-based identity ambiguous.
         if (matching.size != ref.totalAtBase) return null
         return matching.getOrNull(ref.occurrence)
     }
 
-    private fun resolveIn(items: List<Pair<String, Int>>, ref: BoardPlaylistItemRef?): Int? =
+    private fun resolveIn(items: List<BoardPlaylistEntry>, ref: BoardPlaylistItemRef?): Int? =
         ref?.let { resolve(items, it) }
 
-    private fun same(a: Pair<String, Int>, b: Pair<String, Int>): Boolean =
-        a.second == b.second && a.first.replace("-", "").equals(b.first.replace("-", ""), ignoreCase = true)
+    private fun same(a: BoardPlaylistEntry, b: BoardPlaylistEntry): Boolean =
+        a.angle == b.angle && a.climbUuid.replace("-", "").equals(b.climbUuid.replace("-", ""), ignoreCase = true)
 }

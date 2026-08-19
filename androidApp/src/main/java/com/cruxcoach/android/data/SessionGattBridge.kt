@@ -543,7 +543,7 @@ class SessionGattBridge(
             else com.cruxcoach.android.boardcell.BoardPlaylistAuthority.MEMBER
             return manager.commitLocalSessionCommand(commandId, snapshot.playlistRevision,
                 authority) { current, exact ->
-                if (current.isJoinable) applyRebasedCommand(command, context, current, exact)
+                if (current.isJoinable) applyRebasedCommand(command, context, current, exact, manager.localNodeId())
                 else applyLegacyHostCommand(command, context, current, exact)
             }
         }
@@ -1332,7 +1332,7 @@ class SessionGattBridge(
      * happens is decided by the controller's canonical state, not by this
      * device's possibly stale replica.
      */
-    fun startJoinablePlaylist(items: List<QueueItem>, sessionId: Int): Boolean {
+    fun startJoinablePlaylist(items: List<QueueItem>, sessionId: Int, closed: Boolean = false): Boolean {
         val manager = boardCellManager ?: return false
         val snapshot = manager.snapshot() ?: return false
         if (items.isEmpty()) return false
@@ -1342,8 +1342,9 @@ class SessionGattBridge(
             basePlaylistRevision = snapshot.playlistRevision,
             requestId = requestId,
             sessionId = sessionId,
-            items = items.map { it.climbUuid to it.angle },
+            items = items.map { com.cruxcoach.android.boardcell.BoardPlaylistEntry("", it.climbUuid, it.angle) },
             restAfterSeconds = items.map { it.restAfterSeconds },
+            closed = closed,
         )
         _playlistStartState.value = PlaylistStartState.WAITING
         pendingStartRequestId = requestId
@@ -1555,7 +1556,8 @@ class SessionGattBridge(
                 val commandId = UUID.randomUUID().toString()
                 val ack = boardCellManager.commitLocalSessionCommand(commandId,
                     snapshot.playlistRevision) { current, exact ->
-                        if (current.isJoinable) applyRebasedCommand(command, context, current, exact)
+                        if (current.isJoinable) applyRebasedCommand(command, context, current, exact,
+                            boardCellManager?.localNodeId() ?: "")
                         else applyLegacyHostCommand(command, context, current, exact)
                     }
                 if (ack?.status != BoardCommandStatus.COMMITTED) {
@@ -1638,7 +1640,7 @@ class SessionGattBridge(
         val decoded = SessionQueueProtocol.decodeCommand(command.payload)
         boardCellManager?.commitSessionCommand(command) { current, exact ->
             val cmd = decoded ?: return@commitSessionCommand null
-            if (current.isJoinable) applyRebasedCommand(cmd, command.context, current, exact)
+            if (current.isJoinable) applyRebasedCommand(cmd, command.context, current, exact, command.senderId)
             else if (queueManager.state.value.role == SessionRole.HOST)
                 applyLegacyHostCommand(cmd, command.context, current, exact)
             else null
@@ -1665,7 +1667,7 @@ class SessionGattBridge(
         val decoded = SessionQueueProtocol.decodeCommand(payload)
         manager.commitLeafCommand(command) { current, exact ->
             val cmd = decoded ?: return@commitLeafCommand null
-            if (current.isJoinable) applyRebasedCommand(cmd, command.context, current, exact)
+            if (current.isJoinable) applyRebasedCommand(cmd, command.context, current, exact, manager.localNodeId())
             else null
         }
     }
@@ -1693,7 +1695,7 @@ class SessionGattBridge(
         }
         val state = queueManager.state.value
         return BoardPlaylistState(state.sessionId, state.currentIndex,
-            state.queue.map { it.climbUuid to it.angle })
+            state.queue.map { com.cruxcoach.android.boardcell.BoardPlaylistEntry("", it.climbUuid, it.angle) })
     }
 
     /**
@@ -1708,11 +1710,11 @@ class SessionGattBridge(
      */
     private fun applyRebasedCommand(command: SessionCommand,
         context: com.cruxcoach.android.boardcell.BoardPlaylistCommandContext?,
-        current: BoardPlaylistState, exact: Boolean): BoardPlaylistState? {
+        current: BoardPlaylistState, exact: Boolean, senderId: String): BoardPlaylistState? {
         val resolved = PlaylistCommandRebaser.rebase(command, context, current, exact)
             as? PlaylistCommandRebaser.Result.Apply ?: return null
         return when (val cmd = resolved.command) {
-            is SessionCommand.Add -> BoardPlaylistOps.add(current, cmd.climbUuid, cmd.angle)
+            is SessionCommand.Add -> BoardPlaylistOps.add(current, senderId, cmd.climbUuid, cmd.angle)
             is SessionCommand.Remove -> BoardPlaylistOps.remove(current, cmd.index)
             is SessionCommand.SetCurrent -> BoardPlaylistOps.setCurrent(current, cmd.index)
             // Advancing stamps the canonical end of the rest it arms. Only the

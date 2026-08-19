@@ -93,6 +93,12 @@ data class BoardCellWireFrame(
 )
 
 object BoardCellWireCodec {
+    // V10 makes the playlist queue per-climber: each item is a
+    // BoardPlaylistEntry(ownerId, climbUuid, angle) instead of a bare
+    // (climbUuid, angle) pair. A V9 peer would read a snapshot carrying
+    // per-climber entries as a list of raw pairs and quietly grant everyone
+    // the host's rights, so it must fail closed — `ignoreUnknownKeys = false`
+    // plus this check does exactly that.
     // V9 adds bounded operational peer diagnostics to liveness frames. These
     // values are deliberately outside canonical state and state hashing.
     // V8 makes the joinable playlist canonical: playlist host and playlist
@@ -107,7 +113,7 @@ object BoardCellWireCodec {
     // do not spuriously reject a participant's board command. V5 added
     // permissionless, member-sponsored multi-hop BoardCell admission.
     // Older peers must fail closed instead of interpreting the new authority flow.
-    const val VERSION = 9
+    const val VERSION = 10
     private val json = Json { classDiscriminator = "type"; encodeDefaults = true; ignoreUnknownKeys = false }
     fun encode(frame: BoardCellWireFrame): ByteArray = json.encodeToString(frame).encodeToByteArray()
     fun decode(bytes: ByteArray): BoardCellWireFrame {
@@ -154,7 +160,7 @@ object BoardCellWireCodec {
                             require(control.seconds in 1..BoardPlaylistPolicy.MAX_REST_SECONDS)
                         }
                         is BoardPlaylistControl.ProjectionPending ->
-                            control.pending?.let { requireItemBounds(it.climbUuid to it.angle) }
+                            control.pending?.let { requireItemBounds(BoardPlaylistEntry("", it.climbUuid, it.angle)) }
                         else -> Unit
                     }
                 }
@@ -196,8 +202,9 @@ object BoardCellWireCodec {
         }
     }
 
-    private fun requireItemBounds(item: Pair<String, Int>) {
-        require(item.first.length in 1..64 && item.second in 0..90)
+    private fun requireItemBounds(item: BoardPlaylistEntry) {
+        require(item.ownerId.length in 0..BoardPlaylistPolicy.MAX_ID_LENGTH &&
+            item.climbUuid.length in 1..64 && item.angle in 0..90)
     }
 
     private fun requireRestBounds(seconds: Int) {
@@ -229,7 +236,7 @@ object BoardCellWireCodec {
             require(BoardPlaylistInstant.isWindow(it.startedAtEpochMs, it.endsAtEpochMs,
                 it.totalSeconds * 1_000L))
         }
-        playlist.pendingProjection?.let { requireItemBounds(it.climbUuid to it.angle) }
+        playlist.pendingProjection?.let { requireItemBounds(BoardPlaylistEntry("", it.climbUuid, it.angle)) }
         playlist.proposal?.let { proposal ->
             require(proposal.requestId.length in 8..BoardPlaylistPolicy.MAX_ID_LENGTH)
             require(proposal.requesterId.length in 1..BoardPlaylistPolicy.MAX_ID_LENGTH)
@@ -384,6 +391,7 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
     var onCommandAck: (suspend (String, BoardCommandAck) -> Unit)? = null
     var onControllerRequest: (suspend (String, BoardCellControllerRequest) -> Unit)? = null
     var onControllerDecision: (suspend (String, BoardCellControllerDecision) -> Unit)? = null
+    var onMemberJoinRequest: (suspend (String, BoardCellJoinRequest) -> Unit)? = null
     var onProjectionRequest: (suspend (InboundProjectionRequest) -> Unit)? = null
     var onPlaylistControl: (suspend (InboundPlaylistControl) -> Unit)? = null
     var onLeafCommand: (suspend (InboundLeafCommand) -> Unit)? = null
@@ -772,6 +780,8 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
                 }
                 if (message.value.candidateId in snapshot.members) {
                     sendSnapshotTo(snapshot, message.value.candidateId)
+                } else if (onMemberJoinRequest != null) {
+                    onMemberJoinRequest!!.invoke(authenticatedSender, message.value)
                 } else {
                     target.joinMember(snapshot.physicalBoardId, message.value.candidateId, nowMonotonicMs)
                     target.snapshot(snapshot.physicalBoardId)?.let { snapshots[it.cellId] = it }

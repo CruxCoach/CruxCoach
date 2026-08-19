@@ -61,6 +61,7 @@ fun FipsMeshScreen(
     val leaveFailed by viewModel.leaveFailed.collectAsStateWithLifecycle()
     val membershipTransition by viewModel.membershipTransition.collectAsStateWithLifecycle()
     val incomingControllerRequest by viewModel.incomingControllerRequest.collectAsStateWithLifecycle()
+    val incomingJoinRequests by viewModel.incomingJoinRequests.collectAsStateWithLifecycle()
     var showConnectionSheet by remember { mutableStateOf(false) }
     incomingControllerRequest?.let { request ->
         AlertDialog(
@@ -75,6 +76,23 @@ fun FipsMeshScreen(
             dismissButton = {
                 TextButton(onClick = { viewModel.denyControllerTransfer(request) }) {
                     Text(stringResource(R.string.mesh_controller_request_deny))
+                }
+            },
+        )
+    }
+    incomingJoinRequests.firstOrNull()?.let { request ->
+        AlertDialog(
+            onDismissRequest = { viewModel.denyJoinRequest(request) },
+            title = { Text(stringResource(R.string.mesh_join_request_title)) },
+            text = { Text(stringResource(R.string.mesh_join_request_text)) },
+            confirmButton = {
+                TextButton(onClick = { viewModel.approveJoinRequest(request) }) {
+                    Text(stringResource(R.string.mesh_join_request_approve))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.denyJoinRequest(request) }) {
+                    Text(stringResource(R.string.mesh_join_request_deny))
                 }
             },
         )
@@ -114,6 +132,18 @@ fun FipsMeshScreen(
                 leaveFailed = leaveFailed,
                 onLeave = viewModel::leave,
                 onConnect = { showConnectionSheet = true }) }
+            if (incomingJoinRequests.size > 1) {
+                item { PendingJoinRequestsCard(
+                    requests = incomingJoinRequests.drop(1),
+                    onApprove = viewModel::approveJoinRequest,
+                    onDeny = viewModel::denyJoinRequest,
+                ) }
+            }
+            state.playlist?.let { playlist ->
+                if (playlist.lineup.isNotEmpty()) {
+                    item { LineupCard(playlist) }
+                }
+            }
             if (membershipTransition == MeshMembershipTransition.ERROR && !joinFailed && !leaveFailed) {
                 item {
                     Text(stringResource(R.string.fips_mesh_disconnected),
@@ -206,6 +236,89 @@ private fun CurrentMeshCard(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(stringResource(R.string.fips_mesh_connect_action))
+            }
+        }
+    }
+}
+
+@Composable
+private fun PendingJoinRequestsCard(
+    requests: List<com.cruxcoach.android.boardcell.IncomingJoinRequest>,
+    onApprove: (com.cruxcoach.android.boardcell.IncomingJoinRequest) -> Unit,
+    onDeny: (com.cruxcoach.android.boardcell.IncomingJoinRequest) -> Unit,
+) {
+    MeshCard(container = OrangeAccent.copy(alpha = 0.10f)) {
+        Text(
+            stringResource(R.string.mesh_join_requests_title),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+        )
+        requests.forEach { request ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    shortNpub(request.candidateNpub),
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                TextButton(onClick = { onApprove(request) }) {
+                    Text(stringResource(R.string.mesh_join_request_approve))
+                }
+                TextButton(onClick = { onDeny(request) }) {
+                    Text(stringResource(R.string.mesh_join_request_deny))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LineupCard(playlist: MeshPlaylistUi) {
+    MeshCard {
+        Text(
+            stringResource(R.string.mesh_lineup_title),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+        )
+        if (playlist.closed) {
+            Text(
+                stringResource(R.string.mesh_join_request_title),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        playlist.lineup.forEach { entry ->
+            val label = when {
+                entry.isCurrent -> stringResource(R.string.mesh_lineup_current)
+                entry.isDone -> stringResource(R.string.mesh_lineup_done)
+                else -> stringResource(R.string.mesh_lineup_queued)
+            }
+            val tint = when {
+                entry.isCurrent -> SuccessGreen
+                entry.isDone -> MaterialTheme.colorScheme.onSurfaceVariant
+                else -> OrangeAccent
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    label,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = tint,
+                    modifier = Modifier.width(80.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(shortNpub(entry.ownerNpub), style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        entry.climbUuid.take(12) + "… · " + entry.angle + "°",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
     }
