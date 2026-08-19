@@ -2,7 +2,10 @@ package com.cruxcoach.android.ble
 
 import android.annotation.SuppressLint
 import android.bluetooth.*
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -79,6 +82,39 @@ class BoardBleConnection(private val context: Context) {
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
+
+    /**
+     * A disabled adapter invalidates every GATT link immediately. Waiting for
+     * the ordinary board idle timer leaves [connectionState] at CONNECTED for
+     * up to a minute even though the kernel-side link no longer exists. React
+     * while the adapter is turning off, when a graceful GATT close is still
+     * most likely to reach the stack, and publish DISCONNECTED synchronously.
+     *
+     * This receiver intentionally lives for the process lifetime: the
+     * connection is a Hilt singleton backed by the application context.
+     */
+    private val bluetoothStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(receiverContext: Context, intent: Intent) {
+            if (intent.action != BluetoothAdapter.ACTION_STATE_CHANGED) return
+            val adapterState = intent.getIntExtra(
+                BluetoothAdapter.EXTRA_STATE,
+                BluetoothAdapter.ERROR,
+            )
+            if (adapterState != BluetoothAdapter.STATE_TURNING_OFF &&
+                adapterState != BluetoothAdapter.STATE_OFF
+            ) return
+            if (_connectionState.value == ConnectionState.DISCONNECTED && gatt == null) return
+            Log.i(TAG, "Bluetooth disabled — immediately invalidating board GATT")
+            disconnect()
+        }
+    }
+
+    init {
+        context.applicationContext.registerReceiver(
+            bluetoothStateReceiver,
+            IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED),
+        )
+    }
 
     private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
     val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()

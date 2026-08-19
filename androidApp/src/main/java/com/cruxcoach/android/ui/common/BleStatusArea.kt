@@ -191,6 +191,7 @@ fun BleStatusArea(
             relayClientCount = relayClientCount,
             onStopRelay = stopRelay,
             activeMesh = meshState.takeIf { it.cellId != null },
+            onLeaveMesh = meshViewModel::leave,
             nearbyMeshes = nearbyMeshes,
             onJoinMesh = if (joiningBoardCellId == null) meshViewModel::join else null,
             joiningMeshName = joiningMeshName,

@@ -8,6 +8,7 @@ import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -43,6 +44,9 @@ internal fun BleStatusExpanded(
     relayClientCount: Int? = null,
     onStopRelay: (() -> Unit)? = null,
     activeMesh: FipsMeshUiState? = null,
+    /** Basic membership action only. Peer identities and transport details
+     * stay on the dedicated FIPS Mesh screen. */
+    onLeaveMesh: (() -> Unit)? = null,
     nearbyMeshes: List<NearbyFipsMeshUi> = emptyList(),
     onJoinMesh: ((NearbyFipsMeshUi) -> Unit)? = null,
     joiningMeshName: String? = null,
@@ -71,18 +75,24 @@ internal fun BleStatusExpanded(
             // Header
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
-                    if (isLocalSession) Icons.AutoMirrored.Filled.QueueMusic else Icons.Default.CellTower,
+                    when {
+                        isLocalSession -> Icons.AutoMirrored.Filled.QueueMusic
+                        activeMesh != null -> Icons.Default.Hub
+                        else -> Icons.Default.CellTower
+                    },
                     null,
-                    tint = OrangeAccent,
+                    tint = if (activeMesh?.availability == "ACTIVE") {
+                        com.cruxcoach.android.ui.theme.SuccessGreen
+                    } else OrangeAccent,
                     modifier = Modifier.size(20.dp),
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(
                     stringResource(
-                        if (isLocalSession) {
-                            R.string.ble_session_visibility_local
-                        } else {
-                            R.string.ble_sharing_title
+                        when {
+                            isLocalSession -> R.string.ble_session_visibility_local
+                            activeMesh != null -> R.string.fips_mesh_overview_title
+                            else -> R.string.ble_sharing_title
                         },
                     ),
                     style = MaterialTheme.typography.titleSmall,
@@ -133,7 +143,7 @@ internal fun BleStatusExpanded(
             }
 
             if (activeMesh != null) {
-                ActiveMeshSection(activeMesh, onJoinPlaylist)
+                ActiveMeshSection(activeMesh, onJoinPlaylist, onLeaveMesh)
                 Spacer(Modifier.height(8.dp))
             }
 
@@ -170,35 +180,33 @@ internal fun BleStatusExpanded(
 }
 
 @Composable
-private fun ActiveMeshSection(mesh: FipsMeshUiState, onJoinPlaylist: (() -> Unit)?) {
+private fun ActiveMeshSection(
+    mesh: FipsMeshUiState,
+    onJoinPlaylist: (() -> Unit)?,
+    onLeaveMesh: (() -> Unit)?,
+) {
+    val localController = mesh.controllerNpub != null && mesh.controllerNpub == mesh.localNpub
+    val connected = mesh.availability == "ACTIVE"
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Default.CellTower, null, tint = OrangeAccent, modifier = Modifier.size(18.dp))
+        Icon(
+            if (localController) Icons.Default.CellTower else Icons.Default.Hub,
+            null,
+            tint = if (connected) com.cruxcoach.android.ui.theme.SuccessGreen else OrangeAccent,
+            modifier = Modifier.size(18.dp),
+        )
         Spacer(Modifier.width(8.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                mesh.boardName ?: stringResource(R.string.fips_mesh_nearby_own),
+                stringResource(
+                    if (localController) R.string.mesh_status_direct_controller
+                    else R.string.mesh_status_via_controller,
+                    mesh.boardName ?: stringResource(R.string.fips_mesh_nearby_own),
+                ),
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Medium,
-            )
-            Text(
-                buildString {
-                    append(stringResource(
-                        if (mesh.controllerNpub != null && mesh.controllerNpub == mesh.localNpub) {
-                            R.string.fips_mesh_peer_controller
-                        } else {
-                            R.string.fips_mesh_peer_member
-                        },
-                    ))
-                    append(" · ")
-                    append(stringResource(R.string.fips_mesh_members))
-                    append(": ")
-                    append(mesh.memberCount)
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
                 stringResource(
@@ -231,6 +239,11 @@ private fun ActiveMeshSection(mesh: FipsMeshUiState, onJoinPlaylist: (() -> Unit
         if (mesh.canJoinPlaylist && onJoinPlaylist != null) {
             TextButton(onClick = onJoinPlaylist) {
                 Text(stringResource(R.string.mesh_playlist_join))
+            }
+        }
+        if (onLeaveMesh != null) {
+            TextButton(onClick = onLeaveMesh) {
+                Text(stringResource(R.string.fips_mesh_leave_action))
             }
         }
     }
