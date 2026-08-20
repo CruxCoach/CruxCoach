@@ -457,6 +457,7 @@ class BoardStatsComputerTest {
         val stats = BoardStatsComputer.computeStats(ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE)
         assertEquals(2, stats.outcomeDistribution.flashes)
         assertEquals(1, stats.outcomeDistribution.redpoints)
+        assertEquals(6, stats.outcomeDistribution.attempts)
     }
 
     @Test
@@ -544,7 +545,7 @@ class BoardStatsComputerTest {
         assertEquals(2, out.size)
         val kilter = out.first { it.boardBrand == "kilter" }
         assertEquals(2, kilter.sendCount)
-        assertEquals(3, kilter.attemptCount)
+        assertEquals(5, kilter.attemptCount)
         // Top grade is from sends only — the bid at 25.0 must not count.
         assertEquals(22, kilter.hardestDifficultyInt)
         assertNotNull(kilter.hardestGrade)
