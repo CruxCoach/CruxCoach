@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.BluetoothConnected
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.StopCircle
@@ -147,12 +148,18 @@ fun PlaylistPlayerScreen(
     val snackbarHostState = remember { androidx.compose.material3.SnackbarHostState() }
     val loggedSendMsg = stringResource(R.string.playlist_logged_send)
     val loggedAttemptMsg = stringResource(R.string.playlist_logged_attempt)
+    val noRandomMatchMsg = stringResource(R.string.board_playlist_random_unavailable)
 
     // Quick-log feedback: snackbar + reset the one-shot flag.
     LaunchedEffect(state.lastLogged) {
         state.lastLogged?.let { isSend ->
             snackbarHostState.showSnackbar(if (isSend) loggedSendMsg else loggedAttemptMsg)
             viewModel.consumeLogFeedback()
+        }
+    }
+    LaunchedEffect(viewModel) {
+        viewModel.randomAddUnavailable.collect {
+            snackbarHostState.showSnackbar(noRandomMatchMsg)
         }
     }
 
@@ -535,6 +542,7 @@ fun PlaylistPlayerScreen(
                     else showQueueSheet = true
                 },
                 onAddClimbs = onNavigateToBrowser,
+                onAddRandom = viewModel::addRandomClimb,
             )
         },
     ) { padding ->
@@ -992,6 +1000,7 @@ private fun PlayerControls(
     onLamp: () -> Unit,
     onOpenQueue: () -> Unit,
     onAddClimbs: () -> Unit,
+    onAddRandom: () -> Unit,
 ) {
     // Tactile confirmation on transport actions — at the wall you tap
     // with chalked fingers and don't stare at the screen.
@@ -1003,13 +1012,13 @@ private fun PlayerControls(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 24.dp, vertical = 12.dp),
+            .padding(horizontal = 12.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceEvenly,
+        horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         IconButton(
             onClick = onOpenQueue,
-            modifier = Modifier.size(48.dp).testTag("player_queue"),
+            modifier = Modifier.size(44.dp).testTag("player_queue"),
         ) {
             Icon(
                 Icons.AutoMirrored.Filled.PlaylistPlay,
@@ -1031,12 +1040,12 @@ private fun PlayerControls(
         IconButton(
             onClick = withHaptic(onPrevious),
             enabled = playback.hasPrevious,
-            modifier = Modifier.size(64.dp).testTag("player_prev"),
+            modifier = Modifier.size(56.dp).testTag("player_prev"),
         ) {
             Icon(
                 Icons.Default.SkipPrevious,
                 contentDescription = stringResource(R.string.cd_previous),
-                modifier = Modifier.size(40.dp),
+                modifier = Modifier.size(36.dp),
             )
         }
         // The lamp, between the two arrows and nowhere else.
@@ -1062,7 +1071,7 @@ private fun PlayerControls(
                 containerColor = OrangeAccent,
                 contentColor = DarkBackground,
             ),
-            modifier = Modifier.size(64.dp).testTag("player_lamp"),
+            modifier = Modifier.size(60.dp).testTag("player_lamp"),
         ) {
             Icon(
                 Icons.Default.Lightbulb,
@@ -1073,25 +1082,37 @@ private fun PlayerControls(
         IconButton(
             onClick = withHaptic(onNext),
             enabled = playback.hasNext,
-            modifier = Modifier.size(64.dp).testTag("player_next"),
+            modifier = Modifier.size(56.dp).testTag("player_next"),
         ) {
             Icon(
                 Icons.Default.SkipNext,
                 contentDescription = stringResource(R.string.cd_next),
-                modifier = Modifier.size(40.dp),
+                modifier = Modifier.size(36.dp),
             )
         }
-        // Add climbs: to the browser, where long-press adds to the
-        // running playlist — same flow for host and participants.
-        IconButton(
-            onClick = onAddClimbs,
-            modifier = Modifier.size(48.dp).testTag("player_add"),
-        ) {
-            Icon(
-                Icons.Default.Add,
-                contentDescription = stringResource(R.string.playlist_player_add_climbs),
-                modifier = Modifier.size(28.dp),
-            )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(
+                onClick = onAddRandom,
+                modifier = Modifier.size(40.dp).testTag("player_add_random"),
+            ) {
+                Icon(
+                    Icons.Default.Casino,
+                    contentDescription = stringResource(R.string.board_playlist_add_random),
+                    modifier = Modifier.size(25.dp),
+                )
+            }
+            // Deliberate selection and the one-tap dice are adjacent add
+            // actions; neither changes what is currently on the wall.
+            IconButton(
+                onClick = onAddClimbs,
+                modifier = Modifier.size(40.dp).testTag("player_add"),
+            ) {
+                Icon(
+                    Icons.Default.Add,
+                    contentDescription = stringResource(R.string.playlist_player_add_climbs),
+                    modifier = Modifier.size(27.dp),
+                )
+            }
         }
     }
 }

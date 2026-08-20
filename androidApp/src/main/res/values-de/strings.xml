@@ -1344,6 +1344,8 @@
     <string name="board_playlist_empty_title">Noch nichts auf der Liste</string>
     <string name="board_playlist_empty_body">Alle an diesem Board können Climbs hinzufügen.</string>
     <string name="board_playlist_add_climbs">Climbs hinzufügen</string>
+    <string name="board_playlist_add_random">Zufälligen Climb hinzufügen</string>
+    <string name="board_playlist_random_unavailable">Kein passender Climb für die aktuellen Filter gefunden.</string>
     <string name="board_playlist_open_player">Aktuellen Climb öffnen</string>
     <string name="board_playlist_card_empty">Noch nichts auf der Liste — füge einen Climb hinzu</string>
     <plurals name="board_playlist_climb_count">

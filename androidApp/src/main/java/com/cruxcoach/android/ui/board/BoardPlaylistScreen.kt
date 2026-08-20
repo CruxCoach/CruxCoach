@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Cancel
+import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
@@ -149,6 +150,7 @@ fun BoardPlaylistScreen(
     val conflictMessage = stringResource(R.string.board_playlist_command_conflict)
     val unavailableMessage = stringResource(R.string.board_playlist_command_unavailable)
     val failedMessage = stringResource(R.string.board_playlist_command_failed)
+    val noRandomMatchMessage = stringResource(R.string.board_playlist_random_unavailable)
     LaunchedEffect(viewModel) {
         viewModel.commandFeedback.collect { feedback ->
             snackbarHostState.showSnackbar(
@@ -158,6 +160,11 @@ fun BoardPlaylistScreen(
                     PlaylistCommandFeedbackKind.FAILED -> failedMessage
                 },
             )
+        }
+    }
+    LaunchedEffect(viewModel) {
+        viewModel.randomAddUnavailable.collect {
+            snackbarHostState.showSnackbar(noRandomMatchMessage)
         }
     }
 
@@ -284,6 +291,7 @@ fun BoardPlaylistScreen(
                     onNext = viewModel::next,
                     onLamp = viewModel::projectSelectedEntry,
                     onAdd = onNavigateToBrowser,
+                    onAddRandom = viewModel::appendRandom,
                 )
             }
         },
@@ -520,6 +528,7 @@ private fun BoardPlaylistTransport(
     onNext: () -> Unit,
     onLamp: () -> Unit,
     onAdd: () -> Unit,
+    onAddRandom: () -> Unit,
 ) {
     val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
     fun withHaptic(action: () -> Unit): () -> Unit = {
@@ -569,6 +578,16 @@ private fun BoardPlaylistTransport(
                 Icon(Icons.Default.SkipNext, stringResource(R.string.cd_next),
                     modifier = Modifier.size(36.dp))
             }
+        }
+        IconButton(
+            onClick = onAddRandom,
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .size(48.dp)
+                .testTag("board_playlist_add_random"),
+        ) {
+            Icon(Icons.Default.Casino, stringResource(R.string.board_playlist_add_random),
+                modifier = Modifier.size(26.dp))
         }
         IconButton(
             onClick = onAdd,

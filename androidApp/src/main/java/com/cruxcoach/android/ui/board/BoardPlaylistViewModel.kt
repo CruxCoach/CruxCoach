@@ -31,6 +31,8 @@ import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
@@ -112,12 +114,15 @@ class BoardPlaylistViewModel @Inject constructor(
     private val userPreferences: UserPreferences,
     private val bleConnection: BoardBleConnection,
     private val fipsMeshRuntime: FipsMeshRuntime,
+    private val randomClimbPicker: RandomBoardClimbPicker,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(BoardPlaylistUiState())
     val state: StateFlow<BoardPlaylistUiState> = _state.asStateFlow()
 
     val commandFeedback = gattBridge.commandFeedback
+    private val _randomAddUnavailable = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val randomAddUnavailable: SharedFlow<Unit> = _randomAddUnavailable
 
     private val climbInfos = HashMap<String, QueueRowInfo>()
     private var personalLogMarks = emptyMap<String, BoardPlaylistLogMark>()
@@ -370,6 +375,15 @@ class BoardPlaylistViewModel @Inject constructor(
         submit(BoardPlaylistEditKind.ADD, "add") {
             BoardPlaylistOps.add(climbUuid, angle)
         }
+
+    /** Add one filtered random occurrence; selection and wall stay untouched. */
+    fun appendRandom() {
+        viewModelScope.launch {
+            val pick = withContext(Dispatchers.IO) { randomClimbPicker.pick() }
+            if (pick == null) _randomAddUnavailable.emit(Unit)
+            else append(pick.climbUuid, pick.angle)
+        }
+    }
 
     /**
      * Put one climb straight after whatever the group is on.

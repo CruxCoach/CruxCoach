@@ -127,6 +127,9 @@ class PlaylistPlaybackCoordinator(
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
 ) {
 
+    /** Append through the queue manager, which routes Board Playlists via FIPS. */
+    fun addClimb(climbUuid: String, angle: Int) = queueManager.addClimb(climbUuid, angle)
+
     private var advanceMode: ListPlaybackAdvance = ListPlaybackAdvance.MANUAL
 
     val state: StateFlow<PlaylistPlaybackState> = combine(

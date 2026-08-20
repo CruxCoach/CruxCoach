@@ -86,6 +86,7 @@ import com.cruxcoach.android.ui.common.LocalBoardSessionManager
 import com.cruxcoach.android.ui.common.LocalBoardSyncManager
 import com.cruxcoach.android.ui.common.LocalNavigateToSync
 import com.cruxcoach.android.ui.common.LocalOpenPlaylistPlayer
+import com.cruxcoach.android.ui.common.LocalOpenBoardPlaylist
 import com.cruxcoach.android.ui.common.LocalPlaylistPlayback
 import com.cruxcoach.android.ui.common.LocalCruxRelayManager
 import com.cruxcoach.android.ui.common.LocalSessionGattBridge
@@ -353,6 +354,7 @@ fun CruxCoachNavHost(
         LocalOpenPlaylistPlayer provides {
             navController.navigate(Routes.PLAYLIST_PLAYER) { launchSingleTop = true }
         },
+        LocalOpenBoardPlaylist provides openBoardPlaylist,
     ) {
     Scaffold(
         bottomBar = { CruxCoachBottomBar(navController) }

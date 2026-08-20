@@ -27,6 +27,8 @@ import com.cruxcoach.android.data.SessionGattBridge
 import com.cruxcoach.android.data.SessionQueueManager
 import com.cruxcoach.android.data.SessionRole
 import com.cruxcoach.android.ui.board.SessionQueueSheet
+import com.cruxcoach.android.ui.board.BoardPlaylistBrowserCard
+import com.cruxcoach.android.ui.board.BoardPlaylistViewModel
 import com.cruxcoach.android.ui.board.relayErrorText
 import com.cruxcoach.android.ui.fips.FipsMeshViewModel
 
@@ -51,6 +53,9 @@ val LocalCruxRelayManager = staticCompositionLocalOf<CruxRelayManager> {
 /** Opens the playlist player from anywhere (mini-player tap, join flow).
  *  Provided at NavGraph level; default no-op keeps previews harmless. */
 val LocalOpenPlaylistPlayer = staticCompositionLocalOf<() -> Unit> { {} }
+
+/** Opens the connected board's shared playlist from any screen banner. */
+val LocalOpenBoardPlaylist = staticCompositionLocalOf<() -> Unit> { {} }
 
 val LocalPlaylistPlayback = staticCompositionLocalOf<PlaylistPlaybackCoordinator> {
     error("PlaylistPlaybackCoordinator not provided")
@@ -83,6 +88,9 @@ fun BleStatusArea(
      */
     showNearbyBoards: Boolean = true,
 ) {
+    val boardPlaylistViewModel: BoardPlaylistViewModel = hiltViewModel()
+    val boardPlaylistState by boardPlaylistViewModel.state.collectAsStateWithLifecycle()
+    val openBoardPlaylist = LocalOpenBoardPlaylist.current
     val bleShareManager = LocalBleShareManager.current
     val state by bleShareManager.uiState.collectAsStateWithLifecycle()
     val meshViewModel: FipsMeshViewModel = hiltViewModel()
@@ -151,6 +159,16 @@ fun BleStatusArea(
             text = stringResource(com.cruxcoach.android.R.string.fips_mesh_join_failed),
             onDismiss = meshViewModel::dismissJoinError,
         )
+    }
+    // Connected has one app-wide meaning: the board's shared playlist is the
+    // useful shortcut. Nearby returns automatically when membership is gone.
+    if (boardPlaylistState.available) {
+        BoardPlaylistBrowserCard(
+            onOpen = openBoardPlaylist,
+            viewModel = boardPlaylistViewModel,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+        )
+        return
     }
     if (!hasContent) return
 

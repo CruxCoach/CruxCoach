@@ -1300,6 +1300,8 @@
     <string name="board_playlist_empty_title">Nothing on the list yet</string>
     <string name="board_playlist_empty_body">Everyone on this board can add climbs to it.</string>
     <string name="board_playlist_add_climbs">Add climbs</string>
+    <string name="board_playlist_add_random">Add a random climb</string>
+    <string name="board_playlist_random_unavailable">No matching climb found for the current filters.</string>
     <string name="board_playlist_open_player">Open the current climb</string>
     <string name="board_playlist_card_empty">Nothing on the list yet — add a climb</string>
     <plurals name="board_playlist_climb_count">

@@ -11,6 +11,7 @@ import com.cruxcoach.android.ui.board.ClimbRenderData
 import com.cruxcoach.android.ui.board.ClimbRenderLoader
 import com.cruxcoach.android.ui.board.EnhancedSessionSummary
 import com.cruxcoach.android.ui.board.SessionSummaryBuilder
+import com.cruxcoach.android.ui.board.RandomBoardClimbPicker
 import com.cruxcoach.android.ui.navigation.ClimbNavigationState
 import com.cruxcoach.android.util.safeLaunch
 import com.cruxcoach.data.repository.Board_sessions
@@ -20,6 +21,8 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
@@ -55,12 +58,23 @@ class PlaylistPlayerViewModel @Inject constructor(
     private val zoneManager: IntensityZoneManager,
     private val boardSessionManager: com.cruxcoach.android.data.BoardSessionManager,
     val climbNavState: ClimbNavigationState,
+    private val randomClimbPicker: RandomBoardClimbPicker,
 ) : ViewModel() {
 
     val playbackState: StateFlow<PlaylistPlaybackState> = playback.state
 
     private val _state = MutableStateFlow(PlaylistPlayerState())
     val state = _state.asStateFlow()
+    private val _randomAddUnavailable = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val randomAddUnavailable: SharedFlow<Unit> = _randomAddUnavailable
+
+    fun addRandomClimb() {
+        viewModelScope.launch {
+            val pick = withContext(Dispatchers.IO) { randomClimbPicker.pick() }
+            if (pick == null) _randomAddUnavailable.emit(Unit)
+            else playback.addClimb(pick.climbUuid, pick.angle)
+        }
+    }
 
     init {
         viewModelScope.safeLaunch(TAG) {
