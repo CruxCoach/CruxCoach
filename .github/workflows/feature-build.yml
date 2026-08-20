@@ -4,16 +4,21 @@ on:
   push:
     branches:
       - 'feat/**'
+    # Workflow/documentation-only maintenance cannot change the APK. Avoid a
+    # pointless version reservation and publication for those commits.
+    paths-ignore:
+      - '.github/**'
+      - '**/*.md'
 
 permissions:
   contents: read
 
 concurrency:
-  group: feature-build-${{ github.ref }}
+  group: feature-test-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262

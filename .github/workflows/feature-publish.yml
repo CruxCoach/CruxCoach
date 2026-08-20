@@ -93,6 +93,11 @@ jobs:
     needs: reserve
     runs-on: ubuntu-latest
     steps:
+      # The triggering, credential-free workflow already ran the complete
+      # Python, shared, and Android unit suites for this immutable head SHA.
+      # This job checks out that exact SHA and builds it with the atomically
+      # reserved version; repeating the full suite here added several minutes
+      # without strengthening the secret boundary.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
@@ -107,22 +112,12 @@ jobs:
         env:
           BRANCH: ${{ github.event.workflow_run.head_branch }}
         run: python3 scripts/feature_identity.py --branch "$BRANCH" --github-output "$GITHUB_OUTPUT"
-      - name: Test with reserved version
+      - name: Verify reserved feature identity
         env:
-          FEATURE_BRANCH: ${{ steps.identity.outputs.branch }}
           FEATURE_TRACK: ${{ steps.identity.outputs.track }}
-          FEATURE_PACKAGE: ${{ steps.identity.outputs.package }}
-          FEATURE_LABEL: ${{ steps.identity.outputs.label }}
+          RESERVED_TRACK: ${{ needs.reserve.outputs.track }}
           FEATURE_VERSION_CODE: ${{ needs.reserve.outputs.version_code }}
-        run: |
-          test "$FEATURE_TRACK" = "${{ needs.reserve.outputs.track }}"
-          python3 -m unittest discover -s scripts -p '*_test.py'
-          ./gradlew :shared:testDebugUnitTest :androidApp:testDebugUnitTest --console=plain \
-            -PfeatureBranch="$FEATURE_BRANCH" \
-            -PfeatureTrack="$FEATURE_TRACK" \
-            -PfeaturePackage="$FEATURE_PACKAGE" \
-            -PfeatureLabel="$FEATURE_LABEL" \
-            -PfeatureVersionCode="$FEATURE_VERSION_CODE"
+        run: test "$FEATURE_TRACK" = "$RESERVED_TRACK" && test "$FEATURE_VERSION_CODE" -gt 0
       - name: Install pinned Rust Android target
         run: rustup target add --toolchain 1.94.1 aarch64-linux-android
       - name: Build branch-specific APK
