@@ -22,6 +22,56 @@ class BoardCellCoordinatorTest {
             heartbeat.copy(playlistRevision = 8)))
     }
 
+    @Test fun `semantic lamp request cannot project an entry after selection changes`() = runTest {
+        val board = PhysicalBoardId("board-semantic-lamp")
+        val (coordinator) = settled("controller", board, now = 100)
+        coordinator.applyPlaylistCommand(board, 101, "controller", playlistCommand(
+            "seed-semantic-lamp",
+            BoardPlaylistOp.Add("e1", "first", 40),
+            BoardPlaylistOp.Add("e2", "second", 40),
+        ))
+        val composed = coordinator.snapshot(board)!!
+        val request = BoardProjectionRequest(
+            "semantic-lamp-command",
+            BoardProjection("first", 40),
+            composed.sequence,
+            composed.projection,
+            composed.playlistRevision,
+        )
+        coordinator.applyPlaylistCommand(board, 102, "controller", playlistCommand(
+            "select-second-entry", BoardPlaylistOp.SetCurrent("e2"),
+            revision = composed.playlistRevision,
+        ))
+
+        var writes = 0
+        val result = coordinator.projectSemantically(board, request, 103) { writes++; true }
+
+        assertTrue(result is ProjectionResult.Refused)
+        assertEquals(0, writes)
+        assertNull(coordinator.snapshot(board)!!.projection)
+    }
+
+    @Test fun `durable ack from another cell cannot suppress a playlist command`() = runTest {
+        val board = PhysicalBoardId("board-ack-scope")
+        val store = MemoryStore()
+        val (coordinator) = settled("controller", board, store = store, now = 100)
+        val current = coordinator.snapshot(board)!!
+        store.acks["shared-command-id"] = BoardCommandAck(
+            "shared-command-id",
+            BoardCommandStatus.COMMITTED,
+            BoardCellId("some-other-cell"),
+            current.epoch,
+            current.controllerTerm,
+        )
+
+        val ack = coordinator.applyPlaylistCommand(board, 101, "controller", playlistCommand(
+            "shared-command-id", BoardPlaylistOp.Add("e1", "climb", 40)))
+
+        assertEquals(BoardCommandStatus.COMMITTED, ack!!.status)
+        assertEquals(current.cellId, ack.cellId)
+        assertEquals(listOf("e1"), coordinator.snapshot(board)!!.playlist.entries.map { it.entryId })
+    }
+
     private class RecordingTransport : BoardCellTransport {
         val events = mutableListOf<BoardCellEnvelope>()
         val snapshots = mutableListOf<BoardCellSnapshot>()

@@ -240,6 +240,19 @@ class BoardPlaylistPolicyTest {
 
     // ===== Clear generation =====
 
+    @Test fun `a command cannot claim a clear generation ahead of canonical state`() {
+        val outcome = BoardPlaylistPolicy.resolve(
+            BoardPlaylistState(sessionId = 7),
+            "member",
+            BoardPlaylistCommand("generation-ahead", 0, 1,
+                listOf(BoardPlaylistOp.Add("e1", "a", 40))),
+            now,
+            senderIsController = false,
+        )
+
+        assertTrue(outcome is BoardPlaylistPolicy.Outcome.Reject)
+    }
+
     @Test fun `clearing empties the playlist and bumps its generation`() {
         val base = playlist(entry("e1"), entry("e2"))
 

@@ -201,6 +201,19 @@ class SharedPlaylistWireTest {
                 BoardPlaylistProjectionPendingReason.BOARD_WRITE_FAILED)))))
     }
 
+    @Test fun `a pending send must match the selected occurrence exactly`() {
+        refuses(BoardCellWireMessage.Snapshot(snapshot(playlist(
+            pending = BoardPlaylistPendingProjection("e1", "different-climb", 40,
+                BoardPlaylistProjectionPendingReason.BOARD_WRITE_FAILED)))))
+        refuses(BoardCellWireMessage.Snapshot(snapshot(playlist(
+            pending = BoardPlaylistPendingProjection("e1", "climb-a", 55,
+                BoardPlaylistProjectionPendingReason.BOARD_WRITE_FAILED)))))
+    }
+
+    @Test fun `a snapshot rest generation must be canonical and positive`() {
+        refuses(BoardCellWireMessage.Snapshot(snapshot(playlist(rest = rest(generation = 0)))))
+    }
+
     @Test fun `an out-of-range rest value is refused`() {
         refuses(BoardCellWireMessage.Snapshot(snapshot(playlist(entries = listOf(
             BoardPlaylistEntry("e1", "a", 40, BoardPlaylistPolicy.MAX_REST_SECONDS + 1))))))

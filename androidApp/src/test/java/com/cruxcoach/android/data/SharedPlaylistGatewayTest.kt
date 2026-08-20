@@ -346,6 +346,26 @@ class SharedPlaylistGatewayTest {
             assertTrue(submitted.single().ops.single() is BoardPlaylistOp.Add)
         }
 
+    @Test fun `a transient handover ack keeps the leaf command pending until commit`() =
+        runBlocking {
+            every { boardCellManager.isLocalController() } returns false
+            publish(shared())
+            hostWithLeaf()
+
+            serverCommands.emit(GattCommand(leafAddress,
+                SessionQueueProtocol.encodeCommand(SessionCommand.Add(addedClimb, 45))))
+            val command = submitted.single()
+            commandAcks.send(BoardCommandAck(command.commandId,
+                BoardCommandStatus.NOT_CONTROLLER, cell, 1, 1, 5, "hash"))
+
+            assertEquals("handover is not a terminal decision", 1,
+                bridge.pendingCommandCount.value)
+
+            commandAcks.send(BoardCommandAck(command.commandId,
+                BoardCommandStatus.COMMITTED, cell, 1, 2, 6, "hash"))
+            assertEquals(0, bridge.pendingCommandCount.value)
+        }
+
     // ===== The legacy-only path is untouched =====
 
     @Test fun `without a BoardCell the leaf's add still mutates the local host queue`() =

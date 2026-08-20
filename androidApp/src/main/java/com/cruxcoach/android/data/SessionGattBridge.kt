@@ -95,6 +95,7 @@ class SessionGattBridge(
         private const val MIGRATION_BASE_DELAY_MS = 1000L
         private const val MIGRATION_INDEX_STEP_MS = 3000L
         private const val COMMAND_RESULT_TIMEOUT_MS = 5000L
+        private const val GATEWAY_COMMAND_RESULT_TIMEOUT_MS = 30_000L
         /**
          * How the shared playlist recovers a dropped command.
          *
@@ -352,7 +353,7 @@ class SessionGattBridge(
             }
             scope.launch {
                 manager.commandAcks.collect { ack ->
-                    if (ack.status != BoardCommandStatus.ACCEPTED) {
+                    if (ack.status.isTerminalDecision) {
                         meshAckWaiters.remove(ack.commandId)?.complete(ack)
                     }
                     val pending = pendingPlaylistCommands[ack.commandId] ?: return@collect
@@ -363,19 +364,29 @@ class SessionGattBridge(
                         pending.retryAtMs = SystemClock.elapsedRealtime() + COMMAND_RESULT_TIMEOUT_MS
                         return@collect
                     }
+                    // A handover refusal or a controller that is behind this
+                    // replica has not decided the command. Retain its original
+                    // identity and retry promptly after routing/repair catches
+                    // up instead of reporting a lost edit.
+                    if (ack.status == BoardCommandStatus.NOT_CONTROLLER ||
+                        ack.status == BoardCommandStatus.REJECTED_STALE) {
+                        pending.retryAtMs = SystemClock.elapsedRealtime() +
+                            PLAYLIST_COMMAND_RETRY_INITIAL_MS
+                        return@collect
+                    }
                     removePendingCommand(ack.commandId)
                     when (ack.status) {
                         BoardCommandStatus.COMMITTED -> Unit
                         BoardCommandStatus.REJECTED_CONFLICT,
-                        BoardCommandStatus.REJECTED_STALE,
                         BoardCommandStatus.SUPERSEDED ->
                             _commandFeedback.emit(PlaylistCommandFeedback(
                                 PlaylistCommandFeedbackKind.CONFLICT, pending.label))
-                        BoardCommandStatus.NOT_CONTROLLER,
                         BoardCommandStatus.BOARD_WRITE_FAILED ->
                             _commandFeedback.emit(PlaylistCommandFeedback(
                                 PlaylistCommandFeedbackKind.FAILED, pending.label))
-                        BoardCommandStatus.ACCEPTED -> Unit
+                        BoardCommandStatus.ACCEPTED,
+                        BoardCommandStatus.NOT_CONTROLLER,
+                        BoardCommandStatus.REJECTED_STALE -> Unit
                     }
                 }
             }
@@ -467,7 +478,9 @@ class SessionGattBridge(
         if (ops.isEmpty()) return null
         val playlistCommand = manager.composePlaylistCommand(ops, commandId) ?: return null
         if (manager.isLocalController()) return manager.submitPlaylistCommand(playlistCommand)
-        return awaitMeshAck(commandId) { manager.submitPlaylistCommand(playlistCommand) }
+        return awaitMeshAck(commandId, command.javaClass.simpleName, playlistCommand) {
+            manager.submitPlaylistCommand(playlistCommand)
+        }
     }
 
     /**
@@ -478,15 +491,24 @@ class SessionGattBridge(
      */
     private suspend fun awaitMeshAck(
         commandId: String,
+        label: String,
+        command: BoardPlaylistCommand,
         send: suspend () -> Any?,
     ): BoardCommandAck? {
         val waiter = CompletableDeferred<BoardCommandAck>()
         meshAckWaiters[commandId] = waiter
+        pendingPlaylistCommands[commandId] = PendingPlaylistCommand(label, command)
+        updatePendingCommandCount()
         return try {
-            if (send() == null) null
-            else withTimeoutOrNull(COMMAND_RESULT_TIMEOUT_MS) { waiter.await() }
+            val initial = send() as? BoardCommandAck
+            when {
+                initial == null -> null
+                initial.status.isTerminalDecision -> initial
+                else -> withTimeoutOrNull(GATEWAY_COMMAND_RESULT_TIMEOUT_MS) { waiter.await() }
+            }
         } finally {
             meshAckWaiters.remove(commandId)
+            removePendingCommand(commandId)
         }
     }
 
@@ -625,7 +647,8 @@ class SessionGattBridge(
             // Full persistence + name resolution happens in stopSharing()/leaveSession().
             val queueState = queueManager.state.value
             val currentClimb = queueState.currentClimb
-            if (currentClimb != null && !queueState.externalBoardOverride) {
+            if (currentClimb != null && !queueState.externalBoardOverride &&
+                (queueState.mesh == null || queueState.mesh.selectionOnBoard)) {
                 boardStateManager.setLastClimbQuick(
                     currentClimb.climbUuid,
                     currentClimb.angle,

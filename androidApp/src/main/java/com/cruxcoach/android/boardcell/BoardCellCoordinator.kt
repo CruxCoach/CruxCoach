@@ -306,7 +306,10 @@ class BoardCellCoordinator(
         senderId: String,
         command: BoardPlaylistCommand,
     ): BoardCommandAck? = mutex.withLock {
-        durableStore.commandAck(command.commandId)?.let { return@withLock it }
+        val replicaSnapshot = replicas[boardId]?.snapshot
+        durableStore.commandAck(command.commandId)
+            ?.takeIf { ack -> replicaSnapshot != null && ack.matches(replicaSnapshot) }
+            ?.let { return@withLock it }
         // Deliberately not recorded in the durable ack window: "ask somebody
         // else" and "you are ahead of me" are statements about this device at
         // this moment, not decisions about the command. Remembering them would
@@ -487,6 +490,28 @@ class BoardCellCoordinator(
         BoardCellEvent.ProjectCommitted(projection, commandId)
     }
 
+    /**
+     * Projects an explicit lamp request against the user-visible state it was
+     * composed from. Heartbeats can be rebased, but a concurrent selection or
+     * physical projection change makes the old request stale. The comparison
+     * happens under [mutex], so another commit cannot slip between the check
+     * and the write.
+     */
+    suspend fun projectSemantically(
+        boardId: PhysicalBoardId,
+        request: BoardProjectionRequest,
+        nowMonotonicMs: Long,
+        boardWrite: suspend () -> Boolean,
+    ): ProjectionResult = projectInternal(
+        boardId = boardId,
+        requested = request.projection,
+        nowMonotonicMs = nowMonotonicMs,
+        commandId = request.commandId,
+        baseSequence = request.baseSequence,
+        boardWrite = boardWrite,
+        semanticRequest = request,
+    ) { BoardCellEvent.ProjectCommitted(request.projection, request.commandId) }
+
     /** Explicit operator recovery when the board protocol has no semantic readback. */
     suspend fun reprojectAfterRecovery(
         boardId: PhysicalBoardId,
@@ -519,9 +544,13 @@ class BoardCellCoordinator(
         baseSequence: Long?,
         boardWrite: suspend () -> Boolean,
         allowRecovery: Boolean = false,
+        semanticRequest: BoardProjectionRequest? = null,
         eventAfterWrite: suspend () -> BoardCellEvent,
     ): ProjectionResult = mutex.withLock {
-        durableStore.commandAck(commandId)?.let { old ->
+        val replicaSnapshot = replicas[boardId]?.snapshot
+        durableStore.commandAck(commandId)
+            ?.takeIf { old -> replicaSnapshot != null && old.matches(replicaSnapshot) }
+            ?.let { old ->
             if (old.status == BoardCommandStatus.COMMITTED)
                 return@withLock ProjectionResult.Duplicate(old)
             return@withLock ProjectionResult.Refused("duplicate command: ${old.status}", old)
@@ -534,7 +563,8 @@ class BoardCellCoordinator(
             if (ack != null) durableStore.recordAck(ack)
             return@withLock ProjectionResult.Refused("cell is not writable", ack)
         }
-        if (baseSequence != null && baseSequence != current.sequence) {
+        val effectiveBaseSequence = semanticRequest?.semanticBaseSequence(current) ?: baseSequence
+        if (effectiveBaseSequence != null && effectiveBaseSequence != current.sequence) {
             val rejected = ack(commandId, BoardCommandStatus.REJECTED_STALE, current,
                 detail = "expected ${current.sequence}")
             durableStore.recordAck(rejected)
@@ -853,7 +883,12 @@ class BoardCellCoordinator(
         snapshot.controllerTerm, snapshot.sequence, snapshot.stateHash, detail)
 
     fun snapshot(boardId: PhysicalBoardId): BoardCellSnapshot? = replicas[boardId]?.snapshot
-    fun commandAck(commandId: String): BoardCommandAck? = durableStore.commandAck(commandId)
+    fun commandAck(commandId: String, snapshot: BoardCellSnapshot): BoardCommandAck? =
+        durableStore.commandAck(commandId)?.takeIf { it.matches(snapshot) }
+
+    private fun BoardCommandAck.matches(snapshot: BoardCellSnapshot): Boolean =
+        cellId == snapshot.cellId && epoch == snapshot.epoch &&
+            controllerTerm == snapshot.controllerTerm
 
     /**
      * How long since any authenticated traffic from the canonical controller,

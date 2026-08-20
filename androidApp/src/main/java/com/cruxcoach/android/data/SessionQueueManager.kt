@@ -321,15 +321,28 @@ class SessionQueueManager(
                 participantCount = snapshot.members.size,
                 isConnecting = false,
                 error = null,
+                awaitingExplicitSend = canonicalItem != null && !selectionOnBoard,
                 externalBoardOverride = externalBoardOverride,
                 physicalBoardId = snapshot.physicalBoardId.value,
                 boardCellId = snapshot.cellId.value,
                 mesh = view,
             )
         }
-        if (adopting) {
+        val updated = _state.value
+        if (adopting || current.queue != updated.queue) {
             onQueueChanged?.invoke()
+        }
+        if (adopting || current.currentIndex != updated.currentIndex ||
+            current.currentClimb != updated.currentClimb ||
+            current.awaitingExplicitSend != updated.awaitingExplicitSend) {
             onCurrentClimbChanged?.invoke()
+        }
+        if (adopting || current.participantCount != updated.participantCount ||
+            current.participants != updated.participants) {
+            onParticipantsChanged?.invoke()
+        }
+        if (adopting || current.sessionId != updated.sessionId ||
+            current.awaitingExplicitSend != updated.awaitingExplicitSend) {
             onSessionInfoChanged?.invoke()
         }
         applyCanonicalRest(playlist.activeRest, publishesRestEnd = view.localIsController)
@@ -401,7 +414,13 @@ class SessionQueueManager(
     /** The canonical playlist is empty, or this device is no longer in it. */
     private fun leaveCanonicalPlaylist() {
         Log.d(TAG, "Canonical playlist empty/left — clearing the mirrored session")
-        finishQueue()
+        finishQueue(preserveCallbacks = true)
+        // An API-28 leaf has no FIPS replica of its own. The existing GATT
+        // state notifications are how it learns that the canonical list is
+        // now empty; dropping the callbacks here stranded it on old entries.
+        onQueueChanged?.invoke()
+        onCurrentClimbChanged?.invoke()
+        onSessionInfoChanged?.invoke()
     }
 
     /**
@@ -417,7 +436,7 @@ class SessionQueueManager(
     fun stopFollowingSharedPlaylist() {
         if (_state.value.mesh == null) return
         stoppedFollowingSharedPlaylist = true
-        finishQueue()
+        finishQueue(preserveCallbacks = true)
     }
 
     /** The user acted on the shared playlist, so they want to see it again. */
@@ -512,19 +531,21 @@ class SessionQueueManager(
         finishQueue()
     }
 
-    private fun finishQueue() {
+    private fun finishQueue(preserveCallbacks: Boolean = false) {
         lastSentClimbKey = null
         val prev = _state.value
         Log.d(TAG, "endQueue() called, role=${prev.role}, queue=${prev.queue.size}, " +
             "participants=${prev.participants.size}, " +
             "callbacks: onQueue=${onQueueChanged != null}, onParticipants=${onParticipantsChanged != null}")
         _state.update { SessionQueueState() }
-        onQueueChanged = null
-        onCurrentClimbChanged = null
-        onParticipantsChanged = null
-        onSessionInfoChanged = null
-        onFirstQueueClimbSent = null
-        remoteAddClimb = null
+        if (!preserveCallbacks) {
+            onQueueChanged = null
+            onCurrentClimbChanged = null
+            onParticipantsChanged = null
+            onSessionInfoChanged = null
+            onFirstQueueClimbSent = null
+            remoteAddClimb = null
+        }
         // The rest hooks survive: a canonical playlist can be adopted without
         // anybody calling play() — a join, a process restart or a host
         // handover all arrive as snapshots — and a session that cleared them
@@ -567,9 +588,7 @@ class SessionQueueManager(
     }
 
     fun addClimb(climbUuid: String, angle: Int) {
-        val before = _state.value
-        if (boardCellManager?.isCellMember() == true &&
-            (before.mesh != null || before.visibilityRequested == SessionVisibility.JOINABLE)) {
+        if (boardCellManager?.isCellMember() == true) {
             // The BoardCell already owns a playlist; this device just has not
             // mirrored it yet. Adding to the shared one is the only correct
             // reading of "add" here — starting a second, private list beside

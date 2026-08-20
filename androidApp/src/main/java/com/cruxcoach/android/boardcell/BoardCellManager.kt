@@ -209,7 +209,13 @@ class BoardCellManager @Inject constructor(
         boardConnection.connectionGuard = { board -> !requiresControllerRequest(board) }
         meshTransport.onPlaylistCommand = { playlistCommandChannel.send(it) }
         meshTransport.onCommandAck = { _, ack ->
-            if (ack.status != BoardCommandStatus.ACCEPTED) pendingProjectionRequests.remove(ack.commandId)
+            // A handover refusal is transient: the same projection request is
+            // safe to route to the new controller. A stale semantic base is
+            // different — replaying it could put an old selection on the wall.
+            if (ack.status != BoardCommandStatus.ACCEPTED &&
+                ack.status != BoardCommandStatus.NOT_CONTROLLER) {
+                pendingProjectionRequests.remove(ack.commandId)
+            }
             commandAckChannel.send(ack)
         }
         meshTransport.onProjectionRequest = { projectionRequestChannel.send(it) }
@@ -749,8 +755,16 @@ class BoardCellManager @Inject constructor(
                     BoardPlaylistProjectionPendingReason.CLIMB_UNAVAILABLE))
                 return@withLock false
             }
-            val result = coordinator.project(board, resolved, monotonicNow(),
-                UUID.randomUUID().toString(), null) { writer.write(resolved) }
+            val request = BoardProjectionRequest(
+                commandId = UUID.randomUUID().toString(),
+                projection = resolved,
+                baseSequence = snapshot.sequence,
+                baseProjection = snapshot.projection,
+                basePlaylistRevision = snapshot.playlistRevision,
+            )
+            val result = coordinator.projectSemantically(board, request, monotonicNow()) {
+                writer.write(resolved)
+            }
             FipsDebugLog.event("playlist", "projection_attempted",
                 "climb" to FipsDebugLog.id(entry.climbUuid), "angle" to entry.angle,
                 "result" to result.javaClass.simpleName)
@@ -814,14 +828,7 @@ class BoardCellManager @Inject constructor(
     ): ProjectionResult {
         val board = writableBoard() ?: return ProjectionResult.Refused("BoardCell unavailable")
         val request = inbound.request
-        val current = coordinator.snapshot(board)
-            ?: return ProjectionResult.Refused("BoardCell unavailable")
-        // Heartbeats and membership changes share the canonical sequence but
-        // do not conflict with the board projection the participant saw. Only
-        // rebase when both user-visible command domains are still unchanged.
-        val semanticBase = request.semanticBaseSequence(current)
-        return coordinator.project(board, request.projection, monotonicNow(), request.commandId,
-            semanticBase, boardWrite).also { result ->
+        return coordinator.projectSemantically(board, request, monotonicNow(), boardWrite).also { result ->
             val ack = when (result) {
                 is ProjectionResult.Committed -> result.ack
                 is ProjectionResult.Duplicate -> result.ack

@@ -371,6 +371,8 @@ object BoardPlaylistPolicy {
         if (command.ops.size > MAX_OPS_PER_COMMAND) return Outcome.Reject("too many operations")
         if (command.baseClearGeneration < current.clearGeneration)
             return Outcome.Reject("the shared playlist was cleared")
+        if (command.baseClearGeneration > current.clearGeneration)
+            return Outcome.Reject("clear generation is ahead of the controller")
         if (command.ops.any { it is BoardPlaylistOp.SetPendingProjection } && !senderIsController)
             return Outcome.Reject("only the controller reports the physical send")
         var clearGeneration = current.clearGeneration
@@ -379,6 +381,8 @@ object BoardPlaylistPolicy {
         for (op in command.ops) {
             when (op) {
                 is BoardPlaylistOp.Clear -> {
+                    if (clearGeneration == Long.MAX_VALUE)
+                        return Outcome.Reject("clear generation exhausted")
                     clearGeneration += 1
                     resolved += BoardPlaylistOp.Clear(clearGeneration)
                 }

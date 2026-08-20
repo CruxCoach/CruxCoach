@@ -127,6 +127,8 @@ object BoardCellWireCodec {
                     require(message.value.members.size <= 128 &&
                         message.value.recentCommandIds.size <= 256 &&
                         message.value.membershipRevision >= 0)
+                    require(message.value.members.all { it.length in 1..256 })
+                    require(message.value.recentCommandIds.all { it.length in 8..128 })
                     requirePlaylistBounds(message.value.playlist)
                 }
                 is BoardCellWireMessage.Event -> when (val event = message.value.event) {
@@ -269,6 +271,8 @@ object BoardCellWireCodec {
     private fun requirePlaylistBounds(playlist: BoardPlaylistState) {
         require(playlist.entries.size <= BoardPlaylistPolicy.MAX_ENTRIES)
         require(playlist.clearGeneration >= 0)
+        require(playlist.sessionId == null || playlist.sessionId > 0)
+        require(playlist.sessionId != null || playlist.entries.isEmpty())
         val ids = HashSet<String>(playlist.entries.size * 2)
         playlist.entries.forEach {
             requireEntryBounds(it.entryId, it.climbUuid, it.angle)
@@ -281,7 +285,7 @@ object BoardCellWireCodec {
         require(playlist.currentEntryId != null || playlist.entries.isEmpty())
         playlist.activeRest?.let {
             require(it.totalSeconds in 1..BoardPlaylistPolicy.MAX_REST_SECONDS)
-            require(it.generation >= 0)
+            require(it.generation > 0)
             require(it.nextEntryId in ids)
             // The start/end pair has to describe exactly the duration it
             // claims. Bounding only the far end still allowed a "two minute"
@@ -294,7 +298,13 @@ object BoardCellWireCodec {
         playlist.pendingProjection?.let {
             requireEntryBounds(it.entryId, it.climbUuid, it.angle)
             require(it.entryId == playlist.currentEntryId)
+            val entry = playlist.entry(it.entryId)
+            require(entry != null && entry.climbUuid == it.climbUuid && entry.angle == it.angle)
         }
+        // Wire snapshots must already be canonical. Silently normalizing a
+        // controller's malformed snapshot would produce a different hash and
+        // let inconsistent state enter persistence before the next delta.
+        require(BoardPlaylistPolicy.normalize(playlist) == playlist)
     }
 }
 
@@ -934,7 +944,7 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
                 // cache entry when a command is retried after commit. This is
                 // what survives a controller handover: the new controller
                 // inherits the ack window in the snapshot it adopted.
-                target.commandAck(command.commandId)?.let {
+                target.commandAck(command.commandId, snapshot)?.let {
                     FipsDebugLog.event("wire", "playlist_command_deduplicated_durable",
                         "command" to FipsDebugLog.id(command.commandId), "status" to it.status)
                     seenCommands[key] = it
