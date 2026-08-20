@@ -1075,10 +1075,20 @@ class BoardCellManager @Inject constructor(
         snapshot()?.let { active ->
             if (active.cellId == cell && activeNodeId in active.members &&
                 active.availability == BoardCellAvailability.ACTIVE && runtime.running.value) return true
-            _membershipTransition.value = MeshMembershipTransition.LEAVING
-            if (!leaveCurrentMeshLocked()) {
-                _membershipTransition.value = MeshMembershipTransition.ERROR
-                return false
+            if (active.availability != BoardCellAvailability.ACTIVE) {
+                // A frozen replica cannot perform a canonical leave and must
+                // not spend the normal leave timeout asking its vanished old
+                // controller. Selecting a live advertisement is an explicit
+                // repair: discard the historical local replica immediately,
+                // then join the advertised generation from a clean base.
+                teardownLocalMembership(active)
+                locallyDepartedCell = null
+            } else {
+                _membershipTransition.value = MeshMembershipTransition.LEAVING
+                if (!leaveCurrentMeshLocked()) {
+                    _membershipTransition.value = MeshMembershipTransition.ERROR
+                    return false
+                }
             }
         }
         // The native radio can rediscover its own advertisement while the

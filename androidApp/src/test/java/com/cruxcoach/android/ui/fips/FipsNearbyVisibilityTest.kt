@@ -22,6 +22,20 @@ class FipsNearbyVisibilityTest {
         assertEquals(listOf(foreign), visibleNearbyMeshes(listOf(own, foreign), null))
     }
 
+    @Test
+    fun `matching realm remains selectable when the retained membership is frozen`() {
+        val restartedBoard = mesh("own").copy(matchesActiveRealm = true)
+
+        assertEquals(
+            listOf(restartedBoard),
+            visibleNearbyMeshes(
+                listOf(restartedBoard),
+                activeCellId = "own",
+                allowActiveRealmRejoin = true,
+            ),
+        )
+    }
+
     private fun mesh(cell: String) = FipsNearbyMesh(
         address = cell,
         realmTag = cell,

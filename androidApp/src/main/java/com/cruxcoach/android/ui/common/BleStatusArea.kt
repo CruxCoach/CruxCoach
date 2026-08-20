@@ -83,7 +83,6 @@ fun BleStatusArea(
     val meshState by meshViewModel.state.collectAsStateWithLifecycle()
     val joiningBoardCellId by meshViewModel.joiningBoardCellId.collectAsStateWithLifecycle()
     val meshJoinFailed by meshViewModel.joinFailed.collectAsStateWithLifecycle()
-    val incomingJoinRequests by meshViewModel.incomingJoinRequests.collectAsStateWithLifecycle()
     val nearbyMeshes = meshState.nearbyMeshes.filterNot { it.currentMesh }
     val joiningMeshName = joiningBoardCellId?.let { cellId ->
         meshState.nearbyMeshes.firstOrNull { it.joinableBoardCellId == cellId }?.boardName
@@ -139,14 +138,6 @@ fun BleStatusArea(
             onDismiss = meshViewModel::dismissJoinError,
         )
     }
-    incomingJoinRequests.firstOrNull()?.let { request ->
-        BoardJoinRequestBanner(
-            remaining = incomingJoinRequests.size,
-            onAllow = { meshViewModel.allowBoardJoin(request) },
-            onDeny = { meshViewModel.denyBoardJoin(request) },
-        )
-    }
-
     if (!hasContent) return
 
     var expanded by remember { mutableStateOf(false) }
@@ -208,8 +199,25 @@ fun BleStatusArea(
     }
 }
 
+/** App-root host for admission prompts. It must not live in [BleStatusArea]:
+ * several secondary screens intentionally have no BLE status row, while a
+ * time-limited request still has to be visible above whichever screen is open. */
 @Composable
-private fun BoardJoinRequestBanner(
+fun BoardJoinRequestHost(
+    meshViewModel: FipsMeshViewModel = hiltViewModel(),
+) {
+    val requests by meshViewModel.incomingJoinRequests.collectAsStateWithLifecycle()
+    requests.firstOrNull()?.let { request ->
+        BoardJoinRequestDialog(
+            remaining = requests.size,
+            onAllow = { meshViewModel.allowBoardJoin(request) },
+            onDeny = { meshViewModel.denyBoardJoin(request) },
+        )
+    }
+}
+
+@Composable
+private fun BoardJoinRequestDialog(
     remaining: Int,
     onAllow: () -> Unit,
     onDeny: () -> Unit,

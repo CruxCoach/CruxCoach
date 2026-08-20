@@ -78,12 +78,14 @@ val FipsMeshUiState.canJoinPlaylist: Boolean
 internal fun visibleNearbyMeshes(
     nearby: List<com.cruxcoach.android.fips.FipsNearbyMesh>,
     activeCellId: String?,
+    allowActiveRealmRejoin: Boolean = false,
 ): List<com.cruxcoach.android.fips.FipsNearbyMesh> = nearby.filterNot {
     // The active radio observes advertisements from its own realm. During a
     // short coordinator restore window the canonical snapshot (and therefore
     // activeCellId) can still be null. Never offer that advertisement as a
     // fresh join: doing so would tear down the healthy controller transport.
-    it.matchesActiveRealm || (activeCellId != null && it.joinableBoardCellId == activeCellId)
+    (!allowActiveRealmRejoin && it.matchesActiveRealm) ||
+        (!allowActiveRealmRejoin && activeCellId != null && it.joinableBoardCellId == activeCellId)
 }
 
 /**
@@ -191,7 +193,17 @@ class FipsMeshViewModel @Inject constructor(
                     localIsHost = it.hostId == runtime.localNpub,
                 )
             },
-            nearbyMeshes = if (meshAvailable) visibleNearbyMeshes(nearby, snapshot?.cellId?.value).map {
+            nearbyMeshes = if (meshAvailable) visibleNearbyMeshes(
+                nearby,
+                snapshot?.cellId?.value,
+                // A frozen replica is historical recovery state, not a live
+                // membership. The same physical board deterministically uses
+                // the same realm/cell when somebody starts it again, so hiding
+                // matching advertisements here made that fresh session
+                // impossible to select and repair.
+                allowActiveRealmRejoin = snapshot != null &&
+                    snapshot.availability != com.cruxcoach.android.boardcell.BoardCellAvailability.ACTIVE,
+            ).map {
                 NearbyFipsMeshUi(
                     address = it.address,
                     realmTag = it.realmTag,

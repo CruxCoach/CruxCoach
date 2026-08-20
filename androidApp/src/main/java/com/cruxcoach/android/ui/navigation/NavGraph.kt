@@ -1118,6 +1118,9 @@ fun CruxCoachNavHost(
         onNavigateToSettings = { navController.navigate(Routes.SETTINGS) },
         onNavigateToCompetitions = { navController.navigate(Routes.COMPETITIONS) },
     )
+    // Admission is time-limited and relevant regardless of the current route.
+    // Keep it at the app navigation root rather than inside individual BLE rows.
+    com.cruxcoach.android.ui.common.BoardJoinRequestHost()
     } // CompositionLocalProvider
 }
 
