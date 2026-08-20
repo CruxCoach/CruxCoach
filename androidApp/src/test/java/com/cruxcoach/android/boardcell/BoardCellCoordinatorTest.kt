@@ -367,6 +367,41 @@ class BoardCellCoordinatorTest {
         assertTrue(target.project(board, BoardProjection("new", 40), 106) { true } is ProjectionResult.Committed)
     }
 
+    @Test fun `released source accepts target readiness after heartbeat lease expires`() = runTest {
+        val board = PhysicalBoardId("kilter:serial:slow-target")
+        val sourceTransport = RecordingTransport()
+        val targetTransport = RecordingTransport()
+        val source = BoardCellCoordinator(
+            "source",
+            sourceTransport,
+            settleMs = 0,
+            heartbeatTimeoutMs = 5,
+            handoverTimeoutMs = 100,
+        )
+        source.beginClaim(board, BoardCellId("slow-target"), 100)
+        source.settle(board, 100)!!
+        source.joinMember(board, "target")
+        val target = BoardCellCoordinator(
+            "target",
+            targetTransport,
+            settleMs = 0,
+            heartbeatTimeoutMs = 5,
+            handoverTimeoutMs = 100,
+        )
+        target.restoreTrustedSnapshot(source.snapshot(board)!!, 100)
+
+        val prepared = source.prepareHandover(board, "target", 101, "slow-transfer")!!
+        target.acceptEvent("source", prepared, 101)
+        val released = source.sourceReleased(board, "slow-transfer", 102)!!
+        target.acceptEvent("source", released, 102)
+        target.targetReady(board, "gatt-ready")
+
+        val ready = targetTransport.ready.single().second
+        assertTrue(source.acceptTargetReady("target", ready, 110))
+        assertEquals(BoardCellAvailability.ACTIVE, source.snapshot(board)!!.availability)
+        assertEquals(HandoverPhase.TARGET_READY, source.snapshot(board)!!.handover!!.phase)
+    }
+
     @Test fun `unready target times out and aborts only before commit`() = runTest {
         val board = PhysicalBoardId("board-timeout")
         val (source) = settled("source", board, now = 100)

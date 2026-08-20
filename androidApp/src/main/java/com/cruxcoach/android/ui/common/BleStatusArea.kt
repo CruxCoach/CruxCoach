@@ -10,9 +10,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -215,42 +214,36 @@ private fun BoardJoinRequestBanner(
     onAllow: () -> Unit,
     onDeny: () -> Unit,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = com.cruxcoach.android.ui.theme.OrangeAccent.copy(alpha = 0.14f),
-        ),
-    ) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    AlertDialog(
+        onDismissRequest = { /* Ignoring is intentionally not a decline. */ },
+        title = {
             Text(stringResource(com.cruxcoach.android.R.string.board_join_request_title))
-            Text(
-                stringResource(com.cruxcoach.android.R.string.board_join_request_body),
-                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(com.cruxcoach.android.R.string.board_join_request_body))
                 if (remaining > 1) {
-                    Text(
-                        stringResource(com.cruxcoach.android.R.string.board_join_request_more, remaining - 1),
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-                OutlinedButton(onClick = onDeny) {
-                    Text(stringResource(com.cruxcoach.android.R.string.board_join_request_deny))
-                }
-                Button(
-                    onClick = onAllow,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = com.cruxcoach.android.ui.theme.OrangeAccent,
-                    ),
-                ) {
-                    Text(stringResource(com.cruxcoach.android.R.string.board_join_request_allow))
+                    Text(stringResource(
+                        com.cruxcoach.android.R.string.board_join_request_more,
+                        remaining - 1,
+                    ))
                 }
             }
-        }
-    }
+        },
+        confirmButton = {
+            Button(
+                onClick = onAllow,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = com.cruxcoach.android.ui.theme.OrangeAccent,
+                ),
+            ) {
+                Text(stringResource(com.cruxcoach.android.R.string.board_join_request_allow))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDeny) {
+                Text(stringResource(com.cruxcoach.android.R.string.board_join_request_deny))
+            }
+        },
+    )
 }

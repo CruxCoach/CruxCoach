@@ -3,6 +3,7 @@ package com.cruxcoach.android.data
 import com.cruxcoach.android.ble.BoardConnectionCapacity
 import com.cruxcoach.android.ble.BoardControllerProfiles
 import com.cruxcoach.android.ble.DiscoveredBoard
+import com.cruxcoach.android.boardcell.MeshMembershipTransition
 
 internal enum class BoardRelayAvailability {
     AVAILABLE,
@@ -29,4 +30,15 @@ internal object BoardRelayPolicy {
             BoardConnectionCapacity.UNKNOWN -> BoardRelayAvailability.AVAILABLE
         }
     }
+
+    /** A disconnect is user-visible only while this device still owns relay
+     * infrastructure and is not deliberately leaving. Re-read both values
+     * after the asynchronous relay shutdown so a handover cannot be reported
+     * as an unexpected board loss from an older combined-flow emission. */
+    fun shouldReportBoardLoss(
+        relayStillRequired: Boolean,
+        boardDisconnected: Boolean,
+        membershipTransition: MeshMembershipTransition,
+    ): Boolean = relayStillRequired && boardDisconnected &&
+        membershipTransition != MeshMembershipTransition.LEAVING
 }

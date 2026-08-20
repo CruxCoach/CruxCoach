@@ -878,7 +878,18 @@ class BoardCellCoordinator(
                 HandoverPhase.PREPARED, HandoverPhase.SOURCE_RELEASED,
                 HandoverPhase.TARGET_READY)) return null
         val last = controllerObservedAt[boardId] ?: return null
-        if (nowMonotonicMs - last > heartbeatTimeoutMs) {
+        val transferInProgress = allowHandover && current.handover?.phase in setOf(
+            HandoverPhase.PREPARED,
+            HandoverPhase.SOURCE_RELEASED,
+            HandoverPhase.TARGET_READY,
+        )
+        // Releasing the physical board deliberately stops normal controller
+        // heartbeats. The transfer deadline fences this interval; applying the
+        // shorter heartbeat lease here used to freeze the source just as the
+        // target reported its (slower, OEM-dependent) GATT readiness. That
+        // local freeze then leaked through anti-entropy as a same-sequence,
+        // different-hash snapshot and stranded both replicas as a false fork.
+        if (!transferInProgress && nowMonotonicMs - last > heartbeatTimeoutMs) {
             replicas[boardId]?.freeze(BoardCellAvailability.FROZEN_NEEDS_CONTROLLER)
             replicas[boardId]?.snapshot?.let(durableStore::persistSnapshot)
             return null

@@ -132,7 +132,7 @@ class CruxRelayManager(
         scope.launch {
             combine(relayRequiredFlow, bleConnection.connectionState) { required, st ->
                 required to st
-            }.collect { (required, st) -> reconcile(required, st) }
+            }.collect { reconcile() }
         }
         // Term/availability are part of the lease. A settling, frozen or
         // superseded controller must stop advertising immediately; the target
@@ -165,14 +165,19 @@ class CruxRelayManager(
 
     /** Retry immediately after the Android permission result changes. */
     fun onPermissionsChanged() {
-        scope.launch { reconcile(relayRequiredFlow.value, bleConnection.connectionState.value) }
+        scope.launch { reconcile() }
     }
 
     fun clearError() {
         _state.update { it.copy(error = null, errorDetail = null) }
     }
 
-    private suspend fun reconcile(required: Boolean, boardState: ConnectionState) {
+    private suspend fun reconcile() {
+        // Always read current StateFlow values here. A relay stop suspends while
+        // restoring the adapter name and closing GATT; captured combine values
+        // can therefore describe the controller state from before a handover.
+        val required = relayRequiredFlow.value
+        val boardState = bleConnection.connectionState.value
         _state.update { it.copy(enabled = required) }
         if (required && !BlePermissionHelper.hasAdvertisingPermission(context)) {
             if (running) stopRelay()
@@ -199,9 +204,22 @@ class CruxRelayManager(
             }
         } else if (running && (!required || boardState == ConnectionState.DISCONNECTED)) {
             stopRelay()
-            if (boardState == ConnectionState.DISCONNECTED && required) {
+            val reportBoardLoss = BoardRelayPolicy.shouldReportBoardLoss(
+                relayStillRequired = relayRequiredFlow.value,
+                boardDisconnected = bleConnection.connectionState.value == ConnectionState.DISCONNECTED,
+                membershipTransition = boardCellManager.membershipTransition.value,
+            )
+            if (reportBoardLoss) {
                 postStoppedNotification(R.string.relay_error_board_lost)
                 _state.update { it.copy(enabled = true, error = RelayError.BOARD_LOST) }
+            } else {
+                _state.update {
+                    if (it.error == RelayError.BOARD_LOST) {
+                        it.copy(enabled = relayRequiredFlow.value, error = null, errorDetail = null)
+                    } else {
+                        it.copy(enabled = relayRequiredFlow.value)
+                    }
+                }
             }
         }
     }

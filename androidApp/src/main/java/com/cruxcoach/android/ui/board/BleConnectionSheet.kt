@@ -1281,6 +1281,12 @@ private fun NearbyActiveClimbCard(
                         )
                     }
                 }
+            } else {
+                Text(
+                    stringResource(R.string.board_ble_board_join_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
 
             if (!climbSharingEnabled) {

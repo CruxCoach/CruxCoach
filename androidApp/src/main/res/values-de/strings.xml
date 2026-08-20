@@ -981,7 +981,8 @@
     <string name="board_ble_moonboard_generation_unsupported">Dieses MoonBoard nutzt ein älteres LED-Kit (vor 2017), das noch nicht unterstützt wird.</string>
     <string name="board_ble_start_scan">Scan starten</string>
     <string name="board_ble_stop_scan">Scan stoppen</string>
-    <string name="board_ble_board_occupied">Board ist besetzt</string>
+    <string name="board_ble_board_occupied">Board wird gemeinsam genutzt</string>
+    <string name="board_ble_board_join_hint">Wähle das Board unten aus, um beizutreten.</string>
     <string name="board_ble_someone_climbing">Jemand klettert in der Nähe</string>
     <string name="board_ble_unknown_climb">Unbekannter Climb</string>
     <string name="board_ble_enable_sharing_hint">Aktiviere \u201EClimb-Teilen\u201C in den Einstellungen, um Disconnect-Anfragen senden zu können.</string>

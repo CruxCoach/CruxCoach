@@ -1,6 +1,7 @@
 package com.cruxcoach.android.data
 
 import com.cruxcoach.android.ble.DiscoveredBoard
+import com.cruxcoach.android.boardcell.MeshMembershipTransition
 import com.cruxcoach.domain.board.BoardBrand
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -48,6 +49,30 @@ class BoardRelayPolicyTest {
     @Test
     fun `missing board is unavailable`() {
         assertEquals(BoardRelayAvailability.NO_BOARD, BoardRelayPolicy.availability(null))
+    }
+
+    @Test
+    fun `voluntary handover disconnect is not reported as board loss`() {
+        assertEquals(
+            false,
+            BoardRelayPolicy.shouldReportBoardLoss(
+                relayStillRequired = false,
+                boardDisconnected = true,
+                membershipTransition = MeshMembershipTransition.LEAVING,
+            ),
+        )
+    }
+
+    @Test
+    fun `unexpected controller disconnect remains visible`() {
+        assertEquals(
+            true,
+            BoardRelayPolicy.shouldReportBoardLoss(
+                relayStillRequired = true,
+                boardDisconnected = true,
+                membershipTransition = MeshMembershipTransition.IDLE,
+            ),
+        )
     }
 
     private fun board(
