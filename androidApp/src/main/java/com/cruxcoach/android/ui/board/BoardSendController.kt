@@ -87,7 +87,7 @@ internal class BoardSendController(
         }.onFailure { Log.w(TAG, "recordClimbHistory(send) failed", it) }
     }
 
-    fun sendToBoard(automaticLayer: Boolean = false) {
+    fun sendToBoard(@Suppress("UNUSED_PARAMETER") automaticLayer: Boolean = false) {
         // When a session queue is active, the queue controls what's on the board.
         // Individual climb sends from detail views are suppressed.
         if (isBoardOwnedBySession()) {
@@ -120,6 +120,13 @@ internal class BoardSendController(
         // string and route through the dedicated MoonBoard transport.
         if (state.value.climb?.brand == BoardBrand.MOONBOARD) {
             sendMoonBoardToBoard()
+            return
+        }
+        if (state.value.climb?.brand == BoardBrand.QUANTUM) {
+            // Quantum never follows page selection automatically. The detail
+            // lamp is an explicit request: assign the current climb to the
+            // selected local layer, then transmit exactly that identity.
+            sendCurrentQuantumClimb()
             return
         }
         val s = state.value
@@ -228,106 +235,19 @@ internal class BoardSendController(
                     ) }
                     return@launch
                 }
-                val quantumSlot = if (brand == BoardBrand.QUANTUM) {
-                    boardLayerManager.layerForClimb(s.climb!!.uuid)?.slot
-                        ?: if (automaticLayer) 0 else boardLayerManager.nextAvailableSlot(
-                            brand, s.selectedBoardLayerSlot,
-                        )
-                } else null
-                if (brand == BoardBrand.QUANTUM && quantumSlot == null) {
-                    state.update { it.copy(
-                        ble = it.ble.copy(isSending = false, error = R.string.board_layer_error_board_full),
-                        nearby = it.nearby.copy(debugInfo = "all Quantum layers occupied"),
-                    ) }
-                    return@launch
-                }
-                if (brand == BoardBrand.QUANTUM && quantumSlot != null) {
-                    if (BoardLayerConflictPolicy.sharedHoldCount(
-                            s.holds,
-                            boardLayerManager.state.value.layers,
-                            quantumSlot,
-                        ) > 0
-                    ) {
-                        state.update { it.copy(
-                            ble = it.ble.copy(
-                                isSending = false,
-                                error = R.string.board_layer_error_shared_hold,
-                            ),
-                            nearby = it.nearby.copy(debugInfo = "Quantum layer hold overlap"),
-                        ) }
-                        return@launch
-                    }
-                }
-                val quantumColor = quantumSlot?.let { slot ->
-                    val requested = s.selectedBoardLayerColor
-                        ?: boardLayerManager.state.value.layers.firstOrNull { it.slot == slot }?.color
-                        ?: boardLayerManager.availableColors().firstOrNull()
-                        ?: boardLayerManager.defaultColor(slot)
-                    val colorsOnOtherSlots = boardLayerManager.state.value.layers
-                        .filterNot { it.slot == slot }.mapTo(mutableSetOf()) { it.color } +
-                        boardLayerManager.state.value.externalLayers.map { it.color }
-                    if (requested in colorsOnOtherSlots) {
-                        if (automaticLayer) {
-                            boardLayerManager.availableColors().firstOrNull()
-                                ?: boardLayerManager.defaultColor(slot)
-                        } else null
-                    } else requested
-                }
-                if (brand == BoardBrand.QUANTUM && quantumSlot != null && quantumColor == null) {
-                    state.update { it.copy(
-                        ble = it.ble.copy(
-                            isSending = false,
-                            error = R.string.board_layer_error_color_taken,
-                        ),
-                    ) }
-                    return@launch
-                }
-                val quantumUserId = quantumSlot?.let(boardLayerManager::identityForSlot)
-                if (quantumSlot != null && quantumUserId != null && quantumColor != null) {
-                    boardLayerManager.beginProjection(
-                        BoardClimbLayer(
-                            slot = quantumSlot,
-                            climbUuid = s.climb!!.uuid,
-                            routeUuid = withContext(ioDispatcher) {
-                                boardRepository.getQuantumExternalRouteUuid(s.climb!!.uuid)
-                            } ?: s.climb!!.uuid,
-                            climbName = s.climb!!.name,
-                            angle = s.angle,
-                            userUuid = quantumUserId,
-                            color = quantumColor,
-                            holds = s.holds,
-                            status = BoardLayerStatus.PREVIEW,
-                        )
-                    )
-                }
-                val externalRouteId = if (brand == BoardBrand.QUANTUM) {
-                    withContext(ioDispatcher) {
-                        boardRepository.getQuantumExternalRouteUuid(s.climb!!.uuid)
-                    } ?: s.climb!!.uuid
-                } else null
                 val success = boardCellWriteGateway.project(
                     BoardProjection(s.climb!!.uuid, s.angle,
                         BoardProjectionPolicy.projectionSurvivesDisconnect(s.climb.brand))) {
                         bleConnection.sendClimb(
                             s.holds, placementToLed, roleColorMap,
-                            routeId = externalRouteId,
-                            quantumUserId = quantumUserId
-                                ?: com.cruxcoach.domain.board.QuantumBoardPacketEncoder.ZERO_UUID,
-                            quantumColor = quantumColor ?: 0x00ffff,
                         )
                     }
-                if (quantumSlot != null) {
-                    if (success) boardLayerManager.confirmProjection(quantumSlot)
-                    else boardLayerManager.failProjection(quantumSlot)
-                }
                 Log.i(TAG, "sendToBoard: writes done success=$success unmapped=$unmappedHolds")
                 state.update { it.copy(
                     ble = it.ble.copy(
                         isSending = false,
                         success = success,
-                        error = if (!success) quantumFailureResource(
-                            bleConnection.quantumControllerState.value.lastFailure,
-                        ) else null,
+                        error = if (!success) R.string.board_send_error_send_failed else null,
                         warning = if (success && unmappedHolds > 0) R.string.board_send_warning_holds_not_lit else null,
                     ),
                     nearby = it.nearby.copy(debugInfo = "sent ok=$success unmapped=$unmappedHolds")
@@ -355,6 +275,228 @@ internal class BoardSendController(
                 ) }
             }
         }
+    }
+
+    /** Store the current Quantum climb in the selected local slot. No BLE
+     * command is sent; PREVIEW is intentionally a useful offline state. */
+    fun assignCurrentToBoardLayer() {
+        if (isBoardOwnedBySession()) return
+        val snapshot = state.value
+        if (snapshot.climb?.brand != BoardBrand.QUANTUM || snapshot.holds.isEmpty()) return
+        val slot = selectedSlotFor(snapshot) ?: run {
+            state.update { it.copy(ble = it.ble.copy(error = R.string.board_layer_error_all_assigned)) }
+            return
+        }
+        scope.launch {
+            val layer = buildQuantumLayer(snapshot, slot) ?: return@launch
+            boardLayerManager.assignPreview(layer)
+            state.update {
+                it.copy(
+                    selectedBoardLayerSlot = slot,
+                    selectedBoardLayerColor = layer.color,
+                    ble = it.ble.copy(success = false, error = null, warning = null),
+                )
+            }
+        }
+    }
+
+    /** Send one already assigned layer. The displayed detail climb may be a
+     * different page; the layer owns the immutable route/hold snapshot. */
+    fun sendBoardLayer(slot: Int) = launchQuantumLayerSend(listOf(slot))
+
+    /** Send all four local assignments sequentially. A full capacity
+     * preflight prevents a half-applied rack when foreign users leave fewer
+     * physical controller places than the local preview needs. */
+    fun sendAllBoardLayers() {
+        val slots = boardLayerManager.state.value.layers.sortedBy { it.slot }.map { it.slot }
+        if (slots.isEmpty()) return
+        if (!boardLayerManager.canProjectAll()) {
+            state.update { it.copy(ble = it.ble.copy(error = R.string.board_layer_error_board_full)) }
+            return
+        }
+        launchQuantumLayerSend(slots)
+    }
+
+    private fun sendCurrentQuantumClimb() {
+        if (isBoardOwnedBySession()) return
+        val snapshot = state.value
+        if (snapshot.holds.isEmpty() || snapshot.ble.connectionState != ConnectionState.CONNECTED) return
+        val slot = selectedSlotFor(snapshot) ?: run {
+            state.update { it.copy(ble = it.ble.copy(error = R.string.board_layer_error_all_assigned)) }
+            return
+        }
+        sendJob?.cancel()
+        sendJob = scope.launch {
+            val connectedBrand = bleConnection.connectedBoardBrand.value
+            if (connectedBrand != null && connectedBrand != BoardBrand.QUANTUM) {
+                state.update { it.copy(
+                    ble = it.ble.copy(error = R.string.board_send_error_connected_board_mismatch),
+                ) }
+                return@launch
+            }
+            if (BoardBrand.fromWire(userPreferences.boardBrand.first()) != BoardBrand.QUANTUM) {
+                state.update { it.copy(
+                    ble = it.ble.copy(error = R.string.board_send_error_brand_mismatch),
+                ) }
+                return@launch
+            }
+            val layer = buildQuantumLayer(snapshot, slot) ?: return@launch
+            boardLayerManager.assignPreview(layer)
+            state.update {
+                it.copy(
+                    selectedBoardLayerSlot = slot,
+                    selectedBoardLayerColor = layer.color,
+                )
+            }
+            sendQuantumLayers(listOf(slot))
+        }
+    }
+
+    private fun selectedSlotFor(snapshot: ClimbDetailState): Int? =
+        snapshot.climb?.uuid?.let(boardLayerManager::layerForClimb)?.slot
+            ?: snapshot.selectedBoardLayerSlot
+
+    private suspend fun buildQuantumLayer(snapshot: ClimbDetailState, slot: Int): BoardClimbLayer? {
+        val climb = snapshot.climb ?: return null
+        val existing = boardLayerManager.state.value.layers.firstOrNull { it.slot == slot }
+        val colorsUsedElsewhere = boardLayerManager.state.value.layers
+            .filterNot { it.slot == slot }.mapTo(mutableSetOf()) { it.color } +
+            boardLayerManager.state.value.externalLayers.map { it.color }
+        val requested = snapshot.selectedBoardLayerColor
+            ?: existing?.color
+            ?: boardLayerManager.defaultColor(slot)
+        val color = requested.takeIf {
+            it in BoardLayerManager.LAYER_COLORS && it !in colorsUsedElsewhere
+        }
+            ?: BoardLayerManager.LAYER_COLORS.firstOrNull { it !in colorsUsedElsewhere }
+            ?: run {
+                state.update { it.copy(ble = it.ble.copy(error = R.string.board_layer_error_color_taken)) }
+                return null
+            }
+        val routeUuid = withContext(ioDispatcher) {
+            boardRepository.getQuantumExternalRouteUuid(climb.uuid)
+        } ?: climb.uuid
+        return BoardClimbLayer(
+            slot = slot,
+            climbUuid = climb.uuid,
+            routeUuid = routeUuid,
+            climbName = climb.name,
+            angle = snapshot.angle,
+            userUuid = boardLayerManager.identityForSlot(slot),
+            color = color,
+            holds = snapshot.holds,
+            status = BoardLayerStatus.PREVIEW,
+        )
+    }
+
+    private fun launchQuantumLayerSend(slots: List<Int>) {
+        if (isBoardOwnedBySession() || state.value.ble.isSending) return
+        if (bleConnection.connectionState.value != ConnectionState.CONNECTED) return
+        val connectedBrand = bleConnection.connectedBoardBrand.value
+        if (connectedBrand != null && connectedBrand != BoardBrand.QUANTUM) {
+            state.update { it.copy(
+                ble = it.ble.copy(error = R.string.board_send_error_connected_board_mismatch),
+            ) }
+            return
+        }
+        sendJob?.cancel()
+        sendJob = scope.launch { sendQuantumLayers(slots) }
+    }
+
+    private suspend fun sendQuantumLayers(slots: List<Int>) {
+        if (BoardBrand.fromWire(userPreferences.boardBrand.first()) != BoardBrand.QUANTUM) {
+            state.update { it.copy(
+                ble = it.ble.copy(error = R.string.board_send_error_brand_mismatch),
+            ) }
+            return
+        }
+        state.update {
+            it.copy(
+                ble = it.ble.copy(isSending = true, success = false, error = null, warning = null),
+                nearby = it.nearby.copy(debugInfo = "sending Quantum layers ${slots.map { slot -> slot + 1 }}"),
+            )
+        }
+        var success = true
+        for (slot in slots) {
+            val layer = boardLayerManager.state.value.layers.firstOrNull { it.slot == slot }
+            if (layer == null || !sendQuantumLayer(layer)) {
+                success = false
+                break
+            }
+        }
+        val failure = runCatching {
+            bleConnection.quantumControllerState.value.lastFailure
+        }.getOrNull()
+        state.update {
+            it.copy(
+                ble = it.ble.copy(
+                    isSending = false,
+                    success = success,
+                    error = when {
+                        success -> null
+                        failure != null -> quantumFailureResource(failure)
+                        else -> it.ble.error ?: R.string.board_send_error_send_failed
+                    },
+                ),
+                nearby = it.nearby.copy(debugInfo = "Quantum layers sent=$success"),
+            )
+        }
+    }
+
+    private suspend fun sendQuantumLayer(layer: BoardClimbLayer): Boolean {
+        if (!boardLayerManager.hasControllerCapacityFor(layer.slot)) {
+            boardLayerManager.failProjection(layer.slot)
+            state.update { it.copy(ble = it.ble.copy(error = R.string.board_layer_error_board_full)) }
+            return false
+        }
+        val activeOwnedLayers = boardLayerManager.state.value.layers.filter {
+            it.slot != layer.slot && it.confirmedRouteUuid != null
+        }
+        if (BoardLayerConflictPolicy.sharedHoldCount(layer.holds, activeOwnedLayers, null) > 0) {
+            boardLayerManager.failProjection(layer.slot)
+            state.update { it.copy(ble = it.ble.copy(error = R.string.board_layer_error_shared_hold)) }
+            return false
+        }
+        val occupiedColors = activeOwnedLayers.mapTo(mutableSetOf()) {
+            it.confirmedColor ?: it.color
+        } + boardLayerManager.state.value.externalLayers.map { it.color }
+        if (layer.color in occupiedColors) {
+            boardLayerManager.failProjection(layer.slot)
+            state.update { it.copy(ble = it.ble.copy(error = R.string.board_layer_error_color_taken)) }
+            return false
+        }
+        val productSizeId = userPreferences.boardProductSizeId.first()
+        val placementToLed = withContext(ioDispatcher) {
+            boardRepository.getPlacementLedMap(productSizeId, BoardBrand.QUANTUM.wireValue)
+        }
+        if (placementToLed.isEmpty() || layer.holds.none { it.placementId in placementToLed }) {
+            boardLayerManager.failProjection(layer.slot)
+            state.update { it.copy(ble = it.ble.copy(error = R.string.board_send_error_no_led_data)) }
+            return false
+        }
+        boardLayerManager.beginProjection(layer.slot)
+        val written = boardCellWriteGateway.project(
+            BoardProjection(
+                layer.climbUuid,
+                layer.angle,
+                BoardProjectionPolicy.projectionSurvivesDisconnect(BoardBrand.QUANTUM),
+            ),
+        ) {
+            bleConnection.sendClimb(
+                holds = layer.holds,
+                placementToLed = placementToLed,
+                roleColors = emptyMap(),
+                routeId = layer.routeUuid,
+                quantumUserId = layer.userUuid,
+                quantumColor = layer.color,
+            )
+        }
+        if (written) boardLayerManager.confirmProjection(layer.slot)
+        else boardLayerManager.failProjection(layer.slot)
+        if (written && state.value.climb?.uuid == layer.climbUuid) {
+            recordSentToHistory(state.value)
+        }
+        return written
     }
 
     /**
@@ -501,19 +643,24 @@ internal class BoardSendController(
     fun removeBoardLayer(slot: Int) {
         if (isBoardOwnedBySession()) return
         val layer = boardLayerManager.state.value.layers.firstOrNull { it.slot == slot } ?: return
+        if (layer.confirmedRouteUuid == null) {
+            boardLayerManager.removePreview(slot)
+            return
+        }
         if (bleConnection.connectedBoardBrand.value != BoardBrand.QUANTUM) return
         sendJob?.cancel()
         state.update { it.copy(ble = it.ble.copy(isSending = true, success = false, error = null)) }
         sendJob = scope.launch {
             val success = runCatching { bleConnection.removeQuantumLayer(layer.userUuid) }.getOrDefault(false)
             if (success) boardLayerManager.removeOwned(slot) else boardLayerManager.failProjection(slot)
+            val failure = runCatching {
+                bleConnection.quantumControllerState.value.lastFailure
+            }.getOrNull()
             state.update { current -> current.copy(
                 ble = current.ble.copy(
                     isSending = false,
                     success = success,
-                    error = if (success) null else quantumFailureResource(
-                        bleConnection.quantumControllerState.value.lastFailure,
-                    ),
+                    error = if (success) null else quantumFailureResource(failure),
                 ),
             ) }
         }

@@ -28,6 +28,12 @@ data class BoardClimbLayer(
     val holds: List<BoardHold>,
     val status: BoardLayerStatus,
     val ownedByThisInstallation: Boolean = true,
+    /** Route currently reported for this installation identity by the
+     * controller.  It deliberately stays separate from [routeUuid]: assigning
+     * a new preview must not pretend that the old physical projection has
+     * already disappeared. */
+    val confirmedRouteUuid: String? = null,
+    @ColorInt val confirmedColor: Int? = null,
 )
 
 enum class BoardLayerStatus { PREVIEW, SENDING, CONFIRMED, FAILED }
@@ -44,7 +50,10 @@ data class BoardLayerState(
     val layers: List<BoardClimbLayer> = emptyList(),
     val externalLayers: List<ExternalBoardLayer> = emptyList(),
 ) {
-    val occupiedCount: Int get() = layers.size + externalLayers.size
+    /** Physical controller occupancy. PREVIEW layers are local-only. */
+    val occupiedCount: Int
+        get() = layers.count { it.confirmedRouteUuid != null } + externalLayers.size
+    val assignedCount: Int get() = layers.size
 }
 
 /**
@@ -83,7 +92,6 @@ class BoardLayerManager @Inject constructor(
         val max = brand.maxSimultaneousClimbs
         val used = _state.value.layers.filter { it.ownedByThisInstallation }.mapTo(mutableSetOf()) { it.slot }
         if (preferred != null && preferred in used) return preferred
-        if (_state.value.occupiedCount >= max) return null
         if (preferred != null && preferred in 0 until max) return preferred
         return (0 until max).firstOrNull { it !in used }
     }
@@ -96,22 +104,66 @@ class BoardLayerManager @Inject constructor(
         return LAYER_COLORS.filterNot { it in used }
     }
 
-    fun beginProjection(layer: BoardClimbLayer) {
+    /** Assign or replace a local layer without touching BLE/controller state. */
+    fun assignPreview(layer: BoardClimbLayer) {
         _state.update { current ->
+            val previous = current.layers.firstOrNull { it.slot == layer.slot }
             current.copy(
                 brand = BoardBrand.QUANTUM,
                 layers = (current.layers.filterNot { it.slot == layer.slot } +
-                    layer.copy(status = BoardLayerStatus.SENDING)).sortedBy { it.slot },
+                    layer.copy(
+                        status = BoardLayerStatus.PREVIEW,
+                        confirmedRouteUuid = previous?.confirmedRouteUuid,
+                        confirmedColor = previous?.confirmedColor,
+                    )).sortedBy { it.slot },
             )
         }
     }
 
-    fun confirmProjection(slot: Int) = updateOwned(slot) { it.copy(status = BoardLayerStatus.CONFIRMED) }
+    fun beginProjection(layer: BoardClimbLayer) {
+        assignPreview(layer)
+        beginProjection(layer.slot)
+    }
+
+    fun beginProjection(slot: Int) = updateOwned(slot) {
+        it.copy(status = BoardLayerStatus.SENDING)
+    }
+
+    fun confirmProjection(slot: Int) = updateOwned(slot) {
+        it.copy(
+            status = BoardLayerStatus.CONFIRMED,
+            confirmedRouteUuid = it.routeUuid,
+            confirmedColor = it.color,
+        )
+    }
 
     fun failProjection(slot: Int) = updateOwned(slot) { it.copy(status = BoardLayerStatus.FAILED) }
 
     fun removeOwned(slot: Int) {
         _state.update { it.copy(layers = it.layers.filterNot { layer -> layer.slot == slot }) }
+    }
+
+    /** Remove an unsent assignment. A physically active identity is removed
+     * only through BoardBleConnection.removeQuantumLayer first. */
+    fun removePreview(slot: Int): Boolean {
+        val layer = _state.value.layers.firstOrNull { it.slot == slot } ?: return false
+        if (layer.confirmedRouteUuid != null) return false
+        removeOwned(slot)
+        return true
+    }
+
+    /** Whether activating this identity can fit without displacing anyone.
+     * Replacing an identity already present on the controller never consumes
+     * an additional place. */
+    fun hasControllerCapacityFor(slot: Int, brand: BoardBrand = BoardBrand.QUANTUM): Boolean {
+        val layer = _state.value.layers.firstOrNull { it.slot == slot }
+        return layer?.confirmedRouteUuid != null || _state.value.occupiedCount < brand.maxSimultaneousClimbs
+    }
+
+    fun canProjectAll(brand: BoardBrand = BoardBrand.QUANTUM): Boolean {
+        val state = _state.value
+        val newIdentities = state.layers.count { it.confirmedRouteUuid == null }
+        return state.occupiedCount + newIdentities <= brand.maxSimultaneousClimbs
     }
 
     fun clearLocalState() {
@@ -129,12 +181,24 @@ class BoardLayerManager @Inject constructor(
                 // activation. Preserve the transaction placeholder until the
                 // sender either confirms or fails it.
                 if (player == null) {
-                    return@mapNotNull layer.takeIf { it.status == BoardLayerStatus.SENDING }
+                    return@mapNotNull if (layer.status == BoardLayerStatus.CONFIRMED) {
+                        null
+                    } else {
+                        layer.copy(confirmedRouteUuid = null, confirmedColor = null)
+                    }
                 }
                 if (!player.routeId.equals(layer.routeUuid, ignoreCase = true)) {
-                    return@mapNotNull layer.takeIf { it.status == BoardLayerStatus.SENDING }
+                    return@mapNotNull layer.copy(
+                        confirmedRouteUuid = player.routeId,
+                        confirmedColor = player.color.asOpaqueArgb(),
+                    )
                 }
-                layer.copy(color = player.color.asOpaqueArgb(), status = BoardLayerStatus.CONFIRMED)
+                layer.copy(
+                    color = player.color.asOpaqueArgb(),
+                    status = BoardLayerStatus.CONFIRMED,
+                    confirmedRouteUuid = player.routeId,
+                    confirmedColor = player.color.asOpaqueArgb(),
+                )
             }.toMutableList()
             val representedUsers = owned.mapTo(mutableSetOf()) { it.userUuid.lowercase() }
             players.filter { it.userId.lowercase() in ownedIds && it.userId.lowercase() !in representedUsers }
@@ -150,6 +214,8 @@ class BoardLayerManager @Inject constructor(
                         color = player.color.asOpaqueArgb(),
                         holds = emptyList(),
                         status = BoardLayerStatus.CONFIRMED,
+                        confirmedRouteUuid = player.routeId,
+                        confirmedColor = player.color.asOpaqueArgb(),
                     )
                 }
             val external = players.filterNot { it.userId.lowercase() in ownedIds }.map {
@@ -174,13 +240,15 @@ class BoardLayerManager @Inject constructor(
 
     companion object {
         const val MAX_LAYER_IDENTITIES = 4
+        /** The four unique BLE colours produced by eWalls 2.0.14's six
+         * swatches after COLOR_TO_BLE normalization. The two extra UI
+         * swatches collapse to magenta/cyan and therefore cannot identify an
+         * additional controller player. */
         val LAYER_COLORS = listOf(
-            0xFF00BCD4.toInt(), // cyan
-            0xFFFF8C00.toInt(), // orange
-            0xFFB56CFF.toInt(), // violet
-            0xFF4CD964.toInt(), // green
-            0xFFFF4F81.toInt(), // pink
-            0xFFFFD60A.toInt(), // yellow
+            0xFF00FF00.toInt(), // eWalls green
+            0xFF00FFFF.toInt(), // eWalls blue/cyan
+            0xFFFF00FF.toInt(), // eWalls red/magenta
+            0xFFFFFF00.toInt(), // eWalls ochre/yellow
         )
         private const val PREFS = "board_layer_identity"
         private const val KEY_INSTALLATION_ID = "installation_uuid_v1"

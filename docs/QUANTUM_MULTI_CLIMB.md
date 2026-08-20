@@ -8,12 +8,15 @@ Quantum-only UI trick. `BoardBrand.maxSimultaneousClimbs` and
 first adapter with four independent layers; every existing board remains at
 one layer and keeps its existing wire format and send semantics.
 
-An explicit user action adds the current climb to the next free layer, or
-replaces the selected installation-owned layer. Automatic page changes and
-route playback always reuse primary layer 1, so browsing cannot silently fill
-the controller. Removing a layer sends `TURN_OFF_USER` for that layer's UUID;
-normal switching never sends `TURN_OFF_ALL` and therefore cannot erase another
-climber's projection.
+The rack has four local staging slots. Assigning the current climb only changes
+the preview; it performs no BLE write. Each slot has its own lamp button and a
+separate **send all** lamp transmits every staged slot sequentially. Opening,
+swiping or reconnecting on a detail page never sends. The legacy automatic mode
+is limited to explicit playlist/playback progression outside detail browsing.
+
+Removing an unsent preview is local-only. Removing a physically active layer
+sends `TURN_OFF_USER` for that installation-owned UUID. Normal switching never
+sends `TURN_OFF_ALL` and therefore cannot erase another climber's projection.
 
 ## Identity and colour
 
@@ -23,10 +26,12 @@ It is deliberately unrelated to a CruxCoach/Nostr/vendor account and is never
 sent anywhere except the locally connected board. Stable identities let a
 restarted app recognise and remove its own retained controller entries.
 
-Each layer has an RGB colour from a high-contrast palette. Colours already
-reported by the controller—including other apps' users—are unavailable. The
-UI can replace the colour on its selected slot. Protocol RGB is always the low
-24 bits; Compose keeps the ordinary ARGB representation.
+The selectable palette is exactly the four unique controller colours produced
+by eWalls 2.0.14 after its UI colours are normalized for BLE: green `#00ff00`,
+cyan `#00ffff`, magenta `#ff00ff` and yellow `#ffff00`. (Its six visual swatches
+collapse to these four protocol colours.) Colours already reported by the
+controller—including other apps' users—are unavailable. Protocol RGB is always
+the low 24 bits; Compose keeps the ordinary ARGB representation.
 
 ## Controller truth and failure handling
 
@@ -54,10 +59,17 @@ also updates local truth, even if firmware omits the notification.
 ## Conflict and overlay UX
 
 The detail screen shows a four-position rack with route name, state, colour,
-replace/remove actions, controller occupancy and foreign-player count. Known
-hold overlap is rejected before BLE because Quantum cannot assign two user
-colours to one diode. Unknown external layers remain controller-authoritative
-and may still produce the specific firmware spot-conflict response.
+replace/remove actions, a lamp per slot, a send-all lamp, physical controller
+occupancy and foreign-player count. Foreign users are displayed separately in
+their controller-reported colours and are read-only. Local staging remains
+available even when foreign users fill the controller; the send preflight then
+refuses to exceed four physical players instead of evicting one.
+
+Known hold overlap is rejected before BLE because Quantum cannot assign two
+user colours to one diode. Send-all also validates capacity and overlap before
+the first write, avoiding a half-applied rack. Unknown external layers remain
+controller-authoritative and may still produce the firmware spot-conflict
+response.
 
 On the board image, a hold belonging to multiple local preview layers is drawn
 as adjacent ring segments rather than a blended colour. This preserves every

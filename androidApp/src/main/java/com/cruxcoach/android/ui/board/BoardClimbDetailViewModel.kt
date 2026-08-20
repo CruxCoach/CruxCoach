@@ -1267,6 +1267,9 @@ class BoardClimbDetailViewModel @Inject constructor(
         _state.update { it.copy(selectedBoardLayerColor = color) }
     }
 
+    fun assignCurrentToBoardLayer() = sendController.assignCurrentToBoardLayer()
+    fun sendBoardLayer(slot: Int) = sendController.sendBoardLayer(slot)
+    fun sendAllBoardLayers() = sendController.sendAllBoardLayers()
     fun removeBoardLayer(slot: Int) = sendController.removeBoardLayer(slot)
 
     /**

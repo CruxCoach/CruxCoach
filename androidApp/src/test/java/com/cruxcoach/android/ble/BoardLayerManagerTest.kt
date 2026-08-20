@@ -73,7 +73,40 @@ class BoardLayerManagerTest {
         ))
         assertEquals(1, manager.state.value.externalLayers.size)
         assertEquals(4, manager.state.value.occupiedCount)
-        assertNull(manager.nextAvailableSlot(BoardBrand.QUANTUM))
+        // All four local slots remain available as a staging rack. The fourth
+        // assignment cannot be transmitted until the foreign player leaves.
+        assertEquals(3, manager.nextAvailableSlot(BoardBrand.QUANTUM))
+        manager.assignPreview(layer(manager, 3))
+        assertFalse(manager.hasControllerCapacityFor(3))
+        assertFalse(manager.canProjectAll())
+    }
+
+    @Test fun `preview assignment is local only and preserves physical replacement state`() {
+        val manager = BoardLayerManager(context)
+        val original = layer(manager, 0)
+        manager.beginProjection(original)
+        manager.confirmProjection(0)
+
+        val replacement = layer(manager, 0).copy(
+            climbUuid = "20000000-0000-0000-0000-000000000001",
+            routeUuid = "30000000-0000-0000-0000-000000000001",
+        )
+        manager.assignPreview(replacement)
+
+        val staged = manager.state.value.layers.single()
+        assertEquals(BoardLayerStatus.PREVIEW, staged.status)
+        assertEquals(replacement.routeUuid, staged.routeUuid)
+        assertEquals(original.routeUuid, staged.confirmedRouteUuid)
+        assertEquals(1, manager.state.value.occupiedCount)
+        assertTrue(manager.hasControllerCapacityFor(0))
+        assertFalse(manager.removePreview(0))
+    }
+
+    @Test fun `palette matches four unique eWalls controller colors`() {
+        assertEquals(
+            listOf(0xFF00FF00.toInt(), 0xFF00FFFF.toInt(), 0xFFFF00FF.toInt(), 0xFFFFFF00.toInt()),
+            BoardLayerManager.LAYER_COLORS,
+        )
     }
 
     @Test fun `turn off intermediate snapshot preserves sending transaction then confirms it`() {

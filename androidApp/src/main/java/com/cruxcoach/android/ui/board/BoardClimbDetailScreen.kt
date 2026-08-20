@@ -884,7 +884,9 @@ private fun BoardLayerRack(
     state: ClimbDetailState,
     onSelectSlot: (Int) -> Unit,
     onSelectColor: (Int) -> Unit,
-    onProjectCurrent: () -> Unit,
+    onAssignCurrent: () -> Unit,
+    onSendSlot: (Int) -> Unit,
+    onSendAll: () -> Unit,
     onRemove: (Int) -> Unit,
 ) {
     val maxLayers = BoardBrand.QUANTUM.maxSimultaneousClimbs
@@ -892,26 +894,15 @@ private fun BoardLayerRack(
     val currentLayer = state.climb?.uuid?.let { uuid ->
         state.boardLayers.layers.firstOrNull { it.climbUuid == uuid }
     }
-    val explicitSlot = state.selectedBoardLayerSlot?.takeIf {
-        it in ownBySlot || state.boardLayers.occupiedCount < maxLayers
-    }
+    val explicitSlot = state.selectedBoardLayerSlot?.takeIf { it in 0 until maxLayers }
     val selectedSlot = explicitSlot
         ?: currentLayer?.slot
-        ?: if (state.boardLayers.occupiedCount < maxLayers) {
-            (0 until maxLayers).firstOrNull { it !in ownBySlot }
-        } else null
     val selectedLayer = selectedSlot?.let(ownBySlot::get)
     val selectedColor = state.selectedBoardLayerColor
         ?: selectedLayer?.color
         ?: selectedSlot?.let { BoardLayerManager.LAYER_COLORS[it] }
     val occupiedColors = state.boardLayers.layers.mapTo(mutableSetOf()) { it.color } +
         state.boardLayers.externalLayers.map { it.color }
-    val initialHsv = remember(selectedSlot, selectedColor) {
-        FloatArray(3).also { hsv ->
-            android.graphics.Color.colorToHSV(selectedColor ?: 0xff00bcd4.toInt(), hsv)
-        }
-    }
-    var customHue by remember(selectedSlot, selectedColor) { mutableStateOf(initialHsv[0]) }
     val sharedHoldCount = BoardLayerConflictPolicy.sharedHoldCount(
         state.holds,
         state.boardLayers.layers,
@@ -921,6 +912,12 @@ private fun BoardLayerRack(
         .filterNot { it.slot == selectedSlot }.mapTo(mutableSetOf()) { it.color } +
         state.boardLayers.externalLayers.map { it.color }
     val selectedColorConflict = selectedColor != null && selectedColor in colorsOnOtherLayers
+    val connected = state.ble.connectionState == ConnectionState.CONNECTED
+    val duplicateHoldCount = state.boardLayers.layers
+        .flatMap { it.holds.map { hold -> hold.placementId } }
+        .groupingBy { it }.eachCount().count { it.value > 1 }
+    val newControllerIdentities = state.boardLayers.layers.count { it.confirmedRouteUuid == null }
+    val canSendAll = state.boardLayers.occupiedCount + newControllerIdentities <= maxLayers
 
     Card(
         modifier = Modifier.fillMaxWidth().testTag("board_layer_rack"),
@@ -965,6 +962,37 @@ private fun BoardLayerRack(
                             ))
                         },
                     )
+                }
+            }
+
+            if (state.boardLayers.externalLayers.isNotEmpty()) {
+                Text(
+                    stringResource(R.string.board_layers_external_explanation),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                state.boardLayers.externalLayers.forEachIndexed { index, external ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(10.dp))
+                            .padding(horizontal = 10.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Box(Modifier.size(16.dp).background(Color(external.color), CircleShape))
+                        Text(
+                            stringResource(R.string.board_layer_external_player, index + 1),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Text(
+                            external.routeUuid.take(8),
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
 
@@ -1033,6 +1061,27 @@ private fun BoardLayerRack(
                                     }
                                     if (layer != null) {
                                         IconButton(
+                                            onClick = { onSendSlot(slot) },
+                                            enabled = connected && !state.ble.isSending &&
+                                                (layer.confirmedRouteUuid != null ||
+                                                    state.boardLayers.occupiedCount < maxLayers),
+                                            modifier = Modifier
+                                                .size(32.dp)
+                                                .testTag("board_layer_send_${slot + 1}"),
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Lightbulb,
+                                                contentDescription = stringResource(
+                                                    R.string.board_layer_send_one,
+                                                    slot + 1,
+                                                ),
+                                                tint = if (layer.status == BoardLayerStatus.CONFIRMED) {
+                                                    SuccessGreen
+                                                } else OrangeAccent,
+                                                modifier = Modifier.size(18.dp),
+                                            )
+                                        }
+                                        IconButton(
                                             onClick = { onRemove(slot) },
                                             enabled = !state.ble.isSending,
                                             modifier = Modifier.size(28.dp),
@@ -1051,6 +1100,13 @@ private fun BoardLayerRack(
                 }
             }
 
+            if (selectedSlot == null) {
+                Text(
+                    stringResource(R.string.board_layer_select_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             selectedSlot?.let { slot ->
                 Text(
                     stringResource(R.string.board_layer_color),
@@ -1077,41 +1133,12 @@ private fun BoardLayerRack(
                         ) {}
                     }
                 }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                OutlinedButton(
+                    onClick = onAssignCurrent,
+                    enabled = !state.ble.isSending && !selectedColorConflict,
+                    modifier = Modifier.fillMaxWidth().testTag("board_layer_assign_current"),
                 ) {
-                    val customColor = android.graphics.Color.HSVToColor(
-                        floatArrayOf(customHue, 0.85f, 0.95f),
-                    )
-                    Box(
-                        Modifier.size(28.dp).background(Color(customColor), CircleShape),
-                    )
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            stringResource(R.string.board_layer_custom_color),
-                            style = MaterialTheme.typography.labelSmall,
-                        )
-                        Slider(
-                            value = customHue,
-                            onValueChange = { hue ->
-                                customHue = hue
-                                onSelectColor(android.graphics.Color.HSVToColor(
-                                    floatArrayOf(hue, 0.85f, 0.95f),
-                                ))
-                            },
-                            valueRange = 0f..359f,
-                            modifier = Modifier.testTag("board_layer_hue_picker"),
-                        )
-                    }
-                }
-                Button(
-                    onClick = onProjectCurrent,
-                    enabled = !state.ble.isSending && sharedHoldCount == 0 && !selectedColorConflict,
-                    modifier = Modifier.fillMaxWidth().testTag("board_layer_project_current"),
-                ) {
-                    Icon(Icons.Default.Lightbulb, contentDescription = null)
+                    Icon(Icons.Default.Check, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
                     Text(
                         stringResource(
@@ -1128,8 +1155,8 @@ private fun BoardLayerRack(
                 }
                 if (sharedHoldCount > 0) {
                     Text(
-                        stringResource(R.string.board_layer_overlap_warning, sharedHoldCount),
-                        color = ErrorRed,
+                        stringResource(R.string.board_layer_preview_overlap_warning, sharedHoldCount),
+                        color = WarningYellow,
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
@@ -1140,11 +1167,31 @@ private fun BoardLayerRack(
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
-            } ?: Text(
-                stringResource(R.string.board_layer_board_full_hint),
-                color = ErrorRed,
-                style = MaterialTheme.typography.bodySmall,
-            )
+            }
+
+            Button(
+                onClick = onSendAll,
+                enabled = connected && !state.ble.isSending &&
+                    state.boardLayers.layers.isNotEmpty() && canSendAll && duplicateHoldCount == 0,
+                modifier = Modifier.fillMaxWidth().testTag("board_layer_send_all"),
+            ) {
+                Icon(Icons.Default.Lightbulb, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.board_layer_send_all))
+            }
+            if (!canSendAll) {
+                Text(
+                    stringResource(R.string.board_layer_send_all_capacity),
+                    color = ErrorRed,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            } else if (duplicateHoldCount > 0) {
+                Text(
+                    stringResource(R.string.board_layer_send_all_overlap, duplicateHoldCount),
+                    color = ErrorRed,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
         }
     }
 }
@@ -1528,7 +1575,9 @@ private fun ClimbDetailPageContent(
                         state = state,
                         onSelectSlot = viewModel::selectBoardLayer,
                         onSelectColor = viewModel::selectBoardLayerColor,
-                        onProjectCurrent = viewModel::deliverClimb,
+                        onAssignCurrent = viewModel::assignCurrentToBoardLayer,
+                        onSendSlot = viewModel::sendBoardLayer,
+                        onSendAll = viewModel::sendAllBoardLayers,
                         onRemove = viewModel::removeBoardLayer,
                     )
                 }

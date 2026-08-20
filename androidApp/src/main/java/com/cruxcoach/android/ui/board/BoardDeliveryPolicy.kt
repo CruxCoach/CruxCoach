@@ -83,20 +83,15 @@ internal object BoardDeliveryPolicy {
             )
         }
 
-        // Both sides of a relay are multi-connection situations and both are
-        // already expressed in [sendMode]: a relay endpoint is classified as
-        // MULTIPLE by [BoardControllerProfiles], and hosting resolves to the
-        // multi-connection preference in [BoardSendModePolicy]. So the
-        // preference decides here, full stop.
-        //
-        // No second override. The "don't grab a shared wall by swiping" rule
-        // lives in that preference's default (EXPLICIT); re-applying it here
-        // meant a climber who deliberately switched to AUTOMATIC still got a
-        // button, which is not a default any more — it is ignoring them.
+        // Detail browsing is never a board command. The user can swipe, open a
+        // deep link or reconnect without replacing what somebody is climbing.
+        // Every directly projected climb now starts at the visible lamp. The
+        // legacy preference is still consumed by explicit playlist/playback
+        // flows, but it no longer hides this action or dispatches page changes.
         return BoardDeliveryDecision(
             target = if (connectedViaMesh) BoardDeliveryTarget.MESH_BOARD else BoardDeliveryTarget.DIRECT_BOARD,
-            dispatchAutomatically = sendMode == BoardSendMode.AUTOMATIC,
-            showAction = sendMode == BoardSendMode.EXPLICIT,
+            dispatchAutomatically = false,
+            showAction = true,
         )
     }
 }

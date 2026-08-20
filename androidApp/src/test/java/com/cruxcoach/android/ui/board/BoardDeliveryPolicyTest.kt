@@ -102,7 +102,7 @@ class BoardDeliveryPolicyTest {
     }
 
     @Test
-    fun `automatic mode dispatches only to a directly connected board`() {
+    fun `legacy automatic preference still requires the visible detail lamp`() {
         val decision = BoardDeliveryPolicy.resolve(
             sendMode = BoardSendMode.AUTOMATIC,
             sessionRole = SessionRole.NONE,
@@ -111,8 +111,8 @@ class BoardDeliveryPolicyTest {
         )
 
         assertEquals(BoardDeliveryTarget.DIRECT_BOARD, decision.target)
-        assertTrue(decision.dispatchAutomatically)
-        assertFalse(decision.showAction)
+        assertFalse(decision.dispatchAutomatically)
+        assertTrue(decision.showAction)
     }
 
     @Test
@@ -129,11 +129,8 @@ class BoardDeliveryPolicyTest {
         assertTrue(decision.showAction)
     }
 
-    /** A relay endpoint IS a multi-connection board, so the climber's
-     *  multi-connection preference already governs — the policy must not
-     *  overrule it a second time. */
     @Test
-    fun `a relay guest gets the send mode their preference resolved to`() {
+    fun `a relay guest also sends only from the visible lamp`() {
         val automatic = BoardDeliveryPolicy.resolve(
             sendMode = BoardSendMode.AUTOMATIC,
             sessionRole = SessionRole.NONE,
@@ -143,8 +140,8 @@ class BoardDeliveryPolicyTest {
         )
 
         assertEquals(BoardDeliveryTarget.DIRECT_BOARD, automatic.target)
-        assertTrue(automatic.dispatchAutomatically)
-        assertFalse(automatic.showAction)
+        assertFalse(automatic.dispatchAutomatically)
+        assertTrue(automatic.showAction)
 
         val explicit = BoardDeliveryPolicy.resolve(
             sendMode = BoardSendMode.EXPLICIT,
@@ -159,10 +156,7 @@ class BoardDeliveryPolicyTest {
     }
 
     @Test
-    fun `hosting does not override the resolved send mode`() {
-        // Hosting is expressed upstream: BoardSendModePolicy resolves it to the
-        // climber's multi-connection preference. Re-applying a guard here would
-        // mean someone who deliberately chose AUTOMATIC still gets a button.
+    fun `hosting never turns detail browsing into a board command`() {
         val decision = BoardDeliveryPolicy.resolve(
             sendMode = BoardSendMode.AUTOMATIC,
             sessionRole = SessionRole.NONE,
@@ -170,8 +164,8 @@ class BoardDeliveryPolicyTest {
             hasDirectPayload = true,
         )
 
-        assertTrue(decision.dispatchAutomatically)
-        assertFalse(decision.showAction)
+        assertFalse(decision.dispatchAutomatically)
+        assertTrue(decision.showAction)
     }
 
     @Test
