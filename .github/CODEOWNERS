@@ -1,5 +1,6 @@
 # Trust and release boundaries always require the project owner.
 /.github/ @CruxCoach
+/.gitignore @CruxCoach
 /.forgejo/workflows/ @CruxCoach
 /.apktrack/ @CruxCoach
 /AGENTS.md @CruxCoach
@@ -7,7 +8,13 @@
 /build.gradle.kts @CruxCoach
 /settings.gradle.kts @CruxCoach
 /gradle/ @CruxCoach
+/native/cargo-vendor/ @CruxCoach
+/native/fips/ @CruxCoach
+/native/fips-bridge/ @CruxCoach
 /scripts/feature_identity.py @CruxCoach
+/scripts/verify_vendored_fips.py @CruxCoach
+/scripts/verify_vendored_fips_test.py @CruxCoach
 /scripts/*release* @CruxCoach
+/.cargo/ @CruxCoach
 /zapstore.yaml @CruxCoach
 /SECURITY.md @CruxCoach

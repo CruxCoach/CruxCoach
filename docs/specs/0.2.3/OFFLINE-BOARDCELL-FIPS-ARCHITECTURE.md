@@ -469,7 +469,9 @@ the upstream object survives, and `6580a80` is the head of a branch
 (`integration/platform`), not a tag or a commit on `master` — precisely the
 kind of object that moves or is pruned. A signed development APK we cannot
 rebuild from this repository alone is not something we can support. Vendoring
-also removes the network from the native build.
+removes the FIPS repository from the build path. The exact crates.io sources
+resolved by the bridge lockfile are mirrored under `native/cargo-vendor`, so
+the native build itself runs with Cargo `--frozen` and needs no network.
 
 The alternative — a CruxCoach fork of `jmcorgan/fips` carrying an immutable
 integration branch — is the better long-term shape, but no such fork exists and
@@ -478,19 +480,23 @@ later is mechanical: move `native/fips/patches` onto a branch based on
 `6580a80` and point Cargo at that revision.
 
 Provenance is recorded in `native/fips/VENDOR.toml`: upstream URL, exact
-commit, copied paths, the patch series, and a digest of the vendored tree.
+commit, copied paths, the patch series, and digests of both the pristine and
+patched trees.
 `scripts/verify_vendored_fips.py` checks it two ways —
 
-* offline (recompute the tree digest), which runs on every CI run through
-  `scripts/verify_vendored_fips_test.py`, and is what stops an undocumented
-  edit to a dependency no lockfile checksum covers;
+* offline (check the patched digest, reverse the exact patch series, check the
+  pristine digest, then reapply the series), which runs on every CI run through
+  `scripts/verify_vendored_fips_test.py` and requires no upstream object;
 * `--upstream <path-to-a-fips-clone>`, which proves that upstream `6580a80`
   plus exactly the recorded patches reproduces the vendored tree byte for byte.
 
 Only crate inputs are vendored. Upstream's `docs/`, `testing/`, `packaging/`,
 `examples/` and nix flake have no bearing on the Android library build.
+The registry mirror is refreshed only together with
+`native/fips-bridge/Cargo.lock` by running the pinned `cargo vendor
+--versioned-dirs --frozen` command documented in `.cargo/config.toml`.
 
-### The one patch we carry
+### The patch series we carry
 
 `0001-node-restore-the-app-owned-identity-seam.patch` adds
 `Node::enable_app_owned_identities()`.
@@ -510,6 +516,11 @@ returning the same `DnsIdentityTx` the responder produces, drained by the same
 starting afterwards feeds this channel instead of replacing its receiver.
 Registering an identity asserts only that a key hashes to an address; it grants
 no session, peering or authorization.
+
+`0002-ble-share-advertised-psms-with-direct-reconnects.patch` makes direct
+reconnects reuse only fresh, observed Android advertisements and their dynamic
+L2CAP PSM. It prevents a node-layer retry from dialing a rotated address or the
+static fallback PSM while the scan loop already knows the current endpoint.
 
 `native-api-v1` was **not** adopted. It is experimental and gated to
 Linux/FreeBSD, not Android. It informed the shape of the seam and nothing more.

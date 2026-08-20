@@ -1,0 +1,31 @@
+[package]
+name = "async-utility"
+version = "0.3.2"
+edition = "2021"
+description = "Collection of async utilities."
+authors = ["Yuki Kishimoto <yukikishimoto@protonmail.com>"]
+homepage = "https://github.com/yukibtc/async-utility"
+repository = "https://github.com/yukibtc/async-utility.git"
+license = "MIT"
+readme = "README.md"
+keywords = ["async", "tokio", "util"]
+
+[dependencies]
+futures-util = { version = "0.3", default-features = false, features = ["std", "sink"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio = { version = "1", default-features = false, features = ["macros", "rt", "rt-multi-thread", "time"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+gloo-timers = { version = "0.3", features = ["futures"] }
+tokio = { version = "1", default-features = false, features = ["macros", "rt", "sync"] }
+wasm-bindgen-futures = "0.4"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+async-std = { version = "1.13", features = ["attributes"] }
+smol = "2.0"
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+async-wsocket = { version = "0.15", default-features = false }
+wasm-bindgen = "0.2"
+wasm-bindgen-test = "0.3"

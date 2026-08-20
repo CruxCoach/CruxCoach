@@ -1,0 +1,1184 @@
+// SPDX-License-Identifier: CC0-1.0
+
+//! Primitive and combinator decoder types.
+
+#[cfg(feature = "alloc")]
+use alloc::vec::Vec;
+use core::{fmt, mem};
+
+#[cfg(feature = "alloc")]
+use super::Decode;
+use super::{Decoder, DecoderStatus};
+#[cfg(feature = "alloc")]
+use crate::compact_size::CompactSizeDecoder;
+#[cfg(feature = "alloc")]
+use crate::error::{
+    ByteVecDecoderError, ByteVecDecoderErrorInner, VecDecoderError, VecDecoderErrorInner,
+};
+use crate::{Decoder2Error, Decoder3Error, Decoder4Error, Decoder6Error, UnexpectedEofError};
+
+/// Maximum amount of memory (in bytes) to allocate at once when deserializing vectors.
+#[cfg(feature = "alloc")]
+const MAX_VECTOR_ALLOCATE: usize = 1_000_000;
+
+/// Maximum number of elements in a decoded vector.
+///
+/// This is an anti-DoS limit based on Bitcoin's 4MB block weight limit.
+/// Applied to both byte vectors [`ByteVecDecoder`] and typed vectors [`VecDecoder`],
+/// regardless of whether the element type is a single byte or a larger structure.
+#[cfg(feature = "alloc")]
+const MAX_VEC_SIZE: usize = 4_000_000;
+
+/// A decoder that decodes a byte vector.
+///
+/// The encoding is expected to start with the number of encoded bytes (length prefix).
+#[cfg(feature = "alloc")]
+#[derive(Debug, Clone)]
+pub struct ByteVecDecoder {
+    prefix_decoder: Option<CompactSizeDecoder>,
+    buffer: Vec<u8>,
+    bytes_expected: usize,
+    bytes_written: usize,
+}
+
+#[cfg(feature = "alloc")]
+impl ByteVecDecoder {
+    /// Constructs a new byte decoder with the default limit of 4,000,000 bytes.
+    pub const fn new() -> Self { Self::new_with_limit(MAX_VEC_SIZE) }
+
+    /// Constructs a new byte decoder with a custom limit of bytes.
+    pub const fn new_with_limit(limit: usize) -> Self {
+        Self {
+            prefix_decoder: Some(CompactSizeDecoder::new_with_limit(limit)),
+            buffer: Vec::new(),
+            bytes_expected: 0,
+            bytes_written: 0,
+        }
+    }
+
+    /// Reserves capacity for byte vectors in batches.
+    ///
+    /// Reserves up to `MAX_VECTOR_ALLOCATE` bytes when the buffer has no remaining capacity.
+    ///
+    /// Documentation adapted from Bitcoin Core:
+    ///
+    /// > For `DoS` prevention, do not blindly allocate as much as the stream claims to contain.
+    /// > Instead, allocate in ~1 MB batches, so that an attacker actually needs to provide X MB of
+    /// > data to make us allocate X+1 MB of memory.
+    ///
+    /// ref: <https://github.com/bitcoin/bitcoin/blob/72511fd02e72b74be11273e97bd7911786a82e54/src/serialize.h#L669C2-L672C1>
+    fn reserve(&mut self) {
+        if self.buffer.len() == self.buffer.capacity() {
+            let bytes_remaining = self.bytes_expected - self.bytes_written;
+            let batch_size = bytes_remaining.min(MAX_VECTOR_ALLOCATE);
+            self.buffer.reserve_exact(batch_size);
+        }
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl Default for ByteVecDecoder {
+    fn default() -> Self { Self::new() }
+}
+
+#[cfg(feature = "alloc")]
+impl Decoder for ByteVecDecoder {
+    type Output = Vec<u8>;
+    type Error = ByteVecDecoderError;
+
+    fn push_bytes(&mut self, bytes: &mut &[u8]) -> Result<DecoderStatus, Self::Error> {
+        use ByteVecDecoderError as E;
+        use ByteVecDecoderErrorInner as Inner;
+
+        if let Some(mut decoder) = self.prefix_decoder.take() {
+            if decoder.push_bytes(bytes).map_err(|e| E(Inner::LengthPrefixDecode(e)))?.needs_more()
+            {
+                self.prefix_decoder = Some(decoder);
+                return Ok(DecoderStatus::NeedsMore);
+            }
+            self.bytes_expected = decoder.end().map_err(|e| E(Inner::LengthPrefixDecode(e)))?;
+            self.prefix_decoder = None;
+
+            // For DoS prevention, let's not allocate all memory upfront.
+        }
+
+        self.reserve();
+
+        let remaining = self.bytes_expected - self.bytes_written;
+        let available_capacity = self.buffer.capacity() - self.buffer.len();
+        let copy_len = bytes.len().min(remaining).min(available_capacity);
+
+        self.buffer.extend_from_slice(&bytes[..copy_len]);
+        self.bytes_written += copy_len;
+        *bytes = &bytes[copy_len..];
+
+        if self.bytes_written < self.bytes_expected {
+            Ok(DecoderStatus::NeedsMore)
+        } else {
+            Ok(DecoderStatus::Ready)
+        }
+    }
+
+    fn end(self) -> Result<Self::Output, Self::Error> {
+        use ByteVecDecoderError as E;
+        use ByteVecDecoderErrorInner as Inner;
+
+        let missing = if let Some(ref prefix_decoder) = self.prefix_decoder {
+            prefix_decoder.read_limit()
+        } else if self.bytes_written != self.bytes_expected {
+            self.bytes_expected - self.bytes_written
+        } else {
+            return Ok(self.buffer);
+        };
+
+        Err(E(Inner::UnexpectedEof(UnexpectedEofError { missing })))
+    }
+
+    fn read_limit(&self) -> usize {
+        self.prefix_decoder
+            .as_ref()
+            .map_or(self.bytes_expected - self.bytes_written, CompactSizeDecoder::read_limit)
+    }
+}
+
+/// A decoder for a vector of exactly `count` items, where the count is known at construction.
+///
+/// Use this when the item count is determined by context (e.g. from a previously decoded
+/// transaction) rather than from a length prefix in the byte stream. For the length-prefixed
+/// case, use [`VecDecoderWith`].
+#[cfg(feature = "alloc")]
+pub struct ExactVecDecoderWith<D: Decoder + Default> {
+    length: usize,
+    buffer: Vec<D::Output>,
+    decoder: Option<D>,
+}
+
+#[cfg(feature = "alloc")]
+impl<D: Decoder + Default + fmt::Debug> fmt::Debug for ExactVecDecoderWith<D> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ExactVecDecoderWith")
+            .field("length", &self.length)
+            // Print the count rather than contents to avoid requiring `D::Output: Debug`.
+            .field("buffer_len", &self.buffer.len())
+            .field("decoder", &self.decoder)
+            .finish()
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl<D: Decoder + Default + Clone> Clone for ExactVecDecoderWith<D>
+where
+    D::Output: Clone,
+{
+    fn clone(&self) -> Self {
+        Self { length: self.length, buffer: self.buffer.clone(), decoder: self.decoder.clone() }
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl<D: Decoder + Default> ExactVecDecoderWith<D> {
+    /// Constructs a decoder that will decode exactly `count` items.
+    pub const fn new(count: usize) -> Self {
+        Self { length: count, buffer: Vec::new(), decoder: None }
+    }
+
+    /// Reserves capacity for typed vectors in batches.
+    ///
+    /// Calculates how many elements of type `D::Output` fit within `MAX_VECTOR_ALLOCATE` bytes
+    /// and reserves up to that amount when the buffer reaches capacity.
+    ///
+    /// Documentation adapted from Bitcoin Core:
+    ///
+    /// > For `DoS` prevention, do not blindly allocate as much as the stream claims to contain.
+    /// > Instead, allocate in ~1 MB batches, so that an attacker actually needs to provide X MB of
+    /// > data to make us allocate X+1 MB of memory.
+    ///
+    /// ref: <https://github.com/bitcoin/bitcoin/blob/72511fd02e72b74be11273e97bd7911786a82e54/src/serialize.h#L669C2-L672C1>
+    fn reserve(&mut self) {
+        if self.buffer.len() == self.buffer.capacity() {
+            let elements_remaining = self.length - self.buffer.len();
+            let element_size = mem::size_of::<D::Output>().max(1);
+            let batch_elements = MAX_VECTOR_ALLOCATE / element_size;
+            let elements_to_reserve = elements_remaining.min(batch_elements);
+            self.buffer.reserve_exact(elements_to_reserve);
+        }
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl<D: Decoder + Default> Decoder for ExactVecDecoderWith<D> {
+    type Output = Vec<D::Output>;
+    type Error = VecDecoderError<D::Error>;
+
+    fn push_bytes(&mut self, bytes: &mut &[u8]) -> Result<DecoderStatus, Self::Error> {
+        use VecDecoderError as E;
+        use VecDecoderErrorInner as Inner;
+
+        if self.buffer.len() == self.length {
+            return Ok(DecoderStatus::Ready);
+        }
+
+        while !bytes.is_empty() {
+            self.reserve();
+            let mut decoder = self.decoder.take().unwrap_or_default();
+
+            if decoder.push_bytes(bytes).map_err(|e| E(Inner::Item(e)))?.needs_more() {
+                self.decoder = Some(decoder);
+                return Ok(DecoderStatus::NeedsMore);
+            }
+            let item = decoder.end().map_err(|e| E(Inner::Item(e)))?;
+            self.buffer.push(item);
+
+            if self.buffer.len() == self.length {
+                return Ok(DecoderStatus::Ready);
+            }
+        }
+
+        if self.buffer.len() == self.length {
+            Ok(DecoderStatus::Ready)
+        } else {
+            Ok(DecoderStatus::NeedsMore)
+        }
+    }
+
+    fn end(self) -> Result<Self::Output, Self::Error> {
+        use VecDecoderErrorInner as E;
+
+        let len = self.buffer.len();
+        if len == self.length {
+            return Ok(self.buffer);
+        }
+        let missing = self.length - len;
+
+        Err(VecDecoderError(E::UnexpectedEof(UnexpectedEofError { missing })))
+    }
+
+    fn read_limit(&self) -> usize {
+        match &self.decoder {
+            Some(d) => d.read_limit(),
+            None if self.buffer.len() == self.length => 0,
+            None => {
+                let items_left_to_decode = self.length - self.buffer.len();
+                // This could be inaccurate but it is the best we can do without decoding.
+                let limit_per_decoder = D::default().read_limit();
+                items_left_to_decode * limit_per_decoder
+            }
+        }
+    }
+}
+
+/// A decoder for a compact sized length-prefixed vector of items, generic over the item decoder
+/// type.
+///
+/// When the item count is known from context rather than a length prefix, use
+/// [`ExactVecDecoderWith`] instead.
+#[cfg(feature = "alloc")]
+pub struct VecDecoderWith<D: Decoder + Default> {
+    prefix_decoder: Option<CompactSizeDecoder>,
+    items: ExactVecDecoderWith<D>,
+}
+
+#[cfg(feature = "alloc")]
+impl<D: Decoder + Default + fmt::Debug> fmt::Debug for VecDecoderWith<D> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("VecDecoderWith")
+            .field("prefix_decoder", &self.prefix_decoder)
+            .field("items", &self.items)
+            .finish()
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl<D: Decoder + Default + Clone> Clone for VecDecoderWith<D>
+where
+    D::Output: Clone,
+{
+    fn clone(&self) -> Self {
+        Self { prefix_decoder: self.prefix_decoder.clone(), items: self.items.clone() }
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl<D: Decoder + Default> VecDecoderWith<D> {
+    /// Constructs a new decoder with the default limit of 4,000,000 elements.
+    pub const fn new() -> Self { Self::new_with_limit(MAX_VEC_SIZE) }
+
+    /// Constructs a new decoder with a custom element limit.
+    pub const fn new_with_limit(limit: usize) -> Self {
+        Self {
+            prefix_decoder: Some(CompactSizeDecoder::new_with_limit(limit)),
+            items: ExactVecDecoderWith::new(0),
+        }
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl<D: Decoder + Default> Default for VecDecoderWith<D> {
+    fn default() -> Self { Self::new() }
+}
+
+#[cfg(feature = "alloc")]
+impl<D: Decoder + Default> Decoder for VecDecoderWith<D> {
+    type Output = Vec<D::Output>;
+    type Error = VecDecoderError<D::Error>;
+
+    fn push_bytes(&mut self, bytes: &mut &[u8]) -> Result<DecoderStatus, Self::Error> {
+        use VecDecoderError as E;
+        use VecDecoderErrorInner as Inner;
+
+        if let Some(mut pd) = self.prefix_decoder.take() {
+            if pd.push_bytes(bytes).map_err(|e| E(Inner::LengthPrefixDecode(e)))?.needs_more() {
+                self.prefix_decoder = Some(pd);
+                return Ok(DecoderStatus::NeedsMore);
+            }
+            let count = pd.end().map_err(|e| E(Inner::LengthPrefixDecode(e)))?;
+            self.items = ExactVecDecoderWith::new(count);
+        }
+
+        self.items.push_bytes(bytes)
+    }
+
+    fn end(self) -> Result<Self::Output, Self::Error> {
+        use VecDecoderErrorInner as Inner;
+
+        if let Some(pd) = self.prefix_decoder {
+            return Err(VecDecoderError(Inner::UnexpectedEof(UnexpectedEofError {
+                missing: pd.read_limit(),
+            })));
+        }
+
+        self.items.end()
+    }
+
+    fn read_limit(&self) -> usize {
+        self.prefix_decoder
+            .as_ref()
+            .map_or_else(|| self.items.read_limit(), CompactSizeDecoder::read_limit)
+    }
+}
+
+/// A decoder for a vector of consensus decodable types.
+///
+/// The vector encoding must start with the number of items in the vector, encoded as a compact
+/// size.
+#[cfg(feature = "alloc")]
+pub struct VecDecoder<T: Decode>(VecDecoderWith<<T as Decode>::Decoder>);
+
+#[cfg(feature = "alloc")]
+impl<T: Decode> fmt::Debug for VecDecoder<T>
+where
+    <T as Decode>::Decoder: fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut s = f.debug_struct("VecDecoder");
+        if let Some(ref pd) = self.0.prefix_decoder {
+            s.field("prefix_decoder", pd);
+        } else {
+            s.field("length", &self.0.items.length);
+            // Print the count rather than contents to avoid requiring `T: Debug`.
+            s.field("buffer_len", &self.0.items.buffer.len());
+            s.field("decoder", &self.0.items.decoder);
+        }
+        s.finish()
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl<T: Decode> Clone for VecDecoder<T>
+where
+    T: Clone,
+    <T as Decode>::Decoder: Clone,
+{
+    fn clone(&self) -> Self { Self(self.0.clone()) }
+}
+
+#[cfg(feature = "alloc")]
+impl<T: Decode> VecDecoder<T> {
+    /// Constructs a new typed vector decoder with the default limit of 4,000,000 elements.
+    pub const fn new() -> Self { Self(VecDecoderWith::new()) }
+
+    /// Constructs a new typed vector decoder with a custom limit of elements.
+    pub const fn new_with_limit(limit: usize) -> Self {
+        Self(VecDecoderWith::new_with_limit(limit))
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl<T: Decode> Default for VecDecoder<T> {
+    fn default() -> Self { Self::new() }
+}
+
+#[cfg(feature = "alloc")]
+impl<T: Decode> Decoder for VecDecoder<T> {
+    type Output = Vec<T>;
+    type Error = VecDecoderError<<<T as Decode>::Decoder as Decoder>::Error>;
+
+    fn push_bytes(&mut self, bytes: &mut &[u8]) -> Result<DecoderStatus, Self::Error> {
+        self.0.push_bytes(bytes)
+    }
+
+    fn end(self) -> Result<Self::Output, Self::Error> { self.0.end() }
+
+    fn read_limit(&self) -> usize { self.0.read_limit() }
+}
+
+/// A decoder that expects exactly N bytes and returns them as an array.
+#[derive(Debug, Clone)]
+pub struct ArrayDecoder<const N: usize> {
+    buffer: [u8; N],
+    bytes_written: usize,
+}
+
+impl<const N: usize> ArrayDecoder<N> {
+    /// Constructs a new array decoder that expects exactly N bytes.
+    pub const fn new() -> Self { Self { buffer: [0; N], bytes_written: 0 } }
+}
+
+impl<const N: usize> Default for ArrayDecoder<N> {
+    fn default() -> Self { Self::new() }
+}
+
+impl<const N: usize> Decoder for ArrayDecoder<N> {
+    type Output = [u8; N];
+    type Error = UnexpectedEofError;
+
+    fn push_bytes(&mut self, bytes: &mut &[u8]) -> Result<DecoderStatus, Self::Error> {
+        let remaining_space = N - self.bytes_written;
+        let copy_len = bytes.len().min(remaining_space);
+
+        if copy_len > 0 {
+            self.buffer[self.bytes_written..self.bytes_written + copy_len]
+                .copy_from_slice(&bytes[..copy_len]);
+            self.bytes_written += copy_len;
+            // Advance the slice reference to consume the bytes.
+            *bytes = &bytes[copy_len..];
+        }
+
+        if self.bytes_written < N {
+            Ok(DecoderStatus::NeedsMore)
+        } else {
+            Ok(DecoderStatus::Ready)
+        }
+    }
+
+    #[inline]
+    fn end(self) -> Result<Self::Output, Self::Error> {
+        if self.bytes_written == N {
+            Ok(self.buffer)
+        } else {
+            Err(UnexpectedEofError { missing: N - self.bytes_written })
+        }
+    }
+
+    #[inline]
+    fn read_limit(&self) -> usize { N - self.bytes_written }
+}
+
+/// A decoder which wraps two inner decoders and returns the output of both.
+#[derive(Default)]
+pub struct Decoder2<A, B>
+where
+    A: Decoder,
+    B: Decoder,
+{
+    state: Decoder2State<A, B>,
+}
+
+enum Decoder2State<A: Decoder, B: Decoder> {
+    /// Decoding the first decoder, with second decoder waiting.
+    First(A, B),
+    /// Decoding the second decoder, with the first result stored.
+    Second(A::Output, B),
+    /// Decoder has failed and cannot be used again.
+    Errored,
+}
+
+// the `#[default]` attribute may only be used on unit enum variants
+impl<A: Decoder + Default, B: Decoder + Default> Default for Decoder2State<A, B> {
+    fn default() -> Self { Self::First(A::default(), B::default()) }
+}
+
+impl<A, B> Decoder2<A, B>
+where
+    A: Decoder,
+    B: Decoder,
+{
+    /// Constructs a new composite decoder.
+    pub const fn new(first: A, second: B) -> Self {
+        Self { state: Decoder2State::First(first, second) }
+    }
+}
+
+impl<A, B> fmt::Debug for Decoder2<A, B>
+where
+    A: Decoder + fmt::Debug,
+    B: Decoder + fmt::Debug,
+    A::Output: fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.state {
+            Decoder2State::First(a, b) => f.debug_tuple("First").field(a).field(b).finish(),
+            Decoder2State::Second(out, b) => f.debug_tuple("Second").field(out).field(b).finish(),
+            Decoder2State::Errored => write!(f, "Errored"),
+        }
+    }
+}
+
+impl<A, B> Clone for Decoder2<A, B>
+where
+    A: Decoder + Clone,
+    B: Decoder + Clone,
+    A::Output: Clone,
+{
+    fn clone(&self) -> Self {
+        let state = match &self.state {
+            Decoder2State::First(a, b) => Decoder2State::First(a.clone(), b.clone()),
+            Decoder2State::Second(out, b) => Decoder2State::Second(out.clone(), b.clone()),
+            Decoder2State::Errored => Decoder2State::Errored,
+        };
+        Self { state }
+    }
+}
+
+impl<A, B> Decoder for Decoder2<A, B>
+where
+    A: Decoder,
+    B: Decoder,
+{
+    type Output = (A::Output, B::Output);
+    type Error = Decoder2Error<A::Error, B::Error>;
+
+    fn push_bytes(&mut self, bytes: &mut &[u8]) -> Result<DecoderStatus, Self::Error> {
+        loop {
+            match &mut self.state {
+                Decoder2State::First(first_decoder, _) => {
+                    if first_decoder.push_bytes(bytes).map_err(Decoder2Error::First)?.needs_more() {
+                        // First decoder wants more data.
+                        return Ok(DecoderStatus::NeedsMore);
+                    }
+
+                    // First decoder is complete, transition to second.
+                    // If the first decoder fails, the composite decoder
+                    // remains in an Errored state.
+                    match mem::replace(&mut self.state, Decoder2State::Errored) {
+                        Decoder2State::First(first, second) => {
+                            let first_result = first.end().map_err(Decoder2Error::First)?;
+                            self.state = Decoder2State::Second(first_result, second);
+                        }
+                        _ => unreachable!("we know we're in First state"),
+                    }
+                }
+                Decoder2State::Second(_, second_decoder) => {
+                    return second_decoder.push_bytes(bytes).map_err(|error| {
+                        self.state = Decoder2State::Errored;
+                        Decoder2Error::Second(error)
+                    });
+                }
+                Decoder2State::Errored => {
+                    panic!("use of failed decoder");
+                }
+            }
+        }
+    }
+
+    #[inline]
+    fn end(self) -> Result<Self::Output, Self::Error> {
+        match self.state {
+            Decoder2State::First(first_decoder, second_decoder) => {
+                // This branch is most likely an error since the decoder
+                // never got to the second one. But letting the error bubble
+                // up naturally from the child decoders.
+                let first_result = first_decoder.end().map_err(Decoder2Error::First)?;
+                let second_result = second_decoder.end().map_err(Decoder2Error::Second)?;
+                Ok((first_result, second_result))
+            }
+            Decoder2State::Second(first_result, second_decoder) => {
+                let second_result = second_decoder.end().map_err(Decoder2Error::Second)?;
+                Ok((first_result, second_result))
+            }
+            Decoder2State::Errored => {
+                panic!("use of failed decoder");
+            }
+        }
+    }
+
+    #[inline]
+    fn read_limit(&self) -> usize {
+        match &self.state {
+            Decoder2State::First(first_decoder, second_decoder) =>
+                first_decoder.read_limit() + second_decoder.read_limit(),
+            Decoder2State::Second(_, second_decoder) => second_decoder.read_limit(),
+            Decoder2State::Errored => 0,
+        }
+    }
+}
+
+/// A decoder which decodes three objects, one after the other.
+#[derive(Default)]
+pub struct Decoder3<A, B, C>
+where
+    A: Decoder,
+    B: Decoder,
+    C: Decoder,
+{
+    inner: Decoder2<Decoder2<A, B>, C>,
+}
+
+impl<A, B, C> Decoder3<A, B, C>
+where
+    A: Decoder,
+    B: Decoder,
+    C: Decoder,
+{
+    /// Constructs a new composite decoder.
+    pub const fn new(dec_1: A, dec_2: B, dec_3: C) -> Self {
+        Self { inner: Decoder2::new(Decoder2::new(dec_1, dec_2), dec_3) }
+    }
+}
+
+impl<A, B, C> fmt::Debug for Decoder3<A, B, C>
+where
+    A: Decoder + fmt::Debug,
+    B: Decoder + fmt::Debug,
+    C: Decoder + fmt::Debug,
+    A::Output: fmt::Debug,
+    B::Output: fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { self.inner.fmt(f) }
+}
+
+impl<A, B, C> Clone for Decoder3<A, B, C>
+where
+    A: Decoder + Clone,
+    B: Decoder + Clone,
+    C: Decoder + Clone,
+    A::Output: Clone,
+    B::Output: Clone,
+{
+    fn clone(&self) -> Self { Self { inner: self.inner.clone() } }
+}
+
+impl<A, B, C> Decoder for Decoder3<A, B, C>
+where
+    A: Decoder,
+    B: Decoder,
+    C: Decoder,
+{
+    type Output = (A::Output, B::Output, C::Output);
+    type Error = Decoder3Error<A::Error, B::Error, C::Error>;
+
+    #[inline]
+    fn push_bytes(&mut self, bytes: &mut &[u8]) -> Result<DecoderStatus, Self::Error> {
+        self.inner.push_bytes(bytes).map_err(|error| match error {
+            Decoder2Error::First(Decoder2Error::First(a)) => Decoder3Error::First(a),
+            Decoder2Error::First(Decoder2Error::Second(b)) => Decoder3Error::Second(b),
+            Decoder2Error::Second(c) => Decoder3Error::Third(c),
+        })
+    }
+
+    #[inline]
+    fn end(self) -> Result<Self::Output, Self::Error> {
+        let result = self.inner.end().map_err(|error| match error {
+            Decoder2Error::First(Decoder2Error::First(a)) => Decoder3Error::First(a),
+            Decoder2Error::First(Decoder2Error::Second(b)) => Decoder3Error::Second(b),
+            Decoder2Error::Second(c) => Decoder3Error::Third(c),
+        })?;
+
+        let ((first, second), third) = result;
+        Ok((first, second, third))
+    }
+
+    #[inline]
+    fn read_limit(&self) -> usize { self.inner.read_limit() }
+}
+
+/// A decoder which decodes four objects, one after the other.
+#[derive(Default)]
+pub struct Decoder4<A, B, C, D>
+where
+    A: Decoder,
+    B: Decoder,
+    C: Decoder,
+    D: Decoder,
+{
+    inner: Decoder2<Decoder2<A, B>, Decoder2<C, D>>,
+}
+
+impl<A, B, C, D> Decoder4<A, B, C, D>
+where
+    A: Decoder,
+    B: Decoder,
+    C: Decoder,
+    D: Decoder,
+{
+    /// Constructs a new composite decoder.
+    pub const fn new(dec_1: A, dec_2: B, dec_3: C, dec_4: D) -> Self {
+        Self { inner: Decoder2::new(Decoder2::new(dec_1, dec_2), Decoder2::new(dec_3, dec_4)) }
+    }
+}
+
+impl<A, B, C, D> fmt::Debug for Decoder4<A, B, C, D>
+where
+    A: Decoder + fmt::Debug,
+    B: Decoder + fmt::Debug,
+    C: Decoder + fmt::Debug,
+    D: Decoder + fmt::Debug,
+    A::Output: fmt::Debug,
+    B::Output: fmt::Debug,
+    C::Output: fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { self.inner.fmt(f) }
+}
+
+impl<A, B, C, D> Clone for Decoder4<A, B, C, D>
+where
+    A: Decoder + Clone,
+    B: Decoder + Clone,
+    C: Decoder + Clone,
+    D: Decoder + Clone,
+    A::Output: Clone,
+    B::Output: Clone,
+    C::Output: Clone,
+{
+    fn clone(&self) -> Self { Self { inner: self.inner.clone() } }
+}
+
+impl<A, B, C, D> Decoder for Decoder4<A, B, C, D>
+where
+    A: Decoder,
+    B: Decoder,
+    C: Decoder,
+    D: Decoder,
+{
+    type Output = (A::Output, B::Output, C::Output, D::Output);
+    type Error = Decoder4Error<A::Error, B::Error, C::Error, D::Error>;
+
+    #[inline]
+    fn push_bytes(&mut self, bytes: &mut &[u8]) -> Result<DecoderStatus, Self::Error> {
+        self.inner.push_bytes(bytes).map_err(|error| match error {
+            Decoder2Error::First(Decoder2Error::First(a)) => Decoder4Error::First(a),
+            Decoder2Error::First(Decoder2Error::Second(b)) => Decoder4Error::Second(b),
+            Decoder2Error::Second(Decoder2Error::First(c)) => Decoder4Error::Third(c),
+            Decoder2Error::Second(Decoder2Error::Second(d)) => Decoder4Error::Fourth(d),
+        })
+    }
+
+    #[inline]
+    fn end(self) -> Result<Self::Output, Self::Error> {
+        let result = self.inner.end().map_err(|error| match error {
+            Decoder2Error::First(Decoder2Error::First(a)) => Decoder4Error::First(a),
+            Decoder2Error::First(Decoder2Error::Second(b)) => Decoder4Error::Second(b),
+            Decoder2Error::Second(Decoder2Error::First(c)) => Decoder4Error::Third(c),
+            Decoder2Error::Second(Decoder2Error::Second(d)) => Decoder4Error::Fourth(d),
+        })?;
+
+        let ((first, second), (third, fourth)) = result;
+        Ok((first, second, third, fourth))
+    }
+
+    #[inline]
+    fn read_limit(&self) -> usize { self.inner.read_limit() }
+}
+
+/// A decoder which decodes six objects, one after the other.
+#[allow(clippy::type_complexity)] // Nested composition is easier than flattened alternatives.
+#[derive(Default)]
+pub struct Decoder6<A, B, C, D, E, F>
+where
+    A: Decoder,
+    B: Decoder,
+    C: Decoder,
+    D: Decoder,
+    E: Decoder,
+    F: Decoder,
+{
+    inner: Decoder2<Decoder3<A, B, C>, Decoder3<D, E, F>>,
+}
+
+impl<A, B, C, D, E, F> Decoder6<A, B, C, D, E, F>
+where
+    A: Decoder,
+    B: Decoder,
+    C: Decoder,
+    D: Decoder,
+    E: Decoder,
+    F: Decoder,
+{
+    /// Constructs a new composite decoder.
+    pub const fn new(dec_1: A, dec_2: B, dec_3: C, dec_4: D, dec_5: E, dec_6: F) -> Self {
+        Self {
+            inner: Decoder2::new(
+                Decoder3::new(dec_1, dec_2, dec_3),
+                Decoder3::new(dec_4, dec_5, dec_6),
+            ),
+        }
+    }
+}
+
+impl<A, B, C, D, E, F> fmt::Debug for Decoder6<A, B, C, D, E, F>
+where
+    A: Decoder + fmt::Debug,
+    B: Decoder + fmt::Debug,
+    C: Decoder + fmt::Debug,
+    D: Decoder + fmt::Debug,
+    E: Decoder + fmt::Debug,
+    F: Decoder + fmt::Debug,
+    A::Output: fmt::Debug,
+    B::Output: fmt::Debug,
+    C::Output: fmt::Debug,
+    D::Output: fmt::Debug,
+    E::Output: fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { self.inner.fmt(f) }
+}
+
+impl<A, B, C, D, E, F> Clone for Decoder6<A, B, C, D, E, F>
+where
+    A: Decoder + Clone,
+    B: Decoder + Clone,
+    C: Decoder + Clone,
+    D: Decoder + Clone,
+    E: Decoder + Clone,
+    F: Decoder + Clone,
+    A::Output: Clone,
+    B::Output: Clone,
+    C::Output: Clone,
+    D::Output: Clone,
+    E::Output: Clone,
+{
+    fn clone(&self) -> Self { Self { inner: self.inner.clone() } }
+}
+
+impl<A, B, C, D, E, F> Decoder for Decoder6<A, B, C, D, E, F>
+where
+    A: Decoder,
+    B: Decoder,
+    C: Decoder,
+    D: Decoder,
+    E: Decoder,
+    F: Decoder,
+{
+    type Output = (A::Output, B::Output, C::Output, D::Output, E::Output, F::Output);
+    type Error = Decoder6Error<A::Error, B::Error, C::Error, D::Error, E::Error, F::Error>;
+
+    #[inline]
+    fn push_bytes(&mut self, bytes: &mut &[u8]) -> Result<DecoderStatus, Self::Error> {
+        self.inner.push_bytes(bytes).map_err(|error| match error {
+            Decoder2Error::First(Decoder3Error::First(a)) => Decoder6Error::First(a),
+            Decoder2Error::First(Decoder3Error::Second(b)) => Decoder6Error::Second(b),
+            Decoder2Error::First(Decoder3Error::Third(c)) => Decoder6Error::Third(c),
+            Decoder2Error::Second(Decoder3Error::First(d)) => Decoder6Error::Fourth(d),
+            Decoder2Error::Second(Decoder3Error::Second(e)) => Decoder6Error::Fifth(e),
+            Decoder2Error::Second(Decoder3Error::Third(f)) => Decoder6Error::Sixth(f),
+        })
+    }
+
+    #[inline]
+    fn end(self) -> Result<Self::Output, Self::Error> {
+        let result = self.inner.end().map_err(|error| match error {
+            Decoder2Error::First(Decoder3Error::First(a)) => Decoder6Error::First(a),
+            Decoder2Error::First(Decoder3Error::Second(b)) => Decoder6Error::Second(b),
+            Decoder2Error::First(Decoder3Error::Third(c)) => Decoder6Error::Third(c),
+            Decoder2Error::Second(Decoder3Error::First(d)) => Decoder6Error::Fourth(d),
+            Decoder2Error::Second(Decoder3Error::Second(e)) => Decoder6Error::Fifth(e),
+            Decoder2Error::Second(Decoder3Error::Third(f)) => Decoder6Error::Sixth(f),
+        })?;
+
+        let ((first, second, third), (fourth, fifth, sixth)) = result;
+        Ok((first, second, third, fourth, fifth, sixth))
+    }
+
+    #[inline]
+    fn read_limit(&self) -> usize { self.inner.read_limit() }
+}
+
+#[cfg(test)]
+mod tests {
+    #[cfg(feature = "alloc")]
+    use alloc::vec;
+    #[cfg(feature = "alloc")]
+    use alloc::vec::Vec;
+
+    #[cfg(feature = "alloc")]
+    use super::*;
+
+    #[test]
+    #[cfg(feature = "alloc")]
+    fn byte_vec_decoder_decode_empty_slice() {
+        let mut decoder = ByteVecDecoder::new();
+        let data = [];
+        let _ = decoder.push_bytes(&mut data.as_slice());
+        let err = decoder.end().unwrap_err();
+
+        if let ByteVecDecoderErrorInner::UnexpectedEof(e) = err.0 {
+            assert_eq!(e.missing, 1);
+        } else {
+            panic!("Expected UnexpectedEof error");
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "alloc")]
+    fn byte_vec_decoder_incomplete_0xfd_prefix() {
+        let mut decoder = ByteVecDecoder::new();
+        let data = [0xFD];
+        let _ = decoder.push_bytes(&mut data.as_slice());
+        let err = decoder.end().unwrap_err();
+
+        if let ByteVecDecoderErrorInner::UnexpectedEof(e) = err.0 {
+            assert_eq!(e.missing, 2);
+        } else {
+            panic!("Expected UnexpectedEof error");
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "alloc")]
+    fn byte_vec_decoder_incomplete_0xfe_prefix() {
+        let mut decoder = ByteVecDecoder::new();
+        let data = [0xFE];
+        let _ = decoder.push_bytes(&mut data.as_slice());
+        let err = decoder.end().unwrap_err();
+
+        if let ByteVecDecoderErrorInner::UnexpectedEof(e) = err.0 {
+            assert_eq!(e.missing, 4);
+        } else {
+            panic!("Expected UnexpectedEof error");
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "alloc")]
+    fn byte_vec_decoder_incomplete_0xff_prefix() {
+        let mut decoder = ByteVecDecoder::new();
+        let data = [0xFF];
+        let _ = decoder.push_bytes(&mut data.as_slice());
+        let err = decoder.end().unwrap_err();
+
+        if let ByteVecDecoderErrorInner::UnexpectedEof(e) = err.0 {
+            assert_eq!(e.missing, 8);
+        } else {
+            panic!("Expected UnexpectedEof error");
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "alloc")]
+    fn byte_vec_decoder_reserves_in_batches() {
+        // A small number of extra bytes so we extend exactly by the remainder
+        // instead of another full batch.
+        let tail_length: usize = 11;
+
+        let total_len = MAX_VECTOR_ALLOCATE + tail_length;
+        let total_len_le = u32::try_from(total_len).expect("total_len fits u32").to_le_bytes();
+        let mut decoder = ByteVecDecoder::new();
+
+        let mut prefix = vec![0xFE]; // total_len_le is a compact size of four bytes.
+        prefix.extend_from_slice(&total_len_le);
+        prefix.push(0xAA);
+        let mut prefix_slice = prefix.as_slice();
+        decoder.push_bytes(&mut prefix_slice).expect("length plus first element");
+        assert!(prefix_slice.is_empty());
+
+        assert_eq!(decoder.buffer.capacity(), MAX_VECTOR_ALLOCATE);
+        assert_eq!(decoder.buffer.len(), 1);
+        assert_eq!(decoder.buffer[0], 0xAA);
+
+        let fill = vec![0xBB; MAX_VECTOR_ALLOCATE - 1];
+        let mut fill_slice = fill.as_slice();
+        decoder.push_bytes(&mut fill_slice).expect("fills to batch boundary, full capacity");
+        assert!(fill_slice.is_empty());
+
+        assert_eq!(decoder.buffer.capacity(), MAX_VECTOR_ALLOCATE);
+        assert_eq!(decoder.buffer.len(), MAX_VECTOR_ALLOCATE);
+        assert_eq!(decoder.buffer[MAX_VECTOR_ALLOCATE - 1], 0xBB);
+
+        let mut tail = vec![0xCC];
+        tail.extend([0xDD].repeat(tail_length - 1));
+        let mut tail_slice = tail.as_slice();
+        decoder.push_bytes(&mut tail_slice).expect("fills the remaining bytes");
+        assert!(tail_slice.is_empty());
+
+        assert_eq!(decoder.buffer.capacity(), MAX_VECTOR_ALLOCATE + tail_length);
+        assert_eq!(decoder.buffer.len(), total_len);
+        assert_eq!(decoder.buffer[MAX_VECTOR_ALLOCATE], 0xCC);
+
+        let result = decoder.end().unwrap();
+        assert_eq!(result.len(), total_len);
+        assert_eq!(result[total_len - 1], 0xDD);
+    }
+
+    #[cfg(feature = "alloc")]
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    pub struct Inner(u32);
+
+    /// The decoder for the [`Inner`] type.
+    #[cfg(feature = "alloc")]
+    #[derive(Clone, Default)]
+    pub struct InnerDecoder(ArrayDecoder<4>);
+
+    #[cfg(feature = "alloc")]
+    impl Decoder for InnerDecoder {
+        type Output = Inner;
+        type Error = UnexpectedEofError;
+
+        fn push_bytes(&mut self, bytes: &mut &[u8]) -> Result<DecoderStatus, Self::Error> {
+            self.0.push_bytes(bytes)
+        }
+
+        fn end(self) -> Result<Self::Output, Self::Error> {
+            let n = u32::from_le_bytes(self.0.end()?);
+            Ok(Inner(n))
+        }
+
+        fn read_limit(&self) -> usize { self.0.read_limit() }
+    }
+
+    #[cfg(feature = "alloc")]
+    impl Decode for Inner {
+        type Decoder = InnerDecoder;
+    }
+
+    #[cfg(feature = "alloc")]
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    pub struct Test(Vec<Inner>);
+
+    /// The decoder for the [`Test`] type.
+    #[cfg(feature = "alloc")]
+    #[derive(Clone, Default)]
+    pub struct TestDecoder(VecDecoder<Inner>);
+
+    #[cfg(feature = "alloc")]
+    impl Decoder for TestDecoder {
+        type Output = Test;
+        type Error = VecDecoderError<UnexpectedEofError>;
+
+        fn push_bytes(&mut self, bytes: &mut &[u8]) -> Result<DecoderStatus, Self::Error> {
+            self.0.push_bytes(bytes)
+        }
+
+        fn end(self) -> Result<Self::Output, Self::Error> {
+            let v = self.0.end()?;
+            Ok(Test(v))
+        }
+
+        fn read_limit(&self) -> usize { self.0.read_limit() }
+    }
+
+    #[cfg(feature = "alloc")]
+    impl Decode for Test {
+        type Decoder = TestDecoder;
+    }
+
+    #[test]
+    #[cfg(feature = "alloc")]
+    fn vec_decoder_empty() {
+        // Empty with a couple of arbitrary extra bytes.
+        let encoded = vec![0x00, 0xFF, 0xFF];
+
+        let mut slice = encoded.as_slice();
+        let mut decoder = Test::decoder();
+        assert!(decoder.push_bytes(&mut slice).unwrap().is_ready());
+
+        let got = decoder.end().unwrap();
+        let want = Test(vec![]);
+
+        assert_eq!(got, want);
+    }
+
+    #[test]
+    #[cfg(feature = "alloc")]
+    fn vec_decoder_empty_no_bytes() {
+        // Empty slice. Note the lack of any length prefix compact size.
+        let encoded = &[];
+
+        let mut slice = encoded.as_slice();
+        let mut decoder = Test::decoder();
+        // Should want more bytes since we've provided nothing
+        assert!(decoder.push_bytes(&mut slice).unwrap().needs_more());
+
+        assert!(matches!(
+            decoder.end().unwrap_err(),
+            VecDecoderError(VecDecoderErrorInner::UnexpectedEof(_))
+        ));
+    }
+
+    #[test]
+    #[cfg(feature = "alloc")]
+    fn vec_decoder_one_item() {
+        let encoded = vec![0x01, 0xEF, 0xBE, 0xAD, 0xDE];
+
+        let mut slice = encoded.as_slice();
+        let mut decoder = Test::decoder();
+        decoder.push_bytes(&mut slice).unwrap();
+
+        let got = decoder.end().unwrap();
+        let want = Test(vec![Inner(0xDEAD_BEEF)]);
+
+        assert_eq!(got, want);
+    }
+
+    #[test]
+    #[cfg(feature = "alloc")]
+    fn vec_decoder_two_items() {
+        let encoded = vec![0x02, 0xEF, 0xBE, 0xAD, 0xDE, 0xBE, 0xBA, 0xFE, 0xCA];
+
+        let mut slice = encoded.as_slice();
+        let mut decoder = Test::decoder();
+        decoder.push_bytes(&mut slice).unwrap();
+
+        let got = decoder.end().unwrap();
+        let want = Test(vec![Inner(0xDEAD_BEEF), Inner(0xCAFE_BABE)]);
+
+        assert_eq!(got, want);
+    }
+
+    #[test]
+    #[cfg(feature = "alloc")]
+    fn vec_decoder_reserves_in_batches() {
+        // A small number of extra elements so we extend exactly by the remainder
+        // instead of another full batch.
+        let tail_length: usize = 11;
+
+        let element_size = core::mem::size_of::<Inner>();
+        let batch_length = MAX_VECTOR_ALLOCATE / element_size;
+        assert!(batch_length > 1);
+        let total_len = batch_length + tail_length;
+        let total_len_le = u32::try_from(total_len).expect("total_len fits u32").to_le_bytes();
+        let mut decoder = Test::decoder();
+
+        let mut prefix = vec![0xFE]; // total_len_le is a compact size of four bytes.
+        prefix.extend_from_slice(&total_len_le);
+        prefix.extend_from_slice(&0xAA_u32.to_le_bytes());
+        let mut prefix_slice = prefix.as_slice();
+        decoder.push_bytes(&mut prefix_slice).expect("length plus first element");
+        assert!(prefix_slice.is_empty());
+
+        assert_eq!(decoder.0 .0.items.buffer.capacity(), batch_length);
+        assert_eq!(decoder.0 .0.items.buffer.len(), 1);
+        assert_eq!(decoder.0 .0.items.buffer[0], Inner(0xAA));
+
+        let fill = 0xBB_u32.to_le_bytes().repeat(batch_length - 1);
+        let mut fill_slice = fill.as_slice();
+        decoder.push_bytes(&mut fill_slice).expect("fills to batch boundary, full capacity");
+        assert!(fill_slice.is_empty());
+
+        assert_eq!(decoder.0 .0.items.buffer.capacity(), batch_length);
+        assert_eq!(decoder.0 .0.items.buffer.len(), batch_length);
+        assert_eq!(decoder.0 .0.items.buffer[batch_length - 1], Inner(0xBB));
+
+        let mut tail = 0xCC_u32.to_le_bytes().to_vec();
+        tail.extend(0xDD_u32.to_le_bytes().repeat(tail_length - 1));
+        let mut tail_slice = tail.as_slice();
+        decoder.push_bytes(&mut tail_slice).expect("fills the remaining bytes");
+        assert!(tail_slice.is_empty());
+
+        assert_eq!(decoder.0 .0.items.buffer.capacity(), batch_length + tail_length);
+        assert_eq!(decoder.0 .0.items.buffer.len(), total_len);
+        assert_eq!(decoder.0 .0.items.buffer[batch_length], Inner(0xCC));
+
+        let Test(result) = decoder.end().unwrap();
+        assert_eq!(result.len(), total_len);
+        assert_eq!(result[total_len - 1], Inner(0xDD));
+    }
+}

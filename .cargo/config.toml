@@ -1,0 +1,11 @@
+# The native Android build must be independent of crates.io availability.
+# Refresh this mirror together with native/fips-bridge/Cargo.lock using:
+#
+#   cargo +1.94.1 vendor --versioned-dirs --frozen \
+#     --manifest-path native/fips-bridge/Cargo.toml native/cargo-vendor
+
+[source.crates-io]
+replace-with = "vendored-sources"
+
+[source.vendored-sources]
+directory = "native/cargo-vendor"

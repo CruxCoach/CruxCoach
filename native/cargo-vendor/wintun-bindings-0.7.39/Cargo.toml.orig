@@ -1,0 +1,83 @@
+[package]
+name = "wintun-bindings"
+version = "0.7.39"
+edition = "2024"
+authors = [
+    "ssrlive",
+    "null.black Inc. <opensource@null.black>",
+    "Troy Neubauer <troy@null.black>",
+]
+repository = "https://github.com/tun2proxy/wintun-bindings"
+readme = "README.md"
+documentation = "https://docs.rs/wintun-bindings/"
+description = "Safe idiomatic bindings to the WinTun C library and more enhancements"
+license = "MIT"
+keywords = ["wintun", "tap", "tun", "vpn", "wireguard"]
+categories = ["api-bindings"]
+
+[package.metadata.docs.rs]
+default-target = "x86_64-pc-windows-msvc"
+targets = [
+    "aarch64-pc-windows-msvc",
+    "i686-pc-windows-msvc",
+    "x86_64-pc-windows-msvc",
+]
+all-features = true
+
+[features]
+# default = [
+#     "verify_binary_signature",
+#     "panic_on_unsent_packets",
+#     "async",
+#     "winreg",
+#     "enable_inner_logging",
+# ]
+async = ["blocking", "futures"]
+panic_on_unsent_packets = []
+verify_binary_signature = []
+enable_inner_logging = []
+winreg = []
+
+[dependencies]
+blocking = { version = "1.6.2", optional = true }
+futures = { version = "0.3.32", optional = true }
+libloading = "0.9.0"
+log = "0.4.29"
+thiserror = "2.0.18"
+windows-sys = { version = "0.61.2", features = [
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_SystemServices",
+    "Win32_Security_Cryptography",
+    "Win32_NetworkManagement_IpHelper",
+    "Win32_NetworkManagement_Ndis",
+    "Win32_Networking_WinSock",
+    "Win32_System_Threading",
+    "Win32_System_Com",
+    "Win32_System_Rpc",
+    "Win32_Security",
+    "Win32_Foundation",
+    "Win32_System_Ioctl",
+    "Win32_System_IO",
+    "Win32_System_LibraryLoader",
+    "Win32_Security_WinTrust",
+    "Win32_System_Registry",
+    "Win32_System_Services",
+] }
+
+[dev-dependencies]
+dotenvy = "0.15.7"
+env_logger = "0.11.10"
+packet = "0.1.4"
+pcap-file = "2.0.0"
+serde_json = "1.0.149"
+tokio = { version = "1.52.1", features = ["full"] }
+
+[[example]]
+name = "udp-echo-async"
+path = "examples/udp-echo-async.rs"
+required-features = ["async"]
+
+[[example]]
+name = "basic-async"
+path = "examples/basic-async.rs"
+required-features = ["async"]

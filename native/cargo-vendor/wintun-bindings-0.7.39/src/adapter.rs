@@ -1,0 +1,637 @@
+/// Representation of a winton adapter with safe idiomatic bindings to the functionality provided by
+/// the WintunAdapter* C functions.
+///
+/// The [`Adapter::create`] and [`Adapter::open`] functions serve as the entry point to using
+/// wintun functionality
+use crate::{
+    Wintun,
+    error::{Error, OutOfRangeData},
+    handle::{SafeEvent, UnsafeHandle},
+    session::Session,
+    util::{self},
+    wintun_raw,
+};
+use std::{
+    ffi::OsStr,
+    net::{IpAddr, Ipv4Addr},
+    os::windows::prelude::OsStrExt,
+    ptr,
+    sync::Arc,
+    sync::OnceLock,
+};
+use windows_sys::{
+    Win32::{
+        Foundation::ERROR_NOT_FOUND,
+        NetworkManagement::{IpHelper::ConvertLengthToIpv4Mask, Ndis::NET_LUID_LH},
+    },
+    core::GUID,
+};
+
+/// Wrapper around a <https://git.zx2c4.com/wintun/about/#wintun_adapter_handle>
+pub struct Adapter {
+    adapter: UnsafeHandle<wintun_raw::WINTUN_ADAPTER_HANDLE>,
+    pub(crate) wintun: Wintun,
+    requested_guid: Option<u128>,
+    guid: OnceLock<u128>,
+    index: OnceLock<u32>,
+    luid: NET_LUID_LH,
+}
+
+impl Adapter {
+    /// Returns the `Friendly Name` of this adapter,
+    /// which is the human readable name shown in Windows
+    pub fn get_name(&self) -> Result<String, Error> {
+        Ok(crate::ffi::luid_to_alias(&self.luid)?)
+    }
+
+    /// Sets the `Friendly Name` of this adapter,
+    /// which is the human readable name shown in Windows
+    ///
+    /// Note: This is different from `Adapter Name`, which is a GUID.
+    pub fn set_name(&self, name: &str) -> Result<(), Error> {
+        // use command `netsh interface set interface name="oldname" newname="mynewname"`
+
+        let args = &[
+            "interface",
+            "set",
+            "interface",
+            &format!("name=\"{}\"", self.get_name()?),
+            &format!("newname=\"{}\"", name),
+        ];
+        util::run_command("netsh", args)?;
+
+        Ok(())
+    }
+
+    pub fn get_guid(&self) -> u128 {
+        if let Some(guid) = self.guid.get() {
+            return *guid;
+        }
+
+        let real_guid = match resolve_with_retry(|| crate::ffi::luid_to_guid(&self.luid)) {
+            Ok(g) => util::win_guid_to_u128(&g),
+            Err(_) => return self.requested_guid.unwrap_or(0),
+        };
+
+        if let Some(req) = self.requested_guid
+            && req != real_guid
+            && let (Ok(real_s), Ok(req_s), Ok((major, minor, build))) = (
+                util::guid_to_win_style_string(&GUID::from_u128(real_guid)),
+                util::guid_to_win_style_string(&GUID::from_u128(req)),
+                util::get_windows_version(),
+            )
+        {
+            log::warn!(
+                "Windows {major}.{minor}.{build}: an internal bug causes the GUID mismatch: Expected {req_s}, got {real_s}"
+            );
+        }
+
+        match self.guid.set(real_guid) {
+            Ok(()) => real_guid,
+            Err(_) => *self
+                .guid
+                .get()
+                .expect("guid should be initialized by this thread or another"),
+        }
+    }
+
+    /// Creates a new wintun adapter inside the name `name` with tunnel type `tunnel_type`
+    ///
+    /// Optionally a GUID can be specified that will become the GUID of this adapter once created.
+    pub fn create(wintun: &Wintun, name: &str, tunnel_type: &str, guid: Option<u128>) -> Result<Arc<Adapter>, Error> {
+        let name_utf16: Vec<_> = name.encode_utf16().chain(std::iter::once(0)).collect();
+        let tunnel_type_utf16: Vec<u16> = tunnel_type.encode_utf16().chain(std::iter::once(0)).collect();
+
+        let requested_guid = guid.unwrap_or_else(|| {
+            let mut guid: GUID = unsafe { std::mem::zeroed() };
+            unsafe { windows_sys::Win32::System::Rpc::UuidCreate(&mut guid as *mut GUID) };
+            util::win_guid_to_u128(&guid)
+        });
+
+        crate::log::set_default_logger_if_unset(wintun);
+
+        let guid_s: GUID = GUID::from_u128(requested_guid);
+        let result = unsafe { wintun.WintunCreateAdapter(name_utf16.as_ptr(), tunnel_type_utf16.as_ptr(), &guid_s) };
+
+        if result.is_null() {
+            return crate::log::extract_wintun_log_error("WintunCreateAdapter failed")?;
+        }
+
+        let mut luid: NET_LUID_LH = unsafe { std::mem::zeroed() };
+        unsafe { wintun.WintunGetAdapterLUID(result, &mut luid) };
+
+        Ok(Arc::new(Adapter {
+            adapter: UnsafeHandle(result),
+            wintun: wintun.clone(),
+            luid,
+            requested_guid: Some(requested_guid),
+            guid: OnceLock::new(),
+            index: OnceLock::new(),
+        }))
+    }
+
+    /// Attempts to open an existing wintun interface name `name`.
+    pub fn open(wintun: &Wintun, name: &str) -> Result<Arc<Adapter>, Error> {
+        let name_utf16: Vec<u16> = OsStr::new(name).encode_wide().chain(std::iter::once(0)).collect();
+
+        crate::log::set_default_logger_if_unset(wintun);
+
+        let result = unsafe { wintun.WintunOpenAdapter(name_utf16.as_ptr()) };
+
+        if result.is_null() {
+            return crate::log::extract_wintun_log_error("WintunOpenAdapter failed")?;
+        }
+
+        let mut luid: NET_LUID_LH = unsafe { std::mem::zeroed() };
+        unsafe { wintun.WintunGetAdapterLUID(result, &mut luid) };
+
+        Ok(Arc::new(Adapter {
+            adapter: UnsafeHandle(result),
+            wintun: wintun.clone(),
+            luid,
+            requested_guid: None,
+            guid: OnceLock::new(),
+            index: OnceLock::new(),
+        }))
+    }
+
+    /// Delete an adapter, consuming it in the process
+    pub fn delete(self) -> Result<(), Error> {
+        //Dropping an adapter closes it
+        drop(self);
+        // Return a result here so that if later the API changes to be fallible, we can support it
+        // without making a breaking change
+        Ok(())
+    }
+
+    fn validate_capacity(capacity: u32) -> Result<(), Error> {
+        let range = crate::MIN_RING_CAPACITY..=crate::MAX_RING_CAPACITY;
+        if !range.contains(&capacity) {
+            return Err(Error::CapacityOutOfRange(OutOfRangeData { range, value: capacity }));
+        }
+        if !capacity.is_power_of_two() {
+            return Err(Error::CapacityNotPowerOfTwo(capacity));
+        }
+        Ok(())
+    }
+
+    /// Initiates a new wintun session on the given adapter.
+    ///
+    /// Capacity is the size in bytes of the ring buffer used internally by the driver. Must be
+    /// a power of two between [`crate::MIN_RING_CAPACITY`] and [`crate::MAX_RING_CAPACITY`] inclusive.
+    pub fn start_session(self: &Arc<Self>, capacity: u32) -> Result<Arc<Session>, Error> {
+        Self::validate_capacity(capacity)?;
+
+        let result = unsafe { self.wintun.WintunStartSession(self.adapter.0, capacity) };
+
+        if result.is_null() {
+            return crate::log::extract_wintun_log_error("WintunStartSession failed")?;
+        }
+        // Manual reset, because we use this event once and it must fire on all threads
+        let shutdown_event = SafeEvent::new(true, false)?;
+        Ok(Arc::new(Session {
+            inner: UnsafeHandle(result),
+            read_event: OnceLock::new(),
+            shutdown_event: Arc::new(shutdown_event),
+            adapter: self.clone(),
+        }))
+    }
+
+    /// Returns the Win32 LUID for this adapter
+    pub fn get_luid(&self) -> NET_LUID_LH {
+        self.luid
+    }
+
+    /// Set `MTU` of this adapter
+    pub fn set_mtu(&self, mtu: usize) -> Result<(), Error> {
+        util::set_adapter_mtu(&self.luid, mtu, false)?;
+        // IPv6 MTU is best-effort: a host with IPv6 disabled has no IPv6
+        // interface row. Skip that case rather than fail, since the adapter
+        // may be driven IPv4-only.
+        if let Err(e) = util::set_adapter_mtu(&self.luid, mtu, true) {
+            if e.raw_os_error() != Some(ERROR_NOT_FOUND as i32) {
+                return Err(e.into());
+            }
+            log::warn!("skipping IPv6 MTU, no IPv6 interface row");
+        }
+        Ok(())
+    }
+
+    /// Returns `MTU` of this adapter
+    pub fn get_mtu(&self) -> Result<usize, Error> {
+        // FIXME: Here we get the IPv4 MTU only, but for some users it may not be expected.
+        Ok(util::get_adapter_mtu(&self.luid, false)? as _)
+    }
+
+    /// Returns the Win32 interface index of this adapter. Useful for specifying the interface
+    /// when executing `netsh interface ip` commands
+    pub fn get_adapter_index(&self) -> Result<u32, Error> {
+        if let Some(idx) = self.index.get() {
+            return Ok(*idx);
+        }
+        let idx = resolve_with_retry(|| crate::ffi::luid_to_index(&self.luid))?;
+        Ok(*self.index.get_or_init(|| idx))
+    }
+
+    /// Sets the IP address for this adapter, using command `netsh`.
+    pub fn set_address(&self, address: Ipv4Addr) -> Result<(), Error> {
+        let binding = self.get_addresses()?;
+        let old_address = binding.iter().find(|addr| matches!(addr, IpAddr::V4(_)));
+        let mask = match old_address {
+            Some(IpAddr::V4(addr)) => self.get_netmask_of_address(&(*addr).into())?,
+            _ => "255.255.255.0".parse()?,
+        };
+        let gateway = self
+            .get_gateways()?
+            .iter()
+            .find(|addr| matches!(addr, IpAddr::V4(_)))
+            .cloned();
+        self.set_network_addresses_tuple(address.into(), mask, gateway)?;
+        Ok(())
+    }
+
+    /// Sets the gateway for this adapter, using command `netsh`.
+    pub fn set_gateway(&self, gateway: Option<Ipv4Addr>) -> Result<(), Error> {
+        let binding = self.get_addresses()?;
+        let address = binding.iter().find(|addr| matches!(addr, IpAddr::V4(_)));
+        let address = match address {
+            Some(IpAddr::V4(addr)) => addr,
+            _ => return Err("Unable to find IPv4 address".into()),
+        };
+        let mask = self.get_netmask_of_address(&(*address).into())?;
+        let gateway = gateway.map(|addr| addr.into());
+        self.set_network_addresses_tuple((*address).into(), mask, gateway)?;
+        Ok(())
+    }
+
+    /// Sets the subnet mask for this adapter, using command `netsh`.
+    pub fn set_netmask(&self, mask: Ipv4Addr) -> Result<(), Error> {
+        let binding = self.get_addresses()?;
+        let address = binding.iter().find(|addr| matches!(addr, IpAddr::V4(_)));
+        let address = match address {
+            Some(IpAddr::V4(addr)) => addr,
+            _ => return Err("Unable to find IPv4 address".into()),
+        };
+        let gateway = self
+            .get_gateways()?
+            .iter()
+            .find(|addr| matches!(addr, IpAddr::V4(_)))
+            .cloned();
+        self.set_network_addresses_tuple((*address).into(), mask.into(), gateway)?;
+        Ok(())
+    }
+
+    /// Sets the DNS servers for this adapter
+    pub fn set_dns_servers(&self, dns_servers: &[IpAddr]) -> Result<(), Error> {
+        let interface = GUID::from_u128(self.get_guid());
+        if let Err(e) = util::set_interface_dns_servers(interface, dns_servers) {
+            log::debug!("Failed to set DNS servers in first attempt: \"{}\", try another...", e);
+            if let Err(e) = crate::dns_via_reg::set_dns_via_registry(&interface, dns_servers) {
+                log::debug!("Failed to set DNS servers via registry: \"{}\", try another...", e);
+                util::set_interface_dns_servers_via_cmd(&self.get_name()?, dns_servers)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Sets the network addresses of this adapter, including network address, subnet mask, and gateway
+    pub fn set_network_addresses_tuple(
+        &self,
+        address: IpAddr,
+        mask: IpAddr,
+        gateway: Option<IpAddr>,
+    ) -> Result<(), Error> {
+        let name = self.get_name()?;
+        // command line: `netsh interface ipv4 set address name="YOUR_INTERFACE_NAME" source=static address=IP_ADDRESS mask=SUBNET_MASK gateway=GATEWAY`
+        // or shorter command: `netsh interface ipv4 set address name="YOUR_INTERFACE_NAME" static IP_ADDRESS SUBNET_MASK GATEWAY`
+        // for example: `netsh interface ipv4 set address name="Wi-Fi" static 192.168.3.8 255.255.255.0 192.168.3.1`
+        let mut args: Vec<String> = vec![
+            "interface".into(),
+            if address.is_ipv4() {
+                "ipv4".into()
+            } else {
+                "ipv6".into()
+            },
+            "set".into(),
+            "address".into(),
+            format!("name=\"{}\"", name),
+            "source=static".into(),
+            format!("address={}", address),
+            format!("mask={}", mask),
+        ];
+        if let Some(gateway) = gateway {
+            args.push(format!("gateway={}", gateway));
+        }
+        util::run_command("netsh", &args.iter().map(|s| s.as_str()).collect::<Vec<&str>>())?;
+        Ok(())
+    }
+
+    /// Returns the IP addresses of this adapter, including IPv4 and IPv6 addresses
+    pub fn get_addresses(&self) -> Result<Vec<IpAddr>, Error> {
+        let name = util::guid_to_win_style_string(&GUID::from_u128(self.get_guid()))?;
+
+        let mut adapter_addresses = vec![];
+
+        util::get_adapters_addresses(|adapter| {
+            let name_iter = match unsafe { util::win_pstr_to_string(adapter.AdapterName) } {
+                Ok(name) => name,
+                Err(err) => {
+                    log::error!("Failed to parse adapter name: {}", err);
+                    return false;
+                }
+            };
+            if name_iter == name {
+                let mut current_address = adapter.FirstUnicastAddress;
+                while !current_address.is_null() {
+                    let address = unsafe { (*current_address).Address };
+                    match util::retrieve_ipaddr_from_socket_address(&address) {
+                        Ok(addr) => adapter_addresses.push(addr),
+                        Err(err) => {
+                            log::error!("Failed to parse address: {}", err);
+                        }
+                    }
+                    unsafe { current_address = (*current_address).Next };
+                }
+            }
+            true
+        })?;
+
+        Ok(adapter_addresses)
+    }
+
+    /// Returns the gateway addresses of this adapter, including IPv4 and IPv6 addresses
+    pub fn get_gateways(&self) -> Result<Vec<IpAddr>, Error> {
+        let name = util::guid_to_win_style_string(&GUID::from_u128(self.get_guid()))?;
+        let mut gateways = vec![];
+        util::get_adapters_addresses(|adapter| {
+            let name_iter = match unsafe { util::win_pstr_to_string(adapter.AdapterName) } {
+                Ok(name) => name,
+                Err(err) => {
+                    log::error!("Failed to parse adapter name: {}", err);
+                    return false;
+                }
+            };
+            if name_iter == name {
+                let mut current_gateway = adapter.FirstGatewayAddress;
+                while !current_gateway.is_null() {
+                    let gateway = unsafe { (*current_gateway).Address };
+                    match util::retrieve_ipaddr_from_socket_address(&gateway) {
+                        Ok(addr) => gateways.push(addr),
+                        Err(err) => {
+                            log::error!("Failed to parse gateway: {}", err);
+                        }
+                    }
+                    unsafe { current_gateway = (*current_gateway).Next };
+                }
+            }
+            true
+        })?;
+        Ok(gateways)
+    }
+
+    /// Returns the subnet mask of the given address
+    pub fn get_netmask_of_address(&self, target_address: &IpAddr) -> Result<IpAddr, Error> {
+        let name = util::guid_to_win_style_string(&GUID::from_u128(self.get_guid()))?;
+        let mut subnet_mask = None;
+        util::get_adapters_addresses(|adapter| {
+            let name_iter = match unsafe { util::win_pstr_to_string(adapter.AdapterName) } {
+                Ok(name) => name,
+                Err(err) => {
+                    log::warn!("Failed to parse adapter name: {}", err);
+                    return false;
+                }
+            };
+            if name_iter == name {
+                let mut current_address = adapter.FirstUnicastAddress;
+                while !current_address.is_null() {
+                    let address = unsafe { (*current_address).Address };
+                    let address = match util::retrieve_ipaddr_from_socket_address(&address) {
+                        Ok(addr) => addr,
+                        Err(err) => {
+                            log::warn!("Failed to parse address: {}", err);
+                            return false;
+                        }
+                    };
+                    if address == *target_address {
+                        let masklength = unsafe { (*current_address).OnLinkPrefixLength };
+                        match address {
+                            IpAddr::V4(_) => {
+                                let mut mask = 0_u32;
+                                match unsafe { ConvertLengthToIpv4Mask(masklength as u32, &mut mask as *mut u32) } {
+                                    0 => {}
+                                    err => {
+                                        log::warn!("Failed to convert length to mask: {}", err);
+                                        return false;
+                                    }
+                                }
+                                subnet_mask = Some(IpAddr::V4(Ipv4Addr::from(mask.to_le_bytes())));
+                            }
+                            IpAddr::V6(_) => match util::ipv6_netmask_for_prefix(masklength) {
+                                Ok(v) => subnet_mask = Some(IpAddr::V6(v)),
+                                Err(err) => {
+                                    log::warn!("Failed to convert length to mask: {}", err);
+                                    return false;
+                                }
+                            },
+                        }
+                        break;
+                    }
+                    unsafe { current_address = (*current_address).Next };
+                }
+            }
+            true
+        })?;
+
+        Ok(subnet_mask.ok_or("Unable to find matching address")?)
+    }
+}
+
+impl Drop for Adapter {
+    fn drop(&mut self) {
+        let _name = self.get_name();
+        //Close adapter on drop
+        //This is why we need an Arc of wintun
+        unsafe { self.wintun.WintunCloseAdapter(self.adapter.0) };
+        self.adapter = UnsafeHandle(ptr::null_mut());
+        #[cfg(feature = "winreg")]
+        if let Ok(name) = _name {
+            // Delete registry related to network card
+            _ = delete_adapter_info_from_reg(&name);
+        }
+    }
+}
+
+/// This function is used to avoid the adapter name and guid being recorded in the registry
+#[cfg(feature = "winreg")]
+pub(crate) fn delete_adapter_info_from_reg(dev_name: &str) -> std::io::Result<()> {
+    use windows_sys::Win32::Foundation::ERROR_NO_MORE_ITEMS;
+    use windows_sys::Win32::System::Registry::{
+        HKEY, HKEY_LOCAL_MACHINE, KEY_ALL_ACCESS, KEY_READ, REG_SZ, RegCloseKey, RegDeleteTreeW, RegEnumKeyExW,
+        RegOpenKeyExW, RegQueryValueExW,
+    };
+
+    fn to_wide_null(value: &str) -> Vec<u16> {
+        value.encode_utf16().chain(std::iter::once(0)).collect()
+    }
+
+    fn open_registry_key(parent: HKEY, subkey: &str, access: u32) -> std::io::Result<HKEY> {
+        let subkey_wide = to_wide_null(subkey);
+        let mut handle: HKEY = std::ptr::null_mut();
+        let status = unsafe { RegOpenKeyExW(parent, subkey_wide.as_ptr(), 0, access, &mut handle) };
+        if status != 0 {
+            return Err(std::io::Error::from_raw_os_error(status as i32));
+        }
+        Ok(handle)
+    }
+
+    fn enum_registry_subkeys(hkey: HKEY) -> std::io::Result<Vec<String>> {
+        let mut subkeys = Vec::new();
+        let mut index = 0;
+        loop {
+            let mut name = vec![0u16; 260];
+            let mut name_len = name.len() as u32;
+            let status = unsafe {
+                RegEnumKeyExW(
+                    hkey,
+                    index,
+                    name.as_mut_ptr(),
+                    &mut name_len,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                )
+            };
+            if status == ERROR_NO_MORE_ITEMS {
+                break;
+            }
+            if status != 0 {
+                return Err(std::io::Error::from_raw_os_error(status as i32));
+            }
+            subkeys.push(String::from_utf16_lossy(&name[..name_len as usize]));
+            index += 1;
+        }
+        Ok(subkeys)
+    }
+
+    fn query_registry_string_value(hkey: HKEY, value_name: &str) -> std::io::Result<String> {
+        let value_name_wide = to_wide_null(value_name);
+        let mut value_type = 0_u32;
+        let mut data_len = 0_u32;
+        let status = unsafe {
+            RegQueryValueExW(
+                hkey,
+                value_name_wide.as_ptr(),
+                std::ptr::null_mut(),
+                &mut value_type,
+                std::ptr::null_mut(),
+                &mut data_len,
+            )
+        };
+        if status != 0 {
+            return Err(std::io::Error::from_raw_os_error(status as i32));
+        }
+        if value_type != REG_SZ {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Registry value is not a string",
+            ));
+        }
+        let mut buffer = vec![0u16; (data_len as usize / 2).max(1)];
+        let status = unsafe {
+            RegQueryValueExW(
+                hkey,
+                value_name_wide.as_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                buffer.as_mut_ptr().cast(),
+                &mut data_len,
+            )
+        };
+        if status != 0 {
+            return Err(std::io::Error::from_raw_os_error(status as i32));
+        }
+        if let Some(&0) = buffer.last() {
+            buffer.pop();
+        }
+        String::from_utf16(&buffer).map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err))
+    }
+
+    fn read_subkey_string_value(parent_key: HKEY, subkey_name: &str, value_name: &str) -> std::io::Result<String> {
+        let subkey_handle = open_registry_key(parent_key, subkey_name, KEY_READ)?;
+        let value = query_registry_string_value(subkey_handle, value_name);
+        unsafe { RegCloseKey(subkey_handle) };
+        value
+    }
+
+    fn delete_registry_tree(parent_key: HKEY, subkey_name: &str) -> std::io::Result<()> {
+        let subkey_wide = to_wide_null(subkey_name);
+        let status = unsafe { RegDeleteTreeW(parent_key, subkey_wide.as_ptr()) };
+        if status != 0 {
+            return Err(std::io::Error::from_raw_os_error(status as i32));
+        }
+        Ok(())
+    }
+
+    let profiles_key = open_registry_key(
+        HKEY_LOCAL_MACHINE,
+        "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\NetworkList\\Profiles",
+        KEY_ALL_ACCESS,
+    )?;
+    for sub_key_name in enum_registry_subkeys(profiles_key)? {
+        match read_subkey_string_value(profiles_key, &sub_key_name, "ProfileName") {
+            Ok(profile_name) => {
+                if dev_name == profile_name {
+                    match delete_registry_tree(profiles_key, &sub_key_name) {
+                        Ok(_) => log::info!("Successfully deleted Profiles sub_key: {}", sub_key_name),
+                        Err(e) => log::warn!("Failed to delete Profiles sub_key {}: {}", sub_key_name, e),
+                    }
+                }
+            }
+            Err(e) => log::warn!("Failed to read ProfileName for sub_key {}: {}", sub_key_name, e),
+        }
+    }
+    unsafe { RegCloseKey(profiles_key) };
+
+    let unmanaged_key = open_registry_key(
+        HKEY_LOCAL_MACHINE,
+        "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\NetworkList\\Signatures\\Unmanaged",
+        KEY_ALL_ACCESS,
+    )?;
+    for sub_key_name in enum_registry_subkeys(unmanaged_key)? {
+        match read_subkey_string_value(unmanaged_key, &sub_key_name, "Description") {
+            Ok(description) => {
+                if dev_name == description {
+                    match delete_registry_tree(unmanaged_key, &sub_key_name) {
+                        Ok(_) => log::info!("Successfully deleted Unmanaged sub_key: {}", sub_key_name),
+                        Err(e) => log::warn!("Failed to delete Unmanaged sub_key {}: {}", sub_key_name, e),
+                    }
+                }
+            }
+            Err(e) => log::warn!("Failed to read Description for sub_key {}: {}", sub_key_name, e),
+        }
+    }
+    unsafe { RegCloseKey(unmanaged_key) };
+
+    Ok(())
+}
+
+fn resolve_with_retry<T>(mut f: impl FnMut() -> std::io::Result<T>) -> std::io::Result<T> {
+    const NSI_RETRY_ATTEMPTS: usize = 3;
+    const NSI_RETRY_DELAY_MS: u64 = 25;
+
+    for attempt in 1..=NSI_RETRY_ATTEMPTS {
+        match f() {
+            Ok(v) => return Ok(v),
+            Err(e) if e.raw_os_error() == Some(ERROR_NOT_FOUND as i32) => {
+                if attempt == NSI_RETRY_ATTEMPTS {
+                    return Err(e);
+                }
+                log::warn!("NSI race, retry {attempt}/{NSI_RETRY_ATTEMPTS}");
+                std::thread::sleep(std::time::Duration::from_millis(NSI_RETRY_DELAY_MS));
+            }
+            Err(e) => return Err(e),
+        }
+    }
+    unreachable!();
+}

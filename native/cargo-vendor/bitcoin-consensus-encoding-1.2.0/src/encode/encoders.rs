@@ -1,0 +1,277 @@
+// SPDX-License-Identifier: CC0-1.0
+
+//! Primitive and combinator encoder types.
+//!
+//! These encoders should not be used directly. Instead, you should define a newtype around one or
+//! more of these encoders, and pass through the [`Encoder`] implementation to your newtype. This
+//! avoids leaking encoding implementation details to the users of your type.
+//!
+//! For implementing these newtypes, we provide the [`encoder_newtype`] and
+//! [`encoder_newtype_exact`] macros.
+
+use core::fmt;
+
+use super::iter::{Encoders, IterEncoder};
+use super::{Encode, Encoder, EncoderStatus, ExactSizeEncoder};
+use crate::CompactSizeEncoder;
+
+/// An encoder for a single byte slice.
+#[derive(Debug, Clone)]
+pub struct BytesEncoder<'sl> {
+    sl: &'sl [u8],
+}
+
+impl<'sl> BytesEncoder<'sl> {
+    /// Constructs a byte encoder which encodes the given byte slice, with no length prefix.
+    pub const fn without_length_prefix(sl: &'sl [u8]) -> Self { Self { sl } }
+}
+
+impl Encoder for BytesEncoder<'_> {
+    fn current_chunk(&self) -> &[u8] { self.sl }
+
+    fn advance(&mut self) -> EncoderStatus { EncoderStatus::Finished }
+}
+
+impl<'sl> ExactSizeEncoder for BytesEncoder<'sl> {
+    #[inline]
+    fn len(&self) -> usize { self.sl.len() }
+}
+
+/// An encoder for a single byte slice, including a compact size length prefix.
+#[derive(Debug, Clone)]
+pub struct PrefixedBytesEncoder<'sl>(Encoder2<CompactSizeEncoder, BytesEncoder<'sl>>);
+
+impl<'sl> PrefixedBytesEncoder<'sl> {
+    /// Constructs a byte encoder which encodes the given byte slice, with a length prefix.
+    #[inline]
+    pub fn new(sl: &'sl [u8]) -> Self {
+        Self(Encoder2::new(
+            CompactSizeEncoder::new(sl.len()),
+            BytesEncoder::without_length_prefix(sl),
+        ))
+    }
+}
+
+impl Encoder for PrefixedBytesEncoder<'_> {
+    #[inline]
+    fn current_chunk(&self) -> &[u8] { self.0.current_chunk() }
+
+    #[inline]
+    fn advance(&mut self) -> EncoderStatus { self.0.advance() }
+}
+
+impl ExactSizeEncoder for PrefixedBytesEncoder<'_> {
+    #[inline]
+    fn len(&self) -> usize { self.0.len() }
+}
+
+/// An encoder for a single array.
+#[derive(Debug, Clone)]
+pub struct ArrayEncoder<const N: usize> {
+    arr: [u8; N],
+}
+
+impl<const N: usize> ArrayEncoder<N> {
+    /// Constructs an encoder which encodes the array with no length prefix.
+    pub const fn without_length_prefix(arr: [u8; N]) -> Self { Self { arr } }
+}
+
+impl<const N: usize> Encoder for ArrayEncoder<N> {
+    #[inline]
+    fn current_chunk(&self) -> &[u8] { &self.arr }
+
+    #[inline]
+    fn advance(&mut self) -> EncoderStatus { EncoderStatus::Finished }
+}
+
+impl<const N: usize> ExactSizeEncoder for ArrayEncoder<N> {
+    #[inline]
+    fn len(&self) -> usize { self.arr.len() }
+}
+
+/// An encoder for a reference to an array.
+///
+/// This encoder borrows the array instead of taking ownership, avoiding a copy
+/// when the array is already available by reference (e.g., as a struct field).
+#[derive(Debug, Clone)]
+pub struct ArrayRefEncoder<'e, const N: usize> {
+    arr: &'e [u8; N],
+}
+
+impl<'e, const N: usize> ArrayRefEncoder<'e, N> {
+    /// Constructs an encoder which encodes the array reference with no length prefix.
+    pub const fn without_length_prefix(arr: &'e [u8; N]) -> Self { Self { arr } }
+}
+
+impl<const N: usize> Encoder for ArrayRefEncoder<'_, N> {
+    #[inline]
+    fn current_chunk(&self) -> &[u8] { self.arr }
+
+    #[inline]
+    fn advance(&mut self) -> EncoderStatus { EncoderStatus::Finished }
+}
+
+impl<const N: usize> ExactSizeEncoder for ArrayRefEncoder<'_, N> {
+    #[inline]
+    fn len(&self) -> usize { self.arr.len() }
+}
+
+/// An encoder for a list of consensus encodable types.
+pub struct SliceEncoder<'e, T: Encode>(IterEncoder<Encoders<'e, T>>);
+
+impl<'e, T: Encode> SliceEncoder<'e, T> {
+    /// Constructs an encoder which encodes the slice _without_ adding the length prefix.
+    ///
+    /// To encode with a length prefix, use [`PrefixedSliceEncoder`] instead.
+    pub fn without_length_prefix(sl: &'e [T]) -> Self { Self(IterEncoder::new(Encoders::new(sl))) }
+}
+
+impl<'e, T: Encode + 'e> fmt::Debug for SliceEncoder<'e, T>
+where
+    T::Encoder<'e>: fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("SliceEncoder").field(&self.0).finish()
+    }
+}
+
+// Manual impl rather than #[derive(Clone)] because derive would constrain `where T: Clone`,
+// but `T` itself is never cloned, only the associated type `T::Encoder<'e>`.
+impl<'e, T: Encode + 'e> Clone for SliceEncoder<'e, T>
+where
+    T::Encoder<'e>: Clone,
+{
+    fn clone(&self) -> Self { Self(self.0.clone()) }
+}
+
+impl<T: Encode> Encoder for SliceEncoder<'_, T> {
+    fn current_chunk(&self) -> &[u8] { self.0.current_chunk() }
+    fn advance(&mut self) -> EncoderStatus { self.0.advance() }
+}
+
+/// An encoder for a list of consensus encodable types, including a length prefix.
+pub struct PrefixedSliceEncoder<'e, T: Encode>(Encoder2<CompactSizeEncoder, SliceEncoder<'e, T>>);
+
+impl<'e, T: Encode> PrefixedSliceEncoder<'e, T> {
+    /// Constructs an encoder which encodes the slice, adding the length prefix.
+    #[inline]
+    pub fn new(sl: &'e [T]) -> Self {
+        Self(Encoder2::new(
+            CompactSizeEncoder::new(sl.len()),
+            SliceEncoder::without_length_prefix(sl),
+        ))
+    }
+}
+
+impl<'e, T: Encode + 'e> fmt::Debug for PrefixedSliceEncoder<'e, T>
+where
+    T::Encoder<'e>: fmt::Debug,
+{
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { self.0.fmt(f) }
+}
+
+impl<'e, T: Encode + 'e> Clone for PrefixedSliceEncoder<'e, T>
+where
+    T::Encoder<'e>: Clone,
+{
+    #[inline]
+    fn clone(&self) -> Self { Self(self.0.clone()) }
+}
+
+impl<T: Encode> Encoder for PrefixedSliceEncoder<'_, T> {
+    #[inline]
+    fn current_chunk(&self) -> &[u8] { self.0.current_chunk() }
+
+    #[inline]
+    fn advance(&mut self) -> EncoderStatus { self.0.advance() }
+}
+
+/// Helper macro to define an unrolled `EncoderN` composite encoder.
+macro_rules! define_encoder_n {
+    (
+        $(#[$attr:meta])*
+        $name:ident, $idx_limit:literal;
+        $(($enc_idx:literal, $enc_ty:ident, $enc_field:ident),)*
+    ) => {
+        $(#[$attr])*
+        #[derive(Debug, Clone)]
+        pub struct $name<$($enc_ty,)*> {
+            cur_idx: usize,
+            $($enc_field: $enc_ty,)*
+        }
+
+        impl<$($enc_ty,)*> $name<$($enc_ty,)*> {
+            /// Constructs a new composite encoder.
+            pub const fn new($($enc_field: $enc_ty,)*) -> Self {
+                Self { cur_idx: 0, $($enc_field,)* }
+            }
+        }
+
+        impl<$($enc_ty: Encoder,)*> Encoder for $name<$($enc_ty,)*> {
+            #[inline]
+            fn current_chunk(&self) -> &[u8] {
+                match self.cur_idx {
+                    $($enc_idx => self.$enc_field.current_chunk(),)*
+                    _ => unreachable!("index never reaches this value"),
+                }
+            }
+
+            #[inline]
+            fn advance(&mut self) -> EncoderStatus {
+                match self.cur_idx {
+                    $(
+                        $enc_idx => {
+                            // For the last encoder, just pass through
+                            if $enc_idx == $idx_limit - 1 {
+                                return self.$enc_field.advance()
+                            }
+                            // For all others, return EncoderStatus::HasMore, or increment to next encoder
+                            if self.$enc_field.advance().has_finished() {
+                                self.cur_idx += 1;
+                            }
+                            EncoderStatus::HasMore
+                        }
+                    )*
+                    _ => EncoderStatus::Finished,
+                }
+            }
+        }
+
+        impl<$($enc_ty,)*> ExactSizeEncoder for $name<$($enc_ty,)*>
+        where
+            $($enc_ty: Encoder + ExactSizeEncoder,)*
+        {
+            #[inline]
+            fn len(&self) -> usize {
+                0 $(+ self.$enc_field.len())*
+            }
+        }
+    };
+}
+
+define_encoder_n! {
+    /// An encoder which encodes two objects, one after the other.
+    Encoder2, 2;
+    (0, A, enc_1), (1, B, enc_2),
+}
+
+define_encoder_n! {
+    /// An encoder which encodes three objects, one after the other.
+    Encoder3, 3;
+    (0, A, enc_1), (1, B, enc_2), (2, C, enc_3),
+}
+
+define_encoder_n! {
+    /// An encoder which encodes four objects, one after the other.
+    Encoder4, 4;
+    (0, A, enc_1), (1, B, enc_2),
+    (2, C, enc_3), (3, D, enc_4),
+}
+
+define_encoder_n! {
+    /// An encoder which encodes six objects, one after the other.
+    Encoder6, 6;
+    (0, A, enc_1), (1, B, enc_2), (2, C, enc_3),
+    (3, D, enc_4), (4, E, enc_5), (5, F, enc_6),
+}

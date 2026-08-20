@@ -437,6 +437,8 @@ val fipsCrateDir = rootProject.layout.projectDirectory.dir("native/fips-bridge")
 // ref; see native/fips/VENDOR.toml. It is a path dependency of the bridge, so
 // it has to be an up-to-date input too or an edit there would not rebuild.
 val fipsVendorDir = rootProject.layout.projectDirectory.dir("native/fips")
+val cargoVendorDir = rootProject.layout.projectDirectory.dir("native/cargo-vendor")
+val cargoConfig = rootProject.layout.projectDirectory.file(".cargo/config.toml")
 val fipsSo = layout.buildDirectory.file("generated/fipsJniLibs/arm64-v8a/libcruxcoach_fips.so")
 val buildFipsNative by tasks.registering(Exec::class) {
     group = "build"
@@ -453,9 +455,13 @@ val buildFipsNative by tasks.registering(Exec::class) {
     environment("CXX", "/usr/bin/c++")
     environment("CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER", "/usr/bin/cc")
     commandLine("${System.getProperty("user.home")}/.cargo/bin/cargo", "+1.94.1", "build",
-        "--locked", "--release", "--target", "aarch64-linux-android")
+        "--frozen", "--release", "--target", "aarch64-linux-android")
     inputs.files(fileTree(fipsCrateDir) { include("Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "src/**") })
     inputs.files(fileTree(fipsVendorDir) { include("Cargo.toml", "build.rs", "src/**", "benches/**") })
+    inputs.file(cargoConfig)
+    // cargo vendor rewrites these manifests whenever mirrored crate content
+    // changes; tracking them avoids re-hashing the full 500 MB source mirror.
+    inputs.files(fileTree(cargoVendorDir) { include("**/.cargo-checksum.json") })
     outputs.file(fipsSo)
     doLast {
         copy {

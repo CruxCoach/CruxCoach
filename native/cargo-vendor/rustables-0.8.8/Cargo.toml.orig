@@ -1,0 +1,30 @@
+[package]
+name = "rustables"
+version = "0.8.8"
+description = "Safe abstraction for nftables manipulation on Linux"
+readme = "../README.md"
+
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+
+[dependencies]
+bitflags = "2.9"
+thiserror = "2.0"
+log = "0.4"
+libc = "0.2.43"
+nix = { version = "0.31", features = ["socket"] }
+ipnetwork = { version = "0.21", default-features = false }
+rustables-macros = { version = "0.1.2", path = "../rustables-macros" }
+
+[dev-dependencies]
+env_logger = "0.11"
+
+[build-dependencies]
+bindgen = "0.72"
+regex = "1.10"

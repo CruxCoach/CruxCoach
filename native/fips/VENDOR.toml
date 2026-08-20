@@ -7,8 +7,9 @@
 #
 # Why vendored rather than a Git pin: `integration/platform` is a branch head,
 # and a Cargo `rev =` pin stays reproducible only while that object survives
-# upstream retention. The build must not depend on that. Vendoring also removes
-# the network from the native build entirely.
+# upstream retention. The build must not depend on that. Vendoring removes the
+# FIPS repository from the native build's network dependencies; registry crates
+# are separately mirrored under `native/cargo-vendor`.
 #
 # Why not a CruxCoach fork of jmcorgan/fips: no such fork exists, and creating
 # one is an external repository this work has no authority to add. If one is
@@ -60,6 +61,8 @@ patches = [
     "0002-ble-share-advertised-psms-with-direct-reconnects.patch",
 ]
 
-# sha256 over `"<sha256>  <path>\n"` lines for every vendored source file,
-# sorted by path, excluding `VENDOR.toml` and `patches/`.
+# sha256 over `"<sha256>  <path>\n"` lines for the pristine upstream source
+# and the patched source respectively, sorted by path. CI reverses the patch
+# series, checks `upstream_sha256`, reapplies it, and checks `vendored_sha256`.
+upstream_sha256 = "80e43a0cae72e536b891430f2b8b0386609ee8eb1400f971d60e276716bf4ba2"
 vendored_sha256 = "a958db5d2be7f6eaa9afe8a57ec043a6f8741199b102aefff2d597afcc98b984"

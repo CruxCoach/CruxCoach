@@ -126,4 +126,9 @@ DEBLOAT.md
 Thumbs.db
 .DS_Store
 *~
+
+# Cargo's immutable registry mirror must be committed byte-for-byte. In
+# particular, crates legitimately contain directories named `build`, which the
+# repository-wide Gradle ignore above would otherwise hide from a clean clone.
+!native/cargo-vendor/**
 androidApp/.cxx/

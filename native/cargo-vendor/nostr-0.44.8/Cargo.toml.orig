@@ -1,0 +1,143 @@
+[package]
+name = "nostr"
+version = "0.44.8"
+edition = "2021"
+description = "Rust implementation of the Nostr protocol."
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+readme = "README.md"
+rust-version.workspace = true
+keywords = ["nostr", "protocol", "no_std"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[features]
+default = ["std"]
+std = [
+    "dep:url",
+    "base64?/std",
+    "bech32/std",
+    "bip39?/std",
+    "bitcoin_hashes/std",
+    "cbc?/std",
+    "chacha20?/std",
+    "chacha20poly1305?/std",
+    "hex/std",
+    "scrypt?/std",
+    "secp256k1/std",
+    "secp256k1/rand-std",
+    "secp256k1/global-context",
+    "serde/std",
+    "serde_json/std",
+    "unicode-normalization?/std",
+]
+alloc = [
+    "dep:url-fork",
+    "base64?/alloc",
+    "bech32/alloc",
+    "bitcoin_hashes/alloc",
+    "cbc?/alloc",
+    "chacha20poly1305?/alloc",
+    "hex/alloc",
+    "secp256k1/alloc",
+    "serde/alloc",
+    "serde_json/alloc",
+]
+# Enable event POW mining using multi-threads
+pow-multi-thread = ["std"]
+all-nips = ["nip04", "nip06", "nip44", "nip46", "nip47", "nip49", "nip57", "nip59", "nip60", "nip96", "nip98"]
+nip03 = ["dep:nostr-ots"]
+nip04 = ["dep:aes", "dep:base64", "dep:cbc"]
+nip06 = ["dep:bip39"]
+nip44 = ["dep:base64", "dep:chacha20"]
+nip46 = ["nip04", "nip44"]
+nip47 = ["nip04"]
+nip49 = ["dep:chacha20poly1305", "dep:scrypt", "dep:unicode-normalization", "dep:zeroize"]
+nip57 = ["dep:aes", "dep:cbc"]
+nip59 = ["nip44"]
+nip60 = ["nip44"]
+nip96 = ["nip98"]
+nip98 = ["dep:base64"]
+
+[dependencies]
+aes = { version = "0.8", optional = true }
+base64 = { workspace = true, optional = true }
+bech32 = { version = "0.11", default-features = false }
+bitcoin_hashes = { version = "0.14", default-features = false, features = ["serde"] } # TODO: remove serde feature
+bip39 = { version = "2.1", default-features = false, optional = true }
+cbc = { version = "0.1", optional = true }
+chacha20 = { version = "0.9", optional = true }
+chacha20poly1305 = { version = "0.10", default-features = false, features = ["getrandom"], optional = true }
+hex = { workspace = true, default-features = false }
+nostr-ots = { version = "0.2", optional = true }
+scrypt = { version = "0.11", default-features = false, optional = true }
+secp256k1 = { version = "0.29", default-features = false, features = ["rand", "serde"] }
+serde = { workspace = true, default-features = false, features = ["derive"] }
+serde_json.workspace = true
+unicode-normalization = { version = "0.1", default-features = false, optional = true }
+url = { version = "2.5", default-features = false, features = ["serde"], optional = true } # Used in std
+url-fork = { version = "3.0", default-features = false, features = ["serde"], optional = true } # Used for no_std
+zeroize = { version = "1.8", default-features = false, features = ["alloc"], optional = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.2", features = ["js"] }
+instant = { version = "0.1", features = ["wasm-bindgen", "inaccurate"] }
+
+[dev-dependencies]
+reqwest = { workspace = true, features = ["rustls-tls"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[[example]]
+name = "keys"
+required-features = ["std"]
+
+[[example]]
+name = "nip05"
+required-features = ["std"]
+
+[[example]]
+name = "nip06"
+required-features = ["std", "nip06"]
+
+[[example]]
+name = "nip09"
+required-features = ["std"]
+
+[[example]]
+name = "nip11"
+required-features = ["std"]
+
+[[example]]
+name = "nip13"
+required-features = ["std"]
+
+[[example]]
+name = "nip19"
+required-features = ["std"]
+
+[[example]]
+name = "nip57"
+required-features = ["std", "nip57"]
+
+[[example]]
+name = "nip15"
+required-features = ["std"]
+
+[[example]]
+name = "nip96"
+required-features = ["std", "nip96"]
+
+[[example]]
+name = "nip98"
+required-features = ["std", "nip98"]
+
+[[example]]
+name = "parser"
+required-features = ["std"]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(bench)'] }

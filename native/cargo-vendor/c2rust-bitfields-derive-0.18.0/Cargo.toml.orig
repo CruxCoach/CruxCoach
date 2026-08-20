@@ -1,0 +1,20 @@
+[package]
+name = "c2rust-bitfields-derive"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+description = "C-compatible struct bitfield derive implementation used in the C2Rust project"
+readme = "README.md"
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+proc-macro2 = "1.0"
+syn = { version = "1.0", features = ["full"] }
+quote = "1.0"
+
+[lib]
+proc-macro = true

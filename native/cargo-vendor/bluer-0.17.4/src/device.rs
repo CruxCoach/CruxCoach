@@ -1,0 +1,546 @@
+//! Remote Bluetooth device.
+
+use dbus::{
+    arg::{RefArg, Variant},
+    nonblock::{Proxy, SyncConnection},
+    Path,
+};
+use futures::{pin_mut, select, stream, FutureExt, Stream, StreamExt};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt,
+    sync::Arc,
+};
+use tokio::{sync::oneshot, time::sleep};
+use uuid::Uuid;
+
+use crate::{
+    all_dbus_objects,
+    gatt::{self, remote::Service, SERVICE_INTERFACE},
+    Adapter, Address, AddressType, Error, ErrorKind, Event, InternalErrorKind, Modalias, Result, SessionInner,
+    SERVICE_NAME, TIMEOUT,
+};
+
+pub(crate) const INTERFACE: &str = "org.bluez.Device1";
+pub(crate) const BATTERY_INTERFACE: &str = "org.bluez.Battery1";
+
+/// Interface to a Bluetooth device.
+#[cfg_attr(docsrs, doc(cfg(feature = "bluetoothd")))]
+#[derive(Clone)]
+pub struct Device {
+    inner: Arc<SessionInner>,
+    dbus_path: Path<'static>,
+    adapter_name: Arc<String>,
+    address: Address,
+}
+
+impl fmt::Debug for Device {
+    fn fmt(&self, f: &mut fmt::Formatter) -> std::fmt::Result {
+        write!(f, "Device {{ adapter_name: {}, address: {} }}", self.adapter_name(), self.address())
+    }
+}
+
+impl Device {
+    /// Create Bluetooth device interface for device of specified address connected to specified adapter.
+    pub(crate) fn new(inner: Arc<SessionInner>, adapter_name: Arc<String>, address: Address) -> Result<Self> {
+        Ok(Self { inner, dbus_path: Self::dbus_path(&adapter_name, address)?, adapter_name, address })
+    }
+
+    fn proxy(&self) -> Proxy<'_, &SyncConnection> {
+        Proxy::new(SERVICE_NAME, &self.dbus_path, TIMEOUT, &*self.inner.connection)
+    }
+
+    pub(crate) fn dbus_path(adapter_name: &str, address: Address) -> Result<Path<'static>> {
+        let adapter_path = Adapter::dbus_path(adapter_name)?;
+        Ok(Path::new(format!("{}/dev_{}", adapter_path, address.to_string().replace(':', "_"))).unwrap())
+    }
+
+    pub(crate) fn parse_dbus_path_prefix<'a>(path: &'a Path) -> Option<((&'a str, Address), &'a str)> {
+        match Adapter::parse_dbus_path_prefix(path) {
+            Some((adapter_name, p)) => match p.strip_prefix("/dev_") {
+                Some(p) => {
+                    let sep = p.find('/').unwrap_or(p.len());
+                    match p[0..sep].replace('_', ":").parse::<Address>() {
+                        Ok(addr) => Some(((adapter_name, addr), &p[sep..])),
+                        Err(_) => None,
+                    }
+                }
+                None => None,
+            },
+            None => None,
+        }
+    }
+
+    pub(crate) fn parse_dbus_path<'a>(path: &'a Path) -> Option<(&'a str, Address)> {
+        match Self::parse_dbus_path_prefix(path) {
+            Some((v, "")) => Some(v),
+            _ => None,
+        }
+    }
+
+    /// The Bluetooth adapter name.
+    pub fn adapter_name(&self) -> &str {
+        &self.adapter_name
+    }
+
+    /// The Bluetooth device address of the remote device.
+    pub fn address(&self) -> Address {
+        self.address
+    }
+
+    /// Streams device property changes.
+    ///
+    /// The stream ends when the device is removed.
+    pub async fn events(&self) -> Result<impl Stream<Item = DeviceEvent>> {
+        let events = self.inner.events(self.dbus_path.clone(), false).await?;
+        let stream = events.flat_map(move |event| match event {
+            Event::PropertiesChanged { changed, .. } => {
+                stream::iter(DeviceProperty::from_prop_map(changed).into_iter().map(DeviceEvent::PropertyChanged))
+                    .boxed()
+            }
+            _ => stream::empty().boxed(),
+        });
+
+        Ok(stream)
+    }
+
+    /// Wait until remote GATT services are resolved.
+    async fn wait_for_services_resolved(&self) -> Result<()> {
+        let mut changes = self.events().await?.fuse();
+        if self.is_services_resolved().await? {
+            return Ok(());
+        }
+        if !self.is_connected().await? {
+            return Err(Error::new(ErrorKind::ServicesUnresolved));
+        }
+
+        let timeout = sleep(TIMEOUT).fuse();
+        pin_mut!(timeout);
+
+        loop {
+            select! {
+                change_opt = changes.next() => {
+                    match change_opt {
+                        Some(DeviceEvent::PropertyChanged (DeviceProperty::ServicesResolved(true)) ) =>
+                            return Ok(()),
+                        Some(DeviceEvent::PropertyChanged (DeviceProperty::Connected(false)) ) =>
+                            return Err(Error::new(ErrorKind::ServicesUnresolved)),
+                        Some(_) => (),
+                        None => break,
+                    }
+                },
+                () = &mut timeout => break,
+            }
+        }
+
+        Err(Error::new(ErrorKind::ServicesUnresolved))
+    }
+
+    /// Remote GATT services.
+    ///
+    /// The device must be connected for GATT services to be resolved.
+    pub async fn services(&self) -> Result<Vec<gatt::remote::Service>> {
+        self.wait_for_services_resolved().await?;
+
+        let mut services = Vec::new();
+        for (path, interfaces) in all_dbus_objects(&self.inner.connection).await? {
+            match Service::parse_dbus_path(&path) {
+                Some((adapter, device_address, id))
+                    if adapter == *self.adapter_name
+                        && device_address == self.address
+                        && interfaces.contains_key(SERVICE_INTERFACE) =>
+                {
+                    services.push(self.service(id).await?);
+                }
+                _ => (),
+            }
+        }
+
+        Ok(services)
+    }
+
+    /// Remote GATT service with specified id.
+    pub async fn service(&self, service_id: u16) -> Result<gatt::remote::Service> {
+        gatt::remote::Service::new(self.inner.clone(), self.adapter_name.clone(), self.address, service_id)
+    }
+
+    dbus_interface!();
+    dbus_default_interface!(INTERFACE);
+
+    // ===========================================================================================
+    // Methods
+    // ===========================================================================================
+
+    /// This is a generic method to connect any profiles
+    /// the remote device supports that can be connected
+    /// to and have been flagged as auto-connectable on
+    /// our side.
+    ///
+    /// If only subset of profiles is already
+    /// connected it will try to connect currently disconnected
+    /// ones.
+    ///
+    /// If at least one profile was connected successfully this
+    /// method will indicate success.
+    ///
+    /// For dual-mode devices only one bearer is connected at
+    /// time, the conditions are in the following order:
+    ///
+    /// 1. Connect the disconnected bearer if already
+    ///    connected.
+    ///
+    /// 2. Connect first the bonded bearer. If no
+    ///    bearers are bonded or both are skip and check
+    ///    latest seen bearer.
+    ///
+    /// 3. Connect last seen bearer, in case the
+    ///    timestamps are the same BR/EDR takes
+    ///    precedence.
+    pub async fn connect(&self) -> Result<()> {
+        self.call_method("Connect", ()).await
+    }
+
+    /// This method gracefully disconnects all connected
+    /// profiles and then terminates low-level ACL connection.
+    ///
+    /// ACL connection will be terminated even if some profiles
+    /// were not disconnected properly e.g. due to misbehaving
+    /// device.
+    ///
+    /// This method can be also used to cancel a preceding
+    /// Connect call before a reply to it has been received.
+    ///
+    /// For non-trusted devices connected over LE bearer calling
+    /// this method will disable incoming connections until
+    /// Connect method is called again.
+    pub async fn disconnect(&self) -> Result<()> {
+        self.call_method("Disconnect", ()).await
+    }
+
+    /// This method connects a specific profile of this
+    /// device. The UUID provided is the remote service
+    /// UUID for the profile.
+    pub async fn connect_profile(&self, uuid: &Uuid) -> Result<()> {
+        self.call_method("ConnectProfile", (uuid.to_string(),)).await
+    }
+
+    /// This method disconnects a specific profile of
+    /// this device.
+    ///
+    /// The profile needs to be registered
+    /// client profile.
+    ///
+    /// There is no connection tracking for a profile, so
+    /// as long as the profile is registered this will always
+    /// succeed.
+    pub async fn disconnect_profile(&self, uuid: &Uuid) -> Result<()> {
+        self.call_method("DisconnectProfile", (uuid.to_string(),)).await
+    }
+
+    /// This method will connect to the remote device,
+    /// initiate pairing and then retrieve all SDP records
+    /// (or GATT primary services).
+    ///
+    /// If the application has registered its own agent,
+    /// then that specific agent will be used. Otherwise
+    /// it will use the default agent.
+    ///
+    /// Only for applications like a pairing wizard it
+    /// would make sense to have its own agent. In almost
+    /// all other cases the default agent will handle
+    /// this just fine.
+    ///
+    /// In case there is no application agent and also
+    /// no default agent present, this method will fail.
+    ///
+    /// Drop the returned future to cancel pairing.
+    pub async fn pair(&self) -> Result<()> {
+        let (done_tx, done_rx) = oneshot::channel();
+        let dbus_path = self.dbus_path.clone();
+        let connection = self.inner.connection.clone();
+        tokio::spawn(async move {
+            if done_rx.await.is_err() {
+                let proxy = Proxy::new(SERVICE_NAME, dbus_path, TIMEOUT, &*connection);
+                let _: std::result::Result<(), dbus::Error> =
+                    proxy.method_call(INTERFACE, "CancelPairing", ()).await;
+            }
+        });
+
+        let result = self.call_method("Pair", ()).await;
+        let _ = done_tx.send(());
+        result
+    }
+}
+
+define_properties!(
+    Device,
+    /// Bluetooth device property.
+    pub DeviceProperty => {
+        /// The Bluetooth remote name.
+        ///
+        /// This value can not be
+        ///	changed. Use the Alias property instead.
+        ///
+        ///	This value is only present for completeness. It is
+        ///	better to always use the Alias property when
+        ///	displaying the devices name.
+        ///
+        ///	If the Alias property is unset, it will reflect
+        ///	this value which makes it more convenient.
+        property(
+            Name, String,
+            dbus: (INTERFACE, "Name", String, OPTIONAL),
+            get: (name, v => {v.to_owned()}),
+        );
+
+        /// The Bluetooth device address of the remote device.
+        property(
+            RemoteAddress, Address,
+            dbus: (INTERFACE, "Address", String, MANDATORY),
+            get: (remote_address, v => {v.parse()?}),
+        );
+
+        /// The Bluetooth device address type.
+        ///
+        /// For dual-mode and
+        /// BR/EDR only devices this defaults to "public". Single
+        /// mode LE devices may have either value. If remote device
+        /// uses privacy than before pairing this represents address
+        /// type used for connection and Identity Address after
+        /// pairing.
+        property(
+            AddressType, AddressType,
+            dbus: (INTERFACE, "AddressType", String, MANDATORY),
+            get: (address_type, v => {v.parse()?}),
+        );
+
+        /// Proposed icon name according to the freedesktop.org
+        /// icon naming specification.
+        property(
+            Icon, String,
+            dbus: (INTERFACE, "Icon", String, OPTIONAL),
+            get: (icon, v => {v.to_owned()}),
+        );
+
+        ///	The Bluetooth class of device of the remote device.
+        property(
+            Class, u32,
+            dbus: (INTERFACE, "Class", u32, OPTIONAL),
+            get: (class, v => {v.to_owned()}),
+        );
+
+        ///	External appearance of device, as found on GAP service.
+        property(
+            Appearance, u16,
+            dbus: (INTERFACE, "Appearance", u16, OPTIONAL),
+            get: (appearance, v => {v.to_owned()}),
+        );
+
+        ///	List of 128-bit UUIDs that represents the available
+        /// remote services.
+        property(
+            Uuids, HashSet<Uuid>,
+            dbus: (INTERFACE, "UUIDs", Vec<String>, OPTIONAL),
+            get: (uuids, v => {
+                v
+                .iter()
+                .map(|uuid| {
+                    uuid.parse()
+                        .map_err(|_| Error::new(ErrorKind::Internal(InternalErrorKind::InvalidUuid(uuid.to_string()))))
+                })
+                .collect::<Result<HashSet<Uuid>>>()?
+            }),
+        );
+
+        ///	Indicates if the remote device is paired.
+        property(
+            Paired, bool,
+            dbus: (INTERFACE, "Paired", bool, MANDATORY),
+            get: (is_paired, v => {v.to_owned()}),
+        );
+
+        ///	Indicates if the remote device is connected.
+        property(
+            Connected, bool,
+            dbus: (INTERFACE, "Connected", bool, MANDATORY),
+            get: (is_connected, v => {v.to_owned()}),
+        );
+
+        ///	Indicates if the remote is seen as trusted. This
+        /// setting can be changed by the application.
+        property(
+            Trusted, bool,
+            dbus: (INTERFACE, "Trusted", bool, MANDATORY),
+            get: (is_trusted, v => {v.to_owned()}),
+            set: (set_trusted, v => {v}),
+        );
+
+        /// If set to true any incoming connections from the
+        /// device will be immediately rejected.
+        ///
+        /// Any device
+        /// drivers will also be removed and no new ones will
+        /// be probed as long as the device is blocked.
+        property(
+            Blocked, bool,
+            dbus: (INTERFACE, "Blocked", bool, MANDATORY),
+            get: (is_blocked, v => {v.to_owned()}),
+            set: (set_blocked, v => {v}),
+        );
+
+        /// If set to true this device will be allowed to wake the
+        /// host from system suspend.
+        property(
+            WakeAllowed, bool,
+            dbus: (INTERFACE, "WakeAllowed", bool, OPTIONAL),
+            get: (is_wake_allowed, v => {v.to_owned()}),
+            set: (set_wake_allowed, v => {v}),
+        );
+
+        /// The name alias for the remote device.
+        ///
+        /// The alias can
+        /// be used to have a different friendly name for the
+        /// remote device.
+        ///
+        /// In case no alias is set, it will return the remote
+        /// device name. Setting an empty string as alias will
+        /// convert it back to the remote device name.
+        ///
+        /// When resetting the alias with an empty string, the
+        /// property will default back to the remote name.
+        property(
+            Alias, String,
+            dbus: (INTERFACE, "Alias", String, MANDATORY),
+            get: (alias, v => {v.to_owned()}),
+            set: (set_alias, v => {v}),
+        );
+
+        /// Set to true if the device only supports the pre-2.1
+        /// pairing mechanism.
+        ///
+        /// This property is useful during
+        /// device discovery to anticipate whether legacy or
+        /// simple pairing will occur if pairing is initiated.
+        ///
+        /// Note that this property can exhibit false-positives
+        /// in the case of Bluetooth 2.1 (or newer) devices that
+        /// have disabled Extended Inquiry Response support.
+        property(
+            LegacyPairing, bool,
+            dbus: (INTERFACE, "LegacyPairing", bool, MANDATORY),
+            get: (is_legacy_pairing, v => {v.to_owned()}),
+        );
+
+        /// Remote Device ID information in modalias format
+        /// used by the kernel and udev.
+        property(
+            Modalias, Modalias,
+            dbus: (INTERFACE, "Modalias", String, OPTIONAL),
+            get: (modalias, v => { v.parse()? }),
+        );
+
+        /// Received Signal Strength Indicator of the remote
+        ///	device (inquiry or advertising).
+        ///
+        /// `None` if the device is known, but not currently present.
+        property(
+            Rssi, i16,
+            dbus: (INTERFACE, "RSSI", i16, OPTIONAL),
+            get: (rssi, v => {v.to_owned()}),
+        );
+
+        /// Advertised transmitted power level (inquiry or
+        /// advertising).
+        property(
+            TxPower, i16,
+            dbus: (INTERFACE, "TxPower", i16, OPTIONAL),
+            get: (tx_power, v => {v.to_owned()}),
+        );
+
+        /// Manufacturer specific advertisement data.
+        ///
+        /// Keys are
+        /// 16 bits Manufacturer ID followed by its byte array
+        /// value.
+        property(
+            ManufacturerData, HashMap<u16, Vec<u8>>,
+            dbus: (INTERFACE, "ManufacturerData", HashMap<u16, Variant<Box<dyn RefArg  + 'static>>>, OPTIONAL),
+            get: (manufacturer_data, m => {
+                let mut mt: HashMap<u16, Vec<u8>> = HashMap::new();
+                for (k, v) in m {
+                    if let Some(v) = dbus::arg::cast(&v.0).cloned() {
+                        mt.insert(*k, v);
+                    }
+                }
+                mt
+            }),
+        );
+
+        /// Service advertisement data.
+        ///
+        /// Keys are the UUIDs followed by its byte array value.
+        property(
+            ServiceData, HashMap<Uuid, Vec<u8>>,
+            dbus: (INTERFACE, "ServiceData", HashMap<String, Variant<Box<dyn RefArg  + 'static>>>, OPTIONAL),
+            get: (service_data, m => {
+                let mut mt: HashMap<Uuid, Vec<u8>> = HashMap::new();
+                for (k, v) in m {
+                    if let (Ok(k), Some(v)) = (k.parse(), dbus::arg::cast(&v.0).cloned()) {
+                        mt.insert(k, v);
+                    }
+                }
+                mt
+            }),
+        );
+
+        /// Indicate whether or not service discovery has been
+        /// resolved.
+        property(
+            ServicesResolved, bool,
+            dbus: (INTERFACE, "ServicesResolved", bool, MANDATORY),
+            get: (is_services_resolved, v => {v.to_owned()}),
+        );
+
+        /// The Advertising Data Flags of the remote device.
+        property(
+            AdvertisingFlags, Vec<u8>,
+            dbus: (INTERFACE, "AdvertisingFlags", Vec<u8>, OPTIONAL),
+            get: (advertising_flags, v => {v.to_owned()}),
+        );
+
+        /// The Advertising Data of the remote device.
+        ///
+        /// Note: Only types considered safe to be handled by
+        /// application are exposed.
+        property(
+            AdvertisingData, HashMap<u8, Vec<u8>>,
+            dbus: (INTERFACE, "AdvertisingData", HashMap<u8, Variant<Box<dyn RefArg  + 'static>>>, OPTIONAL),
+            get: (advertising_data, m => {
+                let mut mt: HashMap<u8, Vec<u8>> = HashMap::new();
+                for (k, v) in m {
+                    if let Some(v) = dbus::arg::cast(&v.0).cloned() {
+                        mt.insert(*k, v);
+                    }
+                }
+                mt
+            }),
+        );
+
+        /// The battery percentage of the remote device
+        property(
+            BatteryPercentage, u8,
+            dbus: (BATTERY_INTERFACE, "Percentage", u8, OPTIONAL),
+            get: (battery_percentage, v => {v.to_owned()}),
+        );
+    }
+);
+
+/// Bluetooth device event.
+#[cfg_attr(docsrs, doc(cfg(feature = "bluetoothd")))]
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum DeviceEvent {
+    /// Property changed.
+    PropertyChanged(DeviceProperty),
+}

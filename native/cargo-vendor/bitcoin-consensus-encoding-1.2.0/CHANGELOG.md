@@ -1,0 +1,111 @@
+# Changelog
+
+## [Unreleased]
+
+## [1.2.0] - 2026-08-11
+
+- Expose lower level encoder/decoder interfaces [#6690](https://github.com/rust-bitcoin/rust-bitcoin/pull/6690)
+  - Add `IterEncoder` driver bound to the low-level `Encoder` trait.
+  - Expose `VecDecoderWith` and `ExactVecDecoderWith` drivers bound to the low-level `Decoder` trait.
+- Make distinction in docs about consensus [#6651](https://github.com/rust-bitcoin/rust-bitcoin/pull/6651)
+- Loosen `serde_as_consensus` trait bounds [#6629](https://github.com/rust-bitcoin/rust-bitcoin/pull/6629)
+- Flatten nested error constructors [#6546](https://github.com/rust-bitcoin/rust-bitcoin/pull/6546)
+
+## [1.1.0] - 2026-07-14
+
+- Add `PrefixedBytesEncoder` and `PrefixedSliceEncoder` [#6476](https://github.com/rust-bitcoin/rust-bitcoin/pull/6476)
+- Introduce functions to decode from `Decoder` types [#6213](https://github.com/rust-bitcoin/rust-bitcoin/pull/6213)
+- Rename `_with` decoder functions [#6477](https://github.com/rust-bitcoin/rust-bitcoin/pull/6477)
+- Add `ExactSizeEncoder` impl for `Option<T: ExactSizeEncoder>` [#6422](https://github.com/rust-bitcoin/rust-bitcoin/pull/6422)
+- Add hex encoding/decoding support [#6296](https://github.com/rust-bitcoin/rust-bitcoin/pull/6296)
+  - Add `decode_from_hex_with` [#6454](https://github.com/rust-bitcoin/rust-bitcoin/pull/6454)
+- Move `serde_as_consensus` to `consensus_encoding` [#6395](https://github.com/rust-bitcoin/rust-bitcoin/pull/6395)
+  - Clean up `serde_as_consensus` docs [#6453](https://github.com/rust-bitcoin/rust-bitcoin/pull/6453)
+  - Adjust `ConsensusHex` impl in `serde_as_consensus` [#6438](https://github.com/rust-bitcoin/rust-bitcoin/pull/6438)
+- Always enable `alloc` for `serde` [#6415](https://github.com/rust-bitcoin/rust-bitcoin/pull/6415)
+- Fix buffer bug in `decode_from_read_unbuffered_with` [#6380](https://github.com/rust-bitcoin/rust-bitcoin/pull/6380)
+
+## [1.0.0] - 2026-05-22
+
+Props to the team, our first `1.0` release from this repository. That
+is no small feat. Extra props to Nick, he kicked this crate off and
+worked hard on it. Props also to Kix for the overall design and
+original work, his efforts don't really get fair visibility in the git
+log. Poelstra, as usual patiently reviewing and merging.
+
+Team Rust Bitcoin - LFG.
+
+- Replace `bool` on `Decoder` trait with the `DecoderStatus` type (includes Encoder side too) [#6189](https://github.com/rust-bitcoin/rust-bitcoin/pull/6189)
+- Add checked decode functions [#6195](https://github.com/rust-bitcoin/rust-bitcoin/pull/6195)
+- Re-name main traits [#6028](https://github.com/rust-bitcoin/rust-bitcoin/pull/6028)
+- Change `EncodableByteIter` to `EncoderByteIter` [#6044](https://github.com/rust-bitcoin/rust-bitcoin/pull/6044)
+- Encoder/decoder improvements [#6004](https://github.com/rust-bitcoin/rust-bitcoin/pull/6004)
+- Re-name `flush_to` functions to `drain_to` [#6064](https://github.com/rust-bitcoin/rust-bitcoin/pull/6064)
+
+Please note `Encodable` is now `Encode` and `Decodable` is now `Decode` but the old names are still
+used for the old consensus encoding code in `rust-bticoin`.
+
+## [0.2.0] - 2026-04-08
+
+This release is breaking and causes our whole stack to have to be re-released ...
+
+- Match core's range check decoding compact sizes [#5897](https://github.com/rust-bitcoin/rust-bitcoin/pull/5897)
+- Add `u64` support to compact size [#5784](https://github.com/rust-bitcoin/rust-bitcoin/pull/5784)
+- Add common trait implementations [#5698](https://github.com/rust-bitcoin/rust-bitcoin/pull/5698)
+- Introduce `decode_from_slice_unbounded` [#5664](https://github.com/rust-bitcoin/rust-bitcoin/pull/5664)
+- Improve macro defined constructor [#5759](https://github.com/rust-bitcoin/rust-bitcoin/pull/5759)
+- Fill out the documentation [#5720](https://github.com/rust-bitcoin/rust-bitcoin/pull/5720)
+- Expose vis fragment on exposed macros [#5719](https://github.com/rust-bitcoin/rust-bitcoin/pull/5719)
+- Remove redundant trait bounds [#5716](https://github.com/rust-bitcoin/rust-bitcoin/pull/5716)
+- Add `track_caller` to panic-able sites [#5713](https://github.com/rust-bitcoin/rust-bitcoin/pull/5713)
+- Add macros to define `EncoderN` and `DecoderNError` [#5635](https://github.com/rust-bitcoin/rust-bitcoin/pull/5635)
+
+## [0.1.0] - 2026-02-17
+
+It was found that the `1.0.0-rc.x` releases were troublesome because
+of how `cargo` resolves version numbers that include a suffix. For
+this reason we elected to go back to pre-1.0 version numbers.
+
+`v0.1.0` is a re-release of `v1.0.0-rc.3`
+
+- Add array ref encoder [#5572](https://github.com/rust-bitcoin/rust-bitcoin/pull/5572)
+- Introduce lifetimes to all public Encoders [#5556](https://github.com/rust-bitcoin/rust-bitcoin/pull/5556)
+- Add `flush_to_*` functions [#5534](https://github.com/rust-bitcoin/rust-bitcoin/pull/5534)
+- Add `ExactSizeEncoder` for known-length Encoders [#5445](https://github.com/rust-bitcoin/rust-bitcoin/pull/5445)
+
+# 1.0.0 Release Candidates - 2025-10-10
+
+This changelog is a rolling description of everything that will eventually end up in `v1.0`.
+
+This was truly a team effort, notably @nyonson and @jrakibi. Also please note that many of the ideas
+and a bunch of the code, pulled out of a draft PR by @kixunil. Initial implementation was put up by
+@apoelstra, then the crew hacked on it while we all reviewed. Good effort team. Also it should be
+noted that Kix was pushing for this work for a long time and we all resisted doing it. Now he is not
+around but the work got done. Props to him for many of the ideas.
+
+- Fix `consensus-encoding` package name [#5090](https://github.com/rust-bitcoin/rust-bitcoin/pull/5090)
+- Introduce pull encoding and use it for blockhash computation [#4912](https://github.com/rust-bitcoin/rust-bitcoin/pull/4912)
+- Implement `SliceEncoder` [#4982](https://github.com/rust-bitcoin/rust-bitcoin/pull/4982)
+- Add decoder I/O drivers [#5030](https://github.com/rust-bitcoin/rust-bitcoin/pull/5030)
+- Tag composers with inline [#5037](https://github.com/rust-bitcoin/rust-bitcoin/pull/5037)
+- Clean up encoders unit tests and fix empty `SliceEncoder` [#5039](https://github.com/rust-bitcoin/rust-bitcoin/pull/5039)
+- Add encoder composition unit tests [#5045](https://github.com/rust-bitcoin/rust-bitcoin/pull/5045)
+- Implement additional decoders [#5057](https://github.com/rust-bitcoin/rust-bitcoin/pull/5057)
+- Add `CompactSizeEncoder` and refactor `WitnessEncoder` [#5086](https://github.com/rust-bitcoin/rust-bitcoin/pull/5086)
+- Add `new()` constructor to `CompactSizeDecoder` [#5089](https://github.com/rust-bitcoin/rust-bitcoin/pull/5089)
+- Remove `prefix_read` field [#5079](https://github.com/rust-bitcoin/rust-bitcoin/pull/5079)
+- Remove length prefix from the `BytesEncoder` [#5103](https://github.com/rust-bitcoin/rust-bitcoin/pull/5103)
+- Remove length prefix from `SliceEncoder` [#5108](https://github.com/rust-bitcoin/rust-bitcoin/pull/5108)
+- Rename `min_bytes_needed` to `read_limit` [#5107](https://github.com/rust-bitcoin/rust-bitcoin/pull/5107)
+- Remove transitioning state [#5130](https://github.com/rust-bitcoin/rust-bitcoin/pull/5130)
+- Composite decoder errors [#5131](https://github.com/rust-bitcoin/rust-bitcoin/pull/5131)
+
+## 0.0.0 - Placeholder release
+
+Empty crate to reserve the name on crates.io
+
+[Unreleased]: https://github.com/rust-bitcoin/rust-bitcoin/compare/bitcoin-consensus-encoding-1.2.0...HEAD
+[1.2.0]: https://github.com/rust-bitcoin/rust-bitcoin/compare/bitcoin-consensus-encoding-1.1.0...bitcoin-consensus-encoding-1.2.0
+[1.1.0]: https://github.com/rust-bitcoin/rust-bitcoin/compare/bitcoin-consensus-encoding-1.0.0...bitcoin-consensus-encoding-1.1.0
+[1.0.0]: https://github.com/rust-bitcoin/rust-bitcoin/compare/bitcoin-consensus-encoding-0.2.0...bitcoin-consensus-encoding-1.0.0
+[0.2.0]: https://github.com/rust-bitcoin/rust-bitcoin/compare/bitcoin-consensus-encoding-0.1.0...bitcoin-consensus-encoding-0.2.0

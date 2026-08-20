@@ -15,8 +15,10 @@ Two modes:
 
 ``--offline`` (the default, and what CI runs)
     Recompute the digest of the vendored tree and compare it with
-    ``vendored_sha256`` in ``native/fips/VENDOR.toml``. This detects any edit
-    to the vendored source that did not go through the documented patch flow.
+    ``vendored_sha256`` in ``native/fips/VENDOR.toml``. Then reverse the
+    recorded patches, check the pristine tree against ``upstream_sha256``,
+    reapply the patches, and require the original tree again. This detects an
+    edit to either the source or patch series without any upstream access.
 
 ``--upstream <path-to-fips-clone>``
     Additionally check the vendored tree against the real upstream commit:
@@ -83,6 +85,81 @@ def verify_offline(metadata: dict[str, object]) -> list[str]:
             "  Edit upstream sources only through native/fips/patches/, then",
             "  refresh vendored_sha256 in native/fips/VENDOR.toml.",
         ]
+    return verify_patch_series_offline(metadata)
+
+
+def apply_patch_series(
+    root: pathlib.Path,
+    patch_paths: list[pathlib.Path],
+    *,
+    reverse: bool,
+) -> list[str]:
+    ordered = reversed(patch_paths) if reverse else patch_paths
+    direction = "reverse" if reverse else "forward"
+    option = "--reverse" if reverse else "--forward"
+    for patch_path in ordered:
+        result = subprocess.run(
+            ["patch", "-p1", "--batch", option, "-i", str(patch_path)],
+            cwd=root,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            return [
+                f"could not apply {patch_path.name} in {direction} direction",
+                result.stdout.strip(),
+                result.stderr.strip(),
+            ]
+    return []
+
+
+def verify_patch_series_offline(metadata: dict[str, object]) -> list[str]:
+    if shutil.which("patch") is None:
+        return ["`patch` is required to verify the vendored FIPS patch series"]
+
+    recorded_names = list(metadata.get("patches", []))
+    patch_dir = VENDOR_DIR / "patches"
+    actual_names = sorted(path.name for path in patch_dir.glob("*.patch"))
+    if sorted(recorded_names) != actual_names:
+        return [
+            "the recorded FIPS patch list does not match the patch directory",
+            f"  recorded: {sorted(recorded_names)}",
+            f"  actual:   {actual_names}",
+        ]
+    patch_paths = [patch_dir / name for name in recorded_names]
+
+    with tempfile.TemporaryDirectory() as work_dir:
+        reconstructed = pathlib.Path(work_dir) / "reconstructed"
+        shutil.copytree(
+            VENDOR_DIR,
+            reconstructed,
+            ignore=shutil.ignore_patterns("VENDOR.toml", "patches"),
+        )
+        problems = apply_patch_series(reconstructed, patch_paths, reverse=True)
+        if problems:
+            return problems
+
+        expected_upstream = metadata["upstream_sha256"]
+        actual_upstream = tree_digest(reconstructed)
+        if actual_upstream != expected_upstream:
+            return [
+                "reversing the recorded patches does not reproduce upstream",
+                f"  recorded: {expected_upstream}",
+                f"  actual:   {actual_upstream}",
+            ]
+
+        problems = apply_patch_series(reconstructed, patch_paths, reverse=False)
+        if problems:
+            return problems
+        rebuilt = tree_digest(reconstructed)
+        vendored = tree_digest(VENDOR_DIR)
+        if rebuilt != vendored:
+            return [
+                "reapplying the recorded patches does not reproduce the "
+                "vendored tree",
+                f"  rebuilt:  {rebuilt}",
+                f"  vendored: {vendored}",
+            ]
     return []
 
 
@@ -114,22 +191,15 @@ def verify_against_upstream(
             ["tar", "-x", "-C", str(pristine)], input=archive, check=True
         )
 
+        patch_paths = []
         for patch in patches:
             patch_path = VENDOR_DIR / "patches" / patch
             if not patch_path.is_file():
                 return [f"recorded patch is missing: {patch_path}"]
-            result = subprocess.run(
-                ["patch", "-p1", "--batch", "--forward", "-i", str(patch_path)],
-                cwd=pristine,
-                capture_output=True,
-                text=True,
-            )
-            if result.returncode != 0:
-                return [
-                    f"patch {patch} does not apply to upstream {commit}",
-                    result.stdout.strip(),
-                    result.stderr.strip(),
-                ]
+            patch_paths.append(patch_path)
+        problems = apply_patch_series(pristine, patch_paths, reverse=False)
+        if problems:
+            return [f"patch series does not apply to upstream {commit}", *problems]
 
         # Reuse the same digest definition, so "reproduced" means exactly what
         # the offline check means.

@@ -1,0 +1,56 @@
+name: CI
+on: [push, pull_request]
+
+jobs:
+  test:
+    name: Test
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        rust: [stable, beta, nightly]
+    steps:
+    - uses: actions/checkout@v4
+    - name: Build & Test
+      if: ${{ !cancelled() }}
+      run: |
+        rustup update ${{ matrix.rust }} && rustup default ${{ matrix.rust }}
+        cargo test 
+    - name: Abort on error
+      if: ${{ failure() }}
+      run: echo "Some of jobs failed" && false
+
+  rustfmt:
+    name: Rustfmt
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Rustfmt Check
+      run: |
+        rustup update stable && rustup default stable && rustup component add rustfmt
+        cargo fmt -- --check
+
+  clippy_check:
+    name: Clippy Check & Build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: run clippy and check
+        shell: bash
+        run: |
+          cargo clippy --all-features -- -D warnings
+          cargo clippy -- -D warnings
+      - name: build examples
+        shell: bash
+        run: |
+          cargo build --examples
+          cargo build --examples --all-features
+
+  semver:
+    name: Check semver
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: obi1kenobi/cargo-semver-checks-action@v2
