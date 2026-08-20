@@ -19,6 +19,9 @@ import com.cruxcoach.domain.board.HoldRole
 import com.cruxcoach.domain.board.MoonBoardFrameEncoder
 import com.cruxcoach.domain.board.MoonBoardLedMode
 import com.cruxcoach.domain.board.QuantumBoardPacketEncoder
+import com.cruxcoach.domain.board.QuantumBoardBroadcastParser
+import com.cruxcoach.domain.board.QuantumBroadcast
+import com.cruxcoach.domain.board.QuantumActivePlayer
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -28,6 +31,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -39,6 +43,19 @@ enum class ConnectionState {
     CONNECTED,
     SENDING
 }
+
+enum class QuantumCommandFailure {
+    ROUTE_IN_USE, SPOT_UNAVAILABLE, COLOR_TAKEN, USER_ID_IN_USE,
+    BOARD_FULL, ROUTESETTER_MODE, DIODE_MISSING, ACK_TIMEOUT, REFUSED,
+}
+
+data class QuantumControllerState(
+    val players: List<QuantumActivePlayer> = emptyList(),
+    val revision: Long = 0,
+    val lastFailure: QuantumCommandFailure? = null,
+    /** True only after a controller broadcast supplied real state. */
+    val authoritative: Boolean = false,
+)
 
 /**
  * Manages GATT connection to an Aurora Climbing board and sends hold/clear packets.
@@ -62,6 +79,7 @@ class BoardBleConnection(private val context: Context) {
     private companion object {
         const val TAG = "BoardBleConnection"
         const val WRITE_TIMEOUT_MS = 5000L
+        const val QUANTUM_CONFIRM_TIMEOUT_MS = 3000L
         const val CLOSE_SAFETY_TIMEOUT_MS = 5000L
 
         // Per-attempt connect budget × silent retries. Legacy stacks (9-11)
@@ -256,6 +274,11 @@ class BoardBleConnection(private val context: Context) {
     private var writeDeferred: CompletableDeferred<Int>? = null
     private val writeMutex = Mutex()
 
+    private val _quantumControllerState = MutableStateFlow(QuantumControllerState())
+    val quantumControllerState: StateFlow<QuantumControllerState> =
+        _quantumControllerState.asStateFlow()
+    private val quantumNotificationBuffer = mutableListOf<Byte>()
+
     // Track whether disconnect() was called by us (vs. remote disconnect).
     @Volatile
     private var userDisconnecting = false
@@ -422,6 +445,14 @@ class BoardBleConnection(private val context: Context) {
                     _connectionState.value = ConnectionState.CONNECTED
                     resetIdleTimer()
                     onRestartScannersAfterConnect?.invoke()
+                    if (_connectedBoardBrand.value == BoardBrand.QUANTUM) {
+                        // Let CCCD registration settle, then pull the
+                        // authoritative four-player controller snapshot.
+                        scope.launch {
+                            delay(250)
+                            refreshQuantumState()
+                        }
+                    }
                 } else {
                     Log.w(TAG, "DATA_TRANSFER_CHAR not found in service")
                     // Pre-2017 MoonBoard LED kits speak the RedBear UART
@@ -475,6 +506,85 @@ class BoardBleConnection(private val context: Context) {
             writeDeferred?.complete(status)
         }
 
+        @Deprecated("Deprecated in Android 13")
+        override fun onCharacteristicChanged(
+            gatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic,
+        ) {
+            if (characteristic.uuid == BoardBleUuids.QUANTUM_NOTIFY_CHAR) {
+                consumeQuantumNotification(characteristic.value ?: return)
+            }
+        }
+
+        override fun onCharacteristicChanged(
+            gatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic,
+            value: ByteArray,
+        ) {
+            if (characteristic.uuid == BoardBleUuids.QUANTUM_NOTIFY_CHAR) {
+                consumeQuantumNotification(value)
+            }
+        }
+
+    }
+
+    private fun consumeQuantumNotification(bytes: ByteArray) = synchronized(quantumNotificationBuffer) {
+        quantumNotificationBuffer += bytes.toList()
+        while (quantumNotificationBuffer.isNotEmpty()) {
+            if ((quantumNotificationBuffer.first().toInt() and 0xff) != 1) {
+                quantumNotificationBuffer.removeAt(0)
+                continue
+            }
+            val candidate = quantumNotificationBuffer.toByteArray()
+            val expected = QuantumBoardBroadcastParser.expectedFrameSize(candidate) ?: break
+            if (expected > 512) {
+                quantumNotificationBuffer.removeAt(0)
+                continue
+            }
+            if (candidate.size < expected) break
+            val frame = candidate.copyOf(expected)
+            repeat(expected) { quantumNotificationBuffer.removeAt(0) }
+            when (val broadcast = QuantumBoardBroadcastParser.parse(frame)) {
+                is QuantumBroadcast.RouteList -> _quantumControllerState.value =
+                    QuantumControllerState(
+                        players = broadcast.players,
+                        revision = _quantumControllerState.value.revision + 1,
+                        authoritative = true,
+                    )
+                is QuantumBroadcast.UserTurnedOff -> _quantumControllerState.value =
+                    _quantumControllerState.value.copy(
+                        players = _quantumControllerState.value.players.filterNot {
+                            it.userId.equals(broadcast.userId, ignoreCase = true)
+                        },
+                        revision = _quantumControllerState.value.revision + 1,
+                        lastFailure = null,
+                        authoritative = _quantumControllerState.value.authoritative,
+                    )
+                QuantumBroadcast.BoardCleared -> _quantumControllerState.value =
+                    QuantumControllerState(
+                        revision = _quantumControllerState.value.revision + 1,
+                        authoritative = true,
+                    )
+                is QuantumBroadcast.Exception -> _quantumControllerState.value =
+                    _quantumControllerState.value.copy(
+                        revision = _quantumControllerState.value.revision + 1,
+                        lastFailure = quantumFailure(broadcast.code),
+                    )
+                is QuantumBroadcast.BoardLit, null -> Unit
+            }
+        }
+    }
+
+    private fun quantumFailure(code: Int): QuantumCommandFailure = when (code) {
+        5 -> QuantumCommandFailure.ROUTE_IN_USE
+        6 -> QuantumCommandFailure.SPOT_UNAVAILABLE
+        7 -> QuantumCommandFailure.COLOR_TAKEN
+        8 -> QuantumCommandFailure.USER_ID_IN_USE
+        9 -> QuantumCommandFailure.BOARD_FULL
+        10 -> QuantumCommandFailure.ROUTESETTER_MODE
+        11 -> QuantumCommandFailure.DIODE_MISSING
+        254 -> QuantumCommandFailure.ACK_TIMEOUT
+        else -> QuantumCommandFailure.REFUSED
     }
 
     /** Finalize state after disconnect callback (or error). */
@@ -561,6 +671,13 @@ class BoardBleConnection(private val context: Context) {
         userDisconnecting = false
         gattClosed = false
         _connectionState.value = ConnectionState.CONNECTING
+        if (board.boardBrand == BoardBrand.QUANTUM) {
+            synchronized(quantumNotificationBuffer) { quantumNotificationBuffer.clear() }
+            _quantumControllerState.value = QuantumControllerState(
+                revision = _quantumControllerState.value.revision + 1,
+                authoritative = false,
+            )
+        }
         _connectedBoardName.value = board.displayName
         _connectedBoardBrand.value = board.boardBrand
         // Fresh attempt — drop any failure reason from the previous one.
@@ -786,6 +903,8 @@ class BoardBleConnection(private val context: Context) {
         placementToLed: Map<Int, Int>,
         roleColors: Map<Int, Int>? = null,
         routeId: String? = null,
+        quantumUserId: String = QuantumBoardPacketEncoder.ZERO_UUID,
+        quantumColor: Int = 0x00ffff,
     ): Boolean = writeMutex.withLock {
         if (_connectionState.value != ConnectionState.CONNECTED) return false
 
@@ -815,12 +934,28 @@ class BoardBleConnection(private val context: Context) {
                 // other climbers sharing a capable controller are untouched.
                 val transition = QuantumBoardPacketEncoder.replaceUserRoute(
                     routeId = routeId ?: QuantumBoardPacketEncoder.ZERO_UUID,
-                    userId = QuantumBoardPacketEncoder.ZERO_UUID,
+                    userId = quantumUserId,
                     diodes = mapped,
+                    color = quantumColor and 0xffffff,
                 )
+                val revision = _quantumControllerState.value.revision
+                _quantumControllerState.value = _quantumControllerState.value.copy(lastFailure = null)
                 if (!writeQuantumFrames(transition.take(1))) return false
                 delay(50)
-                return writeQuantumFrames(transition.drop(1))
+                if (!writeQuantumFrames(transition.drop(1))) return false
+                if (!writeQuantumFrames(listOf(QuantumBoardPacketEncoder.requestRouteList()))) return false
+                return awaitQuantumState(revision) { snapshot ->
+                    snapshot.lastFailure != null || snapshot.players.any {
+                        it.userId.equals(quantumUserId, ignoreCase = true) &&
+                            it.routeId.equals(routeId ?: QuantumBoardPacketEncoder.ZERO_UUID, ignoreCase = true) &&
+                            it.color == (quantumColor and 0xffffff)
+                    }
+                }?.let { snapshot ->
+                    snapshot.lastFailure == null && snapshot.players.any {
+                        it.userId.equals(quantumUserId, ignoreCase = true) &&
+                            it.routeId.equals(routeId ?: QuantumBoardPacketEncoder.ZERO_UUID, ignoreCase = true)
+                    }
+                } == true
             }
             val chunks = if (roleColors != null) {
                 // Resolve each hold's colour by canonical role CLASS, not raw
@@ -860,6 +995,52 @@ class BoardBleConnection(private val context: Context) {
             if (index != frames.lastIndex) delay(100)
         }
         return true
+    }
+
+    /** Pull the controller's authoritative active-player list. */
+    suspend fun refreshQuantumState(): Boolean = writeMutex.withLock {
+        if (_connectionState.value != ConnectionState.CONNECTED ||
+            _connectedBoardBrand.value != BoardBrand.QUANTUM
+        ) return false
+        val revision = _quantumControllerState.value.revision
+        _quantumControllerState.value = _quantumControllerState.value.copy(lastFailure = null)
+        if (!writeQuantumFrames(listOf(QuantumBoardPacketEncoder.requestRouteList()))) return false
+        return awaitQuantumState(revision) { it.revision > revision }?.lastFailure == null
+    }
+
+    /** Remove exactly one installation-owned Quantum layer, never all users. */
+    suspend fun removeQuantumLayer(userId: String): Boolean = writeMutex.withLock {
+        if (_connectionState.value != ConnectionState.CONNECTED ||
+            _connectedBoardBrand.value != BoardBrand.QUANTUM
+        ) return false
+        _connectionState.value = ConnectionState.SENDING
+        disconnectJob?.cancel()
+        try {
+            val revision = _quantumControllerState.value.revision
+            _quantumControllerState.value = _quantumControllerState.value.copy(lastFailure = null)
+            if (!writeQuantumFrames(listOf(QuantumBoardPacketEncoder.turnOffUser(userId)))) return false
+            if (!writeQuantumFrames(listOf(QuantumBoardPacketEncoder.requestRouteList()))) return false
+            val state = awaitQuantumState(revision) { snapshot ->
+                snapshot.lastFailure != null || snapshot.players.none {
+                    it.userId.equals(userId, ignoreCase = true)
+                }
+            }
+            return state != null && state.lastFailure == null && state.players.none {
+                it.userId.equals(userId, ignoreCase = true)
+            }
+        } finally {
+            if (_connectionState.value == ConnectionState.SENDING) {
+                _connectionState.value = ConnectionState.CONNECTED
+            }
+            resetIdleTimer()
+        }
+    }
+
+    private suspend fun awaitQuantumState(
+        afterRevision: Long,
+        predicate: (QuantumControllerState) -> Boolean,
+    ): QuantumControllerState? = withTimeoutOrNull(QUANTUM_CONFIRM_TIMEOUT_MS) {
+        quantumControllerState.first { it.revision > afterRevision && predicate(it) }
     }
 
     suspend fun resendWithColors(roleColors: Map<Int, Int>): Boolean {
@@ -940,6 +1121,12 @@ class BoardBleConnection(private val context: Context) {
                     .chunked(BoardPacketEncoder.BLE_MTU).map { it.toByteArray() }
             } else encoder.encodeClear()
             val success = writeChunks(chunks)
+            if (success && _connectedBoardBrand.value == BoardBrand.QUANTUM) {
+                _quantumControllerState.value = QuantumControllerState(
+                    revision = _quantumControllerState.value.revision + 1,
+                    authoritative = true,
+                )
+            }
             return success
         } finally {
             if (_connectionState.value == ConnectionState.SENDING) {

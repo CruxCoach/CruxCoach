@@ -62,6 +62,9 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.cruxcoach.android.ble.BoardProjectionPolicy
 import com.cruxcoach.android.ble.ConnectionState
+import com.cruxcoach.android.ble.BoardLayerManager
+import com.cruxcoach.android.ble.BoardLayerStatus
+import com.cruxcoach.android.ble.BoardLayerConflictPolicy
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.LedHoldColors
 import com.cruxcoach.android.data.SessionRole
@@ -876,6 +879,276 @@ fun BoardClimbDetailScreen(
     }
 }
 
+@Composable
+private fun BoardLayerRack(
+    state: ClimbDetailState,
+    onSelectSlot: (Int) -> Unit,
+    onSelectColor: (Int) -> Unit,
+    onProjectCurrent: () -> Unit,
+    onRemove: (Int) -> Unit,
+) {
+    val maxLayers = BoardBrand.QUANTUM.maxSimultaneousClimbs
+    val ownBySlot = state.boardLayers.layers.associateBy { it.slot }
+    val currentLayer = state.climb?.uuid?.let { uuid ->
+        state.boardLayers.layers.firstOrNull { it.climbUuid == uuid }
+    }
+    val explicitSlot = state.selectedBoardLayerSlot?.takeIf {
+        it in ownBySlot || state.boardLayers.occupiedCount < maxLayers
+    }
+    val selectedSlot = explicitSlot
+        ?: currentLayer?.slot
+        ?: if (state.boardLayers.occupiedCount < maxLayers) {
+            (0 until maxLayers).firstOrNull { it !in ownBySlot }
+        } else null
+    val selectedLayer = selectedSlot?.let(ownBySlot::get)
+    val selectedColor = state.selectedBoardLayerColor
+        ?: selectedLayer?.color
+        ?: selectedSlot?.let { BoardLayerManager.LAYER_COLORS[it] }
+    val occupiedColors = state.boardLayers.layers.mapTo(mutableSetOf()) { it.color } +
+        state.boardLayers.externalLayers.map { it.color }
+    val initialHsv = remember(selectedSlot, selectedColor) {
+        FloatArray(3).also { hsv ->
+            android.graphics.Color.colorToHSV(selectedColor ?: 0xff00bcd4.toInt(), hsv)
+        }
+    }
+    var customHue by remember(selectedSlot, selectedColor) { mutableStateOf(initialHsv[0]) }
+    val sharedHoldCount = BoardLayerConflictPolicy.sharedHoldCount(
+        state.holds,
+        state.boardLayers.layers,
+        selectedSlot,
+    )
+    val colorsOnOtherLayers = state.boardLayers.layers
+        .filterNot { it.slot == selectedSlot }.mapTo(mutableSetOf()) { it.color } +
+        state.boardLayers.externalLayers.map { it.color }
+    val selectedColorConflict = selectedColor != null && selectedColor in colorsOnOtherLayers
+
+    Card(
+        modifier = Modifier.fillMaxWidth().testTag("board_layer_rack"),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+        ),
+        shape = RoundedCornerShape(16.dp),
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column {
+                    Text(
+                        stringResource(R.string.board_layers_title),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        stringResource(
+                            R.string.board_layers_occupied,
+                            state.boardLayers.occupiedCount,
+                            maxLayers,
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (state.boardLayers.externalLayers.isNotEmpty()) {
+                    AssistChip(
+                        onClick = {},
+                        enabled = false,
+                        label = {
+                            Text(stringResource(
+                                R.string.board_layers_external,
+                                state.boardLayers.externalLayers.size,
+                            ))
+                        },
+                    )
+                }
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                for (rowStart in 0 until maxLayers step 2) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        for (slot in rowStart until minOf(rowStart + 2, maxLayers)) {
+                            val layer = ownBySlot[slot]
+                            val selected = slot == selectedSlot
+                            Surface(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("board_layer_slot_${slot + 1}")
+                                    .clickable { onSelectSlot(slot) },
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (selected) {
+                                    OrangeAccent.copy(alpha = 0.16f)
+                                } else MaterialTheme.colorScheme.surface,
+                                border = androidx.compose.foundation.BorderStroke(
+                                    if (selected) 2.dp else 1.dp,
+                                    if (selected) OrangeAccent else MaterialTheme.colorScheme.outlineVariant,
+                                ),
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Box(
+                                        Modifier.size(16.dp).background(
+                                            color = layer?.let { Color(it.color) }
+                                                ?: MaterialTheme.colorScheme.outlineVariant,
+                                            shape = CircleShape,
+                                        ),
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(
+                                            stringResource(R.string.board_layer_number, slot + 1),
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold,
+                                        )
+                                        Text(
+                                            layer?.climbName ?: stringResource(R.string.board_layer_empty),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            maxLines = 1,
+                                        )
+                                        if (layer != null) {
+                                            Text(
+                                                when (layer.status) {
+                                                    BoardLayerStatus.PREVIEW -> stringResource(R.string.board_layer_preview)
+                                                    BoardLayerStatus.SENDING -> stringResource(R.string.board_layer_sending)
+                                                    BoardLayerStatus.CONFIRMED -> stringResource(R.string.board_layer_confirmed)
+                                                    BoardLayerStatus.FAILED -> stringResource(R.string.board_layer_failed)
+                                                },
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = when (layer.status) {
+                                                    BoardLayerStatus.CONFIRMED -> SuccessGreen
+                                                    BoardLayerStatus.FAILED -> ErrorRed
+                                                    else -> OrangeAccent
+                                                },
+                                            )
+                                        }
+                                    }
+                                    if (layer != null) {
+                                        IconButton(
+                                            onClick = { onRemove(slot) },
+                                            enabled = !state.ble.isSending,
+                                            modifier = Modifier.size(28.dp),
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Delete,
+                                                contentDescription = stringResource(R.string.board_layer_remove),
+                                                modifier = Modifier.size(17.dp),
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            selectedSlot?.let { slot ->
+                Text(
+                    stringResource(R.string.board_layer_color),
+                    style = MaterialTheme.typography.labelMedium,
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    BoardLayerManager.LAYER_COLORS.forEachIndexed { index, color ->
+                        val ownedBySelected = selectedLayer?.color == color
+                        val available = color !in occupiedColors || ownedBySelected
+                        Surface(
+                            onClick = { if (available) onSelectColor(color) },
+                            enabled = available,
+                            modifier = Modifier
+                                .size(34.dp)
+                                .testTag("board_layer_color_$index"),
+                            shape = CircleShape,
+                            color = Color(color).copy(alpha = if (available) 1f else 0.22f),
+                            border = if (selectedColor == color) {
+                                androidx.compose.foundation.BorderStroke(3.dp, MaterialTheme.colorScheme.onSurface)
+                            } else null,
+                        ) {}
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    val customColor = android.graphics.Color.HSVToColor(
+                        floatArrayOf(customHue, 0.85f, 0.95f),
+                    )
+                    Box(
+                        Modifier.size(28.dp).background(Color(customColor), CircleShape),
+                    )
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            stringResource(R.string.board_layer_custom_color),
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                        Slider(
+                            value = customHue,
+                            onValueChange = { hue ->
+                                customHue = hue
+                                onSelectColor(android.graphics.Color.HSVToColor(
+                                    floatArrayOf(hue, 0.85f, 0.95f),
+                                ))
+                            },
+                            valueRange = 0f..359f,
+                            modifier = Modifier.testTag("board_layer_hue_picker"),
+                        )
+                    }
+                }
+                Button(
+                    onClick = onProjectCurrent,
+                    enabled = !state.ble.isSending && sharedHoldCount == 0 && !selectedColorConflict,
+                    modifier = Modifier.fillMaxWidth().testTag("board_layer_project_current"),
+                ) {
+                    Icon(Icons.Default.Lightbulb, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        stringResource(
+                            if (selectedLayer?.climbUuid == state.climb?.uuid) {
+                                R.string.board_layer_update_current
+                            } else if (selectedLayer != null) {
+                                R.string.board_layer_replace_current
+                            } else {
+                                R.string.board_layer_add_current
+                            },
+                            slot + 1,
+                        ),
+                    )
+                }
+                if (sharedHoldCount > 0) {
+                    Text(
+                        stringResource(R.string.board_layer_overlap_warning, sharedHoldCount),
+                        color = ErrorRed,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                if (selectedColorConflict) {
+                    Text(
+                        stringResource(R.string.board_layer_error_color_taken),
+                        color = ErrorRed,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            } ?: Text(
+                stringResource(R.string.board_layer_board_full_hint),
+                color = ErrorRed,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
+}
+
 /** Lightweight per-page content — no Scaffold, no TopAppBar, no banners, no BleVM. */
 @Composable
 private fun ClimbDetailPageContent(
@@ -1148,6 +1421,9 @@ private fun ClimbDetailPageContent(
                             currentFrameHolds = if (state.playback.showPreview && state.playback.isRoute) {
                                 state.playback.allFrames.getOrElse(state.playback.currentFrameIndex) { emptyList() }
                             } else null,
+                            projectionLayers = if (climb.brand == BoardBrand.QUANTUM) {
+                                state.boardLayers.layers
+                            } else emptyList(),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .testTag("boarddetail_visualization")
@@ -1245,6 +1521,16 @@ private fun ClimbDetailPageContent(
                             }
                         }
                     }
+                }
+
+                if (climb.brand == BoardBrand.QUANTUM) {
+                    BoardLayerRack(
+                        state = state,
+                        onSelectSlot = viewModel::selectBoardLayer,
+                        onSelectColor = viewModel::selectBoardLayerColor,
+                        onProjectCurrent = viewModel::deliverClimb,
+                        onRemove = viewModel::removeBoardLayer,
+                    )
                 }
 
                 // Route playback controls

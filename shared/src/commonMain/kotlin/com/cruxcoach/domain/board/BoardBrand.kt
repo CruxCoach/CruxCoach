@@ -109,6 +109,17 @@ enum class BoardBrand(val wireValue: String) {
      *  is materialised as a unique layout id for every model. */
     val usesProductSizeEdgeFit: Boolean get() = this != QUANTUM
 
+    /**
+     * Number of independent climb projections the physical controller can
+     * retain at once.  Keeping this on the board capability model makes the
+     * layer UI reusable: future controllers can opt in without inheriting any
+     * Quantum packet details.
+     */
+    val maxSimultaneousClimbs: Int get() = if (this == QUANTUM) 4 else 1
+
+    /** True when one projection can be removed without clearing the others. */
+    val supportsIndependentClimbLayers: Boolean get() = maxSimultaneousClimbs > 1
+
     /** Climbs can be authored in the in-app editor — every interactive board.
      *  Kilter additionally pushes to the user's own Kilter account (see
      *  [supportsOfficialAppPublish]); every other interactive board (MoonBoard +

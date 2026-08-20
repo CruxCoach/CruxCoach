@@ -28,6 +28,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -52,6 +53,7 @@ import com.cruxcoach.domain.board.BoardHold
 import com.cruxcoach.domain.board.BoardZone
 import com.cruxcoach.domain.board.BoardZoneFilter
 import com.cruxcoach.domain.board.QuantumBoardModel
+import com.cruxcoach.android.ble.BoardClimbLayer
 import kotlinx.coroutines.withTimeoutOrNull
 
 /** Bundled board-size IDs that have a WebP asset in board_images/.
@@ -148,6 +150,9 @@ internal fun KilterBoardVisualization(
     ledColors: LedHoldColors = LedHoldColors(),
     previewMode: Boolean = false,
     currentFrameHolds: List<BoardHold>? = null,
+    /** Independent physical-board projections. Quantum renders shared holds
+     * as adjacent colour segments instead of blending them. */
+    projectionLayers: List<BoardClimbLayer> = emptyList(),
     // Heatmap support
     heatmapData: Map<Int, Float>? = null,
     // Interactive hold selection
@@ -188,6 +193,21 @@ internal fun KilterBoardVisualization(
 
     val activeHoldMap = remember(holds) {
         holds.associateBy { it.placementId }
+    }
+    val layerColorsByPlacement = remember(projectionLayers) {
+        buildMap<Int, List<Color>> {
+            projectionLayers.forEach { layer ->
+                layer.holds.forEach { hold ->
+                    put(
+                        hold.placementId,
+                        get(hold.placementId).orEmpty() + Color(layer.color),
+                    )
+                }
+            }
+        }
+    }
+    val currentClimbIsLayered = projectionLayers.any { layer ->
+        layer.holds.map { it.placementId }.toSet() == holds.map { it.placementId }.toSet()
     }
 
     val brand = boardSize?.boardBrand ?: BoardBrand.KILTER
@@ -577,7 +597,7 @@ internal fun KilterBoardVisualization(
                     }
 
                     // Layer 4: Active hold circles (existing behavior — colored ring).
-                    if (holds.isNotEmpty()) {
+                    if (holds.isNotEmpty() && !(quantumModel != null && currentClimbIsLayered)) {
                         val activeHold = activeHoldMap[pid]
                         if (activeHold != null) {
                             val alpha = if (previewMode && currentFrameSet != null) {
@@ -598,6 +618,30 @@ internal fun KilterBoardVisualization(
                                     markerScale * 1.2f
                                 },
                             )
+                        }
+                    }
+
+                    // Physical multi-climb overlay. A shared hold is a ring
+                    // split into one equal segment per layer, preserving every
+                    // climber's identity even for colour-blind users who use
+                    // the numbered rack directly below the board.
+                    if (quantumModel != null) {
+                        val colors = layerColorsByPlacement[pid].orEmpty().distinct()
+                        if (colors.isNotEmpty()) {
+                            val radius = markerScale * 4f
+                            val stroke = QUANTUM_DIODE_STROKE_DP.dp.toPx()
+                            val sweep = 360f / colors.size
+                            colors.forEachIndexed { index, color ->
+                                drawArc(
+                                    color = color,
+                                    startAngle = -90f + index * sweep,
+                                    sweepAngle = sweep - if (colors.size > 1) 3f else 0f,
+                                    useCenter = false,
+                                    topLeft = Offset(px - radius, py - radius),
+                                    size = Size(radius * 2, radius * 2),
+                                    style = Stroke(width = stroke),
+                                )
+                            }
                         }
                     }
 

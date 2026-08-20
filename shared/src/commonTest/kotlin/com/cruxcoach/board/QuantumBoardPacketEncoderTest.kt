@@ -2,6 +2,9 @@ package com.cruxcoach.board
 
 import com.cruxcoach.domain.board.QuantumBoardModel
 import com.cruxcoach.domain.board.QuantumBoardPacketEncoder
+import com.cruxcoach.domain.board.QuantumBoardBroadcastParser
+import com.cruxcoach.domain.board.QuantumBroadcast
+import com.cruxcoach.domain.board.BoardBrand
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -105,5 +108,57 @@ class QuantumBoardPacketEncoderTest {
         assertEquals(5, QuantumBoardModel.entries.map { it.layoutId }.toSet().size)
         assertTrue(QuantumBoardModel.entries.all { it.layoutId in 9101..9105 })
         assertTrue(QuantumBoardModel.entries.all { it.productSizeId in 9201..9205 })
+    }
+
+    @Test fun `route list parser preserves four users routes colors and time`() {
+        val players = listOf(
+            Triple("00112233-4455-6677-8899-aabbccddeeff", "11111111-2222-3333-4444-555555555555", 0x00bcd4),
+            Triple("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "12345678-1234-5678-9abc-def012345678", 0xff8c00),
+            Triple("fedcba98-7654-3210-fedc-ba9876543210", "87654321-4321-8765-cba9-876543210fed", 0xb56cff),
+            Triple("01234567-89ab-cdef-0123-456789abcdef", "99999999-8888-7777-6666-555555555555", 0x4cd964),
+        )
+        val body = mutableListOf<Byte>(1, 0x47, players.size.toByte(), 0)
+        players.forEachIndexed { index, (route, user, color) ->
+            body += QuantumBoardPacketEncoder.uuidBytes(route).toList()
+            body += QuantumBoardPacketEncoder.uuidBytes(user).toList()
+            body += byteArrayOf(0, (30 + index).toByte()).toList()
+            body += byteArrayOf(
+                (color ushr 16).toByte(),
+                (color ushr 8).toByte(),
+                color.toByte(),
+            ).toList()
+        }
+        val frame = withCrc(body.toByteArray())
+        assertEquals(frame.size, QuantumBoardBroadcastParser.expectedFrameSize(frame))
+        val parsed = QuantumBoardBroadcastParser.parse(frame) as QuantumBroadcast.RouteList
+        assertEquals(4, parsed.players.size)
+        assertEquals(players.map { it.first }, parsed.players.map { it.routeId })
+        assertEquals(players.map { it.second }, parsed.players.map { it.userId })
+        assertEquals(players.map { it.third }, parsed.players.map { it.color })
+        assertEquals(listOf(30, 31, 32, 33), parsed.players.map { it.remainingSeconds })
+    }
+
+    @Test fun `exception broadcasts are typed and corrupt crc fails closed`() {
+        val exception = withCrc(byteArrayOf(1, 0xc1.toByte(), 7))
+        assertEquals(
+            QuantumBroadcast.Exception(com.cruxcoach.domain.board.QuantumCommand.ACTIVATE_WALL, 7),
+            QuantumBoardBroadcastParser.parse(exception),
+        )
+        exception[exception.lastIndex] = (exception.last().toInt() xor 1).toByte()
+        assertEquals(null, QuantumBoardBroadcastParser.parse(exception))
+    }
+
+    @Test fun `only Quantum opts into four independent layers`() {
+        assertEquals(4, BoardBrand.QUANTUM.maxSimultaneousClimbs)
+        assertTrue(BoardBrand.QUANTUM.supportsIndependentClimbLayers)
+        BoardBrand.entries.filterNot { it == BoardBrand.QUANTUM }.forEach {
+            assertEquals(1, it.maxSimultaneousClimbs)
+            assertTrue(!it.supportsIndependentClimbLayers)
+        }
+    }
+
+    private fun withCrc(body: ByteArray): ByteArray {
+        val crc = QuantumBoardPacketEncoder.crc16Modbus(body)
+        return body + byteArrayOf((crc ushr 8).toByte(), crc.toByte())
     }
 }
