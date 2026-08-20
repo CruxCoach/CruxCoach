@@ -3,6 +3,8 @@ package com.cruxcoach.android.data
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.cruxcoach.data.repository.PersonalBoardRepositoryImpl
+import com.cruxcoach.data.repository.QuickLogBidInput
+import com.cruxcoach.data.repository.QuickLogSendInput
 import com.cruxcoach.db.secure.SecureDatabase
 import java.nio.file.Files
 import kotlin.test.AfterTest
@@ -86,6 +88,33 @@ class PerBoardLogbookDeletionTest {
         repo.addClimbToList(customId, "ck")
         repo.insertBoardSession("2026-07-01 09:00:00", "2026-07-01 11:00:00", 7200L, 0L, 2L, 1L)
         return favId to customId
+    }
+
+    @Test
+    fun `quick log promotion and undo replace bid and send atomically`() {
+        bid("quick", "cq", "kilter")
+        repo.promoteQuickBidToSend(
+            QuickLogSendInput(
+                uuid = "quick", climbUuid = "cq", angle = 40L,
+                isMirror = false, bidCount = 3L, difficulty = 16L,
+                climbedAt = "2026-07-02 11:05:00", climbName = "cq",
+                difficultyAverage = 16.0, climbFrames = "p100r12",
+                framesCount = 1L, boardBrand = "kilter", layoutId = 1L,
+            )
+        )
+        assertTrue(repo.getRawBidsForUser().none { it.uuid == "quick" })
+        assertEquals(3L, repo.getUserAscentsAll().single { it.uuid == "quick" }.bidCount)
+
+        repo.restoreQuickBidFromSend(
+            QuickLogBidInput(
+                uuid = "quick", climbUuid = "cq", angle = 40L,
+                isMirror = false, bidCount = 2L,
+                climbedAt = "2026-07-02 11:00:00", climbName = "cq",
+                difficultyAverage = 16.0, boardBrand = "kilter", layoutId = 1L,
+            )
+        )
+        assertTrue(repo.getUserAscentsAll().none { it.uuid == "quick" })
+        assertEquals(2L, repo.getRawBidsForUser().single { it.uuid == "quick" }.bidCount)
     }
 
     // ── Scoped path ─────────────────────────────────────────────────

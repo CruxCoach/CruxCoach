@@ -5,9 +5,13 @@ import com.cruxcoach.android.data.IntensityZoneManager
 import com.cruxcoach.android.ui.navigation.ClimbNavigationState
 import com.cruxcoach.data.repository.AscentWithClimb
 import com.cruxcoach.data.repository.PersonalBoardRepository
+import com.cruxcoach.data.repository.QuickLogBidInput
+import com.cruxcoach.data.repository.QuickLogSendInput
 import com.cruxcoach.util.DateTimeUtil
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
@@ -58,6 +62,7 @@ internal class AscentLogger(
 
     private var pendingQuickLog: PendingQuickLog? = null
     private var activeQuickLog: ActiveQuickLog? = null
+    private var pendingFinalizationJob: Job? = null
 
     fun showDialog() {
         finishQuickSequence()
@@ -112,12 +117,19 @@ internal class AscentLogger(
 
     fun undoQuickLog() {
         val pending = pendingQuickLog ?: return
+        pendingFinalizationJob?.cancel()
+        pendingFinalizationJob = null
         pendingQuickLog = null
         scope.launch {
-            withContext(Dispatchers.IO) {
+            try {
+                withContext(Dispatchers.IO) {
                 if (pending.isSend) {
-                    pending.sendEntryUuid?.let(personalBoardRepo::deleteAscent)
-                    pending.before?.let(::insertBidSnapshot)
+                    val before = pending.before
+                    if (before != null) {
+                        personalBoardRepo.restoreQuickBidFromSend(before.toInput())
+                    } else {
+                        pending.sendEntryUuid?.let(personalBoardRepo::deleteAscent)
+                    }
                     val currentHistory = personalBoardRepo.observeClimbHistory().first()
                         .firstOrNull { it.climbUuid == pending.climbUuid && it.angle.toLong() == pending.angle }
                     currentHistory?.let { personalBoardRepo.deleteClimbHistory(listOf(it.id)) }
@@ -156,34 +168,74 @@ internal class AscentLogger(
                     )
                 }
             }
-            if (pending.isSend) sessionManager.undoRecordedAscent()
-            else sessionManager.undoRecordedBid()
-            zoneManager.recompute()
+                if (pending.isSend) sessionManager.undoRecordedAscent()
+                else sessionManager.undoRecordedBid()
+                zoneManager.recompute()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                state.update {
+                    it.copy(
+                        isQuickLogging = false,
+                        quickLogFeedback = null,
+                        quickLogFailed = true,
+                    )
+                }
+            }
         }
     }
 
     private fun finalizePendingQuickLog() {
         val pending = pendingQuickLog ?: return
+        pendingFinalizationJob?.cancel()
+        pendingFinalizationJob = null
         pendingQuickLog = null
         onAscentSaved(pending.isSend)
     }
 
-    private fun insertBidSnapshot(snapshot: ActiveQuickLog) {
-        personalBoardRepo.insertBid(
-            uuid = snapshot.entryUuid,
-            climbUuid = snapshot.climbUuid,
-            angle = snapshot.angle,
-            isMirror = snapshot.isMirror,
-            bidCount = snapshot.attemptCount,
-            comment = null,
-            climbedAt = snapshot.climbedAt,
-            synced = false,
-            climbName = snapshot.climbName,
-            difficultyAverage = snapshot.difficultyAverage,
-            boardBrand = snapshot.boardBrand,
-            layoutId = snapshot.layoutId,
-        )
+    private fun ActiveQuickLog.toInput() = QuickLogBidInput(
+        uuid = entryUuid,
+        climbUuid = climbUuid,
+        angle = angle,
+        isMirror = isMirror,
+        bidCount = attemptCount,
+        climbedAt = climbedAt,
+        climbName = climbName,
+        difficultyAverage = difficultyAverage,
+        boardBrand = boardBrand,
+        layoutId = layoutId,
+    )
+
+    private fun schedulePendingFinalization(pending: PendingQuickLog) {
+        pendingFinalizationJob?.cancel()
+        pendingFinalizationJob = scope.launch {
+            delay(7_000)
+            if (pendingQuickLog === pending) finalizePendingQuickLog()
+        }
     }
+
+    private fun quickSendInput(
+        active: ActiveQuickLog,
+        attemptsToTop: Long,
+        now: String,
+        climbFrames: String,
+        framesCount: Long,
+        difficulty: Long?,
+    ) = QuickLogSendInput(
+        uuid = active.entryUuid,
+        climbUuid = active.climbUuid,
+        angle = active.angle,
+        isMirror = active.isMirror,
+        bidCount = attemptsToTop,
+        difficulty = difficulty,
+        climbedAt = now,
+        climbName = active.climbName,
+        difficultyAverage = active.difficultyAverage,
+        climbFrames = climbFrames,
+        framesCount = framesCount,
+        boardBrand = active.boardBrand,
+        layoutId = active.layoutId,
+    )
 
     private fun save(isQuickLog: Boolean) {
         val s = state.value
@@ -201,14 +253,21 @@ internal class AscentLogger(
         val climbUuid = currentClimbUuid()
 
         scope.launch {
-            withContext(Dispatchers.IO) {
+            try {
+                withContext(Dispatchers.IO) {
                 var effectiveEntryUuid = entryUuid
                 var quickBefore: ActiveQuickLog? = null
                 var quickAfter: ActiveQuickLog? = null
                 var sendEntryUuid: String? = null
                 val previousHistory = if (isQuickLog && form.isSend) {
-                    personalBoardRepo.observeClimbHistory().first()
-                        .firstOrNull { it.climbUuid == climb.uuid && it.angle.toLong() == s.angle.toLong() }
+                    try {
+                        personalBoardRepo.observeClimbHistory().first()
+                            .firstOrNull { it.climbUuid == climb.uuid && it.angle.toLong() == s.angle.toLong() }
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        null
+                    }
                 } else {
                     null
                 }
@@ -250,45 +309,59 @@ internal class AscentLogger(
                         }
                         if (compatibleOpenLog != null) {
                             effectiveEntryUuid = compatibleOpenLog.entryUuid
+                            personalBoardRepo.promoteQuickBidToSend(
+                                quickSendInput(
+                                    active = compatibleOpenLog,
+                                    attemptsToTop = attemptsToTop,
+                                    now = now,
+                                    climbFrames = climb.frames,
+                                    framesCount = climb.framesCount,
+                                    difficulty = climb.difficultyAverage?.toLong(),
+                                )
+                            )
+                        } else {
+                            personalBoardRepo.insertAscent(
+                                uuid = effectiveEntryUuid,
+                                climbUuid = climb.uuid,
+                                angle = s.angle.toLong(),
+                                isMirror = s.isMirrored,
+                                attemptId = 0,
+                                bidCount = attemptsToTop,
+                                quality = if (form.quality > 0) form.quality.toLong() else null,
+                                difficulty = climb.difficultyAverage?.toLong(),
+                                isBenchmark = form.isBenchmark,
+                                comment = form.comment.ifBlank { null },
+                                climbedAt = now,
+                                synced = false,
+                                climbName = climb.name,
+                                difficultyAverage = climb.difficultyAverage,
+                                climbFrames = climb.frames,
+                                framesCount = climb.framesCount,
+                                boardBrand = climb.boardBrand,
+                                layoutId = climb.layoutId,
+                            )
                         }
                         sendEntryUuid = effectiveEntryUuid
-                        personalBoardRepo.insertAscent(
-                            uuid = effectiveEntryUuid,
-                            climbUuid = climb.uuid,
-                            angle = s.angle.toLong(),
-                            isMirror = s.isMirrored,
-                            attemptId = 0,
-                            bidCount = attemptsToTop,
-                            quality = if (form.quality > 0) form.quality.toLong() else null,
-                            difficulty = climb.difficultyAverage?.toLong(),
-                            isBenchmark = form.isBenchmark,
-                            comment = form.comment.ifBlank { null },
-                            climbedAt = now,
-                            synced = false,
-                            climbName = climb.name,
-                            difficultyAverage = climb.difficultyAverage,
-                            climbFrames = climb.frames,
-                            framesCount = climb.framesCount,
-                            boardBrand = climb.boardBrand,
-                            layoutId = climb.layoutId,
-                        )
-                        // Delete only after the send exists. If storage fails
-                        // between the two operations, a duplicate is
-                        // repairable; deleting the user's attempts first
-                        // would make the log irrecoverably disappear.
-                        compatibleOpenLog?.let { personalBoardRepo.deleteBid(it.entryUuid) }
                         // Append the SEND to the local "Verlauf" history log.
                         // Only sends are recorded here — never attempts/bids.
-                        personalBoardRepo.recordClimbHistory(
-                            climbUuid = climb.uuid,
-                            climbName = climb.name,
-                            angle = s.angle.toLong(),
-                            difficultyAverage = climb.difficultyAverage,
-                            boardBrand = climb.boardBrand,
-                            layoutId = climb.layoutId,
-                            climbedAt = now,
-                            recordedAt = now,
-                        )
+                        try {
+                            personalBoardRepo.recordClimbHistory(
+                                climbUuid = climb.uuid,
+                                climbName = climb.name,
+                                angle = s.angle.toLong(),
+                                difficultyAverage = climb.difficultyAverage,
+                                boardBrand = climb.boardBrand,
+                                layoutId = climb.layoutId,
+                                climbedAt = now,
+                                recordedAt = now,
+                            )
+                        } catch (e: kotlinx.coroutines.CancellationException) {
+                            throw e
+                        } catch (_: Exception) {
+                            // The primary log is already durable. History is
+                            // a convenience index and must not turn a saved
+                            // send into a retry that would duplicate it.
+                        }
                         if (isQuickLog) activeQuickLog = null
                     } else {
                         if (isQuickLog && compatibleOpenLog != null) {
@@ -332,9 +405,15 @@ internal class AscentLogger(
                         if (isQuickLog) activeQuickLog = quickAfter
                     }
                 }
-                val updatedAscents = personalBoardRepo.getUserHistoryForClimb(climbUuid)
+                val updatedAscents = try {
+                    personalBoardRepo.getUserHistoryForClimb(climbUuid)
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    state.value.userAscents
+                }
                 if (isQuickLog && editUuid == null) {
-                    pendingQuickLog = PendingQuickLog(
+                    val pending = PendingQuickLog(
                         climbUuid = climbUuid,
                         angle = s.angle.toLong(),
                         isSend = form.isSend,
@@ -343,8 +422,14 @@ internal class AscentLogger(
                         sendEntryUuid = sendEntryUuid,
                         previousHistory = previousHistory,
                     )
+                    pendingQuickLog = pending
+                    schedulePendingFinalization(pending)
                 }
                 state.update { current ->
+                    val isSameVariant = current.climb?.uuid == climb.uuid &&
+                        current.angle.toLong() == s.angle.toLong() &&
+                        current.isMirrored == s.isMirrored
+                    if (!isSameVariant) return@update current.copy(isQuickLogging = false)
                     current.copy(
                         ascent = AscentFormState(),
                         userAscents = updatedAscents,
@@ -361,13 +446,30 @@ internal class AscentLogger(
                     )
                 }
             }
-            if (editUuid == null) {
-                climbNavState.statusDataChanged = true
-                climbNavState.changedClimbUuids.add(climbUuid)
-                if (form.isSend) sessionManager.recordAscent()
-                else sessionManager.recordBid()
-                if (!isQuickLog) onAscentSaved(form.isSend)
-                zoneManager.recompute()
+                if (editUuid == null) {
+                    climbNavState.statusDataChanged = true
+                    climbNavState.changedClimbUuids.add(climbUuid)
+                    if (form.isSend) sessionManager.recordAscent()
+                    else sessionManager.recordBid()
+                    if (!isQuickLog) onAscentSaved(form.isSend)
+                    zoneManager.recompute()
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                pendingFinalizationJob?.cancel()
+                pendingFinalizationJob = null
+                pendingQuickLog = null
+                state.update { current ->
+                    val isSameVariant = current.climb?.uuid == climb.uuid &&
+                        current.angle.toLong() == s.angle.toLong() &&
+                        current.isMirrored == s.isMirrored
+                    current.copy(
+                        isQuickLogging = false,
+                        quickLogFeedback = null,
+                        quickLogFailed = isQuickLog && isSameVariant,
+                    )
+                }
             }
         }
     }

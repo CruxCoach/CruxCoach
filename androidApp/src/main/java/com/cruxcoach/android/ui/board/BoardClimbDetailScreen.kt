@@ -391,6 +391,24 @@ fun BoardClimbDetailScreen(
         else viewModel.consumeQuickLogFeedback()
     }
 
+    LaunchedEffect(state.quickLogFailed) {
+        if (!state.quickLogFailed) return@LaunchedEffect
+        snackbarHostState.showSnackbar(resources.getString(R.string.board_detail_quick_log_failed))
+        viewModel.consumeQuickLogFailure()
+    }
+
+    LaunchedEffect(state.personalNoteSaveStatus, state.climb?.uuid) {
+        if (state.personalNoteSaveStatus != PersonalNoteSaveStatus.FAILED) return@LaunchedEffect
+        val result = snackbarHostState.showSnackbar(
+            resources.getString(R.string.board_detail_note_save_failed),
+            actionLabel = resources.getString(R.string.action_retry),
+            withDismissAction = true,
+        )
+        if (result == SnackbarResult.ActionPerformed) {
+            viewModel.savePersonalNote(state.personalNoteDraft)
+        }
+    }
+
     // Single Scaffold — shared across all pager pages
     val bleConnected = state.ble.connectionState.let {
         it == ConnectionState.CONNECTED || it == ConnectionState.SENDING
@@ -405,7 +423,8 @@ fun BoardClimbDetailScreen(
                     state.ble.connectedViaMesh
                 BoardDetailActionDock(
                     loggingEnabled = !state.isLoading && !state.isQuickLogging,
-                    lightEnabled = !detailQueueState.isConnecting &&
+                    lightEnabled = !state.isLoading &&
+                        !detailQueueState.isConnecting &&
                         BoardProjectionPolicy.hasSendablePayload(
                             brand = climb.brand,
                             holdCount = state.holds.size,
@@ -878,19 +897,15 @@ private fun ClimbDetailPageContent(
     val climbBugReportTitle = stringResource(R.string.error_bug_report_climb_title)
     val bleBugReportTitle = stringResource(R.string.error_bug_report_ble_title)
     var showDetails by remember { mutableStateOf(false) }
-    var noteDraft by remember(state.climb?.uuid) { mutableStateOf(state.personalNote) }
-    LaunchedEffect(state.personalNote, showDetails) {
-        if (!showDetails) noteDraft = state.personalNote
-    }
-    LaunchedEffect(noteDraft, showDetails, state.climb?.uuid) {
-        if (showDetails && noteDraft.trim() != state.personalNote) {
+    LaunchedEffect(state.personalNoteDraft, showDetails, state.climb?.uuid) {
+        if (showDetails && state.personalNoteDraft.trim() != state.personalNote) {
             delay(700)
-            viewModel.savePersonalNote(noteDraft)
+            viewModel.savePersonalNote(state.personalNoteDraft)
         }
     }
     val closeDetails = {
-        if (noteDraft.trim() != state.personalNote) {
-            viewModel.savePersonalNote(noteDraft)
+        if (state.personalNoteDraft.trim() != state.personalNote) {
+            viewModel.savePersonalNote(state.personalNoteDraft)
         }
         showDetails = false
     }
@@ -898,7 +913,10 @@ private fun ClimbDetailPageContent(
         ClimbDetailInfoSheet(
             state = state,
             onDismiss = closeDetails,
-            onAngleSelected = viewModel::onAngleSelected,
+            onAngleSelected = {
+                closeDetails()
+                viewModel.onAngleSelected(it)
+            },
             onEditAscent = {
                 closeDetails()
                 viewModel.editAscent(it)
@@ -907,9 +925,9 @@ private fun ClimbDetailPageContent(
                 closeDetails()
                 viewModel.requestDeleteAscent(it.uuid)
             },
-            noteDraft = noteDraft,
-            onNoteChanged = { noteDraft = it.take(1000) },
-            onRetryNote = { viewModel.savePersonalNote(noteDraft) },
+            noteDraft = state.personalNoteDraft,
+            onNoteChanged = viewModel::updatePersonalNoteDraft,
+            onRetryNote = { viewModel.savePersonalNote(state.personalNoteDraft) },
         )
     }
     when {
@@ -950,10 +968,7 @@ private fun ClimbDetailPageContent(
             ) {
                 CompactClimbOverview(
                     state = state,
-                    onShowDetails = {
-                        noteDraft = state.personalNote
-                        showDetails = true
-                    },
+                    onShowDetails = { showDetails = true },
                     onAngleSelected = viewModel::onAngleSelected,
                     onNavigateToSetter = onNavigateToSetter,
                 )
@@ -1132,14 +1147,25 @@ private fun BoardDetailActionDock(
                             color = DarkBackground,
                         )
                     } else {
-                        Icon(
-                            if (sharedQueue) Icons.AutoMirrored.Filled.PlaylistAdd else Icons.Default.Lightbulb,
-                            contentDescription = stringResource(
-                                if (sharedQueue) R.string.cd_add_climb_to_shared_queue
-                                else R.string.cd_light_climb_on_board,
-                            ),
-                            modifier = Modifier.size(31.dp),
-                        )
+                        Box(Modifier.size(38.dp), contentAlignment = Alignment.Center) {
+                            Icon(
+                                Icons.Default.Lightbulb,
+                                contentDescription = stringResource(
+                                    if (sharedQueue) R.string.cd_add_climb_to_shared_queue
+                                    else R.string.cd_light_climb_on_board,
+                                ),
+                                modifier = Modifier.size(31.dp),
+                            )
+                            if (sharedQueue) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.PlaylistAdd,
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .align(Alignment.BottomEnd)
+                                        .size(15.dp),
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -1678,7 +1704,10 @@ private fun MatchIcon(crossed: Boolean, tint: Color, size: Int = 16) {
     Box(modifier = Modifier.size(size.dp)) {
         Icon(
             Icons.Default.PanTool,
-            contentDescription = null,
+            contentDescription = stringResource(
+                if (crossed) R.string.board_detail_no_matching
+                else R.string.board_detail_matching,
+            ),
             tint = tint,
             modifier = Modifier.size(size.dp)
         )

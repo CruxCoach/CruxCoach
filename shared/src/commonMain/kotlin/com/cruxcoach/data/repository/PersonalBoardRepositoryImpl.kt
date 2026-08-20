@@ -346,6 +346,60 @@ class PersonalBoardRepositoryImpl(
         database.bidsQueries.deleteBid(uuid)
     }
 
+    override fun promoteQuickBidToSend(send: QuickLogSendInput) {
+        database.transaction {
+            database.ascentsQueries.insertAscent(
+                uuid = send.uuid,
+                climb_uuid = send.climbUuid,
+                angle = send.angle,
+                is_mirror = if (send.isMirror) 1L else 0L,
+                attempt_id = 0L,
+                bid_count = send.bidCount,
+                quality = null,
+                difficulty = send.difficulty,
+                is_benchmark = 0L,
+                comment = null,
+                climbed_at = send.climbedAt,
+                synced = 0L,
+                gym_uuid = null,
+                wall_uuid = null,
+                product_layout_uuid = null,
+                climb_name = send.climbName,
+                difficulty_average = send.difficultyAverage,
+                climb_frames = send.climbFrames,
+                frames_count = send.framesCount,
+                board_brand = send.boardBrand,
+                layout_id = send.layoutId,
+                external_id = null,
+            )
+            database.bidsQueries.deleteBid(send.uuid)
+        }
+    }
+
+    override fun restoreQuickBidFromSend(bid: QuickLogBidInput) {
+        database.transaction {
+            database.bidsQueries.insertBid(
+                uuid = bid.uuid,
+                climb_uuid = bid.climbUuid,
+                angle = bid.angle,
+                is_mirror = if (bid.isMirror) 1L else 0L,
+                bid_count = bid.bidCount,
+                comment = null,
+                climbed_at = bid.climbedAt,
+                synced = 0L,
+                gym_uuid = null,
+                wall_uuid = null,
+                product_layout_uuid = null,
+                climb_name = bid.climbName,
+                difficulty_average = bid.difficultyAverage,
+                board_brand = bid.boardBrand,
+                layout_id = bid.layoutId,
+                external_id = null,
+            )
+            database.ascentsQueries.deleteAscent(bid.uuid)
+        }
+    }
+
     override fun getUserBidDifficulties(since: String): List<Double> {
         return database.bidsQueries.getUserBidDifficulties(since).executeAsList()
             .mapNotNull { it.difficulty_average }
@@ -1079,6 +1133,7 @@ class PersonalBoardRepositoryImpl(
             database.climbListsQueries.deleteAllPlaybackSteps()
             database.climbListsQueries.deleteAllClimbListEntries()
             database.climbListsQueries.deleteAllClimbLists()
+            database.climbNotesQueries.deleteAll()
         }
         cachedFavoritesListId = null
         cachedIgnoredListId = null

@@ -16,3 +16,6 @@ VALUES (:climbUuid, :note, :updatedAt);
 
 deleteByClimbUuid:
 DELETE FROM climb_notes WHERE climb_uuid = :climbUuid;
+
+deleteAll:
+DELETE FROM climb_notes;

@@ -50,6 +50,13 @@ class ClimbNoteRepositoryTest {
     }
 
     @Test
+    fun `full personal board data deletion also removes private notes`() {
+        repo.saveClimbNote("climb-1", "Private beta")
+        repo.deleteAllUserBoardData()
+        assertNull(repo.getClimbNote("climb-1"))
+    }
+
+    @Test
     fun `migration 11 adds private climb notes without touching existing data`() {
         val tmp = Files.createTempDirectory("cruxcoach-climb-note-migration-")
         val file = tmp.resolve("v11.db").toFile()

@@ -1370,11 +1370,13 @@
     <string name="board_detail_more_information">Climb-Details und Log-Verlauf</string>
     <string name="board_detail_quick_send_logged">Send geloggt</string>
     <string name="board_detail_quick_attempt_logged">Versuch geloggt</string>
+    <string name="board_detail_quick_log_failed">Log konnte nicht gespeichert werden. Versuche es erneut.</string>
     <string name="board_detail_personal_note">Persönliche Notiz</string>
     <string name="board_detail_personal_note_hint">Beta, Zugfolge, Bedingungen…</string>
     <string name="board_detail_note_saving">Speichert…</string>
     <string name="board_detail_note_saved">Gespeichert</string>
     <string name="board_detail_note_not_saved">Nicht gespeichert</string>
+    <string name="board_detail_note_save_failed">Notiz wurde nicht gespeichert. Dein Text bleibt erhalten.</string>
     <string name="board_detail_edit_personal_note">Persönliche Notiz bearbeiten</string>
     <string name="board_detail_frames">Frames</string>
     <string name="board_detail_matching">Matchen erlaubt</string>
