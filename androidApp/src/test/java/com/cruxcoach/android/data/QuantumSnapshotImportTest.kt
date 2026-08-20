@@ -120,12 +120,32 @@ class QuantumSnapshotImportTest {
         val real = System.getenv("QUANTUM_REAL_SNAPSHOT")?.let(::File)
         assumeTrue("QUANTUM_REAL_SNAPSHOT not provided", real?.isFile == true)
 
-        importer.importQuantumSnapshot(real!!)
+        val expectedByLayout = SQLiteDatabase.openDatabase(
+            real!!.absolutePath, null, SQLiteDatabase.OPEN_READONLY,
+        ).use { source ->
+            buildMap {
+                source.rawQuery(
+                    """SELECT m.layout_id,COUNT(*)
+                       FROM quantum_route_models rm
+                       JOIN quantum_models m ON m.model=rm.model
+                       GROUP BY m.layout_id ORDER BY m.layout_id""",
+                    null,
+                ).use { cursor ->
+                    while (cursor.moveToNext()) put(cursor.getInt(0), cursor.getInt(1))
+                }
+            }
+        }
+        assertEquals(setOf(9101, 9102, 9103, 9104, 9105), expectedByLayout.keys)
+
+        importer.importQuantumSnapshot(real)
 
         openTarget().use { db ->
-            assertEquals(5_616, count(db, "SELECT COUNT(*) FROM climbs WHERE board_brand='quantum' AND layout_id=9101"))
-            assertEquals(1_187, count(db, "SELECT COUNT(*) FROM climbs WHERE board_brand='quantum' AND layout_id=9103"))
-            assertEquals(6_803, count(db, "SELECT COUNT(*) FROM quantum_route_refs"))
+            expectedByLayout.forEach { (layoutId, expected) ->
+                assertEquals(expected, count(db,
+                    "SELECT COUNT(*) FROM climbs WHERE board_brand='quantum' AND layout_id=$layoutId"))
+            }
+            assertEquals(expectedByLayout.values.sum(),
+                count(db, "SELECT COUNT(*) FROM quantum_route_refs"))
             assertEquals(0, count(db, "SELECT COUNT(*) FROM quantum_route_refs WHERE length(app_uuid)<>36 OR length(route_uuid)<>36"))
             assertEquals(0, count(db, "SELECT COUNT(*) FROM climbs WHERE board_brand='quantum' AND frames=''"))
             assertEquals(0, count(db, "SELECT COUNT(*) FROM placements WHERE board_brand='quantum' AND placement_id>2147483647"))
