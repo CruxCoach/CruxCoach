@@ -23,6 +23,9 @@ enum class QuantumBoardModel(
 
         fun fromLayoutId(value: Long): QuantumBoardModel? =
             entries.firstOrNull { it.layoutId == value }
+
+        fun fromProductSizeId(value: Long): QuantumBoardModel? =
+            entries.firstOrNull { it.productSizeId == value }
     }
 }
 

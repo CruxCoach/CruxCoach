@@ -48,31 +48,8 @@ internal fun boardImageCandidatePaths(
     }
 }
 
-/**
- * eWalls 2.0.14 renders every Quantum image in a square 1000-unit viewport.
- * Its recovered transforms are x*9.321401938851603 and
- * (100-y)*9.29368029739777. Quantum coordinates are stored in CruxCoach in
- * milli-units, so these bounds reproduce the same mapping in the shared
- * board renderer without baking model-specific guesses into the UI.
- */
-internal const val QUANTUM_IMAGE_EDGE_LEFT = 0f
-internal const val QUANTUM_IMAGE_EDGE_RIGHT = 107_280f
-internal const val QUANTUM_IMAGE_EDGE_BOTTOM = -7_600f
-internal const val QUANTUM_IMAGE_EDGE_TOP = 100_000f
-
-/**
- * Convert the renderer's historical Kilter-coordinate marker scale into a
- * viewport-independent scale. Kilter's canonical board is 144 units wide;
- * Quantum stores the same physical geometry in milli-units (~107k wide).
- * Positions already use [xScale], but radii/strokes must include this factor
- * or Quantum rings collapse to substantially less than one screen pixel.
- */
 internal fun boardMarkerScale(
-    brand: BoardBrand,
+    @Suppress("UNUSED_PARAMETER") brand: BoardBrand,
     xScale: Float,
-    boardWidth: Float,
-): Float = if (brand == BoardBrand.QUANTUM) {
-    xScale * (boardWidth / 144f)
-} else {
-    xScale
-}
+    @Suppress("UNUSED_PARAMETER") boardWidth: Float,
+): Float = xScale

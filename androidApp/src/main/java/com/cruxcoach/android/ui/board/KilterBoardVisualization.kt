@@ -36,6 +36,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.data.LedHoldColors
@@ -50,6 +51,7 @@ import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardHold
 import com.cruxcoach.domain.board.BoardZone
 import com.cruxcoach.domain.board.BoardZoneFilter
+import com.cruxcoach.domain.board.QuantumBoardModel
 import kotlinx.coroutines.withTimeoutOrNull
 
 /** Bundled board-size IDs that have a WebP asset in board_images/.
@@ -182,6 +184,7 @@ internal fun KilterBoardVisualization(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val configuration = LocalConfiguration.current
 
     val activeHoldMap = remember(holds) {
         holds.associateBy { it.placementId }
@@ -189,10 +192,16 @@ internal fun KilterBoardVisualization(
 
     val brand = boardSize?.boardBrand ?: BoardBrand.KILTER
     val isQuantum = brand == BoardBrand.QUANTUM
-    val edgeLeft = if (isQuantum) QUANTUM_IMAGE_EDGE_LEFT else boardSize?.edgeLeft?.toFloat() ?: 0f
-    val edgeRight = if (isQuantum) QUANTUM_IMAGE_EDGE_RIGHT else boardSize?.edgeRight?.toFloat() ?: 144f
-    val edgeBottom = if (isQuantum) QUANTUM_IMAGE_EDGE_BOTTOM else boardSize?.edgeBottom?.toFloat() ?: 0f
-    val edgeTop = if (isQuantum) QUANTUM_IMAGE_EDGE_TOP else boardSize?.edgeTop?.toFloat() ?: 156f
+    val quantumModel = if (isQuantum) {
+        boardSize?.id?.let(QuantumBoardModel::fromProductSizeId)
+            ?: boardImages.firstOrNull()?.layoutId?.let(QuantumBoardModel::fromLayoutId)
+    } else null
+    val compactQuantumPhone = configuration.screenWidthDp < 360
+    val quantumTablet = configuration.smallestScreenWidthDp >= 600
+    val edgeLeft = boardSize?.edgeLeft?.toFloat() ?: 0f
+    val edgeRight = boardSize?.edgeRight?.toFloat() ?: 144f
+    val edgeBottom = boardSize?.edgeBottom?.toFloat() ?: 0f
+    val edgeTop = boardSize?.edgeTop?.toFloat() ?: 156f
     val boardWidth = edgeRight - edgeLeft
     val boardHeight = edgeTop - edgeBottom
     val aspectRatio = if (isQuantum) 1f else boardWidth / boardHeight
@@ -375,12 +384,23 @@ internal fun KilterBoardVisualization(
                         val pos = toCanvasSpace(offset)
                         val xS = size.width.toFloat() / boardWidth
                         val yS = size.height.toFloat() / boardHeight
-                        val tapRadius = boardMarkerScale(brand, xS, boardWidth) * 6f
+                        val tapRadius = quantumModel?.let { quantumHitRadiusDp(it).dp.toPx() }
+                            ?: boardMarkerScale(brand, xS, boardWidth) * 6f
                         var nearest: Int? = null
                         var nearestDist = Float.MAX_VALUE
                         placements.values.forEach { placement ->
-                            val px = (placement.x.toFloat() - edgeLeft) * xS
-                            val py = size.height - (placement.y.toFloat() - edgeBottom) * yS
+                            val point = quantumModel?.let {
+                                quantumBoardPoint(
+                                    model = it,
+                                    sourceXMilli = placement.x,
+                                    sourceYMilli = placement.y,
+                                    boardPixels = size.width.toFloat(),
+                                    compactPhone = compactQuantumPhone,
+                                    tablet = quantumTablet,
+                                )
+                            }
+                            val px = point?.x ?: (placement.x.toFloat() - edgeLeft) * xS
+                            val py = point?.y ?: size.height - (placement.y.toFloat() - edgeBottom) * yS
                             val dist = kotlin.math.sqrt(
                                 (pos.x - px) * (pos.x - px) +
                                 (pos.y - py) * (pos.y - py)
@@ -454,11 +474,13 @@ internal fun KilterBoardVisualization(
 
                 val xScale = size.width / boardWidth
                 val yScale = size.height / boardHeight
-                // Marker constants below are expressed in the renderer's
-                // historical 144-unit Kilter coordinate system. Quantum's
-                // placement coordinates are milli-units, so using xScale
-                // directly makes every ring/stroke sub-pixel and invisible.
-                val markerScale = boardMarkerScale(brand, xScale, boardWidth)
+                // eWalls uses a fixed 20dp diode and 4dp border. Other boards
+                // retain the historical coordinate-relative CruxCoach sizes.
+                val markerScale = if (quantumModel != null) {
+                    (QUANTUM_DIODE_DIAMETER_DP / 8f).dp.toPx()
+                } else {
+                    boardMarkerScale(brand, xScale, boardWidth)
+                }
 
                 // Zone-box overlay: below the hold circles so selections stay
                 // readable on top. Live drag preview wins over the committed
@@ -467,10 +489,22 @@ internal fun KilterBoardVisualization(
                 val zoneToDraw = dragZone ?: zone
                 if (zoneToDraw != null) {
                     val pad = markerScale * 5f
-                    val left = ((zoneToDraw.minX.toFloat() - edgeLeft) * xScale - pad).coerceAtLeast(0f)
-                    val right = ((zoneToDraw.maxX.toFloat() - edgeLeft) * xScale + pad).coerceAtMost(size.width)
-                    val top = (size.height - (zoneToDraw.maxY.toFloat() - edgeBottom) * yScale - pad).coerceAtLeast(0f)
-                    val bottom = (size.height - (zoneToDraw.minY.toFloat() - edgeBottom) * yScale + pad).coerceAtMost(size.height)
+                    val quantumCorners = quantumModel?.let { model ->
+                        listOf(
+                            quantumBoardPoint(model, zoneToDraw.minX, zoneToDraw.minY, size.width, compactQuantumPhone, quantumTablet),
+                            quantumBoardPoint(model, zoneToDraw.minX, zoneToDraw.maxY, size.width, compactQuantumPhone, quantumTablet),
+                            quantumBoardPoint(model, zoneToDraw.maxX, zoneToDraw.minY, size.width, compactQuantumPhone, quantumTablet),
+                            quantumBoardPoint(model, zoneToDraw.maxX, zoneToDraw.maxY, size.width, compactQuantumPhone, quantumTablet),
+                        )
+                    }
+                    val left = (quantumCorners?.minOf { it.x }
+                        ?: (zoneToDraw.minX.toFloat() - edgeLeft) * xScale).minus(pad).coerceAtLeast(0f)
+                    val right = (quantumCorners?.maxOf { it.x }
+                        ?: (zoneToDraw.maxX.toFloat() - edgeLeft) * xScale).plus(pad).coerceAtMost(size.width)
+                    val top = (quantumCorners?.minOf { it.y }
+                        ?: size.height - (zoneToDraw.maxY.toFloat() - edgeBottom) * yScale).minus(pad).coerceAtLeast(0f)
+                    val bottom = (quantumCorners?.maxOf { it.y }
+                        ?: size.height - (zoneToDraw.minY.toFloat() - edgeBottom) * yScale).plus(pad).coerceAtMost(size.height)
                     drawRect(
                         color = OrangeAccent.copy(alpha = 0.15f),
                         topLeft = Offset(left, top),
@@ -484,8 +518,18 @@ internal fun KilterBoardVisualization(
                     )
                 }
                 placements.values.forEach { placement ->
-                    val px = (placement.x.toFloat() - edgeLeft) * xScale
-                    val py = size.height - (placement.y.toFloat() - edgeBottom) * yScale
+                    val point = quantumModel?.let {
+                        quantumBoardPoint(
+                            model = it,
+                            sourceXMilli = placement.x,
+                            sourceYMilli = placement.y,
+                            boardPixels = size.width,
+                            compactPhone = compactQuantumPhone,
+                            tablet = quantumTablet,
+                        )
+                    }
+                    val px = point?.x ?: (placement.x.toFloat() - edgeLeft) * xScale
+                    val py = point?.y ?: size.height - (placement.y.toFloat() - edgeBottom) * yScale
 
                     if (px !in 0f..size.width || py !in 0f..size.height) return@forEach
 
@@ -541,7 +585,19 @@ internal fun KilterBoardVisualization(
                             } else 1.0f
                             // Drag origin hold is hidden during a long-press move.
                             val skip = solidHoldFill && pid == dragOriginHoldId
-                            if (!skip) drawActiveHold(px, py, activeHold.roleId, markerScale, ledColors, alpha)
+                            if (!skip) drawActiveHold(
+                                px,
+                                py,
+                                activeHold.roleId,
+                                markerScale,
+                                ledColors,
+                                alpha,
+                                strokeWidth = if (quantumModel != null) {
+                                    QUANTUM_DIODE_STROKE_DP.dp.toPx()
+                                } else {
+                                    markerScale * 1.2f
+                                },
+                            )
                         }
                     }
 
@@ -615,6 +671,7 @@ private fun DrawScope.drawActiveHold(
     xScale: Float,
     ledColors: LedHoldColors,
     alpha: Float = 1.0f,
+    strokeWidth: Float = xScale * 1.2f,
 ) {
     val color = holdColorForRole(roleId, ledColors).copy(alpha = alpha)
     val radius = xScale * 4f
@@ -622,7 +679,7 @@ private fun DrawScope.drawActiveHold(
         color = color,
         radius = radius,
         center = Offset(x, y),
-        style = Stroke(width = xScale * 1.2f),
+        style = Stroke(width = strokeWidth),
     )
 }
 

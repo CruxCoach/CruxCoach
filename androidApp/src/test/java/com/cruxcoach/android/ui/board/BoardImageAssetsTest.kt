@@ -1,10 +1,10 @@
 package com.cruxcoach.android.ui.board
 
 import com.cruxcoach.domain.board.BoardBrand
+import com.cruxcoach.domain.board.QuantumBoardModel
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
-import kotlin.test.assertTrue
 import java.io.File
 import java.security.MessageDigest
 
@@ -56,23 +56,52 @@ class BoardImageAssetsTest {
     }
 
     @Test
-    fun quantumViewportMatchesEwalls2014Transform() {
-        assertEquals(107_280f, QUANTUM_IMAGE_EDGE_RIGHT - QUANTUM_IMAGE_EDGE_LEFT)
-        assertEquals(107_600f, QUANTUM_IMAGE_EDGE_TOP - QUANTUM_IMAGE_EDGE_BOTTOM)
+    fun quantumUsesPerModelEwalls2014Calibration() {
+        val expectedAtCenter = mapOf(
+            QuantumBoardModel.XL to Pair(210.39186f, 183.37204f),
+            QuantumBoardModel.L to Pair(210.24920f, 183.10310f),
+            QuantumBoardModel.M to Pair(210.23896f, 183.09776f),
+            QuantumBoardModel.S to Pair(167.43132f, 200.47113f),
+            QuantumBoardModel.BELAY to Pair(213.24794f, 389.51393f),
+        )
+        expectedAtCenter.forEach { (model, expected) ->
+            val actual = quantumBoardPoint(
+                model = model,
+                sourceXMilli = 50_000,
+                sourceYMilli = 50_000,
+                boardPixels = 400f,
+                compactPhone = false,
+                tablet = false,
+            )
+            assertEquals(expected.first, actual.x, absoluteTolerance = 0.001f, message = model.name)
+            assertEquals(expected.second, actual.y, absoluteTolerance = 0.001f, message = model.name)
+        }
     }
 
     @Test
-    fun quantumMarkerScaleRemainsVisibleAndOtherBoardsAreUnchanged() {
-        val canvasWidth = 432f
-        val quantumWidth = QUANTUM_IMAGE_EDGE_RIGHT - QUANTUM_IMAGE_EDGE_LEFT
-        val quantumScale = boardMarkerScale(
-            BoardBrand.QUANTUM,
-            canvasWidth / quantumWidth,
-            quantumWidth,
+    fun belayPhoneTabletAndNonlinearCorrectionsRemainDistinct() {
+        val phone = quantumBoardPoint(
+            QuantumBoardModel.BELAY, 50_000, 50_000, 400f,
+            compactPhone = false, tablet = false,
         )
-        // Active-ring radius is markerScale * 4: approximately 12 px on a
-        // 432 px canvas, matching the established 144-unit renderer.
-        assertTrue(quantumScale * 4f > 10f)
+        val tablet = quantumBoardPoint(
+            QuantumBoardModel.BELAY, 50_000, 50_000, 400f,
+            compactPhone = false, tablet = true,
+        )
+        val rightMiddle = quantumBoardPoint(
+            QuantumBoardModel.BELAY, 68_000, 50_000, 400f,
+            compactPhone = false, tablet = false,
+        )
+        assertEquals(389.51393f, phone.y, absoluteTolerance = 0.001f)
+        assertEquals(189.68692f, tablet.y, absoluteTolerance = 0.001f)
+        assertEquals(287.80563f, rightMiddle.x, absoluteTolerance = 0.001f)
+        assertEquals(395.63393f, rightMiddle.y, absoluteTolerance = 0.001f)
+        assertEquals(18f, quantumHitRadiusDp(QuantumBoardModel.BELAY))
+        assertEquals(50f, quantumHitRadiusDp(QuantumBoardModel.XL))
+    }
+
+    @Test
+    fun otherBoardMarkerScaleIsUnchanged() {
         assertEquals(3f, boardMarkerScale(BoardBrand.KILTER, 3f, 144f))
         assertEquals(3f, boardMarkerScale(BoardBrand.TENSION, 3f, 144f))
     }
