@@ -18,6 +18,7 @@ import com.cruxcoach.domain.board.BoardHold
 import com.cruxcoach.domain.board.HoldRole
 import com.cruxcoach.domain.board.MoonBoardFrameEncoder
 import com.cruxcoach.domain.board.MoonBoardLedMode
+import com.cruxcoach.domain.board.QuantumBoardPacketEncoder
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -336,6 +337,12 @@ class BoardBleConnection(private val context: Context) {
                     // discovery and fails because writeCharacteristic is still null.
                     // Keep connectionTimeoutJob running to cover service discovery too.
                     Log.d(TAG, "GATT connected, discovering services...")
+                    if (_connectedBoardBrand.value == BoardBrand.QUANTUM && Build.VERSION.SDK_INT >= 21) {
+                        // eWalls 2.0.14 negotiates 512 first (then 247/185 on
+                        // failure). Writes remain conservatively fragmented at
+                        // 20 bytes, so an MTU callback is an optimization only.
+                        gatt.requestMtu(512)
+                    }
                     // Bump BLE connection priority before service discovery
                     // — drops the connection interval from the default
                     // ~50 ms down to ~7.5–15 ms, which makes the rest of
@@ -383,6 +390,7 @@ class BoardBleConnection(private val context: Context) {
             }
         }
 
+        @SuppressLint("MissingPermission")
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
             // Log.i so the R8 Log.d/v stripping rule doesn't erase the diagnostic marker.
             Log.i(TAG, "onServicesDiscovered status=$status services=${gatt.services.size}")
@@ -391,7 +399,22 @@ class BoardBleConnection(private val context: Context) {
 
             if (status == BluetoothGatt.GATT_SUCCESS) {
                 val service = gatt.getService(BoardBleUuids.DATA_TRANSFER_SERVICE)
-                writeCharacteristic = service?.getCharacteristic(BoardBleUuids.DATA_TRANSFER_CHAR)
+                writeCharacteristic = if (_connectedBoardBrand.value == BoardBrand.QUANTUM) {
+                    val quantumService = gatt.getService(BoardBleUuids.QUANTUM_SERVICE)
+                        ?: gatt.getService(BoardBleUuids.QUANTUM_SERVICE_OLD)
+                    quantumService?.getCharacteristic(BoardBleUuids.QUANTUM_WRITE_CHAR)?.also {
+                        it.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+                    }.also {
+                        val notify = quantumService?.getCharacteristic(BoardBleUuids.QUANTUM_NOTIFY_CHAR)
+                        if (notify != null) {
+                            gatt.setCharacteristicNotification(notify, true)
+                            notify.getDescriptor(BoardBleUuids.CLIENT_CHARACTERISTIC_CONFIG)?.let { descriptor ->
+                                descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                                gatt.writeDescriptor(descriptor)
+                            }
+                        }
+                    }
+                } else service?.getCharacteristic(BoardBleUuids.DATA_TRANSFER_CHAR)
                 if (writeCharacteristic != null) {
                     // NOW the GATT is fully ready — set CONNECTED so downstream
                     // auto-send and advertising see a usable connection.
@@ -761,7 +784,8 @@ class BoardBleConnection(private val context: Context) {
     suspend fun sendClimb(
         holds: List<BoardHold>,
         placementToLed: Map<Int, Int>,
-        roleColors: Map<Int, Int>? = null
+        roleColors: Map<Int, Int>? = null,
+        routeId: String? = null,
     ): Boolean = writeMutex.withLock {
         if (_connectionState.value != ConnectionState.CONNECTED) return false
 
@@ -781,6 +805,15 @@ class BoardBleConnection(private val context: Context) {
             val unmapped = holds.count { placementToLed[it.placementId] == null }
             if (unmapped > 0) {
                 Log.w(TAG, "sendClimb: $unmapped/${holds.size} holds have no LED mapping — board will light a partial climb")
+            }
+            if (_connectedBoardBrand.value == BoardBrand.QUANTUM) {
+                val mapped = holds.mapNotNull { placementToLed[it.placementId] }
+                val frames = QuantumBoardPacketEncoder.activate(
+                    routeId = routeId ?: QuantumBoardPacketEncoder.ZERO_UUID,
+                    userId = QuantumBoardPacketEncoder.ZERO_UUID,
+                    diodes = mapped,
+                )
+                return writeQuantumFrames(frames)
             }
             val chunks = if (roleColors != null) {
                 // Resolve each hold's colour by canonical role CLASS, not raw
@@ -808,6 +841,18 @@ class BoardBleConnection(private val context: Context) {
             // Arm the idle-disconnect timer with the post-send state.
             resetIdleTimer()
         }
+    }
+
+    private suspend fun writeQuantumFrames(frames: List<ByteArray>): Boolean {
+        for ((index, frame) in frames.withIndex()) {
+            // 2.0.14 passes 15 as Android's native write fragment size.
+            // This is transport fragmentation, independent of the 92-diode
+            // logical command limit enforced by the encoder.
+            val transportChunks = frame.toList().chunked(15).map { it.toByteArray() }
+            if (!writeChunks(transportChunks)) return false
+            if (index != frames.lastIndex) delay(100)
+        }
+        return true
     }
 
     suspend fun resendWithColors(roleColors: Map<Int, Int>): Boolean {
@@ -883,7 +928,10 @@ class BoardBleConnection(private val context: Context) {
         // Re-armed from the finally below once we flip back to CONNECTED.
         disconnectJob?.cancel()
         try {
-            val chunks = encoder.encodeClear()
+            val chunks = if (_connectedBoardBrand.value == BoardBrand.QUANTUM) {
+                QuantumBoardPacketEncoder.turnOffAll().toList()
+                    .chunked(BoardPacketEncoder.BLE_MTU).map { it.toByteArray() }
+            } else encoder.encodeClear()
             val success = writeChunks(chunks)
             return success
         } finally {

@@ -90,6 +90,25 @@ CREATE TABLE climb_stats (
     PRIMARY KEY (climb_uuid, angle)
 );
 
+-- Local identity bridge for the dedicated Quantum v1 catalogue. app_uuid is
+-- deterministic UUIDv5(route_uuid + model), while route_uuid is the vendor
+-- UUID required on the BLE wire. Added for upgrades by 26.sqm.
+CREATE TABLE quantum_route_refs (
+    app_uuid TEXT NOT NULL PRIMARY KEY,
+    route_uuid TEXT NOT NULL,
+    model TEXT NOT NULL,
+    UNIQUE(route_uuid, model)
+);
+
+CREATE INDEX idx_quantum_route_refs_external
+    ON quantum_route_refs(route_uuid, model);
+
+getQuantumExternalRouteUuid:
+SELECT route_uuid FROM quantum_route_refs WHERE app_uuid = ?;
+
+deleteAllQuantumRouteRefs:
+DELETE FROM quantum_route_refs;
+
 CREATE TABLE board_hold_positions (
     board_brand TEXT NOT NULL DEFAULT 'kilter',
     hole_id INTEGER NOT NULL,

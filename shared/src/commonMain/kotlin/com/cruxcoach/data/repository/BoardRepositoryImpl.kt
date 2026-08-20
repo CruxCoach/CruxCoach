@@ -115,6 +115,9 @@ class BoardRepositoryImpl(
         }
     }
 
+    override fun getQuantumExternalRouteUuid(appUuid: String): String? =
+        q.getQuantumExternalRouteUuid(appUuid).executeAsOneOrNull()
+
     override fun getClimbByUuidNormalized(uuid: String, angle: Int): ClimbWithStats? {
         return q.getClimbByUuidNormalized(angle.toLong(), uuid).executeAsOneOrNull()?.let {
             mapClimb(
@@ -743,6 +746,7 @@ class BoardRepositoryImpl(
             q.deleteAllHoles()
             q.deleteAllSyncState()
             q.deleteAllBetaLinks()
+            q.deleteAllQuantumRouteRefs()
         }
     }
 
@@ -761,6 +765,9 @@ class BoardRepositoryImpl(
                 q.deleteBoardImagesForBrand(brand)
                 q.deleteProductSizesForBrand(brand)
                 q.deleteHolesForBrand(brand)
+                if (brand == BoardBrand.QUANTUM.wireValue) {
+                    q.deleteAllQuantumRouteRefs()
+                }
             }
             if (BoardBrand.KILTER.wireValue in brands) {
                 q.deleteKilterOwnedSyncStates()
