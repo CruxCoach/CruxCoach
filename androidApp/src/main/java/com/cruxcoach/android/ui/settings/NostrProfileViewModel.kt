@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.R
 import com.cruxcoach.android.community.CommunityClimbSubscriber
 import com.cruxcoach.android.data.UserPreferences
+import com.cruxcoach.android.data.LocalUserProfile
 import com.cruxcoach.android.data.kilter.KilterTokenStore
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.android.nostr.profile.ImageProcessor
@@ -89,6 +90,9 @@ data class NostrProfileEditState(
      *  from clobbering the user's in-flight edits. Cleared by `load()`
      *  on screen entry and by `save()` after a successful publish. */
     val hasUserEdited: Boolean = false,
+    /** Publishing and nearby name sharing are explicit, persisted opt-ins. */
+    val publishToNostr: Boolean = false,
+    val shareWithBoard: Boolean = false,
 )
 
 @HiltViewModel
@@ -129,8 +133,30 @@ class NostrProfileViewModel @Inject constructor(
 
     private fun load() {
         viewModelScope.launch {
+            val local = userPreferences.localUserProfile.first()
             val pubkey = runCatching { nostrSigner.getPublicKeyHex() }.getOrNull()
             val kilterUsername = kilterTokenStore.getUsername()?.takeIf { it.isNotBlank() }
+            if (local.saved) {
+                _state.update {
+                    it.copy(
+                        displayName = local.displayName,
+                        lightningAddress = local.lightningAddress,
+                        pictureUrl = local.pictureUrl,
+                        about = local.about,
+                        bannerUrl = local.bannerUrl,
+                        nip05 = local.nip05,
+                        website = local.website,
+                        publishToNostr = local.publishToNostr,
+                        shareWithBoard = local.shareWithBoard,
+                        isLoading = false,
+                        isRefreshing = false,
+                        hasUserEdited = false,
+                        canImportFromKilter = kilterUsername != null,
+                        kilterUsername = kilterUsername,
+                    )
+                }
+                return@launch
+            }
             if (pubkey == null) {
                 _state.update {
                     it.copy(
@@ -270,6 +296,12 @@ class NostrProfileViewModel @Inject constructor(
         it.copy(website = value, justSaved = false, hasUserEdited = true)
     }
     fun clearError() = _state.update { it.copy(errorMessage = null) }
+    fun setPublishToNostr(value: Boolean) = _state.update {
+        it.copy(publishToNostr = value, justSaved = false, hasUserEdited = true)
+    }
+    fun setShareWithBoard(value: Boolean) = _state.update {
+        it.copy(shareWithBoard = value, justSaved = false, hasUserEdited = true)
+    }
 
     /** Trigger a NIP-05 well-known fetch + match against the user's own
      *  pubkey. Wired to the field's onFocusChanged on blur. No-op when
@@ -392,6 +424,24 @@ class NostrProfileViewModel @Inject constructor(
         if (s.isSaving) return
         viewModelScope.launch {
             _state.update { it.copy(isSaving = true, errorMessage = null) }
+            userPreferences.saveLocalUserProfile(
+                LocalUserProfile(
+                    saved = true,
+                    displayName = s.displayName.trim(),
+                    lightningAddress = s.lightningAddress.trim(),
+                    pictureUrl = s.pictureUrl.trim(),
+                    about = s.about.trim(),
+                    bannerUrl = s.bannerUrl.trim(),
+                    nip05 = s.nip05.trim(),
+                    website = s.website.trim(),
+                    publishToNostr = s.publishToNostr,
+                    shareWithBoard = s.shareWithBoard,
+                ),
+            )
+            if (!s.publishToNostr) {
+                _state.update { it.copy(isSaving = false, justSaved = true, hasUserEdited = false) }
+                return@launch
+            }
             val result = nostrProfileManager.publishProfile(
                 displayName = s.displayName.trim(),
                 lightningAddress = s.lightningAddress.trim(),

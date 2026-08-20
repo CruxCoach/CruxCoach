@@ -333,8 +333,10 @@ fun SessionQueueSheet(
 
             Spacer(Modifier.height(16.dp))
 
-            // Participants — always show host, plus connected participants
-            if (state.hostName.isNotEmpty() || state.participants.isNotEmpty()) {
+            // Legacy ad-hoc sessions still have a visible host. A board
+            // playlist deliberately does not: every board member has the same
+            // rights and its technical writer is an implementation detail.
+            if (state.mesh == null && (state.hostName.isNotEmpty() || state.participants.isNotEmpty())) {
                 Text(
                     stringResource(R.string.board_queue_participants, state.participantCount),
                     style = MaterialTheme.typography.titleSmall,
@@ -375,9 +377,8 @@ fun SessionQueueSheet(
                 Spacer(Modifier.height(16.dp))
             }
 
-            // End/Leave button. In a joinable playlist the wording follows the
-            // canonical rule rather than the local role: ending is only on
-            // offer while nobody else would lose their playlist.
+            // A board playlist belongs to the board group. Every member may
+            // end it; leaving the group is handled by the board connection UI.
             val mesh = state.mesh
             val buttonText = when {
                 mesh != null && mesh.canEnd -> stringResource(R.string.mesh_playlist_end)
@@ -417,7 +418,7 @@ fun SessionQueueSheet(
 
 /**
  * The joinable playlist's own state: who is in it, why the wall may be dark,
- * and the one question only its host can answer.
+ * and its current delivery state.
  *
  * Everything here comes from canonical BoardCell state, so a member that
  * reconnects or a device that inherits the playlist host role shows the same
@@ -463,10 +464,7 @@ private fun MeshPlaylistStatus(
 
     Spacer(Modifier.height(8.dp))
     Text(
-        buildString {
-            append(stringResource(R.string.mesh_playlist_members, mesh.members.size))
-            if (mesh.isHost) append(" · ").append(stringResource(R.string.mesh_playlist_you_host))
-        },
+        stringResource(R.string.mesh_playlist_members, mesh.members.size),
         style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -514,30 +512,6 @@ private fun MeshPlaylistStatus(
         }
     }
 
-    mesh.decidableProposal?.let { proposal ->
-        AlertDialog(
-            onDismissRequest = { onDecide(proposal.requestId, BoardPlaylistProposalDecision.REJECT) },
-            title = { Text(stringResource(R.string.mesh_playlist_request_title)) },
-            text = {
-                Text(stringResource(R.string.mesh_playlist_request_body, proposal.items.size))
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    onDecide(proposal.requestId, BoardPlaylistProposalDecision.REPLACE)
-                }) { Text(stringResource(R.string.mesh_playlist_request_replace)) }
-            },
-            dismissButton = {
-                Row {
-                    TextButton(onClick = {
-                        onDecide(proposal.requestId, BoardPlaylistProposalDecision.APPEND)
-                    }) { Text(stringResource(R.string.mesh_playlist_request_append)) }
-                    TextButton(onClick = {
-                        onDecide(proposal.requestId, BoardPlaylistProposalDecision.REJECT)
-                    }) { Text(stringResource(R.string.mesh_playlist_request_reject)) }
-                }
-            },
-        )
-    }
 }
 
 /**

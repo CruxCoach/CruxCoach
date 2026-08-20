@@ -139,6 +139,13 @@ class BoardCellReplica(val localMemberId: String, initial: BoardCellSnapshot? = 
                     members = current.members + event.memberId,
                     membershipRevision = current.membershipRevision +
                         if (event.memberId in current.members) 0 else 1,
+                ).withPlaylist(
+                    current,
+                    if (current.playlist.isJoinable) BoardPlaylistPolicy.normalize(
+                        current.playlist.copy(
+                            members = (current.playlist.members + event.memberId).distinct(),
+                        ),
+                    ) else current.playlist,
                 )
                 // Leaving the mesh also leaves the playlist. Host succession
                 // and the "last member ends it" rule therefore need no extra

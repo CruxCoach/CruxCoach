@@ -320,6 +320,20 @@ internal class FipsBleRadio(
                 } }
     }
 
+    /** Immediately offer a previously scanned endpoint to native FIPS. */
+    fun offerJoinHint(address: String, psm: Int, rssi: Int): Boolean {
+        if (stopped || bridge == 0L || psm !in 1..0xffff || address.isBlank()) return false
+        onConnectionStage(FipsConnectionStage.ADVERTISEMENT_SEEN)
+        FipsDebugLog.event(
+            "radio", "cached_join_endpoint_offered",
+            "address" to address,
+            "psm" to psm,
+            "rssi" to rssi,
+        )
+        NativeFips.bleDeliverScan(bridge, "$ADAPTER/$address", psm, rssi)
+        return true
+    }
+
     private fun scheduleScanRetry(generation: Int, seconds: Long) {
         if (stopped || generation != scanGeneration.get()) return
         scanRetry?.cancel(false)
@@ -348,6 +362,7 @@ internal class FipsBleRadio(
                 matchesActiveRealm = matchesActiveRealm,
                 joinableBoardCellId = advertisement.joinableBoardCellId,
                 boardName = boardName,
+                psm = advertisement.psm,
             )
         )
         // Discovery may describe foreign CruxCoach meshes in the UI, but only

@@ -93,6 +93,16 @@ object KeyScopedKeys {
     // dialog that fires on first publish without a Kind-0 profile. Per-
     // identity (key-scoped) so a re-imported nsec gets the prompt again.
     val PROFILE_HINT_DISMISSED = booleanPreferencesKey("profile_hint_dismissed")
+    val LOCAL_PROFILE_SAVED = booleanPreferencesKey("local_profile_saved")
+    val LOCAL_PROFILE_DISPLAY_NAME = stringPreferencesKey("local_profile_display_name")
+    val LOCAL_PROFILE_LIGHTNING = stringPreferencesKey("local_profile_lightning")
+    val LOCAL_PROFILE_PICTURE = stringPreferencesKey("local_profile_picture")
+    val LOCAL_PROFILE_ABOUT = stringPreferencesKey("local_profile_about")
+    val LOCAL_PROFILE_BANNER = stringPreferencesKey("local_profile_banner")
+    val LOCAL_PROFILE_NIP05 = stringPreferencesKey("local_profile_nip05")
+    val LOCAL_PROFILE_WEBSITE = stringPreferencesKey("local_profile_website")
+    val PROFILE_PUBLISH_TO_NOSTR = booleanPreferencesKey("profile_publish_to_nostr")
+    val PROFILE_SHARE_WITH_BOARD = booleanPreferencesKey("profile_share_with_board")
     val SIGNER_MODE = stringPreferencesKey("signer_mode")
     val AMBER_PUBKEY = stringPreferencesKey("amber_pubkey")
     val AMBER_PACKAGE_NAME = stringPreferencesKey("amber_package_name")
@@ -108,6 +118,19 @@ object KeyScopedKeys {
     // ONBOARDING_COMPLETED.
     val LAST_SEEN_APP_VERSION_CODE = intPreferencesKey("last_seen_app_version_code")
 }
+
+data class LocalUserProfile(
+    val saved: Boolean = false,
+    val displayName: String = "",
+    val lightningAddress: String = "",
+    val pictureUrl: String = "",
+    val about: String = "",
+    val bannerUrl: String = "",
+    val nip05: String = "",
+    val website: String = "",
+    val publishToNostr: Boolean = false,
+    val shareWithBoard: Boolean = false,
+)
 
 enum class GradeScale(val label: String) {
     V_SCALE("V-Scale"),
@@ -469,6 +492,35 @@ class UserPreferences(
     private val dataStore: DataStore<Preferences>,
     private val keyScoped: DataStore<Preferences>
 ) {
+    val localUserProfile: Flow<LocalUserProfile> = keyScoped.data.map { prefs ->
+        LocalUserProfile(
+            saved = prefs[KeyScopedKeys.LOCAL_PROFILE_SAVED] ?: false,
+            displayName = prefs[KeyScopedKeys.LOCAL_PROFILE_DISPLAY_NAME].orEmpty(),
+            lightningAddress = prefs[KeyScopedKeys.LOCAL_PROFILE_LIGHTNING].orEmpty(),
+            pictureUrl = prefs[KeyScopedKeys.LOCAL_PROFILE_PICTURE].orEmpty(),
+            about = prefs[KeyScopedKeys.LOCAL_PROFILE_ABOUT].orEmpty(),
+            bannerUrl = prefs[KeyScopedKeys.LOCAL_PROFILE_BANNER].orEmpty(),
+            nip05 = prefs[KeyScopedKeys.LOCAL_PROFILE_NIP05].orEmpty(),
+            website = prefs[KeyScopedKeys.LOCAL_PROFILE_WEBSITE].orEmpty(),
+            publishToNostr = prefs[KeyScopedKeys.PROFILE_PUBLISH_TO_NOSTR] ?: false,
+            shareWithBoard = prefs[KeyScopedKeys.PROFILE_SHARE_WITH_BOARD] ?: false,
+        )
+    }
+
+    suspend fun saveLocalUserProfile(value: LocalUserProfile) {
+        keyScoped.edit { prefs ->
+            prefs[KeyScopedKeys.LOCAL_PROFILE_SAVED] = true
+            prefs[KeyScopedKeys.LOCAL_PROFILE_DISPLAY_NAME] = value.displayName
+            prefs[KeyScopedKeys.LOCAL_PROFILE_LIGHTNING] = value.lightningAddress
+            prefs[KeyScopedKeys.LOCAL_PROFILE_PICTURE] = value.pictureUrl
+            prefs[KeyScopedKeys.LOCAL_PROFILE_ABOUT] = value.about
+            prefs[KeyScopedKeys.LOCAL_PROFILE_BANNER] = value.bannerUrl
+            prefs[KeyScopedKeys.LOCAL_PROFILE_NIP05] = value.nip05
+            prefs[KeyScopedKeys.LOCAL_PROFILE_WEBSITE] = value.website
+            prefs[KeyScopedKeys.PROFILE_PUBLISH_TO_NOSTR] = value.publishToNostr
+            prefs[KeyScopedKeys.PROFILE_SHARE_WITH_BOARD] = value.shareWithBoard
+        }
+    }
 
     /** Single-read snapshot of all board filter prefs (counterpart to [setBoardFilters]). */
     suspend fun getBoardFilterSnapshot(): BoardFilterSnapshot {

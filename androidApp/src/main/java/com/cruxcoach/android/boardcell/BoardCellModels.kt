@@ -204,10 +204,9 @@ data class BoardPlaylistProposal(
  * [com.cruxcoach.android.data.SessionQueueManager] and may run alongside a
  * joinable one.
  *
- * [members] is the playlist membership, which is a different set from the
- * BoardCell membership: being in the mesh only makes the playlist visible.
- * The list is kept in join order, so index 0 is the longest-active member and
- * therefore the deterministic successor when a host is lost unexpectedly.
+ * [members] mirrors the BoardCell members while the playlist exists. It is
+ * retained in this wire shape for compatibility and deterministic technical
+ * host succession, but it is not a second product-level membership.
  */
 @Serializable
 data class BoardPlaylistState(
@@ -299,6 +298,42 @@ data class BoardCellJoinRequest(
     val candidateId: String,
     val sponsorId: String,
 )
+
+/** A join request shown to every current member of an occupied board. */
+@Serializable
+data class BoardCellAdmissionPrompt(
+    val requestId: String,
+    val candidateId: String,
+    val sponsorId: String,
+    val requestedAtEpochMs: Long,
+    val expiresAtEpochMs: Long,
+)
+
+/** Any current member may answer; the controller only serializes the first answer. */
+@Serializable
+data class BoardCellAdmissionDecision(
+    val requestId: String,
+    val candidateId: String,
+    val approved: Boolean,
+)
+
+/** Explicit outcome for the requester and all members, including retry timing. */
+@Serializable
+data class BoardCellAdmissionResult(
+    val requestId: String,
+    val candidateId: String,
+    val approved: Boolean,
+    val retryAfterEpochMs: Long = 0,
+)
+
+internal object BoardCellAdmissionCooldownPolicy {
+    fun retryAfterEpochMs(
+        approved: Boolean,
+        expired: Boolean,
+        nowEpochMs: Long,
+        cooldownMs: Long,
+    ): Long = if (!approved && !expired) nowEpochMs + cooldownMs else 0L
+}
 
 @Serializable
 data class BoardCellLeaveRequest(

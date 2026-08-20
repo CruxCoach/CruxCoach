@@ -171,31 +171,11 @@ fun BoardBrowserScreen(
         onNavigateToClimb(event.uuid, state.filter.angle)
     }
 
-    val isBleConnected = state.ble.connectionState == ConnectionState.CONNECTED ||
-        state.ble.connectionState == ConnectionState.SENDING
-
-    // Remote disconnect request dialog (received from nearby user)
     val bleConnViewModel: BleConnectionViewModel = hiltViewModel()
     val bleConnState by bleConnViewModel.state.collectAsStateWithLifecycle()
-    if (bleConnState.showDisconnectRequestDialog) {
-        AlertDialog(
-            onDismissRequest = { bleConnViewModel.dismissDisconnectRequest() },
-            title = { Text(stringResource(R.string.board_ble_disconnect_request_title), fontWeight = FontWeight.Bold) },
-            text = { Text(stringResource(R.string.board_ble_disconnect_request_message)) },
-            confirmButton = {
-                Button(
-                    onClick = { bleConnViewModel.acceptRemoteDisconnect() },
-                    colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
-                    shape = RoundedCornerShape(12.dp)
-                ) { Text(stringResource(R.string.board_ble_disconnect_request_confirm), fontWeight = FontWeight.Bold) }
-            },
-            dismissButton = {
-                TextButton(onClick = { bleConnViewModel.dismissDisconnectRequest() }) {
-                    Text(stringResource(R.string.board_ble_disconnect_request_deny))
-                }
-            }
-        )
-    }
+    val isBleConnected = state.ble.connectionState == ConnectionState.CONNECTED ||
+        state.ble.connectionState == ConnectionState.SENDING ||
+        bleConnState.activeBoardCellId != null
 
     // Bluetooth state monitor — prompt user if BT turns off while BLE is in use
     val btEnableLauncher = rememberLauncherForActivityResult(

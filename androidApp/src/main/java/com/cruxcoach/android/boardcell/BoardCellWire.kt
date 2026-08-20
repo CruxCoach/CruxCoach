@@ -6,6 +6,8 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 @Serializable
 sealed interface BoardCellWireMessage {
@@ -23,6 +25,15 @@ sealed interface BoardCellWireMessage {
     ) : BoardCellWireMessage
     @Serializable @SerialName("member_join_request") data class MemberJoinRequest(
         val value: BoardCellJoinRequest,
+    ) : BoardCellWireMessage
+    @Serializable @SerialName("member_admission_prompt") data class MemberAdmissionPrompt(
+        val value: BoardCellAdmissionPrompt,
+    ) : BoardCellWireMessage
+    @Serializable @SerialName("member_admission_decision") data class MemberAdmissionDecision(
+        val value: BoardCellAdmissionDecision,
+    ) : BoardCellWireMessage
+    @Serializable @SerialName("member_admission_result") data class MemberAdmissionResult(
+        val value: BoardCellAdmissionResult,
     ) : BoardCellWireMessage
     @Serializable @SerialName("member_heartbeat") data class MemberHeartbeat(
         val tick: Long,
@@ -107,7 +118,7 @@ object BoardCellWireCodec {
     // do not spuriously reject a participant's board command. V5 added
     // permissionless, member-sponsored multi-hop BoardCell admission.
     // Older peers must fail closed instead of interpreting the new authority flow.
-    const val VERSION = 9
+    const val VERSION = 10
     private val json = Json { classDiscriminator = "type"; encodeDefaults = true; ignoreUnknownKeys = false }
     fun encode(frame: BoardCellWireFrame): ByteArray = json.encodeToString(frame).encodeToByteArray()
     fun decode(bytes: ByteArray): BoardCellWireFrame {
@@ -176,6 +187,19 @@ object BoardCellWireCodec {
                         message.value.candidateId.length in 1..256 &&
                         message.value.sponsorId.length in 1..256 &&
                         message.value.candidateId != message.value.sponsorId)
+                is BoardCellWireMessage.MemberAdmissionPrompt -> require(
+                    message.value.requestId.length in 8..128 &&
+                        message.value.candidateId.length in 1..256 &&
+                        message.value.sponsorId.length in 1..256 &&
+                        message.value.requestedAtEpochMs > 0 &&
+                        message.value.expiresAtEpochMs > message.value.requestedAtEpochMs)
+                is BoardCellWireMessage.MemberAdmissionDecision -> require(
+                    message.value.requestId.length in 8..128 &&
+                        message.value.candidateId.length in 1..256)
+                is BoardCellWireMessage.MemberAdmissionResult -> require(
+                    message.value.requestId.length in 8..128 &&
+                        message.value.candidateId.length in 1..256 &&
+                        message.value.retryAfterEpochMs >= 0)
                 is BoardCellWireMessage.MemberHeartbeat -> {
                     require(message.tick >= 0)
                     message.diagnostics?.validate()
@@ -280,6 +304,8 @@ data class BoardCellPeerDiagnostics(
     @SerialName("as") val awaitingExplicitSend: Boolean = false,
     @SerialName("eo") val externalBoardOverride: Boolean = false,
     @SerialName("pc") val pendingCommands: Int = 0,
+    /** Optional user-approved local display name; never an npub or account id. */
+    @SerialName("dn") val displayName: String? = null,
 ) {
     internal fun validate() {
         require(schema in 1..16)
@@ -292,6 +318,7 @@ data class BoardCellPeerDiagnostics(
         require(currentIndex in -1 until BoardPlaylistPolicy.MAX_ITEMS)
         require(currentClimbId == null || currentClimbId.length in 1..64)
         require(pendingCommands in 0..1_024)
+        require(displayName == null || displayName.length in 1..40)
     }
 }
 
@@ -380,10 +407,17 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
     private val seenCommands = LinkedHashMap<String, BoardCommandAck>()
     private val lastPeerDiagnostics =
         mutableMapOf<String, Pair<String, BoardCellPeerDiagnostics>>()
+    private val pendingAdmissionControllers = mutableMapOf<String, String>()
+    private val _peerDiagnostics = MutableStateFlow<Map<String, BoardCellPeerDiagnostics>>(emptyMap())
+    val peerDiagnostics = _peerDiagnostics.asStateFlow()
     var onSessionCommand: (suspend (InboundSessionCommand) -> Unit)? = null
     var onCommandAck: (suspend (String, BoardCommandAck) -> Unit)? = null
     var onControllerRequest: (suspend (String, BoardCellControllerRequest) -> Unit)? = null
     var onControllerDecision: (suspend (String, BoardCellControllerDecision) -> Unit)? = null
+    var onAdmissionRequested: (suspend (String, BoardCellJoinRequest) -> Unit)? = null
+    var onAdmissionPrompt: (suspend (BoardCellAdmissionPrompt) -> Unit)? = null
+    var onAdmissionDecision: (suspend (String, BoardCellAdmissionDecision) -> Unit)? = null
+    var onAdmissionResult: (suspend (BoardCellAdmissionResult) -> Unit)? = null
     var onProjectionRequest: (suspend (InboundProjectionRequest) -> Unit)? = null
     var onPlaylistControl: (suspend (InboundPlaylistControl) -> Unit)? = null
     var onLeafCommand: (suspend (InboundLeafCommand) -> Unit)? = null
@@ -401,6 +435,8 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
         seenFrames.clear()
         seenCommands.clear()
         lastPeerDiagnostics.clear()
+        pendingAdmissionControllers.clear()
+        _peerDiagnostics.value = emptyMap()
     }
 
     override suspend fun publishClaim(claim: BoardCellClaim) {
@@ -478,6 +514,24 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
             frameFor(snapshot, BoardCellWireMessage.MemberJoinRequest(request)))
     }
 
+    fun publishAdmissionPrompt(snapshot: BoardCellSnapshot, prompt: BoardCellAdmissionPrompt) {
+        val bytes = frameFor(snapshot, BoardCellWireMessage.MemberAdmissionPrompt(prompt))
+        (snapshot.members + prompt.candidateId).asSequence().filter { it != link.localNpub }
+            .forEach { link.send(it, bytes) }
+    }
+
+    fun sendAdmissionDecision(snapshot: BoardCellSnapshot, decision: BoardCellAdmissionDecision): Boolean {
+        if (link.localNpub !in snapshot.members) return false
+        return link.send(snapshot.controllerId,
+            frameFor(snapshot, BoardCellWireMessage.MemberAdmissionDecision(decision)))
+    }
+
+    fun publishAdmissionResult(snapshot: BoardCellSnapshot, result: BoardCellAdmissionResult) {
+        val bytes = frameFor(snapshot, BoardCellWireMessage.MemberAdmissionResult(result))
+        (snapshot.members + result.candidateId).asSequence().filter { it != link.localNpub }
+            .forEach { link.send(it, bytes) }
+    }
+
     /** Periodic authenticated end-source proof; routing may be multi-hop. */
     fun sendMemberHeartbeat(
         snapshot: BoardCellSnapshot,
@@ -509,6 +563,7 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
     ) {
         val next = event to value
         if (lastPeerDiagnostics.put(sender, next) == next) return
+        _peerDiagnostics.value = _peerDiagnostics.value + (sender to value)
         BoardCellPeerDiagnosticsLog.emit(event, sender, value)
     }
 
@@ -681,6 +736,15 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
             // term/recovery. Requiring the already-known term here creates a
             // catch-22 where the repair digest itself is rejected.
             is BoardCellWireMessage.AntiEntropy -> local != null && value.epoch == local.epoch
+            is BoardCellWireMessage.MemberAdmissionResult ->
+                (local != null && value.epoch == local.epoch &&
+                    value.controllerTerm == local.controllerTerm) ||
+                    (local == null && scoped.value.candidateId == link.localNpub &&
+                        pendingAdmissionControllers[scoped.value.requestId] == authenticatedSender)
+            is BoardCellWireMessage.MemberAdmissionPrompt ->
+                (local != null && value.epoch == local.epoch &&
+                    value.controllerTerm == local.controllerTerm) ||
+                    (local == null && scoped.value.candidateId == link.localNpub)
             else -> local != null && value.epoch == local.epoch && value.controllerTerm == local.controllerTerm
         }
         if (!scopeMatchesPayload) return BoardCellApplyResult.Rejected("realm/cell/board/epoch/term mismatch")
@@ -773,9 +837,41 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
                 if (message.value.candidateId in snapshot.members) {
                     sendSnapshotTo(snapshot, message.value.candidateId)
                 } else {
-                    target.joinMember(snapshot.physicalBoardId, message.value.candidateId, nowMonotonicMs)
-                    target.snapshot(snapshot.physicalBoardId)?.let { snapshots[it.cellId] = it }
+                    onAdmissionRequested?.invoke(authenticatedSender, message.value)
                 }
+                null
+            }
+            is BoardCellWireMessage.MemberAdmissionPrompt -> {
+                val snapshot = snapshots[value.cellId]
+                if (snapshot != null) {
+                    if (authenticatedSender != snapshot.controllerId || link.localNpub !in snapshot.members) {
+                        return BoardCellApplyResult.Rejected("admission prompt sender/receiver mismatch")
+                    }
+                } else {
+                    if (message.value.candidateId != link.localNpub) {
+                        return BoardCellApplyResult.Rejected("admission prompt is not for this candidate")
+                    }
+                    pendingAdmissionControllers[message.value.requestId] = authenticatedSender
+                }
+                onAdmissionPrompt?.invoke(message.value)
+                null
+            }
+            is BoardCellWireMessage.MemberAdmissionDecision -> {
+                val snapshot = snapshots[value.cellId]
+                    ?: return BoardCellApplyResult.Rejected("admission decision has no local cell")
+                if (link.localNpub != snapshot.controllerId || authenticatedSender !in snapshot.members) {
+                    return BoardCellApplyResult.Rejected("admission decision sender/role mismatch")
+                }
+                onAdmissionDecision?.invoke(authenticatedSender, message.value)
+                null
+            }
+            is BoardCellWireMessage.MemberAdmissionResult -> {
+                // Membership snapshots remain the only authority for an
+                // approval. This operational result merely makes rejection
+                // and its cooldown visible to the requester without waiting
+                // for a transport timeout.
+                pendingAdmissionControllers.remove(message.value.requestId)
+                onAdmissionResult?.invoke(message.value)
                 null
             }
             is BoardCellWireMessage.MemberHeartbeat -> {

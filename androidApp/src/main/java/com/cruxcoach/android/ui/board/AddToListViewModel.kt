@@ -2,8 +2,12 @@ package com.cruxcoach.android.ui.board
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.cruxcoach.android.ble.QueueItem
+import com.cruxcoach.android.boardcell.BoardCellAvailability
+import com.cruxcoach.android.boardcell.BoardCellManager
 import com.cruxcoach.android.data.PlaylistPlaybackCoordinator
 import com.cruxcoach.android.data.SessionQueueManager
+import com.cruxcoach.android.data.SessionVisibility
 import com.cruxcoach.android.util.safeLaunch
 import com.cruxcoach.data.repository.Climb_lists
 import com.cruxcoach.data.repository.PersonalBoardRepository
@@ -19,8 +23,10 @@ data class AddToListState(
     val lists: List<Climb_lists> = emptyList(),
     val climbInListIds: Set<Long> = emptySet(),
     val newListName: String = "",
-    /** True while a playlist is running — offers the add-to-queue row. */
+    /** True while any playlist is running — offers the add-to-queue row. */
     val playbackActive: Boolean = false,
+    /** The user is connected to a board group; its playlist is always available. */
+    val boardGroupActive: Boolean = false,
     /** One-shot feedback after adding to the running playlist. */
     val addedToRunning: Boolean = false,
 )
@@ -36,6 +42,7 @@ class AddToListViewModel @Inject constructor(
     private val personalBoardRepo: PersonalBoardRepository,
     private val queueManager: SessionQueueManager,
     private val playback: PlaylistPlaybackCoordinator,
+    private val boardCellManager: BoardCellManager,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(AddToListState())
@@ -59,6 +66,10 @@ class AddToListViewModel @Inject constructor(
                     lists = lists,
                     climbInListIds = inIds,
                     playbackActive = playback.state.value.isActive,
+                    boardGroupActive = boardCellManager.snapshot()?.let { snapshot ->
+                        snapshot.availability == BoardCellAvailability.ACTIVE &&
+                            boardCellManager.localNodeId() in snapshot.members
+                    } == true,
                 )
             }
         }
@@ -120,10 +131,32 @@ class AddToListViewModel @Inject constructor(
         }
     }
 
-    /** Append to the RUNNING playlist's queue (role-aware inside). */
-    fun addToRunningPlaylist() {
-        if (_state.value.addedToRunning) return
-        queueManager.addClimb(climbUuid, angle)
+    /**
+     * One-tap Board action. The first climb creates the Board playlist;
+     * later taps append to the same canonical queue. Local lists remain
+     * independent and are still offered below this primary action.
+     */
+    fun addToBoardPlaylist(
+        selectedClimbUuid: String = climbUuid,
+        selectedAngle: Int = angle,
+    ) {
+        if (_state.value.addedToRunning && climbUuid == selectedClimbUuid && angle == selectedAngle) return
+        climbUuid = selectedClimbUuid
+        angle = selectedAngle
+        val snapshot = boardCellManager.snapshot()
+        val boardGroupActive = snapshot?.let {
+            it.availability == BoardCellAvailability.ACTIVE &&
+                boardCellManager.localNodeId() in it.members
+        } == true
+        if (boardGroupActive && snapshot.playlist.isJoinable != true) {
+            playback.play(
+                hostName = "",
+                items = listOf(QueueItem(selectedClimbUuid, selectedAngle)),
+                visibility = SessionVisibility.JOINABLE,
+            )
+        } else {
+            queueManager.addClimb(selectedClimbUuid, selectedAngle)
+        }
         _state.update { it.copy(addedToRunning = true) }
     }
 

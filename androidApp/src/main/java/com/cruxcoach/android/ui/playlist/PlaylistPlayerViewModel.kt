@@ -177,7 +177,9 @@ class PlaylistPlayerViewModel @Inject constructor(
     /** Stop playback and stage the summary sheet. */
     fun stop(endForEveryone: Boolean = false) {
         _state.update { it.copy(showStopConfirm = false) }
-        val finished = playback.stop(endForEveryone) ?: return
+        val finished = playback.stop(
+            endForEveryone = endForEveryone || playback.state.value.isCanonicalPlaylist,
+        ) ?: return
         _state.update { it.copy(finishedSession = finished) }
         viewModelScope.safeLaunch(TAG) {
             val gradeScale = userPreferences.gradeScale.first()

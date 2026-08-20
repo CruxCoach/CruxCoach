@@ -174,9 +174,9 @@ class JoinablePlaylistAdapterTest {
         assertEquals("other-npub", state.mesh!!.hostId)
     }
 
-    @Test fun `ending is only offered to the last remaining member`() {
+    @Test fun `every board member may end the shared playlist`() {
         publish(joinable(members = listOf(localNode, "other-npub")))
-        assertFalse(queueManager.state.value.mesh!!.canEnd)
+        assertTrue(queueManager.state.value.mesh!!.canEnd)
 
         publish(joinable(members = listOf(localNode)), revision = 2)
         assertTrue(queueManager.state.value.mesh!!.canEnd)

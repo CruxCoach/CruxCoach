@@ -314,7 +314,7 @@ class BoardCellWireTest {
             snapshot.controllerTerm, "decision-forged")) is BoardCellApplyResult.Rejected)
     }
 
-    @Test fun `direct neighbor can sponsor permissionless join through a non-controller member`() = runTest {
+    @Test fun `direct neighbor sponsorship becomes a member approval request`() = runTest {
         val board = PhysicalBoardId("board")
         val hostLink = Link("host")
         val hostTransport = BoardCellMeshTransport(hostLink)
@@ -325,6 +325,8 @@ class BoardCellWireTest {
         host.joinMember(board, "sponsor")
         val shared = host.snapshot(board)!!
         hostTransport.rememberSnapshot(shared)
+        val admissionRequests = mutableListOf<BoardCellJoinRequest>()
+        hostTransport.onAdmissionRequested = { _, request -> admissionRequests += request }
 
         val sponsorLink = Link("sponsor", direct = setOf("candidate"))
         val sponsorTransport = BoardCellMeshTransport(sponsorLink)
@@ -339,6 +341,11 @@ class BoardCellWireTest {
         val sponsoredFrame = BoardCellWireCodec.decode(encoded)
         assertTrue(sponsoredFrame.message is BoardCellWireMessage.MemberJoinRequest)
         assertNull(hostTransport.receive("sponsor", encoded, 3))
+        assertFalse("candidate" in host.snapshot(board)!!.members)
+        assertEquals("candidate", admissionRequests.single().candidateId)
+
+        // Only an explicit approval commits membership.
+        host.joinMember(board, "candidate", 3)
         assertTrue("candidate" in host.snapshot(board)!!.members)
 
         // Process restart keeps the per-realm npub but loses in-memory state.
@@ -392,6 +399,31 @@ class BoardCellWireTest {
         assertNotNull("new direct peer must receive an authoritative welcome snapshot", welcome)
         assertEquals(current.stateHash, welcome!!.value.stateHash)
         assertEquals(8, welcome.value.sequence)
+    }
+
+    @Test fun `candidate accepts admission result only from the controller that prompted it`() = runTest {
+        val candidateLink = Link("candidate")
+        val candidateTransport = BoardCellMeshTransport(candidateLink)
+        candidateTransport.attach(BoardCellCoordinator("candidate", candidateTransport, settleMs = 0))
+        val prompt = BoardCellAdmissionPrompt(
+            "admission-request-01", "candidate", "sponsor", 1_000L, 31_000L,
+        )
+        val received = mutableListOf<BoardCellAdmissionResult>()
+        candidateTransport.onAdmissionResult = { received += it }
+
+        assertNull(candidateTransport.receive("host", frame(
+            "host", BoardCellWireMessage.MemberAdmissionPrompt(prompt), id = "admission-prompt-01",
+        )))
+        val result = BoardCellAdmissionResult(
+            prompt.requestId, prompt.candidateId, approved = false, retryAfterEpochMs = 91_000L,
+        )
+        assertTrue(candidateTransport.receive("attacker", frame(
+            "attacker", BoardCellWireMessage.MemberAdmissionResult(result), id = "admission-result-forged",
+        )) is BoardCellApplyResult.Rejected)
+        assertNull(candidateTransport.receive("host", frame(
+            "host", BoardCellWireMessage.MemberAdmissionResult(result), id = "admission-result-valid",
+        )))
+        assertEquals(result, received.single())
     }
 
     @Test fun `authenticated multi hop heartbeat keeps member live without direct peer view`() = runTest {
@@ -480,5 +512,17 @@ class BoardCellWireTest {
         val memberLink = Link("member", direct = setOf("candidate"))
         val memberTransport = BoardCellMeshTransport(memberLink)
         assertFalse(memberTransport.sponsorMember(frozen, "candidate"))
+    }
+
+    @Test fun `only an explicit live decline starts admission cooldown`() {
+        val now = 10_000L
+        val cooldown = 60_000L
+
+        assertEquals(now + cooldown, BoardCellAdmissionCooldownPolicy.retryAfterEpochMs(
+            approved = false, expired = false, nowEpochMs = now, cooldownMs = cooldown))
+        assertEquals(0L, BoardCellAdmissionCooldownPolicy.retryAfterEpochMs(
+            approved = false, expired = true, nowEpochMs = now, cooldownMs = cooldown))
+        assertEquals(0L, BoardCellAdmissionCooldownPolicy.retryAfterEpochMs(
+            approved = true, expired = false, nowEpochMs = now, cooldownMs = cooldown))
     }
 }

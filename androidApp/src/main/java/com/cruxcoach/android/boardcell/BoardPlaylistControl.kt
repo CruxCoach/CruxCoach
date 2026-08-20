@@ -139,9 +139,8 @@ sealed interface BoardPlaylistControl {
  *
  * **Trust boundary.** [MEMBER] is the only authority that can arrive over
  * FIPS: a peer is authenticated as a cell member by the transport, and
- * playlist membership on top of that is what the canonical state records. It
- * is never inferred from a claim in a packet, so an authenticated cell member
- * that never joined the playlist still cannot edit it.
+ * the canonical playlist mirrors that membership. It is never inferred from
+ * a claim in a packet, so an unauthenticated peer still cannot edit it.
  *
  * [GATEWAY_PROXY] is how an API-28 device takes part at all. It has no BLE
  * L2CAP CoC and therefore no FIPS identity, so it joins over GATT to an
@@ -331,6 +330,7 @@ object BoardPlaylistPolicy {
         control: BoardPlaylistControl,
         nowEpochMs: Long,
         authority: BoardPlaylistAuthority = BoardPlaylistAuthority.MEMBER,
+        cellMembers: Set<String> = setOf(senderId),
     ): Outcome {
         if (senderId.isBlank() || senderId.length > MAX_ID_LENGTH)
             return Outcome.Reject("invalid sender")
@@ -342,7 +342,7 @@ object BoardPlaylistPolicy {
             return Outcome.Reject("a GATT leaf may only edit the queue and retry the send")
         }
         return when (control) {
-            is BoardPlaylistControl.Start -> start(current, senderId, control, nowEpochMs)
+            is BoardPlaylistControl.Start -> start(current, senderId, control, cellMembers)
             is BoardPlaylistControl.Decide -> decide(current, senderId, control, nowEpochMs)
             is BoardPlaylistControl.Join -> join(current, senderId)
             is BoardPlaylistControl.Leave -> leave(current, senderId, control)
@@ -365,7 +365,7 @@ object BoardPlaylistPolicy {
         current: BoardPlaylistState,
         senderId: String,
         control: BoardPlaylistControl.Start,
-        nowEpochMs: Long,
+        cellMembers: Set<String>,
     ): Outcome {
         val items = control.items.take(MAX_ITEMS)
         if (items.isEmpty()) return Outcome.Reject("playlist is empty")
@@ -380,29 +380,22 @@ object BoardPlaylistPolicy {
                 items = items,
                 restAfterSeconds = control.restAfterSeconds,
                 hostId = senderId,
-                members = listOf(senderId),
+                // A Board playlist belongs to the BoardCell, not to a second
+                // hidden membership layer. Everyone already admitted to the
+                // board follows it and has the same editing rights.
+                members = listOf(senderId) + cellMembers.filter { it != senderId }.sorted(),
             )))
         }
-        current.proposal?.let { open ->
-            // Idempotent replay of the same request must not read as busy.
-            if (open.requestId == control.requestId && open.requesterId == senderId)
-                return Outcome.Accepted
-            // An expired request no longer occupies the single slot; the
-            // controller resolves it on its next tick, and until then a fresh
-            // request must not be told the board is busy with a dead one.
-            if (!open.hasExpired(nowEpochMs))
-                return Outcome.Reject("another playlist request is already open")
-        }
-        if (senderId == current.hostId) return Outcome.Reject("already hosting this playlist")
-        return Outcome.Commit(normalize(current.copy(proposal = BoardPlaylistProposal(
-            requestId = control.requestId,
-            requesterId = senderId,
-            sessionId = control.sessionId,
-            items = items,
-            restAfterSeconds = control.restAfterSeconds,
-            requestedAtEpochMs = nowEpochMs,
-            expiresAtEpochMs = nowEpochMs + PROPOSAL_TIMEOUT_MS,
-        ))))
+        // Starting while the board already has a playlist means adding to
+        // that playlist. Asking a "host" to approve this contradicted the
+        // equal-rights model and forced an unnecessary modal round-trip.
+        return Outcome.Commit(normalize(current.copy(
+            items = current.items + items,
+            restAfterSeconds = current.restAfterSeconds + control.restAfterSeconds,
+            currentIndex = if (current.currentIndex < 0) 0 else current.currentIndex,
+            members = (current.members + cellMembers).distinct(),
+            proposal = null,
+        )))
     }
 
     private fun decide(
@@ -414,7 +407,7 @@ object BoardPlaylistPolicy {
         val proposal = current.proposal
             ?: return Outcome.Reject("no open playlist request")
         if (proposal.requestId != control.requestId) return Outcome.Reject("stale playlist request")
-        if (senderId != current.hostId) return Outcome.Reject("only the playlist host decides")
+        if (senderId !in current.members) return Outcome.Reject("only board members decide")
         // The canonical deadline is the truth. An answer that arrives after it
         // resolves the request the way the timeout already promised, so the
         // requester is never told two different things.
@@ -459,30 +452,22 @@ object BoardPlaylistPolicy {
     private fun leave(
         current: BoardPlaylistState,
         senderId: String,
-        control: BoardPlaylistControl.Leave,
+        @Suppress("UNUSED_PARAMETER") control: BoardPlaylistControl.Leave,
     ): Outcome {
         if (!current.isJoinable) return Outcome.Reject("no joinable playlist")
         if (senderId !in current.members) return Outcome.Accepted
-        val remaining = current.members - senderId
-        if (remaining.isEmpty()) return Outcome.Commit(BoardPlaylistState())
-        if (senderId != current.hostId)
-            return Outcome.Commit(normalize(current.copy(members = remaining)))
-        // An orderly host leave may nominate its successor; anything else
-        // falls back to the same deterministic rule an unexpected loss uses.
-        val successor = control.successorId?.takeIf { it in remaining } ?: remaining.first()
-        return Outcome.Commit(normalize(current.copy(
-            hostId = successor,
-            members = remaining,
-            proposal = null,
-        )))
+        // A Board playlist has no separate leave action. It follows the
+        // BoardCell membership and [withoutMember] performs succession when
+        // the person actually leaves the board group.
+        return Outcome.Accepted
     }
 
     private fun end(current: BoardPlaylistState, senderId: String): Outcome {
         if (!current.isJoinable) return Outcome.Accepted
         if (senderId !in current.members) return Outcome.Reject("not a playlist member")
-        // Ending is the one restricted verb: while somebody else is still in
-        // the playlist, leaving is the only way out.
-        if (current.members.size > 1) return Outcome.Reject("other playlist members are still joined")
+        // All board members have equal playlist rights, including ending the
+        // shared queue. The confirmation belongs in UI; there is no hidden
+        // host privilege in the canonical policy.
         return Outcome.Commit(BoardPlaylistState())
     }
 

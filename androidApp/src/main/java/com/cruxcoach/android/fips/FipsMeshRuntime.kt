@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.contentOrNull
@@ -55,6 +56,8 @@ data class FipsNearbyMesh(
     val matchesActiveRealm: Boolean,
     val joinableBoardCellId: String? = null,
     val boardName: String? = null,
+    /** L2CAP endpoint from the advertisement already shown to the user. */
+    val psm: Int = 0,
 )
 
 data class FipsDirectPeerTransportLoss(
@@ -87,6 +90,7 @@ internal class FipsNearbyMeshTracker(private val ttlMs: Long = NEARBY_MESH_TTL_M
         val merged = mesh.copy(
             boardName = mesh.boardName ?: previous?.boardName,
             joinableBoardCellId = mesh.joinableBoardCellId ?: previous?.joinableBoardCellId,
+            psm = mesh.psm.takeIf { it > 0 } ?: previous?.psm ?: 0,
         )
         // A mesh can advertise through several members. Present one board card,
         // retaining the strongest/current address only as a proximity hint.
@@ -138,6 +142,8 @@ class FipsMeshRuntime @Inject constructor(
     @Volatile private var realm: FipsRealmContext? = null
     @Volatile private var permissionPromptedRealm: String? = null
     private val permissionRequestChannel = Channel<List<String>>(Channel.CONFLATED)
+    private val peerRefreshWakeups = Channel<Unit>(Channel.CONFLATED)
+    @Volatile private var acceleratedPeerRefreshUntilMs = 0L
     /** One automatic request per active realm; denial never creates a prompt loop. */
     val permissionRequests = permissionRequestChannel.receiveAsFlow()
     private val validatedDirectPeers = mutableSetOf<String>()
@@ -246,6 +252,22 @@ class FipsMeshRuntime @Inject constructor(
         passiveDiscovery = candidate
         if (!candidate.start() && passiveDiscovery === candidate) passiveDiscovery = null
         if (passiveDiscovery === candidate) startDiscoveryPruning()
+    }
+
+    /**
+     * Reuse the connectable advertisement the user just selected instead of
+     * waiting for the newly activated realm's scanner to observe it again.
+     * Authentication and admission remain unchanged; this is only a dial hint.
+     */
+    @Synchronized
+    fun offerNearbyJoinHint(
+        boardCellId: String,
+        address: String,
+        psm: Int,
+        rssi: Int,
+    ): Boolean {
+        if (!_running.value || realm?.boardCellId != boardCellId) return false
+        return radio?.offerJoinHint(address, psm, rssi) == true
     }
 
     @Synchronized
@@ -618,7 +640,16 @@ class FipsMeshRuntime @Inject constructor(
                     })
             }
             sendJoinHellosToNewDirectPeers()
-            delay(PEER_REFRESH_MS)
+            val refreshDelay = if (System.currentTimeMillis() < acceleratedPeerRefreshUntilMs) {
+                PEER_JOIN_REFRESH_MS
+            } else {
+                PEER_REFRESH_MS
+            }
+            // A selected advertisement or newly opened channel wakes the
+            // regular 2 s diagnostics poll immediately. During the handshake
+            // only, poll rapidly so CCJ1 does not miss the first hello and wait
+            // for its 5 s resend window.
+            withTimeoutOrNull(refreshDelay) { peerRefreshWakeups.receive() }
         }
     }
 
@@ -801,6 +832,11 @@ class FipsMeshRuntime @Inject constructor(
     @Synchronized
     private fun recordConnectionStage(stage: FipsConnectionStage) {
         val active = realm ?: return
+        if (stage == FipsConnectionStage.ADVERTISEMENT_SEEN ||
+            stage == FipsConnectionStage.CHANNEL_OPEN) {
+            acceleratedPeerRefreshUntilMs = System.currentTimeMillis() + PEER_JOIN_ACCELERATION_MS
+            peerRefreshWakeups.trySend(Unit)
+        }
         val current = _connectionProgress.value
         if (current.realmId == active.realmId && current.cellId == active.boardCellId &&
             current.stage.ordinal >= stage.ordinal) return
@@ -830,6 +866,8 @@ class FipsMeshRuntime @Inject constructor(
     companion object {
         const val MAX_DIRECT_CONNECTIONS = 7
         private const val PEER_REFRESH_MS = 2_000L
+        private const val PEER_JOIN_REFRESH_MS = 100L
+        private const val PEER_JOIN_ACCELERATION_MS = 10_000L
         private const val RECEIVE_WAIT_MS = 5_000
         private const val PERMISSION_POLL_MS = 2_000L
         private val JOIN_PREFIX = byteArrayOf(0x43, 0x43, 0x4a, 0x31) // CCJ1

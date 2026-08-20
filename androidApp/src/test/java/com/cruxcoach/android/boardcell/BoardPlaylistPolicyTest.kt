@@ -31,7 +31,8 @@ class BoardPlaylistPolicyTest {
         control: BoardPlaylistControl,
         at: Long = now,
         authority: BoardPlaylistAuthority = BoardPlaylistAuthority.MEMBER,
-    ) = BoardPlaylistPolicy.apply(current, senderId, control, at, authority)
+        cellMembers: Set<String> = setOf(senderId),
+    ) = BoardPlaylistPolicy.apply(current, senderId, control, at, authority, cellMembers)
 
     private fun commit(outcome: BoardPlaylistPolicy.Outcome): BoardPlaylistState =
         (outcome as BoardPlaylistPolicy.Outcome.Commit).playlist
@@ -54,6 +55,19 @@ class BoardPlaylistPolicyTest {
         assertNull(result.proposal)
     }
 
+    @Test fun `a forty person board starts one playlist for everyone`() {
+        val members = (0 until 40).map { "member-%02d".format(it) }.toSet()
+        val result = commit(apply(
+            BoardPlaylistState(),
+            "member-17",
+            start(),
+            cellMembers = members,
+        ))
+
+        assertEquals(40, result.members.size)
+        assertEquals(members, result.members.toSet())
+    }
+
     @Test fun `starting is refused without entries`() {
         assertTrue(apply(BoardPlaylistState(), "member", start(items = emptyList()))
             is BoardPlaylistPolicy.Outcome.Reject)
@@ -74,137 +88,23 @@ class BoardPlaylistPolicyTest {
         assertEquals(listOf(BoardPlaylistPolicy.MAX_REST_SECONDS), result.restAfterSeconds)
     }
 
-    // ===== A second start becomes a proposal, with a canonical deadline =====
+    // ===== The board group owns one shared playlist =====
 
-    @Test fun `starting while a playlist runs asks its host instead of replacing it`() {
-        val result = commit(apply(running("host"), "other", start(listOf("x" to 40))))
-
-        assertEquals(listOf("a" to 40), result.items)
-        assertEquals("host", result.hostId)
-        val proposal = requireValue(result.proposal)
-        assertEquals("other", proposal.requesterId)
-        assertEquals(listOf("x" to 40), proposal.items)
-        // The promised 30 s belongs to the request, not to whichever device
-        // happens to be serializing it at the time.
-        assertEquals(now + BoardPlaylistPolicy.PROPOSAL_TIMEOUT_MS, proposal.expiresAtEpochMs)
-    }
-
-    @Test fun `a second open request is refused transparently as busy`() {
-        val withProposal = commit(apply(running("host"), "other", start(requestId = "request-0001")))
-
-        val second = apply(withProposal, "third",
-            start(requestId = "request-0002", commandId = "command-0002"))
-
-        val reject = requireIs<BoardPlaylistPolicy.Outcome.Reject>(second)
-        assertTrue(reject.reason, reject.reason.contains("already open"))
-    }
-
-    @Test fun `replaying the same request is accepted rather than reported busy`() {
-        val withProposal = commit(apply(running("host"), "other", start(requestId = "request-0001")))
-
-        assertTrue(apply(withProposal, "other",
-            start(requestId = "request-0001", commandId = "command-0002"))
-            is BoardPlaylistPolicy.Outcome.Accepted)
-    }
-
-    @Test fun `an expired request no longer occupies the single slot`() {
-        val withProposal = commit(apply(running("host"), "other", start(requestId = "request-0001")))
-
-        // The controller will resolve the dead request on its next tick; until
-        // then a fresh request must not be told the board is busy with it.
-        val later = now + BoardPlaylistPolicy.PROPOSAL_TIMEOUT_MS + second
-        val second = commit(apply(withProposal, "third",
-            start(requestId = "request-0002", commandId = "command-0002"), at = later))
-
-        assertEquals("request-0002", requireValue(second.proposal).requestId)
-        assertEquals(later + BoardPlaylistPolicy.PROPOSAL_TIMEOUT_MS,
-            requireValue(second.proposal).expiresAtEpochMs)
-    }
-
-    @Test fun `only the playlist host decides an open request`() {
-        val withProposal = commit(apply(running("host", "other"), "other",
-            start(requestId = "request-0001")))
-
-        val byNonHost = apply(withProposal, "other", BoardPlaylistControl.Decide(
-            "command-0002", 0, "request-0001", BoardPlaylistProposalDecision.REPLACE))
-
-        assertTrue(byNonHost is BoardPlaylistPolicy.Outcome.Reject)
-    }
-
-    @Test fun `an answer that arrives after the deadline counts as the refusal already promised`() {
-        val base = running("host")
-        val withProposal = commit(apply(base, "other", start(requestId = "request-0001")))
-
-        val late = commit(apply(withProposal, "host", BoardPlaylistControl.Decide(
-            "command-0002", 0, "request-0001", BoardPlaylistProposalDecision.REPLACE),
-            at = now + BoardPlaylistPolicy.PROPOSAL_TIMEOUT_MS))
-
-        // The requester was told "no" by the timeout; the host must not be able
-        // to say "yes" afterwards and leave the two of them disagreeing.
-        assertEquals(base.copy(proposal = null), late)
-        assertEquals(listOf("a" to 40), late.items)
-        assertEquals(listOf("host"), late.members)
-    }
-
-    @Test fun `replace installs the requested queue and joins the requester`() {
-        val withProposal = commit(apply(running("host"), "other",
-            BoardPlaylistControl.Start("command-0001", 0, "request-0001", 9,
-                listOf("x" to 40, "y" to 40), listOf(60, 90))))
-
-        val replaced = commit(apply(withProposal, "host", BoardPlaylistControl.Decide(
-            "command-0002", 0, "request-0001", BoardPlaylistProposalDecision.REPLACE)))
-
-        assertEquals(listOf("x" to 40, "y" to 40), replaced.items)
-        assertEquals(listOf(60, 90), replaced.restAfterSeconds)
-        assertEquals(0, replaced.currentIndex)
-        assertEquals(9, replaced.sessionId)
-        assertEquals("host", replaced.hostId)
-        assertEquals(listOf("host", "other"), replaced.members)
-        assertNull(replaced.proposal)
-    }
-
-    @Test fun `append keeps the running queue, its index and its host`() {
+    @Test fun `starting while a board playlist runs appends without approval`() {
         val base = BoardPlaylistPolicy.normalize(BoardPlaylistState(
             sessionId = 7, currentIndex = 1, items = listOf("a" to 40, "b" to 40),
             restAfterSeconds = listOf(30, 40), hostId = "host", members = listOf("host")))
-        val withProposal = commit(apply(base, "other",
+        val appended = commit(apply(base, "other",
             BoardPlaylistControl.Start("command-0001", 0, "request-0001", 9,
-                listOf("x" to 40), listOf(90))))
-
-        val appended = commit(apply(withProposal, "host", BoardPlaylistControl.Decide(
-            "command-0002", 0, "request-0001", BoardPlaylistProposalDecision.APPEND)))
+                listOf("x" to 40), listOf(90)),
+            cellMembers = setOf("host", "other")))
 
         assertEquals(listOf("a" to 40, "b" to 40, "x" to 40), appended.items)
         assertEquals(listOf(30, 40, 90), appended.restAfterSeconds)
         assertEquals(1, appended.currentIndex)
         assertEquals(7, appended.sessionId)
         assertEquals(listOf("host", "other"), appended.members)
-    }
-
-    @Test fun `reject changes nothing but clears the question`() {
-        val base = running("host")
-        val withProposal = commit(apply(base, "other", start()))
-
-        val rejected = commit(apply(withProposal, "host", BoardPlaylistControl.Decide(
-            "command-0002", 0, "request-0001", BoardPlaylistProposalDecision.REJECT)))
-
-        assertEquals(base.copy(proposal = null), rejected)
-        assertEquals(listOf("host"), rejected.members)
-    }
-
-    @Test fun `a timeout resolves exactly as a rejection does`() {
-        val withProposal = commit(apply(running("host"), "other", start()))
-        val proposal = requireValue(withProposal.proposal)
-
-        assertTrue(proposal.hasExpired(now + BoardPlaylistPolicy.PROPOSAL_TIMEOUT_MS))
-        assertFalse(proposal.hasExpired(now + BoardPlaylistPolicy.PROPOSAL_TIMEOUT_MS - 1))
-
-        val expired = BoardPlaylistPolicy.resolve(withProposal, proposal,
-            BoardPlaylistProposalDecision.REJECT)
-
-        assertNull(expired.proposal)
-        assertEquals(listOf("host"), expired.members)
-        assertEquals(listOf("a" to 40), expired.items)
+        assertNull(appended.proposal)
     }
 
     // ===== Membership, rights and handover =====
@@ -220,10 +120,9 @@ class BoardPlaylistPolicyTest {
             is BoardPlaylistPolicy.Outcome.Accepted)
     }
 
-    @Test fun `ending is refused while another member is still joined`() {
-        val reject = requireIs<BoardPlaylistPolicy.Outcome.Reject>(
-            apply(running("host", "guest"), "host", BoardPlaylistControl.End("command-0002", 0)))
-        assertTrue(reject.reason, reject.reason.contains("still joined"))
+    @Test fun `every member may end the board playlist`() {
+        assertEquals(BoardPlaylistState(), commit(apply(
+            running("host", "guest"), "guest", BoardPlaylistControl.End("command-0002", 0))))
     }
 
     @Test fun `ending with the last member clears the playlist`() {
@@ -293,18 +192,10 @@ class BoardPlaylistPolicyTest {
 
     // ===== Host succession =====
 
-    @Test fun `an orderly host leave may nominate its successor`() {
-        val left = commit(apply(running("host", "b", "c"), "host",
-            BoardPlaylistControl.Leave("command-0002", 0, successorId = "c")))
-
-        assertEquals("c", left.hostId)
-        assertEquals(listOf("b", "c"), left.members)
-    }
-
-    @Test fun `a nominated successor who already left falls back to the longest-active member`() {
-        val left = commit(apply(running("host", "b", "c"), "host",
-            BoardPlaylistControl.Leave("command-0002", 0, successorId = "gone")))
-        assertEquals("b", left.hostId)
+    @Test fun `playlist-only leave is an idempotent no-op`() {
+        assertTrue(apply(running("host", "b", "c"), "host",
+            BoardPlaylistControl.Leave("command-0002", 0, successorId = "c"))
+            is BoardPlaylistPolicy.Outcome.Accepted)
     }
 
     @Test fun `losing the host unexpectedly promotes the longest-active member`() {
@@ -318,26 +209,6 @@ class BoardPlaylistPolicyTest {
     @Test fun `the playlist ends when its last member is gone`() {
         assertEquals(BoardPlaylistState(),
             BoardPlaylistPolicy.withoutMember(running("host"), "host"))
-        assertEquals(BoardPlaylistState(), commit(apply(
-            running("host"), "host", BoardPlaylistControl.Leave("command-0002", 0))))
-    }
-
-    @Test fun `a request the departed host can no longer answer does not survive`() {
-        val withProposal = commit(apply(running("host", "b"), "other", start()))
-
-        val afterLoss = BoardPlaylistPolicy.withoutMember(withProposal, "host")
-
-        assertEquals("b", afterLoss.hostId)
-        assertNull(afterLoss.proposal)
-    }
-
-    @Test fun `losing a plain member keeps the host and the open request`() {
-        val withProposal = commit(apply(running("host", "b"), "other", start()))
-
-        val afterLoss = BoardPlaylistPolicy.withoutMember(withProposal, "b")
-
-        assertEquals("host", afterLoss.hostId)
-        assertNotNull(afterLoss.proposal)
     }
 
     // ===== Rest semantics =====

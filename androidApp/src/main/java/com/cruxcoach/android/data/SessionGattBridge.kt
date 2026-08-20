@@ -125,6 +125,7 @@ class SessionGattBridge(
     private val fipsMeshRuntime: FipsMeshRuntime? = null,
     private val boardCellManager: BoardCellManager? = null,
     private val boardScanner: BoardBleScanner? = null,
+    private val userPreferences: UserPreferences? = null,
     /** UTC wall clock used to stamp canonical rest deadlines; injectable for tests. */
     private val wallClockEpochMs: () -> Long = System::currentTimeMillis,
 ) {
@@ -168,6 +169,7 @@ class SessionGattBridge(
     private var hostJob: Job? = null
     @Volatile private var isSharing = false
     private var isRejoining = false
+    @Volatile private var sharedBoardDisplayName: String? = null
     private var meshRealmHeldForJoin = false
     private val commandGate = SessionCommandGate()
     private data class PendingMeshCommand(
@@ -226,6 +228,15 @@ class SessionGattBridge(
         BoardControllerProfiles.forBoard(bleConnection.connectedBoard).connectionCapacity
 
     init {
+        userPreferences?.let { preferences ->
+            scope.launch {
+                preferences.localUserProfile.collect { profile ->
+                    sharedBoardDisplayName = profile.displayName.trim()
+                        .takeIf { profile.shareWithBoard && it.isNotEmpty() }
+                        ?.take(40)
+                }
+            }
+        }
         scope.launch {
             queueManager.state.collect {
                 if (!it.isActive) {
@@ -372,6 +383,7 @@ class SessionGattBridge(
                     awaitingExplicitSend = session.awaitingExplicitSend,
                     externalBoardOverride = session.externalBoardOverride,
                     pendingCommands = _pendingCommandCount.value,
+                    displayName = sharedBoardDisplayName,
                 )
             }
             // Resolves this device's own "waiting for the host" status from
@@ -875,25 +887,8 @@ class SessionGattBridge(
             Log.d(TAG, "First queue climb sent to board — board state updated by advertiser")
         }
 
-        // Request other devices to disconnect from the board so the host can connect.
-        // The DisconnectRequest is sent via BLE advertising — it only affects OTHER
-        // devices; the host doesn't receive its own advertising packets.
-        val exclusiveNearbyOwner = nearbyScanner.nearbyClimbs.value.any {
-            !it.isLastClimb &&
-                !it.supportsConcurrentConnections &&
-                it.acceptsDisconnectRequests
-        }
-        val boardOwnedByMesh = boardCellManager?.snapshot() != null
-        if (!boardOwnedByMesh && (currentBoardConnectionCapacity() == BoardConnectionCapacity.SINGLE ||
-            exclusiveNearbyOwner)
-        ) {
-            Log.d(TAG, "Sending DisconnectRequest to free exclusive board for session host")
-            advertiser.advertiseDisconnectRequest()
-        } else if (boardOwnedByMesh) {
-            Log.d(TAG, "Skipping legacy DisconnectRequest — BoardCell routes playlist commands")
-        }
-
-        // Start advertising session (replaces the DisconnectRequest advertising)
+        // Occupied CruxCoach boards are joined through their BoardCell. Asking
+        // an owner to disconnect would dismantle the route participants need.
         if (!updateSessionAdvertising()) {
             Log.e(TAG, "Session publication failed; continuing as local-only")
             hostJob?.cancel()
@@ -915,13 +910,6 @@ class SessionGattBridge(
         }
         isSharing = true
 
-        // Stop the disconnect request after a brief pulse. The primary advertising set
-        // (disconnect request, 20s timeout) runs in parallel with the session set —
-        // without this cleanup it spams nearby scanners for the full 20 seconds.
-        scope.launch {
-            delay(2000)
-            if (isSharing) advertiser.stopAdvertising()
-        }
         Log.d(TAG, "Sharing started")
     }
 

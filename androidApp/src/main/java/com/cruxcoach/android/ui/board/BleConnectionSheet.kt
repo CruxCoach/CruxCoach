@@ -46,7 +46,6 @@ import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.android.ui.common.LocalBleShareManager
 import com.cruxcoach.android.data.RememberedBoardController
 import com.cruxcoach.android.data.SessionRole
-import com.cruxcoach.android.boardcell.ControllerRequestState
 import com.cruxcoach.android.boardcell.BoardCellId
 import com.cruxcoach.android.boardcell.PhysicalBoardIdentity
 import com.cruxcoach.android.fips.FipsNearbyMesh
@@ -71,52 +70,6 @@ fun BleConnectionSheet(
     var discoveryRequested by remember(state.activeBoardBrand) { mutableStateOf(false) }
     var pendingScanStart by remember(state.activeBoardBrand) {
         mutableStateOf<PendingScanStart?>(null)
-    }
-
-    state.controllerRequestBoard?.let { board ->
-        AlertDialog(
-            onDismissRequest = viewModel::dismissControllerRequest,
-            title = { Text(stringResource(R.string.mesh_controller_required_title)) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(stringResource(R.string.mesh_controller_required_text, board.displayName))
-                    when (state.controllerRequestState) {
-                        ControllerRequestState.WAITING -> Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                            Text(stringResource(R.string.mesh_controller_request_waiting))
-                        }
-                        ControllerRequestState.ACCEPTED ->
-                            Text(stringResource(R.string.mesh_controller_request_accepted))
-                        ControllerRequestState.DENIED ->
-                            Text(stringResource(R.string.mesh_controller_request_denied))
-                        ControllerRequestState.TIMED_OUT ->
-                            Text(stringResource(R.string.mesh_controller_request_timed_out))
-                        ControllerRequestState.FAILED ->
-                            Text(stringResource(R.string.mesh_controller_request_failed))
-                        ControllerRequestState.IDLE -> Unit
-                    }
-                }
-            },
-            confirmButton = {
-                if (state.controllerRequestState == ControllerRequestState.IDLE ||
-                    state.controllerRequestState == ControllerRequestState.DENIED ||
-                    state.controllerRequestState == ControllerRequestState.TIMED_OUT ||
-                    state.controllerRequestState == ControllerRequestState.FAILED
-                ) {
-                    TextButton(onClick = viewModel::requestControllerTransfer) {
-                        Text(stringResource(R.string.mesh_controller_request_action))
-                    }
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = viewModel::dismissControllerRequest) {
-                    Text(stringResource(R.string.action_cancel))
-                }
-            },
-        )
     }
 
     // Where scanning is free (Android 12+, BLUETOOTH_SCAN/neverForLocation)
@@ -317,6 +270,27 @@ fun BleConnectionSheet(
         }
     }
 
+    // While a board is already active, populate alternatives in the same
+    // sheet. Picking one performs leave + connect as one operation; users do
+    // not have to disconnect, reopen the menu and scan again.
+    val logicalBoardConnected = state.activeBoardCellId != null ||
+        state.connectionState == ConnectionState.CONNECTED ||
+        state.connectionState == ConnectionState.SENDING
+    LaunchedEffect(
+        logicalBoardConnected,
+        state.hasPermissions,
+        state.isBluetoothEnabled,
+        state.isLocationEnabled,
+    ) {
+        val legacyLocationReady = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ||
+            state.isLocationEnabled
+        if (logicalBoardConnected && state.hasPermissions && state.isBluetoothEnabled &&
+            legacyLocationReady && !state.isScanning
+        ) {
+            viewModel.startScan()
+        }
+    }
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         modifier = Modifier.testTag("ble_connection_sheet")
@@ -355,12 +329,25 @@ fun BleConnectionSheet(
                             state.activeMeshBoardName ?: state.connectedBoardName ?: "Board"
                         } else null,
                         activeMeshMemberCount = state.activeMeshMemberCount,
+                        activeMeshControlsBoard = state.activeMeshControlsBoard,
                         onDisconnect = { viewModel.disconnect() }
                     )
                     // FEAT-044 §12: "share this board" (party mode) — only
                     // offered while actually holding a real board.
                     RelaySharingSection(
                         board = state.connectedBoard,
+                    )
+                    NearbyBoardSwitchSection(
+                        boards = state.discoveredBoards,
+                        nearbyMeshes = state.nearbyMeshes,
+                        connectedAddress = state.connectedBoard?.address,
+                        activeBoardCellId = state.activeBoardCellId,
+                        joiningBoardCellId = state.joiningBoardCellId,
+                        joinStage = state.meshJoinStage,
+                        switchingBoardAddress = state.switchingBoardAddress,
+                        isScanning = state.isScanning,
+                        onSwitchBoard = viewModel::switchToBoard,
+                        onJoinMesh = viewModel::joinBoardMesh,
                     )
                 }
 
@@ -389,7 +376,20 @@ fun BleConnectionSheet(
                         isSending = false,
                         activeMeshName = state.activeMeshBoardName ?: "Board",
                         activeMeshMemberCount = state.activeMeshMemberCount,
+                        activeMeshControlsBoard = state.activeMeshControlsBoard,
                         onDisconnect = { viewModel.disconnect() },
+                    )
+                    NearbyBoardSwitchSection(
+                        boards = state.discoveredBoards,
+                        nearbyMeshes = state.nearbyMeshes,
+                        connectedAddress = null,
+                        activeBoardCellId = state.activeBoardCellId,
+                        joiningBoardCellId = state.joiningBoardCellId,
+                        joinStage = state.meshJoinStage,
+                        switchingBoardAddress = state.switchingBoardAddress,
+                        isScanning = state.isScanning,
+                        onSwitchBoard = viewModel::switchToBoard,
+                        onJoinMesh = viewModel::joinBoardMesh,
                     )
                 }
 
@@ -472,11 +472,12 @@ fun BleConnectionSheet(
                         activeMeshBoardName = state.activeMeshBoardName,
                         activeMeshMemberCount = state.activeMeshMemberCount,
                         joiningBoardCellId = state.joiningBoardCellId,
+                        meshJoinStage = state.meshJoinStage,
                         meshJoinFailed = state.meshJoinFailed,
+                        meshJoinRetryAfterEpochMs = state.meshJoinRetryAfterEpochMs,
                         nearbySessions = state.nearbySessions,
                         lastUsedBoardAddresses = state.lastUsedBoardAddresses,
                         bleShareState = bleShareState,
-                        isRequestingDisconnect = state.isRequestingDisconnect,
                         climbSharingEnabled = state.climbSharingEnabled,
                         onStartScan = {
                             pendingScanStart = PendingScanStart.MANUAL
@@ -494,7 +495,6 @@ fun BleConnectionSheet(
                             viewModel.joinNearbySession(it)
                             onDismiss()
                         },
-                        onRequestDisconnect = { viewModel.requestDisconnect() },
                         onClimbTapped = if (onNavigateToClimb != null) {
                             { uuid, angle -> onDismiss(); onNavigateToClimb(uuid, angle) }
                         } else null
@@ -776,6 +776,7 @@ private fun ConnectedContent(
     isSending: Boolean,
     activeMeshName: String? = null,
     activeMeshMemberCount: Int = 0,
+    activeMeshControlsBoard: Boolean = false,
     onDisconnect: () -> Unit
 ) {
     Row(
@@ -811,8 +812,13 @@ private fun ConnectedContent(
             // Two answers, never a third: physical controllers are treated as
             // exclusive; CruxRelay is multi-client by construction.
             if (activeMeshName != null) {
+                val role = stringResource(
+                    if (activeMeshControlsBoard) R.string.fips_mesh_role_controls
+                    else R.string.fips_mesh_role_connected,
+                )
                 Text(
-                    "${stringResource(R.string.fips_mesh_members)}: $activeMeshMemberCount",
+                    "$role · $activeMeshMemberCount " +
+                        "${stringResource(R.string.fips_mesh_members).lowercase()}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -866,6 +872,82 @@ private fun ConnectedContent(
 }
 
 @Composable
+private fun NearbyBoardSwitchSection(
+    boards: List<DiscoveredBoard>,
+    nearbyMeshes: List<FipsNearbyMesh>,
+    connectedAddress: String?,
+    activeBoardCellId: String?,
+    joiningBoardCellId: String?,
+    joinStage: com.cruxcoach.android.fips.FipsConnectionStage,
+    switchingBoardAddress: String?,
+    isScanning: Boolean,
+    onSwitchBoard: (DiscoveredBoard) -> Unit,
+    onJoinMesh: (FipsNearbyMesh) -> Unit,
+) {
+    val meshCells = nearbyMeshes.mapNotNull { it.joinableBoardCellId }.toSet()
+    val otherBoards = boards.filter { board ->
+        val cell = runCatching {
+            BoardCellId.forPhysical(PhysicalBoardIdentity.resolve(board)).value
+        }.getOrNull()
+        !board.address.equals(connectedAddress, ignoreCase = true) &&
+            cell != activeBoardCellId && cell !in meshCells
+    }
+    if (nearbyMeshes.isEmpty() && otherBoards.isEmpty() && !isScanning) return
+
+    HorizontalDivider()
+    Text(
+        stringResource(R.string.board_ble_other_boards),
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.Bold,
+    )
+    if (nearbyMeshes.isEmpty() && otherBoards.isEmpty()) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+            Text(
+                stringResource(R.string.board_ble_scanning),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        return
+    }
+    LazyColumn(
+        modifier = Modifier.heightIn(max = 220.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        items(nearbyMeshes, key = { "switch-mesh:${it.realmTag}:${it.cellTag}" }) { mesh ->
+            MeshBoardItem(
+                mesh = mesh,
+                joined = false,
+                joining = mesh.joinableBoardCellId == joiningBoardCellId,
+                joinStage = joinStage,
+                joinEnabled = joiningBoardCellId == null && switchingBoardAddress == null,
+                onClick = { onJoinMesh(mesh) },
+            )
+        }
+        items(otherBoards, key = { "switch-board:${it.address}" }) { board ->
+            BoardItem(
+                board = board,
+                isLastUsed = false,
+                onClick = {
+                    if (switchingBoardAddress == null) onSwitchBoard(board)
+                },
+            )
+        }
+    }
+    if (switchingBoardAddress != null) {
+        Text(
+            stringResource(R.string.board_ble_switching),
+            style = MaterialTheme.typography.bodySmall,
+            color = OrangeAccent,
+        )
+    }
+}
+
+@Composable
 private fun ConnectingContent(
     boardName: String?,
     /** Present while this is the speculative attempt at the remembered board —
@@ -908,11 +990,12 @@ private fun ScanContent(
     activeMeshBoardName: String?,
     activeMeshMemberCount: Int,
     joiningBoardCellId: String?,
+    meshJoinStage: com.cruxcoach.android.fips.FipsConnectionStage,
     meshJoinFailed: Boolean,
+    meshJoinRetryAfterEpochMs: Long,
     nearbySessions: List<NearbySession>,
     lastUsedBoardAddresses: Map<BoardBrand, String>,
     bleShareState: com.cruxcoach.android.data.BleShareUiState,
-    isRequestingDisconnect: Boolean,
     climbSharingEnabled: Boolean,
     onStartScan: () -> Unit,
     onStopScan: () -> Unit,
@@ -920,7 +1003,6 @@ private fun ScanContent(
     onJoinMesh: (FipsNearbyMesh) -> Unit,
     onReconnectRemembered: (() -> Unit)?,
     onSessionTapped: (NearbySession) -> Unit,
-    onRequestDisconnect: () -> Unit,
     onClimbTapped: ((uuid: String, angle: Int) -> Unit)? = null
 ) {
     // Show on-board climb from BleShareManager (remote active climb or board occupied)
@@ -930,10 +1012,7 @@ private fun ScanContent(
             climbName = onBoard.name,
             angle = onBoard.angle,
             connectedOnly = false,
-            isRequestingDisconnect = isRequestingDisconnect,
             climbSharingEnabled = climbSharingEnabled,
-            canRequestDisconnect = bleShareState.canRequestDisconnect,
-            onRequestDisconnect = onRequestDisconnect,
             onClimbTapped = if (onClimbTapped != null) {
                 { onClimbTapped(onBoard.climbUuid, onBoard.angle) }
             } else null
@@ -943,10 +1022,7 @@ private fun ScanContent(
             climbName = null,
             angle = 0,
             connectedOnly = true,
-            isRequestingDisconnect = isRequestingDisconnect,
             climbSharingEnabled = climbSharingEnabled,
-            canRequestDisconnect = bleShareState.canRequestDisconnect,
-            onRequestDisconnect = onRequestDisconnect,
             onClimbTapped = null
         )
     }
@@ -966,7 +1042,23 @@ private fun ScanContent(
     }
 
     if (meshJoinFailed) {
-        Text(stringResource(R.string.fips_mesh_join_failed),
+        var nowEpochMs by remember(meshJoinRetryAfterEpochMs) {
+            mutableLongStateOf(System.currentTimeMillis())
+        }
+        LaunchedEffect(meshJoinRetryAfterEpochMs) {
+            while (meshJoinRetryAfterEpochMs > System.currentTimeMillis()) {
+                nowEpochMs = System.currentTimeMillis()
+                kotlinx.coroutines.delay(1_000L)
+            }
+            nowEpochMs = System.currentTimeMillis()
+        }
+        val cooldownSeconds = ((meshJoinRetryAfterEpochMs - nowEpochMs + 999L) / 1_000L)
+            .coerceAtLeast(0L)
+        Text(stringResource(
+            if (cooldownSeconds > 0) R.string.fips_mesh_join_cooldown
+            else R.string.fips_mesh_join_failed,
+            *if (cooldownSeconds > 0) arrayOf(cooldownSeconds) else emptyArray(),
+        ),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.error)
     }
@@ -991,6 +1083,7 @@ private fun ScanContent(
                 MeshBoardItem(mesh = mesh,
                     joined = mesh.joinableBoardCellId == activeBoardCellId,
                     joining = mesh.joinableBoardCellId == joiningBoardCellId,
+                    joinStage = meshJoinStage,
                     joinEnabled = joiningBoardCellId == null,
                     onClick = { onJoinMesh(mesh) })
             }
@@ -1092,6 +1185,7 @@ private fun MeshBoardItem(
     mesh: FipsNearbyMesh,
     joined: Boolean,
     joining: Boolean,
+    joinStage: com.cruxcoach.android.fips.FipsConnectionStage,
     joinEnabled: Boolean,
     onClick: () -> Unit,
 ) {
@@ -1110,8 +1204,7 @@ private fun MeshBoardItem(
             Column(Modifier.weight(1f)) {
                 Text(mesh.boardName ?: stringResource(R.string.fips_mesh_nearby_other),
                     style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
-                Text(if (joining) stringResource(R.string.fips_mesh_joining,
-                    mesh.boardName ?: stringResource(R.string.fips_mesh_nearby_other))
+                Text(if (joining) meshJoinStageLabel(joinStage)
                 else if (joined)
                     stringResource(R.string.fips_mesh_nearby_own)
                 else stringResource(R.string.fips_mesh_nearby_other),
@@ -1125,14 +1218,25 @@ private fun MeshBoardItem(
 }
 
 @Composable
+private fun meshJoinStageLabel(stage: com.cruxcoach.android.fips.FipsConnectionStage): String =
+    stringResource(when (stage) {
+        com.cruxcoach.android.fips.FipsConnectionStage.IDLE -> R.string.fips_mesh_join_stage_starting
+        com.cruxcoach.android.fips.FipsConnectionStage.ADVERTISEMENT_SEEN ->
+            R.string.fips_mesh_join_stage_connecting
+        com.cruxcoach.android.fips.FipsConnectionStage.CHANNEL_OPEN ->
+            R.string.fips_mesh_join_stage_authenticating
+        com.cruxcoach.android.fips.FipsConnectionStage.PEER_AUTHENTICATED ->
+            R.string.fips_mesh_join_stage_admitting
+        com.cruxcoach.android.fips.FipsConnectionStage.DIRECT_AUTHENTICATED ->
+            R.string.fips_mesh_join_stage_syncing
+    })
+
+@Composable
 private fun NearbyActiveClimbCard(
     climbName: String?,
     angle: Int,
     connectedOnly: Boolean = false,
-    isRequestingDisconnect: Boolean,
     climbSharingEnabled: Boolean,
-    canRequestDisconnect: Boolean,
-    onRequestDisconnect: () -> Unit,
     onClimbTapped: (() -> Unit)? = null
 ) {
     Card(
@@ -1207,32 +1311,6 @@ private fun NearbyActiveClimbCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-            } else if (canRequestDisconnect) {
-                OutlinedButton(
-                    onClick = onRequestDisconnect,
-                    enabled = !isRequestingDisconnect,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = OrangeAccent)
-                ) {
-                    if (isRequestingDisconnect) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            strokeWidth = 2.dp,
-                            color = OrangeAccent
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(stringResource(R.string.board_ble_request_sent))
-                    } else {
-                        Icon(
-                            Icons.Default.CellTower,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(stringResource(R.string.board_ble_request_disconnect))
-                    }
-                }
             }
         }
     }

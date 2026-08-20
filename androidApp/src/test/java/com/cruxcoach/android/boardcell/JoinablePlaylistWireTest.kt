@@ -103,8 +103,28 @@ class JoinablePlaylistWireTest {
 
     // ===== Version fencing =====
 
-    @Test fun `the wire version includes bounded cross-device diagnostics`() {
-        assertEquals(9, BoardCellWireCodec.VERSION)
+    @Test fun `the wire version includes member admission decisions`() {
+        assertEquals(10, BoardCellWireCodec.VERSION)
+    }
+
+    @Test fun `member admission prompt decision and result round trip`() {
+        val messages = listOf<BoardCellWireMessage>(
+            BoardCellWireMessage.MemberAdmissionPrompt(BoardCellAdmissionPrompt(
+                "request-0001", "candidate", "sponsor", now, now + 30_000L,
+            )),
+            BoardCellWireMessage.MemberAdmissionDecision(BoardCellAdmissionDecision(
+                "request-0001", "candidate", approved = true,
+            )),
+            BoardCellWireMessage.MemberAdmissionResult(BoardCellAdmissionResult(
+                "request-0001", "candidate", approved = false, retryAfterEpochMs = now + 60_000L,
+            )),
+        )
+
+        messages.forEach { message ->
+            assertEquals(message, BoardCellWireCodec.decode(
+                BoardCellWireCodec.encode(frame(message)),
+            ).message)
+        }
     }
 
     @Test fun `peer diagnostics round trip without entering canonical snapshot`() {

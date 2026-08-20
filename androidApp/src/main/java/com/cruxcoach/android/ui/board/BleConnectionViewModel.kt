@@ -21,6 +21,7 @@ import com.cruxcoach.android.ble.NearbySession
 import com.cruxcoach.android.boardcell.BoardCellManager
 import com.cruxcoach.android.boardcell.ControllerRequestState
 import com.cruxcoach.android.fips.FipsMeshRuntime
+import com.cruxcoach.android.fips.FipsConnectionStage
 import com.cruxcoach.android.fips.FipsNearbyMesh
 import com.cruxcoach.android.data.BoardSessionManager
 import com.cruxcoach.android.data.NearbyPresenceManager
@@ -104,8 +105,12 @@ data class BleConnectionState(
     val activeBoardCellId: String? = null,
     val activeMeshBoardName: String? = null,
     val activeMeshMemberCount: Int = 0,
+    val activeMeshControlsBoard: Boolean = false,
     val joiningBoardCellId: String? = null,
+    val meshJoinStage: FipsConnectionStage = FipsConnectionStage.IDLE,
     val meshJoinFailed: Boolean = false,
+    val meshJoinRetryAfterEpochMs: Long = 0,
+    val switchingBoardAddress: String? = null,
 )
 
 @HiltViewModel
@@ -184,13 +189,27 @@ class BleConnectionViewModel @Inject constructor(
                 _state.update { it.copy(activeBoardCellId = snapshot?.cellId?.value,
                     activeMeshBoardName = if (snapshot == null) null else it.activeMeshBoardName,
                     activeMeshMemberCount = snapshot?.members?.size ?: 0,
+                    activeMeshControlsBoard = snapshot?.controllerId == fipsMeshRuntime.localNpub,
                     joiningBoardCellId = if (snapshot != null) null else it.joiningBoardCellId,
                     meshJoinFailed = if (snapshot != null) false else it.meshJoinFailed) }
             }
         }
         viewModelScope.safeLaunch(TAG) {
+            fipsMeshRuntime.connectionProgress.collect { progress ->
+                _state.update { state ->
+                    if (state.joiningBoardCellId == null) state
+                    else state.copy(meshJoinStage = progress.stage)
+                }
+            }
+        }
+        viewModelScope.safeLaunch(TAG) {
             boardCellManager.controllerRequestState.collect { requestState ->
                 _state.update { it.copy(controllerRequestState = requestState) }
+            }
+        }
+        viewModelScope.safeLaunch(TAG) {
+            boardCellManager.joinRetryAfterEpochMs.collect { retryAfter ->
+                _state.update { it.copy(meshJoinRetryAfterEpochMs = retryAfter) }
             }
         }
         viewModelScope.safeLaunch(TAG) {
@@ -330,25 +349,13 @@ class BleConnectionViewModel @Inject constructor(
                 }
             }
         }
-        // Receive disconnect requests from nearby users (works on any screen)
+        // Legacy clients may still send the retired disconnect-request frame.
+        // Board sharing is cooperative now, so never interrupt the controller
+        // with a prompt: reject the old request and let the sender join instead.
         viewModelScope.safeLaunch(TAG) {
             nearbyClimbScanner.disconnectRequests.collect {
-                val s = _state.value
-                val now = System.currentTimeMillis()
-                if (s.connectionState != ConnectionState.CONNECTED) return@collect
-                val isExclusive = BoardControllerProfiles.forBoard(s.connectedBoard)
-                    .connectionCapacity == BoardConnectionCapacity.SINGLE
-                val boardOwnedByMesh = boardCellManager.snapshot() != null
-                if (!s.allowRemoteDisconnect || !isExclusive || boardOwnedByMesh) {
-                    // Auto-reject: broadcast rejection so the sender knows immediately
+                if (_state.value.connectionState == ConnectionState.CONNECTED) {
                     climbAdvertiser.advertiseDisconnectResponse(accepted = false)
-                    return@collect
-                }
-                if (!s.showDisconnectRequestDialog
-                    && !suppressDisconnectDialog
-                    && now >= disconnectCooldownUntil
-                ) {
-                    _state.update { it.copy(showDisconnectRequestDialog = true) }
                 }
             }
         }
@@ -533,9 +540,7 @@ class BleConnectionViewModel @Inject constructor(
     /** Stop discovery owned by a dismissed picker, without interrupting a
      * connect or the post-connect controller-capacity probe. */
     fun onConnectionSheetDismissed() {
-        if (_state.value.connectionState == ConnectionState.DISCONNECTED &&
-            bleScanner.isScanning.value
-        ) {
+        if (_state.value.connectionState != ConnectionState.CONNECTING && bleScanner.isScanning.value) {
             stopScan()
         }
         // A failed direct attempt is about this moment, not about the board:
@@ -573,6 +578,35 @@ class BleConnectionViewModel @Inject constructor(
         bleConnection.connect(board.withKnownCapacity(), maxAttempts)
     }
 
+    /** One target tap replaces the active BoardCell/GATT route. The old board
+     * gets an orderly handover when possible; local teardown is unconditional
+     * so a vanished peer can never force a second tap. */
+    fun switchToBoard(board: DiscoveredBoard) {
+        if (_state.value.switchingBoardAddress != null) return
+        if (bleConnection.connectionState.value == ConnectionState.DISCONNECTED &&
+            boardCellManager.snapshot() == null
+        ) {
+            connectToBoard(board)
+            return
+        }
+        manualDisconnectJob?.cancel()
+        manualDisconnectJob = viewModelScope.safeLaunch(TAG) {
+            _state.update { it.copy(switchingBoardAddress = board.address) }
+            bleScanner.stopScan()
+            try {
+                boardCellManager.leaveMeshForBoardDisconnect()
+            } finally {
+                bleConnection.disconnect()
+            }
+            withTimeoutOrNull(7_000L) {
+                bleConnection.connectionState.first { it == ConnectionState.DISCONNECTED }
+            }
+            pendingBoard = board
+            bleConnection.connect(board.withKnownCapacity(), DEFAULT_CONNECT_ATTEMPTS)
+            _state.update { it.copy(switchingBoardAddress = null) }
+        }
+    }
+
     fun joinBoardMesh(mesh: FipsNearbyMesh) {
         val cellId = mesh.joinableBoardCellId ?: return
         // A board auto-connect coroutine may already have passed its scan wait
@@ -593,18 +627,31 @@ class BleConnectionViewModel @Inject constructor(
                     controllerRequestBoard = null,
                     controllerRequestState = ControllerRequestState.IDLE,
                     joiningBoardCellId = cellId,
+                    meshJoinStage = FipsConnectionStage.IDLE,
                     activeMeshBoardName = mesh.boardName ?: it.activeMeshBoardName,
                     meshJoinFailed = false,
                 )
             }
             val joined = try {
-                boardCellManager.joinNearbyMesh(cellId, mesh.boardName)
+                boardCellManager.joinNearbyMesh(
+                    cellId,
+                    mesh.boardName,
+                    mesh.address,
+                    mesh.psm,
+                    mesh.rssi,
+                )
             } catch (failure: CancellationException) {
                 throw failure
             } catch (_: Exception) {
                 false
             }
-            _state.update { it.copy(joiningBoardCellId = null, meshJoinFailed = !joined) }
+            _state.update {
+                it.copy(
+                    joiningBoardCellId = null,
+                    meshJoinStage = FipsConnectionStage.IDLE,
+                    meshJoinFailed = !joined,
+                )
+            }
         }
     }
 

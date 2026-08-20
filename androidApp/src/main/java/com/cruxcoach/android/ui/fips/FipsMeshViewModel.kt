@@ -25,6 +25,7 @@ data class FipsMeshPeerUi(
     val directAuthenticated: Boolean,
     val member: Boolean,
     val controller: Boolean,
+    val displayName: String? = null,
 )
 
 data class NearbyFipsMeshUi(
@@ -36,6 +37,7 @@ data class NearbyFipsMeshUi(
     val currentMesh: Boolean,
     val joinableBoardCellId: String?,
     val boardName: String?,
+    val psm: Int,
 )
 
 data class FipsMeshUiState(
@@ -52,13 +54,7 @@ data class FipsMeshUiState(
     val joinStage: FipsConnectionStage = FipsConnectionStage.IDLE,
     val peers: List<FipsMeshPeerUi> = emptyList(),
     val nearbyMeshes: List<NearbyFipsMeshUi> = emptyList(),
-    /**
-     * The BoardCell's one joinable playlist, if there is one.
-     *
-     * Being in the mesh makes this visible and nothing more: joining the
-     * playlist is a separate, explicit act, which is why the state carries
-     * both "a playlist exists" and "am I in it" rather than collapsing them.
-     */
+    /** The BoardCell's one shared playlist, if there is one. */
     val playlist: MeshPlaylistUi? = null,
 )
 
@@ -72,10 +68,8 @@ data class MeshPlaylistUi(
     /**
      * Whether to offer the join button.
      *
-     * Only a cell member that is not already in the playlist can join, and
-     * only when there is something to join. The caller additionally gates on
-     * the cell being ACTIVE, which is what [FipsMeshUiState.canJoinPlaylist]
-     * folds in.
+     * Compatibility only for an old snapshot that predates automatic Board
+     * playlist membership. New snapshots never need a second join action.
      */
     val offersJoin: Boolean get() = !localIsMember && itemCount > 0
 }
@@ -124,6 +118,8 @@ class FipsMeshViewModel @Inject constructor(
     /** Stable display metadata; nearby advertisements are intentionally TTL-bound. */
     private val _activeBoardName = MutableStateFlow<String?>(null)
     val membershipTransition = boardCellManager.membershipTransition
+    val incomingJoinRequests = boardCellManager.incomingJoinRequests
+    val joinRetryAfterEpochMs = boardCellManager.joinRetryAfterEpochMs
     val incomingControllerRequest = boardCellManager.incomingControllerRequest
 
     init {
@@ -158,8 +154,11 @@ class FipsMeshViewModel @Inject constructor(
         runtime.peers,
         runtime.nearbyMeshes,
         combine(boardCellManager.snapshots, _activeBoardName) { snapshot, name -> snapshot to name },
-        boardConnection.connectedBoardDescriptor,
-    ) { transport, peers, nearby, active, board ->
+        combine(boardConnection.connectedBoardDescriptor, boardCellManager.peerDiagnostics) { board, diagnostics ->
+            board to diagnostics
+        },
+    ) { transport, peers, nearby, active, boardState ->
+        val (board, diagnostics) = boardState
         val (snapshot, retainedBoardName) = active
         val direct = runtime.directAuthenticatedPeers.value
         FipsMeshUiState(
@@ -183,6 +182,7 @@ class FipsMeshViewModel @Inject constructor(
                     directAuthenticated = peer.npub in direct,
                     member = peer.npub in snapshot?.members.orEmpty(),
                     controller = peer.npub == snapshot?.controllerId,
+                    displayName = diagnostics[peer.npub]?.displayName,
                 )
             },
             playlist = snapshot?.playlist?.takeIf { it.isJoinable }?.let {
@@ -205,6 +205,7 @@ class FipsMeshViewModel @Inject constructor(
                     currentMesh = false,
                     joinableBoardCellId = it.joinableBoardCellId,
                     boardName = it.boardName,
+                    psm = it.psm,
                 )
             },
         )
@@ -217,7 +218,13 @@ class FipsMeshViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val joined = try {
-                    boardCellManager.joinNearbyMesh(cellId, mesh.boardName)
+                    boardCellManager.joinNearbyMesh(
+                        cellId,
+                        mesh.boardName,
+                        mesh.address,
+                        mesh.psm,
+                        mesh.rssi,
+                    )
                 } catch (failure: CancellationException) {
                     throw failure
                 } catch (_: Exception) {
@@ -236,7 +243,7 @@ class FipsMeshViewModel @Inject constructor(
     fun leave() {
         _leaveFailed.value = false
         viewModelScope.launch {
-            _leaveFailed.value = !boardCellManager.leaveCurrentMesh()
+            _leaveFailed.value = !boardCellManager.leaveMeshForBoardDisconnect()
         }
     }
 
@@ -247,4 +254,10 @@ class FipsMeshViewModel @Inject constructor(
 
     fun denyControllerTransfer(request: IncomingControllerRequest) =
         boardCellManager.denyControllerTransfer(request.requestId)
+
+    fun allowBoardJoin(request: com.cruxcoach.android.boardcell.IncomingBoardJoinRequest) =
+        boardCellManager.decideBoardJoin(request.requestId, request.candidateId, approved = true)
+
+    fun denyBoardJoin(request: com.cruxcoach.android.boardcell.IncomingBoardJoinRequest) =
+        boardCellManager.decideBoardJoin(request.requestId, request.candidateId, approved = false)
 }

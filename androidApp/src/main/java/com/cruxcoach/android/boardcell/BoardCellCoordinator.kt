@@ -406,7 +406,7 @@ class BoardCellCoordinator(
                 detail = "gateway is not a cell member").also(durableStore::recordAck)
         }
         val outcome = BoardPlaylistPolicy.apply(current.playlist, senderId, control,
-            wallClockEpochMs(), authority)
+            wallClockEpochMs(), authority, current.members)
         when (outcome) {
             is BoardPlaylistPolicy.Outcome.Reject ->
                 ack(control.commandId, BoardCommandStatus.REJECTED_CONFLICT, current,

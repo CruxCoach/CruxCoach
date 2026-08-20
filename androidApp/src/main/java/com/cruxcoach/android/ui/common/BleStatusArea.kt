@@ -1,10 +1,22 @@
 package com.cruxcoach.android.ui.common
 
 import androidx.compose.runtime.*
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.hilt.navigation.compose.hiltViewModel
 import android.util.Log
@@ -73,7 +85,7 @@ fun BleStatusArea(
     val meshState by meshViewModel.state.collectAsStateWithLifecycle()
     val joiningBoardCellId by meshViewModel.joiningBoardCellId.collectAsStateWithLifecycle()
     val meshJoinFailed by meshViewModel.joinFailed.collectAsStateWithLifecycle()
-    val incomingControllerRequest by meshViewModel.incomingControllerRequest.collectAsStateWithLifecycle()
+    val incomingJoinRequests by meshViewModel.incomingJoinRequests.collectAsStateWithLifecycle()
     val nearbyMeshes = meshState.nearbyMeshes.filterNot { it.currentMesh }
     val joiningMeshName = joiningBoardCellId?.let { cellId ->
         meshState.nearbyMeshes.firstOrNull { it.joinableBoardCellId == cellId }?.boardName
@@ -81,24 +93,6 @@ fun BleStatusArea(
     }
     LaunchedEffect(meshState.running) {
         if (!meshState.running) meshViewModel.ensureDiscovery()
-    }
-
-    incomingControllerRequest?.let { request ->
-        AlertDialog(
-            onDismissRequest = { meshViewModel.denyControllerTransfer(request) },
-            title = { Text(stringResource(com.cruxcoach.android.R.string.mesh_controller_request_title)) },
-            text = { Text(stringResource(com.cruxcoach.android.R.string.mesh_controller_request_text)) },
-            confirmButton = {
-                TextButton(onClick = { meshViewModel.approveControllerTransfer(request) }) {
-                    Text(stringResource(com.cruxcoach.android.R.string.mesh_controller_request_approve))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { meshViewModel.denyControllerTransfer(request) }) {
-                    Text(stringResource(com.cruxcoach.android.R.string.mesh_controller_request_deny))
-                }
-            },
-        )
     }
 
     // Bug 3: Session join handled internally via CompositionLocals — works on every screen
@@ -158,6 +152,13 @@ fun BleStatusArea(
             onDismiss = meshViewModel::dismissJoinError,
         )
     }
+    incomingJoinRequests.firstOrNull()?.let { request ->
+        BoardJoinRequestBanner(
+            remaining = incomingJoinRequests.size,
+            onAllow = { meshViewModel.allowBoardJoin(request) },
+            onDeny = { meshViewModel.denyBoardJoin(request) },
+        )
+    }
 
     if (!hasContent) return
 
@@ -185,7 +186,6 @@ fun BleStatusArea(
             onCollapse = { Log.d(TAG, "COLLAPSE"); expanded = false },
             onClimbTapped = onClimbTapped,
             onJoinSession = handleJoinSession,
-            onRequestDisconnect = { bleShareManager.requestDisconnect() },
             onAddToQueue = onAddToQueue,
             onOpenQueueSheet = { showQueueSheet = true },
             relayClientCount = relayClientCount,
@@ -226,5 +226,51 @@ fun BleStatusArea(
             localMeshController = meshState.controllerNpub != null &&
                 meshState.controllerNpub == meshState.localNpub,
         )
+    }
+}
+
+@Composable
+private fun BoardJoinRequestBanner(
+    remaining: Int,
+    onAllow: () -> Unit,
+    onDeny: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = com.cruxcoach.android.ui.theme.OrangeAccent.copy(alpha = 0.14f),
+        ),
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(stringResource(com.cruxcoach.android.R.string.board_join_request_title))
+            Text(
+                stringResource(com.cruxcoach.android.R.string.board_join_request_body),
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (remaining > 1) {
+                    Text(
+                        stringResource(com.cruxcoach.android.R.string.board_join_request_more, remaining - 1),
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                OutlinedButton(onClick = onDeny) {
+                    Text(stringResource(com.cruxcoach.android.R.string.board_join_request_deny))
+                }
+                Button(
+                    onClick = onAllow,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = com.cruxcoach.android.ui.theme.OrangeAccent,
+                    ),
+                ) {
+                    Text(stringResource(com.cruxcoach.android.R.string.board_join_request_allow))
+                }
+            }
+        }
     }
 }

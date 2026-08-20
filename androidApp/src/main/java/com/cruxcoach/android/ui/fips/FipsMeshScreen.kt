@@ -19,14 +19,12 @@ import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Button
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -60,25 +58,7 @@ fun FipsMeshScreen(
     val joinFailed by viewModel.joinFailed.collectAsStateWithLifecycle()
     val leaveFailed by viewModel.leaveFailed.collectAsStateWithLifecycle()
     val membershipTransition by viewModel.membershipTransition.collectAsStateWithLifecycle()
-    val incomingControllerRequest by viewModel.incomingControllerRequest.collectAsStateWithLifecycle()
     var showConnectionSheet by remember { mutableStateOf(false) }
-    incomingControllerRequest?.let { request ->
-        AlertDialog(
-            onDismissRequest = { viewModel.denyControllerTransfer(request) },
-            title = { Text(stringResource(R.string.mesh_controller_request_title)) },
-            text = { Text(stringResource(R.string.mesh_controller_request_text)) },
-            confirmButton = {
-                TextButton(onClick = { viewModel.approveControllerTransfer(request) }) {
-                    Text(stringResource(R.string.mesh_controller_request_approve))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { viewModel.denyControllerTransfer(request) }) {
-                    Text(stringResource(R.string.mesh_controller_request_deny))
-                }
-            },
-        )
-    }
     if (showConnectionSheet) {
         BleConnectionSheet(onDismiss = { showConnectionSheet = false })
     }
@@ -125,7 +105,7 @@ fun FipsMeshScreen(
             if (state.peers.isEmpty()) {
                 item { EmptyCard(stringResource(R.string.fips_mesh_no_connected_peers)) }
             } else {
-                items(state.peers, key = { it.npub }) { PeerCard(it) }
+                items(state.peers.size) { index -> PeerCard(state.peers[index], index + 1) }
             }
             item { SectionTitle(stringResource(R.string.fips_mesh_nearby_meshes)) }
             if (joinFailed) {
@@ -176,11 +156,14 @@ private fun CurrentMeshCard(
             }
         }
         if (state.cellId != null) {
-            Detail(stringResource(R.string.fips_mesh_cell), shortId(state.cellId))
             Detail(stringResource(R.string.fips_mesh_members), state.memberCount.toString())
-            Detail(stringResource(R.string.fips_mesh_state), state.availability.orEmpty())
-            Detail(stringResource(R.string.fips_mesh_own_node), shortNpub(state.localNpub))
-            Detail(stringResource(R.string.fips_mesh_controller), shortNpub(state.controllerNpub))
+            Detail(
+                stringResource(R.string.fips_mesh_role),
+                stringResource(
+                    if (state.localNpub == state.controllerNpub) R.string.fips_mesh_role_controls
+                    else R.string.fips_mesh_role_connected,
+                ),
+            )
             if (!state.bluetoothAvailable) {
                 Text(stringResource(R.string.board_bt_off_message),
                     style = MaterialTheme.typography.bodySmall,
@@ -212,13 +195,17 @@ private fun CurrentMeshCard(
 }
 
 @Composable
-private fun PeerCard(peer: FipsMeshPeerUi) {
+private fun PeerCard(peer: FipsMeshPeerUi, number: Int) {
     MeshCard {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.BluetoothConnected, contentDescription = null, tint = SuccessGreen)
             Spacer(Modifier.width(10.dp))
             Column {
-                Text(shortNpub(peer.npub), fontWeight = FontWeight.SemiBold)
+                Text(
+                    peer.displayName ?: if (peer.controller) stringResource(R.string.fips_mesh_peer_controller_short)
+                    else stringResource(R.string.fips_mesh_peer_number, number),
+                    fontWeight = FontWeight.SemiBold,
+                )
                 Text(
                     when {
                         peer.controller -> stringResource(R.string.fips_mesh_peer_controller)
@@ -231,7 +218,6 @@ private fun PeerCard(peer: FipsMeshPeerUi) {
                 )
             }
         }
-        Detail(stringResource(R.string.fips_mesh_transport), peer.transport.uppercase())
     }
 }
 

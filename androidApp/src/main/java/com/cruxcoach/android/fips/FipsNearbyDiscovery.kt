@@ -68,6 +68,7 @@ internal class FipsNearbyDiscovery(
             matchesActiveRealm = false,
             joinableBoardCellId = advertisement.joinableBoardCellId,
             boardName = boardName,
+            psm = advertisement.psm,
         ))
     }
 

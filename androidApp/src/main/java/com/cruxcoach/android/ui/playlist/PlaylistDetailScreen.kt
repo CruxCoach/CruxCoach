@@ -120,7 +120,8 @@ fun PlaylistDetailScreen(
     val bleConnectionState by bleConnectionViewModel.state.collectAsStateWithLifecycle()
     val isBleConnected =
         bleConnectionState.connectionState == ConnectionState.CONNECTED ||
-            bleConnectionState.connectionState == ConnectionState.SENDING
+            bleConnectionState.connectionState == ConnectionState.SENDING ||
+            bleConnectionState.activeBoardCellId != null
     var draggedEntryId by remember { mutableStateOf<Long?>(null) }
     var dragStartIndex by remember { mutableIntStateOf(-1) }
     var dragCurrentIndex by remember { mutableIntStateOf(-1) }

@@ -141,27 +141,32 @@ fun NostrProfileScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            BannerImageArea(
-                url = state.bannerUrl,
-                uploadInFlight = state.bannerUploadInFlight,
-                onEditClick = {
-                    bannerPicker.launch(
-                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
-                    )
-                },
-                onRemoveClick = { viewModel.setBannerUrl("") },
-            )
+            // These controls upload immediately to Blossom. Keep them out of
+            // the local-only editor so selecting an image cannot accidentally
+            // publish bytes before the explicit public-profile opt-in.
+            if (state.publishToNostr) {
+                BannerImageArea(
+                    url = state.bannerUrl,
+                    uploadInFlight = state.bannerUploadInFlight,
+                    onEditClick = {
+                        bannerPicker.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                        )
+                    },
+                    onRemoveClick = { viewModel.setBannerUrl("") },
+                )
 
-            ProfilePictureArea(
-                url = state.pictureUrl,
-                uploadInFlight = state.pictureUploadInFlight,
-                onEditClick = {
-                    picturePicker.launch(
-                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
-                    )
-                },
-                onRemoveClick = { viewModel.setPictureUrl("") },
-            )
+                ProfilePictureArea(
+                    url = state.pictureUrl,
+                    uploadInFlight = state.pictureUploadInFlight,
+                    onEditClick = {
+                        picturePicker.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                        )
+                    },
+                    onRemoveClick = { viewModel.setPictureUrl("") },
+                )
+            }
 
             Text(
                 stringResource(R.string.nostr_profile_explainer),
@@ -281,6 +286,41 @@ fun NostrProfileScreen(
             )
 
             Spacer(Modifier.height(8.dp))
+
+            Text(
+                stringResource(R.string.profile_privacy_title),
+                style = MaterialTheme.typography.titleSmall,
+            )
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                androidx.compose.material3.Switch(
+                    checked = state.shareWithBoard,
+                    onCheckedChange = viewModel::setShareWithBoard,
+                )
+                Spacer(Modifier.size(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.profile_share_board_name))
+                    Text(
+                        stringResource(R.string.profile_share_board_name_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                androidx.compose.material3.Switch(
+                    checked = state.publishToNostr,
+                    onCheckedChange = viewModel::setPublishToNostr,
+                )
+                Spacer(Modifier.size(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.profile_publish_publicly))
+                    Text(
+                        stringResource(R.string.profile_publish_publicly_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
 
             Button(
                 onClick = viewModel::save,

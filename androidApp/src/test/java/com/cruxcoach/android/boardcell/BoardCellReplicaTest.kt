@@ -41,4 +41,24 @@ class BoardCellReplicaTest {
         val forgedLegacy = joined.copy(stateHash = BoardCellHash.computeLegacyV4(withoutRevision))
         assertFalse(forgedLegacy.hasValidHash())
     }
+
+    @Test fun `joining the board also joins its running playlist`() {
+        val playlist = BoardPlaylistPolicy.normalize(BoardPlaylistState(
+            sessionId = 7,
+            currentIndex = 0,
+            items = listOf("climb" to 40),
+            hostId = "controller",
+            members = listOf("controller", "member"),
+        ))
+        val current = initial().copy(playlist = playlist).withComputedHash()
+
+        val joined = BoardCellReplica.reduce(
+            current,
+            BoardCellEvent.MemberJoined("new-member"),
+            1,
+        )
+
+        assertTrue("new-member" in joined.members)
+        assertTrue("new-member" in joined.playlist.members)
+    }
 }

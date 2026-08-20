@@ -64,9 +64,10 @@ fun AddToListDialogHost(
         onNewListNameChanged = viewModel::updateNewListName,
         onCreateAndAdd = viewModel::createNewListAndAdd,
         onDismiss = onDismiss,
-        showAddToRunning = state.playbackActive,
+        showAddToRunning = state.playbackActive || state.boardGroupActive,
+        boardGroupActive = state.boardGroupActive,
         addedToRunning = state.addedToRunning,
-        onAddToRunning = viewModel::addToRunningPlaylist,
+        onAddToRunning = { viewModel.addToBoardPlaylist() },
     )
 }
 
@@ -81,6 +82,7 @@ internal fun AddToListDialog(
     onDismiss: () -> Unit,
     /** Running-playlist shortcut row (browser/detail long-press context). */
     showAddToRunning: Boolean = false,
+    boardGroupActive: Boolean = false,
     addedToRunning: Boolean = false,
     onAddToRunning: (() -> Unit)? = null,
 ) {
@@ -107,7 +109,8 @@ internal fun AddToListDialog(
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
                             stringResource(
-                                if (addedToRunning) R.string.playlist_added_to_running
+                                if (addedToRunning) R.string.playlist_added_to_board
+                                else if (boardGroupActive) R.string.playlist_add_to_board
                                 else R.string.playlist_add_to_running
                             ),
                             style = MaterialTheme.typography.bodyMedium,

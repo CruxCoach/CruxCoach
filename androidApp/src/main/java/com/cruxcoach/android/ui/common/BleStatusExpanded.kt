@@ -37,7 +37,6 @@ internal fun BleStatusExpanded(
     onCollapse: () -> Unit,
     onClimbTapped: ((uuid: String, angle: Int) -> Unit)?,
     onJoinSession: ((NearbySessionEntry) -> Unit)?,
-    onRequestDisconnect: (() -> Unit)?,
     onAddToQueue: (() -> Unit)?,
     onOpenQueueSheet: (() -> Unit)? = null,
     /** Non-null while this phone is relaying for other apps. */
@@ -160,13 +159,6 @@ internal fun BleStatusExpanded(
                 Spacer(Modifier.height(8.dp))
             }
 
-            // Disconnect request section
-            if (state.canRequestDisconnect && onRequestDisconnect != null) {
-                DisconnectRequestSection(
-                    isRequesting = state.isRequestingDisconnect,
-                    onRequest = onRequestDisconnect
-                )
-            }
         }
 
         // Inside the card, as it already is when the chip is collapsed. It used
@@ -217,24 +209,19 @@ private fun ActiveMeshSection(
                 color = if (mesh.availability == "ACTIVE") OrangeAccent
                 else MaterialTheme.colorScheme.error,
             )
-            // Being in the mesh makes the playlist visible; it never joins it.
-            // Without this line there was no way to find out a playlist was
-            // running, let alone take part in one.
+            // The playlist belongs to this board group. There is no second
+            // membership or special playlist-host status to explain.
             mesh.playlist?.let { playlist ->
                 Text(
-                    buildString {
-                        append(stringResource(R.string.mesh_playlist_running, playlist.itemCount))
-                        append(" · ")
-                        append(stringResource(R.string.mesh_playlist_members, playlist.memberCount))
-                        if (playlist.localIsHost) {
-                            append(" · ")
-                            append(stringResource(R.string.mesh_playlist_you_host))
-                        }
-                    },
+                    stringResource(R.string.mesh_playlist_running, playlist.itemCount),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            }
+            } ?: Text(
+                stringResource(R.string.mesh_playlist_empty_hint),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
         if (mesh.canJoinPlaylist && onJoinPlaylist != null) {
             TextButton(onClick = onJoinPlaylist) {
@@ -449,30 +436,6 @@ private fun NearbySessionsSection(
                     Text(stringResource(R.string.common_join), style = MaterialTheme.typography.labelSmall)
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun DisconnectRequestSection(
-    isRequesting: Boolean,
-    onRequest: () -> Unit
-) {
-    OutlinedButton(
-        onClick = onRequest,
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = OrangeAccent),
-        enabled = !isRequesting
-    ) {
-        if (isRequesting) {
-            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = OrangeAccent)
-            Spacer(Modifier.width(8.dp))
-            Text(stringResource(R.string.common_request_sent))
-        } else {
-            Icon(Icons.Default.CellTower, null, modifier = Modifier.size(16.dp))
-            Spacer(Modifier.width(8.dp))
-            Text(stringResource(R.string.common_request_disconnect))
         }
     }
 }

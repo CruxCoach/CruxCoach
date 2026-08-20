@@ -67,6 +67,7 @@ import com.cruxcoach.android.data.LedHoldColors
 import com.cruxcoach.android.data.SessionRole
 import com.cruxcoach.android.ui.common.BleStatusArea
 import com.cruxcoach.android.ui.common.LocalSessionQueueManager
+import com.cruxcoach.android.ui.fips.FipsMeshViewModel
 import com.cruxcoach.android.ui.common.RestTimerBannerSlot
 import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
 import com.cruxcoach.android.ui.theme.*
@@ -103,6 +104,9 @@ fun BoardClimbDetailScreen(
     val isRestTimerRunning by viewModel.isRestTimerRunning.collectAsStateWithLifecycle()
     val isSharingEnabled by viewModel.isSharingEnabled.collectAsStateWithLifecycle()
     val pageCache by viewModel.pageCache.collectAsStateWithLifecycle()
+    val addToListViewModel: AddToListViewModel = hiltViewModel()
+    val boardUi by hiltViewModel<FipsMeshViewModel>().state.collectAsStateWithLifecycle()
+    val boardGroupActive = boardUi.cellId != null && boardUi.availability == "ACTIVE"
     var showBleSheet by remember { mutableStateOf(false) }
     var showRestTimerDialog by remember { mutableStateOf(false) }
 
@@ -298,6 +302,7 @@ fun BoardClimbDetailScreen(
                 climbUuid = climb.uuid,
                 angle = state.angle,
                 onDismiss = { viewModel.dismissAddToListDialog() },
+                viewModel = addToListViewModel,
             )
         }
     }
@@ -318,25 +323,6 @@ fun BoardClimbDetailScreen(
     // Remote disconnect request dialog (single instance)
     val bleConnViewModel: BleConnectionViewModel = hiltViewModel()
     val bleConnState by bleConnViewModel.state.collectAsStateWithLifecycle()
-    if (bleConnState.showDisconnectRequestDialog) {
-        AlertDialog(
-            onDismissRequest = { bleConnViewModel.dismissDisconnectRequest() },
-            title = { Text(stringResource(R.string.board_ble_disconnect_request_title), fontWeight = FontWeight.Bold) },
-            text = { Text(stringResource(R.string.board_ble_disconnect_request_message)) },
-            confirmButton = {
-                Button(
-                    onClick = { bleConnViewModel.acceptRemoteDisconnect() },
-                    colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
-                    shape = RoundedCornerShape(12.dp)
-                ) { Text(stringResource(R.string.board_ble_disconnect_request_confirm), fontWeight = FontWeight.Bold) }
-            },
-            dismissButton = {
-                TextButton(onClick = { bleConnViewModel.dismissDisconnectRequest() }) {
-                    Text(stringResource(R.string.board_ble_disconnect_request_deny))
-                }
-            }
-        )
-    }
 
     val snackbarHostState = remember { SnackbarHostState() }
     // Share-link: clipboard + a coroutine scope to surface the "copied"
@@ -392,7 +378,9 @@ fun BoardClimbDetailScreen(
     }
 
     // Single Scaffold — shared across all pager pages
-    val bleConnected = state.ble.connectionState.let { it == ConnectionState.CONNECTED || it == ConnectionState.SENDING }
+    val bleConnected = state.ble.connectionState.let {
+        it == ConnectionState.CONNECTED || it == ConnectionState.SENDING
+    } || bleConnState.activeBoardCellId != null
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
@@ -425,13 +413,30 @@ fun BoardClimbDetailScreen(
                             )
                         }
                         IconButton(
-                            onClick = { viewModel.showAddToListDialog() },
+                            onClick = {
+                                val climb = state.climb
+                                if (boardGroupActive && climb != null) {
+                                    addToListViewModel.addToBoardPlaylist(climb.uuid, state.angle)
+                                    shareScope.launch {
+                                        snackbarHostState.showSnackbar(
+                                            resources.getString(R.string.playlist_added_to_board),
+                                        )
+                                    }
+                                } else {
+                                    viewModel.showAddToListDialog()
+                                }
+                            },
                             modifier = Modifier.testTag("boarddetail_add_to_list_button")
                         ) {
                             Icon(
-                                Icons.AutoMirrored.Filled.PlaylistAdd,
-                                contentDescription = stringResource(R.string.cd_add_to_list),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                if (boardGroupActive) Icons.AutoMirrored.Filled.QueueMusic
+                                else Icons.AutoMirrored.Filled.PlaylistAdd,
+                                contentDescription = stringResource(
+                                    if (boardGroupActive) R.string.playlist_add_to_board
+                                    else R.string.cd_add_to_list,
+                                ),
+                                tint = if (boardGroupActive) OrangeAccent
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                         IconButton(
@@ -516,6 +521,21 @@ fun BoardClimbDetailScreen(
                                 expanded = moreExpanded,
                                 onDismissRequest = { moreExpanded = false },
                             ) {
+                                if (boardGroupActive) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.board_addtolist_title)) },
+                                        leadingIcon = {
+                                            Icon(
+                                                Icons.AutoMirrored.Filled.PlaylistAdd,
+                                                contentDescription = null,
+                                            )
+                                        },
+                                        onClick = {
+                                            moreExpanded = false
+                                            viewModel.showAddToListDialog()
+                                        },
+                                    )
+                                }
                                 // Mirror toggle — a display-only left/right flip
                                 // of the climb. Only shown for layouts that are
                                 // actually mirrorable (Aurora `is_mirrored`):

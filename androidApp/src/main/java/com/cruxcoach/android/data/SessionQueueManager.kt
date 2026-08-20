@@ -116,10 +116,10 @@ data class MeshPlaylistView(
 ) {
     val isHost: Boolean get() = localNodeId == hostId
     val isMember: Boolean get() = localNodeId in members
-    /** Ending is only offered while nobody else would lose their playlist. */
-    val canEnd: Boolean get() = isMember && members.size == 1
-    /** A request this device is expected to answer. */
-    val decidableProposal: BoardPlaylistProposal? get() = proposal?.takeIf { isHost }
+    /** Every board member may end the shared playlist after UI confirmation. */
+    val canEnd: Boolean get() = isMember
+    /** Every board member has the same product rights; the controller merely serializes. */
+    val decidableProposal: BoardPlaylistProposal? get() = proposal?.takeIf { isMember }
     /** A request this device is waiting on. */
     val awaitedProposal: BoardPlaylistProposal?
         get() = proposal?.takeIf { it.requesterId == localNodeId }

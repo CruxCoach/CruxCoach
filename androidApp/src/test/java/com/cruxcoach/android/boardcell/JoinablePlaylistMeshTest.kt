@@ -101,27 +101,27 @@ class JoinablePlaylistMeshTest {
         // controller can perform, so the snapshot stayed at revision 0 with an
         // empty queue and index -1 for ever.
         assertEquals("nokia", playlist.hostId)
-        assertEquals(listOf("nokia"), playlist.members)
+        assertEquals(listOf("nokia", "controller"), playlist.members)
         assertEquals(listOf("climb-a" to 40, "climb-b" to 45), playlist.items)
         assertEquals(0, playlist.currentIndex)
         assertEquals(1L, coordinator.snapshot(board)!!.playlistRevision)
-        // The controller is the serializer and nothing more: it is not the
-        // playlist host and did not join the playlist.
+        // The controller is a regular Board member: it follows the playlist,
+        // but serialization still does not make it the playlist host.
         assertNotEquals("controller", playlist.hostId)
-        assertFalse("controller" in playlist.members)
+        assertTrue("controller" in playlist.members)
         assertTrue(store.acks.containsKey("start-command-01"))
     }
 
-    @Test fun `a controller that is not a playlist member never becomes one by serializing`() = runTest {
+    @Test fun `every board member follows the playlist from its first commit`() = runTest {
         val (coordinator) = cell(members = arrayOf("nokia", "pixel"))
         coordinator.applyPlaylistControl(board, 101, "nokia", startControl())
         coordinator.applyPlaylistControl(board, 102, "pixel",
             BoardPlaylistControl.Join("join-command-01", 1))
 
         val playlist = coordinator.snapshot(board)!!.playlist
-        assertEquals(listOf("nokia", "pixel"), playlist.members)
+        assertEquals(setOf("controller", "nokia", "pixel"), playlist.members.toSet())
         assertTrue("controller" in coordinator.snapshot(board)!!.members)
-        assertFalse("controller" in playlist.members)
+        assertTrue("controller" in playlist.members)
     }
 
     @Test fun `replaying a start command commits exactly one playlist`() = runTest {
@@ -136,131 +136,52 @@ class JoinablePlaylistMeshTest {
         assertEquals(1, store.acks.count { it.key == "start-command-01" })
     }
 
-    // ===== Concurrent requests and the 30 s window =====
+    // ===== Concurrent additions to the one Board playlist =====
 
-    @Test fun `a second start becomes a request and a third is told it is busy`() = runTest {
+    @Test fun `successive starts append without a host approval queue`() = runTest {
         val (coordinator) = cell(members = arrayOf("nokia", "pixel", "moto"))
         coordinator.applyPlaylistControl(board, 101, "nokia", startControl())
 
-        val proposalAck = coordinator.applyPlaylistControl(board, 102, "pixel",
+        val secondAck = coordinator.applyPlaylistControl(board, 102, "pixel",
             startControl("start-command-02", "start-request-02", 1, listOf("x" to 40), listOf(0)))
-        val busyAck = coordinator.applyPlaylistControl(board, 103, "moto",
+        val thirdAck = coordinator.applyPlaylistControl(board, 103, "moto",
             startControl("start-command-03", "start-request-03", 2, listOf("y" to 40), listOf(0)))
 
-        assertEquals(BoardCommandStatus.COMMITTED, proposalAck!!.status)
-        assertEquals(BoardCommandStatus.REJECTED_CONFLICT, busyAck!!.status)
-        assertTrue(busyAck.detail!!, busyAck.detail!!.contains("already open"))
-        assertEquals("start-request-02", coordinator.snapshot(board)!!.playlist.proposal!!.requestId)
+        assertEquals(BoardCommandStatus.COMMITTED, secondAck!!.status)
+        assertEquals(BoardCommandStatus.COMMITTED, thirdAck!!.status)
+        assertEquals(
+            listOf("climb-a" to 40, "climb-b" to 45, "x" to 40, "y" to 40),
+            coordinator.snapshot(board)!!.playlist.items,
+        )
+        assertNull(coordinator.snapshot(board)!!.playlist.proposal)
     }
 
-    @Test fun `an unanswered request expires after thirty seconds as a rejection`() = runTest {
+    @Test fun `adding to a running board playlist keeps its current climb`() = runTest {
         val (coordinator) = cell(members = arrayOf("nokia", "pixel"))
         coordinator.applyPlaylistControl(board, 101, "nokia", startControl())
-        coordinator.applyPlaylistControl(board, 102, "pixel",
+        val ack = coordinator.applyPlaylistControl(board, 102, "pixel",
             startControl("start-command-02", "start-request-02", 1, listOf("x" to 40), listOf(0)))
-        assertNotNull(coordinator.snapshot(board)!!.playlist.proposal)
-
-        assertEquals(wallClock + BoardPlaylistPolicy.PROPOSAL_TIMEOUT_MS,
-            coordinator.snapshot(board)!!.playlist.proposal!!.expiresAtEpochMs)
-
-        clockNow = wallClock + BoardPlaylistPolicy.PROPOSAL_TIMEOUT_MS - 1
-        coordinator.expireLocalDeadlines(103)
-        assertNotNull("must not expire early", coordinator.snapshot(board)!!.playlist.proposal)
-
-        clockNow = wallClock + BoardPlaylistPolicy.PROPOSAL_TIMEOUT_MS
-        coordinator.expireLocalDeadlines(104)
-
         val playlist = coordinator.snapshot(board)!!.playlist
-        assertNull(playlist.proposal)
-        // A timeout is a refusal: nothing about the running playlist moved and
-        // the requester did not quietly become a member.
-        assertEquals(listOf("climb-a" to 40, "climb-b" to 45), playlist.items)
-        assertEquals(listOf("nokia"), playlist.members)
-    }
-
-    @Test fun `a controller handover does not grant the request another full window`() = runTest {
-        val (source, transport) = cell(members = arrayOf("nokia", "pixel"))
-        source.applyPlaylistControl(board, 101, "nokia", startControl())
-        source.applyPlaylistControl(board, 102, "pixel",
-            startControl("start-command-02", "start-request-02", 1, listOf("x" to 40), listOf(0)))
-        val published = source.snapshot(board)!!
-        val deadline = published.playlist.proposal!!.expiresAtEpochMs
-
-        // A coordinator that adopts the state 25 s in — a restart, or a
-        // technical controller handover — inherits the original deadline. A
-        // controller-local monotonic timer restarted the promised 30 s here,
-        // so the open state survived but the timeout it promised did not.
-        var inheritorNow = wallClock + 25_000
-        val inheritor = BoardCellCoordinator("controller", transport, MemoryStore(),
-            settleMs = 0, heartbeatTimeoutMs = 100_000, wallClockEpochMs = { inheritorNow })
-        assertTrue(inheritor.restoreTrustedSnapshot(published, 9_000_000)
-            is BoardCellApplyResult.Applied)
-        assertEquals(deadline, inheritor.snapshot(board)!!.playlist.proposal!!.expiresAtEpochMs)
-
-        inheritor.expireLocalDeadlines(9_000_000)
-        assertNotNull("25 s in, the request is still open",
-            inheritor.snapshot(board)!!.playlist.proposal)
-
-        // Five more seconds is the whole remaining window, not thirty more.
-        inheritorNow = deadline
-        inheritor.expireLocalDeadlines(9_000_100)
-        assertNull(inheritor.snapshot(board)!!.playlist.proposal)
-    }
-
-    @Test fun `a controller adopting an already expired request declines it at once`() = runTest {
-        val (source, transport) = cell(members = arrayOf("nokia", "pixel"))
-        source.applyPlaylistControl(board, 101, "nokia", startControl())
-        source.applyPlaylistControl(board, 102, "pixel",
-            startControl("start-command-02", "start-request-02", 1, listOf("x" to 40), listOf(0)))
-        val published = source.snapshot(board)!!
-
-        val inheritorNow = published.playlist.proposal!!.expiresAtEpochMs + 60_000
-        val inheritor = BoardCellCoordinator("controller", transport, MemoryStore(),
-            settleMs = 0, heartbeatTimeoutMs = 100_000, wallClockEpochMs = { inheritorNow })
-        assertTrue(inheritor.restoreTrustedSnapshot(published, 9_000_000)
-            is BoardCellApplyResult.Applied)
-
-        inheritor.expireLocalDeadlines(9_000_000)
-
-        val playlist = inheritor.snapshot(board)!!.playlist
-        assertNull(playlist.proposal)
-        assertEquals(listOf("nokia"), playlist.members)
-        assertEquals(listOf("climb-a" to 40, "climb-b" to 45), playlist.items)
-    }
-
-    @Test fun `the host replacing a playlist installs the requested queue`() = runTest {
-        val (coordinator) = cell(members = arrayOf("nokia", "pixel"))
-        coordinator.applyPlaylistControl(board, 101, "nokia", startControl())
-        coordinator.applyPlaylistControl(board, 102, "pixel",
-            startControl("start-command-02", "start-request-02", 1, listOf("x" to 40), listOf(30)))
-
-        val ack = coordinator.applyPlaylistControl(board, 103, "nokia", BoardPlaylistControl.Decide(
-            "decide-command-01", 2, "start-request-02", BoardPlaylistProposalDecision.REPLACE))
-
         assertEquals(BoardCommandStatus.COMMITTED, ack!!.status)
-        val playlist = coordinator.snapshot(board)!!.playlist
-        assertEquals(listOf("x" to 40), playlist.items)
-        assertEquals(listOf(30), playlist.restAfterSeconds)
-        assertEquals("nokia", playlist.hostId)
-        assertEquals(listOf("nokia", "pixel"), playlist.members)
+        assertNull(playlist.proposal)
+        assertEquals(0, playlist.currentIndex)
+        assertEquals(listOf("climb-a" to 40, "climb-b" to 45, "x" to 40), playlist.items)
     }
 
     // ===== Rights =====
 
-    @Test fun `mesh membership alone does not grant playlist edit rights`() = runTest {
+    @Test fun `board membership grants equal playlist edit rights`() = runTest {
         val (coordinator, _, store) = cell(members = arrayOf("nokia", "outsider"))
         coordinator.applyPlaylistControl(board, 101, "nokia", startControl())
-        val before = coordinator.snapshot(board)!!.playlist
 
         val committed = coordinator.applyPlaylistCommand(board, 102, "edit-command-01",
             coordinator.snapshot(board)!!.playlistRevision, "outsider") { current, _ ->
             BoardPlaylistOps.add(current, "smuggled", 40)
         }
 
-        assertNull(committed)
-        assertEquals(before, coordinator.snapshot(board)!!.playlist)
-        assertEquals(BoardCommandStatus.REJECTED_CONFLICT, store.acks["edit-command-01"]!!.status)
-        assertEquals("not a playlist member", store.acks["edit-command-01"]!!.detail)
+        assertNotNull(committed)
+        assertEquals("smuggled", coordinator.snapshot(board)!!.playlist.items.last().first)
+        assertEquals(BoardCommandStatus.COMMITTED, store.acks["edit-command-01"]!!.status)
     }
 
     @Test fun `every playlist member may edit, advance and step back`() = runTest {
@@ -287,10 +208,9 @@ class JoinablePlaylistMeshTest {
     @Test fun `a gateway commits its joined leaf's edit without joining the playlist`() = runTest {
         val (coordinator) = cell(members = arrayOf("nokia"))
         coordinator.applyPlaylistControl(board, 101, "nokia", startControl())
-        // "controller" is the technical controller and an authenticated cell
-        // member, but it never joined the playlist. Its API-28 leaf did join,
-        // over GATT, and that is what this bounded authority represents.
-        assertFalse("controller" in coordinator.snapshot(board)!!.playlist.members)
+        // The gateway is already a normal Board member. Proxy authority is
+        // still bounded to the leaf's queue verb; it grants no lifecycle role.
+        assertTrue("controller" in coordinator.snapshot(board)!!.playlist.members)
 
         val committed = coordinator.applyPlaylistCommand(board, 102, "leaf-add-01",
             coordinator.snapshot(board)!!.playlistRevision, "controller",
@@ -304,10 +224,10 @@ class JoinablePlaylistMeshTest {
         assertEquals("climb-from-leaf" to 40, playlist.items[2])
         // The leaf moved the queue and nothing else.
         assertEquals("nokia", playlist.hostId)
-        assertEquals(listOf("nokia"), playlist.members)
+        assertEquals(setOf("nokia", "controller"), playlist.members.toSet())
     }
 
-    @Test fun `the same gateway without proxy authority is still refused`() = runTest {
+    @Test fun `the same gateway may also edit as a regular board member`() = runTest {
         val (coordinator, _, store) = cell(members = arrayOf("nokia"))
         coordinator.applyPlaylistControl(board, 101, "nokia", startControl())
 
@@ -317,8 +237,8 @@ class JoinablePlaylistMeshTest {
             BoardPlaylistOps.add(current, "smuggled", 40)
         }
 
-        assertNull(committed)
-        assertEquals(BoardCommandStatus.REJECTED_CONFLICT, store.acks["plain-add-01"]!!.status)
+        assertNotNull(committed)
+        assertEquals(BoardCommandStatus.COMMITTED, store.acks["plain-add-01"]!!.status)
     }
 
     @Test fun `a gateway proxy may retry the send but not start, end or host`() = runTest {
@@ -344,7 +264,7 @@ class JoinablePlaylistMeshTest {
         }
         val playlist = coordinator.snapshot(board)!!.playlist
         assertEquals("nokia", playlist.hostId)
-        assertEquals(listOf("nokia"), playlist.members)
+        assertEquals(setOf("nokia", "controller"), playlist.members.toSet())
     }
 
     @Test fun `a proxy claim from a node outside the cell is refused`() = runTest {
@@ -390,8 +310,8 @@ class JoinablePlaylistMeshTest {
         coordinator.leaveMember(board, "nokia", BoardCellMemberLeaveReason.LIVENESS_TIMEOUT, 104)
 
         val playlist = coordinator.snapshot(board)!!.playlist
-        assertEquals("pixel", playlist.hostId)
-        assertEquals(listOf("pixel", "moto"), playlist.members)
+        assertEquals("controller", playlist.hostId)
+        assertEquals(setOf("controller", "pixel", "moto"), playlist.members.toSet())
         assertEquals(listOf("climb-a" to 40, "climb-b" to 45), playlist.items)
         assertEquals(revisionBefore + 1, coordinator.snapshot(board)!!.playlistRevision)
     }
@@ -414,14 +334,15 @@ class JoinablePlaylistMeshTest {
         assertEquals("nokia", after.playlist.hostId)
     }
 
-    @Test fun `the last playlist member leaving ends the playlist without ending the cell`() = runTest {
+    @Test fun `a board member cannot leave only the board playlist`() = runTest {
         val (coordinator) = cell(members = arrayOf("nokia"))
         coordinator.applyPlaylistControl(board, 101, "nokia", startControl())
 
         coordinator.applyPlaylistControl(board, 102, "nokia",
             BoardPlaylistControl.Leave("leave-command-01", 1))
 
-        assertEquals(BoardPlaylistState(), coordinator.snapshot(board)!!.playlist)
+        assertTrue(coordinator.snapshot(board)!!.playlist.isJoinable)
+        assertTrue("nokia" in coordinator.snapshot(board)!!.playlist.members)
         assertTrue("nokia" in coordinator.snapshot(board)!!.members)
     }
 

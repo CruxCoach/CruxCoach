@@ -561,6 +561,7 @@ object AppModule {
         fipsMeshRuntime: com.cruxcoach.android.fips.FipsMeshRuntime,
         boardCellManager: com.cruxcoach.android.boardcell.BoardCellManager,
         boardScanner: BoardBleScanner,
+        userPreferences: UserPreferences,
     ): SessionGattBridge {
         return PerfLogger.trace("DI: SessionGattBridge") {
             SessionGattBridge(
@@ -577,6 +578,7 @@ object AppModule {
                 fipsMeshRuntime = fipsMeshRuntime,
                 boardCellManager = boardCellManager,
                 boardScanner = boardScanner,
+                userPreferences = userPreferences,
             )
         }
     }

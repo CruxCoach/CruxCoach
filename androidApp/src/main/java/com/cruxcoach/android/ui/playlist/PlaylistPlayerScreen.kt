@@ -135,7 +135,8 @@ fun PlaylistPlayerScreen(
     val bleConnectionState by bleConnectionViewModel.state.collectAsStateWithLifecycle()
     val isBleConnected =
         bleConnectionState.connectionState == ConnectionState.CONNECTED ||
-            bleConnectionState.connectionState == ConnectionState.SENDING
+            bleConnectionState.connectionState == ConnectionState.SENDING ||
+            bleConnectionState.activeBoardCellId != null
     val snackbarHostState = remember { androidx.compose.material3.SnackbarHostState() }
     val loggedSendMsg = stringResource(R.string.playlist_logged_send)
     val loggedAttemptMsg = stringResource(R.string.playlist_logged_attempt)
@@ -199,7 +200,8 @@ fun PlaylistPlayerScreen(
         // that starts host migration, so the group climbs on and the person who
         // just pressed "End session" was never told. Say which of the three it
         // is, and stop promising termination when a handover is what follows.
-        val othersStay = playback.isHost && playback.participantCount > 1
+        val boardPlaylist = playback.isCanonicalPlaylist
+        val othersStay = !boardPlaylist && playback.isHost && playback.participantCount > 1
         val remaining = (playback.participantCount - 1).coerceAtLeast(1)
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { viewModel.dismissStopConfirm() },
@@ -207,6 +209,7 @@ fun PlaylistPlayerScreen(
                 Text(
                     stringResource(
                         when {
+                            boardPlaylist -> R.string.playlist_stop_end_title
                             !playback.isHost -> R.string.playlist_stop_leave_title
                             othersStay -> R.string.playlist_stop_handover_title
                             else -> R.string.playlist_stop_end_title
@@ -218,6 +221,7 @@ fun PlaylistPlayerScreen(
             text = {
                 Text(
                     when {
+                        boardPlaylist -> stringResource(R.string.playlist_stop_end_body)
                         !playback.isHost -> stringResource(R.string.playlist_stop_leave_body)
                         othersStay -> pluralStringResource(
                             R.plurals.playlist_stop_handover_body, remaining, remaining,
@@ -232,7 +236,7 @@ fun PlaylistPlayerScreen(
                     colors = androidx.compose.material3.ButtonDefaults.buttonColors(
                         // Only a real ending is destructive. Leaving and handing
                         // over are not, and red made them look like one.
-                        containerColor = if (playback.isHost && !othersStay) {
+                        containerColor = if (boardPlaylist || playback.isHost && !othersStay) {
                             MaterialTheme.colorScheme.error
                         } else MaterialTheme.colorScheme.primary,
                     ),
@@ -241,6 +245,7 @@ fun PlaylistPlayerScreen(
                     Text(
                         stringResource(
                             when {
+                                boardPlaylist -> R.string.playlist_stop_end_confirm
                                 !playback.isHost -> R.string.playlist_stop_leave_confirm
                                 othersStay -> R.string.playlist_stop_handover_confirm
                                 else -> R.string.playlist_stop_end_confirm
@@ -364,12 +369,14 @@ fun PlaylistPlayerScreen(
                             modifier = Modifier.testTag("player_stop"),
                         ) {
                             // A stop sign for the one case that really stops.
-                            val reallyEnds = playback.isHost && playback.participantCount <= 1
+                            val reallyEnds = playback.isCanonicalPlaylist ||
+                                playback.isHost && playback.participantCount <= 1
                             Icon(
                                 if (reallyEnds) Icons.Default.StopCircle
                                 else Icons.AutoMirrored.Filled.Logout,
                                 contentDescription = stringResource(
                                     when {
+                                        playback.isCanonicalPlaylist -> R.string.playlist_stop_end_title
                                         !playback.isHost -> R.string.playlist_stop_leave_title
                                         reallyEnds -> R.string.playlist_stop_end_title
                                         else -> R.string.playlist_stop_handover_title
@@ -469,7 +476,7 @@ fun PlaylistPlayerScreen(
                         }
                     }
                 }
-                if (playback.isHost && !playback.sharingBlocked) {
+                if (!playback.isCanonicalPlaylist && playback.isHost && !playback.sharingBlocked) {
                     val isJoinable = playback.visibility == SessionVisibility.JOINABLE
                     Surface(
                         color = if (isJoinable) {
