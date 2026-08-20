@@ -15,9 +15,15 @@ import com.cruxcoach.domain.board.BoardBrand
  * Compose/Android runtime. A path whose asset is absent decodes to null in
  * [BoardImageCache], degrading to a placements-only view (never a crash).
  */
-internal fun boardImageAssetPath(brand: BoardBrand, sizeId: Long): String =
-    if (brand == BoardBrand.KILTER) "board_images/board_${sizeId}.webp"
-    else "board_images/${brand.wireValue}/board_${sizeId}.webp"
+internal fun boardImageAssetPath(brand: BoardBrand, sizeId: Long): String = when {
+    brand == BoardBrand.KILTER -> "board_images/board_${sizeId}.webp"
+    brand == BoardBrand.QUANTUM -> when (sizeId) {
+        9201L, 9202L, 9203L -> "board_images/quantum/board_${sizeId}.png"
+        9204L, 9205L -> "board_images/quantum/board_${sizeId}.jpg"
+        else -> "board_images/quantum/board_${sizeId}.png"
+    }
+    else -> "board_images/${brand.wireValue}/board_${sizeId}.webp"
+}
 
 /**
  * Candidate background-image asset paths, most specific first.
@@ -35,9 +41,21 @@ internal fun boardImageCandidatePaths(
     layoutId: Long?,
 ): List<String> {
     val sizePath = boardImageAssetPath(brand, sizeId)
-    return if (layoutId != null && layoutId > 0L) {
+    return if (brand != BoardBrand.QUANTUM && layoutId != null && layoutId > 0L) {
         listOf(sizePath.removeSuffix(".webp") + "_$layoutId.webp", sizePath)
     } else {
         listOf(sizePath)
     }
 }
+
+/**
+ * eWalls 2.0.14 renders every Quantum image in a square 1000-unit viewport.
+ * Its recovered transforms are x*9.321401938851603 and
+ * (100-y)*9.29368029739777. Quantum coordinates are stored in CruxCoach in
+ * milli-units, so these bounds reproduce the same mapping in the shared
+ * board renderer without baking model-specific guesses into the UI.
+ */
+internal const val QUANTUM_IMAGE_EDGE_LEFT = 0f
+internal const val QUANTUM_IMAGE_EDGE_RIGHT = 107_280f
+internal const val QUANTUM_IMAGE_EDGE_BOTTOM = -7_600f
+internal const val QUANTUM_IMAGE_EDGE_TOP = 100_000f

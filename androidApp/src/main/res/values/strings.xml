@@ -2854,6 +2854,6 @@
     <string name="fips_mesh_text">Synchronising the local board state with nearby participants</string>
     <string name="ble_mesh_climb">On the board via mesh</string>
     <string name="board_selection_quantum_model_label">Quantum model</string>
-    <string name="board_selection_quantum_schematic_hint">The board is drawn schematically from its diode coordinates; no vendor artwork is included.</string>
+    <string name="board_selection_quantum_schematic_hint">The original board image for the selected Quantum model is included.</string>
     <string name="quantum_sync_failed_generic">The Quantum catalogue could not be refreshed. Cached data remains available.</string>
 </resources>

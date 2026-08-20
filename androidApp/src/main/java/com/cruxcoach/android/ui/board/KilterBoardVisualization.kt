@@ -187,22 +187,23 @@ internal fun KilterBoardVisualization(
         holds.associateBy { it.placementId }
     }
 
-    val edgeLeft = boardSize?.edgeLeft?.toFloat() ?: 0f
-    val edgeRight = boardSize?.edgeRight?.toFloat() ?: 144f
-    val edgeBottom = boardSize?.edgeBottom?.toFloat() ?: 0f
-    val edgeTop = boardSize?.edgeTop?.toFloat() ?: 156f
+    val brand = boardSize?.boardBrand ?: BoardBrand.KILTER
+    val isQuantum = brand == BoardBrand.QUANTUM
+    val edgeLeft = if (isQuantum) QUANTUM_IMAGE_EDGE_LEFT else boardSize?.edgeLeft?.toFloat() ?: 0f
+    val edgeRight = if (isQuantum) QUANTUM_IMAGE_EDGE_RIGHT else boardSize?.edgeRight?.toFloat() ?: 144f
+    val edgeBottom = if (isQuantum) QUANTUM_IMAGE_EDGE_BOTTOM else boardSize?.edgeBottom?.toFloat() ?: 0f
+    val edgeTop = if (isQuantum) QUANTUM_IMAGE_EDGE_TOP else boardSize?.edgeTop?.toFloat() ?: 156f
     val boardWidth = edgeRight - edgeLeft
     val boardHeight = edgeTop - edgeBottom
-    val aspectRatio = boardWidth / boardHeight
+    val aspectRatio = if (isQuantum) 1f else boardWidth / boardHeight
 
-    val brand = boardSize?.boardBrand ?: BoardBrand.KILTER
     val sizeId = boardSize?.id ?: 10L
     // Kilter's bundled set is enumerated; the other Aurora-family boards
     // attempt-and-fallback — the asset is present for listed sizes, and a miss
     // decodes to null (placements-only), never a crash or a blank lock-up.
     val hasBundledImage = when {
         brand == BoardBrand.KILTER -> sizeId in BUNDLED_BOARD_SIZES
-        brand.usesAuroraProtocol -> true
+        brand.usesAuroraProtocol || isQuantum -> true
         else -> false
     }
     // The active layout (from the size's set images) picks the layout-specific
