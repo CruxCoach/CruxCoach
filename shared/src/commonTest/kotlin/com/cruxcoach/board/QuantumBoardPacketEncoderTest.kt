@@ -128,7 +128,9 @@ class QuantumBoardPacketEncoderTest {
                 color.toByte(),
             ).toList()
         }
-        val frame = withCrc(body.toByteArray())
+        // Byte-identical shape emitted by BoardSimulator and consumed by
+        // eWalls 2.0.14 parseBroadcast: broadcasts do not carry command CRC.
+        val frame = body.toByteArray()
         assertEquals(frame.size, QuantumBoardBroadcastParser.expectedFrameSize(frame))
         val parsed = QuantumBoardBroadcastParser.parse(frame) as QuantumBroadcast.RouteList
         assertEquals(4, parsed.players.size)
@@ -138,14 +140,26 @@ class QuantumBoardPacketEncoderTest {
         assertEquals(listOf(30, 31, 32, 33), parsed.players.map { it.remainingSeconds })
     }
 
-    @Test fun `exception broadcasts are typed and corrupt crc fails closed`() {
-        val exception = withCrc(byteArrayOf(1, 0xc1.toByte(), 7))
+    @Test fun `exception broadcasts are typed and malformed shapes fail closed`() {
+        val exception = byteArrayOf(1, 0xc1.toByte(), 7)
         assertEquals(
             QuantumBroadcast.Exception(com.cruxcoach.domain.board.QuantumCommand.ACTIVATE_WALL, 7),
             QuantumBoardBroadcastParser.parse(exception),
         )
-        exception[exception.lastIndex] = (exception.last().toInt() xor 1).toByte()
-        assertEquals(null, QuantumBoardBroadcastParser.parse(exception))
+        assertEquals(null, QuantumBoardBroadcastParser.parse(exception + byteArrayOf(0)))
+        assertEquals(null, QuantumBoardBroadcastParser.parse(byteArrayOf(1, 0x47, 1, 0)))
+    }
+
+    @Test fun `empty route snapshot matches exact simulator vector`() {
+        val frame = byteArrayOf(1, 0x47, 0, 0)
+        assertEquals(4, QuantumBoardBroadcastParser.expectedFrameSize(frame))
+        assertEquals(
+            QuantumBroadcast.RouteList(
+                com.cruxcoach.domain.board.QuantumCommand.REQUEST_USER_ROUTE_LIST,
+                emptyList(),
+            ),
+            QuantumBoardBroadcastParser.parse(frame),
+        )
     }
 
     @Test fun `only Quantum opts into four independent layers`() {
@@ -157,8 +171,4 @@ class QuantumBoardPacketEncoderTest {
         }
     }
 
-    private fun withCrc(body: ByteArray): ByteArray {
-        val crc = QuantumBoardPacketEncoder.crc16Modbus(body)
-        return body + byteArrayOf((crc ushr 8).toByte(), crc.toByte())
-    }
 }

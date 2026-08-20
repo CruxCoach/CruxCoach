@@ -71,7 +71,14 @@ sealed interface QuantumBroadcast {
     }
 }
 
-/** Strict, side-effect-free decoder for eWalls 2.0.14 controller broadcasts. */
+/** Strict, side-effect-free decoder for eWalls 2.0.14 controller broadcasts.
+ *
+ * Commands written to fff2 carry CRC16/MODBUS. Broadcasts received through
+ * fff1/fff4 do not: eWalls' parseBroadcast contract uses their exact payload
+ * shape, and the controller/simulator response vectors end after the final
+ * player/reserved byte. Structural validation is therefore the integrity
+ * boundary on this receive-only channel.
+ */
 object QuantumBoardBroadcastParser {
     const val PLAYER_BYTES = 37
 
@@ -79,21 +86,21 @@ object QuantumBoardBroadcastParser {
     fun expectedFrameSize(bytes: ByteArray): Int? {
         if (bytes.size < 2 || bytes[0].toInt() and 0xff != 1) return null
         val rawCommand = bytes[1].toInt() and 0xff
-        if (rawCommand and 0x80 != 0) return 5
+        if (rawCommand and 0x80 != 0) return 3
         return when (rawCommand) {
             0x41, 0x44, 0x47 -> if (bytes.size >= 4) {
-                4 + (bytes[2].toInt() and 0xff) * PLAYER_BYTES + 2
+                4 + (bytes[2].toInt() and 0xff) * PLAYER_BYTES
             } else null
             0x43 -> 21
             0x45 -> 6
-            0x64 -> 5
+            0x64 -> 3
             else -> null
         }
     }
 
     fun parse(frame: ByteArray): QuantumBroadcast? {
         val expected = expectedFrameSize(frame) ?: return null
-        if (frame.size != expected || !hasValidCrc(frame)) return null
+        if (frame.size != expected) return null
         val rawCommand = frame[1].toInt() and 0xff
         if (rawCommand and 0x80 != 0) {
             val failed = QuantumCommand.entries.firstOrNull { it.byte == rawCommand and 0x7f }
@@ -127,12 +134,6 @@ object QuantumBoardBroadcastParser {
             )
             QuantumCommand.TURN_OFF_BY_ROUTE -> null
         }
-    }
-
-    private fun hasValidCrc(frame: ByteArray): Boolean {
-        val actual = ((frame[frame.lastIndex - 1].toInt() and 0xff) shl 8) or
-            (frame.last().toInt() and 0xff)
-        return QuantumBoardPacketEncoder.crc16Modbus(frame.copyOf(frame.size - 2)) == actual
     }
 
     private fun u16(bytes: ByteArray, offset: Int): Int =

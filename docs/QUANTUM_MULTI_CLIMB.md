@@ -31,7 +31,8 @@ UI can replace the colour on its selected slot. Protocol RGB is always the low
 ## Controller truth and failure handling
 
 `fff1` notifications are reassembled and decoded with strict device address,
-length, maximum-player and CRC checks. Responses to `ACTIVATE_WALL`,
+exact payload length and maximum-player checks. Unlike fff2 commands, the
+eWalls 2.0.14 fff1/fff4 broadcast contract carries no CRC. Responses to `ACTIVATE_WALL`,
 `BOARD_SWIPE` and `REQUEST_USER_ROUTE_LIST` carry zero to four 37-byte player
 records (route UUID, user UUID, remaining seconds, RGB). Controller exception
 codes 5–11 and 254 map to distinct UI errors.
