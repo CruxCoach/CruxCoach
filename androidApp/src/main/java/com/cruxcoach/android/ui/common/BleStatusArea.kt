@@ -75,7 +75,13 @@ fun BleStatusArea(
     currentClimbUuid: String? = null,
     onClimbTapped: ((uuid: String, angle: Int) -> Unit)? = null,
     onAddToQueue: (() -> Unit)? = null,
-    onRandomToQueue: (() -> Unit)? = null
+    onRandomToQueue: (() -> Unit)? = null,
+    /**
+     * Whether discovery alone may create this banner. The board browser keeps
+     * discovery in its BLE menu and reserves its pinned context slot for the
+     * Board-Playlist; other screens may still opt into the legacy shortcut.
+     */
+    showNearbyBoards: Boolean = true,
 ) {
     val bleShareManager = LocalBleShareManager.current
     val state by bleShareManager.uiState.collectAsStateWithLifecycle()
@@ -84,6 +90,7 @@ fun BleStatusArea(
     val joiningBoardCellId by meshViewModel.joiningBoardCellId.collectAsStateWithLifecycle()
     val meshJoinFailed by meshViewModel.joinFailed.collectAsStateWithLifecycle()
     val nearbyMeshes = meshState.nearbyMeshes.filterNot { it.currentMesh }
+    val visibleNearbyMeshes = if (showNearbyBoards) nearbyMeshes else emptyList()
     val joiningMeshName = joiningBoardCellId?.let { cellId ->
         meshState.nearbyMeshes.firstOrNull { it.joinableBoardCellId == cellId }?.boardName
             ?: stringResource(com.cruxcoach.android.R.string.fips_mesh_nearby_other)
@@ -104,6 +111,15 @@ fun BleStatusArea(
         if (currentClimbUuid == null) true
         else it.climbUuid != currentClimbUuid && it.source != OnBoardSource.LOCAL_ACTIVE
     }
+    // The browser's BLE menu already contains all discovery details. When its
+    // pinned shortcut is disabled, suppress the complete discovery summary —
+    // not just FIPS board counts — so an occupied-board or nearby-playlist
+    // count cannot recreate the same redundant banner through another field.
+    val visibleOnBoard = effectiveOnBoard.takeIf { showNearbyBoards }
+    val visibleState = if (showNearbyBoards) state else state.copy(
+        boardOccupiedCount = 0,
+        nearbySessions = emptyList(),
+    )
     // FEAT-044 §12: persistent in-app sharing status with one-tap stop —
     // visible on every screen while the board is shared.
     val relayManager = LocalCruxRelayManager.current
@@ -113,9 +129,9 @@ fun BleStatusArea(
     // not a second user-facing connection. It must never create another row or
     // keep an otherwise empty Nearby card visible. Relay failures still surface
     // below because they can explain a temporarily unavailable board.
-    val hasContent = effectiveOnBoard != null || state.boardOccupiedCount > 0 ||
+    val hasContent = visibleOnBoard != null || visibleState.boardOccupiedCount > 0 ||
         state.ownSession != null ||
-        nearbyMeshes.isNotEmpty() || joiningMeshName != null ||
+        visibleNearbyMeshes.isNotEmpty() || joiningMeshName != null ||
         meshState.cellId != null || meshJoinFailed
 
     // Terminal relay errors (BOARD_LOST, a failed start) land AFTER the
@@ -159,8 +175,8 @@ fun BleStatusArea(
 
     if (expanded) {
         BleStatusExpanded(
-            state = state,
-            effectiveOnBoard = effectiveOnBoard,
+            state = visibleState,
+            effectiveOnBoard = visibleOnBoard,
             onCollapse = { Log.d(TAG, "COLLAPSE"); expanded = false },
             onClimbTapped = onClimbTapped,
             onJoinSession = null,
@@ -168,19 +184,19 @@ fun BleStatusArea(
             onOpenQueueSheet = { showQueueSheet = true },
             activeMesh = meshState.takeIf { it.cellId != null },
             onLeaveMesh = meshViewModel::leave,
-            nearbyMeshes = nearbyMeshes,
+            nearbyMeshes = visibleNearbyMeshes,
             onJoinMesh = if (joiningBoardCellId == null) meshViewModel::join else null,
             joiningMeshName = joiningMeshName,
         )
     } else {
         BleStatusChip(
-            state = state,
-            effectiveOnBoard = effectiveOnBoard,
+            state = visibleState,
+            effectiveOnBoard = visibleOnBoard,
             onExpand = { Log.d(TAG, "EXPAND"); expanded = true },
             onAddToQueue = onAddToQueue,
             onRandomToQueue = onRandomToQueue,
             boardPlaylistActive = boardPlaylistActive,
-            nearbyMeshCount = nearbyMeshes.size,
+            nearbyMeshCount = visibleNearbyMeshes.size,
             joiningMeshName = joiningMeshName,
             // Membership, not transient advertisement metadata, decides
             // whether this is an active mesh. The fallback prevents the chip

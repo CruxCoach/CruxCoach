@@ -197,6 +197,30 @@ class BoardCellCoordinatorTest {
         assertFalse(replica.suspectControllerTransportLoss(board, "other", 20_001, 6_000))
     }
 
+    @Test fun `sole survivor recovers controller with zero direct peers`() = runTest {
+        val board = PhysicalBoardId("kilter:serial:two-members-zero-peers")
+        val (controller) = settled("controller", board, now = 100)
+        controller.joinMember(board, "pixel")
+        val pixel = BoardCellCoordinator("pixel", settleMs = 0, heartbeatTimeoutMs = 10_000)
+        pixel.restoreTrustedSnapshot(controller.snapshot(board)!!, 1_000)
+
+        // The coordinator deliberately receives no direct-peer topology. The
+        // canonical membership is sufficient after the authenticated
+        // controller edge has stayed down for the bounded grace period.
+        assertTrue(pixel.suspectControllerTransportLoss(board, "controller", 2_000, 2_000))
+        pixel.expireLocalDeadlines(3_999)
+        assertEquals(BoardCellAvailability.ACTIVE, pixel.snapshot(board)!!.availability)
+        pixel.expireLocalDeadlines(4_000)
+        assertEquals(BoardCellAvailability.FROZEN_NEEDS_CONTROLLER,
+            pixel.snapshot(board)!!.availability)
+
+        assertNotNull(pixel.recoverController(board, "exclusive-gatt-proof", 4_001))
+        val recovered = pixel.snapshot(board)!!
+        assertEquals("pixel", recovered.controllerId)
+        assertEquals(BoardCellAvailability.ACTIVE, recovered.availability)
+        assertEquals(setOf("pixel"), recovered.members)
+    }
+
     @Test fun `member is evicted only after three missed heartbeat windows`() = runTest {
         val board = PhysicalBoardId("moon:serial:member-liveness")
         val (controller, transport) = settled("controller", board, now = 100)

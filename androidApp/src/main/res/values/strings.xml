@@ -1302,6 +1302,10 @@
     <string name="board_playlist_add_climbs">Add climbs</string>
     <string name="board_playlist_open_player">Open the current climb</string>
     <string name="board_playlist_card_empty">Nothing on the list yet — add a climb</string>
+    <plurals name="board_playlist_climb_count">
+        <item quantity="one">%1$d climb</item>
+        <item quantity="other">%1$d climbs</item>
+    </plurals>
     <string name="board_playlist_add">Add</string>
     <string name="board_playlist_add_next">Add as next</string>
     <plurals name="board_playlist_already_queued">
@@ -2269,6 +2273,13 @@
     <string name="playlist_add_rest">Add rest</string>
     <string name="playlist_reorder">Reorder</string>
     <string name="playlist_play">Play</string>
+    <plurals name="playlist_add_count_to_board">
+        <item quantity="one">Add 1 climb to Board Playlist</item>
+        <item quantity="other">Add %1$d climbs to Board Playlist</item>
+    </plurals>
+    <string name="playlist_connect_board_to_add">Connect a board to add this list</string>
+    <string name="playlist_add_list_to_board">Add to Board Playlist</string>
+    <string name="playlist_board_preparing">Preparing Board Playlist…</string>
     <string name="playlist_move_up">Move up</string>
     <string name="playlist_move_down">Move down</string>
     <string name="playlist_empty_message">This training plan has no steps yet. Rebuild it from the list.</string>
@@ -2493,6 +2504,7 @@
     <string name="fips_mesh_connect_board_hint">Nearby CruxCoach boards appear automatically.</string>
     <string name="fips_mesh_connect_action">Connect a board</string>
     <string name="fips_mesh_own_active">Board connected</string>
+    <string name="fips_mesh_own_recovering">Restoring board connection…</string>
     <string name="fips_mesh_own_inactive">No board connected</string>
     <string name="fips_mesh_cell">Mesh ID</string>
     <string name="fips_mesh_members">People</string>
@@ -2895,6 +2907,7 @@
     <string name="fips_mesh_role">Your status</string>
     <string name="fips_mesh_role_controls">Controls board</string>
     <string name="fips_mesh_role_connected">Connected</string>
+    <string name="fips_mesh_role_recovering">Selecting a new controller…</string>
     <string name="fips_mesh_peer_controller_short">Board control</string>
     <string name="fips_mesh_peer_number">Participant %1$d</string>
     <string name="fips_mesh_text">Synchronising the local board state with nearby participants</string>

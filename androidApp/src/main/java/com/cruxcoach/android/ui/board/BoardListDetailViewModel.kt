@@ -3,6 +3,8 @@ package com.cruxcoach.android.ui.board
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.cruxcoach.android.boardcell.BoardCellAvailability
+import com.cruxcoach.android.boardcell.BoardCellManager
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.IntensityZoneManager
 import com.cruxcoach.android.data.SessionVisibility
@@ -20,8 +22,11 @@ import com.cruxcoach.data.repository.playbackStepsWithAutoRests
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -75,6 +80,7 @@ data class BoardListDetailState(
 )
 
 enum class PlaybackStartError { EMPTY, MULTIPLE_BOARDS }
+enum class BoardListPlaybackTarget { NONE, RECOVERING, ACTIVE }
 
 @HiltViewModel
 class BoardListDetailViewModel @Inject constructor(
@@ -84,6 +90,7 @@ class BoardListDetailViewModel @Inject constructor(
     private val userPreferences: UserPreferences,
     private val zoneManager: IntensityZoneManager,
     private val playback: com.cruxcoach.android.data.PlaylistPlaybackCoordinator,
+    private val boardCellManager: BoardCellManager,
     val climbNavState: com.cruxcoach.android.ui.navigation.ClimbNavigationState
 ) : ViewModel() {
 
@@ -91,6 +98,25 @@ class BoardListDetailViewModel @Inject constructor(
 
     private val _state = MutableStateFlow(BoardListDetailState(listId = listId))
     val state: StateFlow<BoardListDetailState> = _state.asStateFlow()
+    val boardPlaylistTarget = boardCellManager.snapshots.map { snapshot ->
+        when {
+            snapshot == null || boardCellManager.localNodeId() !in snapshot.members ->
+                BoardListPlaybackTarget.NONE
+            snapshot.availability == BoardCellAvailability.ACTIVE ->
+                BoardListPlaybackTarget.ACTIVE
+            else -> BoardListPlaybackTarget.RECOVERING
+        }
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5_000),
+        boardCellManager.snapshot()?.let { snapshot ->
+            when {
+                boardCellManager.localNodeId() !in snapshot.members -> BoardListPlaybackTarget.NONE
+                snapshot.availability == BoardCellAvailability.ACTIVE -> BoardListPlaybackTarget.ACTIVE
+                else -> BoardListPlaybackTarget.RECOVERING
+            }
+        } ?: BoardListPlaybackTarget.NONE,
+    )
 
     /** All resolved entries, board-agnostic and unfiltered. The displayed
      *  [BoardListDetailState.entries] is this narrowed by the active filters;

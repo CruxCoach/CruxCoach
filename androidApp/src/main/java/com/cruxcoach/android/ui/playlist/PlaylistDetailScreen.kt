@@ -23,6 +23,7 @@ import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.BluetoothConnected
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
@@ -75,13 +76,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.cruxcoach.android.boardcell.BoardCellPlatformPolicy
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ble.ConnectionState
+import com.cruxcoach.android.data.SessionVisibility
 import com.cruxcoach.android.ui.board.BleConnectionSheet
 import com.cruxcoach.android.ui.board.BleConnectionViewModel
 import com.cruxcoach.android.ui.common.BleStatusArea
 import com.cruxcoach.android.ui.common.RestTimerBannerSlot
-import com.cruxcoach.android.ui.common.SessionVisibilityDialog
 import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
 import com.cruxcoach.android.ui.navigation.ClimbNavigationSource
 import com.cruxcoach.android.ui.theme.DarkBackground
@@ -105,12 +107,12 @@ fun PlaylistDetailScreen(
     viewModel: PlaylistDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val boardPlaylistTarget by viewModel.boardPlaylistTarget.collectAsStateWithLifecycle()
     var menuExpanded by remember { mutableStateOf(false) }
     var showAddRestDialog by rememberSaveable { mutableStateOf(false) }
     var addRestAfterEntryId by rememberSaveable { mutableStateOf<Long?>(null) }
     var showResetConfirm by rememberSaveable { mutableStateOf(false) }
     var showClearConfirm by rememberSaveable { mutableStateOf(false) }
-    var showSessionVisibilityDialog by rememberSaveable { mutableStateOf(false) }
     var showBleSheet by rememberSaveable { mutableStateOf(false) }
 
     // A plan can be started without a board attached, and BleStatusArea below
@@ -177,22 +179,6 @@ fun PlaylistDetailScreen(
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-
-    if (showSessionVisibilityDialog) {
-        SessionVisibilityDialog(
-            onDismiss = { showSessionVisibilityDialog = false },
-            onSelect = { visibility ->
-                showSessionVisibilityDialog = false
-                requestNotificationPermissionIfNeeded()
-                // Starting a playlist should immediately reach for the last
-                // controller of the active board family. This is a direct
-                // GATT reconnect (no discovery/location gate); the player
-                // still exposes the picker if the remembered board is absent.
-                bleConnectionViewModel.reconnectRememberedBoard()
-                viewModel.play(queueTitle, visibility, onPlayed)
-            },
-        )
     }
 
     if (showBleSheet) {
@@ -409,22 +395,61 @@ fun PlaylistDetailScreen(
             }
         },
         floatingActionButton = {
-            val playable = state.entries.any { !it.isRest && it.climb != null }
-            if (playable) {
+            val playableCount = state.entries.count { !it.isRest && it.climb != null }
+            val meshCapable = BoardCellPlatformPolicy.meshAvailable(android.os.Build.VERSION.SDK_INT)
+            val boardActive = boardPlaylistTarget == BoardPlaylistTarget.ACTIVE
+            val boardRecovering = boardPlaylistTarget == BoardPlaylistTarget.RECOVERING ||
+                (meshCapable && isBleConnected && boardPlaylistTarget == BoardPlaylistTarget.NONE)
+            if (playableCount > 0) {
                 ExtendedFloatingActionButton(
-                    onClick = { showSessionVisibilityDialog = true },
+                    onClick = {
+                        when {
+                            boardActive -> viewModel.play(
+                                queueTitle, SessionVisibility.JOINABLE, onPlayed)
+                            boardRecovering -> Unit
+                            meshCapable -> showBleSheet = true
+                            else -> {
+                                requestNotificationPermissionIfNeeded()
+                                bleConnectionViewModel.reconnectRememberedBoard()
+                                viewModel.play(
+                                    queueTitle, SessionVisibility.LOCAL_ONLY, onPlayed)
+                            }
+                        }
+                    },
+                    modifier = Modifier.testTag("playlist_play_fab"),
                     containerColor = OrangeAccent,
+                    contentColor = DarkBackground,
+                    // A member in recovery must not accidentally create a
+                    // competing local queue while the Board Playlist returns.
+                    // The state changes back to Add automatically.
                     icon = {
-                        Icon(Icons.Default.PlayArrow, contentDescription = null, tint = DarkBackground)
+                        Icon(
+                            when {
+                                boardActive -> Icons.Default.Add
+                                boardRecovering -> Icons.Default.HourglassBottom
+                                meshCapable -> Icons.Default.Bluetooth
+                                else -> Icons.Default.PlayArrow
+                            },
+                            contentDescription = null,
+                            tint = DarkBackground,
+                        )
                     },
                     text = {
                         Text(
-                            stringResource(R.string.playlist_play),
+                            when {
+                                boardActive -> androidx.compose.ui.res.pluralStringResource(
+                                    R.plurals.playlist_add_count_to_board,
+                                    playableCount,
+                                    playableCount,
+                                )
+                                boardRecovering -> stringResource(R.string.playlist_board_preparing)
+                                meshCapable -> stringResource(R.string.playlist_connect_board_to_add)
+                                else -> stringResource(R.string.playlist_play)
+                            },
                             color = DarkBackground,
                             fontWeight = FontWeight.Bold,
                         )
                     },
-                    modifier = Modifier.testTag("playlist_play_fab"),
                 )
             }
         },

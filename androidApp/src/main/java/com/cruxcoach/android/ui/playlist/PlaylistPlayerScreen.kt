@@ -1049,17 +1049,19 @@ private fun PlayerControls(
         // "The wall is not showing this" covers both kinds of playlist: the
         // shared list sets it whenever the selection is not the confirmed
         // climb, and the explicit send mode sets it on a private one.
-        val wants = playback.awaitingExplicitSend || playback.pendingProjection != null
         FilledIconButton(
             onClick = withHaptic(onLamp),
             enabled = playback.currentClimb != null && (
                 playback.isCanonicalPlaylist || playback.isParticipant ||
                     QueueDeliveryPolicy.canSend(playback.isHost, playback.boardConnected)
                 ),
-            colors = if (wants) IconButtonDefaults.filledIconButtonColors(
+            // Successful projection never disables a resend. The lamp is an
+            // action, not a status light, so it stays visually active while a
+            // climb can be sent and only greys out when sending is impossible.
+            colors = IconButtonDefaults.filledIconButtonColors(
                 containerColor = OrangeAccent,
                 contentColor = DarkBackground,
-            ) else IconButtonDefaults.filledTonalIconButtonColors(),
+            ),
             modifier = Modifier.size(64.dp).testTag("player_lamp"),
         ) {
             Icon(

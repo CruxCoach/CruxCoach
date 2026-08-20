@@ -2,12 +2,10 @@ package com.cruxcoach.android.ui.board
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -37,19 +35,17 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
-import com.cruxcoach.android.boardcell.BoardPlaylistProjectionPendingReason
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.SuccessGreen
 
 /**
  * The way into the board's shared list from the browser.
  *
- * Deliberately part of what scrolls rather than pinned above it. A board list
- * is something you go to, glance at and come back from — not a permanent strip
- * competing with the climbs you came to the browser to look through. The
- * pinned version of this carried its own transport controls, which is how the
- * wall ended up with two places that could light it; this card has exactly one
- * job, which is to open the list.
+ * Pinned directly below the browser chrome while the climb results scroll.
+ * This is the connected board's primary context, so it replaces the generic
+ * Nearby row instead of competing with it. The whole surface has exactly one
+ * action: open the Board-Playlist in one tap. Board transport controls remain
+ * on the playlist itself, so pinning this never creates a second lamp.
  *
  * It renders nothing at all when this device is not on a board, so the browser
  * gains no empty furniture for a feature that is not in play.
@@ -64,6 +60,19 @@ fun BoardPlaylistBrowserCard(
     if (!state.available) return
 
     val current = state.rows.getOrNull(state.currentIndex)
+    val boardLabel = state.boardName ?: stringResource(R.string.fips_mesh_own_active)
+    val peopleLabel = state.memberCount.takeIf { it > 0 }?.let { count ->
+        pluralStringResource(R.plurals.board_people_count, count, count)
+    }
+    val climbCountLabel = state.rows.size.takeIf { it > 0 }?.let { count ->
+        pluralStringResource(R.plurals.board_playlist_climb_count, count, count)
+    }
+    val statusTint = when {
+        state.pendingProjection != null -> MaterialTheme.colorScheme.error
+        !state.synchronized || state.pendingCommands > 0 -> OrangeAccent
+        state.selectionOnBoard -> SuccessGreen
+        else -> OrangeAccent
+    }
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -82,43 +91,81 @@ fun BoardPlaylistBrowserCard(
                         ),
                     ),
                 )
-                .padding(start = 14.dp, end = 8.dp, top = 12.dp, bottom = 12.dp),
+                .padding(start = 12.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Surface(
-                    color = OrangeAccent.copy(alpha = 0.22f),
+                    color = statusTint.copy(alpha = 0.16f),
                     shape = RoundedCornerShape(10.dp),
                 ) {
                     Icon(
                         Icons.AutoMirrored.Filled.QueueMusic,
                         contentDescription = null,
-                        tint = OrangeAccent,
-                        modifier = Modifier.padding(6.dp).size(22.dp),
+                        tint = statusTint,
+                        modifier = Modifier.padding(6.dp).size(21.dp),
                     )
                 }
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(
-                        stringResource(R.string.board_playlist_title),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    val subtitle = buildString {
-                        state.boardName?.let { append(it) }
-                        if (state.memberCount > 0) {
-                            if (isNotEmpty()) append(" · ")
-                            append(pluralStringResource(R.plurals.board_people_count,
-                                state.memberCount, state.memberCount))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            boardLabel,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        peopleLabel?.let {
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                it,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
                         }
                     }
-                    if (subtitle.isNotEmpty()) {
+                    Spacer(Modifier.size(2.dp))
+                    if (current == null) {
                         Text(
-                            subtitle,
+                            buildString {
+                                append(stringResource(R.string.board_playlist_title))
+                                append(" · ")
+                                append(stringResource(R.string.board_playlist_card_empty))
+                            },
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
+                    } else {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                buildString {
+                                    append(stringResource(R.string.board_playlist_title))
+                                    climbCountLabel?.let { append(" · "); append(it) }
+                                    append(" · ")
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                            )
+                            Text(
+                                current.name,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "${state.currentIndex + 1}/${state.rows.size}",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = OrangeAccent,
+                            )
+                        }
                     }
                 }
                 Icon(
@@ -128,75 +175,12 @@ fun BoardPlaylistBrowserCard(
                     modifier = Modifier.size(22.dp),
                 )
             }
-            Spacer(Modifier.height(8.dp))
-            if (current == null) {
-                Text(
-                    stringResource(R.string.board_playlist_card_empty),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            } else {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        "${state.currentIndex + 1}/${state.rows.size}",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = OrangeAccent,
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        buildString {
-                            append(current.name)
-                            current.gradeLabel?.let { append("  $it") }
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-                Spacer(Modifier.height(4.dp))
+            if (!state.synchronized || state.pendingCommands > 0) {
+                Spacer(Modifier.size(6.dp))
                 LinearProgressIndicator(
-                    progress = { (state.currentIndex + 1f) / state.rows.size },
                     color = OrangeAccent,
                     trackColor = OrangeAccent.copy(alpha = 0.15f),
-                    modifier = Modifier.fillMaxWidth().height(3.dp),
-                )
-                Spacer(Modifier.height(6.dp))
-                // The same honest split the list makes: what the group is on,
-                // and whether that is what the wall is showing. Only stated
-                // here — the lamp that closes the gap lives on the list and in
-                // the player, and nowhere else.
-                val pending = state.pendingProjection
-                val (status, tint) = when {
-                    pending != null -> stringResource(
-                        when (pending.reason) {
-                            BoardPlaylistProjectionPendingReason.BOARD_WRITE_FAILED ->
-                                R.string.board_playlist_send_write_failed
-                            BoardPlaylistProjectionPendingReason.CLIMB_UNAVAILABLE ->
-                                R.string.board_playlist_send_unavailable
-                        },
-                    ) to MaterialTheme.colorScheme.error
-                    state.selectionOnBoard ->
-                        stringResource(R.string.board_playlist_on_board) to SuccessGreen
-                    state.boardClimbUnknown ->
-                        stringResource(R.string.board_playlist_board_unknown) to
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                    else -> stringResource(R.string.board_playlist_not_on_board) to
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                }
-                Text(status, style = MaterialTheme.typography.labelSmall, color = tint)
-            }
-            state.restore?.let { offer ->
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    pluralStringResource(R.plurals.board_playlist_restore_title,
-                        offer.entryCount, offer.entryCount) + " · " +
-                        stringResource(R.string.board_playlist_restore_remaining,
-                            offer.secondsRemaining),
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = OrangeAccent,
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
         }

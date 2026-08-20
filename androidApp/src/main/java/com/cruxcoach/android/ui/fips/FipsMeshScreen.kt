@@ -148,22 +148,27 @@ private fun CurrentMeshCard(
     onJoinModeChange: (BoardJoinMode) -> Unit,
     onConnect: () -> Unit,
 ) {
-    val active = state.cellId != null
+    val hasMembership = state.cellId != null && state.localIsMember
+    val active = hasMembership && state.availability == "ACTIVE"
+    val recovering = hasMembership && !active
     MeshCard(container = if (active) SuccessGreen.copy(alpha = 0.10f) else InfoBlue.copy(alpha = 0.08f)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Hub, contentDescription = null, tint = if (active) SuccessGreen else InfoBlue)
             Spacer(Modifier.width(10.dp))
             Column {
                 Text(
-                    if (active) stringResource(R.string.fips_mesh_own_active)
-                    else stringResource(R.string.fips_mesh_own_inactive),
+                    when {
+                        active -> stringResource(R.string.fips_mesh_own_active)
+                        recovering -> stringResource(R.string.fips_mesh_own_recovering)
+                        else -> stringResource(R.string.fips_mesh_own_inactive)
+                    },
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                 )
                 state.boardName?.let { Text("$it · ${state.boardBrand.orEmpty()}") }
             }
         }
-        if (state.cellId != null) {
+        if (hasMembership) {
             Detail(stringResource(R.string.fips_mesh_members), state.memberCount.toString())
             Detail(
                 stringResource(R.string.fips_mesh_direct_peers),
@@ -175,8 +180,11 @@ private fun CurrentMeshCard(
             Detail(
                 stringResource(R.string.fips_mesh_role),
                 stringResource(
-                    if (state.localNpub == state.controllerNpub) R.string.fips_mesh_role_controls
-                    else R.string.fips_mesh_role_connected,
+                    when {
+                        recovering -> R.string.fips_mesh_role_recovering
+                        state.localNpub == state.controllerNpub -> R.string.fips_mesh_role_controls
+                        else -> R.string.fips_mesh_role_connected
+                    },
                 ),
             )
             Text(
@@ -192,11 +200,13 @@ private fun CurrentMeshCard(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(
                     selected = state.joinMode == BoardJoinMode.OPEN,
+                    enabled = active,
                     onClick = { onJoinModeChange(BoardJoinMode.OPEN) },
                     label = { Text(stringResource(R.string.settings_board_join_open)) },
                 )
                 FilterChip(
                     selected = state.joinMode == BoardJoinMode.APPROVAL_REQUIRED,
+                    enabled = active,
                     onClick = { onJoinModeChange(BoardJoinMode.APPROVAL_REQUIRED) },
                     label = { Text(stringResource(R.string.settings_board_join_approval)) },
                 )

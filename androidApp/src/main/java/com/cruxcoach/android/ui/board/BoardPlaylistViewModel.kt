@@ -23,7 +23,6 @@ import com.cruxcoach.android.data.SessionGattBridge
 import com.cruxcoach.android.data.SessionQueueManager
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.fips.FipsMeshRuntime
-import com.cruxcoach.android.ui.navigation.ClimbNavigationState
 import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.PersonalBoardRepository
@@ -113,7 +112,6 @@ class BoardPlaylistViewModel @Inject constructor(
     private val userPreferences: UserPreferences,
     private val bleConnection: BoardBleConnection,
     private val fipsMeshRuntime: FipsMeshRuntime,
-    val climbNavState: ClimbNavigationState,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(BoardPlaylistUiState())

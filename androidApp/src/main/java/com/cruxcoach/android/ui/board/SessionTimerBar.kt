@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -22,7 +23,8 @@ import com.cruxcoach.android.ui.theme.*
 @Composable
 internal fun SessionTimerBar(
     onStart: () -> Unit,
-    onRandomClimb: () -> Unit = {}
+    onRandomClimb: () -> Unit = {},
+    connectBoard: Boolean = false,
 ) {
     Row(
         modifier = Modifier
@@ -43,14 +45,17 @@ internal fun SessionTimerBar(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
-                    Icons.Default.Timer,
+                    if (connectBoard) Icons.Default.Bluetooth else Icons.Default.Timer,
                     contentDescription = null,
                     modifier = Modifier.size(20.dp),
                     tint = OrangeAccent
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    stringResource(R.string.board_session_label),
+                    stringResource(
+                        if (connectBoard) R.string.playlist_connect_board_confirm
+                        else R.string.board_session_label,
+                    ),
                     color = OrangeAccent,
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold

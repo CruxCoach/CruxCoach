@@ -179,6 +179,8 @@ class BoardCellManager @Inject constructor(
     @Volatile private var handoverLifecycle: BoardCellHandoverLifecycle? = null
     private val handledHandoverPhase = ConcurrentHashMap.newKeySet<String>()
     private var recoveryJob: kotlinx.coroutines.Job? = null
+    private var controllerLossRecoveryJob: kotlinx.coroutines.Job? = null
+    private var controllerLossRecoveryKey: String? = null
     private var recoveryAttempt = 0
     private val sponsoredAt = ConcurrentHashMap<String, Long>()
     private val pendingProjectionRequests = ConcurrentHashMap<String, PendingProjectionRequest>()
@@ -329,6 +331,11 @@ class BoardCellManager @Inject constructor(
                         "controller" to FipsDebugLog.id(loss.peerNpub),
                         "reason" to loss.reason,
                         "graceMs" to CONTROLLER_TRANSPORT_LOSS_GRACE_MS,
+                    )
+                    scheduleControllerRecoveryAfterTransportLoss(
+                        board = board,
+                        cellId = snapshot.cellId,
+                        controllerId = loss.peerNpub,
                     )
                 }
             }
@@ -1279,6 +1286,12 @@ class BoardCellManager @Inject constructor(
         snapshot: BoardCellSnapshot,
         preserveRejoinHint: Boolean = false,
     ) {
+        controllerLossRecoveryJob?.cancel()
+        controllerLossRecoveryJob = null
+        controllerLossRecoveryKey = null
+        recoveryJob?.cancel()
+        recoveryJob = null
+        recoveryAttempt = 0
         boardRealmAvailable.set(false)
         // Set the fence before forgetting. An already queued snapshot can be
         // delivered between forgetLocalReplica() and the realm unbind; without
@@ -1977,6 +1990,33 @@ class BoardCellManager @Inject constructor(
         )
     }
 
+    /**
+     * A closed authenticated controller edge is a stronger signal than a
+     * merely missed heartbeat. Wake recovery at the exact end of its short
+     * grace instead of relying on the next periodic maintenance tick. Any
+     * authenticated controller traffic received in the meantime renews the
+     * canonical observation, so the revalidation below becomes a no-op.
+     */
+    private fun scheduleControllerRecoveryAfterTransportLoss(
+        board: PhysicalBoardId,
+        cellId: BoardCellId,
+        controllerId: String,
+    ) {
+        val key = "${cellId.value}:$controllerId"
+        if (controllerLossRecoveryJob?.isActive == true && controllerLossRecoveryKey == key) return
+        controllerLossRecoveryJob?.cancel()
+        controllerLossRecoveryKey = key
+        controllerLossRecoveryJob = scope.launch {
+            delay(CONTROLLER_TRANSPORT_LOSS_GRACE_MS)
+            val current = snapshot()
+            if (current?.physicalBoardId != board || current.cellId != cellId ||
+                current.controllerId != controllerId || activeNodeId !in current.members) return@launch
+            coordinator.expireLocalDeadlines(monotonicNow())
+            refreshSelected()
+            processControllerRecovery()
+        }
+    }
+
     private fun processControllerRecovery() {
         val snapshot = snapshot()
         if (snapshot == null || !BoardCellRecoveryFence.mayAttemptRecovery(snapshot, activeNodeId,
@@ -2190,7 +2230,10 @@ class BoardCellManager @Inject constructor(
         // physical-board fence and deterministic candidate staggering, so a
         // brief routed gap does not let every member write the wall at once.
         private const val CONTROLLER_LEASE_TIMEOUT_MS = 10_000L
-        private const val CONTROLLER_TRANSPORT_LOSS_GRACE_MS = 6_000L
+        // The authenticated edge has already closed. Two seconds still allow
+        // a routed controller heartbeat to cancel suspicion, while avoiding
+        // the former 6-8 second limbo before election even started.
+        private const val CONTROLLER_TRANSPORT_LOSS_GRACE_MS = 2_000L
         private const val MEMBER_LIVENESS_TIMEOUT_MS = 60_000L
         private const val PEER_DIAGNOSTICS_CHECKPOINT_MS = 10_000L
 

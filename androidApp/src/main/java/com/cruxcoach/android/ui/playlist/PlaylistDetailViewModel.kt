@@ -3,6 +3,8 @@ package com.cruxcoach.android.ui.playlist
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.cruxcoach.android.boardcell.BoardCellAvailability
+import com.cruxcoach.android.boardcell.BoardCellManager
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.SessionVisibility
 import com.cruxcoach.android.data.UserPreferences
@@ -19,7 +21,10 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
 
@@ -55,6 +60,12 @@ data class PlaylistDetailState(
     val playbackBoardError: Boolean = false,
 )
 
+enum class BoardPlaylistTarget {
+    NONE,
+    RECOVERING,
+    ACTIVE,
+}
+
 /** Pure plan edit used by targeted pause insertion and its regression tests. */
 internal fun playbackStepsWithRestInsertedAfter(
     entries: List<PlaylistUiEntry>,
@@ -84,12 +95,34 @@ class PlaylistDetailViewModel @Inject constructor(
     private val userPreferences: UserPreferences,
     val climbNavState: com.cruxcoach.android.ui.navigation.ClimbNavigationState,
     private val playback: com.cruxcoach.android.data.PlaylistPlaybackCoordinator,
+    private val boardCellManager: BoardCellManager,
 ) : ViewModel() {
 
     private val listId: Long = savedStateHandle.get<String>("listId")?.toLongOrNull() ?: 0L
 
     private val _state = MutableStateFlow(PlaylistDetailState(listId = listId))
     val state = _state.asStateFlow()
+
+    /** Which single live target this saved list can be added to right now. */
+    val boardPlaylistTarget = boardCellManager.snapshots.map { snapshot ->
+        when {
+            snapshot == null || boardCellManager.localNodeId() !in snapshot.members ->
+                BoardPlaylistTarget.NONE
+            snapshot.availability == BoardCellAvailability.ACTIVE ->
+                BoardPlaylistTarget.ACTIVE
+            else -> BoardPlaylistTarget.RECOVERING
+        }
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5_000),
+        boardCellManager.snapshot()?.let { snapshot ->
+            when {
+                boardCellManager.localNodeId() !in snapshot.members -> BoardPlaylistTarget.NONE
+                snapshot.availability == BoardCellAvailability.ACTIVE -> BoardPlaylistTarget.ACTIVE
+                else -> BoardPlaylistTarget.RECOVERING
+            }
+        } ?: BoardPlaylistTarget.NONE,
+    )
 
     init {
         refresh()

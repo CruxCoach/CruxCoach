@@ -109,6 +109,8 @@ fun BoardBrowserScreen(
     val queueManager = LocalSessionQueueManager.current
     val playbackCoordinator = LocalPlaylistPlayback.current
     val queueState by queueManager.state.collectAsStateWithLifecycle()
+    val meshCapable = com.cruxcoach.android.boardcell.BoardCellPlatformPolicy.meshAvailable(
+        android.os.Build.VERSION.SDK_INT)
     var lastEndedSession by remember { mutableStateOf<com.cruxcoach.data.repository.Board_sessions?>(null) }
     val queueLabel = stringResource(R.string.board_queue_title)
 
@@ -447,22 +449,42 @@ fun BoardBrowserScreen(
             }
         } else {
             // 2-button action bar (Playlist + Zufall) — only visible when no playlist is running
-            if (!isSessionActive && !queueState.isActive && !queueState.isConnecting) {
+            if (!isSessionActive && !queueState.isActive && !queueState.isConnecting &&
+                !boardPlaylistState.available) {
                 SessionTimerBar(
-                    onStart = { showSessionVisibilityDialog = true },
-                    onRandomClimb = { viewModel.pickRandomClimb() }
+                    onStart = {
+                        if (meshCapable) showBleSheet = true
+                        else showSessionVisibilityDialog = true
+                    },
+                    onRandomClimb = { viewModel.pickRandomClimb() },
+                    connectBoard = meshCapable,
                 )
             }
 
-            // Unified BLE status area — nearby climbs, sessions, board status
-            BleStatusArea(
-                onClimbTapped = { uuid, angle ->
-                    viewModel.climbNavState.climbUuids = listOf(uuid)
-                    viewModel.climbNavState.angle = angle
-                    onNavigateToClimb(uuid, angle)
-                },
-                onRandomToQueue = { viewModel.addRandomClimbToQueue() }
-            )
+            // One persistent board context, never two competing banners. Once
+            // this device is on a board, its shared list is the useful thing:
+            // it replaces Nearby, stays above the scrolling results and opens
+            // directly with one tap. Discovery and connection details remain
+            // available from the BLE icon in the app bar.
+            if (boardPlaylistState.available) {
+                BoardPlaylistBrowserCard(
+                    onOpen = onNavigateToBoardPlaylist,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    viewModel = boardPlaylistViewModel,
+                )
+            } else {
+                BleStatusArea(
+                    onClimbTapped = { uuid, angle ->
+                        viewModel.climbNavState.climbUuids = listOf(uuid)
+                        viewModel.climbNavState.angle = angle
+                        onNavigateToClimb(uuid, angle)
+                    },
+                    onRandomToQueue = { viewModel.addRandomClimbToQueue() },
+                    // A count such as "1 board nearby" has no job here: the
+                    // BLE icon already opens the complete discovery menu.
+                    showNearbyBoards = false,
+                )
+            }
 
             // Connecting indicator while GATT connection is being established
             if (queueState.isConnecting) {
@@ -723,17 +745,6 @@ fun BoardBrowserScreen(
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // Scrolls away with the climbs rather than sitting on top
-                    // of them: the board's list is somewhere you go, not a
-                    // permanent strip over the thing you came here to browse.
-                    if (boardPlaylistState.available) {
-                        item(key = "board_playlist_card", contentType = "board_playlist") {
-                            BoardPlaylistBrowserCard(
-                                onOpen = onNavigateToBoardPlaylist,
-                                viewModel = boardPlaylistViewModel,
-                            )
-                        }
-                    }
                     items(
                         state.climbs,
                         key = { it.uuid },

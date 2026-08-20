@@ -11,7 +11,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.HourglassBottom
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
@@ -30,11 +33,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.cruxcoach.android.ui.common.RestTimerBannerSlot
-import com.cruxcoach.android.ui.common.SessionVisibilityDialog
 import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
 import com.cruxcoach.android.ui.common.BleStatusArea
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
+import com.cruxcoach.android.boardcell.BoardCellPlatformPolicy
+import com.cruxcoach.android.ble.ConnectionState
+import com.cruxcoach.android.data.SessionVisibility
 import com.cruxcoach.android.ui.theme.*
 import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.data.repository.Climb_list_entries
@@ -54,11 +59,19 @@ fun BoardListDetailScreen(
     viewModel: BoardListDetailViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val boardPlaylistTarget by viewModel.boardPlaylistTarget.collectAsStateWithLifecycle()
     val bleConnectionViewModel: BleConnectionViewModel = hiltViewModel()
+    val bleConnectionState by bleConnectionViewModel.state.collectAsStateWithLifecycle()
     var menuExpanded by remember { mutableStateOf(false) }
-    var showSessionVisibilityDialog by rememberSaveable { mutableStateOf(false) }
+    var showBleSheet by rememberSaveable { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
     val queueTitle = stringResource(R.string.board_queue_title)
+    val meshCapable = BoardCellPlatformPolicy.meshAvailable(android.os.Build.VERSION.SDK_INT)
+    val boardActive = boardPlaylistTarget == BoardListPlaybackTarget.ACTIVE
+    val boardRecovering = boardPlaylistTarget == BoardListPlaybackTarget.RECOVERING ||
+        (meshCapable && bleConnectionState.connectionState in setOf(
+            ConnectionState.CONNECTED, ConnectionState.SENDING) &&
+            boardPlaylistTarget == BoardListPlaybackTarget.NONE)
     val notificationPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
     ) { _ -> }
@@ -87,23 +100,23 @@ fun BoardListDetailScreen(
             },
             onStart = {
                 viewModel.dismissPlaybackOptions()
-                showSessionVisibilityDialog = true
+                requestNotificationPermissionIfNeeded()
+                if (boardActive) {
+                    viewModel.startPlayback(queueTitle, SessionVisibility.JOINABLE, onPlayed)
+                } else if (!meshCapable) {
+                    bleConnectionViewModel.reconnectRememberedBoard()
+                    viewModel.startPlayback(queueTitle, SessionVisibility.LOCAL_ONLY, onPlayed)
+                }
             },
+            addsToBoardPlaylist = boardActive,
         )
     }
 
-    if (showSessionVisibilityDialog) {
-        SessionVisibilityDialog(
-            onDismiss = { showSessionVisibilityDialog = false },
-            onSelect = { visibility ->
-                showSessionVisibilityDialog = false
-                requestNotificationPermissionIfNeeded()
-                // Lists and generated plans share the same playlist player:
-                // always try the remembered physical controller before the
-                // queue changes this screen into session-host mode.
-                bleConnectionViewModel.reconnectRememberedBoard()
-                viewModel.startPlayback(queueTitle, visibility, onPlayed)
-            },
+    if (showBleSheet) {
+        BleConnectionSheet(
+            onDismiss = { showBleSheet = false },
+            onNavigateToClimb = onNavigateToClimb,
+            viewModel = bleConnectionViewModel,
         )
     }
 
@@ -201,14 +214,36 @@ fun BoardListDetailScreen(
         floatingActionButton = {
             if (!state.isIgnored && state.totalCount > 0) {
                 ExtendedFloatingActionButton(
-                    onClick = viewModel::showPlaybackOptions,
+                    onClick = {
+                        when {
+                            boardRecovering -> Unit
+                            boardActive || !meshCapable -> viewModel.showPlaybackOptions()
+                            else -> showBleSheet = true
+                        }
+                    },
                     containerColor = OrangeAccent,
                     icon = {
-                        Icon(Icons.Default.PlayArrow, contentDescription = null, tint = DarkBackground)
+                        Icon(
+                            when {
+                                boardActive -> Icons.Default.Add
+                                boardRecovering -> Icons.Default.HourglassBottom
+                                meshCapable -> Icons.Default.Bluetooth
+                                else -> Icons.Default.PlayArrow
+                            },
+                            contentDescription = null,
+                            tint = DarkBackground,
+                        )
                     },
                     text = {
                         Text(
-                            stringResource(R.string.list_playback_start),
+                            stringResource(
+                                when {
+                                    boardActive -> R.string.playlist_add_list_to_board
+                                    boardRecovering -> R.string.playlist_board_preparing
+                                    meshCapable -> R.string.playlist_connect_board_to_add
+                                    else -> R.string.playlist_play
+                                }
+                            ),
                             color = DarkBackground,
                             fontWeight = FontWeight.Bold,
                         )
@@ -338,6 +373,7 @@ private fun PlaybackOptionsSheet(
     onRestChange: (Long) -> Unit,
     onEditPlan: () -> Unit,
     onStart: () -> Unit,
+    addsToBoardPlaylist: Boolean,
 ) {
     val visibleBoardCount = state.entries
         .map { it.climb.boardBrand to it.climb.layoutId }
@@ -506,10 +542,17 @@ private fun PlaybackOptionsSheet(
                         color = DarkBackground,
                     )
                 } else {
-                    Icon(Icons.Default.PlayArrow, contentDescription = null, tint = DarkBackground)
+                    Icon(
+                        if (addsToBoardPlaylist) Icons.Default.Add else Icons.Default.PlayArrow,
+                        contentDescription = null,
+                        tint = DarkBackground,
+                    )
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        stringResource(R.string.list_playback_start),
+                        stringResource(
+                            if (addsToBoardPlaylist) R.string.playlist_add_list_to_board
+                            else R.string.list_playback_start,
+                        ),
                         color = DarkBackground,
                         fontWeight = FontWeight.Bold,
                     )

@@ -85,7 +85,6 @@ import com.cruxcoach.android.boardcell.BoardPlaylistEditKind
 import com.cruxcoach.android.boardcell.BoardPlaylistProjectionPendingReason
 import com.cruxcoach.android.data.BoardPlaylistLogMark
 import com.cruxcoach.android.data.PlaylistCommandFeedbackKind
-import com.cruxcoach.android.ui.navigation.ClimbNavigationSource
 import com.cruxcoach.android.ui.theme.DarkBackground
 import com.cruxcoach.android.ui.theme.ErrorRed
 import com.cruxcoach.android.ui.theme.OrangeAccent
@@ -135,7 +134,6 @@ internal fun boardPlaylistAnchorForOrder(
 @Composable
 fun BoardPlaylistScreen(
     onNavigateBack: () -> Unit,
-    onNavigateToClimb: (climbUuid: String, angle: Int) -> Unit,
     onNavigateToBrowser: () -> Unit,
     onOpenPlayer: () -> Unit,
     viewModel: BoardPlaylistViewModel = hiltViewModel(),
@@ -333,14 +331,6 @@ fun BoardPlaylistScreen(
                     onRemove = viewModel::remove,
                     onRepeat = viewModel::repeatAfter,
                     onMove = viewModel::move,
-                    onOpenClimb = { row ->
-                        viewModel.climbNavState.climbUuids =
-                            state.rows.filter { it.angle == row.angle }
-                                .map { it.climbUuid.lowercase() }.distinct()
-                        viewModel.climbNavState.angle = row.angle
-                        viewModel.climbNavState.source = ClimbNavigationSource.QUEUE
-                        onNavigateToClimb(row.climbUuid, row.angle)
-                    },
                 )
             }
             state.undo?.let { edit ->
@@ -554,18 +544,18 @@ private fun BoardPlaylistTransport(
                 Icon(Icons.Default.SkipPrevious, stringResource(R.string.cd_previous),
                     modifier = Modifier.size(36.dp))
             }
-            // Emphasised while the selection is not what the wall is showing:
-            // that is exactly when somebody wants it, and a quiet lamp there is
-            // a control nobody finds.
-            val wants = !state.isEmpty &&
-                (!state.selectionOnBoard || state.pendingProjection != null)
+            // A lit wall is not a disabled action: pressing the lamp again is
+            // the explicit resend for a board that was changed or missed the
+            // previous write. Keep the control visibly active whenever there
+            // is a selected climb instead of turning it into a grey status
+            // indicator after the first successful send.
             FilledIconButton(
                 onClick = withHaptic(onLamp),
                 enabled = !state.isEmpty,
-                colors = if (wants) IconButtonDefaults.filledIconButtonColors(
+                colors = IconButtonDefaults.filledIconButtonColors(
                     containerColor = OrangeAccent,
                     contentColor = DarkBackground,
-                ) else IconButtonDefaults.filledTonalIconButtonColors(),
+                ),
                 modifier = Modifier.size(64.dp).testTag("board_playlist_lamp"),
             ) {
                 Icon(Icons.Default.Lightbulb, stringResource(R.string.board_playlist_lamp),
@@ -601,7 +591,6 @@ private fun BoardPlaylistRows(
     onRemove: (String) -> Unit,
     onRepeat: (String) -> Unit,
     onMove: (String, BoardPlaylistAnchor) -> Unit,
-    onOpenClimb: (BoardPlaylistRow) -> Unit,
 ) {
     val listState = rememberLazyListState()
     val dragScope = rememberCoroutineScope()
@@ -698,7 +687,6 @@ private fun BoardPlaylistRows(
                 onSelect = { onSelect(row.entryId) },
                 onRemove = { onRemove(row.entryId) },
                 onRepeat = { onRepeat(row.entryId) },
-                onOpenClimb = { onOpenClimb(row) },
                 onMoveUp = moveUp,
                 onMoveDown = moveDown,
                 dragModifier = Modifier.pointerInput(
@@ -771,7 +759,6 @@ private fun BoardPlaylistRowCard(
     onSelect: () -> Unit,
     onRemove: () -> Unit,
     onRepeat: () -> Unit,
-    onOpenClimb: () -> Unit,
     onMoveUp: (() -> Unit)?,
     onMoveDown: (() -> Unit)?,
     dragModifier: Modifier,
@@ -781,7 +768,11 @@ private fun BoardPlaylistRowCard(
     // another go at. It is behind you, not gone.
     val dim = if (row.isPast && !row.isCurrent) 0.62f else 1f
     Card(
-        modifier = Modifier.fillMaxWidth().alpha(dim).testTag("board_playlist_row"),
+        modifier = Modifier
+            .fillMaxWidth()
+            .alpha(dim)
+            .clickable(onClick = onSelect)
+            .testTag("board_playlist_row"),
         colors = CardDefaults.cardColors(
             containerColor = if (row.isCurrent) OrangeAccent.copy(alpha = 0.15f)
             else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
@@ -820,7 +811,6 @@ private fun BoardPlaylistRowCard(
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .clickable { onOpenClimb() }
                     .padding(vertical = 8.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -865,19 +855,6 @@ private fun BoardPlaylistRowCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            }
-            if (!row.isCurrent) {
-                // A selection affordance, deliberately not a play triangle:
-                // choosing what the group is on and putting it on the wall are
-                // two decisions, and only the lamp makes the second one.
-                IconButton(onClick = onSelect, modifier = Modifier.size(48.dp)) {
-                    Icon(
-                        Icons.Default.RadioButtonUnchecked,
-                        contentDescription = stringResource(R.string.board_playlist_select),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
             }
             IconButton(onClick = onRepeat, modifier = Modifier.size(48.dp)) {
                 Icon(
