@@ -2864,4 +2864,10 @@
     <string name="fips_mesh_peer_number">Participant %1$d</string>
     <string name="fips_mesh_text">Synchronising the local board state with nearby participants</string>
     <string name="ble_mesh_climb">On the board via mesh</string>
+    <string name="settings_board_join_title">Board access</string>
+    <string name="settings_board_join_description">Default for newly started shared boards. You can change the current board in Board details.</string>
+    <string name="settings_board_join_open">Open</string>
+    <string name="settings_board_join_approval">Ask first</string>
+    <string name="fips_mesh_join_mode_title">Board access</string>
+    <string name="fips_mesh_join_mode_description">Applies to this board until the session ends. Any participant can change it.</string>
 </resources>

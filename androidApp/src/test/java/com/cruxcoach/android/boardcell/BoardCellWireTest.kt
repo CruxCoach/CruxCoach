@@ -51,6 +51,36 @@ class BoardCellWireTest {
         assertTrue(transport.receive("attacker", frame("remote", BoardCellWireMessage.DirectClaim(claim), id = "message-0002")) is BoardCellApplyResult.Rejected)
     }
 
+    @Test fun `member can request join mode change and controller can target welcome snapshot`() = runTest {
+        val link = Link("host", setOf("member"))
+        val transport = BoardCellMeshTransport(link)
+        val coordinator = BoardCellCoordinator("host", transport, settleMs = 0)
+        transport.attach(coordinator)
+        val board = PhysicalBoardId("board")
+        coordinator.beginClaim(board, BoardCellId("cell"), 1)
+        coordinator.settle(board, 1)
+        coordinator.joinMember(board, "member")
+        val snapshot = coordinator.snapshot(board)!!
+        transport.rememberSnapshot(snapshot)
+        val changes = mutableListOf<Pair<String, BoardJoinMode>>()
+        transport.onJoinModeChange = { sender, mode -> changes += sender to mode }
+
+        val change = frame(
+            "member",
+            BoardCellWireMessage.JoinModeChange(BoardJoinMode.APPROVAL_REQUIRED),
+            epoch = snapshot.epoch,
+            term = snapshot.controllerTerm,
+            id = "join-mode-change",
+        )
+        assertNull(transport.receive("member", change))
+        assertEquals(listOf("member" to BoardJoinMode.APPROVAL_REQUIRED), changes)
+
+        assertTrue(transport.sendSnapshotTo(snapshot, "member"))
+        val welcome = BoardCellWireCodec.decode(link.sent.last().second)
+        assertEquals("member", link.sent.last().first)
+        assertTrue(welcome.message is BoardCellWireMessage.Snapshot)
+    }
+
     @Test fun `wire rejects unsupported version bounds wrong realm and replay`() = runTest {
         val link = Link("host", setOf("remote"))
         val transport = BoardCellMeshTransport(link)

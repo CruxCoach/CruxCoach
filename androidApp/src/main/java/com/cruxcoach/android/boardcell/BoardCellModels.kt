@@ -263,6 +263,10 @@ enum class BoardCellAvailability {
     FROZEN_WRITE_RECOVERY, FROZEN_FORK,
 }
 
+/** User-facing admission rule for one live board session. */
+@Serializable
+enum class BoardJoinMode { OPEN, APPROVAL_REQUIRED }
+
 @Serializable
 enum class HandoverPhase { PREPARED, SOURCE_RELEASED, TARGET_READY, COMMITTED, COMPLETED, ABORTED }
 
@@ -401,6 +405,7 @@ data class BoardCellSnapshot(
     val members: Set<String>,
     /** Advances only when the canonical live-membership set changes. */
     val membershipRevision: Long = 0,
+    val joinMode: BoardJoinMode = BoardJoinMode.OPEN,
     val projection: BoardProjection? = null,
     val projectionKnown: Boolean = true,
     val playlist: BoardPlaylistState = BoardPlaylistState(),
@@ -420,17 +425,20 @@ data class BoardCellSnapshot(
      * cover are still at their defaults. A durable V5 snapshot written before
      * joinable playlists existed therefore keeps validating and is not
      * silently reinterpreted, while any snapshot that actually carries
-     * playlist host/membership/rest state must hash under V6.
+     * playlist host/membership/rest state must hash under V6, and a non-open
+     * join rule must hash under V7.
      */
     fun hasValidHash(): Boolean = stateHash == BoardCellHash.compute(copy(stateHash = "")) ||
-        (playlist.usesLegacyShapeOnly &&
+        (joinMode == BoardJoinMode.OPEN &&
+            stateHash == BoardCellHash.computeLegacyV6(copy(stateHash = ""))) ||
+        (joinMode == BoardJoinMode.OPEN && playlist.usesLegacyShapeOnly &&
             stateHash == BoardCellHash.computeLegacyV5(copy(stateHash = ""))) ||
-        (playlist.usesLegacyShapeOnly && membershipRevision == 0L &&
+        (joinMode == BoardJoinMode.OPEN && playlist.usesLegacyShapeOnly && membershipRevision == 0L &&
             stateHash == BoardCellHash.computeLegacyV4(copy(stateHash = ""))) ||
-        (playlist.usesLegacyShapeOnly && membershipRevision == 0L &&
+        (joinMode == BoardJoinMode.OPEN && playlist.usesLegacyShapeOnly && membershipRevision == 0L &&
             lastControllerRecovery == null &&
             stateHash == BoardCellHash.computeLegacyV3(copy(stateHash = ""))) ||
-        (playlist.usesLegacyShapeOnly && membershipRevision == 0L &&
+        (joinMode == BoardJoinMode.OPEN && playlist.usesLegacyShapeOnly && membershipRevision == 0L &&
             lastControllerRecovery == null && playlistRevision == 0L &&
             stateHash == BoardCellHash.computeLegacyV2(copy(stateHash = "")))
 }
@@ -445,6 +453,7 @@ sealed interface BoardCellEvent {
     @Serializable data class ProjectUnknown(val commandId: String, val reason: String) : BoardCellEvent
     @Serializable data class PlaylistReplaced(val playlist: BoardPlaylistState, val commandId: String) : BoardCellEvent
     @Serializable data class MemberJoined(val memberId: String) : BoardCellEvent
+    @Serializable data class JoinModeChanged(val mode: BoardJoinMode) : BoardCellEvent
     @Serializable data class MemberLeft(
         val memberId: String,
         val reason: BoardCellMemberLeaveReason,
@@ -490,6 +499,8 @@ data class BoardCellClaim(
     val claimantId: String,
     val proposedTerm: Long,
     val lineageId: String = UUID.randomUUID().toString(),
+    /** The winning first controller's preference seeds the shared session. */
+    val proposedJoinMode: BoardJoinMode = BoardJoinMode.OPEN,
 ) {
     val rank: String get() = "%020d|%s|%s".format(proposedTerm, cellId.value, claimantId)
 }
@@ -530,19 +541,21 @@ data class BoardWriteIntent(
 
 internal object BoardCellHash {
     fun compute(snapshot: BoardCellSnapshot): String =
-        compute(snapshot, "board-cell-v6", true, true, true, true)
+        compute(snapshot, "board-cell-v7", true, true, true, true, true)
+    fun computeLegacyV6(snapshot: BoardCellSnapshot): String =
+        compute(snapshot, "board-cell-v6", true, true, true, true, false)
     fun computeLegacyV5(snapshot: BoardCellSnapshot): String =
-        compute(snapshot, "board-cell-v5", true, true, true, false)
+        compute(snapshot, "board-cell-v5", true, true, true, false, false)
     fun computeLegacyV4(snapshot: BoardCellSnapshot): String =
-        compute(snapshot, "board-cell-v4", true, true, false, false)
+        compute(snapshot, "board-cell-v4", true, true, false, false, false)
     fun computeLegacyV3(snapshot: BoardCellSnapshot): String =
-        compute(snapshot, "board-cell-v3", true, false, false, false)
+        compute(snapshot, "board-cell-v3", true, false, false, false, false)
     fun computeLegacyV2(snapshot: BoardCellSnapshot): String =
-        compute(snapshot, "board-cell-v2", false, false, false, false)
+        compute(snapshot, "board-cell-v2", false, false, false, false, false)
 
     private fun compute(snapshot: BoardCellSnapshot, schema: String, includePlaylistRevision: Boolean,
         includeControllerRecovery: Boolean, includeMembershipRevision: Boolean,
-        includeJoinablePlaylist: Boolean): String {
+        includeJoinablePlaylist: Boolean, includeJoinMode: Boolean): String {
         val canonical = buildString {
             append(schema).append('\n').append(snapshot.cellId.value).append('\n')
             append(snapshot.physicalBoardId.value).append('\n').append(snapshot.epoch).append('\n')
@@ -552,6 +565,7 @@ internal object BoardCellHash {
             snapshot.resolvedLineages.sorted().forEach { append("r:").append(it).append('\n') }
             snapshot.members.sorted().forEach { append("m:").append(it).append('\n') }
             if (includeMembershipRevision) append("mr:${snapshot.membershipRevision}\n")
+            if (includeJoinMode) append("jm:${snapshot.joinMode.name}\n")
             snapshot.projection?.let { append("p:${it.climbUuid}|${it.angle}|${it.projectionSurvivesDisconnect}\n") }
                 ?: append("p:-\n")
             append("pk:${snapshot.projectionKnown}\n")

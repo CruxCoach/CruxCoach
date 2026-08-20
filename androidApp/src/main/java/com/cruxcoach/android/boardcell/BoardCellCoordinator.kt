@@ -55,6 +55,7 @@ class BoardCellCoordinator(
     private val settleMs: Long = 1_000L,
     private val heartbeatTimeoutMs: Long = 15_000L,
     private val handoverTimeoutMs: Long = 45_000L,
+    private val initialJoinMode: BoardJoinMode = BoardJoinMode.OPEN,
     /**
      * UTC wall clock, injectable for tests.
      *
@@ -78,7 +79,13 @@ class BoardCellCoordinator(
     private val observedForkMembers = mutableMapOf<PhysicalBoardId, MutableSet<String>>()
 
     suspend fun beginClaim(boardId: PhysicalBoardId, cellId: BoardCellId, nowMonotonicMs: Long): BoardCellClaim {
-        val claim = BoardCellClaim(boardId, cellId, nodeId, proposedTerm = 1)
+        val claim = BoardCellClaim(
+            boardId,
+            cellId,
+            nodeId,
+            proposedTerm = 1,
+            proposedJoinMode = initialJoinMode,
+        )
         mutex.withLock {
             claims.getOrPut(boardId) { mutableListOf() }.add(claim)
             settleDeadlines[boardId] = maxOf(settleDeadlines[boardId] ?: 0, nowMonotonicMs + settleMs)
@@ -101,6 +108,7 @@ class BoardCellCoordinator(
             cellId = winner.cellId, physicalBoardId = boardId, epoch = 1, sequence = 0,
             controllerId = winner.claimantId, controllerTerm = 1, lineageId = winner.lineageId,
             members = claims[boardId].orEmpty().mapTo(sortedSetOf()) { it.claimantId },
+            joinMode = winner.proposedJoinMode,
         ).withComputedHash()
         replicas[boardId] = BoardCellReplica(nodeId, snapshot)
         controllerObservedAt[boardId] = nowMonotonicMs
@@ -459,6 +467,20 @@ class BoardCellCoordinator(
         commitCanonical(boardId, BoardCellEvent.MemberJoined(memberId)).also {
             memberObservedAt.getOrPut(boardId) { mutableMapOf() }[memberId] = nowMonotonicMs
             memberDepartedAt[boardId]?.remove(memberId)
+            replicas[boardId]?.snapshot?.let { snapshot -> transport.publishSnapshot(snapshot) }
+        }
+    }
+
+    /** Every current member may choose the rule; the controller serializes it. */
+    suspend fun setJoinMode(
+        boardId: PhysicalBoardId,
+        requestingMember: String,
+        mode: BoardJoinMode,
+        nowMonotonicMs: Long = 0,
+    ): BoardCellEnvelope? = mutex.withLock {
+        val current = writable(boardId, nowMonotonicMs) ?: return@withLock null
+        if (requestingMember !in current.members || current.joinMode == mode) return@withLock null
+        commitCanonical(boardId, BoardCellEvent.JoinModeChanged(mode)).also {
             replicas[boardId]?.snapshot?.let { snapshot -> transport.publishSnapshot(snapshot) }
         }
     }

@@ -103,8 +103,8 @@ class JoinablePlaylistWireTest {
 
     // ===== Version fencing =====
 
-    @Test fun `the wire version includes member admission decisions`() {
-        assertEquals(10, BoardCellWireCodec.VERSION)
+    @Test fun `the wire version includes canonical join mode`() {
+        assertEquals(11, BoardCellWireCodec.VERSION)
     }
 
     @Test fun `member admission prompt decision and result round trip`() {

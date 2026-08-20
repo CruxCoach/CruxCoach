@@ -402,6 +402,71 @@ class BoardCellCoordinatorTest {
         assertEquals(HandoverPhase.TARGET_READY, source.snapshot(board)!!.handover!!.phase)
     }
 
+    @Test fun `board join mode defaults open and any member can change it across handover`() = runTest {
+        val board = PhysicalBoardId("kilter:serial:join-mode")
+        val sourceTransport = RecordingTransport()
+        val targetTransport = RecordingTransport()
+        val source = BoardCellCoordinator("source", sourceTransport, settleMs = 0)
+        source.beginClaim(board, BoardCellId("join-mode"), 100)
+        source.settle(board, 100)!!
+        assertEquals(BoardJoinMode.OPEN, source.snapshot(board)!!.joinMode)
+        source.joinMember(board, "target")
+
+        assertNotNull(source.setJoinMode(board, "target", BoardJoinMode.APPROVAL_REQUIRED, 101))
+        assertEquals(BoardJoinMode.APPROVAL_REQUIRED, source.snapshot(board)!!.joinMode)
+
+        val target = BoardCellCoordinator("target", targetTransport, settleMs = 0)
+        target.restoreTrustedSnapshot(source.snapshot(board)!!, 101)
+        val prepared = source.prepareHandover(board, "target", 102, "join-mode-transfer")!!
+        target.acceptEvent("source", prepared, 102)
+        val released = source.sourceReleased(board, "join-mode-transfer", 103)!!
+        target.acceptEvent("source", released, 103)
+        target.targetReady(board, "ready")
+        val ready = targetTransport.ready.single().second
+        source.acceptTargetReady("target", ready, 104)
+        target.acceptEvent("source", sourceTransport.events.last(), 104)
+        val committed = source.commitHandover(board, "join-mode-transfer", 105)!!
+        target.acceptEvent("source", committed, 105)
+
+        assertEquals(BoardJoinMode.APPROVAL_REQUIRED, target.snapshot(board)!!.joinMode)
+    }
+
+    @Test fun `first controller preference seeds a new session`() = runTest {
+        val board = PhysicalBoardId("kilter:serial:approval-default")
+        val controller = BoardCellCoordinator(
+            "controller",
+            settleMs = 0,
+            initialJoinMode = BoardJoinMode.APPROVAL_REQUIRED,
+        )
+        controller.beginClaim(board, BoardCellId("approval-default"), 1)
+
+        assertEquals(
+            BoardJoinMode.APPROVAL_REQUIRED,
+            controller.settle(board, 1)!!.joinMode,
+        )
+    }
+
+    @Test fun `simultaneous claimers derive join mode from the same winning controller`() = runTest {
+        val board = PhysicalBoardId("kilter:serial:mixed-preferences")
+        val cell = BoardCellId("mixed-preferences")
+        val open = BoardCellCoordinator("node-z", settleMs = 0, initialJoinMode = BoardJoinMode.OPEN)
+        val approval = BoardCellCoordinator(
+            "node-a",
+            settleMs = 0,
+            initialJoinMode = BoardJoinMode.APPROVAL_REQUIRED,
+        )
+        val openClaim = open.beginClaim(board, cell, 1)
+        val approvalClaim = approval.beginClaim(board, cell, 1)
+        open.observeClaim(approvalClaim, 1)
+        approval.observeClaim(openClaim, 1)
+
+        val openView = open.settle(board, 1)!!
+        val approvalView = approval.settle(board, 1)!!
+        assertEquals("node-a", openView.controllerId)
+        assertEquals(BoardJoinMode.APPROVAL_REQUIRED, openView.joinMode)
+        assertEquals(openView.stateHash, approvalView.stateHash)
+    }
+
     @Test fun `unready target times out and aborts only before commit`() = runTest {
         val board = PhysicalBoardId("board-timeout")
         val (source) = settled("source", board, now = 100)

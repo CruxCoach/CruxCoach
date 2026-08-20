@@ -9,6 +9,7 @@ import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.fips.FipsMeshRuntime
 import com.cruxcoach.android.fips.FipsConnectionStage
 import com.cruxcoach.android.fips.FipsDebugLog
+import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.mesh.MeshOwner
 import com.cruxcoach.android.mesh.MeshOwners
 import com.cruxcoach.android.mesh.MeshRealmId
@@ -149,6 +150,7 @@ class BoardCellManager @Inject constructor(
      * scoped — leases, sends, inbound frames — goes through [meshRealms].
      */
     private val runtime: FipsMeshRuntime,
+    private val userPreferences: UserPreferences,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val meshLink = BoardCellMeshSessionLink()
@@ -271,6 +273,14 @@ class BoardCellManager @Inject constructor(
                 }
                 FipsDebugLog.event("handover", "controller_request_decided",
                     "request" to FipsDebugLog.id(decision.requestId), "accepted" to decision.accepted)
+            }
+        }
+        meshTransport.onJoinModeChange = { sender, mode ->
+            snapshot()?.let { current ->
+                if (current.controllerId == activeNodeId && sender in current.members) {
+                    coordinator.setJoinMode(current.physicalBoardId, sender, mode, monotonicNow())
+                    refreshSelected()
+                }
             }
         }
         meshTransport.onAdmissionRequested = { _, request -> beginAdmission(request) }
@@ -433,7 +443,8 @@ class BoardCellManager @Inject constructor(
                 val activeTransport: BoardCellTransport = if (fipsActive) meshTransport else NoOpBoardCellTransport
                 boardRealmAvailable.set(true)
                 coordinator = BoardCellCoordinator(activeNodeId, activeTransport, durableStore,
-                    settleMs = 2_000, heartbeatTimeoutMs = CONTROLLER_LEASE_TIMEOUT_MS)
+                    settleMs = 2_000, heartbeatTimeoutMs = CONTROLLER_LEASE_TIMEOUT_MS,
+                    initialJoinMode = userPreferences.boardJoinMode.first())
                 if (fipsActive) meshTransport.attach(coordinator)
                 val restoredForNode = restored?.takeIf { activeNodeId in it.members }
                 if (!fipsActive && restoredForNode != null &&
@@ -486,7 +497,7 @@ class BoardCellManager @Inject constructor(
                         // Never create a competing lineage merely because the
                         // previous live members are temporarily unreachable.
                         // The stable realm identity remains available for the
-                        // normal permissionless sponsor/join path.
+                        // normal authenticated sponsor/admission path.
                         _membershipTransition.value = MeshMembershipTransition.ERROR
                         FipsDebugLog.warning("boardcell", "known_cell_rejoin_pending",
                             "cell" to FipsDebugLog.id(cellId.value),
@@ -1053,8 +1064,9 @@ class BoardCellManager @Inject constructor(
     }
 
     /** Enter an occupied BoardCell discovered over BLE. The cached endpoint
-     * skips a redundant scan; FIPS authentication, CCJ1 scope validation and
-     * member approval still happen normally. */
+     * skips a redundant scan; FIPS authentication and CCJ1 scope validation
+     * still happen normally. The canonical session rule decides whether a
+     * member response is also required. */
     suspend fun joinNearbyMesh(
         boardCellId: String,
         boardName: String? = null,
@@ -1225,9 +1237,6 @@ class BoardCellManager @Inject constructor(
         expectedStage: FipsConnectionStage?,
         timeoutMs: Long,
     ): Boolean {
-        if (expectedStage == null) {
-            _membershipTransition.value = MeshMembershipTransition.WAITING_APPROVAL
-        }
         val reached = withTimeoutOrNull(timeoutMs) {
             while (true) {
                 if (expectedStage != null) {
@@ -1625,6 +1634,20 @@ class BoardCellManager @Inject constructor(
         }
     }
 
+    /** Changes the current session from any member device. */
+    fun setJoinMode(mode: BoardJoinMode) {
+        val current = snapshot() ?: return
+        if (activeNodeId !in current.members || current.availability != BoardCellAvailability.ACTIVE) return
+        scope.launch {
+            if (current.controllerId == activeNodeId) {
+                coordinator.setJoinMode(current.physicalBoardId, activeNodeId, mode, monotonicNow())
+                refreshSelected()
+            } else {
+                meshTransport.sendJoinModeChange(current, mode)
+            }
+        }
+    }
+
     private suspend fun beginAdmission(request: BoardCellJoinRequest) = admissionMutex.withLock {
         val snapshot = snapshot() ?: return@withLock
         if (snapshot.controllerId != activeNodeId || request.candidateId in snapshot.members) return@withLock
@@ -1636,6 +1659,29 @@ class BoardCellManager @Inject constructor(
             )
             meshTransport.publishAdmissionResult(snapshot, result)
             handleAdmissionResult(result)
+            return@withLock
+        }
+        if (snapshot.joinMode == BoardJoinMode.OPEN) {
+            val joined = coordinator.joinMember(
+                snapshot.physicalBoardId,
+                request.candidateId,
+                monotonicNow(),
+            )
+            val current = snapshot() ?: snapshot
+            if (joined != null) {
+                // Multicast alone is unreliable at the exact admission edge:
+                // the candidate's routed membership is not settled yet. Send
+                // the canonical welcome directly as well.
+                meshTransport.sendSnapshotTo(current, request.candidateId)
+                val result = BoardCellAdmissionResult(
+                    request.requestId,
+                    request.candidateId,
+                    approved = true,
+                )
+                meshTransport.publishAdmissionResult(current, result)
+                handleAdmissionResult(result)
+                refreshSelected()
+            }
             return@withLock
         }
         pendingAdmissions.values.firstOrNull { it.candidateId == request.candidateId &&
@@ -1698,6 +1744,9 @@ class BoardCellManager @Inject constructor(
         if (approved) {
             coordinator.joinMember(snapshot.physicalBoardId, prompt.candidateId, monotonicNow())
             refreshSelected()
+            snapshot()?.let { current ->
+                meshTransport.sendSnapshotTo(current, prompt.candidateId)
+            }
         }
         // Silence is not a rejection. Only an explicit decline received while
         // the prompt is live starts the cooldown; an expired request can be
@@ -1878,8 +1927,8 @@ class BoardCellManager @Inject constructor(
             if (snapshot.controllerId == activeNodeId) {
                 FipsDebugLog.event(
                     "boardcell",
-                    if (immediate) "nearby_member_approval_requested" else
-                        "nearby_member_approval_retried",
+                    if (immediate) "nearby_member_admission_requested" else
+                        "nearby_member_admission_retried",
                     "peer" to FipsDebugLog.id(peer),
                     "cell" to FipsDebugLog.id(snapshot.cellId.value),
                 )

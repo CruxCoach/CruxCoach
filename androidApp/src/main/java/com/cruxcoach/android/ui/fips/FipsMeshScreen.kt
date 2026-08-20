@@ -21,6 +21,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -41,6 +42,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
 import com.cruxcoach.android.boardcell.MeshMembershipTransition
+import com.cruxcoach.android.boardcell.BoardJoinMode
 import com.cruxcoach.android.fips.FipsConnectionStage
 import com.cruxcoach.android.ui.board.BleConnectionSheet
 import com.cruxcoach.android.ui.common.LocalCruxRelayManager
@@ -96,6 +98,7 @@ fun FipsMeshScreen(
                 leaving = membershipTransition == MeshMembershipTransition.LEAVING,
                 leaveFailed = leaveFailed,
                 onLeave = viewModel::leave,
+                onJoinModeChange = viewModel::setJoinMode,
                 onConnect = { showConnectionSheet = true }) }
             if (membershipTransition == MeshMembershipTransition.ERROR && !joinFailed && !leaveFailed) {
                 item {
@@ -142,6 +145,7 @@ private fun CurrentMeshCard(
     leaving: Boolean,
     leaveFailed: Boolean,
     onLeave: () -> Unit,
+    onJoinModeChange: (BoardJoinMode) -> Unit,
     onConnect: () -> Unit,
 ) {
     val active = state.cellId != null
@@ -175,6 +179,28 @@ private fun CurrentMeshCard(
                     else R.string.fips_mesh_role_connected,
                 ),
             )
+            Text(
+                stringResource(R.string.fips_mesh_join_mode_title),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                stringResource(R.string.fips_mesh_join_mode_description),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = state.joinMode == BoardJoinMode.OPEN,
+                    onClick = { onJoinModeChange(BoardJoinMode.OPEN) },
+                    label = { Text(stringResource(R.string.settings_board_join_open)) },
+                )
+                FilterChip(
+                    selected = state.joinMode == BoardJoinMode.APPROVAL_REQUIRED,
+                    onClick = { onJoinModeChange(BoardJoinMode.APPROVAL_REQUIRED) },
+                    label = { Text(stringResource(R.string.settings_board_join_approval)) },
+                )
+            }
             if (!state.bluetoothAvailable) {
                 Text(stringResource(R.string.board_bt_off_message),
                     style = MaterialTheme.typography.bodySmall,

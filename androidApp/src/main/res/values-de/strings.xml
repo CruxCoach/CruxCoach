@@ -2863,4 +2863,10 @@
     <string name="fips_mesh_peer_number">Teilnehmer %1$d</string>
     <string name="fips_mesh_text">Lokaler Board-Zustand wird mit Teilnehmenden synchronisiert</string>
     <string name="ble_mesh_climb">Im Mesh auf dem Board</string>
+    <string name="settings_board_join_title">Board-Beitritt</string>
+    <string name="settings_board_join_description">Standard für neu gestartete gemeinsame Boards. Das aktuelle Board kannst du in den Board-Details umstellen.</string>
+    <string name="settings_board_join_open">Offen</string>
+    <string name="settings_board_join_approval">Erst fragen</string>
+    <string name="fips_mesh_join_mode_title">Board-Beitritt</string>
+    <string name="fips_mesh_join_mode_description">Gilt für dieses Board bis die Session endet. Alle Teilnehmenden dürfen es ändern.</string>
 </resources>

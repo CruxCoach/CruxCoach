@@ -135,6 +135,7 @@ class BoardCellReplica(val localMemberId: String, initial: BoardCellSnapshot? = 
                 is BoardCellEvent.ProjectUnknown -> current.copy(projection = null, projectionKnown = false)
                 is BoardCellEvent.PlaylistReplaced ->
                     current.withPlaylist(current, canonical(event.playlist), forceRevision = true)
+                is BoardCellEvent.JoinModeChanged -> current.copy(joinMode = event.mode)
                 is BoardCellEvent.MemberJoined -> current.copy(
                     members = current.members + event.memberId,
                     membershipRevision = current.membershipRevision +

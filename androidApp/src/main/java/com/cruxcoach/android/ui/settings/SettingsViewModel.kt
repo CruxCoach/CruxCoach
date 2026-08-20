@@ -11,6 +11,7 @@ import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.BoardControllerProfiles
 import com.cruxcoach.android.ble.BoardProjectionPolicy
 import com.cruxcoach.android.boardcell.BoardCellManager
+import com.cruxcoach.android.boardcell.BoardJoinMode
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.data.AnnouncementRepository
 import com.cruxcoach.android.data.DarkModeSetting
@@ -110,6 +111,7 @@ data class SettingsState(
     /** Mirrors UserPreferences.multiConnectionBoardSendMode's default — a
      *  shared board is not swiped onto by accident. */
     val multiConnectionBoardSendMode: BoardSendMode = BoardSendMode.EXPLICIT,
+    val boardJoinMode: BoardJoinMode = BoardJoinMode.OPEN,
     /** BELOW preserves the historic MoonBoard LED placement. */
     val moonBoardLedMode: MoonBoardLedMode = MoonBoardLedMode.BELOW,
     val isSaving: Boolean = false,
@@ -229,6 +231,7 @@ class SettingsViewModel @Inject constructor(
                     userPreferences.singleConnectionBoardSendMode.first()
                 val multiConnectionBoardSendMode =
                     userPreferences.multiConnectionBoardSendMode.first()
+                val boardJoinMode = userPreferences.boardJoinMode.first()
                 val moonBoardLedMode = userPreferences.moonBoardLedMode.first()
                 val ledColors = userPreferences.ledHoldColors.first()
                 val frameSpeed = userPreferences.routeFrameSpeed.first()
@@ -288,6 +291,7 @@ class SettingsViewModel @Inject constructor(
                     bleAutoDisconnectSeconds = autoDisconnect,
                     singleConnectionBoardSendMode = singleConnectionBoardSendMode,
                     multiConnectionBoardSendMode = multiConnectionBoardSendMode,
+                    boardJoinMode = boardJoinMode,
                     moonBoardLedMode = moonBoardLedMode,
                     profile = profileForm,
                     routePlayback = RoutePlaybackSettings(
@@ -348,6 +352,11 @@ class SettingsViewModel @Inject constructor(
             launch {
                 userPreferences.multiConnectionBoardSendMode.collect { mode ->
                     _state.update { it.copy(multiConnectionBoardSendMode = mode) }
+                }
+            }
+            launch {
+                userPreferences.boardJoinMode.collect { mode ->
+                    _state.update { it.copy(boardJoinMode = mode) }
                 }
             }
             launch {
@@ -661,6 +670,11 @@ class SettingsViewModel @Inject constructor(
     fun updateMultiConnectionBoardSendMode(mode: BoardSendMode) {
         _state.update { it.copy(multiConnectionBoardSendMode = mode) }
         viewModelScope.launch { userPreferences.setMultiConnectionBoardSendMode(mode) }
+    }
+
+    fun updateBoardJoinMode(mode: BoardJoinMode) {
+        _state.update { it.copy(boardJoinMode = mode) }
+        viewModelScope.launch { userPreferences.setBoardJoinMode(mode) }
     }
 
     fun updateMoonBoardLedMode(mode: MoonBoardLedMode) {

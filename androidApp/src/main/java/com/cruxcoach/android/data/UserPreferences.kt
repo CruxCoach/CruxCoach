@@ -12,6 +12,7 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.cruxcoach.android.notification.AnnouncementTagParser
+import com.cruxcoach.android.boardcell.BoardJoinMode
 import com.cruxcoach.android.nostr.SignerMode
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.HoldRole
@@ -342,6 +343,7 @@ object PreferenceKeys {
         stringPreferencesKey("single_connection_board_send_mode")
     val MULTI_CONNECTION_BOARD_SEND_MODE =
         stringPreferencesKey("multi_connection_board_send_mode")
+    val BOARD_JOIN_MODE = stringPreferencesKey("board_join_mode")
     /** Legacy boolean used by development builds before the three-way mode. */
     val MOONBOARD_LEDS_ABOVE_HOLDS = booleanPreferencesKey("moonboard_leds_above_holds")
     /** MoonBoard LED placement. Absent preserves the historic mode below holds. */
@@ -1080,6 +1082,18 @@ class UserPreferences(
         dataStore.edit { prefs ->
             prefs[PreferenceKeys.MULTI_CONNECTION_BOARD_SEND_MODE] = mode.name
         }
+    }
+
+    /** Default for newly started board sessions; existing sessions carry
+     * their own canonical value and are not changed by this preference. */
+    val boardJoinMode: Flow<BoardJoinMode> = dataStore.data.map { prefs ->
+        runCatching {
+            BoardJoinMode.valueOf(prefs[PreferenceKeys.BOARD_JOIN_MODE] ?: BoardJoinMode.OPEN.name)
+        }.getOrDefault(BoardJoinMode.OPEN)
+    }
+
+    suspend fun setBoardJoinMode(mode: BoardJoinMode) {
+        dataStore.edit { it[PreferenceKeys.BOARD_JOIN_MODE] = mode.name }
     }
 
     /** BELOW is the pre-existing wire format and therefore the upgrade default. */

@@ -7,6 +7,7 @@ import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.boardcell.BoardCellManager
 import com.cruxcoach.android.boardcell.IncomingControllerRequest
 import com.cruxcoach.android.boardcell.BoardCellPlatformPolicy
+import com.cruxcoach.android.boardcell.BoardJoinMode
 import com.cruxcoach.android.fips.FipsMeshRuntime
 import com.cruxcoach.android.fips.FipsConnectionStage
 import com.cruxcoach.android.fips.FipsPeer
@@ -53,6 +54,7 @@ data class FipsMeshUiState(
     val localNpub: String? = null,
     val controllerNpub: String? = null,
     val memberCount: Int = 0,
+    val joinMode: BoardJoinMode = BoardJoinMode.OPEN,
     val joinStage: FipsConnectionStage = FipsConnectionStage.IDLE,
     val peers: List<FipsMeshPeerUi> = emptyList(),
     val nearbyMeshes: List<NearbyFipsMeshUi> = emptyList(),
@@ -174,6 +176,7 @@ class FipsMeshViewModel @Inject constructor(
             localNpub = runtime.localNpub.takeIf { it.isNotBlank() },
             controllerNpub = snapshot?.controllerId,
             memberCount = snapshot?.members?.size ?: 0,
+            joinMode = snapshot?.joinMode ?: BoardJoinMode.OPEN,
             peers = visibleCanonicalPeers(peers, snapshot?.members).map { peer ->
                 FipsMeshPeerUi(
                     npub = peer.npub,
@@ -248,6 +251,8 @@ class FipsMeshViewModel @Inject constructor(
             }
         }
     }
+
+    fun setJoinMode(mode: BoardJoinMode) = boardCellManager.setJoinMode(mode)
 
     fun ensureDiscovery() {
         if (meshAvailable) runtime.startNearbyDiscovery()

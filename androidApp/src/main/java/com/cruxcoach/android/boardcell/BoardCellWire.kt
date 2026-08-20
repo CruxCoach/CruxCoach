@@ -23,6 +23,9 @@ sealed interface BoardCellWireMessage {
     @Serializable @SerialName("controller_decision") data class ControllerDecision(
         val value: BoardCellControllerDecision,
     ) : BoardCellWireMessage
+    @Serializable @SerialName("join_mode_change") data class JoinModeChange(
+        val mode: BoardJoinMode,
+    ) : BoardCellWireMessage
     @Serializable @SerialName("member_join_request") data class MemberJoinRequest(
         val value: BoardCellJoinRequest,
     ) : BoardCellWireMessage
@@ -114,11 +117,12 @@ object BoardCellWireCodec {
     // closed — `ignoreUnknownKeys = false` plus this check does exactly that.
     // V7 makes membership live: authenticated member heartbeats, explicit
     // leave requests and canonical MemberLeft events. Older peers fail closed.
-    // V6 added semantic projection bases so heartbeat-only sequence advances
+    // V11 carries the winning first controller's join rule in claims and
+    // canonical snapshots. V6 added semantic projection bases so heartbeat-only sequence advances
     // do not spuriously reject a participant's board command. V5 added
     // permissionless, member-sponsored multi-hop BoardCell admission.
     // Older peers must fail closed instead of interpreting the new authority flow.
-    const val VERSION = 10
+    const val VERSION = 11
     private val json = Json { classDiscriminator = "type"; encodeDefaults = true; ignoreUnknownKeys = false }
     fun encode(frame: BoardCellWireFrame): ByteArray = json.encodeToString(frame).encodeToByteArray()
     fun decode(bytes: ByteArray): BoardCellWireFrame {
@@ -414,6 +418,7 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
     var onCommandAck: (suspend (String, BoardCommandAck) -> Unit)? = null
     var onControllerRequest: (suspend (String, BoardCellControllerRequest) -> Unit)? = null
     var onControllerDecision: (suspend (String, BoardCellControllerDecision) -> Unit)? = null
+    var onJoinModeChange: (suspend (String, BoardJoinMode) -> Unit)? = null
     var onAdmissionRequested: (suspend (String, BoardCellJoinRequest) -> Unit)? = null
     var onAdmissionPrompt: (suspend (BoardCellAdmissionPrompt) -> Unit)? = null
     var onAdmissionDecision: (suspend (String, BoardCellAdmissionDecision) -> Unit)? = null
@@ -504,7 +509,14 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
         decision: BoardCellControllerDecision): Boolean =
         link.send(target, frameFor(snapshot, BoardCellWireMessage.ControllerDecision(decision)))
 
-    /** Sponsor a directly authenticated neighbor into the permissionless cell. */
+    fun sendJoinModeChange(snapshot: BoardCellSnapshot, mode: BoardJoinMode): Boolean {
+        if (link.localNpub !in snapshot.members || link.localNpub == snapshot.controllerId ||
+            snapshot.availability != BoardCellAvailability.ACTIVE) return false
+        return link.send(snapshot.controllerId,
+            frameFor(snapshot, BoardCellWireMessage.JoinModeChange(mode)))
+    }
+
+    /** Sponsor a directly authenticated neighbor under the cell's join rule. */
     fun sponsorMember(snapshot: BoardCellSnapshot, candidateId: String): Boolean {
         if (link.localNpub !in snapshot.members || link.localNpub == snapshot.controllerId ||
             snapshot.availability != BoardCellAvailability.ACTIVE ||
@@ -827,6 +839,15 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
                 onControllerDecision?.invoke(authenticatedSender, message.value)
                 null
             }
+            is BoardCellWireMessage.JoinModeChange -> {
+                val snapshot = snapshots[value.cellId]
+                    ?: return BoardCellApplyResult.Rejected("join mode change has no local cell")
+                if (link.localNpub != snapshot.controllerId || authenticatedSender !in snapshot.members) {
+                    return BoardCellApplyResult.Rejected("join mode change sender/role mismatch")
+                }
+                onJoinModeChange?.invoke(authenticatedSender, message.mode)
+                null
+            }
             is BoardCellWireMessage.MemberJoinRequest -> {
                 val snapshot = snapshots[value.cellId]
                     ?: return BoardCellApplyResult.Rejected("member join request has no local cell")
@@ -867,7 +888,7 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
             }
             is BoardCellWireMessage.MemberAdmissionResult -> {
                 // Membership snapshots remain the only authority for an
-                // approval. This operational result merely makes rejection
+                // admission. This operational result merely makes rejection
                 // and its cooldown visible to the requester without waiting
                 // for a transport timeout.
                 pendingAdmissionControllers.remove(message.value.requestId)

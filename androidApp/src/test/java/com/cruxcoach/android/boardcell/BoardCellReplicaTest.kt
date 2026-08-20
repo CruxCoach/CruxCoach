@@ -42,6 +42,22 @@ class BoardCellReplicaTest {
         assertFalse(forgedLegacy.hasValidHash())
     }
 
+    @Test fun `legacy v6 snapshot is open while changed join mode requires v7 hash`() {
+        val base = initial().copy(stateHash = "")
+        assertTrue(base.copy(stateHash = BoardCellHash.computeLegacyV6(base)).hasValidHash())
+
+        val approval = base.copy(joinMode = BoardJoinMode.APPROVAL_REQUIRED)
+        assertFalse(approval.copy(stateHash = BoardCellHash.computeLegacyV6(approval)).hasValidHash())
+        assertFalse(approval.copy(stateHash = BoardCellHash.computeLegacyV5(approval)).hasValidHash())
+        val changed = BoardCellReplica.reduce(
+            initial(),
+            BoardCellEvent.JoinModeChanged(BoardJoinMode.APPROVAL_REQUIRED),
+            1,
+        )
+        assertEquals(BoardJoinMode.APPROVAL_REQUIRED, changed.joinMode)
+        assertTrue(changed.hasValidHash())
+    }
+
     @Test fun `joining the board also joins its running playlist`() {
         val playlist = BoardPlaylistPolicy.normalize(BoardPlaylistState(
             sessionId = 7,

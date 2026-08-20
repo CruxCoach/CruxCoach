@@ -36,6 +36,7 @@ import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.data.BoardConstants
+import com.cruxcoach.android.boardcell.BoardJoinMode
 import com.cruxcoach.domain.board.BoardBrand
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -226,6 +227,11 @@ fun SettingsScreen(
                             viewModel::updateSingleConnectionBoardSendMode,
                         onMultiConnectionModeChange =
                             viewModel::updateMultiConnectionBoardSendMode,
+                    )
+                    HorizontalDivider()
+                    BoardJoinModeSection(
+                        mode = state.boardJoinMode,
+                        onModeChange = viewModel::updateBoardJoinMode,
                     )
                     HorizontalDivider()
                     BleAutoDisconnectSection(
@@ -520,6 +526,42 @@ fun SettingsScreen(
             },
             text = { Text(syncMessage) },
         )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BoardJoinModeSection(
+    mode: BoardJoinMode,
+    onModeChange: (BoardJoinMode) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(stringResource(R.string.settings_board_join_title), fontWeight = FontWeight.SemiBold)
+        Text(
+            stringResource(R.string.settings_board_join_description),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
+            OutlinedTextField(
+                value = stringResource(if (mode == BoardJoinMode.OPEN)
+                    R.string.settings_board_join_open else R.string.settings_board_join_approval),
+                onValueChange = {},
+                readOnly = true,
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+                modifier = Modifier.menuAnchor().fillMaxWidth(),
+            )
+            ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                BoardJoinMode.entries.forEach { option ->
+                    DropdownMenuItem(
+                        text = { Text(stringResource(if (option == BoardJoinMode.OPEN)
+                            R.string.settings_board_join_open else R.string.settings_board_join_approval)) },
+                        onClick = { onModeChange(option); expanded = false },
+                    )
+                }
+            }
+        }
     }
 }
 
