@@ -75,9 +75,12 @@ data class AscentFormState(
 
 /** One-shot confirmation for an icon-dock quick log. */
 data class QuickLogFeedback(
+    val eventId: String,
     val entryUuid: String,
     val isSend: Boolean,
 )
+
+enum class PersonalNoteSaveStatus { IDLE, SAVING, SAVED, FAILED }
 
 /** Route/multi-frame playback state. */
 data class PlaybackState(
@@ -211,6 +214,7 @@ data class ClimbDetailState(
     val isIgnored: Boolean = false,
     /** Private note stored in the encrypted per-user database. */
     val personalNote: String = "",
+    val personalNoteSaveStatus: PersonalNoteSaveStatus = PersonalNoteSaveStatus.IDLE,
     val restTimerTotalSeconds: Int = 180,
     val restTimerAutoStart: Boolean = false,
     val zones: IntensityZones? = null,
@@ -354,6 +358,7 @@ class BoardClimbDetailViewModel @Inject constructor(
     val pageCache: StateFlow<Map<String, ClimbDetailState>> = _pageCache.asStateFlow()
 
     private var loadJob: Job? = null
+    private var personalNoteSaveJob: Job? = null
     private var mirrorPlacementMap: Map<Int, Int> = emptyMap()
     private var originalAllFrames: List<List<BoardHold>> = emptyList()
     private var cachedPlacementMap: Map<Int, BoardPlacement>? = null
@@ -786,6 +791,7 @@ class BoardClimbDetailViewModel @Inject constructor(
 
     fun switchClimb(uuid: String, angle: Int) {
         if (uuid == currentClimbUuid && angle == currentAngle) return
+        ascentLogger.finishQuickSequence()
         Log.d(TAG, "switchClimb: $uuid angle=$angle (was: $currentClimbUuid)")
         currentClimbUuid = uuid
         currentAngle = angle
@@ -831,6 +837,7 @@ class BoardClimbDetailViewModel @Inject constructor(
 
     fun onAngleSelected(angle: Int) {
         if (angle == currentAngle) return
+        ascentLogger.finishQuickSequence()
         loadClimb(currentClimbUuid, angle)
     }
 
@@ -1278,14 +1285,28 @@ class BoardClimbDetailViewModel @Inject constructor(
 
     fun savePersonalNote(note: String) {
         val climbUuid = _state.value.climb?.uuid ?: currentClimbUuid
-        viewModelScope.launch {
+        val normalized = note.trim().take(1000)
+        if (
+            _state.value.climb?.uuid == climbUuid &&
+            _state.value.personalNote == normalized &&
+            _state.value.personalNoteSaveStatus != PersonalNoteSaveStatus.FAILED
+        ) return
+        personalNoteSaveJob?.cancel()
+        _state.update { current ->
+            if (current.climb?.uuid == climbUuid) {
+                current.copy(personalNoteSaveStatus = PersonalNoteSaveStatus.SAVING)
+            } else current
+        }
+        personalNoteSaveJob = viewModelScope.launch {
             try {
-                val normalized = note.trim().take(1000)
                 withContext(Dispatchers.IO) {
                     personalBoardRepo.saveClimbNote(climbUuid, normalized)
                 }
                 _state.update { current ->
-                    if (current.climb?.uuid == climbUuid) current.copy(personalNote = normalized)
+                    if (current.climb?.uuid == climbUuid) current.copy(
+                        personalNote = normalized,
+                        personalNoteSaveStatus = PersonalNoteSaveStatus.SAVED,
+                    )
                     else current
                 }
                 _pageCache.update { cache ->
@@ -1298,6 +1319,11 @@ class BoardClimbDetailViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "savePersonalNote failed", e)
+                _state.update { current ->
+                    if (current.climb?.uuid == climbUuid) {
+                        current.copy(personalNoteSaveStatus = PersonalNoteSaveStatus.FAILED)
+                    } else current
+                }
             }
         }
     }
@@ -1323,6 +1349,7 @@ class BoardClimbDetailViewModel @Inject constructor(
     }
 
     fun toggleMirror() {
+        ascentLogger.finishQuickSequence()
         val s = _state.value
         val newMirrored = !s.isMirrored
         val frames = if (newMirrored) {
