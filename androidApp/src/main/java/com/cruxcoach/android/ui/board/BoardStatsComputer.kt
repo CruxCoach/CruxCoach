@@ -93,7 +93,10 @@ object BoardStatsComputer {
             hardestGrade = hardestGrade,
             hardestDifficultyInt = hardestDiffInt,
             totalSends = totalSends,
-            totalAttempts = bids.size,
+            // bidCount is attempts-to-outcome for both open bids and sends.
+            // Counting rows made a consolidated "X, X, send" sequence look
+            // like one attempt (or zero after the bid became a send).
+            totalAttempts = filtered.sumOf { it.bidCount.coerceAtLeast(1L) }.toInt(),
             boulderSends = boulderSends,
             routeSends = routeSends,
             flashRate = flashRate,
@@ -137,7 +140,8 @@ object BoardStatsComputer {
                 BoardComparisonEntry(
                     boardBrand = brand,
                     sendCount = sends.size,
-                    attemptCount = entries.count { !it.isSend },
+                    attemptCount = entries.filterNot { it.isSend }
+                        .sumOf { it.bidCount.coerceAtLeast(1L) }.toInt(),
                     hardestGrade = hardestDiff?.let {
                         GradeDisplayHelper.formatDifficulty(it, gradeScale)
                     },
@@ -259,7 +263,8 @@ object BoardStatsComputer {
             val diffInt = entries.minOf { Math.round(it.difficultyAverage!!).toInt() }
             val flashes = entries.count { it.isSend && it.uuid in flashUuids }
             val redpoints = entries.count { it.isSend && it.uuid !in flashUuids }
-            val attempts = entries.count { !it.isSend }
+            val attempts = entries.filterNot { it.isSend }
+                .sumOf { it.bidCount.coerceAtLeast(1L) }.toInt()
             GradeOutcomeEntry(
                 grade = grade,
                 difficultyInt = diffInt,
@@ -276,7 +281,8 @@ object BoardStatsComputer {
     ): OutcomeDistribution {
         val flashes = sends.count { it.uuid in flashUuids }
         val redpoints = sends.count { it.uuid !in flashUuids }
-        // Note: attempts (bids) are tracked via totalAttempts in the main stats
+        // Attempts are tracked via totalAttempts in the main stats; this chart
+        // classifies each completed send once instead of stacking its tries too.
         return OutcomeDistribution(flashes = flashes, redpoints = redpoints, attempts = 0)
     }
 
