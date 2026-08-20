@@ -78,6 +78,8 @@ class FakePersonalBoardRepository : PersonalBoardRepository {
     ) { insertedLogUuids.add(uuid) }
 
     override fun deleteBid(uuid: String) {}
+    override fun promoteQuickBidToSend(send: com.cruxcoach.data.repository.QuickLogSendInput) {}
+    override fun restoreQuickBidFromSend(bid: com.cruxcoach.data.repository.QuickLogBidInput) {}
     override fun getUserBidDifficulties(since: String): List<Double> = emptyList()
     override fun getUnsyncedBids(): List<RawBid> = emptyList()
     override fun markBidSyncedIfUnchanged(uuid: String, expectedRowVersion: Long): Boolean = true

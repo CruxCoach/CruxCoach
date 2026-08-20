@@ -81,7 +81,7 @@ object BoardStatsComputer {
 
         // New extended stats
         val gradeOutcomes = computeGradeOutcomes(sends, bids, gradeScale, flashUuids)
-        val outcomeDistribution = computeOutcomeDistribution(sends, flashUuids)
+        val outcomeDistribution = computeOutcomeDistribution(sends, bids, flashUuids)
         val weeklyVolume = computeWeeklyVolume(filtered)
         val gradeProgression = computeGradeProgression(sends, interval, context)
         val uniqueClimbsByGrade = computeUniqueClimbsByGrade(sends, gradeScale)
@@ -140,7 +140,7 @@ object BoardStatsComputer {
                 BoardComparisonEntry(
                     boardBrand = brand,
                     sendCount = sends.size,
-                    attemptCount = entries.filterNot { it.isSend }
+                    attemptCount = entries
                         .sumOf { it.bidCount.coerceAtLeast(1L) }.toInt(),
                     hardestGrade = hardestDiff?.let {
                         GradeDisplayHelper.formatDifficulty(it, gradeScale)
@@ -263,8 +263,10 @@ object BoardStatsComputer {
             val diffInt = entries.minOf { Math.round(it.difficultyAverage!!).toInt() }
             val flashes = entries.count { it.isSend && it.uuid in flashUuids }
             val redpoints = entries.count { it.isSend && it.uuid !in flashUuids }
-            val attempts = entries.filterNot { it.isSend }
-                .sumOf { it.bidCount.coerceAtLeast(1L) }.toInt()
+            val attempts = entries.sumOf {
+                if (it.isSend) (it.bidCount - 1L).coerceAtLeast(0L)
+                else it.bidCount.coerceAtLeast(1L)
+            }.toInt()
             GradeOutcomeEntry(
                 grade = grade,
                 difficultyInt = diffInt,
@@ -277,13 +279,18 @@ object BoardStatsComputer {
 
     private fun computeOutcomeDistribution(
         sends: List<AscentWithClimb>,
+        bids: List<AscentWithClimb>,
         flashUuids: Set<String>,
     ): OutcomeDistribution {
         val flashes = sends.count { it.uuid in flashUuids }
         val redpoints = sends.count { it.uuid !in flashUuids }
-        // Attempts are tracked via totalAttempts in the main stats; this chart
-        // classifies each completed send once instead of stacking its tries too.
-        return OutcomeDistribution(flashes = flashes, redpoints = redpoints, attempts = 0)
+        val failedAttempts = sends.sumOf { (it.bidCount - 1L).coerceAtLeast(0L) } +
+            bids.sumOf { it.bidCount.coerceAtLeast(1L) }
+        return OutcomeDistribution(
+            flashes = flashes,
+            redpoints = redpoints,
+            attempts = failedAttempts.toInt(),
+        )
     }
 
     private fun computeWeeklyVolume(

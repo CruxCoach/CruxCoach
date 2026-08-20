@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -149,40 +150,28 @@ class AscentLoggerQuickLogTest {
         logger.quickLog(isSend = true)
         withTimeout(5_000) { state.first { !it.isQuickLogging && it.quickLogFeedback?.isSend == true } }
 
-        verify { repo.deleteBid(entryUuid) }
-        verify {
-            repo.insertAscent(
-                uuid = entryUuid,
-                climbUuid = climb.uuid,
-                angle = any(),
-                isMirror = any(),
-                attemptId = any(),
-                bidCount = 3L,
-                quality = any(),
-                difficulty = any(),
-                isBenchmark = any(),
-                comment = any(),
-                climbedAt = any(),
-                synced = any(),
-                gymUuid = any(),
-                wallUuid = any(),
-                productLayoutUuid = any(),
-                climbName = any(),
-                difficultyAverage = any(),
-                climbFrames = any(),
-                framesCount = any(),
-                boardBrand = any(),
-                layoutId = any(),
-                externalId = any(),
-            )
-        }
+        val promoted = mutableListOf<com.cruxcoach.data.repository.QuickLogSendInput>()
+        verify { repo.promoteQuickBidToSend(capture(promoted)) }
+        assertEquals(entryUuid, promoted.single().uuid)
+        assertEquals(3L, promoted.single().bidCount)
 
         logger.undoQuickLog()
-        verify(timeout = 5_000) { repo.deleteAscent(entryUuid) }
-        verify(timeout = 5_000, atLeast = 2) {
+        val restored = mutableListOf<com.cruxcoach.data.repository.QuickLogBidInput>()
+        verify(timeout = 5_000) { repo.restoreQuickBidFromSend(capture(restored)) }
+        assertEquals(entryUuid, restored.single().uuid)
+        assertEquals(2L, restored.single().bidCount)
+        verify { session.undoRecordedAscent() }
+    }
+
+    @Test
+    fun `failed quick log re-enables actions and does not change session totals`() = runBlocking {
+        val state = MutableStateFlow(ClimbDetailState(isLoading = false, climb = climb))
+        val repo = mockk<PersonalBoardRepository>(relaxed = true)
+        val session = mockk<BoardSessionManager>(relaxed = true)
+        every {
             repo.insertBid(
-                uuid = entryUuid,
-                climbUuid = climb.uuid,
+                uuid = any(),
+                climbUuid = any(),
                 angle = any(),
                 isMirror = any(),
                 bidCount = any(),
@@ -194,8 +183,15 @@ class AscentLoggerQuickLogTest {
                 boardBrand = any(),
                 layoutId = any(),
             )
-        }
-        verify { session.undoRecordedAscent() }
+        } throws IllegalStateException("database unavailable")
+        val logger = logger(state, repo, session) { }
+
+        logger.quickLog(isSend = false)
+        val failed = withTimeout(5_000) { state.first { it.quickLogFailed } }
+
+        assertFalse(failed.isQuickLogging)
+        assertEquals(null, failed.quickLogFeedback)
+        verify(exactly = 0) { session.recordBid() }
     }
 
     private fun logger(

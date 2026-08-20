@@ -214,6 +214,8 @@ data class ClimbDetailState(
     val isIgnored: Boolean = false,
     /** Private note stored in the encrypted per-user database. */
     val personalNote: String = "",
+    /** Unsaved editor content; retained across sheet dismissal and save failures. */
+    val personalNoteDraft: String = "",
     val personalNoteSaveStatus: PersonalNoteSaveStatus = PersonalNoteSaveStatus.IDLE,
     val restTimerTotalSeconds: Int = 180,
     val restTimerAutoStart: Boolean = false,
@@ -223,6 +225,7 @@ data class ClimbDetailState(
     val ascent: AscentFormState = AscentFormState(),
     val isQuickLogging: Boolean = false,
     val quickLogFeedback: QuickLogFeedback? = null,
+    val quickLogFailed: Boolean = false,
     val playback: PlaybackState = PlaybackState(),
     val ble: BoardSendState = BoardSendState(),
     val boardSendMode: BoardSendMode = BoardSendMode.AUTOMATIC,
@@ -358,7 +361,9 @@ class BoardClimbDetailViewModel @Inject constructor(
     val pageCache: StateFlow<Map<String, ClimbDetailState>> = _pageCache.asStateFlow()
 
     private var loadJob: Job? = null
-    private var personalNoteSaveJob: Job? = null
+    private val personalNoteSaveJobs = ConcurrentHashMap<String, Job>()
+    private val personalNoteDrafts = ConcurrentHashMap<String, String>()
+    private val personalNoteSaveStatuses = ConcurrentHashMap<String, PersonalNoteSaveStatus>()
     private var mirrorPlacementMap: Map<Int, Int> = emptyMap()
     private var originalAllFrames: List<List<BoardHold>> = emptyList()
     private var cachedPlacementMap: Map<Int, BoardPlacement>? = null
@@ -838,6 +843,16 @@ class BoardClimbDetailViewModel @Inject constructor(
     fun onAngleSelected(angle: Int) {
         if (angle == currentAngle) return
         ascentLogger.finishQuickSequence()
+        loadJob?.cancel()
+        currentAngle = angle
+        _state.update { current ->
+            current.copy(
+                isLoading = true,
+                error = null,
+                angle = angle,
+                ble = current.ble.copy(isSending = false, success = false, error = null),
+            )
+        }
         loadClimb(currentClimbUuid, angle)
     }
 
@@ -953,6 +968,9 @@ class BoardClimbDetailViewModel @Inject constructor(
                         val isFavorited = personalBoardRepo.isClimbFavorited(uuid)
                         val isIgnored = personalBoardRepo.isClimbIgnored(uuid)
                         val personalNote = personalBoardRepo.getClimbNote(climb.uuid).orEmpty()
+                        val personalNoteDraft = personalNoteDrafts[climb.uuid] ?: personalNote
+                        val personalNoteStatus = personalNoteSaveStatuses[climb.uuid]
+                            ?: PersonalNoteSaveStatus.IDLE
                         val angles = buildAngleOptions(climb, boardRepository.getAnglesForClimb(uuid))
                         val isMirrorable = BoardConstants.isLayoutMirrorable(
                             climb.brand, climb.layoutId.toInt()
@@ -997,6 +1015,8 @@ class BoardClimbDetailViewModel @Inject constructor(
                                 isFavorited = isFavorited,
                                 isIgnored = isIgnored,
                                 personalNote = personalNote,
+                                personalNoteDraft = personalNoteDraft,
+                                personalNoteSaveStatus = personalNoteStatus,
                                 availableAngles = angles,
                                 isMirrorable = isMirrorable,
                                 canPublishAsMine = canPublishAsMine,
@@ -1204,6 +1224,7 @@ class BoardClimbDetailViewModel @Inject constructor(
     fun quickLogAscent(isSend: Boolean) = ascentLogger.quickLog(isSend)
     fun consumeQuickLogFeedback() = ascentLogger.consumeQuickLogFeedback()
     fun undoQuickLog() = ascentLogger.undoQuickLog()
+    fun consumeQuickLogFailure() = _state.update { it.copy(quickLogFailed = false) }
     fun dismissAscentDialog() = ascentLogger.dismissDialog()
     fun updateAscentIsSend(isSend: Boolean) = ascentLogger.updateIsSend(isSend)
     fun updateAscentBidCount(count: Int) = ascentLogger.updateBidCount(count)
@@ -1291,27 +1312,39 @@ class BoardClimbDetailViewModel @Inject constructor(
             _state.value.personalNote == normalized &&
             _state.value.personalNoteSaveStatus != PersonalNoteSaveStatus.FAILED
         ) return
-        personalNoteSaveJob?.cancel()
+        personalNoteDrafts[climbUuid] = note.take(1000)
+        personalNoteSaveStatuses[climbUuid] = PersonalNoteSaveStatus.SAVING
+        personalNoteSaveJobs.remove(climbUuid)?.cancel()
         _state.update { current ->
             if (current.climb?.uuid == climbUuid) {
-                current.copy(personalNoteSaveStatus = PersonalNoteSaveStatus.SAVING)
+                current.copy(
+                    personalNoteDraft = note.take(1000),
+                    personalNoteSaveStatus = PersonalNoteSaveStatus.SAVING,
+                )
             } else current
         }
-        personalNoteSaveJob = viewModelScope.launch {
+        personalNoteSaveJobs[climbUuid] = viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) {
                     personalBoardRepo.saveClimbNote(climbUuid, normalized)
                 }
+                personalNoteDrafts.remove(climbUuid)
+                personalNoteSaveStatuses[climbUuid] = PersonalNoteSaveStatus.SAVED
                 _state.update { current ->
                     if (current.climb?.uuid == climbUuid) current.copy(
                         personalNote = normalized,
+                        personalNoteDraft = normalized,
                         personalNoteSaveStatus = PersonalNoteSaveStatus.SAVED,
                     )
                     else current
                 }
                 _pageCache.update { cache ->
                     cache.mapValues { (_, cached) ->
-                        if (cached.climb?.uuid == climbUuid) cached.copy(personalNote = normalized)
+                        if (cached.climb?.uuid == climbUuid) cached.copy(
+                            personalNote = normalized,
+                            personalNoteDraft = normalized,
+                            personalNoteSaveStatus = PersonalNoteSaveStatus.SAVED,
+                        )
                         else cached
                     }
                 }
@@ -1319,11 +1352,33 @@ class BoardClimbDetailViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "savePersonalNote failed", e)
+                personalNoteSaveStatuses[climbUuid] = PersonalNoteSaveStatus.FAILED
                 _state.update { current ->
                     if (current.climb?.uuid == climbUuid) {
                         current.copy(personalNoteSaveStatus = PersonalNoteSaveStatus.FAILED)
                     } else current
                 }
+            }
+        }
+    }
+
+    fun updatePersonalNoteDraft(note: String) {
+        val climbUuid = _state.value.climb?.uuid ?: return
+        val bounded = note.take(1000)
+        personalNoteDrafts[climbUuid] = bounded
+        personalNoteSaveStatuses[climbUuid] = PersonalNoteSaveStatus.IDLE
+        _state.update { current ->
+            if (current.climb?.uuid == climbUuid) current.copy(
+                personalNoteDraft = bounded,
+                personalNoteSaveStatus = PersonalNoteSaveStatus.IDLE,
+            ) else current
+        }
+        _pageCache.update { cache ->
+            cache.mapValues { (_, cached) ->
+                if (cached.climb?.uuid == climbUuid) cached.copy(
+                    personalNoteDraft = bounded,
+                    personalNoteSaveStatus = PersonalNoteSaveStatus.IDLE,
+                ) else cached
             }
         }
     }
@@ -1516,6 +1571,9 @@ class BoardClimbDetailViewModel @Inject constructor(
     }
 
     override fun onCleared() {
+        // The Snackbar belongs to the screen, but persistence finalization
+        // must not disappear when Back removes that screen immediately.
+        ascentLogger.finishQuickSequence()
         super.onCleared()
         // Don't touch the advertiser here. BleConnectionViewModel fully manages
         // the advertising lifecycle (connected -> climb -> lastClimb -> gone).
