@@ -18,10 +18,12 @@ import com.cruxcoach.android.ble.BoardConnectionOwner
 import com.cruxcoach.android.ble.BoardControllerProfiles
 import com.cruxcoach.android.ble.NearbyClimbScanner
 import com.cruxcoach.android.boardcell.BoardCellManager
+import com.cruxcoach.android.boardcell.BoardCellPlatformPolicy
 import com.cruxcoach.android.boardcell.ControllerRequestState
 import com.cruxcoach.android.fips.FipsMeshRuntime
 import com.cruxcoach.android.fips.FipsConnectionStage
 import com.cruxcoach.android.fips.FipsNearbyMesh
+import com.cruxcoach.android.ui.fips.visibleNearbyMeshes
 import com.cruxcoach.android.data.BoardSessionManager
 import com.cruxcoach.android.data.CruxRelayManager
 import com.cruxcoach.android.data.NearbyPresenceManager
@@ -104,7 +106,6 @@ data class BleConnectionState(
     val activeBoardCellId: String? = null,
     val activeMeshBoardName: String? = null,
     val activeMeshMemberCount: Int = 0,
-    val activeMeshControlsBoard: Boolean = false,
     val joiningBoardCellId: String? = null,
     val meshJoinStage: FipsConnectionStage = FipsConnectionStage.IDLE,
     val meshJoinFailed: Boolean = false,
@@ -129,6 +130,8 @@ class BleConnectionViewModel @Inject constructor(
     private val fipsMeshRuntime: FipsMeshRuntime,
     private val cruxRelayManager: CruxRelayManager,
 ) : ViewModel() {
+
+    private val meshAvailable = BoardCellPlatformPolicy.meshAvailable(Build.VERSION.SDK_INT)
 
     companion object {
         private const val TAG = "BleConnectionViewModel"
@@ -156,6 +159,7 @@ class BleConnectionViewModel @Inject constructor(
         private const val DIRECT_RECONNECT_ATTEMPTS = 2
         /** Two 10 s attempts plus legacy settle and retry delays. */
         private const val DIRECT_RECONNECT_TIMEOUT_MS = 24_000L
+        private const val MESH_JOIN_DISCONNECT_TIMEOUT_MS = 4_000L
     }
 
     private val _state = MutableStateFlow(BleConnectionState())
@@ -166,19 +170,17 @@ class BleConnectionViewModel @Inject constructor(
         viewModelScope.safeLaunch(TAG) {
             fipsMeshRuntime.startNearbyDiscovery()
             fipsMeshRuntime.nearbyMeshes.collect { meshes ->
+                val platformMeshes = visibleMeshesForPlatform(meshes, meshAvailable)
                 // An active FIPS radio also sees advertisements for its own
                 // realm. The BoardCell snapshot can briefly be absent while a
                 // durable controller is being restored, so filter by radio
                 // scope instead of relying only on activeBoardCellId in UI.
                 _state.update { state ->
-                    val active = meshes.firstOrNull {
+                    val active = platformMeshes.firstOrNull {
                         it.matchesActiveRealm || it.joinableBoardCellId == state.activeBoardCellId
                     }
                     state.copy(
-                        nearbyMeshes = meshes.filterNot {
-                            it.matchesActiveRealm ||
-                                it.joinableBoardCellId == state.activeBoardCellId
-                        },
+                        nearbyMeshes = visibleNearbyMeshes(platformMeshes, state.activeBoardCellId),
                         activeMeshBoardName = active?.boardName ?: state.activeMeshBoardName,
                     )
                 }
@@ -186,12 +188,21 @@ class BleConnectionViewModel @Inject constructor(
         }
         viewModelScope.safeLaunch(TAG) {
             boardCellManager.snapshots.collect { snapshot ->
-                _state.update { it.copy(activeBoardCellId = snapshot?.cellId?.value,
-                    activeMeshBoardName = if (snapshot == null) null else it.activeMeshBoardName,
-                    activeMeshMemberCount = snapshot?.members?.size ?: 0,
-                    activeMeshControlsBoard = snapshot?.controllerId == fipsMeshRuntime.localNpub,
-                    joiningBoardCellId = if (snapshot != null) null else it.joiningBoardCellId,
-                    meshJoinFailed = if (snapshot != null) false else it.meshJoinFailed) }
+                _state.update {
+                    val activeCellId = snapshot?.cellId?.value
+                    it.copy(
+                        activeBoardCellId = activeCellId,
+                        activeMeshBoardName = if (snapshot == null) null else it.activeMeshBoardName,
+                        activeMeshMemberCount = snapshot?.members?.size ?: 0,
+                        joiningBoardCellId = if (snapshot != null) null else it.joiningBoardCellId,
+                        meshJoinFailed = if (snapshot != null) false else it.meshJoinFailed,
+                        // Snapshot and scan emissions are independent. If the
+                        // advertisement arrived first, refilter immediately
+                        // when membership becomes canonical instead of waiting
+                        // for another BLE packet before hiding our own mesh.
+                        nearbyMeshes = visibleNearbyMeshes(it.nearbyMeshes, activeCellId),
+                    )
+                }
             }
         }
         viewModelScope.safeLaunch(TAG) {
@@ -214,7 +225,9 @@ class BleConnectionViewModel @Inject constructor(
         }
         viewModelScope.safeLaunch(TAG) {
             bleScanner.discoveredBoards.collect { boards ->
-                _state.update { it.copy(discoveredBoards = boards) }
+                _state.update {
+                    it.copy(discoveredBoards = visibleBoardsForPlatform(boards, meshAvailable))
+                }
             }
         }
         viewModelScope.safeLaunch(TAG) {
@@ -482,8 +495,9 @@ class BleConnectionViewModel @Inject constructor(
      * brand mismatch that never explains the connection itself is wrong.
      */
     private suspend fun preferActiveBrand(boards: List<DiscoveredBoard>): List<DiscoveredBoard> {
+        val platformBoards = visibleBoardsForPlatform(boards, meshAvailable)
         val activeBrand = BoardBrand.fromWire(userPreferences.boardBrand.first())
-        return boards.filter { it.boardBrand == activeBrand }.ifEmpty { boards }
+        return platformBoards.filter { it.boardBrand == activeBrand }.ifEmpty { platformBoards }
     }
 
     /**
@@ -598,12 +612,13 @@ class BleConnectionViewModel @Inject constructor(
         // when the user explicitly chooses a mesh. Make the mesh join the sole
         // radio action; otherwise that coroutine can surface a controller
         // transfer prompt (and even start a board GATT connect) mid-join.
+        autoConnectJob?.cancel()
+        autoConnectJob = null
         autoConnectScanJob?.cancel()
         autoConnectScanJob = null
+        directReconnectJob?.cancel()
+        directReconnectJob = null
         pendingBoard = null
-        if (bleConnection.connectionState.value == ConnectionState.CONNECTING) {
-            bleConnection.disconnect()
-        }
         viewModelScope.safeLaunch(TAG) {
             bleScanner.stopScan()
             _state.update {
@@ -616,6 +631,27 @@ class BleConnectionViewModel @Inject constructor(
                     activeMeshBoardName = mesh.boardName ?: it.activeMeshBoardName,
                     meshJoinFailed = false,
                 )
+            }
+            // A direct-board/relay auto-connect may win the radio race just
+            // before the explicit Board join tap. It must be fully closed
+            // first; otherwise the join can look successful in the sheet
+            // while only a legacy CruxRelay GATT edge exists and no canonical
+            // membership/admission request is ever created.
+            if (bleConnection.connectionState.value != ConnectionState.DISCONNECTED) {
+                bleConnection.disconnect()
+                val disconnected = withTimeoutOrNull(MESH_JOIN_DISCONNECT_TIMEOUT_MS) {
+                    bleConnection.connectionState.first { it == ConnectionState.DISCONNECTED }
+                } == ConnectionState.DISCONNECTED
+                if (!disconnected) {
+                    _state.update {
+                        it.copy(
+                            joiningBoardCellId = null,
+                            meshJoinStage = FipsConnectionStage.IDLE,
+                            meshJoinFailed = true,
+                        )
+                    }
+                    return@safeLaunch
+                }
             }
             val joined = try {
                 boardCellManager.joinNearbyMesh(

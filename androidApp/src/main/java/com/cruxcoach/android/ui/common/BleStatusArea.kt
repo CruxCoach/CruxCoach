@@ -113,15 +113,13 @@ fun BleStatusArea(
     val relayManager = LocalCruxRelayManager.current
     val relayState by relayManager.state.collectAsStateWithLifecycle()
 
-    // Sharing counts as content in its own right. It used to render as a
-    // separate card above this area, which meant the host saw the sharing
-    // state and the board state as two disconnected strips — and with nothing
-    // else going on, the area below returned early and the climb currently on
-    // the board never appeared at all. The relay line now rides along inside
-    // the regular chip instead.
+    // CruxRelay is an implementation detail of the active BoardCell controller,
+    // not a second user-facing connection. It must never create another row or
+    // keep an otherwise empty Nearby card visible. Relay failures still surface
+    // below because they can explain a temporarily unavailable board.
     val hasContent = effectiveOnBoard != null || state.boardOccupiedCount > 0 ||
         state.ownSession != null ||
-        relayState.enabled || nearbyMeshes.isNotEmpty() || joiningMeshName != null ||
+        nearbyMeshes.isNotEmpty() || joiningMeshName != null ||
         meshState.cellId != null || meshJoinFailed
 
     // Terminal relay errors (BOARD_LOST, a failed start) land AFTER the
@@ -166,7 +164,6 @@ fun BleStatusArea(
         )
     }
 
-    val relayClientCount = relayState.clientCount.takeIf { relayState.enabled }
     if (expanded) {
         BleStatusExpanded(
             state = state,
@@ -176,8 +173,6 @@ fun BleStatusArea(
             onJoinSession = null,
             onAddToQueue = onAddToQueue,
             onOpenQueueSheet = { showQueueSheet = true },
-            relayClientCount = relayClientCount,
-            onStopRelay = null,
             activeMesh = meshState.takeIf { it.cellId != null },
             onLeaveMesh = meshViewModel::leave,
             nearbyMeshes = nearbyMeshes,
@@ -200,8 +195,6 @@ fun BleStatusArea(
             onExpand = { Log.d(TAG, "EXPAND"); expanded = true },
             onAddToQueue = onAddToQueue,
             onRandomToQueue = onRandomToQueue,
-            relayClientCount = relayClientCount,
-            onStopRelay = null,
             nearbyMeshCount = nearbyMeshes.size,
             joiningMeshName = joiningMeshName,
             // Membership, not transient advertisement metadata, decides
@@ -210,9 +203,8 @@ fun BleStatusArea(
             // advertisement expires while the realm remains healthy.
             activeMeshName = meshState.takeIf { it.cellId != null }?.boardName
                 ?: meshState.cellId?.let { stringResource(com.cruxcoach.android.R.string.fips_mesh_nearby_own) },
+            activeMeshMemberCount = meshState.memberCount,
             meshControllerAvailable = meshState.availability == "ACTIVE",
-            localMeshController = meshState.controllerNpub != null &&
-                meshState.controllerNpub == meshState.localNpub,
         )
     }
 }

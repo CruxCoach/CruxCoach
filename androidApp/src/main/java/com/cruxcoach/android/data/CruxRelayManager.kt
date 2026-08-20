@@ -21,6 +21,7 @@ import com.cruxcoach.android.boardcell.BoardCellEvent
 import com.cruxcoach.android.boardcell.BoardCellAvailability
 import com.cruxcoach.android.boardcell.BoardCellManager
 import com.cruxcoach.android.boardcell.BoardCellPlatformPolicy
+import com.cruxcoach.android.boardcell.HandoverPhase
 import com.cruxcoach.android.boardcell.ProjectionResult
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.relay.RelayBoardName
@@ -142,7 +143,12 @@ class CruxRelayManager(
                     BoardCellPlatformPolicy.meshAvailable(Build.VERSION.SDK_INT) &&
                     snapshot?.availability == BoardCellAvailability.ACTIVE &&
                     snapshot.controllerId == boardCellManager.localNodeId() &&
-                    boardCellManager.localNodeId() in snapshot.members
+                    boardCellManager.localNodeId() in snapshot.members &&
+                    // Stop before releasing the physical GATT connection. If
+                    // the old relay remains discoverable during PREPARED, the
+                    // successor can mistake it for the board it must take over.
+                    (snapshot.handover == null ||
+                        snapshot.handover.phase == HandoverPhase.COMPLETED)
             }
         }
     }

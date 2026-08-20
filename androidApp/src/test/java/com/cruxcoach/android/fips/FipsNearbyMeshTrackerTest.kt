@@ -18,6 +18,16 @@ class FipsNearbyMeshTrackerTest {
     }
 
     @Test
+    fun `passive observation cannot make active realm joinable again`() {
+        val tracker = FipsNearbyMeshTracker(ttlMs = 1_000)
+        tracker.record(mesh("own", "cell", -50, 100, current = true))
+
+        val result = tracker.record(mesh("own", "cell", -40, 110, current = false))
+
+        assertTrue(result.single().matchesActiveRealm)
+    }
+
+    @Test
     fun `same address may advertise a different mesh and stale observations expire`() {
         val tracker = FipsNearbyMeshTracker(ttlMs = 100)
         tracker.record(mesh("realm-a", "cell-a", -60, 0, address = "AA"))

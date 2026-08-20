@@ -15,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
 import com.cruxcoach.android.R
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -39,9 +40,6 @@ internal fun BleStatusExpanded(
     onJoinSession: ((NearbySessionEntry) -> Unit)?,
     onAddToQueue: (() -> Unit)?,
     onOpenQueueSheet: (() -> Unit)? = null,
-    /** Non-null while this phone is relaying for other apps. */
-    relayClientCount: Int? = null,
-    onStopRelay: (() -> Unit)? = null,
     activeMesh: FipsMeshUiState? = null,
     /** Basic membership action only. Peer identities and transport details
      * stay on the dedicated FIPS Mesh screen. */
@@ -161,14 +159,6 @@ internal fun BleStatusExpanded(
             }
 
         }
-
-        // Inside the card, as it already is when the chip is collapsed. It used
-        // to be rendered next to this view instead, so the same line sat on the
-        // card in one state and floated on the page background in the other —
-        // one strip that belonged to neither container.
-        if (relayClientCount != null) {
-            RelaySharingLine(clientCount = relayClientCount, onStop = onStopRelay)
-        }
     }
 }
 
@@ -178,14 +168,13 @@ private fun ActiveMeshSection(
     onJoinPlaylist: (() -> Unit)?,
     onLeaveMesh: (() -> Unit)?,
 ) {
-    val localController = mesh.controllerNpub != null && mesh.controllerNpub == mesh.localNpub
     val connected = mesh.availability == "ACTIVE"
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
-            if (localController) Icons.Default.CellTower else Icons.Default.Hub,
+            Icons.Default.Hub,
             null,
             tint = if (connected) com.cruxcoach.android.ui.theme.SuccessGreen else OrangeAccent,
             modifier = Modifier.size(18.dp),
@@ -193,19 +182,17 @@ private fun ActiveMeshSection(
         Spacer(Modifier.width(8.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                stringResource(
-                    if (localController) R.string.mesh_status_direct_controller
-                    else R.string.mesh_status_via_controller,
-                    mesh.boardName ?: stringResource(R.string.fips_mesh_nearby_own),
-                ),
+                mesh.boardName ?: stringResource(R.string.fips_mesh_nearby_own),
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Medium,
             )
             Text(
-                stringResource(
-                    if (mesh.availability == "ACTIVE") R.string.fips_mesh_own_active
-                    else R.string.fips_mesh_own_inactive,
-                ),
+                if (connected) pluralStringResource(
+                    R.plurals.board_people_count,
+                    mesh.memberCount,
+                    mesh.memberCount,
+                )
+                else stringResource(R.string.fips_mesh_own_inactive),
                 style = MaterialTheme.typography.labelSmall,
                 color = if (mesh.availability == "ACTIVE") OrangeAccent
                 else MaterialTheme.colorScheme.error,

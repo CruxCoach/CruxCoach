@@ -346,7 +346,7 @@ class BoardCellWireTest {
 
         // Only an explicit approval commits membership.
         host.joinMember(board, "candidate", 3)
-        assertTrue("candidate" in host.snapshot(board)!!.members)
+        assertEquals(setOf("host", "sponsor", "candidate"), host.snapshot(board)!!.members)
 
         // Process restart keeps the per-realm npub but loses in-memory state.
         // Sponsoring that existing identity must deliver a full snapshot.
@@ -356,8 +356,9 @@ class BoardCellWireTest {
             BoardCellWireMessage.MemberJoinRequest(rejoin), shared.epoch,
             shared.controllerTerm, "join-reconnect-frame"), 4))
         assertEquals("candidate", hostLink.sent.single().first)
-        assertTrue(BoardCellWireCodec.decode(hostLink.sent.single().second).message is
-            BoardCellWireMessage.Snapshot)
+        val welcome = BoardCellWireCodec.decode(hostLink.sent.single().second).message
+        assertTrue(welcome is BoardCellWireMessage.Snapshot)
+        assertEquals(3, (welcome as BoardCellWireMessage.Snapshot).value.members.size)
 
         val forged = BoardCellJoinRequest("join-forged-01", "other", "sponsor")
         assertTrue(hostTransport.receive("attacker", frame("attacker",

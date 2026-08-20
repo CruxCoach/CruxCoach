@@ -1,10 +1,12 @@
 package com.cruxcoach.android.ui.fips
 
+import android.os.Build
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.boardcell.BoardCellManager
 import com.cruxcoach.android.boardcell.IncomingControllerRequest
+import com.cruxcoach.android.boardcell.BoardCellPlatformPolicy
 import com.cruxcoach.android.fips.FipsMeshRuntime
 import com.cruxcoach.android.fips.FipsConnectionStage
 import com.cruxcoach.android.fips.FipsPeer
@@ -104,6 +106,7 @@ class FipsMeshViewModel @Inject constructor(
     private val boardCellManager: BoardCellManager,
     boardConnection: BoardBleConnection,
 ) : ViewModel() {
+    private val meshAvailable = BoardCellPlatformPolicy.meshAvailable(Build.VERSION.SDK_INT)
     private val _joiningBoardCellId = MutableStateFlow<String?>(null)
     val joiningBoardCellId = _joiningBoardCellId.asStateFlow()
     private val _joinFailed = MutableStateFlow(false)
@@ -118,7 +121,7 @@ class FipsMeshViewModel @Inject constructor(
     val incomingControllerRequest = boardCellManager.incomingControllerRequest
 
     init {
-        runtime.startNearbyDiscovery()
+        if (meshAvailable) runtime.startNearbyDiscovery()
         viewModelScope.launch {
             boardCellManager.snapshots.collect { snapshot ->
                 if (snapshot == null) {
@@ -188,7 +191,7 @@ class FipsMeshViewModel @Inject constructor(
                     localIsHost = it.hostId == runtime.localNpub,
                 )
             },
-            nearbyMeshes = visibleNearbyMeshes(nearby, snapshot?.cellId?.value).map {
+            nearbyMeshes = if (meshAvailable) visibleNearbyMeshes(nearby, snapshot?.cellId?.value).map {
                 NearbyFipsMeshUi(
                     address = it.address,
                     realmTag = it.realmTag,
@@ -202,11 +205,12 @@ class FipsMeshViewModel @Inject constructor(
                     boardName = it.boardName,
                     psm = it.psm,
                 )
-            },
+            } else emptyList(),
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FipsMeshUiState())
 
     fun join(mesh: NearbyFipsMeshUi) {
+        if (!meshAvailable) return
         val cellId = mesh.joinableBoardCellId ?: return
         _joinFailed.value = false
         _joiningBoardCellId.value = cellId
@@ -233,7 +237,9 @@ class FipsMeshViewModel @Inject constructor(
         }
     }
 
-    fun ensureDiscovery() = runtime.startNearbyDiscovery()
+    fun ensureDiscovery() {
+        if (meshAvailable) runtime.startNearbyDiscovery()
+    }
 
     fun leave() {
         _leaveFailed.value = false

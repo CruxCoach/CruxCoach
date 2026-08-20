@@ -49,6 +49,7 @@ import com.cruxcoach.android.boardcell.BoardCellId
 import com.cruxcoach.android.boardcell.PhysicalBoardIdentity
 import com.cruxcoach.android.fips.FipsNearbyMesh
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.*
 
@@ -330,7 +331,6 @@ fun BleConnectionSheet(
                             state.activeMeshBoardName ?: state.connectedBoardName ?: "Board"
                         } else null,
                         activeMeshMemberCount = state.activeMeshMemberCount,
-                        activeMeshControlsBoard = state.activeMeshControlsBoard,
                         onDisconnect = { viewModel.disconnect() }
                     )
                     NearbyBoardSwitchSection(
@@ -372,7 +372,6 @@ fun BleConnectionSheet(
                         isSending = false,
                         activeMeshName = state.activeMeshBoardName ?: "Board",
                         activeMeshMemberCount = state.activeMeshMemberCount,
-                        activeMeshControlsBoard = state.activeMeshControlsBoard,
                         onDisconnect = { viewModel.disconnect() },
                     )
                     NearbyBoardSwitchSection(
@@ -767,7 +766,6 @@ private fun ConnectedContent(
     isSending: Boolean,
     activeMeshName: String? = null,
     activeMeshMemberCount: Int = 0,
-    activeMeshControlsBoard: Boolean = false,
     onDisconnect: () -> Unit
 ) {
     Row(
@@ -803,13 +801,12 @@ private fun ConnectedContent(
             // Two answers, never a third: physical controllers are treated as
             // exclusive; CruxRelay is multi-client by construction.
             if (activeMeshName != null) {
-                val role = stringResource(
-                    if (activeMeshControlsBoard) R.string.fips_mesh_role_controls
-                    else R.string.fips_mesh_role_connected,
-                )
                 Text(
-                    "$role · $activeMeshMemberCount " +
-                        "${stringResource(R.string.fips_mesh_members).lowercase()}",
+                    pluralStringResource(
+                        R.plurals.board_people_count,
+                        activeMeshMemberCount,
+                        activeMeshMemberCount,
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1056,13 +1053,12 @@ private fun ScanContent(
         ActiveMeshBoardItem(activeMeshBoardName, activeMeshMemberCount)
     }
 
-    val meshCells = nearbyMeshes.mapNotNull { it.joinableBoardCellId }.toSet()
-    val standaloneBoards = boards.filter { board ->
-        val cell = runCatching {
-            BoardCellId.forPhysical(PhysicalBoardIdentity.resolve(board)).value
-        }.getOrNull()
-        cell != activeBoardCellId && cell !in meshCells
-    }
+    val standaloneBoards = visibleStandaloneBoards(
+        boards = boards,
+        nearbyMeshes = nearbyMeshes,
+        activeBoardCellId = activeBoardCellId,
+        activeMeshBoardName = activeMeshBoardName,
+    )
     if (standaloneBoards.isNotEmpty() || nearbyMeshes.isNotEmpty()) {
         LazyColumn(
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -1153,8 +1149,7 @@ private fun ActiveMeshBoardItem(boardName: String?, memberCount: Int) {
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
-                    "${stringResource(R.string.fips_mesh_own_active)} · " +
-                        "${stringResource(R.string.fips_mesh_members)}: $memberCount",
+                    pluralStringResource(R.plurals.board_people_count, memberCount, memberCount),
                     style = MaterialTheme.typography.bodySmall,
                     color = SuccessGreen,
                 )

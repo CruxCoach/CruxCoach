@@ -2459,6 +2459,16 @@
     <string name="fips_mesh_own_inactive">Kein Board verbunden</string>
     <string name="fips_mesh_cell">Mesh-ID</string>
     <string name="fips_mesh_members">Personen</string>
+    <plurals name="board_people_count">
+        <item quantity="one">%1$d Person</item>
+        <item quantity="other">%1$d Personen</item>
+    </plurals>
+    <plurals name="board_group_people_summary">
+        <item quantity="one">%1$s · %2$d Person</item>
+        <item quantity="other">%1$s · %2$d Personen</item>
+    </plurals>
+    <string name="fips_mesh_direct_peers">Direkte Mesh-Peers</string>
+    <string name="fips_mesh_relay_connections">Board-Apps über Relay auf diesem Handy</string>
     <string name="fips_mesh_state">Zustand</string>
     <string name="fips_mesh_own_node">Dieses Gerät</string>
     <string name="fips_mesh_controller">Controller</string>
@@ -2476,7 +2486,7 @@
     <string name="fips_mesh_signal_reachable">In Reichweite</string>
     <string name="fips_mesh_signal_weak">Schwaches Signal</string>
     <string name="fips_mesh_join_action">Verbinden</string>
-    <string name="fips_nearby_meshes_count">%1$d Board-Meshes in der Nähe</string>
+    <string name="fips_nearby_meshes_count">%1$d Boards in der Nähe</string>
     <string name="fips_mesh_joining">Beitritt zu %1$s…</string>
     <string name="fips_mesh_join_stage_starting">Board wird gesucht…</string>
     <string name="fips_mesh_join_stage_connecting">Bluetooth-Verbindung wird aufgebaut…</string>

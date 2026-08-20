@@ -88,6 +88,11 @@ internal class FipsNearbyMeshTracker(private val ttlMs: Long = NEARBY_MESH_TTL_M
         val cutoff = mesh.lastSeenMs - ttlMs
         val previous = meshes.firstOrNull { it.realmTag == mesh.realmTag && it.cellTag == mesh.cellTag }
         val merged = mesh.copy(
+            // Passive discovery and the active-realm radio observe the same
+            // advertisement independently. A later passive callback must not
+            // downgrade an already-proven active realm and make our own board
+            // reappear as joinable until the tracker entry expires.
+            matchesActiveRealm = mesh.matchesActiveRealm || previous?.matchesActiveRealm == true,
             boardName = mesh.boardName ?: previous?.boardName,
             joinableBoardCellId = mesh.joinableBoardCellId ?: previous?.joinableBoardCellId,
             psm = mesh.psm.takeIf { it > 0 } ?: previous?.psm ?: 0,

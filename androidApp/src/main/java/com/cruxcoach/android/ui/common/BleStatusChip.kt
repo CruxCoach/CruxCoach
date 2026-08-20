@@ -54,14 +54,11 @@ internal fun BleStatusChip(
     onExpand: () -> Unit,
     onAddToQueue: (() -> Unit)?,
     onRandomToQueue: (() -> Unit)? = null,
-    /** Client count while the board is shared, or null when it is not. */
-    relayClientCount: Int? = null,
-    onStopRelay: (() -> Unit)? = null,
     nearbyMeshCount: Int = 0,
     joiningMeshName: String? = null,
     activeMeshName: String? = null,
+    activeMeshMemberCount: Int = 0,
     meshControllerAvailable: Boolean = true,
-    localMeshController: Boolean = false,
 ) {
     val session = state.ownSession
 
@@ -71,17 +68,12 @@ internal fun BleStatusChip(
             session = session,
             effectiveOnBoard = effectiveOnBoard,
             activeMeshName = activeMeshName,
+            activeMeshMemberCount = activeMeshMemberCount,
             meshControllerAvailable = meshControllerAvailable,
-            localMeshController = localMeshController,
             onExpand = onExpand,
             onAddToQueue = onAddToQueue,
             onRandomToQueue = onRandomToQueue
         )
-        // The mini-player owns its own card, so the sharing line trails it
-        // rather than sitting inside — still one block, not a detached strip.
-        if (relayClientCount != null) {
-            RelaySharingLine(clientCount = relayClientCount, onStop = onStopRelay)
-        }
         return
     }
 
@@ -105,14 +97,15 @@ internal fun BleStatusChip(
         shape = RoundedCornerShape(14.dp)
     ) {
       Column {
-        // Sharing alone is enough to show this block, but it has nothing to
-        // say in the summary line — rendering the row anyway left a bare
-        // icon + chevron above the sharing line.
         val meshSummary = activeMeshName?.let { name ->
             when {
                 !meshControllerAvailable -> stringResource(R.string.mesh_status_recovering, name)
-                localMeshController -> stringResource(R.string.mesh_status_direct_controller, name)
-                else -> stringResource(R.string.mesh_status_via_controller, name)
+                else -> pluralStringResource(
+                    R.plurals.board_group_people_summary,
+                    activeMeshMemberCount,
+                    name,
+                    activeMeshMemberCount,
+                )
             }
         }
         val nearbySummary = buildChipSummary(effectiveOnBoard, state, nearbyMeshCount)
@@ -131,8 +124,7 @@ internal fun BleStatusChip(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                if (activeMeshName != null && !localMeshController) Icons.Default.Hub
-                else Icons.Default.CellTower,
+                if (activeMeshName != null) Icons.Default.Hub else Icons.Default.CellTower,
                 contentDescription = null,
                 tint = if (activeMeshName != null && meshControllerAvailable) SuccessGreen else OrangeAccent,
                 modifier = Modifier
@@ -163,13 +155,6 @@ internal fun BleStatusChip(
             )
         }
         }
-        if (relayClientCount != null) {
-            RelaySharingLine(
-                clientCount = relayClientCount,
-                onStop = onStopRelay,
-                showDivider = summary.isNotBlank(),
-            )
-        }
       }
     }
 }
@@ -185,8 +170,8 @@ internal fun SessionChipContent(
     session: OwnSessionState,
     effectiveOnBoard: OnBoardClimbEntry?,
     activeMeshName: String? = null,
+    activeMeshMemberCount: Int = 0,
     meshControllerAvailable: Boolean = true,
-    localMeshController: Boolean = false,
     onExpand: () -> Unit,
     onAddToQueue: (() -> Unit)?,
     onRandomToQueue: (() -> Unit)? = null
@@ -245,7 +230,6 @@ internal fun SessionChipContent(
                 Icon(
                     when {
                         activeMeshName == null -> Icons.AutoMirrored.Filled.QueueMusic
-                        localMeshController -> Icons.Default.CellTower
                         else -> Icons.Default.Hub
                     },
                     contentDescription = activeMeshName,
@@ -451,67 +435,6 @@ internal fun formatSessionTime(totalSeconds: Int): String {
     val seconds = totalSeconds % 60
     return if (hours > 0) "%d:%02d:%02d".format(hours, minutes, seconds)
     else "%d:%02d".format(minutes, seconds)
-}
-
-/**
- * FEAT-044 §12: "board is shared" status with a one-tap stop.
- *
- * Rides inside the regular BLE status block rather than as a card of its own.
- * As a separate strip it read as unrelated to the board state directly above
- * it, and on a screen with nothing else to show the block below it collapsed
- * entirely — the host then saw sharing but not the climb on the board.
- *
- * Stopping affects only relay transport; queue and board ownership stay intact.
- */
-@Composable
-internal fun RelaySharingLine(
-    clientCount: Int,
-    onStop: (() -> Unit)?,
-    /** Off when this line is the only content of its block. */
-    showDivider: Boolean = true,
-) {
-    if (showDivider) {
-        HorizontalDivider(
-            color = SuccessGreen.copy(alpha = 0.25f),
-            modifier = Modifier.padding(horizontal = 12.dp),
-        )
-    }
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag("relay_status_chip")
-            .padding(start = 12.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-            Icon(
-                Icons.Default.CellTower,
-                contentDescription = null,
-                tint = SuccessGreen,
-                modifier = Modifier.size(18.dp)
-            )
-            Spacer(Modifier.width(8.dp))
-            Text(
-                stringResource(R.string.relay_chip_text, clientCount),
-                style = MaterialTheme.typography.bodySmall,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
-                // Two lines: inside a card the German text plus the stop button
-                // never fit on one, and it was cut mid-word ("1 verbund…") —
-                // hiding the very number the line exists to report.
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
-        if (onStop != null) {
-            TextButton(onClick = onStop, modifier = Modifier.testTag("relay_chip_stop")) {
-                Text(
-                    stringResource(R.string.relay_chip_stop),
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        }
-    }
 }
 
 /**

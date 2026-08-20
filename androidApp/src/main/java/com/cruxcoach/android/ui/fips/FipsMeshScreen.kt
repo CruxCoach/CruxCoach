@@ -43,6 +43,7 @@ import com.cruxcoach.android.R
 import com.cruxcoach.android.boardcell.MeshMembershipTransition
 import com.cruxcoach.android.fips.FipsConnectionStage
 import com.cruxcoach.android.ui.board.BleConnectionSheet
+import com.cruxcoach.android.ui.common.LocalCruxRelayManager
 import com.cruxcoach.android.ui.theme.InfoBlue
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.SuccessGreen
@@ -58,6 +59,7 @@ fun FipsMeshScreen(
     val joinFailed by viewModel.joinFailed.collectAsStateWithLifecycle()
     val leaveFailed by viewModel.leaveFailed.collectAsStateWithLifecycle()
     val membershipTransition by viewModel.membershipTransition.collectAsStateWithLifecycle()
+    val relayState by LocalCruxRelayManager.current.state.collectAsStateWithLifecycle()
     var showConnectionSheet by remember { mutableStateOf(false) }
     if (showConnectionSheet) {
         BleConnectionSheet(onDismiss = { showConnectionSheet = false })
@@ -90,6 +92,7 @@ fun FipsMeshScreen(
                 )
             }
             item { CurrentMeshCard(state,
+                relayClientCount = relayState.clientCount.takeIf { relayState.enabled },
                 leaving = membershipTransition == MeshMembershipTransition.LEAVING,
                 leaveFailed = leaveFailed,
                 onLeave = viewModel::leave,
@@ -135,6 +138,7 @@ fun FipsMeshScreen(
 @Composable
 private fun CurrentMeshCard(
     state: FipsMeshUiState,
+    relayClientCount: Int?,
     leaving: Boolean,
     leaveFailed: Boolean,
     onLeave: () -> Unit,
@@ -157,6 +161,13 @@ private fun CurrentMeshCard(
         }
         if (state.cellId != null) {
             Detail(stringResource(R.string.fips_mesh_members), state.memberCount.toString())
+            Detail(
+                stringResource(R.string.fips_mesh_direct_peers),
+                state.peers.count { it.directAuthenticated }.toString(),
+            )
+            relayClientCount?.let {
+                Detail(stringResource(R.string.fips_mesh_relay_connections), it.toString())
+            }
             Detail(
                 stringResource(R.string.fips_mesh_role),
                 stringResource(

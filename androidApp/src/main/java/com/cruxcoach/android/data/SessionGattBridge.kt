@@ -619,9 +619,11 @@ class SessionGattBridge(
 
     /** Approval is the only entry into this path. Find the physical board whose
      * deterministic identity belongs to the mesh; never auto-connect merely by
-     * discovery order or display name. */
+     * discovery order or display name. A CruxRelay intentionally advertises the
+     * same physical identity, but it must never become the controller's board
+     * connection: its lifetime belongs to the controller we are replacing. */
     private suspend fun ensureHandoverBoardConnected(snapshot: BoardCellSnapshot): Boolean {
-        if (boardMatchesSnapshot(bleConnection.connectedBoard, snapshot) &&
+        if (physicalBoardMatchesSnapshot(bleConnection.connectedBoard, snapshot) &&
             bleConnection.connectionState.value == ConnectionState.CONNECTED) return true
         val scanner = boardScanner ?: return false
         if (bleConnection.connectionState.value != ConnectionState.DISCONNECTED) {
@@ -635,8 +637,8 @@ class SessionGattBridge(
         val board = try {
             withTimeoutOrNull(HANDOVER_SCAN_TIMEOUT_MS) {
                 scanner.discoveredBoards.first { boards ->
-                    boards.any { boardMatchesSnapshot(it, snapshot) }
-                }.first { boardMatchesSnapshot(it, snapshot) }
+                    boards.any { physicalBoardMatchesSnapshot(it, snapshot) }
+                }.first { physicalBoardMatchesSnapshot(it, snapshot) }
             }
         } finally {
             scanner.stopScan()
@@ -648,8 +650,13 @@ class SessionGattBridge(
             }
         }
         return result == ConnectionState.CONNECTED &&
-            boardMatchesSnapshot(bleConnection.connectedBoard, snapshot)
+            physicalBoardMatchesSnapshot(bleConnection.connectedBoard, snapshot)
     }
+
+    private fun physicalBoardMatchesSnapshot(
+        board: DiscoveredBoard?,
+        snapshot: BoardCellSnapshot,
+    ): Boolean = board?.isCruxRelay == false && boardMatchesSnapshot(board, snapshot)
 
     private fun boardMatchesSnapshot(board: DiscoveredBoard?, snapshot: BoardCellSnapshot): Boolean {
         board ?: return false

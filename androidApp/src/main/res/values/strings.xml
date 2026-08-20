@@ -2460,6 +2460,16 @@
     <string name="fips_mesh_own_inactive">No board connected</string>
     <string name="fips_mesh_cell">Mesh ID</string>
     <string name="fips_mesh_members">People</string>
+    <plurals name="board_people_count">
+        <item quantity="one">%1$d person</item>
+        <item quantity="other">%1$d people</item>
+    </plurals>
+    <plurals name="board_group_people_summary">
+        <item quantity="one">%1$s · %2$d person</item>
+        <item quantity="other">%1$s · %2$d people</item>
+    </plurals>
+    <string name="fips_mesh_direct_peers">Direct mesh peers</string>
+    <string name="fips_mesh_relay_connections">Board apps via relay on this phone</string>
     <string name="fips_mesh_state">State</string>
     <string name="fips_mesh_own_node">This device</string>
     <string name="fips_mesh_controller">Controller</string>
@@ -2477,7 +2487,7 @@
     <string name="fips_mesh_signal_reachable">In range</string>
     <string name="fips_mesh_signal_weak">Weak signal</string>
     <string name="fips_mesh_join_action">Connect</string>
-    <string name="fips_nearby_meshes_count">%1$d board meshes nearby</string>
+    <string name="fips_nearby_meshes_count">%1$d boards nearby</string>
     <string name="fips_mesh_joining">Joining %1$s…</string>
     <string name="fips_mesh_join_stage_starting">Finding board…</string>
     <string name="fips_mesh_join_stage_connecting">Connecting via Bluetooth…</string>
