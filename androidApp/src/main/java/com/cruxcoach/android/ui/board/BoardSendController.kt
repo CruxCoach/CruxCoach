@@ -223,7 +223,14 @@ internal class BoardSendController(
                 val success = boardCellWriteGateway.project(
                     BoardProjection(s.climb!!.uuid, s.angle,
                         BoardProjectionPolicy.projectionSurvivesDisconnect(s.climb.brand))) {
-                        bleConnection.sendClimb(s.holds, placementToLed, roleColorMap)
+                        bleConnection.sendClimb(
+                            s.holds, placementToLed, roleColorMap,
+                            routeId = if (s.climb.brand == BoardBrand.QUANTUM) {
+                                withContext(Dispatchers.IO) {
+                                    boardRepository.getQuantumExternalRouteUuid(s.climb.uuid)
+                                } ?: s.climb.uuid
+                            } else null,
+                        )
                     }
                 Log.i(TAG, "sendToBoard: writes done success=$success unmapped=$unmappedHolds")
                 state.update { it.copy(

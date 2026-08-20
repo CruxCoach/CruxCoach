@@ -17,6 +17,16 @@ class BoardBleNameTest {
     private val scanner = BoardBleScanner(mockk<Context>(relaxed = true))
 
     @Test
+    fun quantumNamesRequireCurrentPrefixAndTwelveHexMac() {
+        assertEquals("020000000001", scanner.quantumSerialOrNull("QB_020000000001"))
+        assertEquals("020000000001", scanner.quantumSerialOrNull("QBB_020000000001"))
+        assertEquals("AABBCCDDEEFF", scanner.quantumSerialOrNull("eWalls_room_AABBCCDDEEFF"))
+        assertEquals(null, scanner.quantumSerialOrNull("Quantum Board"))
+        assertEquals(null, scanner.quantumSerialOrNull("QB_not-a-mac"))
+        assertEquals(null, scanner.quantumSerialOrNull("qb_020000000001"))
+    }
+
+    @Test
     fun isMoonBoardName_matches_both_casings_and_rejects_aurora_names() {
         assertTrue(scanner.isMoonBoardName("MoonBoard Masters 2019"))
         assertTrue(scanner.isMoonBoardName("Moonboard"))

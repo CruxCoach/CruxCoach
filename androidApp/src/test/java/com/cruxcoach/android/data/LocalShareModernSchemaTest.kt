@@ -385,6 +385,8 @@ class LocalShareModernSchemaTest {
     fun snapshotScrub_removesDraftsTheirStatsAndPublishAttempts() {
         val snapshot = File(srcPath.parentFile, "share_snapshot.db")
         srcPath.copyTo(snapshot, overwrite = true)
+        val quantumUuid = "66666666-6666-6666-6666-000000000006"
+        val quantumRouteUuid = "77777777-7777-7777-7777-000000000007"
         // Enrich the COPY with the two private row kinds the scrub targets
         // (kept out of the shared seed so the import tests' stat counts
         // stay untouched): the draft's own stats + a publish-attempt row.
@@ -410,6 +412,34 @@ class LocalShareModernSchemaTest {
                 "UPDATE climbs SET kilter_author_uuid = ?, kilter_error = ? WHERE uuid = ?",
                 arrayOf<Any?>("sender-kilter-account-uuid", "403 {\"detail\":\"…\"}", communityUuid),
             )
+            // Quantum is deliberately absent from the v1 peer wire format:
+            // old clients do not have its route UUID mapping table and could
+            // otherwise retain catalogue rows they can render but not send.
+            db.execSQL(
+                """
+                INSERT INTO climbs(uuid, layout_id, setter_username, name, frames,
+                    frames_count, is_listed, created_at, description, is_nomatch,
+                    frames_pace, hsm, move_count, source, sync_status, origin, board_brand)
+                VALUES ('$quantumUuid', 9101, 'setter', 'Quantum Route', 'p19100001r12p19100002r14',
+                    1, 1, '2026-08-01 00:00:00', '', 0, 0, 0, 2,
+                    'quantum', 'synced', 'quantum', 'quantum')
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                INSERT INTO climb_stats(climb_uuid, angle, display_difficulty,
+                    difficulty_average, quality_average, ascensionist_count,
+                    benchmark_difficulty, fa_username, fa_at, layout_id)
+                VALUES ('$quantumUuid', 0, 10.0, 10.0, NULL, 0, NULL, NULL, NULL, 9101)
+                """.trimIndent()
+            )
+            db.execSQL("INSERT INTO product_sizes(board_brand, id, product_id, name, edge_left, edge_right, edge_bottom, edge_top) VALUES ('quantum', 9201, 9201, 'XL', 0, 1000, 0, 1000)")
+            db.execSQL("INSERT INTO holes(board_brand, id, product_size_id, x, y) VALUES ('quantum', 19100001, 9201, 100, 100)")
+            db.execSQL("INSERT INTO placements(board_brand, placement_id, hole_id, set_id, x, y) VALUES ('quantum', 19100001, 19100001, 9101, 100, 100)")
+            db.execSQL("INSERT INTO board_images(board_brand, id, product_size_id, layout_id, set_id, image_filename) VALUES ('quantum', 9201, 9201, 9101, 9101, '')")
+            db.execSQL("INSERT INTO leds(board_brand, hole_id, product_size_id, position) VALUES ('quantum', 19100001, 9201, 42)")
+            db.execSQL("INSERT INTO placement_roles(board_brand, id, name, led_color, screen_color) VALUES ('quantum', 12, 'start', '00FF00', '00FF00')")
+            db.execSQL("INSERT INTO quantum_route_refs(app_uuid, route_uuid, model) VALUES ('$quantumUuid', '$quantumRouteUuid', 'XL')")
         }
 
         com.cruxcoach.android.util.scrubAndCompactBoardDbSnapshot(snapshot)
@@ -418,6 +448,15 @@ class LocalShareModernSchemaTest {
             assertEquals("draft gone", 0, countWhere(db, "climbs", "uuid = '$draftUuid'"))
             assertEquals("draft stats gone", 0, countWhere(db, "climb_stats", "climb_uuid = '$draftUuid'"))
             assertEquals("publish-attempt audit gone", 0, countWhere(db, "kilter_publish_attempts", "1=1"))
+            assertEquals("quantum climb gone", 0, countWhere(db, "climbs", "board_brand = 'quantum'"))
+            assertEquals("quantum stats gone", 0, countWhere(db, "climb_stats", "climb_uuid = '$quantumUuid'"))
+            assertEquals("quantum placements gone", 0, countWhere(db, "placements", "board_brand = 'quantum'"))
+            assertEquals("quantum holes gone", 0, countWhere(db, "holes", "board_brand = 'quantum'"))
+            assertEquals("quantum product sizes gone", 0, countWhere(db, "product_sizes", "board_brand = 'quantum'"))
+            assertEquals("quantum board images gone", 0, countWhere(db, "board_images", "board_brand = 'quantum'"))
+            assertEquals("quantum LEDs gone", 0, countWhere(db, "leds", "board_brand = 'quantum'"))
+            assertEquals("quantum roles gone", 0, countWhere(db, "placement_roles", "board_brand = 'quantum'"))
+            assertEquals("quantum route mapping gone", 0, countWhere(db, "quantum_route_refs", "1=1"))
             // The sender's Kilter account identity never reaches the wire. No
             // receiver path reads either column, so this is pure leakage.
             assertEquals(

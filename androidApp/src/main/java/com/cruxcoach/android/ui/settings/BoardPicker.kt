@@ -13,10 +13,12 @@ import com.cruxcoach.android.R
 import com.cruxcoach.android.data.AuroraBoardSelector
 import com.cruxcoach.android.data.BoardConstants
 import com.cruxcoach.android.data.UserPreferences
+import com.cruxcoach.android.data.QuantumCatalogueSync
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.BoardSize
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.MoonBoardVariant
+import com.cruxcoach.domain.board.QuantumBoardModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
@@ -73,6 +75,7 @@ class BoardPickerViewModel @Inject constructor(
     private val userPreferences: UserPreferences,
     private val boardRepository: BoardRepository,
     private val auroraBoardSelector: AuroraBoardSelector,
+    private val quantumCatalogueSync: QuantumCatalogueSync,
 ) : ViewModel() {
 
     private val productSizes = MutableStateFlow(BoardConstants.KILTER_KNOWN_SIZES)
@@ -174,6 +177,23 @@ class BoardPickerViewModel @Inject constructor(
         viewModelScope.launch { userPreferences.setMoonBoardSelection(variant.layoutId.toInt()) }
     }
 
+    fun selectQuantum(model: QuantumBoardModel) {
+        viewModelScope.launch {
+            userPreferences.setBoardSelection(
+                BoardBrand.QUANTUM.wireValue,
+                model.layoutId.toInt(),
+                model.productSizeId.toInt(),
+                null,
+            )
+            // Selection remains usable offline when already cached; a failed
+            // refresh is non-destructive and can be retried from board sync.
+            val result = quantumCatalogueSync.sync()
+            if (result is QuantumCatalogueSync.Result.Failed) {
+                Toast.makeText(context, R.string.quantum_sync_failed_generic, Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
     fun selectAurora(board: BoardBrand, variant: BoardConstants.AuroraVariant?, productSizeId: Int? = null) {
         viewModelScope.launch {
             val status = try {
@@ -230,6 +250,7 @@ internal fun BoardPickerDialog(
         showAuroraBoards = true,
         onConfirmKilter = { viewModel.selectKilter(it); onSelected() },
         onConfirmMoonBoard = { viewModel.selectMoonBoard(it); onSelected() },
+        onConfirmQuantum = { viewModel.selectQuantum(it); onSelected() },
         onConfirmAurora = { brand, variant, sizeId -> viewModel.selectAurora(brand, variant, sizeId); onSelected() },
         onFindViaGym = onFindViaGym,
         onDismiss = onDismiss,

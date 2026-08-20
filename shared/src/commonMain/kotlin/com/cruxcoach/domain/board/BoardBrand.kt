@@ -23,6 +23,12 @@ enum class BoardBrand(val wireValue: String) {
     SOILL("soill"),
     TOUCHSTONE("touchstone"),
 
+    // Walltopia Quantum Board. Its catalogue and diode geometry are fetched
+    // from a dedicated, independently versioned Blossom manifest. Quantum
+    // does NOT speak Aurora's protocol: it has its own MODBUS-framed BLE
+    // adapter, while still using the shared coordinate/placement renderer.
+    QUANTUM("quantum"),
+
     // Map-only "info layer" families (FEAT-015 Phase 2). CruxCoach ships no
     // climb catalogue or BLE send for these, so they appear on the
     // board-locations map only — never in the browser, picker, or active-
@@ -36,7 +42,7 @@ enum class BoardBrand(val wireValue: String) {
     /** True for families CruxCoach actually drives (catalogue + BLE): Kilter,
      *  MoonBoard, and the five Aurora-family boards (FEAT-031). AURORA and
      *  12climb remain map-only info-layer brands. */
-    val isInteractive: Boolean get() = usesAuroraProtocol || this == MOONBOARD
+    val isInteractive: Boolean get() = usesAuroraProtocol || this == MOONBOARD || this == QUANTUM
 
     /** Kilter + the Aurora-family boards (Tension, Grasshopper, Decoy, So iLL,
      *  Touchstone): climbs are Aurora placement-id frames, holes are lit from
@@ -67,19 +73,19 @@ enum class BoardBrand(val wireValue: String) {
      *  that resolves placement geometry (board images, edge bounds, the
      *  co-occurrence heatmap, the LED map) must be skipped when this is
      *  false. */
-    val usesAuroraPlacements: Boolean get() = usesAuroraProtocol
+    val usesAuroraPlacements: Boolean get() = usesAuroraProtocol || this == QUANTUM
 
     /** The connected board lights individual holds from a placement→LED
      *  address map (Kilter + the Aurora-family boards, which share the Aurora
      *  BLE protocol). MoonBoard derives its own LEDs from the climb frame, so
      *  the editor/send path uses a different transport and never builds an LED
      *  map. */
-    val usesLedPreview: Boolean get() = usesAuroraProtocol
+    val usesLedPreview: Boolean get() = usesAuroraProtocol || this == QUANTUM
 
     /** Supports the popular-co-occurring-holds heatmap, which is keyed on
      *  Aurora placement-ids (Kilter + the Aurora-family boards). MoonBoard
      *  hold-ids aren't placement-ids, so it has no heatmap layer. */
-    val hasHeatmap: Boolean get() = usesAuroraProtocol
+    val hasHeatmap: Boolean get() = usesAuroraProtocol || this == QUANTUM
 
     /** Climbs can be authored in the in-app editor — every interactive board.
      *  Kilter additionally pushes to the user's own Kilter account (see
@@ -110,6 +116,7 @@ enum class BoardBrand(val wireValue: String) {
             DECOY -> "Decoy"
             SOILL -> "So iLL"
             TOUCHSTONE -> "Touchstone"
+            QUANTUM -> "Quantum Board"
             AURORA -> "Aurora"
             TWELVECLIMB -> "12 Climb"
         }

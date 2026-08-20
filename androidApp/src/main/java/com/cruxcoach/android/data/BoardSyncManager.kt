@@ -66,6 +66,7 @@ class BoardSyncManager(
     private val boardLocationRepository: com.cruxcoach.data.repository.BoardLocationRepository,
     private val moonBoardCatalogueSync: MoonBoardCatalogueSync,
     private val auroraCatalogueSync: AuroraCatalogueSync,
+    private val quantumCatalogueSync: QuantumCatalogueSync,
     private val integrityVerifier: IntegrityVerifier,
 ) : CatalogueRevisionSource {
     private companion object {
@@ -545,12 +546,17 @@ class BoardSyncManager(
     }
 
     private fun interactiveBoardBrands(): List<BoardBrand> =
-        BoardBrand.entries.filter { it.isInteractive }
+        // Local-share protocol predates quantum_route_refs. Advertising a
+        // Quantum catalogue without that external-UUID bridge would import
+        // climbs that render but cannot address the real controller. Keep
+        // Quantum on its isolated Blossom d-tag until the peer protocol grows
+        // the mapping table; older (<0.2.2) peers remain unaffected.
+        BoardBrand.entries.filter { it.isInteractive && it != BoardBrand.QUANTUM }
 
     private fun sharedBoardBrands(board: LocalShareProtocol.BoardArtifact?): List<BoardBrand> =
         board?.catalogues
             ?.mapNotNull { BoardBrand.fromWireOrNull(it.boardBrand) }
-            ?.filter { it.isInteractive }
+            ?.filter { it.isInteractive && it != BoardBrand.QUANTUM }
             ?.distinct()
             ?.takeIf { it.isNotEmpty() }
             ?: interactiveBoardBrands()
@@ -1075,6 +1081,28 @@ class BoardSyncManager(
         BoardBrand.entries
             .filter { it.usesAuroraProtocol && it != BoardBrand.KILTER }
             .forEach { syncAuroraBoard(it) }
+        syncQuantumBoard()
+    }
+
+    private suspend fun syncQuantumBoard(): Boolean = try {
+        when (val result = quantumCatalogueSync.sync { step -> reportBoardStep(BoardBrand.QUANTUM, step) }) {
+            QuantumCatalogueSync.Result.AlreadyCurrent -> {
+                reportBoardStep(BoardBrand.QUANTUM, ImportStep.Done(0, 0, 0)); false
+            }
+            is QuantumCatalogueSync.Result.Imported -> {
+                bumpCatalogueRevision(); true
+            }
+            is QuantumCatalogueSync.Result.Failed -> {
+                reportBoardStep(BoardBrand.QUANTUM, null)
+                reportBoardError(BoardBrand.QUANTUM, result.message)
+                false
+            }
+        }
+    } catch (e: Exception) {
+        Log.w(TAG, "Quantum catalogue sync threw; other boards unaffected", e)
+        reportBoardStep(BoardBrand.QUANTUM, null)
+        reportBoardError(BoardBrand.QUANTUM, e.message ?: e.javaClass.simpleName)
+        false
     }
 
     /**
@@ -1138,7 +1166,11 @@ class BoardSyncManager(
         _state.update { it.copy(importStep = null) }
         var imported = false
         try {
-            imported = if (brand == BoardBrand.MOONBOARD) syncMoonBoardCatalogue() else syncAuroraBoard(brand)
+            imported = when (brand) {
+                BoardBrand.MOONBOARD -> syncMoonBoardCatalogue()
+                BoardBrand.QUANTUM -> syncQuantumBoard()
+                else -> syncAuroraBoard(brand)
+            }
         } finally {
             finishSyncSlot()
         }
@@ -1163,7 +1195,11 @@ class BoardSyncManager(
         scope.launch {
             var imported = false
             try {
-                imported = if (brand == BoardBrand.MOONBOARD) syncMoonBoardCatalogue() else syncAuroraBoard(brand)
+                imported = when (brand) {
+                    BoardBrand.MOONBOARD -> syncMoonBoardCatalogue()
+                    BoardBrand.QUANTUM -> syncQuantumBoard()
+                    else -> syncAuroraBoard(brand)
+                }
             } finally {
                 finishSyncSlot()
             }
@@ -1775,6 +1811,11 @@ class BoardSyncManager(
         if (BoardBrand.MOONBOARD in brands) {
             appContext.getSharedPreferences(
                 BlossomSyncManager.MOONBOARD_PREFS_NAME, Context.MODE_PRIVATE
+            ).edit().clear().apply()
+        }
+        if (BoardBrand.QUANTUM in brands) {
+            appContext.getSharedPreferences(
+                "blossom_sync_quantum", Context.MODE_PRIVATE
             ).edit().clear().apply()
         }
         brands

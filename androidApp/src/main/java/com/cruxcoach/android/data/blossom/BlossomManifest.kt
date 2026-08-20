@@ -8,6 +8,8 @@ import kotlinx.serialization.Transient
 data class BlossomManifest(
     val v: Int,
     val board: String,
+    /** Optional provenance marker used by independently licensed catalogues. */
+    val source: String? = null,
     /**
      * Aurora product ID — Kilter-only. The MoonBoard catalogue manifest
      * has no Aurora product, so this field is absent there: nullable so

@@ -21,6 +21,7 @@ class BoardBrandTest {
         // Aurora-family + info-layer families round-trip too.
         assertEquals(BoardBrand.TENSION, BoardBrand.fromWire("tension"))
         assertEquals(BoardBrand.TWELVECLIMB, BoardBrand.fromWire("12climb"))
+        assertEquals(BoardBrand.QUANTUM, BoardBrand.fromWire("quantum"))
     }
 
     @Test
@@ -44,6 +45,7 @@ class BoardBrandTest {
             BoardBrand.KILTER, BoardBrand.MOONBOARD, BoardBrand.TENSION,
             BoardBrand.GRASSHOPPER, BoardBrand.DECOY, BoardBrand.SOILL,
             BoardBrand.TOUCHSTONE,
+            BoardBrand.QUANTUM,
         )) {
             assertEquals(true, b.isInteractive, "$b should be interactive")
             assertEquals(false, b in BoardBrand.INFO_LAYER, "$b not info-layer")
@@ -71,6 +73,10 @@ class BoardBrandTest {
         assertEquals(false, BoardBrand.MOONBOARD.usesAuroraProtocol)
         assertEquals(false, BoardBrand.MOONBOARD.usesAuroraPlacements)
         assertEquals(false, BoardBrand.AURORA.usesAuroraProtocol)
+        assertEquals(false, BoardBrand.QUANTUM.usesAuroraProtocol)
+        assertEquals(true, BoardBrand.QUANTUM.usesAuroraPlacements)
+        assertEquals(true, BoardBrand.QUANTUM.usesLedPreview)
+        assertEquals(true, BoardBrand.QUANTUM.hasHeatmap)
 
         // Authoring is enabled for every INTERACTIVE board (Kilter, MoonBoard +
         // the Aurora family); the info-layer brands (aurora, 12climb) can't
@@ -82,6 +88,7 @@ class BoardBrandTest {
         assertEquals(true, BoardBrand.DECOY.supportsAuthoring)
         assertEquals(true, BoardBrand.SOILL.supportsAuthoring)
         assertEquals(true, BoardBrand.TOUCHSTONE.supportsAuthoring)
+        assertEquals(true, BoardBrand.QUANTUM.supportsAuthoring)
         assertEquals(false, BoardBrand.AURORA.supportsAuthoring)
         assertEquals(false, BoardBrand.TWELVECLIMB.supportsAuthoring)
         BoardBrand.entries.forEach {

@@ -1058,7 +1058,12 @@ class SessionQueueManager(
                 val sent = boardCellWriteGateway.project(
                     BoardProjection(item.climbUuid, item.angle,
                         BoardProjectionPolicy.projectionSurvivesDisconnect(climb.brand))) {
-                        bleConnection.sendClimb(holds, ledMap, roleColors)
+                        bleConnection.sendClimb(
+                            holds, ledMap, roleColors,
+                            routeId = if (climb.brand == BoardBrand.QUANTUM) {
+                                boardRepository.getQuantumExternalRouteUuid(item.climbUuid) ?: item.climbUuid
+                            } else null,
+                        )
                     }
                 if (sent) {
                     markCurrentClimbProjected(key)
@@ -1162,7 +1167,12 @@ class SessionQueueManager(
                 (if (climb.brand == BoardBrand.KILTER) userPreferences.ledHoldColors.first()
                 else LedHoldColors.standardFor(climb.brand)).toRoleColorMap()
             }
-            bleConnection.sendClimb(holds, ledMap, roleColors)
+            bleConnection.sendClimb(
+                holds, ledMap, roleColors,
+                routeId = if (climb.brand == BoardBrand.QUANTUM) {
+                    boardRepository.getQuantumExternalRouteUuid(climb.uuid) ?: climb.uuid
+                } else null,
+            )
         }
     }
 
