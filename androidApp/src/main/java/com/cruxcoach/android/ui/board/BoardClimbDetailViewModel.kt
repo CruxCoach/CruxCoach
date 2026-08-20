@@ -210,6 +210,8 @@ data class ClimbDetailState(
     /** Whether this climb is on the user's built-in "Ignored" list — drives
      *  the overflow menu's ignore/un-ignore action. */
     val isIgnored: Boolean = false,
+    /** Private note stored in the encrypted per-user database. */
+    val personalNote: String = "",
     val restTimerTotalSeconds: Int = 180,
     val restTimerAutoStart: Boolean = false,
     val zones: IntensityZones? = null,
@@ -963,6 +965,7 @@ class BoardClimbDetailViewModel @Inject constructor(
                         }
                         val isFavorited = personalBoardRepo.isClimbFavorited(uuid)
                         val isIgnored = personalBoardRepo.isClimbIgnored(uuid)
+                        val personalNote = personalBoardRepo.getClimbNote(climb.uuid).orEmpty()
                         val angles = buildAngleOptions(climb, boardRepository.getAnglesForClimb(uuid))
                         val isMirrorable = BoardConstants.isLayoutMirrorable(
                             climb.brand, climb.layoutId.toInt()
@@ -1006,6 +1009,7 @@ class BoardClimbDetailViewModel @Inject constructor(
                                 angle = angle,
                                 isFavorited = isFavorited,
                                 isIgnored = isIgnored,
+                                personalNote = personalNote,
                                 availableAngles = angles,
                                 isMirrorable = isMirrorable,
                                 canPublishAsMine = canPublishAsMine,
@@ -1163,6 +1167,7 @@ class BoardClimbDetailViewModel @Inject constructor(
                     val userAscents = personalBoardRepo.getUserHistoryForClimb(uuid)
                     val isFavorited = personalBoardRepo.isClimbFavorited(uuid)
                     val isIgnored = personalBoardRepo.isClimbIgnored(uuid)
+                    val personalNote = personalBoardRepo.getClimbNote(climb.uuid).orEmpty()
                     val angles = buildAngleOptions(climb, boardRepository.getAnglesForClimb(uuid))
                     val isMirrorable = BoardConstants.isLayoutMirrorable(
                         climb.brand, climb.layoutId.toInt()
@@ -1179,6 +1184,7 @@ class BoardClimbDetailViewModel @Inject constructor(
                         angle = angle,
                         isFavorited = isFavorited,
                         isIgnored = isIgnored,
+                        personalNote = personalNote,
                         availableAngles = angles,
                         isMirrored = false,
                         isMirrorable = isMirrorable,
@@ -1288,6 +1294,32 @@ class BoardClimbDetailViewModel @Inject constructor(
                 // coroutine. Log + leave the previous favorite-state
                 // visible (no UI flip).
                 Log.w(TAG, "toggleFavorite failed", e)
+            }
+        }
+    }
+
+    fun savePersonalNote(note: String) {
+        val climbUuid = _state.value.climb?.uuid ?: currentClimbUuid
+        viewModelScope.launch {
+            try {
+                val normalized = note.trim().take(1000)
+                withContext(Dispatchers.IO) {
+                    personalBoardRepo.saveClimbNote(climbUuid, normalized)
+                }
+                _state.update { current ->
+                    if (current.climb?.uuid == climbUuid) current.copy(personalNote = normalized)
+                    else current
+                }
+                _pageCache.update { cache ->
+                    cache.mapValues { (_, cached) ->
+                        if (cached.climb?.uuid == climbUuid) cached.copy(personalNote = normalized)
+                        else cached
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "savePersonalNote failed", e)
             }
         }
     }

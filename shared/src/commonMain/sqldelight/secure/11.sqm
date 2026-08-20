@@ -1,0 +1,8 @@
+-- Migration version 11 → 12 (secure/personal DB): private per-climb notes.
+-- Notes belong to the user, so they are kept out of the public board database.
+
+CREATE TABLE climb_notes (
+    climb_uuid TEXT NOT NULL PRIMARY KEY,
+    note TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
