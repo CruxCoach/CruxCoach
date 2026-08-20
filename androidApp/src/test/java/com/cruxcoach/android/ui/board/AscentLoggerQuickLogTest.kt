@@ -97,6 +97,107 @@ class AscentLoggerQuickLogTest {
         coVerify { repo.recordClimbHistory(any(), any(), any(), any(), any(), any(), any(), any()) }
     }
 
+    @Test
+    fun `two quick attempts are consolidated into one open logbook entry`() = runBlocking {
+        val state = MutableStateFlow(ClimbDetailState(isLoading = false, climb = climb))
+        val repo = mockk<PersonalBoardRepository>(relaxed = true)
+        val logger = logger(state, repo, mockk(relaxed = true)) { }
+        every { repo.getUserHistoryForClimb(climb.uuid) } returns emptyList()
+        every { repo.observeClimbHistory() } returns flowOf(emptyList())
+
+        logger.quickLog(isSend = false)
+        withTimeout(5_000) { state.first { !it.isQuickLogging && it.quickLogFeedback != null } }
+        val entryUuid = state.value.quickLogFeedback!!.entryUuid
+        logger.quickLog(isSend = false)
+        withTimeout(5_000) {
+            state.first { !it.isQuickLogging && it.quickLogFeedback?.entryUuid == entryUuid }
+        }
+
+        verify(exactly = 1) {
+            repo.insertBid(
+                uuid = entryUuid,
+                climbUuid = climb.uuid,
+                angle = any(),
+                isMirror = any(),
+                bidCount = 1L,
+                comment = any(),
+                climbedAt = any(),
+                synced = any(),
+                climbName = any(),
+                difficultyAverage = any(),
+                boardBrand = any(),
+                layoutId = any(),
+            )
+        }
+        verify { repo.updateBid(entryUuid, 2L, null) }
+    }
+
+    @Test
+    fun `quick send absorbs open attempts and undo restores them`() = runBlocking {
+        val state = MutableStateFlow(ClimbDetailState(isLoading = false, climb = climb))
+        val repo = mockk<PersonalBoardRepository>(relaxed = true)
+        val session = mockk<BoardSessionManager>(relaxed = true)
+        val logger = logger(state, repo, session) { }
+        every { repo.getUserHistoryForClimb(climb.uuid) } returns emptyList()
+        every { repo.observeClimbHistory() } returns flowOf(emptyList())
+
+        repeat(2) {
+            logger.quickLog(isSend = false)
+            withTimeout(5_000) { state.first { !it.isQuickLogging && it.quickLogFeedback != null } }
+        }
+        val entryUuid = state.value.quickLogFeedback!!.entryUuid
+        logger.quickLog(isSend = true)
+        withTimeout(5_000) { state.first { !it.isQuickLogging && it.quickLogFeedback?.isSend == true } }
+
+        verify { repo.deleteBid(entryUuid) }
+        verify {
+            repo.insertAscent(
+                uuid = entryUuid,
+                climbUuid = climb.uuid,
+                angle = any(),
+                isMirror = any(),
+                attemptId = any(),
+                bidCount = 3L,
+                quality = any(),
+                difficulty = any(),
+                isBenchmark = any(),
+                comment = any(),
+                climbedAt = any(),
+                synced = any(),
+                gymUuid = any(),
+                wallUuid = any(),
+                productLayoutUuid = any(),
+                climbName = any(),
+                difficultyAverage = any(),
+                climbFrames = any(),
+                framesCount = any(),
+                boardBrand = any(),
+                layoutId = any(),
+                externalId = any(),
+            )
+        }
+
+        logger.undoQuickLog()
+        verify(timeout = 5_000) { repo.deleteAscent(entryUuid) }
+        verify(timeout = 5_000, atLeast = 2) {
+            repo.insertBid(
+                uuid = entryUuid,
+                climbUuid = climb.uuid,
+                angle = any(),
+                isMirror = any(),
+                bidCount = any(),
+                comment = any(),
+                climbedAt = any(),
+                synced = any(),
+                climbName = any(),
+                difficultyAverage = any(),
+                boardBrand = any(),
+                layoutId = any(),
+            )
+        }
+        verify { session.undoRecordedAscent() }
+    }
+
     private fun logger(
         state: MutableStateFlow<ClimbDetailState>,
         repo: PersonalBoardRepository,

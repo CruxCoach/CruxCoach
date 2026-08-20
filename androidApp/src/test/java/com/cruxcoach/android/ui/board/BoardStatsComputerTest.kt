@@ -139,7 +139,7 @@ class BoardStatsComputerTest {
     // -- computeStats: send / bid split --
 
     @Test
-    fun `sends and bids are counted separately`() {
+    fun `sends and total tries are counted separately`() {
         val ascents = listOf(
             ascent(uuid = "s1", isSend = true),
             ascent(uuid = "s2", isSend = true),
@@ -149,7 +149,18 @@ class BoardStatsComputerTest {
         )
         val stats = BoardStatsComputer.computeStats(ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE)
         assertEquals(2, stats.totalSends)
-        assertEquals(3, stats.totalAttempts)
+        assertEquals(5, stats.totalAttempts)
+    }
+
+    @Test
+    fun `attempt total sums consolidated open and sent tries`() {
+        val ascents = listOf(
+            ascent(uuid = "open", isSend = false, bidCount = 2L),
+            ascent(uuid = "send", isSend = true, bidCount = 3L),
+        )
+        val stats = BoardStatsComputer.computeStats(ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE)
+        assertEquals(1, stats.totalSends)
+        assertEquals(5, stats.totalAttempts)
     }
 
     @Test
@@ -526,14 +537,14 @@ class BoardStatsComputerTest {
         val ascents = listOf(
             ascent(uuid = "k1", boardBrand = "kilter", isSend = true, difficulty = 18.0),
             ascent(uuid = "k2", boardBrand = "kilter", isSend = true, difficulty = 22.0),
-            ascent(uuid = "kb", boardBrand = "kilter", isSend = false, difficulty = 25.0),
+            ascent(uuid = "kb", boardBrand = "kilter", isSend = false, bidCount = 3L, difficulty = 25.0),
             ascent(uuid = "t1", boardBrand = "tension", isSend = true, difficulty = 20.0),
         )
         val out = BoardStatsComputer.computeBoardComparison(ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE)
         assertEquals(2, out.size)
         val kilter = out.first { it.boardBrand == "kilter" }
         assertEquals(2, kilter.sendCount)
-        assertEquals(1, kilter.attemptCount)
+        assertEquals(3, kilter.attemptCount)
         // Top grade is from sends only — the bid at 25.0 must not count.
         assertEquals(22, kilter.hardestDifficultyInt)
         assertNotNull(kilter.hardestGrade)

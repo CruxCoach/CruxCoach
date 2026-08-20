@@ -1329,6 +1329,9 @@
     <string name="board_detail_quick_attempt_logged">Attempt logged</string>
     <string name="board_detail_personal_note">Personal note</string>
     <string name="board_detail_personal_note_hint">Beta, sequence, conditions…</string>
+    <string name="board_detail_note_saving">Saving…</string>
+    <string name="board_detail_note_saved">Saved</string>
+    <string name="board_detail_note_not_saved">Not saved</string>
     <string name="board_detail_edit_personal_note">Edit personal note</string>
     <string name="board_detail_frames">Frames</string>
     <string name="board_detail_matching">Match allowed</string>

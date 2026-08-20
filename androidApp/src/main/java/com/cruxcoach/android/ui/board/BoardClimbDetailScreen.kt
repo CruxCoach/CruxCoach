@@ -81,6 +81,7 @@ import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.util.ClimbShareLink
 import com.cruxcoach.android.util.PerfLogger
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -376,7 +377,7 @@ fun BoardClimbDetailScreen(
         viewModel.consumeOwnPublishFeedback()
     }
 
-    LaunchedEffect(state.quickLogFeedback?.entryUuid) {
+    LaunchedEffect(state.quickLogFeedback?.eventId) {
         val feedback = state.quickLogFeedback ?: return@LaunchedEffect
         val result = snackbarHostState.showSnackbar(
             resources.getString(
@@ -877,57 +878,38 @@ private fun ClimbDetailPageContent(
     val climbBugReportTitle = stringResource(R.string.error_bug_report_climb_title)
     val bleBugReportTitle = stringResource(R.string.error_bug_report_ble_title)
     var showDetails by remember { mutableStateOf(false) }
-    var showNoteEditor by remember(state.climb?.uuid) { mutableStateOf(false) }
     var noteDraft by remember(state.climb?.uuid) { mutableStateOf(state.personalNote) }
-    LaunchedEffect(state.personalNote, showNoteEditor) {
-        if (!showNoteEditor) noteDraft = state.personalNote
+    LaunchedEffect(state.personalNote, showDetails) {
+        if (!showDetails) noteDraft = state.personalNote
     }
-    if (showNoteEditor) {
-        AlertDialog(
-            onDismissRequest = { showNoteEditor = false },
-            title = { Text(stringResource(R.string.board_detail_personal_note)) },
-            text = {
-                OutlinedTextField(
-                    value = noteDraft,
-                    onValueChange = { noteDraft = it.take(1000) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("boarddetail_note_field"),
-                    placeholder = { Text(stringResource(R.string.board_detail_personal_note_hint)) },
-                    minLines = 3,
-                    maxLines = 6,
-                    supportingText = { Text("${noteDraft.length}/1000") },
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.savePersonalNote(noteDraft)
-                        showNoteEditor = false
-                    },
-                    modifier = Modifier.testTag("boarddetail_note_save"),
-                ) { Text(stringResource(R.string.action_save)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showNoteEditor = false }) {
-                    Text(stringResource(R.string.action_cancel))
-                }
-            },
-        )
+    LaunchedEffect(noteDraft, showDetails, state.climb?.uuid) {
+        if (showDetails && noteDraft.trim() != state.personalNote) {
+            delay(700)
+            viewModel.savePersonalNote(noteDraft)
+        }
     }
-    state.climb?.takeIf { showDetails }?.let { climb ->
+    val closeDetails = {
+        if (noteDraft.trim() != state.personalNote) {
+            viewModel.savePersonalNote(noteDraft)
+        }
+        showDetails = false
+    }
+    state.climb?.takeIf { showDetails }?.let {
         ClimbDetailInfoSheet(
             state = state,
-            onDismiss = { showDetails = false },
+            onDismiss = closeDetails,
             onAngleSelected = viewModel::onAngleSelected,
             onEditAscent = {
-                showDetails = false
+                closeDetails()
                 viewModel.editAscent(it)
             },
             onDeleteAscent = {
-                showDetails = false
+                closeDetails()
                 viewModel.requestDeleteAscent(it.uuid)
             },
+            noteDraft = noteDraft,
+            onNoteChanged = { noteDraft = it.take(1000) },
+            onRetryNote = { viewModel.savePersonalNote(noteDraft) },
         )
     }
     when {
@@ -968,10 +950,9 @@ private fun ClimbDetailPageContent(
             ) {
                 CompactClimbOverview(
                     state = state,
-                    onShowDetails = { showDetails = true },
-                    onEditNote = {
+                    onShowDetails = {
                         noteDraft = state.personalNote
-                        showNoteEditor = true
+                        showDetails = true
                     },
                     onAngleSelected = viewModel::onAngleSelected,
                     onNavigateToSetter = onNavigateToSetter,
@@ -1190,7 +1171,6 @@ private fun BoardDetailActionDock(
 private fun CompactClimbOverview(
     state: ClimbDetailState,
     onShowDetails: () -> Unit,
-    onEditNote: () -> Unit,
     onAngleSelected: (Int) -> Unit,
     onNavigateToSetter: (String) -> Unit,
 ) {
@@ -1208,28 +1188,37 @@ private fun CompactClimbOverview(
     ) {
         Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = climb.name,
+                Row(
                     modifier = Modifier.weight(1f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                )
-                IconButton(
-                    onClick = onEditNote,
-                    modifier = Modifier
-                        .size(36.dp)
-                        .testTag("boarddetail_note_button"),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(
-                        Icons.Default.Edit,
-                        contentDescription = stringResource(R.string.board_detail_edit_personal_note),
-                        tint = if (state.personalNote.isBlank()) {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        } else OrangeAccent,
-                        modifier = Modifier.size(19.dp),
+                    Text(
+                        text = climb.name,
+                        modifier = Modifier.weight(1f, fill = false),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
                     )
+                    setter?.takeIf { it.isNotBlank() }?.let {
+                        val pubkey = climb.createdByPubkey?.takeIf(String::isNotBlank)
+                        Spacer(Modifier.width(7.dp))
+                        Text(
+                            text = it,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .widthIn(max = 112.dp)
+                                .then(
+                                    if (climb.origin == "cruxcoach" && pubkey != null) {
+                                        Modifier.clickable { onNavigateToSetter(pubkey) }
+                                    }
+                                    else Modifier,
+                                ),
+                        )
+                    }
                 }
                 Icon(
                     Icons.Default.MoreVert,
@@ -1257,20 +1246,6 @@ private fun CompactClimbOverview(
                             color = DarkBackground,
                         )
                     }
-                }
-                setter?.takeIf { it.isNotBlank() }?.let {
-                    val pubkey = climb.createdByPubkey?.takeIf(String::isNotBlank)
-                    val canOpenSetter = climb.origin == "cruxcoach" && pubkey != null
-                    Text(
-                        text = stringResource(R.string.board_detail_by_setter, it),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier
-                            .weight(1f, fill = false)
-                            .then(if (canOpenSetter) Modifier.clickable { onNavigateToSetter(pubkey!!) } else Modifier),
-                    )
                 }
                 CompactAngleMenu(
                     currentAngle = state.angle,
@@ -1302,29 +1277,23 @@ private fun CompactClimbOverview(
                         size = 15,
                     )
                 }
-                Icon(
-                    Icons.Default.Groups,
-                    contentDescription = stringResource(R.string.board_sends),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(15.dp),
-                )
-                Spacer(Modifier.width(3.dp))
-                Text(
-                    text = "${climb.ascensionistCount ?: 0}",
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            state.personalNote.takeIf(String::isNotBlank)?.let { note ->
-                Text(
-                    text = note,
-                    modifier = Modifier.padding(top = 3.dp),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    Icon(
+                        Icons.Default.Groups,
+                        contentDescription = stringResource(R.string.board_sends),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(15.dp),
+                    )
+                    Text(
+                        text = "${climb.ascensionistCount ?: 0}",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
     }
@@ -1379,6 +1348,9 @@ private fun ClimbDetailInfoSheet(
     onAngleSelected: (Int) -> Unit,
     onEditAscent: (com.cruxcoach.data.repository.AscentWithClimb) -> Unit,
     onDeleteAscent: (com.cruxcoach.data.repository.AscentWithClimb) -> Unit,
+    noteDraft: String,
+    onNoteChanged: (String) -> Unit,
+    onRetryNote: () -> Unit,
 ) {
     val climb = state.climb ?: return
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -1443,6 +1415,59 @@ private fun ClimbDetailInfoSheet(
                     onEdit = onEditAscent,
                     onDelete = onDeleteAscent,
                 )
+            }
+            HorizontalDivider()
+            Text(
+                stringResource(R.string.board_detail_personal_note),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+            )
+            OutlinedTextField(
+                value = noteDraft,
+                onValueChange = onNoteChanged,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("boarddetail_note_field"),
+                placeholder = { Text(stringResource(R.string.board_detail_personal_note_hint)) },
+                minLines = 2,
+                maxLines = 5,
+                supportingText = {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text("${noteDraft.length}/1000")
+                        val noteStatus = when {
+                            state.personalNoteSaveStatus == PersonalNoteSaveStatus.FAILED ->
+                                R.string.board_detail_note_not_saved
+                            noteDraft.trim() != state.personalNote ||
+                                state.personalNoteSaveStatus == PersonalNoteSaveStatus.SAVING ->
+                                R.string.board_detail_note_saving
+                            else -> R.string.board_detail_note_saved
+                        }
+                        Text(
+                            stringResource(noteStatus),
+                            color = if (state.personalNoteSaveStatus == PersonalNoteSaveStatus.FAILED) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                        )
+                    }
+                },
+            )
+            if (state.personalNoteSaveStatus == PersonalNoteSaveStatus.FAILED) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    TextButton(
+                        onClick = onRetryNote,
+                        modifier = Modifier.testTag("boarddetail_note_retry"),
+                    ) {
+                        Text(stringResource(R.string.action_retry))
+                    }
+                }
             }
             Spacer(Modifier.height(24.dp))
         }

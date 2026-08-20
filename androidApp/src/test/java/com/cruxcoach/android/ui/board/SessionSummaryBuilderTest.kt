@@ -77,6 +77,21 @@ class SessionSummaryBuilderTest {
     }
 
     @Test
+    fun `session attempt total uses tries stored on consolidated outcomes`() {
+        val summary = SessionSummaryBuilder.build(
+            ascents = listOf(
+                ascent(uuid = "open", isSend = false, bidCount = 2L),
+                ascent(uuid = "send", isSend = true, bidCount = 3L),
+            ),
+            zones = zones,
+            gradeScale = GradeScale.FRENCH,
+            trueFlashUuids = emptySet(),
+        )
+        assertEquals(1, summary.totalSends)
+        assertEquals(5, summary.totalAttempts)
+    }
+
+    @Test
     fun `pyramid groups by displayed grade, keeping Font grades of one V bucket apart`() {
         // Kilter difficulty 24 = 7b, 25 = 7b+ — both V8. The old V-scale
         // detour merged them into a single "7b+" row.
