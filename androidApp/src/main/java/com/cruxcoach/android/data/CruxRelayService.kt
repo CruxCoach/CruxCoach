@@ -27,8 +27,8 @@ import javax.inject.Inject
  *
  * Keeps BLE advertising alive while the phone fronts the real board (Android
  * 12+ throttles background advertising) and shows the mandatory persistent
- * "sharing" notification with the live client count and a one-tap stop that
- * stops only the relay transport via [CruxRelayManager.setEnabled].
+ * "sharing" notification with the live client count. Relay ownership follows
+ * the canonical BoardCell controller and cannot be stopped independently.
  *
  * Lifecycle is slaved to [CruxRelayManager]: the manager starts this service
  * when the relay comes up and the service stops itself the moment the manager
@@ -41,7 +41,6 @@ class CruxRelayService : android.app.Service() {
         /** Shared with [CruxRelayManager]'s final "sharing stopped" notification. */
         const val CHANNEL_ID = "cruxrelay_sharing"
         private const val NOTIFICATION_ID = 4401
-        const val ACTION_STOP_SHARING = "com.cruxcoach.android.relay.ACTION_STOP_SHARING"
 
         fun start(context: Context) {
             context.startForegroundService(Intent(context, CruxRelayService::class.java))
@@ -59,12 +58,6 @@ class CruxRelayService : android.app.Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP_SHARING) {
-            // One-tap stop from the notification. Queue and direct board
-            // connection remain independent; the collector shuts this service down.
-            relayManager.setEnabled(false)
-            return START_NOT_STICKY
-        }
         ServiceCompat.startForeground(
             this,
             NOTIFICATION_ID,
@@ -123,11 +116,6 @@ class CruxRelayService : android.app.Service() {
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val stopIntent = PendingIntent.getService(
-            this, 1,
-            Intent(this, CruxRelayService::class.java).setAction(ACTION_STOP_SHARING),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
             .setContentTitle(getString(R.string.relay_notification_title))
@@ -135,7 +123,6 @@ class CruxRelayService : android.app.Service() {
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setContentIntent(openIntent)
-            .addAction(0, getString(R.string.relay_notification_stop), stopIntent)
             .build()
     }
 }

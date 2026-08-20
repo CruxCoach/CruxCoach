@@ -41,7 +41,6 @@ import com.cruxcoach.android.ble.BoardConnectFlow
 import com.cruxcoach.android.ble.BoardConnectFlowPolicy
 import com.cruxcoach.android.ble.BoardConnectionCapacity
 import com.cruxcoach.android.ble.BoardControllerProfiles
-import com.cruxcoach.android.ble.NearbySession
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.android.ui.common.LocalBleShareManager
 import com.cruxcoach.android.data.RememberedBoardController
@@ -65,6 +64,7 @@ fun BleConnectionSheet(
     onNavigateToClimb: ((uuid: String, angle: Int) -> Unit)? = null,
     viewModel: BleConnectionViewModel = hiltViewModel()
 ) {
+    val context = LocalContext.current
     val state by viewModel.state.collectAsStateWithLifecycle()
     val rememberedBoard = state.rememberedBoardControllers[state.activeBoardBrand]
     var discoveryRequested by remember(state.activeBoardBrand) { mutableStateOf(false) }
@@ -175,16 +175,17 @@ fun BleConnectionSheet(
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        if (permissions.values.all { it }) {
+    ) { _ ->
+        if (BlePermissionHelper.hasPermissions(context)) {
             viewModel.onPermissionsGranted()
         }
     }
 
     val connectionPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        if (permissions.values.all { it }) {
+    ) { _ ->
+        if (BlePermissionHelper.hasConnectionPermission(context)) {
+            viewModel.onPermissionsGranted()
             viewModel.tryRememberedControllerFirst()
         }
     }
@@ -200,7 +201,7 @@ fun BleConnectionSheet(
         pendingScanStart = null
         discoveryRequested = false
         val needed = BlePermissionHelper.getReconnectPermissions()
-        if (state.hasConnectionPermission || needed.isEmpty()) {
+        if (BlePermissionHelper.hasReconnectPermissions(context) || needed.isEmpty()) {
             viewModel.tryRememberedControllerFirst()
         } else {
             connectionPermissionLauncher.launch(needed)
@@ -331,11 +332,6 @@ fun BleConnectionSheet(
                         activeMeshMemberCount = state.activeMeshMemberCount,
                         activeMeshControlsBoard = state.activeMeshControlsBoard,
                         onDisconnect = { viewModel.disconnect() }
-                    )
-                    // FEAT-044 §12: "share this board" (party mode) — only
-                    // offered while actually holding a real board.
-                    RelaySharingSection(
-                        board = state.connectedBoard,
                     )
                     NearbyBoardSwitchSection(
                         boards = state.discoveredBoards,
@@ -475,7 +471,6 @@ fun BleConnectionSheet(
                         meshJoinStage = state.meshJoinStage,
                         meshJoinFailed = state.meshJoinFailed,
                         meshJoinRetryAfterEpochMs = state.meshJoinRetryAfterEpochMs,
-                        nearbySessions = state.nearbySessions,
                         lastUsedBoardAddresses = state.lastUsedBoardAddresses,
                         bleShareState = bleShareState,
                         climbSharingEnabled = state.climbSharingEnabled,
@@ -490,10 +485,6 @@ fun BleConnectionSheet(
                                 viewModel.stopScan()
                                 reconnectRememberedBoard()
                             }
-                        },
-                        onSessionTapped = {
-                            viewModel.joinNearbySession(it)
-                            onDismiss()
                         },
                         onClimbTapped = if (onNavigateToClimb != null) {
                             { uuid, angle -> onDismiss(); onNavigateToClimb(uuid, angle) }
@@ -993,7 +984,6 @@ private fun ScanContent(
     meshJoinStage: com.cruxcoach.android.fips.FipsConnectionStage,
     meshJoinFailed: Boolean,
     meshJoinRetryAfterEpochMs: Long,
-    nearbySessions: List<NearbySession>,
     lastUsedBoardAddresses: Map<BoardBrand, String>,
     bleShareState: com.cruxcoach.android.data.BleShareUiState,
     climbSharingEnabled: Boolean,
@@ -1002,7 +992,6 @@ private fun ScanContent(
     onConnectBoard: (DiscoveredBoard) -> Unit,
     onJoinMesh: (FipsNearbyMesh) -> Unit,
     onReconnectRemembered: (() -> Unit)?,
-    onSessionTapped: (NearbySession) -> Unit,
     onClimbTapped: ((uuid: String, angle: Int) -> Unit)? = null
 ) {
     // Show on-board climb from BleShareManager (remote active climb or board occupied)
@@ -1074,7 +1063,7 @@ private fun ScanContent(
         }.getOrNull()
         cell != activeBoardCellId && cell !in meshCells
     }
-    if (standaloneBoards.isNotEmpty() || nearbyMeshes.isNotEmpty() || nearbySessions.isNotEmpty()) {
+    if (standaloneBoards.isNotEmpty() || nearbyMeshes.isNotEmpty()) {
         LazyColumn(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.heightIn(max = 300.dp)
@@ -1092,12 +1081,6 @@ private fun ScanContent(
                     board = board,
                     isLastUsed = lastUsedBoardAddresses[board.boardBrand] == board.address,
                     onClick = { onConnectBoard(board) },
-                )
-            }
-            items(nearbySessions, key = { it.deviceAddress }) { session ->
-                SessionHostItem(
-                    session = session,
-                    onClick = { onSessionTapped(session) },
                 )
             }
         }
@@ -1312,51 +1295,6 @@ private fun NearbyActiveClimbCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-        }
-    }
-}
-
-@Composable
-private fun SessionHostItem(session: NearbySession, onClick: () -> Unit) {
-    Card(
-        onClick = onClick,
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag("ble_session_host_item"),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
-        ),
-        shape = RoundedCornerShape(12.dp)
-    ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                Icons.Default.CellTower,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(24.dp)
-            )
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    session.hostName.ifBlank { stringResource(R.string.relay_host_title) },
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    stringResource(R.string.relay_host_join_subtitle, session.participantCount),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary
-                )
-            }
-            Icon(
-                Icons.Default.ChevronRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(20.dp)
-            )
         }
     }
 }

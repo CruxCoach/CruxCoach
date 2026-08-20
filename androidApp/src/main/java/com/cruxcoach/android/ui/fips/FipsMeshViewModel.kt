@@ -65,13 +65,8 @@ data class MeshPlaylistUi(
     val localIsMember: Boolean,
     val localIsHost: Boolean,
 ) {
-    /**
-     * Whether to offer the join button.
-     *
-     * Compatibility only for an old snapshot that predates automatic Board
-     * playlist membership. New snapshots never need a second join action.
-     */
-    val offersJoin: Boolean get() = !localIsMember && itemCount > 0
+    /** Board membership is playlist membership; there is never a second join. */
+    val offersJoin: Boolean get() = false
 }
 
 /** True exactly when the join button should be offered and would work. */

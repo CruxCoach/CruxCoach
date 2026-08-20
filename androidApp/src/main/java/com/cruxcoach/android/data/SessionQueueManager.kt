@@ -253,6 +253,12 @@ class SessionQueueManager(
             proposal = playlist.proposal,
         )
         val role = if (view.isHost) SessionRole.HOST else SessionRole.PARTICIPANT
+        val canonicalItem = playlist.currentItem()
+        val externalBoardOverride = playlist.pendingProjection == null &&
+            (!snapshot.projectionKnown || snapshot.projection?.let { projected ->
+                canonicalItem == null || projected.climbUuid != canonicalItem.first ||
+                    projected.angle != canonicalItem.second
+            } == true)
         val adopting = !current.isActive || current.mesh == null
         if (adopting) {
             fipsMeshRuntime?.acquire(MeshOwners.SESSION.value)
@@ -282,6 +288,7 @@ class SessionQueueManager(
                 participantCount = playlist.members.size,
                 isConnecting = false,
                 error = null,
+                externalBoardOverride = externalBoardOverride,
                 physicalBoardId = snapshot.physicalBoardId.value,
                 boardCellId = snapshot.cellId.value,
                 mesh = view,
@@ -403,6 +410,8 @@ class SessionQueueManager(
     /** Remote command sender — set by SessionGattBridge for participant mode.
      *  When set, addClimb/removeClimb/etc. send commands to host instead of mutating locally. */
     @Volatile var remoteAddClimb: ((climbUuid: String, angle: Int) -> Unit)? = null
+    /** Lazy creation of the BoardCell playlist from an empty shared queue. */
+    @Volatile var startCanonicalWithFirstClimb: ((QueueItem, Int) -> Boolean)? = null
 
     // ===== Queue operations (work in all modes) =====
 
@@ -504,6 +513,15 @@ class SessionQueueManager(
     }
 
     fun addClimb(climbUuid: String, angle: Int) {
+        val before = _state.value
+        if (before.role == SessionRole.HOST && before.queue.isEmpty() &&
+            before.visibilityRequested == SessionVisibility.JOINABLE && before.mesh == null) {
+            val starter = startCanonicalWithFirstClimb
+            if (starter != null && starter(QueueItem(climbUuid, angle), before.sessionId)) {
+                Log.d(TAG, "First shared climb routed to canonical BoardCell playlist")
+                return
+            }
+        }
         // Participants send via GATT to host instead of mutating locally.
         // When remoteAddClimb is null (GATT disconnected during host migration),
         // fall through to local add so the climb isn't silently dropped.
@@ -720,7 +738,9 @@ class SessionQueueManager(
 
     /** Apply full state from host (used by participants after initial sync). */
     fun applyRemoteState(currentIndex: Int, items: List<QueueItem>) {
-        _state.update { it.copy(queue = items, currentIndex = currentIndex) }
+        _state.update {
+            if (it.mesh != null) it else it.copy(queue = items, currentIndex = currentIndex)
+        }
     }
 
     /**
@@ -738,6 +758,7 @@ class SessionQueueManager(
      */
     fun applyRemoteCurrentIndex(index: Int) {
         _state.update { s ->
+            if (s.mesh != null) return@update s
             if (index in s.queue.indices) {
                 s.copy(currentIndex = index, externalBoardOverride = false)
             } else {
@@ -761,7 +782,7 @@ class SessionQueueManager(
 
     /** Applies the host's external-write marker without touching the physical board. */
     fun applyRemoteExternalBoardWrite() {
-        _state.update { it.copy(externalBoardOverride = true) }
+        _state.update { if (it.mesh != null) it else it.copy(externalBoardOverride = true) }
     }
 
     fun setParticipantRole(sessionId: Int, hostName: String) {
@@ -862,6 +883,7 @@ class SessionQueueManager(
     fun applyRemoteParticipants(names: List<String>) {
         Log.d(TAG, "applyRemoteParticipants: ${names.size} names: $names")
         _state.update { s ->
+            if (s.mesh != null) return@update s
             val participants = names.mapIndexed { i, name ->
                 SessionParticipant(deviceAddress = "remote-$i", displayName = name)
             }

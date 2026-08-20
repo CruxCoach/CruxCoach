@@ -79,7 +79,7 @@ internal fun BleStatusChip(
         )
         // The mini-player owns its own card, so the sharing line trails it
         // rather than sitting inside — still one block, not a detached strip.
-        if (relayClientCount != null && onStopRelay != null) {
+        if (relayClientCount != null) {
             RelaySharingLine(clientCount = relayClientCount, onStop = onStopRelay)
         }
         return
@@ -163,7 +163,7 @@ internal fun BleStatusChip(
             )
         }
         }
-        if (relayClientCount != null && onStopRelay != null) {
+        if (relayClientCount != null) {
             RelaySharingLine(
                 clientCount = relayClientCount,
                 onStop = onStopRelay,
@@ -466,7 +466,7 @@ internal fun formatSessionTime(totalSeconds: Int): String {
 @Composable
 internal fun RelaySharingLine(
     clientCount: Int,
-    onStop: () -> Unit,
+    onStop: (() -> Unit)?,
     /** Off when this line is the only content of its block. */
     showDivider: Boolean = true,
 ) {
@@ -502,12 +502,14 @@ internal fun RelaySharingLine(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
-        TextButton(onClick = onStop, modifier = Modifier.testTag("relay_chip_stop")) {
-            Text(
-                stringResource(R.string.relay_chip_stop),
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold
-            )
+        if (onStop != null) {
+            TextButton(onClick = onStop, modifier = Modifier.testTag("relay_chip_stop")) {
+                Text(
+                    stringResource(R.string.relay_chip_stop),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
         }
     }
 }

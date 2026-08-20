@@ -5,18 +5,22 @@ import android.app.NotificationManager
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.AdvertisingSetCallback
 import android.content.Context
+import android.os.Build
 import android.util.Log
 import androidx.annotation.StringRes
 import androidx.core.app.NotificationCompat
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.BoardConnectionOwner
+import com.cruxcoach.android.ble.BlePermissionHelper
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ble.GattConnectionEvent
 import com.cruxcoach.android.ble.RelayGattServer
 import com.cruxcoach.android.boardcell.BoardCellEvent
+import com.cruxcoach.android.boardcell.BoardCellAvailability
 import com.cruxcoach.android.boardcell.BoardCellManager
+import com.cruxcoach.android.boardcell.BoardCellPlatformPolicy
 import com.cruxcoach.android.boardcell.ProjectionResult
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.relay.RelayBoardName
@@ -86,7 +90,7 @@ class CruxRelayManager(
     private val bleConnection: BoardBleConnection,
     private val projectionCoordinator: BoardProjectionCoordinator,
     private val boardCellManager: BoardCellManager,
-    private val userPreferences: UserPreferences,
+    @Suppress("UNUSED_PARAMETER") userPreferences: UserPreferences,
 ) {
     companion object {
         private const val TAG = "CruxRelay/Manager"
@@ -105,12 +109,11 @@ class CruxRelayManager(
 
     private val _state = MutableStateFlow(CruxRelayState())
     val state: StateFlow<CruxRelayState> = _state.asStateFlow()
-    // Sharing is deliberately NOT persisted (FEAT-044 §12): it is a momentary,
-    // safety-relevant action. Default OFF every process; only setEnabled(true)
-    // — a fresh user tap — turns it on, and a lost board turns it back off so
-    // a later reconnect never silently re-fronts the board.
-    private val enabledFlow = MutableStateFlow(false)
-    @Volatile private var meshControllerRelayRequired = false
+    /**
+     * CruxRelay is infrastructure of an active BoardCell, not a user toggle.
+     * Exactly the canonical controller owns it; API 28 never becomes one.
+     */
+    private val relayRequiredFlow = MutableStateFlow(false)
 
     private var running = false
     private var forwardJob: Job? = null
@@ -122,50 +125,61 @@ class CruxRelayManager(
         // Crash-safe: a previous run may have died with the adapter name still
         // changed. Restore it before anything else.
         restoreAdapterNameIfDirty()
-        // React to BOTH the runtime toggle AND the board connection: the relay
-        // runs only while enabled AND the real board link is up
-        // (WAIT_BEFORE_ADVERTISE). A falling board link disables sharing
-        // entirely — it never re-arms on a later board connection.
+        // Relay lifecycle follows canonical ownership and the physical link.
+        // A reconnect re-arms it automatically because ownership did not turn
+        // into an opt-in merely because Bluetooth was interrupted.
         scope.launch {
-            combine(enabledFlow, bleConnection.connectionState) { enabled, st ->
-                enabled to st
-            }.collect { (enabled, st) -> reconcile(enabled, st) }
+            combine(relayRequiredFlow, bleConnection.connectionState) { required, st ->
+                required to st
+            }.collect { (required, st) -> reconcile(required, st) }
         }
-        // Once the global Bluetooth-name disclosure has been accepted, the
-        // canonical controller is also the single CruxRelay owner. A handover
-        // stops the source relay through its board disconnect and starts it on
-        // the committed target; members can never advertise a competing relay.
+        // Term/availability are part of the lease. A settling, frozen or
+        // superseded controller must stop advertising immediately; the target
+        // starts only after its ACTIVE snapshot is canonical.
         scope.launch {
-            combine(userPreferences.relayDisclosureSeen, boardCellManager.snapshots) { consent, snapshot ->
-                consent && snapshot != null && boardCellManager.isLocalController()
-            }.collect { required ->
-                meshControllerRelayRequired = required
-                enabledFlow.value = required || enabledFlow.value
-                if (!required && boardCellManager.snapshot()?.controllerId != null) {
-                    enabledFlow.value = false
-                }
+            boardCellManager.snapshots.collect { snapshot ->
+                relayRequiredFlow.value =
+                    BoardCellPlatformPolicy.meshAvailable(Build.VERSION.SDK_INT) &&
+                    snapshot?.availability == BoardCellAvailability.ACTIVE &&
+                    snapshot.controllerId == boardCellManager.localNodeId() &&
+                    boardCellManager.localNodeId() in snapshot.members
             }
         }
     }
 
-    /** UI entry point — a deliberate user action; [init]'s collector does the rest. */
+    /** Legacy binary-compatible entry point; BoardCell ownership cannot be toggled. */
+    @Deprecated("CruxRelay follows BoardCell controller ownership")
     fun enable() = setEnabled(true)
 
+    /** Legacy binary-compatible entry point; BoardCell ownership cannot be toggled. */
+    @Deprecated("CruxRelay follows BoardCell controller ownership")
     fun setEnabled(enabled: Boolean) {
-        enabledFlow.value = enabled || meshControllerRelayRequired
-        if (enabled) _state.update { it.copy(error = null, errorDetail = null) }
+        Log.i(TAG, "Ignoring manual relay ${if (enabled) "enable" else "disable"}; lifecycle is automatic")
+    }
+
+    /** Retry immediately after the Android permission result changes. */
+    fun onPermissionsChanged() {
+        scope.launch { reconcile(relayRequiredFlow.value, bleConnection.connectionState.value) }
     }
 
     fun clearError() {
         _state.update { it.copy(error = null, errorDetail = null) }
     }
 
-    private suspend fun reconcile(enabled: Boolean, boardState: ConnectionState) {
-        _state.update { it.copy(enabled = enabled) }
+    private suspend fun reconcile(required: Boolean, boardState: ConnectionState) {
+        _state.update { it.copy(enabled = required) }
+        if (required && !BlePermissionHelper.hasAdvertisingPermission(context)) {
+            if (running) stopRelay()
+            _state.update {
+                it.copy(advertising = false, error = RelayError.ADVERTISE_FAILED,
+                    errorDetail = "Bluetooth advertising permission denied")
+            }
+            return
+        }
         // Only front the board while actually CONNECTED to it. (SENDING is a
         // transient connected sub-state during a write — neither starts nor
         // stops the relay, so a relayed send never tears itself down.)
-        if (enabled && boardState == ConnectionState.CONNECTED && !running) {
+        if (required && boardState == ConnectionState.CONNECTED && !running) {
             when (BoardRelayPolicy.availability(
                 board = bleConnection.connectedBoard,
             )) {
@@ -177,24 +191,17 @@ class CruxRelayManager(
                     rejectEnable(RelayError.UNSUPPORTED_BOARD)
                 BoardRelayAvailability.NO_BOARD -> Unit
             }
-        } else if (running && (!enabled || boardState == ConnectionState.DISCONNECTED)) {
+        } else if (running && (!required || boardState == ConnectionState.DISCONNECTED)) {
             stopRelay()
-            if (boardState == ConnectionState.DISCONNECTED && enabled) {
-                // Board loss while sharing: hard-disable so a later reconnect
-                // never re-activates sharing without a fresh user action, and
-                // surface the loss (never silent — §12). The persistent FGS
-                // notification dies with enabled=false, so leave a final
-                // auto-dismissible one for background users.
+            if (boardState == ConnectionState.DISCONNECTED && required) {
                 postStoppedNotification(R.string.relay_error_board_lost)
-                enabledFlow.value = false
-                _state.update { it.copy(enabled = false, error = RelayError.BOARD_LOST) }
+                _state.update { it.copy(enabled = true, error = RelayError.BOARD_LOST) }
             }
         }
     }
 
     private fun rejectEnable(error: RelayError) {
-        enabledFlow.value = false
-        _state.update { it.copy(enabled = false, error = error, errorDetail = null) }
+        _state.update { it.copy(enabled = relayRequiredFlow.value, error = error, errorDetail = null) }
     }
 
     @SuppressLint("MissingPermission")
@@ -241,10 +248,19 @@ class CruxRelayManager(
                 // guest write in order and byte-for-byte; there is no Aurora
                 // packet grouping for RelayFrameReassembler to perform.
                 relayServer.writes.collect { inbound ->
-                    if (bleConnection.sendRawChunks(listOf(inbound.value))) {
+                    // MoonBoard writes cannot currently be mapped back to a
+                    // CruxCoach climb UUID, but they still cross the canonical
+                    // serializer. Every replica therefore learns that the
+                    // physical projection changed externally instead of
+                    // continuing to claim the playlist climb is on the wall.
+                    val result = boardCellManager.projectExternal(
+                        boardWrite = { bleConnection.sendRawChunks(listOf(inbound.value)) },
+                        identify = { null },
+                    )
+                    if (result is ProjectionResult.Committed || result is ProjectionResult.Duplicate) {
                         advertiser.clearActiveClimb()
                     } else {
-                        Log.w(TAG, "sendRawChunks failed for a relayed MoonBoard write")
+                        Log.w(TAG, "canonical MoonBoard relay write failed: $result")
                         _state.update { it.copy(error = RelayError.FORWARD_FAILED) }
                     }
                 }
@@ -329,8 +345,7 @@ class CruxRelayManager(
      *  user is still using it), disable the toggle, surface the error. */
     private suspend fun abortStart(error: RelayError, detail: String?) {
         stopRelay()
-        enabledFlow.value = false
-        _state.update { it.copy(enabled = false, error = error, errorDetail = detail) }
+        _state.update { it.copy(enabled = relayRequiredFlow.value, error = error, errorDetail = detail) }
     }
 
     /** Stop only the relay transport. The direct board connection remains. */

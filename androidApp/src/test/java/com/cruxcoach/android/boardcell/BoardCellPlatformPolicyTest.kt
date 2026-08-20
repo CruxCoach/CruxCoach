@@ -15,8 +15,8 @@ class BoardCellPlatformPolicyTest {
     /**
      * API 28 has no FIPS identity, so a canonical start could never have
      * succeeded. Answering "yes" here and failing inside the start left the
-     * user with an empty started session instead of the legacy GATT joinable
-     * path, which still works perfectly well on that platform.
+     * user with an empty started session. It remains a local Board/CruxRelay
+     * client and never enters the shared-playlist state machine.
      */
     @Test fun `api 28 never starts a canonical playlist, whatever the cell says`() {
         assertFalse(BoardCellPlatformPolicy.canStartCanonicalPlaylist(
@@ -30,5 +30,16 @@ class BoardCellPlatformPolicyTest {
             apiLevel = 29, cellIsActive = false, localIsCellMember = true))
         assertFalse(BoardCellPlatformPolicy.canStartCanonicalPlaylist(
             apiLevel = 29, cellIsActive = true, localIsCellMember = false))
+    }
+
+    @Test fun `shared playlists use the same hard platform boundary as FIPS`() {
+        assertFalse(BoardCellPlatformPolicy.sharedPlaylistAvailable(28))
+        assertTrue(BoardCellPlatformPolicy.sharedPlaylistAvailable(29))
+    }
+
+    @Test fun `legacy GATT playlists are retired on every platform`() {
+        assertFalse(BoardCellPlatformPolicy.legacyGattPlaylistAvailable(28))
+        assertFalse(BoardCellPlatformPolicy.legacyGattPlaylistAvailable(29))
+        assertFalse(BoardCellPlatformPolicy.legacyGattPlaylistAvailable(35))
     }
 }

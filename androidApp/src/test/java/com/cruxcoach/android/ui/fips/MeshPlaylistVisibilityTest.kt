@@ -1,17 +1,13 @@
 package com.cruxcoach.android.ui.fips
 
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * When the mesh status strip offers to join the BoardCell's playlist.
+ * The mesh status strip never offers a second playlist join.
  *
- * The rule this encodes is the one the product is built on: being in the mesh
- * makes the playlist *visible*, and only an explicit tap makes you a member.
- * Before this existed the join path had no call site at all — a member could
- * see the cell but had no way to discover, let alone take part in, the
- * playlist running on it.
+ * Board membership is playlist membership. Keeping a separate join action
+ * would recreate the hidden membership layer the Board UX removed.
  */
 class MeshPlaylistVisibilityTest {
 
@@ -27,8 +23,8 @@ class MeshPlaylistVisibilityTest {
         localIsHost: Boolean = false,
     ) = MeshPlaylistUi(itemCount, memberCount, localIsMember, localIsHost)
 
-    @Test fun `a cell member outside the playlist is offered the join`() {
-        assertTrue(state(playlist = playlist()).canJoinPlaylist)
+    @Test fun `a Board playlist never offers a second join`() {
+        assertFalse(state(playlist = playlist()).canJoinPlaylist)
     }
 
     @Test fun `a playlist member is not offered a second join`() {
@@ -49,12 +45,9 @@ class MeshPlaylistVisibilityTest {
         assertFalse(state(availability = null, playlist = playlist()).canJoinPlaylist)
     }
 
-    @Test fun `discoverability alone says nothing about membership`() {
-        // The two are deliberately separate fields: a member count of five
-        // with localIsMember false is exactly the state the join button is
-        // for, and it must never be read as "you are already in it".
+    @Test fun `even a stale non-member snapshot cannot expose the retired join`() {
         val visible = playlist(memberCount = 5, localIsMember = false)
-        assertTrue(visible.offersJoin)
+        assertFalse(visible.offersJoin)
         assertFalse(visible.localIsMember)
         assertFalse(visible.localIsHost)
     }

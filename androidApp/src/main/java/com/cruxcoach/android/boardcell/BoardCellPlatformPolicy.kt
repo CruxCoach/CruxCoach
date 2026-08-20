@@ -3,6 +3,10 @@ package com.cruxcoach.android.boardcell
 /** API 28 has no FIPS/L2CAP mesh, but it may never bypass BoardCell serialization or WAL. */
 object BoardCellPlatformPolicy {
     fun meshAvailable(apiLevel: Int): Boolean = apiLevel >= 29
+    /** API 28 remains a local Board/CruxRelay client, never a group node. */
+    fun sharedPlaylistAvailable(apiLevel: Int): Boolean = meshAvailable(apiLevel)
+    /** The pre-FIPS GATT shared-session state machine has no supported platform. */
+    fun legacyGattPlaylistAvailable(@Suppress("UNUSED_PARAMETER") apiLevel: Int): Boolean = false
     fun requiresSafetyBoundary(@Suppress("UNUSED_PARAMETER") apiLevel: Int): Boolean = true
 
     /**

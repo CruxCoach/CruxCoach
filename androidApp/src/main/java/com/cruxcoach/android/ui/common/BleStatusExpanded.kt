@@ -136,7 +136,8 @@ internal fun BleStatusExpanded(
             }
 
             // Nearby sessions section — hide when already in a session (own or connecting)
-            if (state.nearbySessions.isNotEmpty() && state.ownSession == null) {
+            if (state.nearbySessions.isNotEmpty() && state.ownSession == null &&
+                onJoinSession != null) {
                 NearbySessionsSection(sessions = state.nearbySessions, onJoinSession = onJoinSession)
                 Spacer(Modifier.height(8.dp))
             }
@@ -165,7 +166,7 @@ internal fun BleStatusExpanded(
         // to be rendered next to this view instead, so the same line sat on the
         // card in one state and floated on the page background in the other —
         // one strip that belonged to neither container.
-        if (relayClientCount != null && onStopRelay != null) {
+        if (relayClientCount != null) {
             RelaySharingLine(clientCount = relayClientCount, onStop = onStopRelay)
         }
     }

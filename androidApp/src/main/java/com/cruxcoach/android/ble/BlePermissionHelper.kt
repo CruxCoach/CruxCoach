@@ -10,7 +10,8 @@ import androidx.core.location.LocationManagerCompat
 
 /**
  * Utility for checking BLE permissions.
- * Android 12+ (API 31): BLUETOOTH_SCAN + BLUETOOTH_CONNECT (no location with neverForLocation)
+ * Android 12+ (API 31): BLUETOOTH_SCAN + BLUETOOTH_CONNECT + BLUETOOTH_ADVERTISE
+ * (no location with neverForLocation)
  * Android 10-11 (API 29-30): ACCESS_FINE_LOCATION
  * Android 8-9 (API 26-28): ACCESS_COARSE_LOCATION
  */
@@ -45,11 +46,24 @@ object BlePermissionHelper {
         apiLevel: Int = Build.VERSION.SDK_INT,
     ): Boolean = hasConnectionPermission || getConnectionPermissions(apiLevel).isEmpty()
 
+    /**
+     * Permissions for the normal Board flow.
+     *
+     * Every supported Board connection owns a BoardCell and its controller
+     * automatically fronts the physical wall through CruxRelay. Advertising
+     * is therefore part of connecting to a Board, not a later optional
+     * "sharing" action. Keeping it in this one request also avoids showing a
+     * second Android permission dialog just after the connection succeeds.
+     */
     fun getRequiredPermissions(apiLevel: Int = Build.VERSION.SDK_INT): Array<String> =
-        getScanPermissions(apiLevel) + getConnectionPermissions(apiLevel)
+        (getScanPermissions(apiLevel) + getConnectionPermissions(apiLevel) +
+            getAdvertisingPermissions(apiLevel)).distinct().toTypedArray()
 
     fun hasPermissions(context: Context): Boolean {
-        return getRequiredPermissions().all {
+        // Advertising is requested in the same Android dialog, but denying it
+        // may only degrade FIPS/CruxRelay — it must not hide a physical Board
+        // that can still be scanned and connected directly.
+        return (getScanPermissions() + getConnectionPermissions()).all {
             ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
         }
     }
@@ -69,13 +83,19 @@ object BlePermissionHelper {
     /**
      * Permissions to request when reconnecting to an already-known controller.
      *
-     * Just the connect permission. A reconnect goes straight to the address and
-     * never scans, and the controller's capacity no longer depends on scanning
-     * either — an unprobed controller is treated as exclusive, which is what it
-     * almost certainly is (see [BoardControllerProfiles]).
+     * A reconnect goes straight to the address and never scans. On Android 12+
+     * it also asks for advertising so this device can take over the automatic
+     * Board relay immediately if it becomes the canonical controller.
      */
     fun getReconnectPermissions(apiLevel: Int = Build.VERSION.SDK_INT): Array<String> =
-        getConnectionPermissions(apiLevel)
+        (getConnectionPermissions(apiLevel) +
+            if (apiLevel >= Build.VERSION_CODES.Q) getAdvertisingPermissions(apiLevel)
+            else emptyArray()).distinct().toTypedArray()
+
+    fun hasReconnectPermissions(context: Context): Boolean =
+        getReconnectPermissions().all {
+            ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+        }
 
     /**
      * Whether the post-connect capacity probe can run on this connection.

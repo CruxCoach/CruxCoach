@@ -402,18 +402,17 @@ class PlaylistPlaybackCoordinator(
             return
         }
         boardSessionManager.startSession()
-        queueManager.loadPlaylist(hostName, items, visibility)
-        if (visibility == SessionVisibility.JOINABLE) {
-            gattBridge.startSharing()
-        }
+        // A failed/unavailable canonical start degrades to a private local
+        // playlist. It must never resurrect the pre-FIPS GATT session as a
+        // second shared state machine.
+        queueManager.loadPlaylist(hostName, items, SessionVisibility.LOCAL_ONLY)
     }
 
     /**
      * Whether this device can put a playlist into the mesh at all.
      *
-     * An API-28 device answers no and keeps the legacy GATT joinable path,
-     * which is the whole hybrid: it can see, join and edit the one canonical
-     * playlist through a gateway, but it cannot start or host one.
+     * API 28 deliberately answers no: it remains a local Board/CruxRelay
+     * client and never hosts or joins a shared playlist.
      */
     private fun canUseCanonicalPlaylist(): Boolean {
         val manager = com.cruxcoach.android.boardcell.BoardCellManager.current ?: return false
@@ -455,7 +454,9 @@ class PlaylistPlaybackCoordinator(
     ) {
         advanceMode = ListPlaybackAdvance.MANUAL
         boardSessionManager.startSession()
-        queueManager.startQueue(hostName, visibility)
+        val canonical = visibility == SessionVisibility.JOINABLE && canUseCanonicalPlaylist()
+        queueManager.startQueue(hostName,
+            if (canonical) SessionVisibility.JOINABLE else SessionVisibility.LOCAL_ONLY)
         queueManager.onRestRequested = { seconds ->
             boardSessionManager.startRestTimer(seconds)
         }
@@ -464,31 +465,22 @@ class PlaylistPlaybackCoordinator(
                 queueManager.addClimb(onBoard.climbUuid, onBoard.angle)
             }
         }
-        if (visibility == SessionVisibility.JOINABLE) {
-            gattBridge.startSharing()
-        }
+        // The first added climb promotes this into canonical BoardCell state;
+        // no legacy GATT host is opened in the meantime.
     }
 
     /** Join a nearby playlist as PARTICIPANT. */
     fun join(entry: NearbySessionEntry) {
-        val device = entry.rawSession.device ?: return
-        advanceMode = ListPlaybackAdvance.MANUAL
-        boardSessionManager.startSession()
-        // No startQueue() here: that would flash HOST before GATT connects;
-        // joinSession() drives setConnecting() → setParticipantRole().
-        gattBridge.joinSession(device)
+        // Legacy session advertisements are intentionally not joinable. API
+        // 28 uses the automatically advertised CruxRelay as a normal Board;
+        // API 29+ joins the BoardCell and receives its canonical playlist.
+        return
     }
 
     /** Re-attempt a requested joinable publication after its platform gate
      * (normally BLUETOOTH_ADVERTISE) has been resolved. */
     fun retrySharing() {
-        val current = state.value
-        if (current.isHost &&
-            current.visibilityRequested == SessionVisibility.JOINABLE &&
-            current.visibility != SessionVisibility.JOINABLE
-        ) {
-            gattBridge.ensureHostSharing()
-        }
+        // Shared playback has no GATT hosting fallback anymore.
     }
 
     /**

@@ -17,13 +17,13 @@ import com.cruxcoach.android.ble.BoardConnectionCapacity
 import com.cruxcoach.android.ble.BoardConnectionOwner
 import com.cruxcoach.android.ble.BoardControllerProfiles
 import com.cruxcoach.android.ble.NearbyClimbScanner
-import com.cruxcoach.android.ble.NearbySession
 import com.cruxcoach.android.boardcell.BoardCellManager
 import com.cruxcoach.android.boardcell.ControllerRequestState
 import com.cruxcoach.android.fips.FipsMeshRuntime
 import com.cruxcoach.android.fips.FipsConnectionStage
 import com.cruxcoach.android.fips.FipsNearbyMesh
 import com.cruxcoach.android.data.BoardSessionManager
+import com.cruxcoach.android.data.CruxRelayManager
 import com.cruxcoach.android.data.NearbyPresenceManager
 import com.cruxcoach.android.data.RememberedBoardController
 import com.cruxcoach.android.data.SessionGattBridge
@@ -60,7 +60,6 @@ data class BleConnectionState(
     val isLocationEnabled: Boolean = true,
     val isScanning: Boolean = false,
     val discoveredBoards: List<DiscoveredBoard> = emptyList(),
-    val nearbySessions: List<NearbySession> = emptyList(),
     val lastUsedBoardAddresses: Map<BoardBrand, String> = emptyMap(),
     val rememberedBoardControllers: Map<BoardBrand, RememberedBoardController> = emptyMap(),
     val activeBoardBrand: BoardBrand = BoardBrand.KILTER,
@@ -128,6 +127,7 @@ class BleConnectionViewModel @Inject constructor(
     private val capacityProbe: BoardCapacityProbe,
     private val boardCellManager: BoardCellManager,
     private val fipsMeshRuntime: FipsMeshRuntime,
+    private val cruxRelayManager: CruxRelayManager,
 ) : ViewModel() {
 
     companion object {
@@ -301,11 +301,6 @@ class BleConnectionViewModel @Inject constructor(
             }
         }
         viewModelScope.safeLaunch(TAG) {
-            nearbyClimbScanner.nearbySessions.collect { sessions ->
-                _state.update { it.copy(nearbySessions = sessions.sortedByDescending(NearbySession::rssi)) }
-            }
-        }
-        viewModelScope.safeLaunch(TAG) {
             bleConnection.connectFailureReason.collect { reason ->
                 _state.update { it.copy(connectFailureReason = reason) }
             }
@@ -422,6 +417,7 @@ class BleConnectionViewModel @Inject constructor(
         // Bug 5: Retry nearby scanner after permission grant (first app start)
         nearbyPresenceManager.retryScan()
         fipsMeshRuntime.onPermissionsChanged()
+        cruxRelayManager.onPermissionsChanged()
     }
 
     fun startScan() {
@@ -550,17 +546,6 @@ class BleConnectionViewModel @Inject constructor(
         directReconnectJob?.cancel()
         directReconnectJob = null
         _state.update { it.copy(directReconnectInFlight = false, directReconnectFailed = false) }
-    }
-
-    /** Joins the exact session selected by the user; multiple nearby hosts stay unambiguous. */
-    fun joinNearbySession(session: NearbySession) {
-        val device = session.device
-        if (device != null) {
-            boardSessionManager.startSession()
-            sessionGattBridge.joinSession(device)
-        } else {
-            Log.w(TAG, "joinNearbySession: selected session has no connectable device")
-        }
     }
 
     fun connectToBoard(board: DiscoveredBoard, maxAttempts: Int = DEFAULT_CONNECT_ATTEMPTS) {

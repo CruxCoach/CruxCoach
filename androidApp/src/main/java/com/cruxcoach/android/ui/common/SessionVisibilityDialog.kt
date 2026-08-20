@@ -1,6 +1,7 @@
 package com.cruxcoach.android.ui.common
 
 import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -28,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ble.BlePermissionHelper
+import com.cruxcoach.android.boardcell.BoardCellPlatformPolicy
 import com.cruxcoach.android.data.SessionVisibility
 
 /** Per-run privacy choice shown before a host session starts. */
@@ -74,12 +76,14 @@ fun SessionVisibilityDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(stringResource(R.string.ble_session_visibility_message))
-                VisibilityOption(
-                    title = stringResource(R.string.ble_session_visibility_joinable),
-                    description = stringResource(R.string.ble_session_visibility_joinable_desc),
-                    testTag = "session_visibility_joinable",
-                    onClick = ::selectJoinable,
-                )
+                if (BoardCellPlatformPolicy.sharedPlaylistAvailable(Build.VERSION.SDK_INT)) {
+                    VisibilityOption(
+                        title = stringResource(R.string.ble_session_visibility_joinable),
+                        description = stringResource(R.string.ble_session_visibility_joinable_desc),
+                        testTag = "session_visibility_joinable",
+                        onClick = ::selectJoinable,
+                    )
+                }
                 VisibilityOption(
                     title = stringResource(R.string.ble_session_visibility_local),
                     description = stringResource(R.string.ble_session_visibility_local_desc),

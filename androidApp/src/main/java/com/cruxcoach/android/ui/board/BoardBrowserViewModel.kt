@@ -5,7 +5,6 @@ import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.ConnectionState
 import android.util.Log
-import com.cruxcoach.android.ble.NearbySession
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.android.data.BleShareManager
 import com.cruxcoach.android.data.BleShareUiState
@@ -1889,15 +1888,6 @@ class BoardBrowserViewModel @Inject constructor(
 
     fun sendPrev() = gattBridge.sendPrev()
     fun sendNext() = gattBridge.sendNext()
-
-    fun joinNearbySession(session: NearbySession) {
-        val device = session.device
-        if (device != null) {
-            gattBridge.joinSession(device)
-        } else {
-            Log.w("BoardBrowserVM", "Cannot join session: no BluetoothDevice available")
-        }
-    }
 
     // --- Session timer ---
 

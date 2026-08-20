@@ -161,7 +161,7 @@ class PlaylistPlaybackCoordinatorTest {
     }
 
     @Test
-    fun `permission retry republishes a blocked host session`() {
+    fun `permission retry never resurrects legacy GATT sharing`() {
         queueManager.loadPlaylist(
             "Playlist",
             listOf(QueueItem("a", 40)),
@@ -172,7 +172,7 @@ class PlaylistPlaybackCoordinatorTest {
 
         coordinator.retrySharing()
 
-        verify(exactly = 1) { gattBridge.ensureHostSharing() }
+        verify(exactly = 0) { gattBridge.ensureHostSharing() }
     }
 
     @Test
@@ -210,7 +210,7 @@ class PlaylistPlaybackCoordinatorTest {
     }
 
     @Test
-    fun `joinable play publishes even when global climb sharing is disabled`() {
+    fun `joinable play without an active BoardCell degrades to a local playlist`() {
         every { bleShareManager.uiState } returns MutableStateFlow(
             mockk(relaxed = true) { every { sharingEnabled } returns false }
         )
@@ -221,8 +221,8 @@ class PlaylistPlaybackCoordinatorTest {
             visibility = SessionVisibility.JOINABLE,
         )
 
-        assertEquals(SessionVisibility.JOINABLE, queueManager.state.value.visibility)
-        verify(exactly = 1) { gattBridge.startSharing() }
+        assertEquals(SessionVisibility.LOCAL_ONLY, queueManager.state.value.visibility)
+        verify(exactly = 0) { gattBridge.startSharing() }
     }
 
     @Test

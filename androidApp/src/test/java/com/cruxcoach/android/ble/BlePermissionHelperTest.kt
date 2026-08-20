@@ -46,6 +46,7 @@ class BlePermissionHelperTest {
             arrayOf(
                 Manifest.permission.BLUETOOTH_SCAN,
                 Manifest.permission.BLUETOOTH_CONNECT,
+                Manifest.permission.BLUETOOTH_ADVERTISE,
             ),
             BlePermissionHelper.getRequiredPermissions(Build.VERSION_CODES.S)
         )
@@ -64,9 +65,9 @@ class BlePermissionHelperTest {
     }
 
     @Test
-    fun advertising_is_not_part_of_board_discovery_permissions() {
+    fun advertising_is_part_of_the_single_board_permission_request() {
         for (api in apisFromS) {
-            assertFalse(
+            assertTrue(
                 BlePermissionHelper.getRequiredPermissions(api)
                     .contains(Manifest.permission.BLUETOOTH_ADVERTISE)
             )
@@ -195,17 +196,18 @@ class BluetoothEnableGateTest {
  * Decision table for the reconnect permission set.
  *
  * Background: reconnecting to a known controller connects by address and
- * needs no scan, and a controller's capacity no longer depends on scanning
- * either — unprobed means exclusive, which is what real boards are. The
- * advertising probe can only upgrade that, so it is run when scan rights
- * happen to be there and never asked for.
+ * needs no scan. It does ask for advertising on FIPS-capable Android because
+ * every Board connection also owns a BoardCell/CruxRelay lifecycle.
  */
 class ReconnectPermissionsTest {
 
     @Test
-    fun `reconnect asks for the connect permission only`() {
+    fun `reconnect asks for connect and automatic relay advertising`() {
         assertContentEquals(
-            arrayOf(Manifest.permission.BLUETOOTH_CONNECT),
+            arrayOf(
+                Manifest.permission.BLUETOOTH_CONNECT,
+                Manifest.permission.BLUETOOTH_ADVERTISE,
+            ),
             BlePermissionHelper.getReconnectPermissions(apiLevel = Build.VERSION_CODES.S),
         )
     }

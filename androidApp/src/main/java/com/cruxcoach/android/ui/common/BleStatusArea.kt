@@ -22,7 +22,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import android.util.Log
 import com.cruxcoach.android.data.BleShareManager
 import com.cruxcoach.android.data.CruxRelayManager
-import com.cruxcoach.android.data.NearbySessionEntry
 import com.cruxcoach.android.data.OnBoardSource
 import com.cruxcoach.android.data.PlaylistPlaybackCoordinator
 import com.cruxcoach.android.data.SessionGattBridge
@@ -95,19 +94,10 @@ fun BleStatusArea(
         if (!meshState.running) meshViewModel.ensureDiscovery()
     }
 
-    // Bug 3: Session join handled internally via CompositionLocals — works on every screen
     val sessionQueueManager = LocalSessionQueueManager.current
-    val sessionGattBridge = LocalSessionGattBridge.current
     val queueState by sessionQueueManager.state.collectAsStateWithLifecycle()
 
     val playback = LocalPlaylistPlayback.current
-    val openPlayer = LocalOpenPlaylistPlayer.current
-    val handleJoinSession: (NearbySessionEntry) -> Unit = { sessionEntry ->
-        // Joining lands directly in the player — it shows the connecting
-        // state and becomes the participant's home for the playlist.
-        playback.join(sessionEntry)
-        openPlayer()
-    }
 
     // Suppress on-board climb on detail screen:
     // 1. UUID match (same climb) — always suppress regardless of source
@@ -130,7 +120,7 @@ fun BleStatusArea(
     // the board never appeared at all. The relay line now rides along inside
     // the regular chip instead.
     val hasContent = effectiveOnBoard != null || state.boardOccupiedCount > 0 ||
-        state.nearbySessions.isNotEmpty() || state.ownSession != null ||
+        state.ownSession != null ||
         relayState.enabled || nearbyMeshes.isNotEmpty() || joiningMeshName != null ||
         meshState.cellId != null || meshJoinFailed
 
@@ -177,19 +167,17 @@ fun BleStatusArea(
     }
 
     val relayClientCount = relayState.clientCount.takeIf { relayState.enabled }
-    val stopRelay: () -> Unit = { relayManager.setEnabled(false) }
-
     if (expanded) {
         BleStatusExpanded(
             state = state,
             effectiveOnBoard = effectiveOnBoard,
             onCollapse = { Log.d(TAG, "COLLAPSE"); expanded = false },
             onClimbTapped = onClimbTapped,
-            onJoinSession = handleJoinSession,
+            onJoinSession = null,
             onAddToQueue = onAddToQueue,
             onOpenQueueSheet = { showQueueSheet = true },
             relayClientCount = relayClientCount,
-            onStopRelay = stopRelay,
+            onStopRelay = null,
             activeMesh = meshState.takeIf { it.cellId != null },
             onLeaveMesh = meshViewModel::leave,
             nearbyMeshes = nearbyMeshes,
@@ -213,7 +201,7 @@ fun BleStatusArea(
             onAddToQueue = onAddToQueue,
             onRandomToQueue = onRandomToQueue,
             relayClientCount = relayClientCount,
-            onStopRelay = stopRelay,
+            onStopRelay = null,
             nearbyMeshCount = nearbyMeshes.size,
             joiningMeshName = joiningMeshName,
             // Membership, not transient advertisement metadata, decides

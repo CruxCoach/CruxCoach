@@ -7,6 +7,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.os.Build
 import android.util.Log
 import android.os.SystemClock
 import com.cruxcoach.android.R
@@ -34,6 +35,7 @@ import com.cruxcoach.android.ble.QueueItem
 import com.cruxcoach.android.fips.FipsMeshRuntime
 import com.cruxcoach.android.mesh.MeshOwners
 import com.cruxcoach.android.boardcell.BoardCellManager
+import com.cruxcoach.android.boardcell.BoardCellPlatformPolicy
 import com.cruxcoach.android.boardcell.BoardCellPeerDiagnostics
 import com.cruxcoach.android.boardcell.BoardCellHandoverLifecycle
 import com.cruxcoach.android.boardcell.BoardCommandAck
@@ -228,6 +230,9 @@ class SessionGattBridge(
         BoardControllerProfiles.forBoard(bleConnection.connectedBoard).connectionCapacity
 
     init {
+        queueManager.startCanonicalWithFirstClimb = { item, sessionId ->
+            startJoinablePlaylist(listOf(item), sessionId)
+        }
         userPreferences?.let { preferences ->
             scope.launch {
                 preferences.localUserProfile.collect { profile ->
@@ -277,26 +282,16 @@ class SessionGattBridge(
             },
             prepareTarget = { snapshot ->
                 val boardReady = ensureHandoverBoardConnected(snapshot)
-                if (!boardReady) {
-                    false
-                } else {
-                    val needsSessionHost = queueManager.state.value.isActive ||
-                        snapshot.playlist.sessionId != null
-                    if (needsSessionHost && queueManager.state.value.role != SessionRole.HOST) {
-                        queueManager.promoteToHostForBoardCell(
-                            context.getString(R.string.ble_session_name_promoted))
-                    }
-                    val hostReady = !needsSessionHost || ensureHostSharing()
-                    hostReady && boardMatchesSnapshot(bleConnection.connectedBoard, snapshot)
-                }
+                boardReady && boardMatchesSnapshot(bleConnection.connectedBoard, snapshot)
             },
             completeSource = {
-                // Only HANDOVER_COMPLETED reaches this callback. The target has
-                // already assumed HOST, board keep-alive and write authority.
-                stopSharing(allowBoardRelease = true, endForEveryone = false)
-                queueManager.completeTransferredQueue()
-                boardSessionManager.endSession()
-                bleConnection.disconnect()
+                // A technical controller handover changes physical write
+                // ownership only. The source remains an equal Board member
+                // and keeps following the canonical playlist; clearing its
+                // queue here made "controller" a hidden product-level host.
+                if (bleConnection.connectionState.value != ConnectionState.DISCONNECTED) {
+                    bleConnection.disconnect()
+                }
                 releasedHandoverBoard = null
             },
             abortSource = { snapshot ->
@@ -316,11 +311,6 @@ class SessionGattBridge(
                 releasedHandoverBoard = null
             },
             abortTarget = { snapshot ->
-                stopSharing(allowBoardRelease = false, endForEveryone = true)
-                queueManager.setParticipantRole(
-                    snapshot.playlist.sessionId ?: queueManager.state.value.sessionId,
-                    queueManager.state.value.hostName,
-                )
                 if (boardMatchesSnapshot(bleConnection.connectedBoard, snapshot)) {
                     bleConnection.disconnect()
                 }
@@ -1033,6 +1023,10 @@ class SessionGattBridge(
      */
     private fun recoverAfterBluetoothRestart() {
         fipsMeshRuntime?.restartAfterBluetoothAvailable()
+        if (!BoardCellPlatformPolicy.legacyGattPlaylistAvailable(Build.VERSION.SDK_INT)) {
+            Log.d(TAG, "BT recovered — legacy GATT playlists stay retired")
+            return
+        }
         val state = queueManager.state.value
         if (state.role != SessionRole.HOST) return
         // Asked of the wish, not the state: a failed startSharing() sets the
@@ -1921,6 +1915,10 @@ class SessionGattBridge(
     // ===== Internal: Participant applies remote events =====
 
     private fun applyRemoteEvent(event: SessionEvent) {
+        // Once FIPS has supplied a canonical playlist, the old GATT stream is
+        // compatibility traffic only. Applying even one delayed delta here
+        // could rewind the UI after a newer hashed BoardCell snapshot.
+        if (queueManager.state.value.mesh != null) return
         when (event) {
             is SessionEvent.Added -> {
                 queueManager.addClimb(event.climbUuid, event.angle)
