@@ -662,13 +662,14 @@ class BoardDatabaseImporter(
             try {
                 // Refresh only Quantum catalogue rows. Personal/log/list rows
                 // reference the stable synthetic climb ids and stay untouched.
-                db.execSQL("DELETE FROM climb_stats WHERE climb_uuid IN (SELECT uuid FROM climbs WHERE board_brand='quantum' AND origin='kilter')")
-                db.execSQL("DELETE FROM climbs WHERE board_brand='quantum' AND origin='kilter'")
+                db.execSQL("DELETE FROM climb_stats WHERE climb_uuid IN (SELECT uuid FROM climbs WHERE board_brand='quantum' AND origin IN ('kilter','quantum'))")
+                db.execSQL("DELETE FROM climbs WHERE board_brand='quantum' AND origin IN ('kilter','quantum')")
                 db.execSQL("DELETE FROM placements WHERE board_brand='quantum'")
                 db.execSQL("DELETE FROM leds WHERE board_brand='quantum'")
                 db.execSQL("DELETE FROM product_sizes WHERE board_brand='quantum'")
                 db.execSQL("DELETE FROM placement_roles WHERE board_brand='quantum'")
                 db.execSQL("DELETE FROM quantum_route_refs")
+                db.execSQL("DELETE FROM quantum_route_metadata")
 
                 db.execSQL(
                     """
@@ -721,14 +722,34 @@ class BoardDatabaseImporter(
                 )
                 db.execSQL(
                     """
+                    INSERT INTO quantum_route_metadata(
+                        app_uuid,source_grade,campusing,edge,kickplate,matching,standard,tags)
+                    SELECT LOWER(rm.app_uuid),COALESCE(r.grade,''),
+                           r.campusing,r.edge,r.kickplate,r.matching,r.standard,COALESCE(r.tags,'')
+                    FROM qb.quantum_route_models rm
+                    JOIN qb.quantum_routes r ON r.uuid=rm.route_uuid
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
                     INSERT OR REPLACE INTO climbs(
                         uuid,layout_id,setter_username,name,frames_count,is_listed,
                         edge_left,edge_right,edge_bottom,edge_top,created_at,description,
-                        frames,is_nomatch,move_count,board_brand,origin,source,sync_status)
+                        frames,is_nomatch,hsm,move_count,board_brand,origin,source,sync_status)
                     SELECT LOWER(rm.app_uuid), m.layout_id,
                            NULLIF(r.setter,''), r.name, 1, CASE WHEN r.disabled=0 THEN 1 ELSE 0 END,
-                           CAST(m.edge_left*1000 AS INTEGER), CAST(m.edge_right*1000 AS INTEGER),
-                           CAST(m.edge_bottom*1000 AS INTEGER), CAST(m.edge_top*1000 AS INTEGER),
+                           CAST((SELECT MIN(d.x) FROM qb.quantum_route_lights l
+                                 JOIN qb.quantum_diodes d ON d.model=l.model AND d.diode_uuid=l.diode_uuid
+                                 WHERE l.route_uuid=r.uuid AND l.model=rm.model)*1000 AS INTEGER),
+                           CAST((SELECT MAX(d.x) FROM qb.quantum_route_lights l
+                                 JOIN qb.quantum_diodes d ON d.model=l.model AND d.diode_uuid=l.diode_uuid
+                                 WHERE l.route_uuid=r.uuid AND l.model=rm.model)*1000 AS INTEGER),
+                           CAST((SELECT MIN(d.y) FROM qb.quantum_route_lights l
+                                 JOIN qb.quantum_diodes d ON d.model=l.model AND d.diode_uuid=l.diode_uuid
+                                 WHERE l.route_uuid=r.uuid AND l.model=rm.model)*1000 AS INTEGER),
+                           CAST((SELECT MAX(d.y) FROM qb.quantum_route_lights l
+                                 JOIN qb.quantum_diodes d ON d.model=l.model AND d.diode_uuid=l.diode_uuid
+                                 WHERE l.route_uuid=r.uuid AND l.model=rm.model)*1000 AS INTEGER),
                            CAST(r.created_at AS TEXT), COALESCE(r.tips,''),
                            COALESCE((
                              SELECT group_concat('p'||q.placement||'r'||q.role,'') FROM (
@@ -741,8 +762,13 @@ class BoardDatabaseImporter(
                                ORDER BY l.step,d.placement_id
                              ) q
                            ),''), 0,
+                           (CASE WHEN COALESCE(r.campusing,0)=0 THEN 1 ELSE 0 END) +
+                           (CASE WHEN COALESCE(r.edge,0)=0 THEN 2 ELSE 0 END) +
+                           (CASE WHEN COALESCE(r.kickplate,0)=0 THEN 4 ELSE 0 END) +
+                           (CASE WHEN COALESCE(r.matching,0)=0 THEN 8 ELSE 0 END) +
+                           (CASE WHEN COALESCE(r.standard,0)=0 THEN 16 ELSE 0 END),
                            MAX((SELECT COUNT(*) FROM qb.quantum_route_lights l WHERE l.route_uuid=r.uuid AND l.model=rm.model)-2,0),
-                           'quantum','kilter','kilter','synced'
+                           'quantum','quantum','quantum','synced'
                     FROM qb.quantum_route_models rm
                     JOIN qb.quantum_routes r ON r.uuid=rm.route_uuid
                     JOIN qb.quantum_models m ON m.model=rm.model
@@ -750,21 +776,40 @@ class BoardDatabaseImporter(
                 )
                 db.execSQL(
                     """
+                    WITH route_grades AS (
+                      SELECT rm.app_uuid,rm.route_uuid,rm.model,m.layout_id,r.angle,r.rating,r.ascents,
+                             REPLACE(TRIM(r.grade),' ','') AS source_bucket
+                      FROM qb.quantum_route_models rm
+                      JOIN qb.quantum_routes r ON r.uuid=rm.route_uuid
+                      JOIN qb.quantum_models m ON m.model=rm.model
+                    ), mapped_grades AS (
+                      SELECT *, CASE
+                        WHEN source_bucket IN ('[6]','[7]') THEN 10
+                        WHEN source_bucket IN ('[7,8]','[8]') THEN 11
+                        WHEN source_bucket='[9]' THEN 12
+                        WHEN source_bucket IN ('[9,10]','[10]') THEN 13
+                        WHEN source_bucket='[11]' THEN 14
+                        WHEN source_bucket IN ('[11,12]','[12]','[12,13]','[13]') THEN 15
+                        WHEN source_bucket IN (
+                          '[14]','[15]','[16]','[17]','[18]','[19]','[20]','[21]','[22]',
+                          '[23]','[24]','[25]','[26]','[27]','[28]','[29]','[30]','[31]','[32]'
+                        ) THEN CAST(SUBSTR(source_bucket,2,LENGTH(source_bucket)-2) AS INTEGER)+2
+                        WHEN source_bucket='[15,16]' THEN 18
+                        WHEN source_bucket='[19,20]' THEN 22
+                        WHEN source_bucket='[20,21]' THEN 23
+                        WHEN source_bucket='[21,22]' THEN 24
+                        WHEN source_bucket='[22,23]' THEN 25
+                        ELSE NULL
+                      END AS crux_grade
+                      FROM route_grades
+                    )
                     INSERT OR REPLACE INTO climb_stats(
                         climb_uuid,angle,display_difficulty,difficulty_average,quality_average,
                         ascensionist_count,benchmark_difficulty,fa_username,fa_at,
                         official_kilter_difficulty,layout_id)
-                    SELECT LOWER(rm.app_uuid), r.angle,
-                           CASE WHEN TRIM(r.grade)='' THEN NULL ELSE 9+CAST(
-                             TRIM(SUBSTR(REPLACE(REPLACE(r.grade,'[',''),']',''),1,
-                               INSTR(REPLACE(REPLACE(r.grade,'[',''),']','')||',',',')-1)) AS REAL) END,
-                           CASE WHEN TRIM(r.grade)='' THEN NULL ELSE 9+CAST(
-                             TRIM(SUBSTR(REPLACE(REPLACE(r.grade,'[',''),']',''),1,
-                               INSTR(REPLACE(REPLACE(r.grade,'[',''),']','')||',',',')-1)) AS REAL) END,
-                           r.rating,r.ascents,NULL,NULL,NULL,NULL,m.layout_id
-                    FROM qb.quantum_route_models rm
-                    JOIN qb.quantum_routes r ON r.uuid=rm.route_uuid
-                    JOIN qb.quantum_models m ON m.model=rm.model
+                    SELECT LOWER(app_uuid),angle,crux_grade,crux_grade,
+                           rating,ascents,NULL,NULL,NULL,NULL,layout_id
+                    FROM mapped_grades
                     """.trimIndent()
                 )
                 db.setTransactionSuccessful()

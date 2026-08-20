@@ -737,6 +737,13 @@
     <string name="board_filter_origin">Quelle</string>
     <string name="board_filter_origin_cruxcoach">CruxCoach-Setter</string>
     <string name="board_filter_origin_kilter">Kilter (offiziell)</string>
+    <string name="board_filter_origin_quantum">eWalls / Quantum (offiziell)</string>
+    <string name="board_filter_quantum_rules">Quantum-Regeln</string>
+    <string name="board_filter_quantum_standard">Standard</string>
+    <string name="board_filter_quantum_campusing">Campusing</string>
+    <string name="board_filter_quantum_edge">Kante</string>
+    <string name="board_filter_quantum_kickplate">Kickplate</string>
+    <string name="board_filter_quantum_matching">Matching</string>
     <string name="board_filter_origin_boardsesh">BoardSesh</string>
     <string name="board_filter_type">Typ</string>
     <string name="board_filter_type_boulder">Boulder</string>

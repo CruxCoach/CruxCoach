@@ -440,6 +440,7 @@ class LocalShareModernSchemaTest {
             db.execSQL("INSERT INTO leds(board_brand, hole_id, product_size_id, position) VALUES ('quantum', 19100001, 9201, 42)")
             db.execSQL("INSERT INTO placement_roles(board_brand, id, name, led_color, screen_color) VALUES ('quantum', 12, 'start', '00FF00', '00FF00')")
             db.execSQL("INSERT INTO quantum_route_refs(app_uuid, route_uuid, model) VALUES ('$quantumUuid', '$quantumRouteUuid', 'XL')")
+            db.execSQL("INSERT INTO quantum_route_metadata(app_uuid, source_grade, standard) VALUES ('$quantumUuid', '[14]', 1)")
         }
 
         com.cruxcoach.android.util.scrubAndCompactBoardDbSnapshot(snapshot)
@@ -457,6 +458,7 @@ class LocalShareModernSchemaTest {
             assertEquals("quantum LEDs gone", 0, countWhere(db, "leds", "board_brand = 'quantum'"))
             assertEquals("quantum roles gone", 0, countWhere(db, "placement_roles", "board_brand = 'quantum'"))
             assertEquals("quantum route mapping gone", 0, countWhere(db, "quantum_route_refs", "1=1"))
+            assertEquals("quantum route metadata gone", 0, countWhere(db, "quantum_route_metadata", "1=1"))
             // The sender's Kilter account identity never reaches the wire. No
             // receiver path reads either column, so this is pure leakage.
             assertEquals(

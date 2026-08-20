@@ -29,7 +29,10 @@ class QuantumCatalogueSync @Inject constructor(
 
     private val lock = Mutex()
     private val blossom by lazy {
-        BlossomSyncManager(context, okHttpClient, BlossomSyncManager.QUANTUM_D_TAG, "blossom_sync_quantum")
+        // v2 forces a one-shot reimport on upgrade: schema 27 adds verified
+        // grade/rule semantics that cannot be reconstructed from the old app
+        // DB even when the remote chunk hash itself is unchanged.
+        BlossomSyncManager(context, okHttpClient, BlossomSyncManager.QUANTUM_D_TAG, PREFS_NAME)
     }
 
     suspend fun sync(onProgress: ((BoardDatabaseImporter.ImportStep) -> Unit)? = null): Result = lock.withLock {
@@ -77,5 +80,8 @@ class QuantumCatalogueSync @Inject constructor(
         }
     }
 
-    private companion object { const val TAG = "QuantumCatalogueSync" }
+    companion object {
+        private const val TAG = "QuantumCatalogueSync"
+        const val PREFS_NAME = "blossom_sync_quantum_v2"
+    }
 }

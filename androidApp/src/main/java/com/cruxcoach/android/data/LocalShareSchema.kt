@@ -84,6 +84,7 @@ object LocalShareSchema {
         """DELETE FROM leds WHERE board_brand = 'quantum'""",
         """DELETE FROM placement_roles WHERE board_brand = 'quantum'""",
         """DELETE FROM quantum_route_refs""",
+        """DELETE FROM quantum_route_metadata""",
         """DELETE FROM climb_stats WHERE climb_uuid IN
            (SELECT uuid FROM climbs WHERE COALESCE(source, 'kilter') = 'local')""",
         """DELETE FROM climbs WHERE COALESCE(source, 'kilter') = 'local'""",
@@ -268,6 +269,11 @@ object LocalShareSchema {
             false,
             "external controller UUID bridge; local-share v1 cannot carry it atomically, " +
                 "so Quantum rows are scrubbed and re-downloaded from their isolated catalogue"
+        ),
+        "quantum_route_metadata" to PeerTableRule(
+            false,
+            "Quantum vendor grade/rules metadata; scrubbed with Quantum rows and rebuilt " +
+                "from the isolated catalogue rather than copied through local-share v1"
         ),
         "ExerciseLibrary" to PeerTableRule(false, "training content, not board catalogue"),
     )

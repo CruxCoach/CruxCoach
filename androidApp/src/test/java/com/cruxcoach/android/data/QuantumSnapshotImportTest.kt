@@ -96,6 +96,7 @@ class QuantumSnapshotImportTest {
             assertEquals(1, count(db, "SELECT COUNT(*) FROM climbs WHERE board_brand='quantum'"))
             assertEquals(3, count(db, "SELECT COUNT(*) FROM placements WHERE board_brand='quantum'"))
             assertEquals(3, count(db, "SELECT COUNT(*) FROM leds WHERE board_brand='quantum'"))
+            assertEquals(1, count(db, "SELECT COUNT(*) FROM quantum_route_metadata"))
             db.rawQuery("SELECT route_uuid FROM quantum_route_refs WHERE app_uuid=?",
                 arrayOf("04d652a3-0099-5af3-9961-183a8b69d376")).use { c ->
                 assertTrue(c.moveToFirst())
@@ -107,9 +108,80 @@ class QuantumSnapshotImportTest {
                 assertTrue(frames, frames.contains("p3000001r12"))
                 assertTrue(frames, frames.contains("p3000003r14"))
             }
+            db.rawQuery("SELECT edge_left,edge_right,edge_bottom,edge_top,origin,source FROM climbs WHERE board_brand='quantum'", null).use { c ->
+                assertTrue(c.moveToFirst())
+                assertEquals(1000, c.getInt(0))
+                assertEquals(3000, c.getInt(1))
+                assertEquals(1000, c.getInt(2))
+                assertEquals(3000, c.getInt(3))
+                assertEquals("quantum", c.getString(4))
+                assertEquals("quantum", c.getString(5))
+            }
             db.rawQuery("SELECT difficulty_average FROM climb_stats", null).use { c ->
                 assertTrue(c.moveToFirst())
-                assertEquals(21.0, c.getDouble(0), 0.0)
+                assertEquals(15.0, c.getDouble(0), 0.0)
+            }
+            db.rawQuery("SELECT source_grade,standard,campusing,edge,kickplate,matching,tags FROM quantum_route_metadata", null).use { c ->
+                assertTrue(c.moveToFirst())
+                assertEquals("[12,13]", c.getString(0))
+                assertEquals(1, c.getInt(1))
+                assertEquals(0, c.getInt(2))
+                assertEquals(0, c.getInt(3))
+                assertEquals(0, c.getInt(4))
+                assertEquals(0, c.getInt(5))
+                assertEquals("[]", c.getString(6))
+            }
+            // The existing pre-LIMIT/count hsm predicate doubles as a
+            // Quantum-only required-rule predicate: bits represent rules the
+            // route is missing. This route is Standard only, so bit 16 passes
+            // while Campusing/Edge/Kickplate/Matching are marked missing.
+            assertEquals(15, count(db, "SELECT hsm FROM climbs WHERE board_brand='quantum'"))
+            assertEquals(1, count(db, "SELECT COUNT(*) FROM climbs WHERE board_brand='quantum' AND (hsm & 16)=0"))
+            assertEquals(0, count(db, "SELECT COUNT(*) FROM climbs WHERE board_brand='quantum' AND (hsm & 1)=0"))
+        }
+    }
+
+    @Test fun mapsEwallsGradeIdsToCruxCoachScaleIncludingRangeGrades() {
+        val cases: List<Pair<String, Double?>> = listOf(
+            "[6]" to 10.0, "[7]" to 10.0, "[8]" to 11.0,
+            "[9]" to 12.0, "[10]" to 13.0, "[11]" to 14.0,
+            "[12]" to 15.0, "[12,13]" to 15.0, "[13]" to 15.0, "[14]" to 16.0, "[32]" to 34.0,
+            "[7,8]" to 11.0, "[9,10]" to 13.0, "[11,12]" to 15.0,
+            "[15,16]" to 18.0, "[19,20]" to 22.0, "[20,21]" to 23.0,
+            "[21,22]" to 24.0, "[22,23]" to 25.0,
+            "[12, 13]" to 15.0,
+            "not-a-grade" to null, "[33]" to null, "12,13" to null,
+            "garbage,14" to null, "[12,x]" to null,
+        )
+        SQLiteDatabase.openDatabase(snapshot.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { source ->
+            cases.forEachIndexed { index, (grade, _) ->
+                val route = "grade-route-$index"
+                val app = "grade-app-$index"
+                source.execSQL(
+                    """INSERT INTO quantum_routes VALUES(?,?,'setter',?,40,4.0,1,1,1700000000,1700000000,0,0,0,0,0,1,'[]','')""",
+                    arrayOf(route, "grade-$index", grade),
+                )
+                source.execSQL("INSERT INTO quantum_route_models VALUES(?,'m',?)", arrayOf(route, app))
+                source.execSQL("INSERT INTO quantum_route_lights VALUES(?,'m','d1',1)", arrayOf(route))
+            }
+        }
+
+        importer.importQuantumSnapshot(snapshot)
+
+        openTarget().use { db ->
+            cases.forEachIndexed { index, (_, expected) ->
+                db.rawQuery(
+                    """SELECT cs.difficulty_average FROM climb_stats cs
+                       JOIN climbs c ON c.uuid=cs.climb_uuid WHERE c.name=?""",
+                    arrayOf("grade-$index"),
+                ).use { cursor ->
+                    assertTrue(cursor.moveToFirst())
+                    if (expected == null) {
+                        assertTrue("${cases[index].first} must fail closed", cursor.isNull(0))
+                    } else {
+                        assertEquals(expected, cursor.getDouble(0), 0.0)
+                    }
+                }
             }
         }
     }
@@ -137,6 +209,24 @@ class QuantumSnapshotImportTest {
         }
         assertEquals(setOf(9101, 9102, 9103, 9104, 9105), expectedByLayout.keys)
 
+        val mappedThrough7c = listOf(
+            "[6]", "[7]", "[7,8]", "[8]", "[9]", "[9,10]", "[10]",
+            "[11]", "[11,12]", "[12]", "[12,13]", "[13]",
+        ) + (14..24).map { "[$it]" } + listOf(
+            "[15,16]", "[19,20]", "[20,21]", "[21,22]", "[22,23]",
+        )
+        val bucketSql = mappedThrough7c.joinToString(",") { "'$it'" }
+        val expectedXl40Through7c = SQLiteDatabase.openDatabase(
+            real.absolutePath, null, SQLiteDatabase.OPEN_READONLY,
+        ).use { source ->
+            count(source,
+                """SELECT COUNT(*) FROM quantum_route_models rm
+                   JOIN quantum_routes r ON r.uuid=rm.route_uuid
+                   JOIN quantum_models m ON m.model=rm.model
+                   WHERE m.layout_id=9101 AND r.angle=40 AND r.disabled=0
+                     AND REPLACE(TRIM(r.grade),' ','') IN ($bucketSql)""".trimIndent())
+        }
+
         importer.importQuantumSnapshot(real)
 
         openTarget().use { db ->
@@ -146,9 +236,16 @@ class QuantumSnapshotImportTest {
             }
             assertEquals(expectedByLayout.values.sum(),
                 count(db, "SELECT COUNT(*) FROM quantum_route_refs"))
+            assertEquals(expectedByLayout.values.sum(),
+                count(db, "SELECT COUNT(*) FROM quantum_route_metadata"))
             assertEquals(0, count(db, "SELECT COUNT(*) FROM quantum_route_refs WHERE length(app_uuid)<>36 OR length(route_uuid)<>36"))
             assertEquals(0, count(db, "SELECT COUNT(*) FROM climbs WHERE board_brand='quantum' AND frames=''"))
             assertEquals(0, count(db, "SELECT COUNT(*) FROM placements WHERE board_brand='quantum' AND placement_id>2147483647"))
+            assertTrue(expectedXl40Through7c > 2_000)
+            assertEquals(expectedXl40Through7c, count(db,
+                """SELECT COUNT(*) FROM climbs c JOIN climb_stats cs ON cs.climb_uuid=c.uuid
+                   WHERE c.board_brand='quantum' AND c.layout_id=9101 AND cs.angle=40
+                     AND c.is_listed=1 AND cs.difficulty_average BETWEEN 10 AND 26""".trimIndent()))
         }
     }
 

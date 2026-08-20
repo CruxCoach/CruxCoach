@@ -87,6 +87,28 @@ enum class BoardBrand(val wireValue: String) {
      *  hold-ids aren't placement-ids, so it has no heatmap layer. */
     val hasHeatmap: Boolean get() = usesAuroraProtocol || this == QUANTUM
 
+    /** Browse angles must come from the active layout's catalogue instead of
+     *  the historical continuous Kilter 0..70 degree control. Quantum models
+     *  have different sparse angle sets, so treating the controller protocol
+     *  as the angle capability produces selectable, permanently empty angles. */
+    val usesCatalogueAngles: Boolean
+        get() = (usesAuroraProtocol && this != KILTER) || this == QUANTUM
+
+    /** Quantum's vendor catalogue is single-frame. "Route" in CruxCoach means
+     *  a multi-frame circuit, not the Quantum model/size classification. */
+    val supportsClimbTypeFilter: Boolean get() = this != QUANTUM
+
+    /** The mirrored Quantum API does not define an official benchmark flag. */
+    val supportsBenchmarkFilter: Boolean get() = this != QUANTUM
+
+    /** BoardSesh is a Kilter-side provenance and has no Quantum catalogue. */
+    val supportsBoardSeshOrigin: Boolean get() = this != QUANTUM
+
+    /** The product-size edge predicate is a Kilter/Aurora compatibility rule.
+     *  Quantum model membership is authoritative in quantum_route_models and
+     *  is materialised as a unique layout id for every model. */
+    val usesProductSizeEdgeFit: Boolean get() = this != QUANTUM
+
     /** Climbs can be authored in the in-app editor — every interactive board.
      *  Kilter additionally pushes to the user's own Kilter account (see
      *  [supportsOfficialAppPublish]); every other interactive board (MoonBoard +

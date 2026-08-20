@@ -1815,7 +1815,7 @@ class BoardSyncManager(
         }
         if (BoardBrand.QUANTUM in brands) {
             appContext.getSharedPreferences(
-                "blossom_sync_quantum", Context.MODE_PRIVATE
+                QuantumCatalogueSync.PREFS_NAME, Context.MODE_PRIVATE
             ).edit().clear().apply()
         }
         brands

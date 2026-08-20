@@ -77,6 +77,16 @@ class BoardBrandTest {
         assertEquals(true, BoardBrand.QUANTUM.usesAuroraPlacements)
         assertEquals(true, BoardBrand.QUANTUM.usesLedPreview)
         assertEquals(true, BoardBrand.QUANTUM.hasHeatmap)
+        assertEquals(true, BoardBrand.QUANTUM.usesCatalogueAngles)
+        assertEquals(false, BoardBrand.QUANTUM.supportsClimbTypeFilter)
+        assertEquals(false, BoardBrand.QUANTUM.supportsBenchmarkFilter)
+        assertEquals(false, BoardBrand.QUANTUM.supportsBoardSeshOrigin)
+        assertEquals(false, BoardBrand.QUANTUM.usesProductSizeEdgeFit)
+        assertEquals(false, BoardBrand.KILTER.usesCatalogueAngles)
+        assertEquals(true, BoardBrand.KILTER.supportsClimbTypeFilter)
+        assertEquals(true, BoardBrand.KILTER.supportsBenchmarkFilter)
+        assertEquals(true, BoardBrand.KILTER.supportsBoardSeshOrigin)
+        assertEquals(true, BoardBrand.KILTER.usesProductSizeEdgeFit)
 
         // Authoring is enabled for every INTERACTIVE board (Kilter, MoonBoard +
         // the Aurora family); the info-layer brands (aurora, 12climb) can't

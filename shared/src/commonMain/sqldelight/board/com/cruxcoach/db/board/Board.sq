@@ -103,6 +103,24 @@ CREATE TABLE quantum_route_refs (
 CREATE INDEX idx_quantum_route_refs_external
     ON quantum_route_refs(route_uuid, model);
 
+-- Lossless Quantum-only vendor metadata. Kept out of the generic climbs table
+-- so established board schemas and browse semantics stay unchanged. Boolean
+-- columns are positive facts from the eWalls payload; absence is not inferred
+-- as a negative rule. Added for upgrades by 27.sqm.
+CREATE TABLE quantum_route_metadata (
+    app_uuid TEXT NOT NULL PRIMARY KEY,
+    source_grade TEXT NOT NULL DEFAULT '',
+    campusing INTEGER NOT NULL DEFAULT 0,
+    edge INTEGER NOT NULL DEFAULT 0,
+    kickplate INTEGER NOT NULL DEFAULT 0,
+    matching INTEGER NOT NULL DEFAULT 0,
+    standard INTEGER NOT NULL DEFAULT 0,
+    tags TEXT NOT NULL DEFAULT ''
+);
+
+deleteAllQuantumRouteMetadata:
+DELETE FROM quantum_route_metadata;
+
 getQuantumExternalRouteUuid:
 SELECT route_uuid FROM quantum_route_refs WHERE app_uuid = ?;
 
@@ -645,6 +663,21 @@ WHERE layout_id = :layoutId
   AND origin = 'boardsesh'
   AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left < c.edge_left AND ps.edge_right > c.edge_right AND ps.edge_bottom < c.edge_bottom AND ps.edge_top > c.edge_top))));
 
+-- Quantum's official vendor catalogue. Kept as a dedicated whole-set query
+-- so the visible official-origin chip has an exact count and cannot lose rows
+-- behind post-pagination filtering once community Quantum climbs exist.
+browseQuantumOfficialOnly:
+SELECT * FROM climb_browse
+WHERE layout_id = :layoutId
+  AND board_brand = 'quantum'
+  AND angle = :angle
+  AND frames_count >= :minFrames AND frames_count <= :maxFrames
+  AND ((difficulty_average >= :minDiff AND difficulty_average <= :maxDiff)
+       OR (:showUngraded = 1 AND difficulty_average IS NULL))
+  AND COALESCE(ascensionist_count, 0) >= :minAsc
+  AND origin IN ('quantum', 'kilter') AND source != 'local'
+  AND (hsm & :hsmExcludedMask) = 0;
+
 -- Angle-AGNOSTIC variants of the two community-provenance browses (Req-1): a
 -- created/community climb is authored at ONE setter angle but is climbable at
 -- EVERY angle of its board, so the provenance filters must surface it whatever
@@ -1135,6 +1168,7 @@ WHERE cs.layout_id = :layoutId
   AND c.frames_count >= :minFrames AND c.frames_count <= :maxFrames
   AND cs.difficulty_average >= :minDiff AND cs.difficulty_average <= :maxDiff
   AND COALESCE(cs.ascensionist_count, 0) >= :minAsc
+  AND (c.hsm & :hsmExcludedMask) = 0
   AND LENGTH(c.frames) > 0 AND c.is_listed = 1;
 
 -- Any-angle variant of getAllFramesForFilter for the logbook stats heatmap:
@@ -1376,21 +1410,22 @@ SELECT COUNT(*) FROM climbs WHERE is_nomatch = 1;
 -- There is deliberately NO blanket `DELETE FROM climbs` here: every
 -- deletion path must keep locally-authored / community climbs
 -- (source='local'/'nostr') — those are NOT re-downloadable. Catalogue
--- rows are exactly source='kilter': the column default every importer
--- leaves in place, for the MoonBoard / Aurora-family snapshots too.
+-- rows are source='kilter' for the legacy catalogues and source='quantum'
+-- only for board_brand='quantum'. Community/local sources are never removed.
 
 -- Targeted bulk delete used by [BoardSyncManager.handlePostMigrationResync]
 -- and the all-boards "Delete board data" path: wipes ONLY the
--- cron-blob-derived catalog rows (source='kilter'). Cruxcoach-authored
+-- cron-blob-derived catalog rows (source='kilter', plus the isolated official
+-- Quantum source). CruxCoach-authored
 -- climbs (source='local' / 'nostr', origin='cruxcoach') stay untouched.
 -- Run stats first since there's no FK cascade in SQLite without
 -- explicit constraints.
 deleteKilterSourceClimbStats:
 DELETE FROM climb_stats
-WHERE climb_uuid IN (SELECT uuid FROM climbs WHERE source = 'kilter');
+WHERE climb_uuid IN (SELECT uuid FROM climbs WHERE source = 'kilter' OR (board_brand = 'quantum' AND source = 'quantum'));
 
 deleteKilterSourceClimbs:
-DELETE FROM climbs WHERE source = 'kilter';
+DELETE FROM climbs WHERE source = 'kilter' OR (board_brand = 'quantum' AND source = 'quantum');
 
 -- Per-brand variants (Settings → "Delete board data" multiselect):
 -- the same source='kilter' protection, scoped to one board family.
@@ -1400,17 +1435,17 @@ DELETE FROM climbs WHERE source = 'kilter';
 deleteCatalogueClimbStatsForBrand:
 DELETE FROM climb_stats
 WHERE climb_uuid IN (
-    SELECT uuid FROM climbs WHERE board_brand = :boardBrand AND source = 'kilter'
+    SELECT uuid FROM climbs WHERE board_brand = :boardBrand AND (source = 'kilter' OR (board_brand = 'quantum' AND source = 'quantum'))
 );
 
 deleteCatalogueBetaLinksForBrand:
 DELETE FROM beta_links
 WHERE climb_uuid IN (
-    SELECT uuid FROM climbs WHERE board_brand = :boardBrand AND source = 'kilter'
+    SELECT uuid FROM climbs WHERE board_brand = :boardBrand AND (source = 'kilter' OR (board_brand = 'quantum' AND source = 'quantum'))
 );
 
 deleteCatalogueClimbsForBrand:
-DELETE FROM climbs WHERE board_brand = :boardBrand AND source = 'kilter';
+DELETE FROM climbs WHERE board_brand = :boardBrand AND (source = 'kilter' OR (board_brand = 'quantum' AND source = 'quantum'));
 
 deletePlacementsForBrand:
 DELETE FROM placements WHERE board_brand = :boardBrand;
@@ -2289,7 +2324,7 @@ INSERT OR IGNORE INTO climbs(
 VALUES (
     :uuid, :layout_id, :setter_username, :name, :frames,
     1, 1, :edge_left, :edge_right, :edge_bottom, :edge_top, :created_at,
-    :description, 0, 0, 0, :move_count, 0,
+    :description, 0, 0, :hsm, :move_count, 0,
     :source, 'cruxcoach', :sync_status,
     :created_by_pubkey, :frames_hash,
     :nostr_event_id, :nostr_d_tag, :nostr_publish_via,
