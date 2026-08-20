@@ -189,7 +189,10 @@ jobs:
       - name: Install pinned APKTrack CLI
         env:
           WHEEL_URL: https://npub1uux22z2rhhcvk9fs9dp60k3uc5f7frdqy5chrsemsxwgnyl0y9dqhx0gem.nsite.lol/downloads/apktrack-0.2.0-py3-none-any.whl
-          WHEEL_SHA256: 833992548748662b307411672db0c3da39047dfbca7c2d41addf12297f7cf173
+          # Reproduced twice from reviewed APKTrack source at
+          # 9bbb995b6968349b885a9d41d291835ffd97fd23 and
+          # matched byte-for-byte against the public nsite artifact.
+          WHEEL_SHA256: d8f40e6481ada6582290793a6f4759d236f3a0f5b95501ea5f52f7416bb4d736
         run: |
           curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
             --output "$RUNNER_TEMP/apktrack-0.2.0-py3-none-any.whl" "$WHEEL_URL"
