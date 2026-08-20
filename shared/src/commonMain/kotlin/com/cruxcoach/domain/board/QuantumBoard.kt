@@ -77,6 +77,23 @@ object QuantumBoardPacketEncoder {
         }
     }
 
+    /** Complete eWalls route transition, ordered for sequential transport. */
+    fun replaceUserRoute(
+        routeId: String,
+        userId: String,
+        diodes: List<Int>,
+        color: Int = 0x00ffff,
+        duration: Int = 0,
+        animation: Int = 0,
+    ): List<ByteArray> = listOf(turnOffUser(userId)) + activate(
+        routeId = routeId,
+        userId = userId,
+        diodes = diodes,
+        color = color,
+        duration = duration,
+        animation = animation,
+    )
+
     fun turnOffAll(): ByteArray = frame(
         QuantumCommand.TURN_OFF_ALL,
         byteArrayOf(0, 1, 0, 0),
@@ -84,6 +101,14 @@ object QuantumBoardPacketEncoder {
 
     fun turnOffRoute(routeId: String): ByteArray =
         frame(QuantumCommand.TURN_OFF_BY_ROUTE, uuidBytes(routeId) + byteArrayOf(0))
+
+    /**
+     * Release the route currently owned by [userId]. eWalls performs this
+     * before every new activation; without it the controller accepts the
+     * first climb and rejects later climbs as "user already on route".
+     */
+    fun turnOffUser(userId: String): ByteArray =
+        frame(QuantumCommand.TURN_OFF_BY_USER, uuidBytes(userId) + byteArrayOf(0))
 
     fun requestRouteList(row: Int = 0): ByteArray {
         require(row in 0..255)

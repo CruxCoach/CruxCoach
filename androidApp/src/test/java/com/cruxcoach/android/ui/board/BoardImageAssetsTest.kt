@@ -4,6 +4,7 @@ import com.cruxcoach.domain.board.BoardBrand
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
+import kotlin.test.assertTrue
 import java.io.File
 import java.security.MessageDigest
 
@@ -58,6 +59,22 @@ class BoardImageAssetsTest {
     fun quantumViewportMatchesEwalls2014Transform() {
         assertEquals(107_280f, QUANTUM_IMAGE_EDGE_RIGHT - QUANTUM_IMAGE_EDGE_LEFT)
         assertEquals(107_600f, QUANTUM_IMAGE_EDGE_TOP - QUANTUM_IMAGE_EDGE_BOTTOM)
+    }
+
+    @Test
+    fun quantumMarkerScaleRemainsVisibleAndOtherBoardsAreUnchanged() {
+        val canvasWidth = 432f
+        val quantumWidth = QUANTUM_IMAGE_EDGE_RIGHT - QUANTUM_IMAGE_EDGE_LEFT
+        val quantumScale = boardMarkerScale(
+            BoardBrand.QUANTUM,
+            canvasWidth / quantumWidth,
+            quantumWidth,
+        )
+        // Active-ring radius is markerScale * 4: approximately 12 px on a
+        // 432 px canvas, matching the established 144-unit renderer.
+        assertTrue(quantumScale * 4f > 10f)
+        assertEquals(3f, boardMarkerScale(BoardBrand.KILTER, 3f, 144f))
+        assertEquals(3f, boardMarkerScale(BoardBrand.TENSION, 3f, 144f))
     }
 
     @Test

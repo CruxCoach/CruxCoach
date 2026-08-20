@@ -375,7 +375,7 @@ internal fun KilterBoardVisualization(
                         val pos = toCanvasSpace(offset)
                         val xS = size.width.toFloat() / boardWidth
                         val yS = size.height.toFloat() / boardHeight
-                        val tapRadius = xS * 6f
+                        val tapRadius = boardMarkerScale(brand, xS, boardWidth) * 6f
                         var nearest: Int? = null
                         var nearestDist = Float.MAX_VALUE
                         placements.values.forEach { placement ->
@@ -454,6 +454,11 @@ internal fun KilterBoardVisualization(
 
                 val xScale = size.width / boardWidth
                 val yScale = size.height / boardHeight
+                // Marker constants below are expressed in the renderer's
+                // historical 144-unit Kilter coordinate system. Quantum's
+                // placement coordinates are milli-units, so using xScale
+                // directly makes every ring/stroke sub-pixel and invisible.
+                val markerScale = boardMarkerScale(brand, xScale, boardWidth)
 
                 // Zone-box overlay: below the hold circles so selections stay
                 // readable on top. Live drag preview wins over the committed
@@ -461,7 +466,7 @@ internal fun KilterBoardVisualization(
                 // visually inside the rectangle.
                 val zoneToDraw = dragZone ?: zone
                 if (zoneToDraw != null) {
-                    val pad = xScale * 5f
+                    val pad = markerScale * 5f
                     val left = ((zoneToDraw.minX.toFloat() - edgeLeft) * xScale - pad).coerceAtLeast(0f)
                     val right = ((zoneToDraw.maxX.toFloat() - edgeLeft) * xScale + pad).coerceAtMost(size.width)
                     val top = (size.height - (zoneToDraw.maxY.toFloat() - edgeBottom) * yScale - pad).coerceAtLeast(0f)
@@ -494,7 +499,7 @@ internal fun KilterBoardVisualization(
                     if (boardBitmap == null) {
                         drawCircle(
                             color = MountingDotColor,
-                            radius = xScale * 1.25f,
+                            radius = markerScale * 1.25f,
                             center = Offset(px, py),
                             style = Fill,
                         )
@@ -513,14 +518,14 @@ internal fun KilterBoardVisualization(
                             // the hold so the photo still reads through.
                             drawCircle(
                                 color = heatColor.copy(alpha = 0.18f + 0.20f * intensity),
-                                radius = xScale * 4.5f,
+                                radius = markerScale * 4.5f,
                                 center = Offset(px, py),
                                 style = Fill,
                             )
                             // Tiny core dot — the actual "this is hot" marker.
                             drawCircle(
                                 color = heatColor.copy(alpha = 0.55f + 0.30f * intensity),
-                                radius = xScale * 1.8f,
+                                radius = markerScale * 1.8f,
                                 center = Offset(px, py),
                                 style = Fill,
                             )
@@ -536,7 +541,7 @@ internal fun KilterBoardVisualization(
                             } else 1.0f
                             // Drag origin hold is hidden during a long-press move.
                             val skip = solidHoldFill && pid == dragOriginHoldId
-                            if (!skip) drawActiveHold(px, py, activeHold.roleId, xScale, ledColors, alpha)
+                            if (!skip) drawActiveHold(px, py, activeHold.roleId, markerScale, ledColors, alpha)
                         }
                     }
 
@@ -547,13 +552,13 @@ internal fun KilterBoardVisualization(
                     if (!solidHoldFill && pid in selectedHolds && pid != dragOriginHoldId) {
                         drawCircle(
                             color = selectedColor,
-                            radius = xScale * 5f,
+                            radius = markerScale * 5f,
                             center = Offset(px, py),
-                            style = Stroke(width = xScale * 1.2f)
+                            style = Stroke(width = markerScale * 1.2f)
                         )
                         drawCircle(
                             color = selectedColor.copy(alpha = 0.4f),
-                            radius = xScale * 3f,
+                            radius = markerScale * 3f,
                             center = Offset(px, py),
                             style = Fill
                         )
@@ -572,20 +577,20 @@ internal fun KilterBoardVisualization(
                                 ?: selectedColor
                             drawCircle(
                                 color = previewColor.copy(alpha = 0.55f),
-                                radius = xScale * 5f,
+                                radius = markerScale * 5f,
                                 center = Offset(px, py),
                                 style = Fill,
                             )
                         } else {
                             drawCircle(
                                 color = selectedColor,
-                                radius = xScale * 6f,
+                                radius = markerScale * 6f,
                                 center = Offset(px, py),
-                                style = Stroke(width = xScale * 1.5f)
+                                style = Stroke(width = markerScale * 1.5f)
                             )
                             drawCircle(
                                 color = selectedColor.copy(alpha = 0.3f),
-                                radius = xScale * 4f,
+                                radius = markerScale * 4f,
                                 center = Offset(px, py),
                                 style = Fill
                             )

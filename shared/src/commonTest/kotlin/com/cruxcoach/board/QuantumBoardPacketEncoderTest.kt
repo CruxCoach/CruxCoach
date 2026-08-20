@@ -19,6 +19,45 @@ class QuantumBoardPacketEncoderTest {
         )
     }
 
+    @Test fun `turn off user carries exact identity and valid crc`() {
+        val user = "00112233-4455-6677-8899-aabbccddeeff"
+        val frame = QuantumBoardPacketEncoder.turnOffUser(user)
+        assertEquals(21, frame.size)
+        assertEquals(0x01, frame[0].toInt() and 0xff)
+        assertEquals(0x43, frame[1].toInt() and 0xff)
+        assertContentEquals(
+            byteArrayOf(0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
+                0x88.toByte(), 0x99.toByte(), 0xaa.toByte(), 0xbb.toByte(),
+                0xcc.toByte(), 0xdd.toByte(), 0xee.toByte(), 0xff.toByte()),
+            frame.copyOfRange(2, 18),
+        )
+        assertEquals(0, frame[18].toInt() and 0xff)
+        val expectedCrc = ((frame[19].toInt() and 0xff) shl 8) or
+            (frame[20].toInt() and 0xff)
+        assertEquals(expectedCrc, QuantumBoardPacketEncoder.crc16Modbus(frame.copyOf(19)))
+    }
+
+    @Test fun `repeated route projection always releases user before activation`() {
+        val user = "00112233-4455-6677-8899-aabbccddeeff"
+        val first = QuantumBoardPacketEncoder.replaceUserRoute(
+            "11111111-2222-3333-4444-555555555555", user, listOf(1, 2, 3),
+        )
+        val repeated = QuantumBoardPacketEncoder.replaceUserRoute(
+            "11111111-2222-3333-4444-555555555555", user, listOf(4, 5, 6),
+        )
+        val switched = QuantumBoardPacketEncoder.replaceUserRoute(
+            "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", user, listOf(7, 8, 9),
+        )
+        listOf(first, repeated, switched).forEach { transition ->
+            assertEquals(0x43, transition.first()[1].toInt() and 0xff)
+            assertEquals(0x41, transition[1][1].toInt() and 0xff)
+            assertContentEquals(
+                QuantumBoardPacketEncoder.uuidBytes(user),
+                transition.first().copyOfRange(2, 18),
+            )
+        }
+    }
+
     @Test fun `activate chunks at 92 diodes and every frame has valid crc`() {
         val frames = QuantumBoardPacketEncoder.activate(
             "00112233-4455-6677-8899-aabbccddeeff",

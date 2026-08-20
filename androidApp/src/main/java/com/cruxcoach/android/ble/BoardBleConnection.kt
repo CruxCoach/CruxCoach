@@ -808,12 +808,19 @@ class BoardBleConnection(private val context: Context) {
             }
             if (_connectedBoardBrand.value == BoardBrand.QUANTUM) {
                 val mapped = holds.mapNotNull { placementToLed[it.placementId] }
-                val frames = QuantumBoardPacketEncoder.activate(
+                // Mirror eWalls 2.0.14's route transition: a Quantum
+                // controller keeps per-user route ownership and rejects a
+                // second ACTIVATE_WALL until that user's previous route is
+                // released. This is deliberately TURN_OFF_USER (not ALL), so
+                // other climbers sharing a capable controller are untouched.
+                val transition = QuantumBoardPacketEncoder.replaceUserRoute(
                     routeId = routeId ?: QuantumBoardPacketEncoder.ZERO_UUID,
                     userId = QuantumBoardPacketEncoder.ZERO_UUID,
                     diodes = mapped,
                 )
-                return writeQuantumFrames(frames)
+                if (!writeQuantumFrames(transition.take(1))) return false
+                delay(50)
+                return writeQuantumFrames(transition.drop(1))
             }
             val chunks = if (roleColors != null) {
                 // Resolve each hold's colour by canonical role CLASS, not raw
