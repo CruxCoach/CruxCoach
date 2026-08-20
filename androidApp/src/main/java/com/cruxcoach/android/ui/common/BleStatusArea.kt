@@ -141,8 +141,13 @@ fun BleStatusArea(
     var expanded by remember { mutableStateOf(false) }
     var showQueueSheet by remember { mutableStateOf(false) }
 
+    // The board's shared list has a screen of its own, reached from the
+    // browser card; this sheet is for a private local playlist only. Two
+    // places to edit one shared list is how the wall ends up with two things
+    // that can light it.
+    val boardPlaylistActive = queueState.mesh != null
     // Queue sheet — managed internally, works on every screen
-    if (showQueueSheet && queueState.role != SessionRole.NONE) {
+    if (showQueueSheet && queueState.role != SessionRole.NONE && !boardPlaylistActive) {
         SessionQueueSheet(
             onDismiss = { showQueueSheet = false },
             onNavigateToClimb = { uuid, angle ->
@@ -174,6 +179,7 @@ fun BleStatusArea(
             onExpand = { Log.d(TAG, "EXPAND"); expanded = true },
             onAddToQueue = onAddToQueue,
             onRandomToQueue = onRandomToQueue,
+            boardPlaylistActive = boardPlaylistActive,
             nearbyMeshCount = nearbyMeshes.size,
             joiningMeshName = joiningMeshName,
             // Membership, not transient advertisement metadata, decides

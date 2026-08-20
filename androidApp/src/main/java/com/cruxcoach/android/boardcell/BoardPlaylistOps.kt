@@ -105,10 +105,46 @@ sealed interface BoardPlaylistOp {
      * somebody else emptied the list is dropped rather than resurrecting one
      * entry of a playlist that no longer exists, and a retried clear names a
      * generation that has already been reached and changes nothing.
+     *
+     * The two instants are the controller's as well, and they are what turns
+     * the clear into something the group can take back: they name the window
+     * in which [RestoreClear] still works, so every replica counts the same
+     * offer down without reading its own clock into the state hash. They are
+     * defaulted to zero so an older committed clear — one that predates the
+     * restore window — still decodes and simply offers nothing.
      */
     @Serializable
     @SerialName("clear")
-    data class Clear(val generation: Long = 0) : BoardPlaylistOp
+    data class Clear(
+        val generation: Long = 0,
+        val clearedAtEpochMs: Long = 0,
+        val restorableUntilEpochMs: Long = 0,
+    ) : BoardPlaylistOp
+
+    /**
+     * Put the list a clear emptied back, in front of anything added since.
+     *
+     * Open to every member, not only to whoever pressed clear: the whole group
+     * watches the list vanish, so the whole group must be able to bring it
+     * back. [generation] names the clear being taken back, which is what makes
+     * it idempotent — a retry names a generation whose record is already gone
+     * and does nothing, and it can never resurrect an older list.
+     */
+    @Serializable
+    @SerialName("clear_restore")
+    data class RestoreClear(val generation: Long = 0) : BoardPlaylistOp
+
+    /**
+     * The restore offer ran out; drop what it was holding.
+     *
+     * A physical fact about the controller's clock rather than anybody's
+     * intention, so only the controller may assert it and it is refused when
+     * it arrives from the wire. Without it the emptied list would ride along
+     * in every snapshot until the next clear replaced it.
+     */
+    @Serializable
+    @SerialName("clear_expired")
+    data class ExpireClearUndo(val generation: Long = 0) : BoardPlaylistOp
 
     /**
      * Record that the current entry is (not) on the wall.
@@ -157,6 +193,16 @@ object BoardPlaylistPolicy {
     const val MAX_REST_SECONDS = 3_600
     const val MAX_ID_LENGTH = 256
     const val MAX_ENTRY_ID_LENGTH = 64
+
+    /**
+     * How long a clear can be taken back.
+     *
+     * Long enough to notice the wall's list has gone and reach for the button,
+     * short enough that the emptied list is not carried around in every
+     * snapshot for the rest of the session. It is part of the canonical window
+     * rather than a local UI timeout, because everybody sees the same offer.
+     */
+    const val RESTORE_WINDOW_MS = 30_000L
 
     sealed interface Outcome {
         /** Commit these canonical operations as the next playlist state. */
@@ -220,12 +266,38 @@ object BoardPlaylistPolicy {
             entry != null && entry.entryId == candidate.entryId &&
                 entry.climbUuid == candidate.climbUuid && entry.angle == candidate.angle
         }
+        // The offer to undo a clear has to be an offer about *this* clear and
+        // has to name a window it could really have been made in. Anything
+        // else is a record that no replica could count down honestly, so it is
+        // dropped rather than shown.
+        val clearGeneration = playlist.clearGeneration.coerceAtLeast(0)
+        val lastClear = playlist.lastClear?.takeIf { undo ->
+            undo.generation == clearGeneration && clearGeneration > 0 &&
+                undo.entries.size in 1..MAX_ENTRIES &&
+                undo.entries.distinctBy { it.entryId }.size == undo.entries.size &&
+                undo.entries.none { it.entryId.isBlank() || it.climbUuid.isBlank() } &&
+                (undo.currentEntryId == null ||
+                    undo.entries.any { it.entryId == undo.currentEntryId }) &&
+                BoardPlaylistInstant.isWindow(undo.clearedAtEpochMs,
+                    undo.restorableUntilEpochMs, RESTORE_WINDOW_MS)
+        }?.let { undo ->
+            // The clear buffer and post-clear additions share one snapshot
+            // budget. Entries that no longer fit could not be restored anyway.
+            val restorableEntries = undo.entries.take((MAX_ENTRIES - entries.size).coerceAtLeast(0))
+            if (restorableEntries.isEmpty()) null else undo.copy(
+                entries = restorableEntries,
+                currentEntryId = undo.currentEntryId?.takeIf { id ->
+                    restorableEntries.any { it.entryId == id }
+                },
+            )
+        }
         return playlist.copy(
             entries = entries,
             currentEntryId = current,
             activeRest = rest,
             pendingProjection = pending,
-            clearGeneration = playlist.clearGeneration.coerceAtLeast(0),
+            clearGeneration = clearGeneration,
+            lastClear = lastClear,
         )
     }
 
@@ -252,12 +324,70 @@ object BoardPlaylistPolicy {
             is BoardPlaylistOp.SetRest -> setRest(state, op)
             is BoardPlaylistOp.StartRest -> startRest(state, op)
             BoardPlaylistOp.EndRest -> state.copy(activeRest = null)
-            is BoardPlaylistOp.Clear ->
-                if (op.generation <= state.clearGeneration) state
-                else state.copy(entries = emptyList(), currentEntryId = null, activeRest = null,
-                    pendingProjection = null, clearGeneration = op.generation)
+            is BoardPlaylistOp.Clear -> clear(state, op)
+            is BoardPlaylistOp.RestoreClear -> restore(state, op.generation)
+            is BoardPlaylistOp.ExpireClearUndo ->
+                if (state.lastClear?.generation == op.generation) state.copy(lastClear = null)
+                else state
             is BoardPlaylistOp.SetPendingProjection -> state.copy(pendingProjection = op.pending)
         }
+
+    /**
+     * Empties the list and keeps what it held for the length of the window.
+     *
+     * The record is built here rather than travelling in the operation: every
+     * replica applies this to the same predecessor, so all of them derive the
+     * identical buffer without a 512-entry list crossing the mesh a second
+     * time. A clear with no stamped window — an older committed delta, or a
+     * clear of an already-empty list — simply offers nothing to restore.
+     */
+    private fun clear(state: BoardPlaylistState, op: BoardPlaylistOp.Clear): BoardPlaylistState {
+        if (op.generation <= state.clearGeneration) return state
+        val restorable = state.entries.isNotEmpty() &&
+            BoardPlaylistInstant.isWindow(op.clearedAtEpochMs, op.restorableUntilEpochMs,
+                RESTORE_WINDOW_MS)
+        return state.copy(
+            entries = emptyList(),
+            currentEntryId = null,
+            activeRest = null,
+            pendingProjection = null,
+            clearGeneration = op.generation,
+            lastClear = if (!restorable) null else BoardPlaylistClearUndo(
+                generation = op.generation,
+                entries = state.entries,
+                currentEntryId = state.currentEntryId,
+                clearedAtEpochMs = op.clearedAtEpochMs,
+                restorableUntilEpochMs = op.restorableUntilEpochMs,
+            ),
+        )
+    }
+
+    /**
+     * Puts the emptied list back in front of whatever has been added since.
+     *
+     * Restored entries keep their original occurrence ids, so replaying the
+     * restore re-adds nothing that is already there, and a climb somebody
+     * queued after the clear stays queued — it simply follows the list that
+     * came back rather than being displaced by it. The group returns to the
+     * entry it was on, if that entry is one of the ones restored.
+     */
+    private fun restore(state: BoardPlaylistState, generation: Long): BoardPlaylistState {
+        val undo = state.lastClear?.takeIf { it.generation == generation } ?: return state
+        val existing = state.entries.mapTo(HashSet()) { it.entryId }
+        // If the two together would not fit, the climbs somebody queued after
+        // the clear are the ones that stay: those are things the group asked
+        // for since, and dropping them to make room for a list it had already
+        // thrown away would be the wrong way round.
+        val room = (MAX_ENTRIES - state.entries.size).coerceAtLeast(0)
+        val restored = undo.entries.filterNot { it.entryId in existing }.take(room)
+        if (restored.isEmpty()) return state.copy(lastClear = null)
+        return state.copy(
+            entries = restored + state.entries,
+            currentEntryId = undo.currentEntryId?.takeIf { id -> restored.any { it.entryId == id } }
+                ?: state.currentEntryId,
+            lastClear = null,
+        )
+    }
 
     private fun add(state: BoardPlaylistState, op: BoardPlaylistOp.Add): BoardPlaylistState {
         if (state.entry(op.entryId) != null) return state
@@ -369,18 +499,55 @@ object BoardPlaylistPolicy {
             return Outcome.Reject("invalid sender")
         if (command.ops.isEmpty()) return Outcome.Accepted
         if (command.ops.size > MAX_OPS_PER_COMMAND) return Outcome.Reject("too many operations")
-        if (command.baseClearGeneration < current.clearGeneration)
+        // A restore is deliberately exempt from the clear-generation guard: it
+        // is the one edit whose entire point is to name the generation the
+        // list has already moved to. Only a command that is *nothing but*
+        // restores, though — an ordinary edit riding along with one would be
+        // exactly the stale write the guard exists to drop.
+        if (command.baseClearGeneration < current.clearGeneration &&
+            command.ops.any { it !is BoardPlaylistOp.RestoreClear })
             return Outcome.Reject("the shared playlist was cleared")
+        // The other direction is not a race anybody can be in honestly: a
+        // member claiming a generation the controller has not reached is
+        // either ahead of canonical state or making one up.
+        if (command.baseClearGeneration > current.clearGeneration)
+            return Outcome.Reject("clear generation is ahead of the controller")
         if (command.ops.any { it is BoardPlaylistOp.SetPendingProjection } && !senderIsController)
             return Outcome.Reject("only the controller reports the physical send")
+        if (command.ops.any { it is BoardPlaylistOp.ExpireClearUndo } && !senderIsController)
+            return Outcome.Reject("only the controller retires the restore offer")
+        // Somebody reached for the restore a moment too late. Saying so is the
+        // honest answer; quietly acknowledging a command that did nothing
+        // would leave them staring at an empty list they thought they had
+        // just brought back.
+        val expiredUndo = current.lastClear?.takeIf { it.hasExpired(nowEpochMs) }
+        if (expiredUndo != null && command.ops.any {
+                it is BoardPlaylistOp.RestoreClear && it.generation == expiredUndo.generation
+            }) return Outcome.Reject("the restore window has passed")
         var clearGeneration = current.clearGeneration
         var restGeneration = current.activeRest?.generation ?: 0L
-        val resolved = ArrayList<BoardPlaylistOp>(command.ops.size)
+        val resolved = ArrayList<BoardPlaylistOp>(command.ops.size + 1)
+        // An offer nobody took rides along in every snapshot until something
+        // replaces it, so the first commit after it lapses is where it goes.
+        if (expiredUndo != null && command.ops.size < MAX_OPS_PER_COMMAND) {
+            resolved += BoardPlaylistOp.ExpireClearUndo(expiredUndo.generation)
+        }
         for (op in command.ops) {
             when (op) {
                 is BoardPlaylistOp.Clear -> {
+                    if (clearGeneration == Long.MAX_VALUE)
+                        return Outcome.Reject("clear generation exhausted")
                     clearGeneration += 1
-                    resolved += BoardPlaylistOp.Clear(clearGeneration)
+                    // Both ends, so the window is checkable without a clock on
+                    // the receiving side. A controller whose clock is outside
+                    // the believable range clears without an offer rather than
+                    // publishing one every replica would hash and count down
+                    // wrongly — the list still goes, which is what was asked.
+                    val until = nowEpochMs + RESTORE_WINDOW_MS
+                    resolved += if (BoardPlaylistInstant.isWindow(nowEpochMs, until,
+                            RESTORE_WINDOW_MS)) {
+                        BoardPlaylistOp.Clear(clearGeneration, nowEpochMs, until)
+                    } else BoardPlaylistOp.Clear(clearGeneration)
                 }
                 is BoardPlaylistOp.StartRest -> {
                     val seconds = op.totalSeconds.coerceIn(1, MAX_REST_SECONDS)
@@ -519,4 +686,15 @@ object BoardPlaylistOps {
     fun endRest(): List<BoardPlaylistOp> = listOf(BoardPlaylistOp.EndRest)
 
     fun clear(): List<BoardPlaylistOp> = listOf(BoardPlaylistOp.Clear())
+
+    /**
+     * Take back the clear the playlist is still offering, if it is offering
+     * one.
+     *
+     * Composed against the state on screen, so it can only ever name the clear
+     * this device is actually looking at — a stale generation reaches a
+     * controller that has moved on and does nothing there.
+     */
+    fun restoreClear(state: BoardPlaylistState): List<BoardPlaylistOp> =
+        state.lastClear?.let { listOf(BoardPlaylistOp.RestoreClear(it.generation)) }.orEmpty()
 }

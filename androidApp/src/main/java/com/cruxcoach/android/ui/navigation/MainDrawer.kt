@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.DeveloperBoard
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Hub
@@ -29,7 +30,7 @@ import com.cruxcoach.android.R
  * from the browser's action bar stays exactly where it was: this drawer adds a
  * level above the app, it does not reorganise it.
  */
-enum class MainDestination { BOARD_CATALOG, FIPS_MESH, COMPETITIONS }
+enum class MainDestination { BOARD_CATALOG, BOARD_PLAYLIST, FIPS_MESH, COMPETITIONS }
 
 @Composable
 fun MainDrawerSheet(
@@ -54,6 +55,19 @@ fun MainDrawerSheet(
             modifier = Modifier
                 .padding(NavigationDrawerItemDefaults.ItemPadding)
                 .testTag("menu_board_catalog"),
+        )
+        // Second in the menu, right under the catalogue: on a board with a
+        // group on it this is the screen people come back to all evening.
+        NavigationDrawerItem(
+            icon = {
+                Icon(Icons.AutoMirrored.Filled.QueueMusic, contentDescription = null)
+            },
+            label = { Text(stringResource(R.string.board_playlist_title)) },
+            selected = selected == MainDestination.BOARD_PLAYLIST,
+            onClick = { onSelect(MainDestination.BOARD_PLAYLIST) },
+            modifier = Modifier
+                .padding(NavigationDrawerItemDefaults.ItemPadding)
+                .testTag("menu_board_playlist"),
         )
         NavigationDrawerItem(
             icon = { Icon(Icons.Default.Hub, contentDescription = null) },

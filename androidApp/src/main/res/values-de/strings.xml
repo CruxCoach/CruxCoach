@@ -206,7 +206,7 @@
     <string name="onboarding_privacy_title">Wie möchtest du CruxCoach nutzen?</string>
     <string name="onboarding_privacy_subtitle">Wähle aus, welche Funktionen aktiv sein sollen. Du kannst alles jederzeit in den Einstellungen ändern.</string>
     <string name="onboarding_privacy_ble_title">Board-Sharing in der Nähe</string>
-    <string name="onboarding_privacy_ble_desc">Teile Climbs mit Leuten am Board und nutze den Session-Modus zum gemeinsamen Bouldern.</string>
+    <string name="onboarding_privacy_ble_desc">Teile Climbs mit Leuten am Board und legt für gemeinsames Bouldern eine gemeinsame Playlist darauf.</string>
     <string name="onboarding_privacy_community_title">Community &amp; Feedback</string>
     <string name="onboarding_privacy_community_desc">Crash-Berichte, App-Ankündigungen und Entwickler-Chat — alles verschlüsselt und ohne Account.</string>
     <string name="onboarding_privacy_hint">Deine persönlichen Daten bleiben standardmäßig auf diesem Gerät. Das optionale Cloud-Backup lädt nur eine Ende-zu-Ende verschlüsselte Kopie hoch — nur du kannst sie entschlüsseln.</string>
@@ -741,8 +741,8 @@
     <string name="board_filter_type">Typ</string>
     <string name="board_filter_type_boulder">Boulder</string>
     <string name="board_filter_type_routes">Routen</string>
-    <string name="board_session_connecting">Verbinde mit Session…</string>
-    <string name="board_session_end_title">Session beenden?</string>
+    <string name="board_session_connecting">Verbinde…</string>
+    <string name="board_session_end_title">Training beenden?</string>
     <string name="board_session_end_confirm">Beenden</string>
     <string name="board_session_end_summary">Gesamtzeit: %1$s\nAktiv: %2$s\nPausen: %3$s\nSends: %4$d / Versuche: %5$d</string>
     <string name="board_ble_disconnect_request_title">Verbindungsanfrage</string>
@@ -750,7 +750,7 @@
     <string name="board_ble_disconnect_request_confirm">Freigeben</string>
     <string name="board_ble_disconnect_request_deny">Ablehnen</string>
     <string name="board_bt_off_title">Bluetooth deaktiviert</string>
-    <string name="board_bt_off_message">Bluetooth wird für die aktive Session und Board-Verbindung benötigt. Bitte wieder aktivieren.</string>
+    <string name="board_bt_off_message">Bluetooth wird für die Board-Verbindung und die gemeinsame Playlist benötigt. Bitte wieder aktivieren.</string>
     <string name="board_bt_off_enable">Bluetooth aktivieren</string>
     <string name="board_bt_off_ignore">Ignorieren</string>
 
@@ -929,7 +929,7 @@
     <string name="board_ascent_comment">Kommentar (optional)</string>
 
     <!-- Board: Session Summary -->
-    <string name="board_session_summary_title">Session beendet</string>
+    <string name="board_session_summary_title">Training beendet</string>
     <string name="board_session_summary_attempts">Versuche</string>
     <string name="board_session_summary_hardest_send">Härtester Send</string>
     <string name="board_session_summary_total_time">Gesamtzeit</string>
@@ -964,8 +964,8 @@
     <string name="board_ble_bt_enable_button">Bluetooth einschalten</string>
     <string name="board_ble_location_disabled_title">Standortdienste deaktiviert</string>
     <string name="board_ble_location_disabled_message">Auf diesem Gerät müssen die Standortdienste (GPS) eingeschaltet sein, damit Bluetooth-Geräte gefunden werden können.</string>
-    <string name="board_ble_session_active_title">Session aktiv</string>
-    <string name="board_ble_session_active_message">Das Board wird vom Session-Host gesteuert. Deine Climbs werden über die Session an das Board gesendet.</string>
+    <string name="board_ble_session_active_title">Board in Benutzung</string>
+    <string name="board_ble_session_active_message">Gerade schreibt ein anderes Telefon auf das Board. Deine Climbs kommen über die gemeinsame Playlist dorthin.</string>
     <string name="board_ble_connect_failed_hint">Verbindung fehlgeschlagen. Stelle sicher, dass das Board eingeschaltet und in der Nähe ist, und tippe es erneut an.</string>
     <string name="board_ble_open_location_settings">Standort-Einstellungen öffnen</string>
     <string name="board_ble_connected">Verbunden</string>
@@ -1295,28 +1295,28 @@
     <string name="ble_board_occupied">Board belegt</string>
     <string name="ble_board_occupied_detail">%1$d Nutzer am Board</string>
     <string name="ble_climbing_now">Klettert gerade</string>
-    <string name="ble_end_session">Session beenden</string>
-    <string name="ble_leave_session">Session verlassen</string>
+    <string name="ble_end_session">Playlist beenden</string>
+    <string name="ble_leave_session">Playlist verlassen</string>
     <string name="ble_last_climb">Letzter Boulder</string>
     <string name="ble_on_board">Auf dem Board</string>
     <string name="ble_participants">%1$d Teilnehmer</string>
-    <string name="ble_queue_empty">Session-Warteschlange ist leer</string>
+    <string name="ble_queue_empty">Die Playlist ist leer</string>
     <string name="ble_external_board_override">Eine andere Board-App hat die Beleuchtung geändert</string>
     <string name="ble_ready_to_resend">Zum erneuten Senden</string>
-    <string name="ble_session_climb">Session-Climb</string>
-    <string name="ble_session_label">SESSION</string>
-    <string name="ble_session_visibility_title">Session starten</string>
-    <string name="ble_session_visibility_message">Wähle die Sichtbarkeit für diese Session.</string>
+    <string name="ble_session_climb">Playlist-Climb</string>
+    <string name="ble_session_label">PLAYLIST</string>
+    <string name="ble_session_visibility_title">Playlist starten</string>
+    <string name="ble_session_visibility_message">Wähle, wer diese Playlist sehen kann.</string>
     <string name="ble_session_visibility_joinable">Joinbar</string>
-    <string name="ble_session_visibility_joinable_desc">CruxCoach-Nutzer in der Nähe sehen die Session und können ohne Code beitreten.</string>
+    <string name="ble_session_visibility_joinable_desc">CruxCoach-Nutzer in der Nähe sehen die Playlist und können ohne Code beitreten.</string>
     <string name="ble_session_visibility_local">Nur lokal</string>
-    <string name="ble_session_visibility_local_desc">Session und Warteschlange bleiben auf diesem Gerät und werden nicht veröffentlicht.</string>
-    <string name="ble_session_visibility_permission_denied">Zum Veröffentlichen einer joinbaren Session ist die Bluetooth-Berechtigung erforderlich.</string>
+    <string name="ble_session_visibility_local_desc">Die Playlist bleibt auf diesem Gerät und wird nicht veröffentlicht.</string>
+    <string name="ble_session_visibility_permission_denied">Zum Veröffentlichen einer joinbaren Playlist ist die Bluetooth-Berechtigung erforderlich.</string>
     <string name="ble_session_visibility_status_joinable">Joinbar · für Nutzer in der Nähe sichtbar</string>
-    <string name="ble_session_visibility_status_local">Nur lokal · Session wird nicht veröffentlicht</string>
+    <string name="ble_session_visibility_status_local">Nur lokal · Playlist wird nicht veröffentlicht</string>
     <string name="ble_sharing_title">BLE Sharing</string>
     <string name="ble_error_gatt_server">Freigabe-Server konnte nicht gestartet werden</string>
-    <string name="ble_error_publish_failed">Session konnte nicht veröffentlicht werden</string>
+    <string name="ble_error_publish_failed">Playlist konnte nicht veröffentlicht werden</string>
     <string name="ble_error_connect_failed">Verbindung fehlgeschlagen</string>
     <string name="playlist_send_to_board">Ans Board senden</string>
     <string name="ble_sharing_blocked">Bluetooth ist aus — noch kann niemand beitreten</string>
@@ -1332,20 +1332,66 @@
     <string name="ble_session_name_promoted">Warteschlange</string>
     <string name="ble_participant_label">Teilnehmer %1$d</string>
     <!-- Joinbare BoardCell-Playlist: kanonischer Mesh-Zustand aller Mitglieder. -->
-    <string name="mesh_playlist_pending_send">Senden ausstehend</string>
-    <string name="mesh_playlist_pending_send_write_failed">Das Board hat den Climb nicht angenommen.</string>
-    <string name="mesh_playlist_pending_send_unavailable">Climb auf dem sendenden Ger\u00e4t nicht verf\u00fcgbar.</string>
-    <string name="mesh_playlist_not_on_board">Der ausgew\u00e4hlte Climb ist nicht der auf dem Board.</string>
-    <string name="mesh_playlist_send">An das Board senden</string>
-    <string name="mesh_playlist_send_description">Den ausgew\u00e4hlten Climb an das Board senden</string>
-    <string name="mesh_playlist_retry_send">Erneut versuchen</string>
-    <string name="mesh_playlist_retry_send_description">Aktuellen Climb erneut an das Board senden</string>
     <string name="mesh_playlist_running">Board-Playlist · %1$d Climbs</string>
     <string name="mesh_playlist_empty_hint">Füge einen Climb zur Board-Playlist hinzu</string>
-    <string name="mesh_playlist_members">%1$d an diesem Board</string>
-    <string name="mesh_playlist_out_of_sync">Gerade nicht mit dem Board synchron \u2014 diese Liste kann veraltet sein.</string>
-    <string name="mesh_playlist_clear">Board-Playlist leeren</string>
     <string name="mesh_playlist_rest_running">Pause %1$s</string>
+    <!-- Board-Playlist: die eine gemeinsame Liste des Boards, mit eigenem
+         Screen. Bewusst ohne „Session“ — die Liste eines Boards hat
+         keinen Host, keinen Start, kein Ende und nichts beizutreten außer
+         dem Board selbst. -->
+    <string name="board_playlist_title">Board-Playlist</string>
+    <string name="board_playlist_unavailable">Verbinde dich mit einem Board, um seine Playlist zu sehen.</string>
+    <string name="board_playlist_empty_title">Noch nichts auf der Liste</string>
+    <string name="board_playlist_empty_body">Alle an diesem Board können Climbs hinzufügen.</string>
+    <string name="board_playlist_add_climbs">Climbs hinzufügen</string>
+    <string name="board_playlist_open_player">Aktuellen Climb öffnen</string>
+    <string name="board_playlist_card_empty">Noch nichts auf der Liste — füge einen Climb hinzu</string>
+    <string name="board_playlist_add">Hinzufügen</string>
+    <string name="board_playlist_add_next">Als Nächstes</string>
+    <plurals name="board_playlist_already_queued">
+        <item quantity="one">Schon einmal auf der Liste</item>
+        <item quantity="other">Schon %1$d mal auf der Liste</item>
+    </plurals>
+    <string name="board_playlist_select">Diesen Climb für die Gruppe auswählen</string>
+    <string name="board_playlist_repeat">Noch ein Versuch an diesem Climb</string>
+    <string name="board_playlist_duplicate" formatted="false">%1$d von %2$d</string>
+    <string name="board_playlist_rest_after">%1$d s Pause</string>
+    <!-- Das einzige Bedienelement, das überhaupt auf das Board schreibt. -->
+    <string name="board_playlist_lamp">Ausgewählten Climb auf das Board legen</string>
+    <string name="board_playlist_on_board">Ausgewählter Climb ist auf dem Board</string>
+    <string name="board_playlist_not_on_board">Ausgewählt — noch nicht auf dem Board</string>
+    <string name="board_playlist_board_unknown">Gerade weiß niemand, was auf dem Board liegt</string>
+    <string name="board_playlist_board_shows">Auf dem Board liegt %1$s</string>
+    <string name="board_playlist_send_write_failed">Das Board hat den Climb nicht angenommen.</string>
+    <string name="board_playlist_send_unavailable">Dieser Climb ist auf dem sendenden Gerät nicht verfügbar.</string>
+    <string name="board_playlist_out_of_sync">Gerade nicht mit dem Board synchron — diese Liste kann veraltet sein.</string>
+    <string name="board_playlist_command_pending">Änderungen werden synchronisiert (%1$d)…</string>
+    <string name="board_playlist_command_conflict">Die Liste wurde gleichzeitig geändert. Sie ist jetzt aktuell – bitte versuche deine Änderung erneut.</string>
+    <string name="board_playlist_command_unavailable">Die Änderung konnte nicht gesendet werden. Prüfe die Nearby-Verbindung und versuche es erneut.</string>
+    <string name="board_playlist_command_failed">Die Änderung konnte nicht übernommen werden. Die gemeinsame Liste wurde aktualisiert.</string>
+    <!-- Leeren darf jede·r — also auch zurücknehmen. -->
+    <string name="board_playlist_clear_title">Board-Playlist leeren?</string>
+    <string name="board_playlist_clear_body">Sie wird für alle an diesem Board geleert. 30 Sekunden lang kann sie jede·r zurückholen — zwischenzeitlich hinzugefügte Climbs bleiben erhalten.</string>
+    <string name="board_playlist_clear_action">Leeren</string>
+    <plurals name="board_playlist_restore_title">
+        <item quantity="one">1 Climb aus der Board-Playlist entfernt</item>
+        <item quantity="other">%1$d Climbs aus der Board-Playlist entfernt</item>
+    </plurals>
+    <string name="board_playlist_restore_action">Zurückholen</string>
+    <string name="board_playlist_restore_remaining">noch %1$d s</string>
+    <!-- Rückgängig benennt, was es zurücknimmt: hier bearbeiten mehrere gleichzeitig. -->
+    <string name="board_playlist_undo_action">Rückgängig</string>
+    <string name="board_playlist_undo_add">Climb hinzugefügt</string>
+    <string name="board_playlist_undo_remove">Climb entfernt</string>
+    <string name="board_playlist_undo_move">Climb verschoben</string>
+    <string name="board_playlist_undo_select">Auswahl geändert</string>
+    <string name="board_playlist_undo_rest">Pause geändert</string>
+    <string name="board_playlist_undo_repeats">Weitere Versuche entfernt</string>
+    <!-- Persönliche Logbuch-Farben. Sie bleiben lokal und werden nie geteilt. -->
+    <string name="board_playlist_mark_sent">Du hast diesen Climb geschafft</string>
+    <string name="board_playlist_mark_attempted">Du hast diesen Climb versucht</string>
+    <string name="board_playlist_mark_unattempted">Du hast diesen Climb noch nicht versucht</string>
+
     <string name="ble_still_visible">Noch sichtbar</string>
     <string name="ble_unknown">Unbekannt</string>
     <string name="ble_unknown_climb">Unbekannter Climb</string>
@@ -1384,7 +1430,7 @@
     <string name="board_logbook_empty_message">Logge deine erste Begehung, um sie hier zu sehen</string>
     <string name="board_logbook_empty_title">Noch keine Begehungen</string>
     <string name="board_logbook_flash">Flash</string>
-    <string name="board_logbook_sessions">Sessions</string>
+    <string name="board_logbook_sessions">Trainings</string>
     <string name="board_logbook_unique_climbs">Unique Climbs</string>
     <string name="stats_interval_all">Gesamt</string>
     <string name="stats_interval_30_days">30 Tage</string>
@@ -1430,23 +1476,23 @@
     <string name="share_download_button">CruxCoach herunterladen</string>
     <string name="share_download_instructions">Nach dem Download die APK-Datei öffnen und installieren.\nEventuell muss \"Aus unbekannten Quellen installieren\" erlaubt werden.</string>
     <string name="board_playback_frame">%1$d / %2$d</string>
-    <string name="board_queue_empty">Warteschlange ist leer</string>
+    <string name="board_queue_empty">Die Playlist ist leer</string>
     <string name="board_queue_empty_editor">Füge Climbs aus dem Browser hinzu</string>
-    <string name="board_queue_end_session">Session beenden</string>
-    <string name="board_queue_leave_session">Session verlassen</string>
+    <string name="board_queue_stop">Playlist beenden</string>
+    <string name="board_queue_leave">Playlist verlassen</string>
     <string name="board_queue_participants">Teilnehmer (%d)</string>
-    <string name="board_queue_title">Session</string>
+    <string name="board_queue_title">Playlist</string>
     <string name="board_queue_you_host">Du (Host)</string>
     <string name="board_queue_command_pending">Änderungen werden synchronisiert (%1$d)…</string>
-    <string name="board_queue_command_conflict">Die Session wurde gleichzeitig geändert. Sie ist jetzt aktuell – bitte versuche deine Änderung erneut.</string>
+    <string name="board_queue_command_conflict">Die Liste wurde gleichzeitig geändert. Sie ist jetzt aktuell – bitte versuche deine Änderung erneut.</string>
     <string name="board_queue_command_unavailable">Die Änderung konnte nicht gesendet werden. Prüfe die Nearby-Verbindung und versuche es erneut.</string>
-    <string name="board_queue_command_failed">Der Controller konnte die Änderung nicht übernehmen. Die gemeinsame Session wurde aktualisiert.</string>
+    <string name="board_queue_command_failed">Die Änderung konnte nicht übernommen werden. Die gemeinsame Liste wurde aktualisiert.</string>
     <string name="board_random_climb">Zufall</string>
     <string name="board_rest_timer_finished">Pause vorbei!</string>
     <string name="board_rest_timer_ready">Bereit für den nächsten Versuch!</string>
     <string name="board_rest_timer_rest">Pause</string>
     <string name="board_session_flashes">Flashes</string>
-    <string name="board_session_label">Session</string>
+    <string name="board_session_label">Training</string>
     <string name="board_sort_quality_sends">Sends × Qualität</string>
     <string name="board_sort_random">Zufällig</string>
     <string name="board_sort_newest">Neueste</string>
@@ -2274,7 +2320,7 @@
     <string name="playlist_default_name_volume">Volume-Training</string>
     <string name="playlist_default_name_limit">Max-Training</string>
     <string name="playlist_default_name_projecting">Projekt-Training</string>
-    <string name="ble_queue_resend">Queue-Climb erneut ans Board senden</string>
+    <string name="ble_queue_resend">Den ausgewählten Climb auf das Board legen</string>
     <string name="playlist_import_error">Dieser Trainingslisten-Link ist ungültig oder beschädigt.</string>
     <string name="playlist_player_title">Training</string>
     <string name="playlist_player_hosted_by">Training von %1$s</string>
@@ -2284,7 +2330,7 @@
     <string name="playlist_player_up_next">Als Nächstes</string>
     <string name="playlist_player_attempt">Versuch %1$d von %2$d</string>
     <string name="playlist_attempts_badge">%1$d Versuche</string>
-    <string name="playlist_add_to_running">Zur laufenden Session hinzufügen</string>
+    <string name="playlist_add_to_running">Zur laufenden Playlist hinzufügen</string>
     <string name="playlist_add_to_board">Zum Board hinzufügen</string>
     <string name="playlist_added_to_board">Zum Board hinzugefügt</string>
     <string name="board_join_request_title">Jemand möchte beitreten</string>
@@ -2292,7 +2338,7 @@
     <string name="board_join_request_allow">Erlauben</string>
     <string name="board_join_request_deny">Ablehnen</string>
     <string name="board_join_request_more">+%1$d weitere</string>
-    <string name="playlist_added_to_running">Zur Session hinzugefügt</string>
+    <string name="playlist_added_to_running">Zur Playlist hinzugefügt</string>
     <string name="playlist_log_send">Geschafft</string>
     <string name="playlist_log_attempt">Versuch</string>
     <string name="playlist_logged_send">Send geloggt</string>
@@ -2445,7 +2491,7 @@
     <string name="fips_mesh_no_connected_peers">Keine weiteren Personen verbunden.</string>
     <string name="fips_mesh_no_nearby_meshes">Keine weiteren CruxCoach-Boards in Reichweite.</string>
     <string name="fips_mesh_connect_board_hint">CruxCoach-Boards in der Nähe erscheinen automatisch.</string>
-    <string name="fips_mesh_connect_action">Board oder Session verbinden</string>
+    <string name="fips_mesh_connect_action">Board verbinden</string>
     <string name="fips_mesh_own_active">Board verbunden</string>
     <string name="fips_mesh_own_inactive">Kein Board verbunden</string>
     <string name="fips_mesh_cell">Mesh-ID</string>
@@ -2858,5 +2904,5 @@
     <string name="settings_board_join_open">Offen</string>
     <string name="settings_board_join_approval">Erst fragen</string>
     <string name="fips_mesh_join_mode_title">Board-Beitritt</string>
-    <string name="fips_mesh_join_mode_description">Gilt für dieses Board bis die Session endet. Alle Teilnehmenden dürfen es ändern.</string>
+    <string name="fips_mesh_join_mode_description">Gilt für dieses Board, solange jemand daran ist. Alle am Board dürfen es ändern.</string>
 </resources>

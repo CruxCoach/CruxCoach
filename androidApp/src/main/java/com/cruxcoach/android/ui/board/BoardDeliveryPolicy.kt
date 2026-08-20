@@ -20,9 +20,12 @@ internal data class BoardDeliveryDecision(
 )
 
 /**
- * Keeps direct board control and shared-session control mutually exclusive.
- * A session always owns delivery: opening a climb must never add it implicitly,
- * while an explicit action routes it to the host through the shared queue.
+ * Keeps direct board control and shared control mutually exclusive.
+ *
+ * A shared playlist always owns delivery: opening a climb must never add it
+ * implicitly, and on a board with a group on it this screen offers no route to
+ * the wall at all — the list's lamp is the only one, and Add / Add as next are
+ * how a climb gets in front of it.
  */
 internal object BoardDeliveryPolicy {
     fun shouldAutoConnectSessionHost(
@@ -55,7 +58,22 @@ internal object BoardDeliveryPolicy {
         hasDirectPayload: Boolean,
         connectedViaRelay: Boolean = false,
         connectedViaMesh: Boolean = false,
+        /** This device is in an active BoardCell, so the board has a list. */
+        boardCellActive: Boolean = false,
     ): BoardDeliveryDecision {
+        // A board with a group on it has exactly one way onto the wall — the
+        // lamp on the shared list — and exactly one way into the list, which
+        // is Add / Add as next on this very screen. A third control here would
+        // be a second thing that lights a wall somebody may be climbing on,
+        // reachable without ever having seen the group's list.
+        if (boardCellActive) {
+            return BoardDeliveryDecision(
+                target = BoardDeliveryTarget.NONE,
+                dispatchAutomatically = false,
+                showAction = false,
+            )
+        }
+
         // Joining has already handed ownership to the shared-session flow, but
         // the participant GATT command channel is not ready yet. Hide both
         // actions so a tap cannot become a local queue mutation or direct send.

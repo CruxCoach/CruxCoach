@@ -96,6 +96,17 @@ class SessionGattBridge(
         private const val MIGRATION_INDEX_STEP_MS = 3000L
         private const val COMMAND_RESULT_TIMEOUT_MS = 5000L
         /**
+         * How long an API-28 leaf's GATT write waits for the controller's real
+         * answer.
+         *
+         * Far longer than the direct-command timeout on purpose: the leaf's
+         * edit crosses a gateway, the mesh, a possible handover and the
+         * controller's own retry schedule before anything terminal comes back.
+         * Reporting failure at five seconds meant the leaf was told its edit
+         * was lost while it was still being delivered.
+         */
+        private const val GATEWAY_COMMAND_RESULT_TIMEOUT_MS = 30_000L
+        /**
          * How the shared playlist recovers a dropped command.
          *
          * The first resend is deliberately sub-second and on its own timer:
@@ -164,6 +175,7 @@ class SessionGattBridge(
     private data class PendingPlaylistCommand(
         val label: String,
         val command: BoardPlaylistCommand,
+        val onTerminal: ((BoardCommandAck?) -> Unit)? = null,
         @Volatile var attempts: Int = 0,
         @Volatile var retryAtMs: Long =
             SystemClock.elapsedRealtime() + PLAYLIST_COMMAND_RETRY_INITIAL_MS,
@@ -181,6 +193,8 @@ class SessionGattBridge(
     private val pendingBleCommands = ConcurrentHashMap<Long, String>()
     private val _pendingCommandCount = MutableStateFlow(0)
     val pendingCommandCount = _pendingCommandCount.asStateFlow()
+    private val _pendingPlaylistCommandCount = MutableStateFlow(0)
+    val pendingPlaylistCommandCount = _pendingPlaylistCommandCount.asStateFlow()
     private val _commandFeedback = MutableSharedFlow<PlaylistCommandFeedback>(extraBufferCapacity = 64)
     val commandFeedback = _commandFeedback.asSharedFlow()
     private val handledCommandResults = object : LinkedHashMap<String, SessionCommandResult>(
@@ -221,6 +235,7 @@ class SessionGattBridge(
                     meshAckWaiters.values.forEach { waiter -> waiter.cancel() }
                     meshAckWaiters.clear()
                     _pendingCommandCount.value = 0
+                    _pendingPlaylistCommandCount.value = 0
                 }
             }
         }
@@ -352,7 +367,7 @@ class SessionGattBridge(
             }
             scope.launch {
                 manager.commandAcks.collect { ack ->
-                    if (ack.status != BoardCommandStatus.ACCEPTED) {
+                    if (ack.status.isTerminalDecision) {
                         meshAckWaiters.remove(ack.commandId)?.complete(ack)
                     }
                     val pending = pendingPlaylistCommands[ack.commandId] ?: return@collect
@@ -363,19 +378,30 @@ class SessionGattBridge(
                         pending.retryAtMs = SystemClock.elapsedRealtime() + COMMAND_RESULT_TIMEOUT_MS
                         return@collect
                     }
+                    // A handover refusal or a controller that is behind this
+                    // replica has not decided the command. Retain its original
+                    // identity and retry promptly after routing/repair catches
+                    // up instead of reporting a lost edit.
+                    if (ack.status == BoardCommandStatus.NOT_CONTROLLER ||
+                        ack.status == BoardCommandStatus.REJECTED_STALE) {
+                        pending.retryAtMs = SystemClock.elapsedRealtime() +
+                            PLAYLIST_COMMAND_RETRY_INITIAL_MS
+                        return@collect
+                    }
                     removePendingCommand(ack.commandId)
+                    pending.onTerminal?.invoke(ack)
                     when (ack.status) {
                         BoardCommandStatus.COMMITTED -> Unit
                         BoardCommandStatus.REJECTED_CONFLICT,
-                        BoardCommandStatus.REJECTED_STALE,
                         BoardCommandStatus.SUPERSEDED ->
                             _commandFeedback.emit(PlaylistCommandFeedback(
                                 PlaylistCommandFeedbackKind.CONFLICT, pending.label))
-                        BoardCommandStatus.NOT_CONTROLLER,
                         BoardCommandStatus.BOARD_WRITE_FAILED ->
                             _commandFeedback.emit(PlaylistCommandFeedback(
                                 PlaylistCommandFeedbackKind.FAILED, pending.label))
-                        BoardCommandStatus.ACCEPTED -> Unit
+                        BoardCommandStatus.ACCEPTED,
+                        BoardCommandStatus.NOT_CONTROLLER,
+                        BoardCommandStatus.REJECTED_STALE -> Unit
                     }
                 }
             }
@@ -396,6 +422,7 @@ class SessionGattBridge(
                             // — this only stops the local resend loop and tells
                             // the user the edit did not land.
                             removePendingCommand(commandId)
+                            pending.onTerminal?.invoke(null)
                             Log.w(TAG, "event=playlist_command_abandoned action=${pending.label}")
                             _commandFeedback.emit(PlaylistCommandFeedback(
                                 PlaylistCommandFeedbackKind.UNAVAILABLE, pending.label))
@@ -467,7 +494,9 @@ class SessionGattBridge(
         if (ops.isEmpty()) return null
         val playlistCommand = manager.composePlaylistCommand(ops, commandId) ?: return null
         if (manager.isLocalController()) return manager.submitPlaylistCommand(playlistCommand)
-        return awaitMeshAck(commandId) { manager.submitPlaylistCommand(playlistCommand) }
+        return awaitMeshAck(commandId, command.javaClass.simpleName, playlistCommand) {
+            manager.submitPlaylistCommand(playlistCommand)
+        }
     }
 
     /**
@@ -478,15 +507,27 @@ class SessionGattBridge(
      */
     private suspend fun awaitMeshAck(
         commandId: String,
+        label: String,
+        command: BoardPlaylistCommand,
         send: suspend () -> Any?,
     ): BoardCommandAck? {
         val waiter = CompletableDeferred<BoardCommandAck>()
         meshAckWaiters[commandId] = waiter
+        // Tracked like any other in-flight edit while the leaf waits, so the
+        // ordinary retry schedule carries it through a handover instead of the
+        // gateway sitting on a command nothing is resending.
+        pendingPlaylistCommands[commandId] = PendingPlaylistCommand(label, command)
+        updatePendingCommandCount()
         return try {
-            if (send() == null) null
-            else withTimeoutOrNull(COMMAND_RESULT_TIMEOUT_MS) { waiter.await() }
+            val initial = send() as? BoardCommandAck
+            when {
+                initial == null -> null
+                initial.status.isTerminalDecision -> initial
+                else -> withTimeoutOrNull(GATEWAY_COMMAND_RESULT_TIMEOUT_MS) { waiter.await() }
+            }
         } finally {
             meshAckWaiters.remove(commandId)
+            removePendingCommand(commandId)
         }
     }
 
@@ -625,7 +666,12 @@ class SessionGattBridge(
             // Full persistence + name resolution happens in stopSharing()/leaveSession().
             val queueState = queueManager.state.value
             val currentClimb = queueState.currentClimb
-            if (currentClimb != null && !queueState.externalBoardOverride) {
+            // "Last on board" is a statement about the wall. In a shared
+            // playlist the selected entry is very often not what is lit, and
+            // recording it anyway made the browser claim a climb nobody had
+            // sent.
+            if (currentClimb != null && !queueState.externalBoardOverride &&
+                (queueState.mesh == null || queueState.mesh.selectionOnBoard)) {
                 boardStateManager.setLastClimbQuick(
                     currentClimb.climbUuid,
                     currentClimb.angle,
@@ -1225,7 +1271,48 @@ class SessionGattBridge(
      * against the emptied list are dropped rather than partially resurrecting
      * it, and a retried clear changes nothing a second time.
      */
-    fun clearSharedPlaylist(): Boolean = submitPlaylistOps("clear", BoardPlaylistOps.clear())
+    fun clearSharedPlaylist(): Boolean =
+        submitPlaylistOps("clear", BoardPlaylistOps.clear()).also { submitted ->
+            if (!submitted) _commandFeedback.tryEmit(PlaylistCommandFeedback(
+                PlaylistCommandFeedbackKind.UNAVAILABLE, "clear"))
+        }
+
+    /**
+     * Put back the list the last clear emptied, for everybody.
+     *
+     * Open to every member and not only to whoever cleared: the offer is
+     * canonical, so the person who notices is the person who can act. It
+     * carries the generation it was composed against, which is what keeps it
+     * idempotent and what stops it ever resurrecting an older list.
+     */
+    fun restoreClearedPlaylist(): Boolean {
+        val playlist = boardCellManager?.playlist() ?: return unavailablePlaylistCommand("restore")
+        val ops = BoardPlaylistOps.restoreClear(playlist)
+        if (ops.isEmpty()) return unavailablePlaylistCommand("restore")
+        return submitPlaylistOps("restore_clear", ops).also { submitted ->
+            if (!submitted) unavailablePlaylistCommand("restore")
+        }
+    }
+
+    private fun unavailablePlaylistCommand(label: String): Boolean {
+        _commandFeedback.tryEmit(PlaylistCommandFeedback(
+            PlaylistCommandFeedbackKind.UNAVAILABLE, label))
+        return false
+    }
+
+    /**
+     * One member's edit to the board's shared list, whatever it is.
+     *
+     * The list UI composes its own occurrence-addressed operations — including
+     * the inverse of an edit it wants to offer an undo for — and they all take
+     * this one path, so a hand-composed batch conflicts, retries and
+     * acknowledges exactly like every other edit.
+     */
+    fun editSharedPlaylist(
+        label: String,
+        ops: List<BoardPlaylistOp>,
+        onTerminal: ((BoardCommandAck?) -> Unit)? = null,
+    ): Boolean = if (ops.isEmpty()) false else submitPlaylistOps(label, ops, onTerminal)
 
     /**
      * Drop the queued repeats of the climb at [index] for everybody, in one
@@ -1278,7 +1365,11 @@ class SessionGattBridge(
      * the controller's durable ack window between them guarantee it lands
      * exactly once.
      */
-    private fun submitPlaylistOps(label: String, ops: List<BoardPlaylistOp>): Boolean {
+    private fun submitPlaylistOps(
+        label: String,
+        ops: List<BoardPlaylistOp>,
+        onTerminal: ((BoardCommandAck?) -> Unit)? = null,
+    ): Boolean {
         val manager = boardCellManager ?: return false
         val command = manager.composePlaylistCommand(ops) ?: return false
         // Acting on the shared playlist is asking to see it, so a player this
@@ -1291,10 +1382,11 @@ class SessionGattBridge(
                 // Sent over the mesh; the controller's real answer arrives on
                 // commandAcks. Keep it for retry until then.
                 pendingPlaylistCommands[command.commandId] =
-                    PendingPlaylistCommand(label, command)
+                    PendingPlaylistCommand(label, command, onTerminal)
                 updatePendingCommandCount()
                 return@launch
             }
+            onTerminal?.invoke(ack)
             if (ack == null) {
                 _commandFeedback.emit(PlaylistCommandFeedback(
                     PlaylistCommandFeedbackKind.UNAVAILABLE, label))
@@ -1417,6 +1509,7 @@ class SessionGattBridge(
 
     private fun updatePendingCommandCount() {
         _pendingCommandCount.value = pendingPlaylistCommands.size + pendingBleCommands.size
+        _pendingPlaylistCommandCount.value = pendingPlaylistCommands.size
     }
     private fun applyLegacyLocalCommand(command: SessionCommand) {
         when (command) {

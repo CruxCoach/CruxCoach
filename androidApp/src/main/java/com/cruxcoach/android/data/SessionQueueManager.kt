@@ -129,6 +129,16 @@ data class MeshPlaylistView(
      */
     val selectionOnBoard: Boolean = false,
     /**
+     * What the board itself last confirmed, when that is known at all.
+     *
+     * Carried next to [selectionOnBoard] rather than folded into it because
+     * "your selection is not what is lit" and "nobody knows what is lit" are
+     * different situations, and only one of them is worth pressing the lamp
+     * for. Null with [projectionKnown] false is the honest "unknown".
+     */
+    val confirmedProjection: BoardProjection? = null,
+    val projectionKnown: Boolean = true,
+    /**
      * The technical controller serializes edits and is the only writer to the
      * physical board. It is deliberately not a product role and nothing in the
      * UI presents it as one; the playback layer reads it only to decide
@@ -285,6 +295,8 @@ class SessionQueueManager(
             synchronized = manager.isPlaylistSynchronized(),
             localIsController = snapshot.controllerId == localNodeId,
             selectionOnBoard = selectionOnBoard,
+            confirmedProjection = snapshot.projection,
+            projectionKnown = snapshot.projectionKnown,
         )
         val role = SessionRole.PARTICIPANT
         // Only a board this app did not write counts as an external override.
@@ -321,15 +333,35 @@ class SessionQueueManager(
                 participantCount = snapshot.members.size,
                 isConnecting = false,
                 error = null,
+                // In a shared list the selection is not a promise about the
+                // wall: it is on the board only once somebody has pressed the
+                // lamp for it. Saying so is what lets every surface show the
+                // honest state instead of implying a send that never happened.
+                awaitingExplicitSend = canonicalItem != null && !selectionOnBoard,
                 externalBoardOverride = externalBoardOverride,
                 physicalBoardId = snapshot.physicalBoardId.value,
                 boardCellId = snapshot.cellId.value,
                 mesh = view,
             )
         }
-        if (adopting) {
+        // An API-28 leaf has no replica of its own: these callbacks are the
+        // only way it learns that the group's list moved. Firing them on
+        // adoption alone left it looking at whatever was there when it joined.
+        val updated = _state.value
+        if (adopting || current.queue != updated.queue) {
             onQueueChanged?.invoke()
+        }
+        if (adopting || current.currentIndex != updated.currentIndex ||
+            current.currentClimb != updated.currentClimb ||
+            current.awaitingExplicitSend != updated.awaitingExplicitSend) {
             onCurrentClimbChanged?.invoke()
+        }
+        if (adopting || current.participantCount != updated.participantCount ||
+            current.participants != updated.participants) {
+            onParticipantsChanged?.invoke()
+        }
+        if (adopting || current.sessionId != updated.sessionId ||
+            current.awaitingExplicitSend != updated.awaitingExplicitSend) {
             onSessionInfoChanged?.invoke()
         }
         applyCanonicalRest(playlist.activeRest, publishesRestEnd = view.localIsController)
@@ -401,7 +433,13 @@ class SessionQueueManager(
     /** The canonical playlist is empty, or this device is no longer in it. */
     private fun leaveCanonicalPlaylist() {
         Log.d(TAG, "Canonical playlist empty/left — clearing the mirrored session")
-        finishQueue()
+        finishQueue(preserveCallbacks = true)
+        // An API-28 leaf has no FIPS replica of its own. The existing GATT
+        // state notifications are how it learns that the canonical list is
+        // now empty; dropping the callbacks here stranded it on old entries.
+        onQueueChanged?.invoke()
+        onCurrentClimbChanged?.invoke()
+        onSessionInfoChanged?.invoke()
     }
 
     /**
@@ -417,12 +455,16 @@ class SessionQueueManager(
     fun stopFollowingSharedPlaylist() {
         if (_state.value.mesh == null) return
         stoppedFollowingSharedPlaylist = true
-        finishQueue()
+        finishQueue(preserveCallbacks = true)
     }
 
     /** The user acted on the shared playlist, so they want to see it again. */
     fun resumeFollowingSharedPlaylist() {
         stoppedFollowingSharedPlaylist = false
+        // Canonical adoption normally runs only when another snapshot arrives.
+        // Re-adopt the snapshot already on this device so opening the focused
+        // player cannot land on an inactive queue after the user closed it.
+        boardCellManager?.let { manager -> applyCanonicalPlaylist(manager, manager.snapshot()) }
     }
 
     /** Resolved name of the current queue climb (null while loading or if not found). */
@@ -512,19 +554,21 @@ class SessionQueueManager(
         finishQueue()
     }
 
-    private fun finishQueue() {
+    private fun finishQueue(preserveCallbacks: Boolean = false) {
         lastSentClimbKey = null
         val prev = _state.value
         Log.d(TAG, "endQueue() called, role=${prev.role}, queue=${prev.queue.size}, " +
             "participants=${prev.participants.size}, " +
             "callbacks: onQueue=${onQueueChanged != null}, onParticipants=${onParticipantsChanged != null}")
         _state.update { SessionQueueState() }
-        onQueueChanged = null
-        onCurrentClimbChanged = null
-        onParticipantsChanged = null
-        onSessionInfoChanged = null
-        onFirstQueueClimbSent = null
-        remoteAddClimb = null
+        if (!preserveCallbacks) {
+            onQueueChanged = null
+            onCurrentClimbChanged = null
+            onParticipantsChanged = null
+            onSessionInfoChanged = null
+            onFirstQueueClimbSent = null
+            remoteAddClimb = null
+        }
         // The rest hooks survive: a canonical playlist can be adopted without
         // anybody calling play() — a join, a process restart or a host
         // handover all arrive as snapshots — and a session that cleared them
@@ -567,9 +611,7 @@ class SessionQueueManager(
     }
 
     fun addClimb(climbUuid: String, angle: Int) {
-        val before = _state.value
-        if (boardCellManager?.isCellMember() == true &&
-            (before.mesh != null || before.visibilityRequested == SessionVisibility.JOINABLE)) {
+        if (boardCellManager?.isCellMember() == true) {
             // The BoardCell already owns a playlist; this device just has not
             // mirrored it yet. Adding to the shared one is the only correct
             // reading of "add" here — starting a second, private list beside

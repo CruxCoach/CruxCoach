@@ -71,6 +71,7 @@ class SharedPlaylistAdapterTest {
         Dispatchers.setMain(testDispatcher)
         every { bleConnection.connectionState } returns MutableStateFlow(ConnectionState.DISCONNECTED)
         every { boardCellManager.snapshots } returns snapshots
+        every { boardCellManager.snapshot() } answers { snapshots.value }
         every { boardCellManager.localNodeId() } returns localNode
         every { boardCellManager.isPlaylistSynchronized() } returns true
         managerScope = CoroutineScope(SupervisorJob() + testDispatcher)
@@ -189,6 +190,19 @@ class SharedPlaylistAdapterTest {
         assertNull(queueManager.state.value.mesh)
     }
 
+    @Test fun `the first add in an empty BoardCell routes to its canonical playlist`() {
+        publish(BoardPlaylistState(sessionId = 7))
+        every { boardCellManager.isCellMember() } returns true
+        var routed: List<QueueItem>? = null
+        queueManager.addToSharedPlaylist = { items -> routed = items; true }
+
+        queueManager.addClimb("first-shared", 45)
+
+        assertEquals(listOf(QueueItem("first-shared", 45)), routed)
+        assertTrue("no private queue may be created beside the BoardCell",
+            queueManager.state.value.queue.isEmpty())
+    }
+
     @Test fun `the technical controller is projected without any product role`() {
         publish(shared(), controller = localNode)
 
@@ -254,10 +268,10 @@ class SharedPlaylistAdapterTest {
 
         // Editing a list you cannot see is not a state worth being in.
         queueManager.resumeFollowingSharedPlaylist()
-        publish(shared(entries = listOf(Triple("e1", "a", 0), Triple("e3", "c", 0))), revision = 2)
-
+        // Re-adoption is immediate; opening the focused player must not wait
+        // for an unrelated future snapshot to become usable.
         assertTrue(queueManager.state.value.isActive)
-        assertEquals(listOf("a", "c"), queueManager.state.value.queue.map { it.climbUuid })
+        assertEquals(listOf("a", "b"), queueManager.state.value.queue.map { it.climbUuid })
     }
 
     @Test fun `a controller handover does not touch the queue`() {
@@ -288,6 +302,30 @@ class SharedPlaylistAdapterTest {
         snapshots.value = snapshots.value!!.copy(
             projection = BoardProjection("a", 40), projectionKnown = true).withComputedHash()
         assertFalse(queueManager.state.value.mesh!!.selectionOnBoard)
+        assertTrue(queueManager.state.value.awaitingExplicitSend)
+    }
+
+    @Test fun `canonical updates notify a GATT gateway after initial adoption and clear`() {
+        publish(shared())
+        var queueChanges = 0
+        var currentChanges = 0
+        queueManager.onQueueChanged = { queueChanges++ }
+        queueManager.onCurrentClimbChanged = { currentChanges++ }
+
+        publish(shared(entries = listOf(
+            Triple("e1", "a", 0), Triple("e2", "b", 0), Triple("e3", "c", 0)),
+            current = "e2"), revision = 2)
+
+        assertEquals(1, queueChanges)
+        assertEquals(1, currentChanges)
+
+        publish(BoardPlaylistState(sessionId = 7, clearGeneration = 1), revision = 3)
+        assertEquals("the leaf must be told the canonical list is empty", 2, queueChanges)
+        assertEquals(2, currentChanges)
+
+        publish(shared(entries = listOf(Triple("e9", "z", 0))), revision = 4)
+        assertEquals("clear must not erase the gateway callbacks", 3, queueChanges)
+        assertEquals(3, currentChanges)
     }
 
     @Test fun `a selection nobody has sent is not reported as an external override`() {

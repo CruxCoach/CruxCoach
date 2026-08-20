@@ -15,7 +15,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.CallSplit
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
-import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.BluetoothConnected
@@ -53,7 +52,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
-import androidx.compose.foundation.clickable
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.AnnotatedString
@@ -83,6 +81,9 @@ import com.cruxcoach.android.util.ClimbShareLink
 import com.cruxcoach.android.util.PerfLogger
 import kotlinx.coroutines.launch
 
+internal fun isBoardGroupActive(cellId: String?, localIsMember: Boolean): Boolean =
+    cellId != null && localIsMember
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BoardClimbDetailScreen(
@@ -106,7 +107,9 @@ fun BoardClimbDetailScreen(
     val pageCache by viewModel.pageCache.collectAsStateWithLifecycle()
     val addToListViewModel: AddToListViewModel = hiltViewModel()
     val boardUi by hiltViewModel<FipsMeshViewModel>().state.collectAsStateWithLifecycle()
-    val boardGroupActive = boardUi.cellId != null && boardUi.availability == "ACTIVE"
+    // Controller recovery freezes writes but does not end membership. Keep the
+    // shared Board Playlist as the only delivery path throughout handover.
+    val boardGroupActive = isBoardGroupActive(boardUi.cellId, boardUi.localIsMember)
     var showBleSheet by remember { mutableStateOf(false) }
     var showRestTimerDialog by remember { mutableStateOf(false) }
 
@@ -412,31 +415,19 @@ fun BoardClimbDetailScreen(
                                 tint = if (state.isFavorited) WarningYellow else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
+                        // Personal lists, always. Putting the climb on the
+                        // board's shared list is the pair of buttons under the
+                        // board render — this icon used to be hijacked for it,
+                        // which left the user's own lists unreachable exactly
+                        // when a group was on the board.
                         IconButton(
-                            onClick = {
-                                val climb = state.climb
-                                if (boardGroupActive && climb != null) {
-                                    addToListViewModel.addToBoardPlaylist(climb.uuid, state.angle)
-                                    shareScope.launch {
-                                        snackbarHostState.showSnackbar(
-                                            resources.getString(R.string.playlist_added_to_board),
-                                        )
-                                    }
-                                } else {
-                                    viewModel.showAddToListDialog()
-                                }
-                            },
+                            onClick = { viewModel.showAddToListDialog() },
                             modifier = Modifier.testTag("boarddetail_add_to_list_button")
                         ) {
                             Icon(
-                                if (boardGroupActive) Icons.AutoMirrored.Filled.QueueMusic
-                                else Icons.AutoMirrored.Filled.PlaylistAdd,
-                                contentDescription = stringResource(
-                                    if (boardGroupActive) R.string.playlist_add_to_board
-                                    else R.string.cd_add_to_list,
-                                ),
-                                tint = if (boardGroupActive) OrangeAccent
-                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                                Icons.AutoMirrored.Filled.PlaylistAdd,
+                                contentDescription = stringResource(R.string.cd_add_to_list),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                         IconButton(
@@ -521,21 +512,6 @@ fun BoardClimbDetailScreen(
                                 expanded = moreExpanded,
                                 onDismissRequest = { moreExpanded = false },
                             ) {
-                                if (boardGroupActive) {
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(R.string.board_addtolist_title)) },
-                                        leadingIcon = {
-                                            Icon(
-                                                Icons.AutoMirrored.Filled.PlaylistAdd,
-                                                contentDescription = null,
-                                            )
-                                        },
-                                        onClick = {
-                                            moreExpanded = false
-                                            viewModel.showAddToListDialog()
-                                        },
-                                    )
-                                }
                                 // Mirror toggle — a display-only left/right flip
                                 // of the climb. Only shown for layouts that are
                                 // actually mirrorable (Aurora `is_mirrored`):
@@ -854,6 +830,7 @@ fun BoardClimbDetailScreen(
                     isSharingEnabled = isSharingEnabled,
                     sessionRole = detailQueueState.role,
                     sessionConnecting = detailQueueState.isConnecting,
+                    boardGroupActive = boardGroupActive,
                     viewModel = viewModel,
                     onNavigateBack = onNavigateBack,
                     onNavigateToBugReport = onNavigateToBugReport,
@@ -866,6 +843,7 @@ fun BoardClimbDetailScreen(
                 isSharingEnabled = isSharingEnabled,
                 sessionRole = detailQueueState.role,
                 sessionConnecting = detailQueueState.isConnecting,
+                boardGroupActive = boardGroupActive,
                 viewModel = viewModel,
                 onNavigateBack = onNavigateBack,
                 onNavigateToBugReport = onNavigateToBugReport,
@@ -883,6 +861,8 @@ private fun ClimbDetailPageContent(
     isSharingEnabled: Boolean,
     sessionRole: SessionRole,
     sessionConnecting: Boolean,
+    /** A group is on this board, so its shared list owns the wall. */
+    boardGroupActive: Boolean,
     viewModel: BoardClimbDetailViewModel,
     onNavigateBack: () -> Unit,
     onNavigateToBugReport: (title: String, description: String) -> Unit = { _, _ -> },
@@ -1183,6 +1163,7 @@ private fun ClimbDetailPageContent(
                         ),
                         connectedViaRelay = state.ble.connectedViaRelay,
                         connectedViaMesh = state.ble.connectedViaMesh,
+                        boardCellActive = boardGroupActive,
                     )
                     // The action button vanishing after a swipe is only
                     // diagnosable from the inputs — the decision itself says
@@ -1246,6 +1227,15 @@ private fun ClimbDetailPageContent(
                         }
                     }
                 }
+
+                // The two things somebody actually wants from a climb page
+                // while a group is on the board, side by side and impossible
+                // to miss. Neither of them lights the wall.
+                BoardPlaylistAddActions(
+                    climbUuid = climb.uuid,
+                    angle = state.angle,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
 
                 // Route playback controls
                 if (state.playback.isRoute) {

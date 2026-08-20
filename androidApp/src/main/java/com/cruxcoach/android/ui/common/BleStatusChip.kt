@@ -59,11 +59,23 @@ internal fun BleStatusChip(
     activeMeshName: String? = null,
     activeMeshMemberCount: Int = 0,
     meshControllerAvailable: Boolean = true,
+    /**
+     * The board's shared list is running, so this row must not become a second
+     * copy of it.
+     *
+     * The pinned mini-player carried its own Next and its own lamp, which made
+     * it a second place to change the group's selection and a second thing
+     * that could light the wall from any screen in the app. The board list has
+     * one of each, on the list and in the player, and the browser's own card
+     * is where you go to reach them.
+     */
+    boardPlaylistActive: Boolean = false,
 ) {
     val session = state.ownSession
 
-    // Session mode: show session chip with inline controls
-    if (session != null) {
+    // Private local playlist: the compact running-playlist row with its
+    // one shortcut. A board's shared list deliberately gets none of this.
+    if (session != null && !boardPlaylistActive) {
         SessionChipContent(
             session = session,
             effectiveOnBoard = effectiveOnBoard,

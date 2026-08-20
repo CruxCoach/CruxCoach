@@ -90,10 +90,15 @@ fun BoardBrowserScreen(
     onNavigateToClimbCreator: () -> Unit = {},
     onNavigateToSetter: (pubkey: String) -> Unit = {},
     onNavigateToMap: () -> Unit = {},
+    /** Opens the board's shared list — the Board-Playlist's own screen. */
+    onNavigateToBoardPlaylist: () -> Unit = {},
     onOpenMenu: () -> Unit = {},
-    viewModel: BoardBrowserViewModel = hiltViewModel()
+    viewModel: BoardBrowserViewModel = hiltViewModel(),
+    boardPlaylistViewModel: BoardPlaylistViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val boardPlaylistState by boardPlaylistViewModel.state.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) { boardPlaylistViewModel.refreshPersonalLogs() }
     val isSessionActive by viewModel.isSessionActive.collectAsStateWithLifecycle()
     val randomClimbEvent by viewModel.randomClimbEvent.collectAsStateWithLifecycle()
     var showBleSheet by remember { mutableStateOf(false) }
@@ -690,6 +695,21 @@ fun BoardBrowserScreen(
                 // Long-press on a row: add to list/playlist (incl. the
                 // running playlist) without opening the detail screen.
                 var addToListClimbUuid by remember { mutableStateOf<String?>(null) }
+                // How often each climb is already on the board's list, so the
+                // per-row plus can say what its presses have done. Counted at
+                // the angle the plus would add at: the same problem at another
+                // angle is a different climb to do, not a repeat of this one.
+                val boardPlaylistCounts =
+                    remember(boardPlaylistState.rows, state.filter.angle) {
+                        boardPlaylistState.rows
+                            .filter { it.angle == state.filter.angle }
+                            .groupingBy { it.climbUuid.lowercase() }
+                            .eachCount()
+                    }
+                val onAddToBoardPlaylist: ((String) -> Unit)? =
+                    if (!boardPlaylistState.available) null else { uuid ->
+                        boardPlaylistViewModel.append(uuid, state.filter.angle)
+                    }
                 addToListClimbUuid?.let { uuid ->
                     AddToListDialogHost(
                         climbUuid = uuid,
@@ -703,6 +723,17 @@ fun BoardBrowserScreen(
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    // Scrolls away with the climbs rather than sitting on top
+                    // of them: the board's list is somewhere you go, not a
+                    // permanent strip over the thing you came here to browse.
+                    if (boardPlaylistState.available) {
+                        item(key = "board_playlist_card", contentType = "board_playlist") {
+                            BoardPlaylistBrowserCard(
+                                onOpen = onNavigateToBoardPlaylist,
+                                viewModel = boardPlaylistViewModel,
+                            )
+                        }
+                    }
                     items(
                         state.climbs,
                         key = { it.uuid },
@@ -715,6 +746,10 @@ fun BoardBrowserScreen(
                             onNavigateToSetter = onSetterClickFromCard,
                             onClimbClick = onClimbClick,
                             onClimbLongClick = { addToListClimbUuid = it },
+                            onAddToBoardPlaylist = onAddToBoardPlaylist?.let { add ->
+                                { add(climb.uuid) }
+                            },
+                            boardPlaylistCount = boardPlaylistCounts[climb.uuid.lowercase()] ?: 0,
                         )
                     }
 

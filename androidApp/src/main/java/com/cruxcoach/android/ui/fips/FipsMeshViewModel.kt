@@ -54,6 +54,7 @@ data class FipsMeshUiState(
     val localNpub: String? = null,
     val controllerNpub: String? = null,
     val memberCount: Int = 0,
+    val localIsMember: Boolean = false,
     val joinMode: BoardJoinMode = BoardJoinMode.OPEN,
     val joinStage: FipsConnectionStage = FipsConnectionStage.IDLE,
     val peers: List<FipsMeshPeerUi> = emptyList(),
@@ -171,6 +172,7 @@ class FipsMeshViewModel @Inject constructor(
             localNpub = runtime.localNpub.takeIf { it.isNotBlank() },
             controllerNpub = snapshot?.controllerId,
             memberCount = snapshot?.members?.size ?: 0,
+            localIsMember = snapshot != null && boardCellManager.localNodeId() in snapshot.members,
             joinMode = snapshot?.joinMode ?: BoardJoinMode.OPEN,
             peers = visibleCanonicalPeers(peers, snapshot?.members).map { peer ->
                 FipsMeshPeerUi(

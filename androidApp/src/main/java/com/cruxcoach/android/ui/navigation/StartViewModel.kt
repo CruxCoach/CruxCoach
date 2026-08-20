@@ -12,6 +12,8 @@ import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.util.PerfLogger
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 
 /**
@@ -31,6 +33,7 @@ class StartViewModel @Inject constructor(
     private val _bleShareManager: dagger.Lazy<BleShareManager>,
     private val _playbackCoordinator: dagger.Lazy<PlaylistPlaybackCoordinator>,
     private val _cruxRelayManager: dagger.Lazy<CruxRelayManager>,
+    private val _boardCellManager: dagger.Lazy<com.cruxcoach.android.boardcell.BoardCellManager>,
     private val userPreferences: UserPreferences
 ) : ViewModel() {
 
@@ -49,6 +52,32 @@ class StartViewModel @Inject constructor(
     }
 
     val keepScreenOn: Flow<Boolean> = userPreferences.keepScreenOn
+
+    /**
+     * The BoardCell this device is currently a member of, or null.
+     *
+     * Built lazily and collected off the composition path on purpose — the
+     * whole point of this class is that touching it during composition must
+     * not drag the BLE and database graph onto the main thread.
+     *
+     * Membership is the signal, not "a board was seen": creating a board and
+     * joining one both arrive here as a transition from null to a cell id,
+     * which is exactly the moment the group's list becomes relevant and
+     * therefore the moment to show it. Leaving returns to null, so joining
+     * again later is a fresh transition rather than a silent no-op.
+     */
+    val activeBoardCellId: Flow<String?> by lazy {
+        val manager = _boardCellManager.get()
+        manager.snapshots.map { snapshot ->
+            snapshot?.takeIf {
+                // FROZEN is a controller-recovery state, not a leave. Emitting
+                // null there made the same BoardCell look like a fresh join
+                // when it became ACTIVE again and reopened the playlist over
+                // whatever screen the user had chosen in the meantime.
+                manager.localNodeId() in it.members
+            }?.cellId?.value
+        }.distinctUntilChanged()
+    }
 
     /**
      * Reads the onboarding-completed flag from DataStore.

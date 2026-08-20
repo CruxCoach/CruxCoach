@@ -93,6 +93,13 @@ data class BoardCellWireFrame(
 )
 
 object BoardCellWireCodec {
+    // V13 adds the restorable clear: the controller stamps the window in which
+    // any member may put an emptied list back, and the list itself travels in
+    // the canonical snapshot for as long as that offer stands. A V12 peer has
+    // no field for either, so it would decode the offer as absent and show the
+    // group a clear nobody can take back while the rest of the mesh is
+    // counting one down — a disagreement about what is on the wall's list, not
+    // a cosmetic one. Both directions fail closed at the exact-version check.
     // V12 is the entry-addressed shared playlist. Every occurrence has a
     // stable id, normal edits travel as bounded typed operation deltas rather
     // than whole-playlist broadcasts, and the playlist itself has no host, no
@@ -112,7 +119,7 @@ object BoardCellWireCodec {
     // command. V5 added permissionless, member-sponsored multi-hop BoardCell
     // admission. Older peers must fail closed instead of interpreting a newer
     // authority flow.
-    const val VERSION = 12
+    const val VERSION = 13
     private val json = Json { classDiscriminator = "type"; encodeDefaults = true; ignoreUnknownKeys = false }
     fun encode(frame: BoardCellWireFrame): ByteArray = json.encodeToString(frame).encodeToByteArray()
     fun decode(bytes: ByteArray): BoardCellWireFrame {
@@ -127,6 +134,8 @@ object BoardCellWireCodec {
                     require(message.value.members.size <= 128 &&
                         message.value.recentCommandIds.size <= 256 &&
                         message.value.membershipRevision >= 0)
+                    require(message.value.members.all { it.length in 1..256 })
+                    require(message.value.recentCommandIds.all { it.length in 8..128 })
                     requirePlaylistBounds(message.value.playlist)
                 }
                 is BoardCellWireMessage.Event -> when (val event = message.value.event) {
@@ -246,8 +255,29 @@ object BoardCellWireCodec {
                     }
                 }
                 BoardPlaylistOp.EndRest -> Unit
-                is BoardPlaylistOp.Clear ->
-                    if (committed) require(op.generation > 0) else require(op.generation == 0L)
+                is BoardPlaylistOp.Clear -> if (committed) {
+                    require(op.generation > 0)
+                    // Zero is the honest "no offer": an older committed clear,
+                    // or one whose controller could not stamp a believable
+                    // window. Anything else has to describe a real window, so
+                    // no peer can publish a restore offer that never lapses.
+                    if (op.clearedAtEpochMs != 0L || op.restorableUntilEpochMs != 0L) {
+                        require(BoardPlaylistInstant.isWindow(op.clearedAtEpochMs,
+                            op.restorableUntilEpochMs, BoardPlaylistPolicy.RESTORE_WINDOW_MS))
+                    }
+                } else {
+                    require(op.generation == 0L && op.clearedAtEpochMs == 0L &&
+                        op.restorableUntilEpochMs == 0L)
+                }
+                // A member names the clear it wants back, so unlike the
+                // controller's stamps this generation is carried in both
+                // directions — it is a precondition, not an authority claim.
+                is BoardPlaylistOp.RestoreClear -> require(op.generation > 0)
+                is BoardPlaylistOp.ExpireClearUndo -> {
+                    // Only the controller has the clock that decides this.
+                    require(committed)
+                    require(op.generation > 0)
+                }
                 is BoardPlaylistOp.SetPendingProjection -> {
                     // Only the controller ever reports the physical send, and
                     // it never has to send itself a packet to do it. Refusing
@@ -269,6 +299,8 @@ object BoardCellWireCodec {
     private fun requirePlaylistBounds(playlist: BoardPlaylistState) {
         require(playlist.entries.size <= BoardPlaylistPolicy.MAX_ENTRIES)
         require(playlist.clearGeneration >= 0)
+        require(playlist.sessionId == null || playlist.sessionId > 0)
+        require(playlist.sessionId != null || playlist.entries.isEmpty())
         val ids = HashSet<String>(playlist.entries.size * 2)
         playlist.entries.forEach {
             requireEntryBounds(it.entryId, it.climbUuid, it.angle)
@@ -281,7 +313,7 @@ object BoardCellWireCodec {
         require(playlist.currentEntryId != null || playlist.entries.isEmpty())
         playlist.activeRest?.let {
             require(it.totalSeconds in 1..BoardPlaylistPolicy.MAX_REST_SECONDS)
-            require(it.generation >= 0)
+            require(it.generation > 0)
             require(it.nextEntryId in ids)
             // The start/end pair has to describe exactly the duration it
             // claims. Bounding only the far end still allowed a "two minute"
@@ -294,7 +326,31 @@ object BoardCellWireCodec {
         playlist.pendingProjection?.let {
             requireEntryBounds(it.entryId, it.climbUuid, it.angle)
             require(it.entryId == playlist.currentEntryId)
+            val entry = playlist.entry(it.entryId)
+            require(entry != null && entry.climbUuid == it.climbUuid && entry.angle == it.angle)
         }
+        playlist.lastClear?.let { undo ->
+            // The offer must belong to the clear the playlist has actually
+            // reached, or a peer could keep an arbitrarily old list alive in
+            // canonical state and hand it back into the group later.
+            require(undo.generation > 0 && undo.generation == playlist.clearGeneration)
+            require(undo.entries.size in 1..BoardPlaylistPolicy.MAX_ENTRIES)
+            require(playlist.entries.size + undo.entries.size <=
+                BoardPlaylistPolicy.MAX_ENTRIES)
+            val undoIds = HashSet<String>(undo.entries.size * 2)
+            undo.entries.forEach {
+                requireEntryBounds(it.entryId, it.climbUuid, it.angle)
+                requireRestBounds(it.restAfterSeconds)
+                require(undoIds.add(it.entryId))
+            }
+            undo.currentEntryId?.let { current -> require(current in undoIds) }
+            require(BoardPlaylistInstant.isWindow(undo.clearedAtEpochMs,
+                undo.restorableUntilEpochMs, BoardPlaylistPolicy.RESTORE_WINDOW_MS))
+        }
+        // Wire snapshots must already be canonical. Silently normalizing a
+        // controller's malformed snapshot would produce a different hash and
+        // let inconsistent state enter persistence before the next delta.
+        require(BoardPlaylistPolicy.normalize(playlist) == playlist)
     }
 }
 
@@ -934,7 +990,7 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
                 // cache entry when a command is retried after commit. This is
                 // what survives a controller handover: the new controller
                 // inherits the ack window in the snapshot it adopted.
-                target.commandAck(command.commandId)?.let {
+                target.commandAck(command.commandId, snapshot)?.let {
                     FipsDebugLog.event("wire", "playlist_command_deduplicated_durable",
                         "command" to FipsDebugLog.id(command.commandId), "status" to it.status)
                     seenCommands[key] = it

@@ -6,6 +6,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.PanTool
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.*
@@ -15,6 +16,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -37,6 +42,17 @@ internal fun ClimbCard(
     onClimbClick: (String) -> Unit,
     /** Long-press: add-to-list/playlist shortcut (browser context). */
     onClimbLongClick: ((String) -> Unit)? = null,
+    /**
+     * Append this climb to the end of the board's shared list.
+     *
+     * Null when this device is not on a board, which is the only state in
+     * which the button would have nothing to add to. Deliberately not routed
+     * through the add-to-list dialog: at the wall, "one more of these" is the
+     * commonest thing anybody wants and it should cost one tap, not three.
+     */
+    onAddToBoardPlaylist: (() -> Unit)? = null,
+    /** How many times this climb is already on the board's list. */
+    boardPlaylistCount: Int = 0,
 ) {
     // Cache computed values — estimateMoveCount() parses the frames string (expensive),
     // and formatDifficulty() does a lookup + String.format. Both are stable across
@@ -154,6 +170,54 @@ internal fun ClimbCard(
                     moveCount = moveCount,
                     onSetterClick = onSetterClick,
                 )
+            }
+
+            if (onAddToBoardPlaylist != null) {
+                // Large and repeatable. Every press appends another occurrence
+                // — chalked fingers, a phone on a bench, and a block of four
+                // means pressing this four times — so the target is generous
+                // and the count says what has happened rather than the button
+                // going quiet after the first tap.
+                val queuedDescription = if (boardPlaylistCount > 0) {
+                    pluralStringResource(
+                        R.plurals.board_playlist_already_queued,
+                        boardPlaylistCount,
+                        boardPlaylistCount,
+                    )
+                } else null
+                Box(contentAlignment = Alignment.TopEnd) {
+                    IconButton(
+                        onClick = onAddToBoardPlaylist,
+                        modifier = Modifier.size(48.dp)
+                            .semantics {
+                                queuedDescription?.let { stateDescription = it }
+                            }
+                            .testTag("board_climb_add_to_playlist"),
+                    ) {
+                        Icon(
+                            Icons.Default.Add,
+                            contentDescription = stringResource(R.string.board_playlist_add),
+                            tint = OrangeAccent,
+                            modifier = Modifier.size(30.dp),
+                        )
+                    }
+                    if (boardPlaylistCount > 0) {
+                        Surface(
+                            color = OrangeAccent,
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.padding(top = 2.dp).clearAndSetSemantics { },
+                        ) {
+                            Text(
+                                "$boardPlaylistCount",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = DarkBackground,
+                                modifier = Modifier.padding(horizontal = 5.dp),
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.width(2.dp))
             }
 
             Column(horizontalAlignment = Alignment.End) {

@@ -36,12 +36,6 @@ class SessionQueueViewModel @Inject constructor(
     val pendingCommandCount = gattBridge.pendingCommandCount
     val commandFeedback = gattBridge.commandFeedback
 
-    /** The lamp: put the selected entry on the board. Open to every member. */
-    fun projectSelectedEntry() = playback.projectSelectedEntry()
-
-    /** Empty the board's shared playlist. Open to every member. */
-    fun clearSharedPlaylist() = gattBridge.clearSharedPlaylist()
-
     private val _climbInfos = MutableStateFlow<Map<String, QueueRowInfo>>(emptyMap())
     /** uuid → (name, formatted grade) for the queue rows. */
     val climbInfos: StateFlow<Map<String, QueueRowInfo>> = _climbInfos.asStateFlow()

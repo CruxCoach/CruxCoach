@@ -27,10 +27,6 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import com.cruxcoach.android.boardcell.BoardPlaylistProjectionPendingReason
-import com.cruxcoach.android.data.MeshPlaylistView
 import com.cruxcoach.android.data.SessionRole
 import com.cruxcoach.android.data.PlaylistCommandFeedbackKind
 import com.cruxcoach.android.ui.theme.OrangeAccent
@@ -127,11 +123,6 @@ fun SessionQueueSheet(
                     Icon(Icons.Default.Close, stringResource(R.string.action_close), modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-
-            MeshPlaylistStatus(
-                mesh = state.mesh,
-                onSendToBoard = viewModel::projectSelectedEntry,
-            )
 
             Spacer(Modifier.height(16.dp))
 
@@ -319,10 +310,11 @@ fun SessionQueueSheet(
 
             Spacer(Modifier.height(16.dp))
 
-            // Legacy ad-hoc sessions still have a visible host. A board
-            // playlist deliberately does not: every board member has the same
-            // rights and its technical writer is an implementation detail.
-            if (state.mesh == null && (state.hostName.isNotEmpty() || state.participants.isNotEmpty())) {
+            // A private playlist shared over the legacy GATT path still has a
+            // visible host. The board's list deliberately does not: every
+            // member has the same rights there and its technical writer is an
+            // implementation detail.
+            if (state.hostName.isNotEmpty() || state.participants.isNotEmpty()) {
                 Text(
                     stringResource(R.string.board_queue_participants, state.participantCount),
                     style = MaterialTheme.typography.titleSmall,
@@ -363,29 +355,20 @@ fun SessionQueueSheet(
                 Spacer(Modifier.height(16.dp))
             }
 
-            // The board playlist belongs to the board group and outlives
-            // everybody's participation in it, so there is nothing to end or
-            // leave. Emptying it is the one group-visible action left; leaving
-            // the group itself is the board connection UI's job.
-            val mesh = state.mesh
-            val buttonText = when {
-                mesh != null -> stringResource(R.string.mesh_playlist_clear)
-                state.role == SessionRole.HOST -> stringResource(R.string.board_queue_end_session)
-                state.role == SessionRole.PARTICIPANT -> stringResource(R.string.board_queue_leave_session)
+            // This sheet only ever shows a private local playlist now: the
+            // board's shared list has a screen of its own, because a list the
+            // whole group edits does not belong in a sheet over somebody's
+            // browser.
+            val buttonText = when (state.role) {
+                SessionRole.HOST -> stringResource(R.string.board_queue_stop)
+                SessionRole.PARTICIPANT -> stringResource(R.string.board_queue_leave)
                 else -> return@Column
             }
             OutlinedButton(
                 onClick = {
                     // The player routes this through its own stop() so the
                     // summary sheet appears; standalone contexts act directly.
-                    when {
-                        // The board's list is emptied for the group here and
-                        // only here; the player's stop button closes the
-                        // player, which is a different, private thing.
-                        mesh != null -> viewModel.clearSharedPlaylist()
-                        onEndPlaylist != null -> onEndPlaylist()
-                        else -> viewModel.endOrLeave()
-                    }
+                    if (onEndPlaylist != null) onEndPlaylist() else viewModel.endOrLeave()
                     onDismiss()
                 },
                 modifier = Modifier.fillMaxWidth(),
@@ -396,107 +379,6 @@ fun SessionQueueSheet(
                 Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
                 Text(buttonText)
-            }
-        }
-    }
-}
-
-/**
- * The Board-Playlist's own state: who is on the board, whether the selected
- * entry is the one on the wall, and what the last send did.
- *
- * Everything here comes from canonical BoardCell state, so a member that
- * reconnects or a device that inherits the technical controller role shows the
- * same thing without a separate sync path. Nothing in it mentions that
- * controller, which is deliberately not a product role.
- */
-@Composable
-private fun MeshPlaylistStatus(
-    mesh: MeshPlaylistView?,
-    onSendToBoard: () -> Unit,
-) {
-    if (mesh == null) return
-
-    Spacer(Modifier.height(8.dp))
-    Text(
-        stringResource(R.string.mesh_playlist_members, mesh.members.size),
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-    // Having a copy of the playlist is not the same as being up to date with
-    // the group. During a partition this says so rather than letting the list
-    // on screen pass for the group's.
-    if (!mesh.synchronized) {
-        Text(
-            stringResource(R.string.mesh_playlist_out_of_sync),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.error,
-        )
-    }
-
-    val sendDescription = stringResource(R.string.mesh_playlist_send_description)
-    // Stepping through the list changes what the group is looking at; it does
-    // not change what is on the wall. Saying which is which is the honest
-    // reading, and the lamp is how somebody closes the gap deliberately.
-    if (mesh.pendingProjection == null && !mesh.selectionOnBoard) {
-        Spacer(Modifier.height(8.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                stringResource(R.string.mesh_playlist_not_on_board),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.weight(1f),
-            )
-            TextButton(
-                onClick = onSendToBoard,
-                modifier = Modifier.semantics { contentDescription = sendDescription },
-            ) {
-                Text(stringResource(R.string.mesh_playlist_send))
-            }
-        }
-    }
-
-    // "Send pending" says only what is known: the climb is not on the wall.
-    // There is no peer climb transfer in this build, so nothing here may
-    // suggest that one is under way.
-    mesh.pendingProjection?.let { pending ->
-        val reason = when (pending.reason) {
-            BoardPlaylistProjectionPendingReason.BOARD_WRITE_FAILED ->
-                stringResource(R.string.mesh_playlist_pending_send_write_failed)
-            BoardPlaylistProjectionPendingReason.CLIMB_UNAVAILABLE ->
-                stringResource(R.string.mesh_playlist_pending_send_unavailable)
-        }
-        Spacer(Modifier.height(8.dp))
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.errorContainer,
-            ),
-        ) {
-            Column(Modifier.padding(12.dp)) {
-                Text(
-                    stringResource(R.string.mesh_playlist_pending_send),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onErrorContainer,
-                )
-                Text(
-                    reason,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onErrorContainer,
-                )
-                Spacer(Modifier.height(4.dp))
-                // Open to every board member: whoever is standing at the wall
-                // is the one who notices.
-                TextButton(
-                    onClick = onSendToBoard,
-                    modifier = Modifier.semantics { contentDescription = sendDescription },
-                ) {
-                    Text(stringResource(R.string.mesh_playlist_retry_send))
-                }
             }
         }
     }

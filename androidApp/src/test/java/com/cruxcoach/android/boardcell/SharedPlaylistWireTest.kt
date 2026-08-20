@@ -9,7 +9,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 /**
- * Wire and durable-store behaviour for the shared playlist: what a V12 peer
+ * Wire and durable-store behaviour for the shared playlist: what a V13 peer
  * must accept, what it must refuse, and what an older durable snapshot still
  * means.
  */
@@ -120,17 +120,105 @@ class SharedPlaylistWireTest {
 
     // ===== Version fencing =====
 
-    @Test fun `the wire version marks the entry-addressed playlist`() {
-        assertEquals(12, BoardCellWireCodec.VERSION)
+    @Test fun `the wire version marks the restorable clear`() {
+        assertEquals(13, BoardCellWireCodec.VERSION)
+    }
+
+    @Test fun `a V12 peer frame is refused rather than read as an offer nobody made`() {
+        // A V12 reader has no field for the restore offer, so it would show a
+        // clear that cannot be taken back while the rest of the mesh counts one
+        // down. Both directions must fail closed.
+        val bytes = BoardCellWireCodec.encode(
+            frame(BoardCellWireMessage.Snapshot(snapshot(playlist())), version = 12))
+        assertThrows(IllegalArgumentException::class.java) { BoardCellWireCodec.decode(bytes) }
     }
 
     @Test fun `a V11 peer frame is refused rather than read as an empty playlist`() {
         // A V11 reader has no entries field, so it would decode a populated
         // shared playlist as an empty one and quietly show the group nothing.
-        // Both directions must fail closed.
         val bytes = BoardCellWireCodec.encode(
             frame(BoardCellWireMessage.Snapshot(snapshot(playlist())), version = 11))
         assertThrows(IllegalArgumentException::class.java) { BoardCellWireCodec.decode(bytes) }
+    }
+
+    // ===== The restorable clear =====
+
+    private fun undo(
+        generation: Long = 4,
+        entries: List<BoardPlaylistEntry> = listOf(BoardPlaylistEntry("u1", "climb-u", 40, 60)),
+        current: String? = "u1",
+        clearedAt: Long = now,
+        until: Long = clearedAt + BoardPlaylistPolicy.RESTORE_WINDOW_MS,
+    ) = BoardPlaylistClearUndo(generation, entries, current, clearedAt, until)
+
+    @Test fun `a snapshot carrying a restore offer round trips`() {
+        val value = snapshot(playlist(clearGeneration = 4).copy(
+            entries = emptyList(), currentEntryId = null, lastClear = undo()))
+
+        val decoded = BoardCellWireCodec.decode(
+            BoardCellWireCodec.encode(frame(BoardCellWireMessage.Snapshot(value))))
+
+        assertEquals(value, (decoded.message as BoardCellWireMessage.Snapshot).value)
+    }
+
+    @Test fun `an offer that does not belong to the current clear is refused`() {
+        refuses(BoardCellWireMessage.Snapshot(snapshot(playlist(clearGeneration = 4).copy(
+            entries = emptyList(), currentEntryId = null, lastClear = undo(generation = 3)))))
+    }
+
+    @Test fun `an offer whose window is not really a window is refused`() {
+        // Bounding only the far end would let a "thirty second" offer stand
+        // until 2099, which every replica would then hash and count down.
+        refuses(BoardCellWireMessage.Snapshot(snapshot(playlist(clearGeneration = 4).copy(
+            entries = emptyList(), currentEntryId = null,
+            lastClear = undo(until = now + 80L * 365 * 86_400_000)))))
+    }
+
+    @Test fun `a command may not stamp the window it wants the clear to stand for`() {
+        refuses(BoardCellWireMessage.PlaylistCommand(command(
+            BoardPlaylistOp.Clear(0, now, now + BoardPlaylistPolicy.RESTORE_WINDOW_MS))))
+    }
+
+    @Test fun `a committed clear either names a real window or names none`() {
+        val stamped = BoardCellEnvelope(cell, board, 1, 1, 4, "previous",
+            BoardCellEvent.PlaylistOpsCommitted(listOf(
+                BoardPlaylistOp.Clear(9, now, now + BoardPlaylistPolicy.RESTORE_WINDOW_MS)),
+                "command-0001"), "resulting")
+        val decoded = BoardCellWireCodec.decode(
+            BoardCellWireCodec.encode(frame(BoardCellWireMessage.Event(stamped))))
+        assertEquals(stamped, (decoded.message as BoardCellWireMessage.Event).value)
+
+        val halfStamped = BoardCellEnvelope(cell, board, 1, 1, 4, "previous",
+            BoardCellEvent.PlaylistOpsCommitted(
+                listOf(BoardPlaylistOp.Clear(9, now, now + 5_000)), "command-0001"), "resulting")
+        refuses(BoardCellWireMessage.Event(halfStamped))
+    }
+
+    /**
+     * The restore names the clear it takes back, so unlike the controller's
+     * stamps that generation travels in both directions — it is a precondition,
+     * not an authority claim.
+     */
+    @Test fun `a member may ask to restore and names the generation`() {
+        val value = command(BoardPlaylistOp.RestoreClear(4))
+
+        val decoded = BoardCellWireCodec.decode(
+            BoardCellWireCodec.encode(frame(BoardCellWireMessage.PlaylistCommand(value))))
+
+        assertEquals(value, (decoded.message as BoardCellWireMessage.PlaylistCommand).value)
+        refuses(BoardCellWireMessage.PlaylistCommand(command(BoardPlaylistOp.RestoreClear(0))))
+    }
+
+    @Test fun `only the controller may retire a lapsed offer`() {
+        refuses(BoardCellWireMessage.PlaylistCommand(command(
+            BoardPlaylistOp.ExpireClearUndo(4))))
+
+        val committed = BoardCellEnvelope(cell, board, 1, 1, 4, "previous",
+            BoardCellEvent.PlaylistOpsCommitted(
+                listOf(BoardPlaylistOp.ExpireClearUndo(4)), "command-0001"), "resulting")
+        val decoded = BoardCellWireCodec.decode(
+            BoardCellWireCodec.encode(frame(BoardCellWireMessage.Event(committed))))
+        assertEquals(committed, (decoded.message as BoardCellWireMessage.Event).value)
     }
 
     // ===== The controller's stamps are the controller's =====
@@ -199,6 +287,19 @@ class SharedPlaylistWireTest {
             current = "e1",
             pending = BoardPlaylistPendingProjection("e2", "b", 40,
                 BoardPlaylistProjectionPendingReason.BOARD_WRITE_FAILED)))))
+    }
+
+    @Test fun `a pending send must match the selected occurrence exactly`() {
+        refuses(BoardCellWireMessage.Snapshot(snapshot(playlist(
+            pending = BoardPlaylistPendingProjection("e1", "different-climb", 40,
+                BoardPlaylistProjectionPendingReason.BOARD_WRITE_FAILED)))))
+        refuses(BoardCellWireMessage.Snapshot(snapshot(playlist(
+            pending = BoardPlaylistPendingProjection("e1", "climb-a", 55,
+                BoardPlaylistProjectionPendingReason.BOARD_WRITE_FAILED)))))
+    }
+
+    @Test fun `a snapshot rest generation must be canonical and positive`() {
+        refuses(BoardCellWireMessage.Snapshot(snapshot(playlist(rest = rest(generation = 0)))))
     }
 
     @Test fun `an out-of-range rest value is refused`() {

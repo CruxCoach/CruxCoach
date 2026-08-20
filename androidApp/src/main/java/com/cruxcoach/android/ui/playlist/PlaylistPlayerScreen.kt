@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -121,6 +120,14 @@ fun PlaylistPlayerScreen(
     onNavigateToClimb: (String, Int) -> Unit,
     /** "+"-Button: zum Browser, wo Long-Press Climbs hinzufügt. */
     onNavigateToBrowser: () -> Unit = {},
+    /**
+     * Opens the board's shared list — the layer this player sits on top of.
+     *
+     * A private local playlist has no such screen and keeps its own sheet, so
+     * the list button means "show me the list" in both cases without the
+     * player having to know which kind it is beyond this one branch.
+     */
+    onOpenBoardPlaylist: () -> Unit = {},
     /** Opens the system's Bluetooth-enable dialog via the connect sheet's flow. */
     onEnableBluetooth: () -> Unit = {},
     /** Asks for BLUETOOTH_ADVERTISE when that is what blocks sharing. */
@@ -175,7 +182,7 @@ fun PlaylistPlayerScreen(
         if (!playback.isResting) viewModel.playback.acknowledgeRestFinished()
     }
 
-    if (showQueueSheet && playback.isActive) {
+    if (showQueueSheet && playback.isActive && !playback.isCanonicalPlaylist) {
         SessionQueueSheet(
             onDismiss = { showQueueSheet = false },
             onNavigateToClimb = { uuid, angle -> onNavigateToClimb(uuid, angle) },
@@ -407,6 +414,14 @@ fun PlaylistPlayerScreen(
                             .height(3.dp),
                     )
                 }
+                // The board's list is a group's list: what this device has
+                // selected and what the wall is actually showing are two
+                // facts, and the player says both rather than letting the big
+                // climb render imply the second one. The lamp below is what
+                // closes the gap.
+                if (playback.isCanonicalPlaylist) {
+                    BoardStatusLine(playback)
+                }
                 // Asked to share and unable to: the session repairs itself once
                 // Bluetooth returns, but until then nobody can join and nothing
                 // would say why.
@@ -514,7 +529,11 @@ fun PlaylistPlayerScreen(
                 playback = playback,
                 onPrevious = { viewModel.playback.previous() },
                 onNext = { viewModel.playback.next() },
-                onOpenQueue = { showQueueSheet = true },
+                onLamp = { viewModel.playback.resendCurrentClimb() },
+                onOpenQueue = {
+                    if (playback.isCanonicalPlaylist) onOpenBoardPlaylist()
+                    else showQueueSheet = true
+                },
                 onAddClimbs = onNavigateToBrowser,
             )
         },
@@ -589,9 +608,57 @@ fun PlaylistPlayerScreen(
                             onNavigateToClimb(uuid, angle)
                         },
                         onQuickLog = { viewModel.quickLog(it) },
-                        onResend = { viewModel.playback.resendCurrentClimb() },
                     )
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Selected versus confirmed, in one line.
+ *
+ * Deliberately without a climb name for what the wall is showing: naming it
+ * would mean resolving a second climb on every snapshot, and the honest thing
+ * the player has to convey is only whether the group's selection is up there.
+ * The list screen, where somebody is actually looking at what is queued,
+ * names it.
+ */
+@Composable
+private fun BoardStatusLine(playback: PlaylistPlaybackState) {
+    val mesh = playback.mesh ?: return
+    val pending = playback.pendingProjection
+    val (text, color) = when {
+        pending != null -> stringResource(
+            when (pending.reason) {
+                com.cruxcoach.android.boardcell.BoardPlaylistProjectionPendingReason
+                    .BOARD_WRITE_FAILED -> R.string.board_playlist_send_write_failed
+                com.cruxcoach.android.boardcell.BoardPlaylistProjectionPendingReason
+                    .CLIMB_UNAVAILABLE -> R.string.board_playlist_send_unavailable
+            },
+        ) to MaterialTheme.colorScheme.error
+        mesh.selectionOnBoard ->
+            stringResource(R.string.board_playlist_on_board) to SuccessGreen
+        !mesh.projectionKnown ->
+            stringResource(R.string.board_playlist_board_unknown) to WarningYellow
+        else -> stringResource(R.string.board_playlist_not_on_board) to OrangeAccent
+    }
+    Surface(color = color.copy(alpha = 0.12f), modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+            Text(
+                text,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.SemiBold,
+                color = color,
+                modifier = Modifier.testTag("player_board_status"),
+            )
+            // Having a copy of the list is not being up to date with the group.
+            if (!mesh.synchronized) {
+                Text(
+                    stringResource(R.string.board_playlist_out_of_sync),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
             }
         }
     }
@@ -608,7 +675,6 @@ private fun ClimbingContent(
     onSwipePrevious: () -> Unit,
     onClimbTapped: (String, Int) -> Unit,
     onQuickLog: (Boolean) -> Unit,
-    onResend: () -> Unit,
 ) {
     val render = state.render
     val density = LocalDensity.current
@@ -749,50 +815,13 @@ private fun ClimbingContent(
                                 modifier = Modifier.fillMaxWidth(),
                             )
                         }
-                        // Light the wall with this climb again. It was the only
-                        // entry in an overflow menu, which meant the whole menu
-                        // existed for it — and it sat two taps away from the
-                        // board it acts on. Same corner as the explicit-send
-                        // mode uses, so the gesture means one thing everywhere.
-                        if (playback.isParticipant ||
-                            QueueDeliveryPolicy.canSend(playback.isHost, playback.boardConnected)
-                        ) {
-                            // Two jobs, one control. Normally it repeats a send
-                            // that someone overwrote — quiet, easily ignored.
-                            // Under the explicit send mode it *is* the send, and
-                            // then it has to be impossible to miss: the wall is
-                            // waiting and nothing else on screen says so.
-                            val pending = playback.awaitingExplicitSend
-                            IconButton(
-                                onClick = { onResend() },
-                                modifier = Modifier
-                                    .align(Alignment.TopEnd)
-                                    .padding(6.dp)
-                                    .size(if (pending) 52.dp else 40.dp)
-                                    .testTag("player_resend"),
-                            ) {
-                                Surface(
-                                    shape = CircleShape,
-                                    color = if (pending) {
-                                        OrangeAccent
-                                    } else {
-                                        MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)
-                                    },
-                                ) {
-                                    Icon(
-                                        Icons.Default.Lightbulb,
-                                        stringResource(
-                                            if (pending) R.string.playlist_send_to_board
-                                            else R.string.ble_queue_resend,
-                                        ),
-                                        tint = if (pending) DarkBackground else OrangeAccent,
-                                        modifier = Modifier
-                                            .padding(if (pending) 9.dp else 7.dp)
-                                            .size(if (pending) 28.dp else 22.dp),
-                                    )
-                                }
-                            }
-                        }
+                        // The lamp used to live up here as well as in the
+                        // transport row. Two controls that light the wall is
+                        // one more than there can be: at the board it has to
+                        // be true that exactly one thing projects, in exactly
+                        // one place, on every screen. It is now between
+                        // Previous and Next, which is where the decision it
+                        // belongs to is made.
                     }
                 }
                 state.renderLoading -> CircularProgressIndicator(color = OrangeAccent)
@@ -960,6 +989,7 @@ private fun PlayerControls(
     playback: PlaylistPlaybackState,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
+    onLamp: () -> Unit,
     onOpenQueue: () -> Unit,
     onAddClimbs: () -> Unit,
 ) {
@@ -1007,6 +1037,35 @@ private fun PlayerControls(
                 Icons.Default.SkipPrevious,
                 contentDescription = stringResource(R.string.cd_previous),
                 modifier = Modifier.size(40.dp),
+            )
+        }
+        // The lamp, between the two arrows and nowhere else.
+        //
+        // Previous and Next move what the group is looking at and deliberately
+        // leave the wall alone — somebody flipping ahead through the list must
+        // not take the board from whoever is on it. This is the whole of "and
+        // now put it up there", and having it between them is what makes the
+        // difference legible without a word of explanation.
+        // "The wall is not showing this" covers both kinds of playlist: the
+        // shared list sets it whenever the selection is not the confirmed
+        // climb, and the explicit send mode sets it on a private one.
+        val wants = playback.awaitingExplicitSend || playback.pendingProjection != null
+        FilledIconButton(
+            onClick = withHaptic(onLamp),
+            enabled = playback.currentClimb != null && (
+                playback.isCanonicalPlaylist || playback.isParticipant ||
+                    QueueDeliveryPolicy.canSend(playback.isHost, playback.boardConnected)
+                ),
+            colors = if (wants) IconButtonDefaults.filledIconButtonColors(
+                containerColor = OrangeAccent,
+                contentColor = DarkBackground,
+            ) else IconButtonDefaults.filledTonalIconButtonColors(),
+            modifier = Modifier.size(64.dp).testTag("player_lamp"),
+        ) {
+            Icon(
+                Icons.Default.Lightbulb,
+                contentDescription = stringResource(R.string.board_playlist_lamp),
+                modifier = Modifier.size(34.dp),
             )
         }
         IconButton(

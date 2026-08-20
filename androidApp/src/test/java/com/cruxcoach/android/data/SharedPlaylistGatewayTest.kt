@@ -346,6 +346,61 @@ class SharedPlaylistGatewayTest {
             assertTrue(submitted.single().ops.single() is BoardPlaylistOp.Add)
         }
 
+    @Test fun `a transient handover ack keeps the leaf command pending until commit`() =
+        runBlocking {
+            every { boardCellManager.isLocalController() } returns false
+            publish(shared())
+            hostWithLeaf()
+
+            serverCommands.emit(GattCommand(leafAddress,
+                SessionQueueProtocol.encodeCommand(SessionCommand.Add(addedClimb, 45))))
+            val command = submitted.single()
+            commandAcks.send(BoardCommandAck(command.commandId,
+                BoardCommandStatus.NOT_CONTROLLER, cell, 1, 1, 5, "hash"))
+
+            assertEquals("handover is not a terminal decision", 1,
+                bridge.pendingCommandCount.value)
+
+            commandAcks.send(BoardCommandAck(command.commandId,
+                BoardCommandStatus.COMMITTED, cell, 1, 2, 6, "hash"))
+            assertEquals(0, bridge.pendingCommandCount.value)
+        }
+
+    @Test fun `a tracked edit is undoable only after the controller commits it`() = runBlocking {
+        every { boardCellManager.isLocalController() } returns false
+        publish(shared())
+        var terminal: BoardCommandAck? = null
+
+        assertTrue(bridge.editSharedPlaylist(
+            "remove",
+            listOf(BoardPlaylistOp.Remove("e1")),
+        ) { terminal = it })
+        assertNull("ACCEPTED is transport progress, not a committed edit", terminal)
+
+        val command = submitted.single()
+        commandAcks.send(BoardCommandAck(command.commandId,
+            BoardCommandStatus.COMMITTED, cell, 1, 2, 6, "hash"))
+
+        assertEquals(BoardCommandStatus.COMMITTED, terminal?.status)
+    }
+
+    @Test fun `a rejected tracked edit never reports a commit`() = runBlocking {
+        every { boardCellManager.isLocalController() } returns false
+        publish(shared())
+        var terminal: BoardCommandAck? = null
+
+        bridge.editSharedPlaylist("move", listOf(
+            BoardPlaylistOp.Move("e1", com.cruxcoach.android.boardcell.BoardPlaylistAnchor.Head),
+        )) {
+            terminal = it
+        }
+        val command = submitted.single()
+        commandAcks.send(BoardCommandAck(command.commandId,
+            BoardCommandStatus.REJECTED_CONFLICT, cell, 1, 1, 5, "hash"))
+
+        assertEquals(BoardCommandStatus.REJECTED_CONFLICT, terminal?.status)
+    }
+
     // ===== The legacy-only path is untouched =====
 
     @Test fun `without a BoardCell the leaf's add still mutates the local host queue`() =

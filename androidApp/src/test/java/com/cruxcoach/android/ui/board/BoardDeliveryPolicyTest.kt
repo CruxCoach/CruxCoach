@@ -11,6 +11,12 @@ import org.junit.Test
 
 class BoardDeliveryPolicyTest {
 
+    @Test fun `board group remains active while a member is in controller recovery`() {
+        assertTrue(isBoardGroupActive("cell-1", localIsMember = true))
+        assertFalse(isBoardGroupActive("cell-1", localIsMember = false))
+        assertFalse(isBoardGroupActive(null, localIsMember = true))
+    }
+
     @Test
     fun `only a newly elected session host auto-connects to the physical board`() {
         assertTrue(
@@ -248,5 +254,60 @@ class BoardDeliveryPolicyTest {
         assertEquals(BoardDeliveryTarget.MESH_BOARD, decision.target)
         assertTrue(decision.showAction)
         assertFalse(decision.dispatchAutomatically)
+    }
+
+    /**
+     * On a board that a group is on, the shared list's lamp is the only route
+     * to the wall. A climb page that could light it as well would be a second
+     * control reachable without ever having seen the list — and the wall it
+     * would take is one somebody else may be standing on.
+     */
+    @Test
+    fun `a board with a group on it offers no direct route to the wall`() {
+        val decision = BoardDeliveryPolicy.resolve(
+            sendMode = BoardSendMode.EXPLICIT,
+            sessionRole = SessionRole.NONE,
+            boardConnected = true,
+            hasDirectPayload = true,
+            connectedViaMesh = true,
+            boardCellActive = true,
+        )
+
+        assertEquals(BoardDeliveryTarget.NONE, decision.target)
+        assertFalse(decision.showAction)
+        assertFalse(decision.dispatchAutomatically)
+    }
+
+    @Test
+    fun `automatic send mode cannot light a shared board either`() {
+        val decision = BoardDeliveryPolicy.resolve(
+            sendMode = BoardSendMode.AUTOMATIC,
+            sessionRole = SessionRole.NONE,
+            boardConnected = true,
+            hasDirectPayload = true,
+            boardCellActive = true,
+        )
+
+        // Swiping through climbs must not project onto a wall the group is
+        // working on, whatever this device's own preference says.
+        assertFalse(decision.dispatchAutomatically)
+        assertEquals(BoardDeliveryTarget.NONE, decision.target)
+    }
+
+    @Test
+    fun `the shared-queue action also gives way to the board list's own add`() {
+        val decision = BoardDeliveryPolicy.resolve(
+            sendMode = BoardSendMode.EXPLICIT,
+            sessionRole = SessionRole.PARTICIPANT,
+            boardConnected = true,
+            hasDirectPayload = true,
+            connectedViaMesh = true,
+            boardCellActive = true,
+        )
+
+        // Add / Add as next sit on the same screen and say which end of the
+        // list they mean; a nameless third add button next to them does not.
+        assertEquals(BoardDeliveryTarget.NONE, decision.target)
+        assertFalse(decision.showAction)
     }
 }

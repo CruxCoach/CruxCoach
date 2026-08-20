@@ -192,6 +192,52 @@ data class BoardPlaylistEntry(
 )
 
 /**
+ * The list a clear emptied, kept just long enough to take it back.
+ *
+ * Clearing the board's list is the one edit nobody can reconstruct by hand,
+ * and it is available to every member — which is exactly the combination that
+ * needs a way back. The record is canonical rather than local because the
+ * person who has to undo it is very often not the person who pressed it: the
+ * whole group watches the wall's list vanish, so the whole group must be able
+ * to bring it back.
+ *
+ * [restorableUntilEpochMs] is stamped by the controller together with
+ * [clearedAtEpochMs], so every replica derives the same deadline from the same
+ * bytes and shows the same countdown without reading its own clock into the
+ * state hash. The pair is what makes the window checkable — bounding only the
+ * far end would permit a "30 second" offer that stays open until 2099.
+ *
+ * The entries keep their original occurrence ids, which is what makes a
+ * restore idempotent: replaying it re-adds nothing that is already there, and
+ * a climb somebody added *after* the clear is untouched by it.
+ */
+@Serializable
+data class BoardPlaylistClearUndo(
+    /** The clear generation this record belongs to; never reused. */
+    val generation: Long,
+    val entries: List<BoardPlaylistEntry> = emptyList(),
+    /** What the group was looking at when the list was emptied. */
+    val currentEntryId: String? = null,
+    val clearedAtEpochMs: Long = 0,
+    val restorableUntilEpochMs: Long = 0,
+) {
+    /**
+     * Seconds still on the offer at [nowEpochMs]; zero once it has run out.
+     *
+     * Capped at the window length so a device whose clock runs behind the
+     * controller is never shown a longer offer than was ever made.
+     */
+    fun remainingSeconds(nowEpochMs: Long): Int {
+        val remainingMs = restorableUntilEpochMs - nowEpochMs
+        if (remainingMs <= 0) return 0
+        val windowSeconds = ((restorableUntilEpochMs - clearedAtEpochMs) / 1000L).coerceAtLeast(0)
+        return ((remainingMs + 999) / 1000).coerceAtMost(windowSeconds).toInt()
+    }
+
+    fun hasExpired(nowEpochMs: Long): Boolean = nowEpochMs >= restorableUntilEpochMs
+}
+
+/**
  * The one canonical playlist of a physical BoardCell.
  *
  * It is created with the cell and lives exactly as long as it. There is no
@@ -224,6 +270,16 @@ data class BoardPlaylistState(
      * playlist has already reached and changes nothing.
      */
     val clearGeneration: Long = 0,
+    /**
+     * The list the most recent clear emptied, while it can still be taken
+     * back.
+     *
+     * Null is the normal state: no clear has happened, the offer was taken, or
+     * the controller has already retired an expired one. See
+     * [BoardPlaylistClearUndo] for why this is canonical rather than a local
+     * snackbar on the device that pressed the button.
+     */
+    val lastClear: BoardPlaylistClearUndo? = null,
 ) {
     val currentIndex: Int
         get() = currentEntryId?.let { id -> entries.indexOfFirst { it.entryId == id } } ?: -1
@@ -245,7 +301,18 @@ data class BoardPlaylistState(
      */
     internal val usesLegacyShapeOnly: Boolean
         get() = sessionId == null && entries.isEmpty() && currentEntryId == null &&
-            activeRest == null && pendingProjection == null && clearGeneration == 0L
+            activeRest == null && pendingProjection == null && clearGeneration == 0L &&
+            lastClear == null
+
+    /**
+     * Nothing a pre-V9 schema could not express is in use.
+     *
+     * The restorable clear is the only thing V9 added, so a durable snapshot
+     * written by the previous build stays verifiable under its own schema for
+     * as long as this is true — which is every snapshot that build could
+     * possibly have written.
+     */
+    internal val usesPreRestoreShapeOnly: Boolean get() = lastClear == null
 }
 
 /**
@@ -432,6 +499,10 @@ data class BoardCellSnapshot(
      * Every legacy schema stays acceptable only while the fields it could not
      * cover are still at their defaults.
      *
+     * V9 adds the restorable clear, so V8 stays exact for as long as no clear
+     * is restorable — which covers every snapshot the previous build could
+     * write, and lets a durable one survive the upgrade untouched.
+     *
      * V8 replaces the index-addressed playlist with stable per-occurrence
      * entry ids, a derived current entry and a clear generation. None of the
      * older schemas can express any of that, so they stay valid only while the
@@ -440,6 +511,8 @@ data class BoardCellSnapshot(
      * repaired from a canonical snapshot instead.
      */
     fun hasValidHash(): Boolean = stateHash == BoardCellHash.compute(copy(stateHash = "")) ||
+        (playlist.usesPreRestoreShapeOnly &&
+            stateHash == BoardCellHash.computeLegacyV8(copy(stateHash = ""))) ||
         (joinMode == BoardJoinMode.OPEN && playlist.usesLegacyShapeOnly &&
             stateHash == BoardCellHash.computeLegacyV6(copy(stateHash = ""))) ||
         (joinMode == BoardJoinMode.OPEN && playlist.usesLegacyShapeOnly &&
@@ -558,7 +631,15 @@ data class BoardCommandAck(
     val resultingSequence: Long? = null,
     val resultingHash: String? = null,
     val detail: String? = null,
-)
+) {
+    /** A COMMITTED no-op is idempotent success, but it must not create an Undo offer. */
+    val changedPlaylist: Boolean get() =
+        status == BoardCommandStatus.COMMITTED && detail != DETAIL_ALREADY_IN_REQUESTED_STATE
+
+    companion object {
+        const val DETAIL_ALREADY_IN_REQUESTED_STATE = "already in the requested state"
+    }
+}
 
 @Serializable
 enum class BoardWriteIntentState { PREPARED, PHYSICAL_WRITE_SUCCEEDED, COMMITTED }
@@ -580,30 +661,35 @@ internal object BoardCellHash {
     /**
      * The current schema.
      *
-     * V8 is the entry-addressed shared playlist: per-occurrence entry ids, a
-     * current *entry* rather than a current index, the per-entry rest plan and
-     * the clear generation. Everything a pre-V8 schema could express about a
+     * V9 adds the restorable clear: the list a clear emptied, with the
+     * controller-stamped window in which anybody may bring it back. V8 was the
+     * entry-addressed shared playlist: per-occurrence entry ids, a current
+     * *entry* rather than a current index, the per-entry rest plan and the
+     * clear generation. Everything a pre-V8 schema could express about a
      * playlist is a strict subset that is only reachable while the playlist is
      * empty, which is exactly the condition [BoardCellSnapshot.hasValidHash]
-     * puts on the legacy chain.
+     * puts on the legacy chain; V8 itself stays exact for as long as no clear
+     * is restorable, which is every snapshot that build could write.
      */
     fun compute(snapshot: BoardCellSnapshot): String =
-        compute(snapshot, "board-cell-v8", true, true, true, true, true, true)
+        compute(snapshot, "board-cell-v9", true, true, true, true, true, true, true)
+    fun computeLegacyV8(snapshot: BoardCellSnapshot): String =
+        compute(snapshot, "board-cell-v8", true, true, true, true, true, true, false)
     fun computeLegacyV6(snapshot: BoardCellSnapshot): String =
-        compute(snapshot, "board-cell-v6", true, true, true, true, false, false)
+        compute(snapshot, "board-cell-v6", true, true, true, true, false, false, false)
     fun computeLegacyV5(snapshot: BoardCellSnapshot): String =
-        compute(snapshot, "board-cell-v5", true, true, true, false, false, false)
+        compute(snapshot, "board-cell-v5", true, true, true, false, false, false, false)
     fun computeLegacyV4(snapshot: BoardCellSnapshot): String =
-        compute(snapshot, "board-cell-v4", true, true, false, false, false, false)
+        compute(snapshot, "board-cell-v4", true, true, false, false, false, false, false)
     fun computeLegacyV3(snapshot: BoardCellSnapshot): String =
-        compute(snapshot, "board-cell-v3", true, false, false, false, false, false)
+        compute(snapshot, "board-cell-v3", true, false, false, false, false, false, false)
     fun computeLegacyV2(snapshot: BoardCellSnapshot): String =
-        compute(snapshot, "board-cell-v2", false, false, false, false, false, false)
+        compute(snapshot, "board-cell-v2", false, false, false, false, false, false, false)
 
     private fun compute(snapshot: BoardCellSnapshot, schema: String, includePlaylistRevision: Boolean,
         includeControllerRecovery: Boolean, includeMembershipRevision: Boolean,
         includeLegacyPlaylistShape: Boolean, includeJoinMode: Boolean,
-        includeEntryPlaylist: Boolean): String {
+        includeEntryPlaylist: Boolean, includeClearUndo: Boolean): String {
         val canonical = buildString {
             append(schema).append('\n').append(snapshot.cellId.value).append('\n')
             append(snapshot.physicalBoardId.value).append('\n').append(snapshot.epoch).append('\n')
@@ -631,6 +717,15 @@ internal object BoardCellHash {
                 playlist.pendingProjection?.let {
                     append("pp:${it.entryId}|${it.climbUuid}|${it.angle}|${it.reason.name}\n")
                 } ?: append("pp:-\n")
+                if (includeClearUndo) {
+                    playlist.lastClear?.let { undo ->
+                        append("pc:${undo.generation}|${undo.currentEntryId ?: "-"}")
+                        append("|${undo.clearedAtEpochMs}|${undo.restorableUntilEpochMs}\n")
+                        undo.entries.forEach {
+                            append("pu:${it.entryId}|${it.climbUuid}|${it.angle}|${it.restAfterSeconds}\n")
+                        }
+                    } ?: append("pc:-\n")
+                }
             } else {
                 // The legacy chain is only ever consulted for an empty
                 // playlist, so these are the exact bytes an older build wrote

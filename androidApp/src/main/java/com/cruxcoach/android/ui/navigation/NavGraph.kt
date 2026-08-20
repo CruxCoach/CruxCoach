@@ -62,6 +62,7 @@ import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
 import kotlinx.coroutines.launch
@@ -142,6 +143,7 @@ object Routes {
     const val PLAYLIST_GENERATOR = "playlist_generator"
     const val PLAYLIST_IMPORT = "playlist_import/{payload}"
     const val PLAYLIST_PLAYER = "playlist_player"
+    const val BOARD_PLAYLIST = "board_playlist"
     const val BOARD_MAP = "board_map"
     const val BODY_STAT = "body_stat"
     const val DATA_IMPORT = "data_import"
@@ -203,7 +205,7 @@ private val bottomBarRoutes = emptySet<String>()
 private val wakeLockRoutes = setOf(
     Routes.BOARD_BROWSER, Routes.BOARD_CLIMB_DETAIL, Routes.BOARD_LOGBOOK,
     Routes.BOARD_LISTS, Routes.BOARD_LIST_DETAIL, Routes.BOARD_SYNC,
-    Routes.PLAYLIST_DETAIL, Routes.PLAYLIST_PLAYER,
+    Routes.PLAYLIST_DETAIL, Routes.PLAYLIST_PLAYER, Routes.BOARD_PLAYLIST,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -303,6 +305,36 @@ fun CruxCoachNavHost(
             }
         }
         onDeepLinkConsumed()
+    }
+
+    // One way in, from four places: the browser card, the drawer, the player's
+    // list button and the arrival below. `popUpTo` rather than a plain push,
+    // so opening the list from the player it was opened from returns to that
+    // list instead of stacking a second copy of it.
+    val openBoardPlaylist: () -> Unit = {
+        navController.navigate(Routes.BOARD_PLAYLIST) {
+            popUpTo(Routes.BOARD_PLAYLIST) { inclusive = false }
+            launchSingleTop = true
+        }
+    }
+
+    // Joining a board — or being the one who starts it — puts you in front of
+    // the group's list once, and only once. It is what the board is for, and
+    // the alternative is a screen somebody has to go and find while everybody
+    // else is already adding climbs to it. Reset on leaving, so the next join
+    // is a fresh arrival rather than a silent no-op; rememberSaveable so a
+    // rotation is not one either.
+    var autoOpenedBoardCellId by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) {
+        startViewModel.activeBoardCellId.collect { cellId ->
+            if (cellId == null) {
+                autoOpenedBoardCellId = null
+                return@collect
+            }
+            if (autoOpenedBoardCellId == cellId) return@collect
+            autoOpenedBoardCellId = cellId
+            openBoardPlaylist()
+        }
     }
 
     // Wake lock and bottom bar read navBackStackEntry in their own composables,
@@ -521,6 +553,7 @@ fun CruxCoachNavHost(
                                 drawerScope.launch { drawerState.close() }
                                 when (destination) {
                                     MainDestination.BOARD_CATALOG -> Unit
+                                    MainDestination.BOARD_PLAYLIST -> openBoardPlaylist()
                                     MainDestination.FIPS_MESH -> navController.navigate(Routes.FIPS_MESH)
                                     MainDestination.COMPETITIONS -> navController.navigate(Routes.COMPETITIONS)
                                 }
@@ -542,8 +575,37 @@ fun CruxCoachNavHost(
                     onNavigateToSetter = { pubkey ->
                         navController.navigate(Routes.setterDetail(pubkey))
                     },
-                    onNavigateToMap = { navController.navigate(Routes.BOARD_MAP) }
+                    onNavigateToMap = { navController.navigate(Routes.BOARD_MAP) },
+                    onNavigateToBoardPlaylist = openBoardPlaylist,
                 )
+                }
+            }
+
+            composable(Routes.BOARD_PLAYLIST) {
+                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
+                    screenName = "BoardPlaylist",
+                    onNavigateBack = { navController.popBackStack() },
+                ) {
+                    com.cruxcoach.android.ui.board.BoardPlaylistScreen(
+                        onNavigateBack = { navController.popBackStack() },
+                        onNavigateToClimb = { climbUuid, angle ->
+                            navController.navigate(Routes.boardClimbDetail(climbUuid, angle))
+                        },
+                        onNavigateToBrowser = {
+                            navController.navigate(Routes.BOARD_BROWSER) {
+                                popUpTo(Routes.BOARD_BROWSER) { inclusive = false }
+                                launchSingleTop = true
+                            }
+                        },
+                        // The focused player is the layer under the list, so
+                        // it stacks on it: closing the player comes back to
+                        // the list rather than out of the board entirely.
+                        onOpenPlayer = {
+                            navController.navigate(Routes.PLAYLIST_PLAYER) {
+                                launchSingleTop = true
+                            }
+                        },
+                    )
                 }
             }
 
@@ -865,6 +927,7 @@ fun CruxCoachNavHost(
                                 launchSingleTop = true
                             }
                         },
+                        onOpenBoardPlaylist = openBoardPlaylist,
                         onEnableBluetooth = {
                             btEnableLauncher.launch(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE))
                         },
