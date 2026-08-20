@@ -572,22 +572,37 @@ class BoardCellCoordinatorTest {
         assertEquals(2, writes)
     }
 
+    private fun playlistCommand(
+        commandId: String,
+        vararg ops: BoardPlaylistOp,
+        revision: Long = 0,
+        clearGeneration: Long = 0,
+    ) = BoardPlaylistCommand(commandId, revision, clearGeneration, ops.toList())
+
     @Test fun `playlist command and terminal rejections remain idempotent across restart`() = runTest {
         val board = PhysicalBoardId("board-playlist-acks"); val store = MemoryStore()
         val (first) = settled("controller", board, store = store, now = 100)
-        val playlist = BoardPlaylistState(42, 0, listOf("climb" to 40))
+        val add = playlistCommand("playlist-ok", BoardPlaylistOp.Add("e1", "climb", 40))
 
-        assertNotNull(first.replacePlaylist(board, playlist, 101, "playlist-ok", 0))
+        assertEquals(BoardCommandStatus.COMMITTED,
+            first.applyPlaylistCommand(board, 101, "controller", add)!!.status)
         assertEquals(BoardCommandStatus.COMMITTED, store.acks.getValue("playlist-ok").status)
-        assertNull(first.replacePlaylist(board, playlist, 102, "playlist-ok", 0))
+        // A retry of the same command id is answered from the durable window
+        // and never applied a second time.
+        assertEquals(BoardCommandStatus.COMMITTED,
+            first.applyPlaylistCommand(board, 102, "controller", add)!!.status)
         assertEquals(1, first.snapshot(board)!!.sequence)
+        assertEquals(1, first.snapshot(board)!!.playlist.entries.size)
 
         val restarted = BoardCellCoordinator("controller", durableStore = store, heartbeatTimeoutMs = 100)
         restarted.restoreTrustedSnapshot(store.snapshots.getValue(board), 1_000)
-        assertNull(restarted.replacePlaylist(board, playlist, 1_001, "playlist-ok", 0))
-        assertNull(restarted.replacePlaylist(board, playlist, 1_001, "playlist-stale", 0))
-        assertEquals(BoardCommandStatus.REJECTED_STALE, store.acks.getValue("playlist-stale").status)
-        assertNull(restarted.replacePlaylist(board, playlist, 1_002, "playlist-stale", 1))
+        assertEquals(BoardCommandStatus.COMMITTED,
+            restarted.applyPlaylistCommand(board, 1_001, "controller", add)!!.status)
+        assertEquals(1, restarted.snapshot(board)!!.playlist.entries.size)
+        val ahead = playlistCommand("playlist-stale",
+            BoardPlaylistOp.Add("e2", "other", 40), revision = 99)
+        assertEquals(BoardCommandStatus.REJECTED_STALE,
+            restarted.applyPlaylistCommand(board, 1_002, "controller", ahead)!!.status)
         assertEquals(1, restarted.snapshot(board)!!.sequence)
 
         val participantStore = MemoryStore()
@@ -606,66 +621,94 @@ class BoardCellCoordinatorTest {
         assertEquals(0, writes)
     }
 
-    @Test fun `concurrent playlist commands validate before mutating local session state`() = runTest {
-        val board = PhysicalBoardId("board-command-order"); val store = MemoryStore()
+    @Test fun `a command from outside the cell is refused`() = runTest {
+        val board = PhysicalBoardId("board-outsider"); val store = MemoryStore()
         val (coordinator) = settled("controller", board, store = store, now = 100)
-        val mutations = mutableListOf<String>()
 
-        assertNotNull(coordinator.replacePlaylistAfterValidation(
-            board, 101, "command-first", 0) {
-            mutations += "first"
-            BoardPlaylistState(7, 0, listOf("first" to 40))
-        })
-        assertNull(coordinator.replacePlaylistAfterValidation(
-            board, 101, "command-second", 0) {
-            mutations += "second"
-            BoardPlaylistState(7, 0, listOf("second" to 40))
-        })
+        val ack = coordinator.applyPlaylistCommand(board, 101, "stranger",
+            playlistCommand("outsider-command", BoardPlaylistOp.Add("e1", "climb", 40)))
 
-        assertEquals(listOf("first"), mutations)
-        assertEquals(listOf("first" to 40), coordinator.snapshot(board)!!.playlist.items)
-        assertEquals(BoardCommandStatus.REJECTED_STALE, store.acks.getValue("command-second").status)
+        assertEquals(BoardCommandStatus.REJECTED_CONFLICT, ack!!.status)
+        assertTrue(coordinator.snapshot(board)!!.playlist.entries.isEmpty())
     }
 
-    @Test fun `playlist revision ignores heartbeat and permits semantic rebase`() = runTest {
+    @Test fun `playlist revision ignores heartbeats so a member command is not staled`() = runTest {
         val board = PhysicalBoardId("board-playlist-revision"); val store = MemoryStore()
         val (coordinator) = settled("controller", board, store = store, now = 100)
-        val initial = BoardPlaylistState(7, 0, listOf("a" to 40))
-        assertNotNull(coordinator.replacePlaylist(board, initial, 101, "initial"))
+        coordinator.joinMember(board, "member", 100)
+        assertNotNull(coordinator.applyPlaylistCommand(board, 101, "member",
+            playlistCommand("initial", BoardPlaylistOp.Add("e1", "a", 40))))
         val baseRevision = coordinator.snapshot(board)!!.playlistRevision
         coordinator.heartbeat(board, 102)
 
-        val rebased = coordinator.applyPlaylistCommand(board, 103, "semantic-add",
-            baseRevision, "controller") { current, exact ->
-            assertTrue(exact) // sequence changed, playlist revision did not
-            current.copy(items = current.items + ("b" to 40))
-        }
+        val ack = coordinator.applyPlaylistCommand(board, 103, "member",
+            playlistCommand("semantic-add", BoardPlaylistOp.Add("e2", "b", 40),
+                revision = baseRevision))
 
-        assertNotNull(rebased)
-        assertEquals(listOf("a" to 40, "b" to 40), coordinator.snapshot(board)!!.playlist.items)
+        assertEquals(BoardCommandStatus.COMMITTED, ack!!.status)
+        assertEquals(listOf("e1", "e2"),
+            coordinator.snapshot(board)!!.playlist.entries.map { it.entryId })
         assertEquals(baseRevision + 1, coordinator.snapshot(board)!!.playlistRevision)
     }
 
-    @Test fun `two commands from one playlist revision may both commit after safe rebase`() = runTest {
+    /**
+     * Two people editing the same list from the same revision is the normal
+     * case, not a conflict: their operations name different occurrences, so
+     * the serializer simply orders them.
+     */
+    @Test fun `two commands from one playlist revision both commit`() = runTest {
         val board = PhysicalBoardId("board-safe-rebase"); val store = MemoryStore()
         val (coordinator) = settled("controller", board, store = store, now = 100)
-        assertNotNull(coordinator.replacePlaylist(board,
-            BoardPlaylistState(7, 0, listOf("a" to 40)), 101, "initial-safe-rebase"))
+        coordinator.joinMember(board, "member-a", 100)
+        coordinator.joinMember(board, "member-b", 100)
+        assertNotNull(coordinator.applyPlaylistCommand(board, 101, "controller",
+            playlistCommand("initial-safe-rebase", BoardPlaylistOp.Add("e1", "a", 40))))
         val base = coordinator.snapshot(board)!!.playlistRevision
 
-        assertNotNull(coordinator.applyPlaylistCommand(board, 102, "add-b", base, "controller") { state, _ ->
-            state.copy(items = state.items + ("b" to 40))
-        })
-        assertNotNull(coordinator.applyPlaylistCommand(board, 103, "add-c", base, "controller") { state, exact ->
-            assertFalse(exact)
-            state.copy(items = state.items + ("c" to 40))
-        })
+        assertEquals(BoardCommandStatus.COMMITTED, coordinator.applyPlaylistCommand(
+            board, 102, "member-a",
+            playlistCommand("add-b", BoardPlaylistOp.Add("e2", "b", 40), revision = base))!!.status)
+        assertEquals(BoardCommandStatus.COMMITTED, coordinator.applyPlaylistCommand(
+            board, 103, "member-b",
+            playlistCommand("add-c", BoardPlaylistOp.Add("e3", "c", 40), revision = base))!!.status)
 
-        assertEquals(listOf("a" to 40, "b" to 40, "c" to 40),
-            coordinator.snapshot(board)!!.playlist.items)
-        assertEquals(BoardCommandStatus.COMMITTED, store.acks.getValue("add-b").status)
-        assertEquals(BoardCommandStatus.COMMITTED, store.acks.getValue("add-c").status)
+        assertEquals(listOf("e1", "e2", "e3"),
+            coordinator.snapshot(board)!!.playlist.entries.map { it.entryId })
         assertTrue(coordinator.snapshot(board)!!.recentCommandIds.containsAll(listOf("add-b", "add-c")))
+    }
+
+    /**
+     * The canonical commit does not wait for the wall. A board write is a
+     * separate, later step, so a board that is slow, busy or missing cannot
+     * hold up the group's playlist.
+     */
+    @Test fun `a playlist commit never touches the physical board`() = runTest {
+        val board = PhysicalBoardId("board-no-projection"); val store = MemoryStore()
+        val (coordinator) = settled("controller", board, store = store, now = 100)
+
+        coordinator.applyPlaylistCommand(board, 101, "controller",
+            playlistCommand("add-one", BoardPlaylistOp.Add("e1", "climb", 40)))
+
+        // No write intent was ever prepared: the commit path is canonical only.
+        assertNull(store.pendingIntent(board))
+        assertNull(coordinator.snapshot(board)!!.projection)
+        assertEquals(1, coordinator.snapshot(board)!!.playlist.entries.size)
+    }
+
+    @Test fun `the shared playlist is created with the cell and survives every member leaving`() = runTest {
+        val board = PhysicalBoardId("board-playlist-lifetime")
+        val (coordinator) = settled("controller", board, now = 100)
+        coordinator.joinMember(board, "member", 100)
+
+        val created = coordinator.snapshot(board)!!.playlist
+        assertNotNull("the cell creates its playlist", created.sessionId)
+        coordinator.applyPlaylistCommand(board, 101, "member",
+            playlistCommand("add-one", BoardPlaylistOp.Add("e1", "climb", 40)))
+        coordinator.leaveMember(board, "member", BoardCellMemberLeaveReason.VOLUNTARY, 102)
+
+        val after = coordinator.snapshot(board)!!.playlist
+        assertEquals(created.sessionId, after.sessionId)
+        assertEquals(listOf("e1"), after.entries.map { it.entryId })
     }
 
     @Test fun `participant can never write physical board directly`() = runTest {

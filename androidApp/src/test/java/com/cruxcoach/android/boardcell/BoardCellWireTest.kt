@@ -97,7 +97,14 @@ class BoardCellWireTest {
         assertTrue(transport.receive("remote", ByteArray(BoardCellMeshTransport.MAX_WIRE_BYTES + 1)) is BoardCellApplyResult.Rejected)
     }
 
-    @Test fun `session command requires member term and exact base and returns correlated acknowledgements`() = runTest {
+    private fun playlistCommand(
+        commandId: String,
+        vararg ops: BoardPlaylistOp,
+        revision: Long = 0,
+        clearGeneration: Long = 0,
+    ) = BoardPlaylistCommand(commandId, revision, clearGeneration, ops.toList())
+
+    @Test fun `playlist command requires member term and a base the controller has reached`() = runTest {
         val link = Link("host", setOf("member"))
         val transport = BoardCellMeshTransport(link)
         val coordinator = BoardCellCoordinator("host", transport, settleMs = 0)
@@ -106,24 +113,48 @@ class BoardCellWireTest {
         coordinator.beginClaim(board, BoardCellId("cell"), 1); coordinator.settle(board, 1)
         coordinator.joinMember(board, "member")
         val snapshot = coordinator.snapshot(board)!!; transport.rememberSnapshot(snapshot)
-        val accepted = mutableListOf<InboundSessionCommand>()
-        transport.onSessionCommand = { accepted += it }
+        val accepted = mutableListOf<InboundPlaylistCommand>()
+        transport.onPlaylistCommand = { accepted += it }
 
-        val stale = frame("member", BoardCellWireMessage.SessionCommand("stale-command", snapshot.playlistRevision + 1, byteArrayOf(7)),
+        val stale = frame("member", BoardCellWireMessage.PlaylistCommand(playlistCommand(
+            "stale-command", BoardPlaylistOp.Add("e1", "climb", 40),
+            revision = snapshot.playlistRevision + 1)),
             epoch = snapshot.epoch, term = snapshot.controllerTerm, id = "message-stale")
         assertTrue(transport.receive("member", stale) is BoardCellApplyResult.Rejected)
         assertEquals(BoardCommandStatus.REJECTED_STALE,
             (BoardCellWireCodec.decode(link.sent.last().second).message as BoardCellWireMessage.CommandAck).value.status)
 
-        val context = BoardPlaylistCommandContext(null, BoardPlaylistCommandKind.ADD)
-        val good = frame("member", BoardCellWireMessage.SessionCommand("good-command",
-            snapshot.playlistRevision, byteArrayOf(8), context),
+        val command = playlistCommand("good-command", BoardPlaylistOp.Add("e1", "climb", 40),
+            revision = snapshot.playlistRevision)
+        val good = frame("member", BoardCellWireMessage.PlaylistCommand(command),
             epoch = snapshot.epoch, term = snapshot.controllerTerm, id = "message-good")
         assertNull(transport.receive("member", good))
-        assertEquals("good-command", accepted.single().commandId)
-        assertEquals(context, accepted.single().context)
+        assertEquals("good-command", accepted.single().command.commandId)
+        assertEquals(command.ops, accepted.single().command.ops)
+        // Answered before the command is even applied, so the sender's
+        // sub-second resend loop stops within one round trip.
         assertEquals(BoardCommandStatus.ACCEPTED,
             (BoardCellWireCodec.decode(link.sent.last().second).message as BoardCellWireMessage.CommandAck).value.status)
+    }
+
+    @Test fun `a playlist command from a stranger is refused`() = runTest {
+        val link = Link("host", setOf("member"))
+        val transport = BoardCellMeshTransport(link)
+        val coordinator = BoardCellCoordinator("host", transport, settleMs = 0)
+        transport.attach(coordinator)
+        val board = PhysicalBoardId("board")
+        coordinator.beginClaim(board, BoardCellId("cell"), 1); coordinator.settle(board, 1)
+        coordinator.joinMember(board, "member")
+        val snapshot = coordinator.snapshot(board)!!; transport.rememberSnapshot(snapshot)
+        val accepted = mutableListOf<InboundPlaylistCommand>()
+        transport.onPlaylistCommand = { accepted += it }
+
+        assertTrue(transport.receive("stranger", frame("stranger",
+            BoardCellWireMessage.PlaylistCommand(playlistCommand("stranger-command",
+                BoardPlaylistOp.Add("e1", "climb", 40))),
+            snapshot.epoch, snapshot.controllerTerm, "message-stranger"))
+            is BoardCellApplyResult.Rejected)
+        assertTrue(accepted.isEmpty())
     }
 
     @Test fun `durable terminal acknowledgement supersedes cached accepted retry`() = runTest {
@@ -136,81 +167,22 @@ class BoardCellWireTest {
         coordinator.joinMember(board, "member")
         val snapshot = coordinator.snapshot(board)!!; transport.rememberSnapshot(snapshot)
         val commandId = "accepted-then-committed"
-        val command = BoardCellWireMessage.SessionCommand(commandId, snapshot.playlistRevision, byteArrayOf(8))
+        val command = BoardCellWireMessage.PlaylistCommand(playlistCommand(commandId,
+            BoardPlaylistOp.Add("e1", "climb", 40), revision = snapshot.playlistRevision))
 
         assertNull(transport.receive("member", frame("member", command,
             snapshot.epoch, snapshot.controllerTerm, "message-first"), 2))
         assertEquals(BoardCommandStatus.ACCEPTED,
             (BoardCellWireCodec.decode(link.sent.last().second).message as BoardCellWireMessage.CommandAck).value.status)
-        assertNotNull(coordinator.replacePlaylist(board, BoardPlaylistState(42, 0), 3,
-            commandId, snapshot.sequence))
+        assertEquals(BoardCommandStatus.COMMITTED, coordinator.applyPlaylistCommand(
+            board, 3, "member", playlistCommand(commandId,
+                BoardPlaylistOp.Add("e1", "climb", 40),
+                revision = snapshot.playlistRevision))!!.status)
 
         assertNull(transport.receive("member", frame("member", command,
             snapshot.epoch, snapshot.controllerTerm, "message-retry"), 4))
         assertEquals(BoardCommandStatus.COMMITTED,
             (BoardCellWireCodec.decode(link.sent.last().second).message as BoardCellWireMessage.CommandAck).value.status)
-    }
-
-    /**
-     * The gateway proxy claim is only as good as the sender behind it.
-     *
-     * It says "I am carrying a verb for an API-28 leaf of mine", and it is
-     * accepted from an authenticated cell member and nobody else — the same
-     * bar every other gateway assertion clears. What it buys is deliberately
-     * less than membership, so a stranger gains nothing by setting it.
-     */
-    @Test fun `a leaf command is admitted from a cell member and refused from a stranger`() = runTest {
-        val link = Link("host", setOf("gateway")); val transport = BoardCellMeshTransport(link)
-        val coordinator = BoardCellCoordinator("host", transport, AckStore(), settleMs = 0)
-        transport.attach(coordinator)
-        val board = PhysicalBoardId("board")
-        coordinator.beginClaim(board, BoardCellId("cell"), 1); coordinator.settle(board, 1)
-        coordinator.joinMember(board, "gateway")
-        val snapshot = coordinator.snapshot(board)!!; transport.rememberSnapshot(snapshot)
-        val admitted = mutableListOf<InboundLeafCommand>()
-        transport.onLeafCommand = { admitted += it }
-
-        // The gateway is a cell member. It never joined the playlist, and it
-        // does not have to: it is lending its authenticated hop.
-        assertNull(transport.receive("gateway", frame("gateway",
-            BoardCellWireMessage.LeafSessionCommand("leaf-command-01",
-                snapshot.playlistRevision, byteArrayOf(8)),
-            snapshot.epoch, snapshot.controllerTerm, "message-leaf")))
-        assertEquals(listOf("leaf-command-01"), admitted.map { it.commandId })
-        assertEquals("gateway", admitted.single().senderId)
-
-        // A node outside the cell gets nothing from claiming to have a leaf.
-        assertTrue(transport.receive("stranger", frame("stranger",
-            BoardCellWireMessage.LeafSessionCommand("leaf-command-02",
-                snapshot.playlistRevision, byteArrayOf(8)),
-            snapshot.epoch, snapshot.controllerTerm, "message-stranger"))
-            is BoardCellApplyResult.Rejected)
-        assertEquals(1, admitted.size)
-    }
-
-    @Test fun `a leaf retry carries no payload and is deduplicated like any command`() = runTest {
-        val link = Link("host", setOf("gateway")); val transport = BoardCellMeshTransport(link)
-        val store = AckStore()
-        val coordinator = BoardCellCoordinator("host", transport, store, settleMs = 0)
-        transport.attach(coordinator)
-        val board = PhysicalBoardId("board")
-        coordinator.beginClaim(board, BoardCellId("cell"), 1); coordinator.settle(board, 1)
-        coordinator.joinMember(board, "gateway")
-        val snapshot = coordinator.snapshot(board)!!; transport.rememberSnapshot(snapshot)
-        val admitted = mutableListOf<InboundLeafCommand>()
-        transport.onLeafCommand = { admitted += it }
-        val retry = BoardCellWireMessage.LeafRetryProjection("leaf-retry-01",
-            snapshot.playlistRevision)
-
-        assertNull(transport.receive("gateway", frame("gateway", retry,
-            snapshot.epoch, snapshot.controllerTerm, "message-retry-1")))
-        assertNull(admitted.single().payload)
-
-        // A resend of the same command id is answered from the cache rather
-        // than re-running the projection.
-        assertNull(transport.receive("gateway", frame("gateway", retry,
-            snapshot.epoch, snapshot.controllerTerm, "message-retry-2")))
-        assertEquals(1, admitted.size)
     }
 
     @Test fun `reordered event freezes and requests full snapshot`() = runTest {

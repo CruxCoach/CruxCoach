@@ -4,469 +4,457 @@ import org.junit.Assert.*
 import org.junit.Test
 
 /**
- * The product rules of the one joinable playlist per BoardCell, exercised
- * directly on the pure policy so each rule is pinned without a mesh.
- *
- * Time is always explicit here. Every canonical deadline the playlist carries
- * is a UTC instant stamped by whichever device serialized the commit, so the
- * tests read like the real thing: a fixed "now", a deadline derived from it,
- * and a later "now" to look at it from.
+ * The shared playlist's rules as one pure function: what an operation means,
+ * what two people doing incompatible things at once resolves to, and why every
+ * operation can be replayed without changing the answer.
  */
 class BoardPlaylistPolicyTest {
 
-    /** 2026-08-17T12:00:00Z, chosen only so the numbers below read easily. */
+    /** 2026-08-17T12:00:00Z. */
     private val now = 1_786_968_000_000L
-    private val second = 1_000L
 
-    private fun start(
-        items: List<Pair<String, Int>> = listOf("a" to 40),
-        rests: List<Int> = emptyList(),
-        requestId: String = "request-0001",
+    private fun entry(id: String, climb: String = "climb-$id", angle: Int = 40, rest: Int = 0) =
+        BoardPlaylistEntry(id, climb, angle, rest)
+
+    private fun playlist(vararg entries: BoardPlaylistEntry, current: String? = null) =
+        BoardPlaylistPolicy.normalize(BoardPlaylistState(
+            sessionId = 7, entries = entries.toList(),
+            currentEntryId = current ?: entries.firstOrNull()?.entryId))
+
+    private fun command(
+        vararg ops: BoardPlaylistOp,
         commandId: String = "command-0001",
-    ) = BoardPlaylistControl.Start(commandId, 0, requestId, 7, items, rests)
+        revision: Long = 0,
+        clearGeneration: Long = 0,
+    ) = BoardPlaylistCommand(commandId, revision, clearGeneration, ops.toList())
 
-    private fun apply(
-        current: BoardPlaylistState,
-        senderId: String,
-        control: BoardPlaylistControl,
-        at: Long = now,
-        authority: BoardPlaylistAuthority = BoardPlaylistAuthority.MEMBER,
-        cellMembers: Set<String> = setOf(senderId),
-    ) = BoardPlaylistPolicy.apply(current, senderId, control, at, authority, cellMembers)
+    private fun resolve(
+        state: BoardPlaylistState,
+        command: BoardPlaylistCommand,
+        sender: String = "member-a",
+        isController: Boolean = false,
+    ) = BoardPlaylistPolicy.resolve(state, sender, command, now, isController)
 
-    private fun commit(outcome: BoardPlaylistPolicy.Outcome): BoardPlaylistState =
-        (outcome as BoardPlaylistPolicy.Outcome.Commit).playlist
-
-    private fun running(vararg members: String) = BoardPlaylistPolicy.normalize(BoardPlaylistState(
-        sessionId = 7, currentIndex = 0, items = listOf("a" to 40),
-        hostId = members.first(), members = members.toList()))
-
-    // ===== Start on an empty cell =====
-
-    @Test fun `any member starting on an empty cell becomes playlist host and member`() {
-        val result = commit(apply(BoardPlaylistState(), "member-npub",
-            start(listOf("a" to 40, "b" to 45))))
-
-        assertEquals("member-npub", result.hostId)
-        assertEquals(listOf("member-npub"), result.members)
-        assertEquals(0, result.currentIndex)
-        assertEquals(listOf("a" to 40, "b" to 45), result.items)
-        assertTrue(result.isJoinable)
-        assertNull(result.proposal)
+    private fun commit(
+        state: BoardPlaylistState,
+        vararg ops: BoardPlaylistOp,
+        sender: String = "member-a",
+        isController: Boolean = false,
+    ): BoardPlaylistState {
+        val outcome = resolve(state, command(*ops, clearGeneration = state.clearGeneration),
+            sender, isController)
+        assertTrue("expected a commit, got $outcome",
+            outcome is BoardPlaylistPolicy.Outcome.Commit)
+        return (outcome as BoardPlaylistPolicy.Outcome.Commit).playlist
     }
 
-    @Test fun `a forty person board starts one playlist for everyone`() {
-        val members = (0 until 40).map { "member-%02d".format(it) }.toSet()
-        val result = commit(apply(
-            BoardPlaylistState(),
-            "member-17",
-            start(),
-            cellMembers = members,
-        ))
+    // ===== Occurrences are addressable =====
 
-        assertEquals(40, result.members.size)
-        assertEquals(members, result.members.toSet())
+    @Test fun `the same climb may occur repeatedly and each occurrence keeps its own id`() {
+        val state = commit(playlist(),
+            BoardPlaylistOp.Add("e1", "zombie-hands", 40),
+            BoardPlaylistOp.Add("e2", "zombie-hands", 40),
+            BoardPlaylistOp.Add("e3", "zombie-hands", 40))
+
+        assertEquals(listOf("e1", "e2", "e3"), state.entries.map { it.entryId })
+        assertEquals(3, state.entries.count { it.climbUuid == "zombie-hands" })
+        assertEquals("e1", state.currentEntryId)
     }
 
-    @Test fun `starting is refused without entries`() {
-        assertTrue(apply(BoardPlaylistState(), "member", start(items = emptyList()))
-            is BoardPlaylistPolicy.Outcome.Reject)
+    @Test fun `removing one occurrence of a repeated climb leaves the others alone`() {
+        val base = playlist(entry("e1", "z"), entry("e2", "z"), entry("e3", "z"))
+
+        val state = commit(base, BoardPlaylistOp.Remove("e2"))
+
+        assertEquals(listOf("e1", "e3"), state.entries.map { it.entryId })
     }
 
-    @Test fun `the rest plan travels with the playlist and is index-parallel`() {
-        val result = commit(apply(BoardPlaylistState(), "host",
-            start(listOf("a" to 40, "b" to 40, "c" to 40), rests = listOf(120, 300))))
+    @Test fun `two people removing the same duplicate cannot delete two entries`() {
+        val base = playlist(entry("e1", "z"), entry("e2", "z"), entry("e3", "z"))
 
-        assertEquals(listOf(120, 300, 0), result.restAfterSeconds)
-        assertEquals(300, result.restAt(1))
-        assertEquals(0, result.restAt(2))
+        val once = commit(base, BoardPlaylistOp.Remove("e2"))
+        // The second person composed their command against the same base and
+        // meant the same occurrence. Serialized after the first, it is a no-op
+        // rather than taking "the second z", which is now a different climb.
+        val outcome = resolve(once, command(BoardPlaylistOp.Remove("e2"),
+            commandId = "command-0002", revision = 1), sender = "member-b")
+
+        assertTrue(outcome is BoardPlaylistPolicy.Outcome.Accepted)
+        assertEquals(listOf("e1", "e3"), once.entries.map { it.entryId })
     }
 
-    @Test fun `rest values beyond the bound are clamped, not rejected`() {
-        val result = commit(apply(BoardPlaylistState(), "host",
-            start(listOf("a" to 40), rests = listOf(999_999))))
-        assertEquals(listOf(BoardPlaylistPolicy.MAX_REST_SECONDS), result.restAfterSeconds)
+    @Test fun `two people removing different duplicates both take effect`() {
+        val base = playlist(entry("e1", "z"), entry("e2", "z"), entry("e3", "z"))
+
+        val first = commit(base, BoardPlaylistOp.Remove("e1"))
+        val second = commit(first, BoardPlaylistOp.Remove("e3"), sender = "member-b")
+
+        assertEquals(listOf("e2"), second.entries.map { it.entryId })
     }
 
-    // ===== The board group owns one shared playlist =====
+    // ===== Idempotency =====
 
-    @Test fun `starting while a board playlist runs appends without approval`() {
-        val base = BoardPlaylistPolicy.normalize(BoardPlaylistState(
-            sessionId = 7, currentIndex = 1, items = listOf("a" to 40, "b" to 40),
-            restAfterSeconds = listOf(30, 40), hostId = "host", members = listOf("host")))
-        val appended = commit(apply(base, "other",
-            BoardPlaylistControl.Start("command-0001", 0, "request-0001", 9,
-                listOf("x" to 40), listOf(90)),
-            cellMembers = setOf("host", "other")))
+    @Test fun `adding the same entry twice adds it once`() {
+        val once = commit(playlist(), BoardPlaylistOp.Add("e1", "a", 40))
 
-        assertEquals(listOf("a" to 40, "b" to 40, "x" to 40), appended.items)
-        assertEquals(listOf(30, 40, 90), appended.restAfterSeconds)
-        assertEquals(1, appended.currentIndex)
-        assertEquals(7, appended.sessionId)
-        assertEquals(listOf("host", "other"), appended.members)
-        assertNull(appended.proposal)
+        val outcome = resolve(once, command(BoardPlaylistOp.Add("e1", "a", 40),
+            commandId = "command-0002", revision = 1))
+
+        assertTrue(outcome is BoardPlaylistPolicy.Outcome.Accepted)
+        assertEquals(1, once.entries.size)
     }
 
-    // ===== Membership, rights and handover =====
+    @Test fun `removing something already gone is accepted rather than rejected`() {
+        val outcome = resolve(playlist(entry("e1")), command(BoardPlaylistOp.Remove("gone")))
 
-    @Test fun `an authenticated member joins without host approval`() {
-        val joined = commit(apply(running("host"), "guest", BoardPlaylistControl.Join("command-0002", 0)))
-        assertEquals(listOf("host", "guest"), joined.members)
-        assertEquals("host", joined.hostId)
+        assertTrue(outcome is BoardPlaylistPolicy.Outcome.Accepted)
     }
 
-    @Test fun `joining twice is idempotent`() {
-        assertTrue(apply(running("host", "guest"), "guest", BoardPlaylistControl.Join("command-0002", 0))
-            is BoardPlaylistPolicy.Outcome.Accepted)
+    @Test fun `replaying a whole batch of operations changes nothing the second time`() {
+        val ops = listOf(
+            BoardPlaylistOp.Add("e1", "a", 40),
+            BoardPlaylistOp.Add("e2", "b", 40),
+            BoardPlaylistOp.SetCurrent("e2"),
+            BoardPlaylistOp.SetRest("e1", 90),
+        )
+
+        val once = BoardPlaylistPolicy.apply(playlist(), ops)
+        val twice = BoardPlaylistPolicy.apply(once, ops)
+
+        assertEquals(once, twice)
     }
 
-    @Test fun `every member may end the board playlist`() {
-        assertEquals(BoardPlaylistState(), commit(apply(
-            running("host", "guest"), "guest", BoardPlaylistControl.End("command-0002", 0))))
+    // ===== Positioning and conflict handling =====
+
+    @Test fun `an add anchored after a removed entry lands at the end`() {
+        val base = playlist(entry("e1"), entry("e2"))
+        val without = commit(base, BoardPlaylistOp.Remove("e1"))
+
+        val state = commit(without,
+            BoardPlaylistOp.Add("e3", "c", 40, anchor = BoardPlaylistAnchor.After("e1")))
+
+        assertEquals(listOf("e2", "e3"), state.entries.map { it.entryId })
     }
 
-    @Test fun `ending with the last member clears the playlist`() {
-        assertEquals(BoardPlaylistState(), commit(apply(
-            running("host"), "host", BoardPlaylistControl.End("command-0002", 0))))
+    @Test fun `a move whose anchor disappeared leaves the entry where it is`() {
+        val base = playlist(entry("e1"), entry("e2"), entry("e3"))
+        val without = commit(base, BoardPlaylistOp.Remove("e2"))
+
+        val outcome = resolve(without, command(
+            BoardPlaylistOp.Move("e3", BoardPlaylistAnchor.After("e2")),
+            commandId = "command-0002", revision = 1))
+
+        assertTrue(outcome is BoardPlaylistPolicy.Outcome.Accepted)
+        assertEquals(listOf("e1", "e3"), without.entries.map { it.entryId })
     }
 
-    @Test fun `a non-member may neither end nor edit`() {
-        assertTrue(apply(running("host"), "outsider", BoardPlaylistControl.End("command-0002", 0))
-            is BoardPlaylistPolicy.Outcome.Reject)
-        assertTrue(apply(running("host"), "outsider",
-            BoardPlaylistControl.RetryProjection("command-0003", 0))
-            is BoardPlaylistPolicy.Outcome.Reject)
-        assertTrue(apply(running("host"), "outsider",
-            BoardPlaylistControl.SetRest("command-0004", 0, 0, 60))
-            is BoardPlaylistPolicy.Outcome.Reject)
-        assertFalse(BoardPlaylistPolicy.mayEditQueue(running("host"), "outsider",
-            BoardPlaylistAuthority.MEMBER))
+    @Test fun `a move keeps the current entry and the running rest on their own occurrence`() {
+        val base = BoardPlaylistPolicy.apply(playlist(entry("e1"), entry("e2"), entry("e3")),
+            listOf(BoardPlaylistOp.SetCurrent("e3")))
+        val resting = BoardPlaylistPolicy.apply(base, listOf(
+            BoardPlaylistOp.StartRest("e3", 120, 1, now, now + 120_000L)))
+
+        val state = commit(resting, BoardPlaylistOp.Move("e3", BoardPlaylistAnchor.Head))
+
+        assertEquals(listOf("e3", "e1", "e2"), state.entries.map { it.entryId })
+        assertEquals("e3", state.currentEntryId)
+        assertEquals("e3", state.activeRest?.nextEntryId)
     }
 
-    @Test fun `every member may retry the projection`() {
-        assertTrue(apply(running("host", "guest"), "guest",
-            BoardPlaylistControl.RetryProjection("command-0002", 0))
-            is BoardPlaylistPolicy.Outcome.Accepted)
-        assertTrue(BoardPlaylistPolicy.mayEditQueue(running("host", "guest"), "guest",
-            BoardPlaylistAuthority.MEMBER))
+    @Test fun `removing the current entry moves the group to what took its place`() {
+        val base = BoardPlaylistPolicy.apply(playlist(entry("e1"), entry("e2"), entry("e3")),
+            listOf(BoardPlaylistOp.SetCurrent("e2")))
+
+        val state = commit(base, BoardPlaylistOp.Remove("e2"))
+
+        assertEquals("e3", state.currentEntryId)
+        assertEquals(1, state.currentIndex)
     }
 
-    // ===== The Android-9 leaf's bounded proxy authority =====
+    @Test fun `removing the last entry leaves nothing current`() {
+        val state = commit(playlist(entry("e1")), BoardPlaylistOp.Remove("e1"))
 
-    @Test fun `a gateway proxy may edit the queue for its joined leaf`() {
-        // The gateway never joined the playlist itself; it is carrying an
-        // API-28 leaf's verb, which is exactly what that leaf is allowed to do.
-        assertTrue(BoardPlaylistPolicy.mayEditQueue(running("host"), "gateway",
-            BoardPlaylistAuthority.GATEWAY_PROXY))
-        assertTrue(apply(running("host"), "gateway",
-            BoardPlaylistControl.RetryProjection("command-0002", 0),
-            authority = BoardPlaylistAuthority.GATEWAY_PROXY)
-            is BoardPlaylistPolicy.Outcome.Accepted)
-    }
-
-    @Test fun `a gateway proxy may not start, end, join, leave or schedule rests`() {
-        val proxy = BoardPlaylistAuthority.GATEWAY_PROXY
-        listOf(
-            start(),
-            BoardPlaylistControl.Decide("command-0002", 0, "request-0001",
-                BoardPlaylistProposalDecision.REPLACE),
-            BoardPlaylistControl.Join("command-0003", 0),
-            BoardPlaylistControl.Leave("command-0004", 0),
-            BoardPlaylistControl.End("command-0005", 0),
-            BoardPlaylistControl.SetRest("command-0006", 0, 0, 60),
-            BoardPlaylistControl.RestStarted("command-0007", 0, 60, 0),
-            BoardPlaylistControl.RestEnded("command-0008", 0),
-        ).forEach { control ->
-            val outcome = apply(running("host"), "gateway", control, authority = proxy)
-            val reject = requireIs<BoardPlaylistPolicy.Outcome.Reject>(outcome)
-            assertTrue("${control.javaClass.simpleName}: ${reject.reason}",
-                reject.reason.contains("GATT leaf"))
-        }
-    }
-
-    @Test fun `a gateway proxy cannot start a playlist on an empty cell either`() {
-        assertTrue(apply(BoardPlaylistState(), "gateway", start(),
-            authority = BoardPlaylistAuthority.GATEWAY_PROXY)
-            is BoardPlaylistPolicy.Outcome.Reject)
-    }
-
-    // ===== Host succession =====
-
-    @Test fun `playlist-only leave is an idempotent no-op`() {
-        assertTrue(apply(running("host", "b", "c"), "host",
-            BoardPlaylistControl.Leave("command-0002", 0, successorId = "c"))
-            is BoardPlaylistPolicy.Outcome.Accepted)
-    }
-
-    @Test fun `losing the host unexpectedly promotes the longest-active member`() {
-        val survived = BoardPlaylistPolicy.withoutMember(running("host", "b", "c"), "host")
-
-        assertEquals("b", survived.hostId)
-        assertEquals(listOf("b", "c"), survived.members)
-        assertEquals(listOf("a" to 40), survived.items)
-    }
-
-    @Test fun `the playlist ends when its last member is gone`() {
-        assertEquals(BoardPlaylistState(),
-            BoardPlaylistPolicy.withoutMember(running("host"), "host"))
-    }
-
-    // ===== Rest semantics =====
-
-    /** A consistent start/end pair, which is the only kind normalize keeps. */
-    private fun armed(
-        totalSeconds: Int,
-        generation: Long,
-        nextIndex: Int,
-        startedAt: Long = now,
-    ) = BoardPlaylistRest(totalSeconds, generation, nextIndex,
-        endsAtEpochMs = startedAt + totalSeconds * second, startedAtEpochMs = startedAt)
-
-    private fun withRestPlan(
-        items: List<Pair<String, Int>> = listOf("a" to 40, "b" to 40),
-        rests: List<Int> = listOf(120, 0),
-        index: Int = 0,
-        rest: BoardPlaylistRest? = null,
-    ) = BoardPlaylistPolicy.normalize(BoardPlaylistState(
-        sessionId = 7, currentIndex = index, items = items, restAfterSeconds = rests,
-        hostId = "host", members = listOf("host"), activeRest = rest))
-
-    @Test fun `advancing arms the planned rest with a canonical end instant`() {
-        val advanced = requireValue(BoardPlaylistOps.next(withRestPlan(), now))
-
-        assertEquals(1, advanced.currentIndex)
-        val rest = requireValue(advanced.activeRest)
-        assertEquals(120, rest.totalSeconds)
-        assertEquals(1, rest.nextIndex)
-        assertEquals(1L, rest.generation)
-        assertEquals(now + 120 * second, rest.endsAtEpochMs)
-    }
-
-    @Test fun `a peer joining part-way through sees the remaining time, not the whole rest`() {
-        val rest = requireValue(requireValue(BoardPlaylistOps.next(withRestPlan(), now)).activeRest)
-
-        // 40 s in: 80 s left, not another full two minutes.
-        assertEquals(80, rest.remainingSeconds(now + 40 * second))
-        assertEquals(1, rest.remainingSeconds(rest.endsAtEpochMs - 1))
-        assertEquals(0, rest.remainingSeconds(rest.endsAtEpochMs))
-        assertEquals(0, rest.remainingSeconds(rest.endsAtEpochMs + 10 * second))
-        assertTrue(rest.hasExpired(rest.endsAtEpochMs))
-        assertFalse(rest.hasExpired(rest.endsAtEpochMs - 1))
-    }
-
-    @Test fun `a clock running behind the arming device never shows more than was planned`() {
-        val rest = requireValue(requireValue(BoardPlaylistOps.next(withRestPlan(), now)).activeRest)
-        assertEquals(120, rest.remainingSeconds(now - 60 * second))
-    }
-
-    @Test fun `each started rest gets its own generation and its own end`() {
-        val base = withRestPlan(
-            items = listOf("a" to 40, "b" to 40, "c" to 40), rests = listOf(60, 90, 0))
-
-        val first = requireValue(BoardPlaylistOps.next(base, now))
-        val second = requireValue(BoardPlaylistOps.next(first, now + 60 * this.second))
-
-        assertEquals(1L, requireValue(first.activeRest).generation)
-        assertEquals(now + 60 * this.second, requireValue(first.activeRest).endsAtEpochMs)
-        assertEquals(2L, requireValue(second.activeRest).generation)
-        assertEquals(90, requireValue(second.activeRest).totalSeconds)
-        assertEquals(now + 150 * this.second, requireValue(second.activeRest).endsAtEpochMs)
-    }
-
-    @Test fun `advancing past an entry with no planned rest clears any running one`() {
-        val base = withRestPlan(rests = listOf(0, 0), rest = armed(60, 4, 0))
-        assertNull(requireValue(BoardPlaylistOps.next(base, now)).activeRest)
-    }
-
-    @Test fun `jumping around the queue is an override and cancels the rest`() {
-        val base = withRestPlan(index = 1, rest = armed(60, 4, 1))
-
-        assertNull(requireValue(BoardPlaylistOps.setCurrent(base, 0)).activeRest)
-        assertNull(requireValue(BoardPlaylistOps.previous(base)).activeRest)
+        assertTrue(state.entries.isEmpty())
+        assertNull(state.currentEntryId)
     }
 
     @Test fun `removing the entry a rest is waiting on ends the rest`() {
-        val base = withRestPlan(
-            items = listOf("a" to 40, "b" to 40, "c" to 40), rests = listOf(0, 0, 0), index = 1,
-            rest = armed(120, 3, 1))
+        val base = BoardPlaylistPolicy.apply(playlist(entry("e1"), entry("e2")), listOf(
+            BoardPlaylistOp.SetCurrent("e2"),
+            BoardPlaylistOp.StartRest("e2", 120, 1, now, now + 120_000L)))
 
-        // The climb the group is resting in front of is gone; counting down
-        // towards whatever slid into its index would be meaningless.
-        assertNull(requireValue(BoardPlaylistOps.remove(base, 1)).activeRest)
+        val state = commit(base, BoardPlaylistOp.Remove("e2"))
+
+        assertNull(state.activeRest)
     }
 
-    @Test fun `removing some other entry keeps the rest and follows the index`() {
-        val base = withRestPlan(
-            items = listOf("a" to 40, "b" to 40, "c" to 40), rests = listOf(0, 0, 0), index = 2,
-            rest = armed(120, 3, 2))
+    @Test fun `pointing at an entry that has gone changes nothing`() {
+        val outcome = resolve(playlist(entry("e1")), command(BoardPlaylistOp.SetCurrent("gone")))
 
-        val removed = requireValue(BoardPlaylistOps.remove(base, 0))
-
-        assertEquals(1, removed.currentIndex)
-        val rest = requireValue(removed.activeRest)
-        assertEquals(1, rest.nextIndex)
-        assertEquals(now + 120_000, rest.endsAtEpochMs)
-        assertEquals(3L, rest.generation)
+        assertTrue(outcome is BoardPlaylistPolicy.Outcome.Accepted)
     }
 
-    @Test fun `moving the current entry carries the running rest with it`() {
-        val base = withRestPlan(
-            items = listOf("a" to 40, "b" to 40, "c" to 40), rests = listOf(0, 0, 0), index = 0,
-            rest = armed(120, 3, 0))
+    // ===== Advance arms the planned rest atomically =====
 
-        val moved = requireValue(BoardPlaylistOps.move(base, 0, 2))
+    @Test fun `next advances and arms the rest of the entry being left in one command`() {
+        val base = playlist(entry("e1", rest = 90), entry("e2"))
 
-        assertEquals(2, moved.currentIndex)
-        val rest = requireValue(moved.activeRest)
-        assertEquals(2, rest.nextIndex)
-        assertEquals(now + 120_000, rest.endsAtEpochMs)
+        val ops = BoardPlaylistOps.next(base)
+        val state = commit(base, *ops.toTypedArray())
+
+        assertEquals("e2", state.currentEntryId)
+        assertEquals(90, state.activeRest?.totalSeconds)
+        assertEquals("e2", state.activeRest?.nextEntryId)
+        assertEquals(now + 90_000L, state.activeRest?.endsAtEpochMs)
     }
 
-    @Test fun `an explicit rest command also carries a canonical end`() {
-        val started = commit(apply(running("host"), "host",
-            BoardPlaylistControl.RestStarted("command-0002", 0, 90, 0)))
-        val rest = requireValue(started.activeRest)
-        assertEquals(90, rest.totalSeconds)
-        assertEquals(now + 90 * second, rest.endsAtEpochMs)
+    @Test fun `the controller stamps the rest window and a sender cannot`() {
+        val base = playlist(entry("e1", rest = 60), entry("e2"))
+
+        val state = commit(base, BoardPlaylistOp.StartRest("e2", 60,
+            generation = 999, startedAtEpochMs = 1, endsAtEpochMs = 2))
+
+        assertEquals(1L, state.activeRest?.generation)
+        assertEquals(now, state.activeRest?.startedAtEpochMs)
+        assertEquals(now + 60_000L, state.activeRest?.endsAtEpochMs)
     }
 
-    @Test fun `a member may reschedule the rest that follows an entry`() {
-        val updated = commit(apply(running("host", "guest"), "guest",
-            BoardPlaylistControl.SetRest("command-0002", 0, 0, 240)))
-        assertEquals(listOf(240), updated.restAfterSeconds)
+    @Test fun `jumping to another entry cancels a running rest`() {
+        val base = BoardPlaylistPolicy.apply(playlist(entry("e1"), entry("e2")), listOf(
+            BoardPlaylistOp.StartRest("e2", 60, 1, now, now + 60_000L)))
+
+        val state = commit(base, BoardPlaylistOp.SetCurrent("e2"))
+
+        assertNull(state.activeRest)
     }
 
-    @Test fun `ending a rest nobody started is accepted without a change`() {
-        assertTrue(apply(running("host"), "host", BoardPlaylistControl.RestEnded("command-0002", 0))
-            is BoardPlaylistPolicy.Outcome.Accepted)
+    @Test fun `a controller whose clock is outside the believable window arms no rest`() {
+        val base = playlist(entry("e1"), entry("e2"))
+
+        val outcome = BoardPlaylistPolicy.resolve(base, "member-a",
+            command(BoardPlaylistOp.StartRest("e2", 60)), nowEpochMs = 1_000L,
+            senderIsController = false)
+
+        assertTrue(outcome is BoardPlaylistPolicy.Outcome.Accepted)
     }
 
-    // ===== Queue edits keep the rest plan aligned =====
+    // ===== Clear generation =====
 
-    @Test fun `removing an entry removes its planned rest with it`() {
-        val base = BoardPlaylistPolicy.normalize(BoardPlaylistState(
-            sessionId = 7, currentIndex = 2, items = listOf("a" to 40, "b" to 40, "c" to 40),
-            restAfterSeconds = listOf(10, 20, 30), hostId = "host", members = listOf("host")))
+    @Test fun `clearing empties the playlist and bumps its generation`() {
+        val base = playlist(entry("e1"), entry("e2"))
 
-        val removed = requireValue(BoardPlaylistOps.remove(base, 1))
+        val state = commit(base, BoardPlaylistOp.Clear())
 
-        assertEquals(listOf("a" to 40, "c" to 40), removed.items)
-        assertEquals(listOf(10, 30), removed.restAfterSeconds)
-        assertEquals(1, removed.currentIndex)
+        assertTrue(state.entries.isEmpty())
+        assertNull(state.currentEntryId)
+        assertEquals(1L, state.clearGeneration)
+        assertEquals(7, state.sessionId)
     }
 
-    @Test fun `moving an entry carries its planned rest along`() {
-        val base = BoardPlaylistPolicy.normalize(BoardPlaylistState(
-            sessionId = 7, currentIndex = 0, items = listOf("a" to 40, "b" to 40, "c" to 40),
-            restAfterSeconds = listOf(10, 20, 30), hostId = "host", members = listOf("host")))
+    @Test fun `an edit composed before the clear is refused rather than half applied`() {
+        val cleared = commit(playlist(entry("e1")), BoardPlaylistOp.Clear())
 
-        val moved = requireValue(BoardPlaylistOps.move(base, 0, 2))
+        val outcome = resolve(cleared, command(BoardPlaylistOp.Add("e9", "late", 40),
+            commandId = "command-0002", revision = 1, clearGeneration = 0))
 
-        assertEquals(listOf("b" to 40, "c" to 40, "a" to 40), moved.items)
-        assertEquals(listOf(20, 30, 10), moved.restAfterSeconds)
-        assertEquals(2, moved.currentIndex)
+        assertTrue(outcome is BoardPlaylistPolicy.Outcome.Reject)
+        assertTrue((outcome as BoardPlaylistPolicy.Outcome.Reject).reason.contains("cleared"))
     }
 
-    @Test fun `adding to an empty queue selects the new entry`() {
-        val started = BoardPlaylistPolicy.normalize(BoardPlaylistState(
-            sessionId = 7, currentIndex = -1, hostId = "host", members = listOf("host")))
-        val added = requireValue(BoardPlaylistOps.add(started, "new", 40))
-        assertEquals(0, added.currentIndex)
-        assertEquals(listOf(0), added.restAfterSeconds)
+    @Test fun `an edit composed after the clear is applied normally`() {
+        val cleared = commit(playlist(entry("e1")), BoardPlaylistOp.Clear())
+
+        val state = commit(cleared, BoardPlaylistOp.Add("e9", "fresh", 40))
+
+        assertEquals(listOf("e9"), state.entries.map { it.entryId })
+        assertEquals(1L, state.clearGeneration)
+    }
+
+    @Test fun `a retried clear does not clear a second time`() {
+        val base = playlist(entry("e1"))
+        val cleared = commit(base, BoardPlaylistOp.Clear())
+        val refilled = commit(cleared, BoardPlaylistOp.Add("e2", "b", 40))
+
+        // The retry carries the generation it was stamped with, which the
+        // playlist has already reached.
+        val replayed = BoardPlaylistPolicy.apply(refilled, listOf(BoardPlaylistOp.Clear(1)))
+
+        assertEquals(listOf("e2"), replayed.entries.map { it.entryId })
+    }
+
+    // ===== Authority =====
+
+    @Test fun `only the controller may report the physical send`() {
+        val base = playlist(entry("e1"))
+        val pending = BoardPlaylistPendingProjection("e1", "climb-e1", 40,
+            BoardPlaylistProjectionPendingReason.BOARD_WRITE_FAILED)
+
+        val refused = resolve(base, command(BoardPlaylistOp.SetPendingProjection(pending)))
+        val accepted = resolve(base, command(BoardPlaylistOp.SetPendingProjection(pending),
+            commandId = "command-0002"), sender = "controller", isController = true)
+
+        assertTrue(refused is BoardPlaylistPolicy.Outcome.Reject)
+        assertTrue(accepted is BoardPlaylistPolicy.Outcome.Commit)
+    }
+
+    @Test fun `a pending send that names some other entry is dropped by normalization`() {
+        val base = playlist(entry("e1"), entry("e2"))
+
+        val state = BoardPlaylistPolicy.apply(base, listOf(
+            BoardPlaylistOp.SetPendingProjection(BoardPlaylistPendingProjection(
+                "e2", "climb-e2", 40, BoardPlaylistProjectionPendingReason.CLIMB_UNAVAILABLE))))
+
+        assertNull(state.pendingProjection)
     }
 
     // ===== Bounds =====
 
-    @Test fun `normalize enforces the queue, member and index bounds`() {
-        val oversized = BoardPlaylistState(
-            sessionId = 7,
-            currentIndex = 9_999,
-            items = List(BoardPlaylistPolicy.MAX_ITEMS + 50) { "climb$it" to 40 },
-            hostId = "host",
-            members = List(BoardPlaylistPolicy.MAX_MEMBERS + 20) { "member$it" } + "host",
+    @Test fun `the playlist never grows past its bound`() {
+        val full = BoardPlaylistPolicy.apply(playlist(), (1..BoardPlaylistPolicy.MAX_ENTRIES)
+            .map { BoardPlaylistOp.Add("e$it", "climb", 40) })
+
+        val state = BoardPlaylistPolicy.apply(full, listOf(BoardPlaylistOp.Add("overflow", "x", 40)))
+
+        assertEquals(BoardPlaylistPolicy.MAX_ENTRIES, state.entries.size)
+        assertNull(state.entry("overflow"))
+    }
+
+    @Test fun `a command carrying more operations than the bound is refused`() {
+        val ops = (1..BoardPlaylistPolicy.MAX_OPS_PER_COMMAND + 1)
+            .map { BoardPlaylistOp.Add("e$it", "climb", 40) }
+
+        val outcome = resolve(playlist(), BoardPlaylistCommand("command-0001", 0, 0, ops))
+
+        assertTrue(outcome is BoardPlaylistPolicy.Outcome.Reject)
+    }
+
+    @Test fun `normalization drops duplicate ids and clamps rests`() {
+        val raw = BoardPlaylistState(
+            sessionId = 1,
+            entries = listOf(
+                BoardPlaylistEntry("e1", "a", 40, -5),
+                BoardPlaylistEntry("e1", "b", 40, 10),
+                BoardPlaylistEntry("e2", "c", 40, 99_999),
+                BoardPlaylistEntry("", "d", 40, 0),
+            ),
+            currentEntryId = "missing",
         )
 
-        val normalized = BoardPlaylistPolicy.normalize(oversized)
+        val state = BoardPlaylistPolicy.normalize(raw)
 
-        assertEquals(BoardPlaylistPolicy.MAX_ITEMS, normalized.items.size)
-        assertEquals(BoardPlaylistPolicy.MAX_ITEMS, normalized.restAfterSeconds.size)
-        assertEquals(BoardPlaylistPolicy.MAX_MEMBERS, normalized.members.size)
-        assertEquals(BoardPlaylistPolicy.MAX_ITEMS - 1, normalized.currentIndex)
-        assertTrue(normalized.hostId in normalized.members)
+        assertEquals(listOf("e1", "e2"), state.entries.map { it.entryId })
+        assertEquals(0, state.entries[0].restAfterSeconds)
+        assertEquals(BoardPlaylistPolicy.MAX_REST_SECONDS, state.entries[1].restAfterSeconds)
+        assertEquals("e1", state.currentEntryId)
     }
 
-    @Test fun `normalize drops an absurd rest end and an absurd request deadline`() {
-        val base = withRestPlan(rest = BoardPlaylistRest(120, 1, 0, Long.MAX_VALUE))
-        assertNull(BoardPlaylistPolicy.normalize(base).activeRest)
+    @Test fun `an empty command is accepted without moving anything`() {
+        val outcome = resolve(playlist(entry("e1")), BoardPlaylistCommand("command-0001", 0, 0))
 
-        val withProposal = running("host").copy(proposal = BoardPlaylistProposal(
-            "request-0001", "other", 9, listOf("x" to 40), emptyList(), expiresAtEpochMs = 0))
-        assertNull(BoardPlaylistPolicy.normalize(withProposal).proposal)
+        assertTrue(outcome is BoardPlaylistPolicy.Outcome.Accepted)
     }
 
-    @Test fun `a host that is not a member cannot stay host`() {
-        val normalized = BoardPlaylistPolicy.normalize(BoardPlaylistState(
-            sessionId = 7, currentIndex = 0, items = listOf("a" to 40),
-            hostId = "ghost", members = listOf("b", "c")))
-        assertEquals("b", normalized.hostId)
+    // ===== Index-based UI intent becomes occurrence-addressed =====
+
+    @Test fun `index builders resolve against the list they were read from`() {
+        val base = playlist(entry("e1"), entry("e2"), entry("e3"))
+
+        assertEquals(listOf(BoardPlaylistOp.Remove("e2")), BoardPlaylistOps.removeAt(base, 1))
+        assertEquals(listOf(BoardPlaylistOp.SetCurrent("e3")), BoardPlaylistOps.setCurrentAt(base, 2))
+        assertEquals(listOf(BoardPlaylistOp.SetRest("e1", 30)), BoardPlaylistOps.setRestAt(base, 0, 30))
+        assertEquals(emptyList<BoardPlaylistOp>(), BoardPlaylistOps.removeAt(base, 9))
     }
 
-    @Test fun `a playlist with no members at all is no playlist`() {
-        assertEquals(BoardPlaylistState(), BoardPlaylistPolicy.normalize(BoardPlaylistState(
-            sessionId = 7, currentIndex = 0, items = listOf("a" to 40), hostId = "ghost")))
+    @Test fun `a move to the front is anchored at the head and a move down at a neighbour`() {
+        val base = playlist(entry("e1"), entry("e2"), entry("e3"))
+
+        assertEquals(listOf(BoardPlaylistOp.Move("e3", BoardPlaylistAnchor.Head)),
+            BoardPlaylistOps.moveAt(base, 2, 0))
+        assertEquals(listOf(BoardPlaylistOp.Move("e1", BoardPlaylistAnchor.After("e3"))),
+            BoardPlaylistOps.moveAt(base, 0, 2))
+
+        val moved = BoardPlaylistPolicy.apply(base, BoardPlaylistOps.moveAt(base, 0, 2))
+        assertEquals(listOf("e2", "e3", "e1"), moved.entries.map { it.entryId })
     }
 
-    @Test fun `a pending send only ever describes the current entry`() {
-        // Not in the queue at all.
-        assertNull(BoardPlaylistPolicy.normalize(withRestPlan().copy(
-            pendingProjection = BoardPlaylistPendingProjection("removed", 40,
-                BoardPlaylistProjectionPendingReason.CLIMB_UNAVAILABLE))).pendingProjection)
-        // Queued, but not the entry the wall is supposed to be showing: a
-        // stale "send pending" here survived a next() and misreported a climb
-        // that had since been projected perfectly well.
-        assertNull(BoardPlaylistPolicy.normalize(withRestPlan(index = 0).copy(
-            pendingProjection = BoardPlaylistPendingProjection("b", 40,
-                BoardPlaylistProjectionPendingReason.BOARD_WRITE_FAILED))).pendingProjection)
-        assertNotNull(BoardPlaylistPolicy.normalize(withRestPlan(index = 0).copy(
-            pendingProjection = BoardPlaylistPendingProjection("a", 40,
-                BoardPlaylistProjectionPendingReason.BOARD_WRITE_FAILED))).pendingProjection)
+    /**
+     * A long import is split across commands, so what each entry is anchored
+     * to has to survive somebody else's add landing between two chunks.
+     */
+    @Test fun `a bulk add keeps its order and stays contiguous when it is split`() {
+        var next = 0
+        val ops = BoardPlaylistOps.addAll(
+            (1..5).map { Triple("climb-$it", 40, 0) }) { "e${next++}" }
+
+        assertEquals(BoardPlaylistAnchor.Tail, (ops.first() as BoardPlaylistOp.Add).anchor)
+        assertEquals(BoardPlaylistAnchor.After("e3"), (ops.last() as BoardPlaylistOp.Add).anchor)
+
+        val chunks = ops.chunked(2)
+        // Somebody else adds a climb between the first and the second chunk.
+        val interleaved = chunks.foldIndexed(playlist()) { index, state, chunk ->
+            val next = BoardPlaylistPolicy.apply(state, chunk)
+            if (index == 0) BoardPlaylistPolicy.apply(next,
+                listOf(BoardPlaylistOp.Add("other", "somebody-else", 40)))
+            else next
+        }
+
+        // The import stays in its own order and in one run, rather than being
+        // split around the entry that arrived in the middle of it.
+        assertEquals(listOf("e0", "e1", "e2", "e3", "e4", "other"),
+            interleaved.entries.map { it.entryId })
     }
 
-    // ===== Local-only playlist taking the wall =====
+    /**
+     * Chunks that arrive out of order are the pathological case. Order within
+     * a chunk still holds and nothing is lost or duplicated — the anchor
+     * fallback is a deterministic tail insert, not a guess.
+     */
+    @Test fun `chunks that arrive out of order still land exactly once each`() {
+        var next = 0
+        val chunks = BoardPlaylistOps.addAll(
+            (1..5).map { Triple("climb-$it", 40, 0) }) { "e${next++}" }.chunked(2)
 
-    @Test fun `a local send over the shared climb needs consent once per playlist`() {
-        val playlist = running("host")
+        val state = chunks.reversed().fold(playlist()) { current, chunk ->
+            BoardPlaylistPolicy.apply(current, chunk)
+        }
 
-        assertTrue(BoardPlaylistPolicy.requiresOverwriteConsent(
-            playlist, "outsider", "different", 40, confirmedSessionId = null))
-        assertFalse(BoardPlaylistPolicy.requiresOverwriteConsent(
-            playlist, "outsider", "different", 40, confirmedSessionId = playlist.sessionId))
-        assertTrue(BoardPlaylistPolicy.requiresOverwriteConsent(
-            playlist, "outsider", "different", 40, confirmedSessionId = 999))
+        assertEquals(5, state.entries.size)
+        assertEquals(5, state.entries.map { it.entryId }.toSet().size)
+        assertTrue(state.entries.map { it.entryId }.containsAll(listOf("e0", "e1", "e2", "e3", "e4")))
+        assertTrue(state.indexOf("e0") < state.indexOf("e1"))
+        assertTrue(state.indexOf("e2") < state.indexOf("e3"))
     }
 
-    @Test fun `re-sending the climb already on the wall asks nothing`() {
-        assertFalse(BoardPlaylistPolicy.requiresOverwriteConsent(
-            running("host"), "outsider", "a", 40, confirmedSessionId = null))
+    /**
+     * Topping a problem first go ends the work on it. The queued repeats go,
+     * and the pause that separated two attempts becomes the pause before a
+     * different problem.
+     */
+    @Test fun `dropping the repeats of a climb also carries over their rest`() {
+        val base = playlist(
+            entry("e1", "hard", rest = 20),
+            entry("e2", "hard", rest = 20),
+            entry("e3", "hard", rest = 300),
+            entry("e4", "other", rest = 0))
+
+        val state = commit(base, *BoardPlaylistOps.dropRepeatsAfter(base, 0).toTypedArray())
+
+        assertEquals(listOf("e1", "e4"), state.entries.map { it.entryId })
+        assertEquals(300, state.entries[0].restAfterSeconds)
     }
 
-    @Test fun `a playlist member sending is just that playlist running`() {
-        assertFalse(BoardPlaylistPolicy.requiresOverwriteConsent(
-            running("host", "guest"), "guest", "different", 40, confirmedSessionId = null))
+    @Test fun `a climb with no queued repeats produces no operations`() {
+        val base = playlist(entry("e1", "a"), entry("e2", "b"))
+
+        assertEquals(emptyList<BoardPlaylistOp>(), BoardPlaylistOps.dropRepeatsAfter(base, 0))
+        assertEquals(emptyList<BoardPlaylistOp>(), BoardPlaylistOps.dropRepeatsAfter(base, 9))
     }
 
-    @Test fun `with no joinable playlist there is nothing to take over`() {
-        assertFalse(BoardPlaylistPolicy.requiresOverwriteConsent(
-            BoardPlaylistState(), "anyone", "a", 40, confirmedSessionId = null))
-    }
+    @Test fun `advancing past the last entry produces no operations`() {
+        val base = BoardPlaylistPolicy.apply(playlist(entry("e1"), entry("e2")),
+            listOf(BoardPlaylistOp.SetCurrent("e2")))
 
-    private fun <T : Any> requireValue(value: T?): T {
-        assertNotNull("expected a value", value)
-        return value!!
-    }
-
-    private inline fun <reified T> requireIs(value: Any?): T {
-        assertTrue("expected ${T::class.simpleName}, was $value", value is T)
-        return value as T
+        assertEquals(emptyList<BoardPlaylistOp>(), BoardPlaylistOps.next(base))
+        assertEquals(listOf(BoardPlaylistOp.SetCurrent("e1")), BoardPlaylistOps.previous(base))
     }
 }

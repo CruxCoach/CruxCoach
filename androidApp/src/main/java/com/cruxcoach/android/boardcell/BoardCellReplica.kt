@@ -89,15 +89,6 @@ class BoardCellReplica(val localMemberId: String, initial: BoardCellSnapshot? = 
     }
 
     companion object {
-        /**
-         * Only a joinable playlist is normalized. A legacy, controller-local
-         * [BoardCellManager.replacePlaylist] state has no host and no members,
-         * and normalizing it would read its missing host as "no playlist" and
-         * wipe it.
-         */
-        private fun canonical(playlist: BoardPlaylistState): BoardPlaylistState =
-            if (playlist.isJoinable) BoardPlaylistPolicy.normalize(playlist) else playlist
-
         private fun BoardPlaylistState.clearingPendingFor(projection: BoardProjection):
             BoardPlaylistState {
             val pending = pendingProjection ?: return this
@@ -133,30 +124,29 @@ class BoardCellReplica(val localMemberId: String, initial: BoardCellSnapshot? = 
                         BoardCellAvailability.ACTIVE else current.availability,
                 ).withPlaylist(current, current.playlist.clearingPendingFor(event.projection))
                 is BoardCellEvent.ProjectUnknown -> current.copy(projection = null, projectionKnown = false)
-                is BoardCellEvent.PlaylistReplaced ->
-                    current.withPlaylist(current, canonical(event.playlist), forceRevision = true)
+                // The delta is replayed, not trusted: every replica applies the
+                // same pure reducer to the same predecessor, and the envelope's
+                // resulting hash is what says whether it agreed.
+                is BoardCellEvent.PlaylistOpsCommitted -> current.withPlaylist(
+                    current, BoardPlaylistPolicy.apply(current.playlist, event.ops),
+                    forceRevision = true)
                 is BoardCellEvent.JoinModeChanged -> current.copy(joinMode = event.mode)
+                // Joining the cell is joining the playlist: there is nothing
+                // to add to it, because the playlist has no membership of its
+                // own. The snapshot the new member receives already carries it.
                 is BoardCellEvent.MemberJoined -> current.copy(
                     members = current.members + event.memberId,
                     membershipRevision = current.membershipRevision +
                         if (event.memberId in current.members) 0 else 1,
-                ).withPlaylist(
-                    current,
-                    if (current.playlist.isJoinable) BoardPlaylistPolicy.normalize(
-                        current.playlist.copy(
-                            members = (current.playlist.members + event.memberId).distinct(),
-                        ),
-                    ) else current.playlist,
                 )
-                // Leaving the mesh also leaves the playlist. Host succession
-                // and the "last member ends it" rule therefore need no extra
-                // packet and cannot be lost with one.
+                // Leaving takes nothing with it. The playlist belongs to the
+                // BoardCell, so it survives every member coming and going and
+                // only ends when the cell does.
                 is BoardCellEvent.MemberLeft -> current.copy(
                     members = current.members - event.memberId,
                     membershipRevision = current.membershipRevision +
                         if (event.memberId in current.members) 1 else 0,
-                ).withPlaylist(current,
-                    BoardPlaylistPolicy.withoutMember(current.playlist, event.memberId))
+                )
                 is BoardCellEvent.ControllerHeartbeat -> current.copy(controllerHeartbeat = event.heartbeat)
                 is BoardCellEvent.HandoverPrepared -> current.copy(handover = event.value)
                 is BoardCellEvent.HandoverSourceReleased -> current.copy(
@@ -176,9 +166,9 @@ class BoardCellReplica(val localMemberId: String, initial: BoardCellSnapshot? = 
                     handover = current.handover?.copy(phase = HandoverPhase.COMPLETED))
                 is BoardCellEvent.HandoverAborted -> current.copy(
                     handover = current.handover?.copy(phase = HandoverPhase.ABORTED))
-                // Recovery evicts the unreachable controller from the mesh, so
-                // its playlist membership goes with it. The technical role
-                // moving on its own never touches playlist host or rights.
+                // Recovery evicts the unreachable controller from the mesh.
+                // The playlist is untouched: the technical role has no product
+                // authority over it and no seat in it to vacate.
                 is BoardCellEvent.ControllerRecovered -> current.copy(
                     controllerId = event.controllerId,
                     controllerTerm = event.controllerTerm,
@@ -189,10 +179,6 @@ class BoardCellReplica(val localMemberId: String, initial: BoardCellSnapshot? = 
                         else current.members - current.controllerId,
                     membershipRevision = current.membershipRevision +
                         if (event.controllerId == current.controllerId) 0 else 1,
-                ).withPlaylist(current,
-                    if (event.controllerId == current.controllerId) current.playlist
-                    else BoardPlaylistPolicy.withoutMember(current.playlist, current.controllerId),
-                ).copy(
                     lastControllerRecovery = BoardCellControllerRecoveryProof(
                         claimantId = event.controllerId,
                         baseControllerId = current.controllerId,
@@ -219,7 +205,7 @@ class BoardCellReplica(val localMemberId: String, initial: BoardCellSnapshot? = 
             val commandId = when (event) {
                 is BoardCellEvent.ProjectCommitted -> event.commandId
                 is BoardCellEvent.ProjectUnknown -> event.commandId
-                is BoardCellEvent.PlaylistReplaced -> event.commandId
+                is BoardCellEvent.PlaylistOpsCommitted -> event.commandId
                 is BoardCellEvent.ProjectionRecoveryRequired -> event.commandId
                 else -> null
             }

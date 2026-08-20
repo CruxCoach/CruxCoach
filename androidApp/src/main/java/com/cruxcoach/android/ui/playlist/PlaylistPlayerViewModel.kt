@@ -174,12 +174,17 @@ class PlaylistPlayerViewModel @Inject constructor(
     fun requestStop() = _state.update { it.copy(showStopConfirm = true) }
     fun dismissStopConfirm() = _state.update { it.copy(showStopConfirm = false) }
 
-    /** Stop playback and stage the summary sheet. */
+    /**
+     * Stop playback and stage the summary sheet.
+     *
+     * Stopping a board playlist closes it on this device and nothing more. It
+     * belongs to the board group and carries on for everybody else; emptying
+     * it for the whole group is a separate, explicitly labelled action in the
+     * queue sheet.
+     */
     fun stop(endForEveryone: Boolean = false) {
         _state.update { it.copy(showStopConfirm = false) }
-        val finished = playback.stop(
-            endForEveryone = endForEveryone || playback.state.value.isCanonicalPlaylist,
-        ) ?: return
+        val finished = playback.stop(endForEveryone = endForEveryone) ?: return
         _state.update { it.copy(finishedSession = finished) }
         viewModelScope.safeLaunch(TAG) {
             val gradeScale = userPreferences.gradeScale.first()

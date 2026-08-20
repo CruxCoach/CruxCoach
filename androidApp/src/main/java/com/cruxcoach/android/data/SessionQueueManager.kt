@@ -16,9 +16,7 @@ import com.cruxcoach.android.mesh.MeshOwners
 import com.cruxcoach.android.boardcell.BoardCellManager
 import com.cruxcoach.android.boardcell.BoardPlaylistInstant
 import com.cruxcoach.android.boardcell.BoardPlaylistPendingProjection
-import com.cruxcoach.android.boardcell.BoardPlaylistProposal
 import com.cruxcoach.android.boardcell.BoardPlaylistRest
-import com.cruxcoach.android.boardcell.BoardPlaylistState
 import com.cruxcoach.android.boardcell.BoardProjection
 import com.cruxcoach.android.boardcell.ActiveBoardCellWriteGateway
 import com.cruxcoach.android.boardcell.BoardCellWriteGateway
@@ -103,27 +101,41 @@ data class SessionQueueState(
     val currentClimb: QueueItem? get() = queue.getOrNull(currentIndex)
 }
 
-/** The joinable playlist as this device currently sees it. */
+/**
+ * The BoardCell's shared playlist as this device currently sees it.
+ *
+ * [members] are the *board* members: there is no separate playlist
+ * membership, no host and nothing to join, so this carries no role at all.
+ * What it does carry is [synchronized], because having a copy of the playlist
+ * and being up to date with the group are different things and only one of
+ * them is safe to act on.
+ */
 data class MeshPlaylistView(
     val localNodeId: String,
-    val hostId: String,
     val members: List<String>,
     /** A rest is running; the remaining value is counted locally — see
      *  [com.cruxcoach.android.boardcell.BoardPlaylistRest]. */
     val activeRest: BoardPlaylistRest? = null,
     val pendingProjection: BoardPlaylistPendingProjection? = null,
-    val proposal: BoardPlaylistProposal? = null,
-) {
-    val isHost: Boolean get() = localNodeId == hostId
-    val isMember: Boolean get() = localNodeId in members
-    /** Every board member may end the shared playlist after UI confirmation. */
-    val canEnd: Boolean get() = isMember
-    /** Every board member has the same product rights; the controller merely serializes. */
-    val decidableProposal: BoardPlaylistProposal? get() = proposal?.takeIf { isMember }
-    /** A request this device is waiting on. */
-    val awaitedProposal: BoardPlaylistProposal?
-        get() = proposal?.takeIf { it.requesterId == localNodeId }
-}
+    /** False during a partition: the copy on screen may already be stale. */
+    val synchronized: Boolean = true,
+    /**
+     * The selected entry is the one the board last confirmed.
+     *
+     * Selecting an entry and putting it on the wall are separate decisions —
+     * stepping through the list must not take the wall from whoever is
+     * climbing on it — so these two facts are tracked separately and shown as
+     * two facts rather than collapsed into one.
+     */
+    val selectionOnBoard: Boolean = false,
+    /**
+     * The technical controller serializes edits and is the only writer to the
+     * physical board. It is deliberately not a product role and nothing in the
+     * UI presents it as one; the playback layer reads it only to decide
+     * whether a local timer or a canonical command ends a rest.
+     */
+    val localIsController: Boolean = false,
+)
 
 /**
  * Manages the climb queue — works both solo (no BLE sharing) and as
@@ -236,29 +248,50 @@ class SessionQueueManager(
         }
         val playlist = snapshot.playlist
         val localNodeId = manager.localNodeId()
-        if (!playlist.isJoinable || localNodeId !in playlist.members) {
-            // Not (or no longer) a playlist member. A local-only playlist on
-            // this device keeps running untouched; only a previously mirrored
-            // joinable one is torn down.
+        if (snapshot.cellId.value != followedCellId) {
+            // A different board group is a different playlist; whatever this
+            // device decided about the last one says nothing about this one.
+            followedCellId = snapshot.cellId.value
+            stoppedFollowingSharedPlaylist = false
+        }
+        // An empty shared playlist is the board's resting state, not a running
+        // session. Clearing it therefore ends the mirrored session everywhere,
+        // and re-arms this device for the next thing anybody adds.
+        if (playlist.entries.isEmpty()) stoppedFollowingSharedPlaylist = false
+        if (localNodeId !in snapshot.members || playlist.entries.isEmpty() ||
+            stoppedFollowingSharedPlaylist) {
+            // Not in the BoardCell, nothing in its playlist, or this device
+            // deliberately closed the player. A local-only playlist on this
+            // device keeps running untouched; only a previously mirrored
+            // shared one is torn down.
             if (current.mesh != null) leaveCanonicalPlaylist()
             return
         }
-        val host = playlist.hostId ?: return
+        // Board membership is playlist participation. There is nothing to
+        // join, so a member that has no session yet simply adopts the one its
+        // BoardCell already has — and a start, a join, a process restart, an
+        // anti-entropy repair and a controller handover all converge on the
+        // same visible result without any of them needing their own path.
+        val canonicalItem = playlist.currentEntry()
+        val selectionOnBoard = snapshot.projectionKnown && canonicalItem != null &&
+            snapshot.projection?.let {
+                it.climbUuid == canonicalItem.climbUuid && it.angle == canonicalItem.angle
+            } == true
         val view = MeshPlaylistView(
             localNodeId = localNodeId,
-            hostId = host,
-            members = playlist.members,
+            members = snapshot.members.sorted(),
             activeRest = playlist.activeRest,
             pendingProjection = playlist.pendingProjection,
-            proposal = playlist.proposal,
+            synchronized = manager.isPlaylistSynchronized(),
+            localIsController = snapshot.controllerId == localNodeId,
+            selectionOnBoard = selectionOnBoard,
         )
-        val role = if (view.isHost) SessionRole.HOST else SessionRole.PARTICIPANT
-        val canonicalItem = playlist.currentItem()
+        val role = SessionRole.PARTICIPANT
+        // Only a board this app did not write counts as an external override.
+        // A selection nobody has sent yet is the ordinary resting state now,
+        // not somebody else's app taking the wall.
         val externalBoardOverride = playlist.pendingProjection == null &&
-            (!snapshot.projectionKnown || snapshot.projection?.let { projected ->
-                canonicalItem == null || projected.climbUuid != canonicalItem.first ||
-                    projected.angle != canonicalItem.second
-            } == true)
+            !selectionOnBoard && !snapshot.projectionKnown
         val adopting = !current.isActive || current.mesh == null
         if (adopting) {
             fipsMeshRuntime?.acquire(MeshOwners.SESSION.value)
@@ -266,12 +299,12 @@ class SessionQueueManager(
             // that already holds them is a no-op rather than a second claim.
             bleConnection.acquireKeepAlive(BoardConnectionOwner.SESSION)
             isPlaylistQueue = true
-            // Reaching here at all means this device is in the canonical
-            // membership, which only an explicit join puts it in — mesh
-            // membership alone never gets this far. A local queue that was
-            // running is therefore replaced by the user's own action, not by
-            // the mere existence of a joinable playlist nearby.
-            Log.d(TAG, "Adopting canonical playlist (role=$role, items=${playlist.items.size}, " +
+            // Reaching here means this device is in the BoardCell and the
+            // board group has something in its playlist, which is all it takes
+            // to be in it. A local-only queue that was running on this device
+            // is therefore replaced by the group's list — the board is shared
+            // hardware and its playlist is the shared thing on it.
+            Log.d(TAG, "Adopting canonical playlist (entries=${playlist.entries.size}, " +
                 "replacedLocalQueue=${current.isActive && current.mesh == null}, " +
                 "localQueueSize=${current.queue.size})")
         }
@@ -279,13 +312,13 @@ class SessionQueueManager(
             state.copy(
                 role = role,
                 sessionId = playlist.sessionId ?: state.sessionId,
-                queue = playlist.items.mapIndexed { index, item ->
-                    QueueItem(item.first, item.second, playlist.restAt(index))
+                queue = playlist.entries.map {
+                    QueueItem(it.climbUuid, it.angle, it.restAfterSeconds)
                 },
                 currentIndex = playlist.currentIndex,
                 visibility = SessionVisibility.JOINABLE,
                 visibilityRequested = SessionVisibility.JOINABLE,
-                participantCount = playlist.members.size,
+                participantCount = snapshot.members.size,
                 isConnecting = false,
                 error = null,
                 externalBoardOverride = externalBoardOverride,
@@ -299,7 +332,7 @@ class SessionQueueManager(
             onCurrentClimbChanged?.invoke()
             onSessionInfoChanged?.invoke()
         }
-        applyCanonicalRest(playlist.activeRest, isPlaylistHost = view.isHost)
+        applyCanonicalRest(playlist.activeRest, publishesRestEnd = view.localIsController)
     }
 
     /**
@@ -316,7 +349,7 @@ class SessionQueueManager(
      * repair or a reconnect that re-delivers the same state does not restart
      * the countdown.
      */
-    private fun applyCanonicalRest(rest: BoardPlaylistRest?, isPlaylistHost: Boolean) {
+    private fun applyCanonicalRest(rest: BoardPlaylistRest?, publishesRestEnd: Boolean) {
         val previous = observedRestGeneration
         if (rest == null) {
             observedRestGeneration = null
@@ -333,7 +366,7 @@ class SessionQueueManager(
             if (previous != null) onRestCleared?.invoke()
             Log.w(TAG, "Ignoring a canonical rest that starts in the future " +
                 "(${rest.startedAtEpochMs - now} ms ahead)")
-            if (isPlaylistHost) onCanonicalRestExpired?.invoke()
+            if (publishesRestEnd) onCanonicalRestExpired?.invoke()
             return
         }
         val remaining = rest.remainingSeconds(now)
@@ -343,7 +376,7 @@ class SessionQueueManager(
             // a countdown that has no time left in it.
             observedRestGeneration = rest.generation
             if (previous != null) onRestCleared?.invoke()
-            if (isPlaylistHost) onCanonicalRestExpired?.invoke()
+            if (publishesRestEnd) onCanonicalRestExpired?.invoke()
             return
         }
         observedRestGeneration = rest.generation
@@ -365,10 +398,31 @@ class SessionQueueManager(
             BoardProjectionPolicy.projectionSurvivesDisconnect(climb.brand))
     }
 
-    /** The canonical playlist is gone or this device is no longer in it. */
+    /** The canonical playlist is empty, or this device is no longer in it. */
     private fun leaveCanonicalPlaylist() {
-        Log.d(TAG, "Canonical playlist left/ended — clearing the mirrored session")
+        Log.d(TAG, "Canonical playlist empty/left — clearing the mirrored session")
         finishQueue()
+    }
+
+    /**
+     * Stop showing the board's shared playlist on this device.
+     *
+     * Purely local and purely about the screen: nothing canonical changes,
+     * nobody else notices, and this device stays a full participant with every
+     * editing right it had. It exists because closing the player has to close
+     * the player — without it the next snapshot would immediately re-adopt the
+     * playlist and the screen would reappear. Adding to the shared playlist
+     * again, a clear, or moving to another board all re-arm it.
+     */
+    fun stopFollowingSharedPlaylist() {
+        if (_state.value.mesh == null) return
+        stoppedFollowingSharedPlaylist = true
+        finishQueue()
+    }
+
+    /** The user acted on the shared playlist, so they want to see it again. */
+    fun resumeFollowingSharedPlaylist() {
+        stoppedFollowingSharedPlaylist = false
     }
 
     /** Resolved name of the current queue climb (null while loading or if not found). */
@@ -410,8 +464,8 @@ class SessionQueueManager(
     /** Remote command sender — set by SessionGattBridge for participant mode.
      *  When set, addClimb/removeClimb/etc. send commands to host instead of mutating locally. */
     @Volatile var remoteAddClimb: ((climbUuid: String, angle: Int) -> Unit)? = null
-    /** Lazy creation of the BoardCell playlist from an empty shared queue. */
-    @Volatile var startCanonicalWithFirstClimb: ((QueueItem, Int) -> Boolean)? = null
+    /** Routes an edit of a not-yet-mirrored shared playlist into the mesh. */
+    @Volatile var addToSharedPlaylist: ((List<QueueItem>) -> Boolean)? = null
 
     // ===== Queue operations (work in all modes) =====
 
@@ -514,11 +568,16 @@ class SessionQueueManager(
 
     fun addClimb(climbUuid: String, angle: Int) {
         val before = _state.value
-        if (before.role == SessionRole.HOST && before.queue.isEmpty() &&
-            before.visibilityRequested == SessionVisibility.JOINABLE && before.mesh == null) {
-            val starter = startCanonicalWithFirstClimb
-            if (starter != null && starter(QueueItem(climbUuid, angle), before.sessionId)) {
-                Log.d(TAG, "First shared climb routed to canonical BoardCell playlist")
+        if (boardCellManager?.isCellMember() == true &&
+            (before.mesh != null || before.visibilityRequested == SessionVisibility.JOINABLE)) {
+            // The BoardCell already owns a playlist; this device just has not
+            // mirrored it yet. Adding to the shared one is the only correct
+            // reading of "add" here — starting a second, private list beside
+            // it is what used to make one member's queue invisible to the rest.
+            val shared = addToSharedPlaylist
+            resumeFollowingSharedPlaylist()
+            if (shared != null && shared(listOf(QueueItem(climbUuid, angle)))) {
+                Log.d(TAG, "Climb routed to the shared BoardCell playlist")
                 return
             }
         }
@@ -552,27 +611,6 @@ class SessionQueueManager(
         if (_state.value.queue.size == 1) {
             sendCurrentClimbToBoard()
         }
-    }
-
-    /** Aligns the controller's mutable UI queue with its canonical log before rebasing a command. */
-    internal fun alignHostQueue(canonical: BoardPlaylistState) {
-        if (_state.value.role != SessionRole.HOST) return
-        val old = _state.value.queue
-        val used = BooleanArray(old.size)
-        val aligned = canonical.items.map { pair ->
-            val index = old.indices.firstOrNull { !used[it] &&
-                old[it].angle == pair.second &&
-                old[it].climbUuid.replace("-", "").equals(pair.first.replace("-", ""), true) }
-            if (index != null) {
-                used[index] = true
-                old[index]
-            } else QueueItem(pair.first, pair.second)
-        }
-        _state.update { it.copy(
-            sessionId = canonical.sessionId ?: it.sessionId,
-            queue = aligned,
-            currentIndex = canonical.currentIndex,
-        ) }
     }
 
     fun removeClimb(index: Int) {
@@ -928,13 +966,23 @@ class SessionQueueManager(
     /**
      * A canonical rest whose end has already passed is still recorded.
      *
-     * Invoked on the playlist host only, so one device clears it rather than
-     * every member racing to publish the same end.
+     * Invoked on one device only — the technical controller — so the group
+     * does not race to publish the same end.
      */
     @Volatile var onCanonicalRestExpired: (() -> Unit)? = null
 
     /** Generation of the canonical rest this device has already started. */
     private var observedRestGeneration: Long? = null
+
+    /**
+     * This device closed the shared playlist's player and does not want it
+     * back on screen until it acts on it again. Local display state only — see
+     * [stopFollowingSharedPlaylist].
+     */
+    @Volatile private var stoppedFollowingSharedPlaylist = false
+
+    /** Which board group the flag above was decided about. */
+    @Volatile private var followedCellId: String? = null
 
     /** True while the queue content came from a playlist — suppresses the
      *  session-start nearby-climb auto-import (SessionGattBridge). */

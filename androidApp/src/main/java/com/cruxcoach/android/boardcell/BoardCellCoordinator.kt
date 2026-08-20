@@ -1,7 +1,6 @@
 package com.cruxcoach.android.boardcell
 
 import java.util.UUID
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
@@ -109,6 +108,12 @@ class BoardCellCoordinator(
             controllerId = winner.claimantId, controllerTerm = 1, lineageId = winner.lineageId,
             members = claims[boardId].orEmpty().mapTo(sortedSetOf()) { it.claimantId },
             joinMode = winner.proposedJoinMode,
+            // The one shared playlist is created with the cell rather than
+            // started by somebody. Its id is derived from state every replica
+            // already agrees on, so there is no start command to lose, no
+            // proposal to answer and nothing for two devices to race over.
+            playlist = BoardPlaylistState(
+                sessionId = BoardPlaylistSession.idFor(winner.cellId, 1)),
         ).withComputedHash()
         replicas[boardId] = BoardCellReplica(nodeId, snapshot)
         controllerObservedAt[boardId] = nowMonotonicMs
@@ -273,184 +278,72 @@ class BoardCellCoordinator(
     private fun eventCommandId(event: BoardCellEvent): String? = when (event) {
         is BoardCellEvent.ProjectCommitted -> event.commandId
         is BoardCellEvent.ProjectUnknown -> event.commandId
-        is BoardCellEvent.PlaylistReplaced -> event.commandId
+        is BoardCellEvent.PlaylistOpsCommitted -> event.commandId
         is BoardCellEvent.ProjectionRecoveryRequired -> event.commandId
         else -> null
     }
 
-    suspend fun replacePlaylist(
-        boardId: PhysicalBoardId,
-        playlist: BoardPlaylistState,
-        nowMonotonicMs: Long,
-        commandId: String = UUID.randomUUID().toString(),
-        baseSequence: Long? = null,
-    ): BoardCellEnvelope? = replacePlaylistAfterValidation(
-        boardId, nowMonotonicMs, commandId, baseSequence) { playlist }
-
     /**
-     * Validates the command and derives its UI/session projection under the
-     * same serializer as every canonical event. A stale concurrent command
-     * therefore cannot mutate the local queue before being rejected.
-     */
-    suspend fun replacePlaylistAfterValidation(
-        boardId: PhysicalBoardId,
-        nowMonotonicMs: Long,
-        commandId: String,
-        baseSequence: Long?,
-        derivePlaylist: () -> BoardPlaylistState?,
-    ): BoardCellEnvelope? = mutex.withLock {
-        durableStore.commandAck(commandId)?.let { return@withLock null }
-        val current = writable(boardId, nowMonotonicMs) ?: return@withLock null
-        if (baseSequence != null && baseSequence != current.sequence) {
-            durableStore.recordAck(ack(commandId, BoardCommandStatus.REJECTED_STALE, current,
-                detail = "expected ${current.sequence}"))
-            return@withLock null
-        }
-        val playlist = try {
-            derivePlaylist()
-        } catch (failure: Exception) {
-            if (failure is CancellationException) throw failure
-            durableStore.recordAck(ack(commandId, BoardCommandStatus.SUPERSEDED, current,
-                detail = failure.message ?: "session command failed"))
-            return@withLock null
-        }
-        if (playlist == null) {
-            durableStore.recordAck(ack(commandId, BoardCommandStatus.SUPERSEDED, current,
-                detail = "session command produced no state change"))
-            return@withLock null
-        }
-        commitCommandEvent(boardId, BoardCellEvent.PlaylistReplaced(playlist, commandId), commandId)
-    }
-
-    /**
-     * Serializes a semantic playlist command. Older revisions may be rebased
-     * by [derivePlaylist]; future revisions and ambiguous rebases are rejected.
-     */
-    suspend fun applyPlaylistCommand(
-        boardId: PhysicalBoardId,
-        nowMonotonicMs: Long,
-        commandId: String,
-        basePlaylistRevision: Long,
-        senderId: String,
-        authority: BoardPlaylistAuthority = BoardPlaylistAuthority.MEMBER,
-        derivePlaylist: (current: BoardPlaylistState, exactRevision: Boolean) -> BoardPlaylistState?,
-    ): BoardCellEnvelope? = mutex.withLock {
-        durableStore.commandAck(commandId)?.let { return@withLock null }
-        val current = writable(boardId, nowMonotonicMs) ?: return@withLock null
-        // Mesh membership only makes the playlist visible. Editing it needs an
-        // explicit playlist join, which is checked here rather than at any
-        // caller so no transport can route around it. A gateway proxying for
-        // its GATT leaf is the one bounded exception and must still be an
-        // authenticated cell member.
-        if (authority == BoardPlaylistAuthority.GATEWAY_PROXY && senderId !in current.members) {
-            durableStore.recordAck(ack(commandId, BoardCommandStatus.REJECTED_CONFLICT, current,
-                detail = "gateway is not a cell member"))
-            return@withLock null
-        }
-        if (!BoardPlaylistPolicy.mayEditQueue(current.playlist, senderId, authority)) {
-            durableStore.recordAck(ack(commandId, BoardCommandStatus.REJECTED_CONFLICT, current,
-                detail = "not a playlist member"))
-            return@withLock null
-        }
-        if (basePlaylistRevision > current.playlistRevision) {
-            durableStore.recordAck(ack(commandId, BoardCommandStatus.REJECTED_STALE, current,
-                detail = "playlist revision is ahead of controller"))
-            return@withLock null
-        }
-        val playlist = try {
-            derivePlaylist(current.playlist, basePlaylistRevision == current.playlistRevision)
-        } catch (failure: Exception) {
-            if (failure is CancellationException) throw failure
-            durableStore.recordAck(ack(commandId, BoardCommandStatus.SUPERSEDED, current,
-                detail = failure.message ?: "session command failed"))
-            return@withLock null
-        }
-        if (playlist == null) {
-            durableStore.recordAck(ack(commandId, BoardCommandStatus.REJECTED_CONFLICT, current,
-                detail = "playlist changed in a conflicting way"))
-            return@withLock null
-        }
-        commitCommandEvent(boardId, BoardCellEvent.PlaylistReplaced(playlist, commandId), commandId)
-    }
-
-    /**
-     * Serializes one joinable-playlist lifecycle command.
+     * Serializes one member's playlist command.
      *
      * The decision itself is [BoardPlaylistPolicy], which knows nothing about
      * transport or roles — this only supplies the canonical base state, the
      * staleness rules every other command already obeys, and the durable ack
-     * that makes a replayed command idempotent.
+     * that makes a replayed command idempotent across a retry, a reconnect and
+     * a controller handover.
+     *
+     * Note what is *not* here: no membership check beyond the transport's, no
+     * host, no lifecycle. Every authenticated cell member may edit the shared
+     * playlist arbitrarily; the controller decides the order, not the right.
+     *
+     * The commit is canonical and replicated the moment it returns. Putting
+     * the climb on the physical board is a separate, later step, so a slow or
+     * failing board write can never hold up the group's playlist.
      */
-    suspend fun applyPlaylistControl(
+    suspend fun applyPlaylistCommand(
         boardId: PhysicalBoardId,
         nowMonotonicMs: Long,
         senderId: String,
-        control: BoardPlaylistControl,
-        authority: BoardPlaylistAuthority = BoardPlaylistAuthority.MEMBER,
+        command: BoardPlaylistCommand,
     ): BoardCommandAck? = mutex.withLock {
-        durableStore.commandAck(control.commandId)?.let { return@withLock it }
+        durableStore.commandAck(command.commandId)?.let { return@withLock it }
+        // Deliberately not recorded in the durable ack window: "ask somebody
+        // else" and "you are ahead of me" are statements about this device at
+        // this moment, not decisions about the command. Remembering them would
+        // answer the sender's next retry — after the handover completed, after
+        // this replica caught up — with the same refusal for ever, and the
+        // edit would be lost with no error anybody could act on.
         val current = writable(boardId, nowMonotonicMs) ?: run {
             val snapshot = replicas[boardId]?.snapshot ?: return@withLock null
-            return@withLock ack(control.commandId, BoardCommandStatus.NOT_CONTROLLER, snapshot,
-                detail = "not writable").also(durableStore::recordAck)
+            return@withLock ack(command.commandId, BoardCommandStatus.NOT_CONTROLLER, snapshot,
+                detail = "not writable")
         }
-        if (control.basePlaylistRevision > current.playlistRevision) {
-            return@withLock ack(control.commandId, BoardCommandStatus.REJECTED_STALE, current,
-                detail = "playlist revision is ahead of controller").also(durableStore::recordAck)
+        if (command.basePlaylistRevision > current.playlistRevision) {
+            return@withLock ack(command.commandId, BoardCommandStatus.REJECTED_STALE, current,
+                detail = "playlist revision is ahead of controller")
         }
-        // The pending-send state reports a physical fact about this device's
-        // own board write, so only the controller may assert it. A member
-        // could otherwise make everyone's playlist claim the wall is dark.
-        if (control is BoardPlaylistControl.ProjectionPending && senderId != nodeId) {
-            return@withLock ack(control.commandId, BoardCommandStatus.REJECTED_CONFLICT, current,
-                detail = "only the controller reports the physical send")
-                .also(durableStore::recordAck)
+        if (senderId != nodeId && senderId !in current.members) {
+            return@withLock ack(command.commandId, BoardCommandStatus.REJECTED_CONFLICT, current,
+                detail = "sender is not a cell member").also(durableStore::recordAck)
         }
-        // A gateway proxying for its GATT leaf must still be an authenticated
-        // cell member; the proxy authority relaxes playlist membership, never
-        // cell membership.
-        if (authority == BoardPlaylistAuthority.GATEWAY_PROXY && senderId !in current.members) {
-            return@withLock ack(control.commandId, BoardCommandStatus.REJECTED_CONFLICT, current,
-                detail = "gateway is not a cell member").also(durableStore::recordAck)
-        }
-        val outcome = BoardPlaylistPolicy.apply(current.playlist, senderId, control,
-            wallClockEpochMs(), authority, current.members)
+        val outcome = BoardPlaylistPolicy.resolve(current.playlist, senderId, command,
+            wallClockEpochMs(), senderIsController = senderId == nodeId)
         when (outcome) {
             is BoardPlaylistPolicy.Outcome.Reject ->
-                ack(control.commandId, BoardCommandStatus.REJECTED_CONFLICT, current,
+                ack(command.commandId, BoardCommandStatus.REJECTED_CONFLICT, current,
                     detail = outcome.reason).also(durableStore::recordAck)
             is BoardPlaylistPolicy.Outcome.Accepted ->
-                ack(control.commandId, BoardCommandStatus.COMMITTED, current,
+                ack(command.commandId, BoardCommandStatus.COMMITTED, current,
                     detail = "already in the requested state").also(durableStore::recordAck)
             is BoardPlaylistPolicy.Outcome.Commit -> {
                 val envelope = commitCommandEvent(boardId,
-                    BoardCellEvent.PlaylistReplaced(outcome.playlist, control.commandId),
-                    control.commandId)
-                if (envelope == null) null else durableStore.commandAck(control.commandId)
+                    BoardCellEvent.PlaylistOpsCommitted(outcome.ops, command.commandId),
+                    command.commandId)
+                if (envelope == null) null else durableStore.commandAck(command.commandId)
             }
         }
     }
 
-    /**
-     * Resolves an unanswered playlist request once its canonical deadline has
-     * passed, as a rejection.
-     *
-     * The deadline lives in the request itself rather than in a controller's
-     * monotonic map, so a technical handover or a process restart inherits the
-     * original 30 s instead of quietly granting another one, and a controller
-     * that adopts an already-expired request declines it immediately.
-     */
-    private suspend fun expireProposal(boardId: PhysicalBoardId) {
-        val current = replicas[boardId]?.snapshot ?: return
-        val proposal = current.playlist.proposal ?: return
-        if (current.controllerId != nodeId || current.availability != BoardCellAvailability.ACTIVE) return
-        if (!proposal.hasExpired(wallClockEpochMs())) return
-        commitCanonical(boardId, BoardCellEvent.PlaylistReplaced(
-            BoardPlaylistPolicy.resolve(current.playlist, proposal,
-                BoardPlaylistProposalDecision.REJECT),
-            "playlist-proposal-timeout:${proposal.requestId}",
-        ))
-    }
 
     suspend fun joinMember(
         boardId: PhysicalBoardId,
@@ -763,7 +656,6 @@ class BoardCellCoordinator(
     }
 
     suspend fun expireLocalDeadlines(nowMonotonicMs: Long) = mutex.withLock {
-        replicas.keys.toList().forEach { board -> expireProposal(board) }
         replicas.forEach { (board, replica) ->
             val current = replica.snapshot ?: return@forEach
             val last = controllerObservedAt[board] ?: nowMonotonicMs

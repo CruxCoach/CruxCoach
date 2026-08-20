@@ -9,7 +9,6 @@ import com.cruxcoach.android.ble.GattConnectionEvent
 import com.cruxcoach.android.ble.NearbyClimb
 import com.cruxcoach.android.ble.NearbyClimbScanner
 import com.cruxcoach.android.ble.NearbySession
-import com.cruxcoach.android.ble.QueueItem
 import com.cruxcoach.android.ble.SessionClientState
 import com.cruxcoach.android.ble.SessionCommand
 import com.cruxcoach.android.ble.SessionGattClient
@@ -21,7 +20,8 @@ import com.cruxcoach.android.boardcell.BoardCellScopeRegistry
 import com.cruxcoach.android.boardcell.BoardCellSnapshot
 import com.cruxcoach.android.boardcell.BoardCommandAck
 import com.cruxcoach.android.boardcell.BoardCommandStatus
-import com.cruxcoach.android.boardcell.BoardPlaylistAuthority
+import com.cruxcoach.android.boardcell.BoardPlaylistCommand
+import com.cruxcoach.android.boardcell.BoardPlaylistOp
 import com.cruxcoach.android.boardcell.BoardPlaylistPolicy
 import com.cruxcoach.android.boardcell.BoardPlaylistRest
 import com.cruxcoach.android.boardcell.BoardPlaylistState
@@ -35,7 +35,6 @@ import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
 import io.mockk.slot
-import io.mockk.verify
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -57,12 +56,14 @@ import org.junit.Test
 
 /**
  * The Android-9 hybrid: API 28 has no public BLE L2CAP CoC and therefore
- * cannot be a FIPS node, so it takes part in the one canonical playlist as a
- * GATT leaf while an API-29+ device acts as its gateway and translates both
- * ways.
+ * cannot be a FIPS node, so it takes part in the one shared playlist as a GATT
+ * leaf while an API-29+ device acts as its gateway and translates both ways.
+ *
+ * The gateway needs no special authority to do it: what the leaf asks for is
+ * something every cell member may do anyway.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
-class JoinablePlaylistGatewayTest {
+class SharedPlaylistGatewayTest {
 
     private val testDispatcher = UnconfinedTestDispatcher()
     private lateinit var managerScope: CoroutineScope
@@ -96,6 +97,9 @@ class JoinablePlaylistGatewayTest {
     private val board = PhysicalBoardId("board-gateway")
     private val cell = BoardCellId.forPhysical(board)
 
+    /** Every command the gateway handed the BoardCell, in order. */
+    private val submitted = mutableListOf<BoardPlaylistCommand>()
+
     @Before fun setup() {
         Dispatchers.setMain(testDispatcher)
         managerScope = CoroutineScope(SupervisorJob() + testDispatcher)
@@ -125,10 +129,31 @@ class JoinablePlaylistGatewayTest {
         every { boardCellManager.snapshots } returns snapshots
         every { boardCellManager.commandAcks } returns commandAcks.receiveAsFlow()
         every { boardCellManager.projectionRequests } returns MutableSharedFlow(extraBufferCapacity = 4)
-        every { boardCellManager.sessionCommands } returns MutableSharedFlow(extraBufferCapacity = 4)
         every { boardCellManager.localNodeId() } returns localNode
         every { boardCellManager.snapshot() } answers { snapshots.value }
         every { boardCellManager.playlist() } answers { snapshots.value?.playlist }
+        every { boardCellManager.isPlaylistSynchronized() } returns true
+        every { boardCellManager.isCellMember() } answers {
+            snapshots.value?.members?.contains(localNode) == true
+        }
+        // The real composer reads base revision and clear generation from one
+        // snapshot; reproducing that here keeps the test honest about what a
+        // command is stamped with.
+        every { boardCellManager.composePlaylistCommand(any(), any()) } answers {
+            val ops = firstArg<List<BoardPlaylistOp>>()
+            val snapshot = snapshots.value
+            if (ops.isEmpty() || snapshot == null) null
+            else BoardPlaylistCommand(secondArg(), snapshot.playlistRevision,
+                snapshot.playlist.clearGeneration, ops)
+        }
+        coEvery { boardCellManager.submitPlaylistCommand(any()) } answers {
+            val command = firstArg<BoardPlaylistCommand>()
+            submitted += command
+            if (boardCellManager.isLocalController())
+                BoardCommandAck(command.commandId, BoardCommandStatus.COMMITTED, cell, 1, 1, 5, "hash")
+            else
+                BoardCommandAck(command.commandId, BoardCommandStatus.ACCEPTED, cell, 1, 1, 5, "hash")
+        }
 
         queueManager = SessionQueueManager(
             bleConnection, boardRepository, climbNameResolver, userPreferences, managerScope,
@@ -162,24 +187,28 @@ class JoinablePlaylistGatewayTest {
         Dispatchers.resetMain()
     }
 
-    private fun publish(playlist: BoardPlaylistState, revision: Long = 1) {
+    private fun publish(
+        playlist: BoardPlaylistState,
+        revision: Long = 1,
+        members: Set<String> = setOf("controller-npub", localNode),
+    ) {
         snapshots.value = BoardCellSnapshot(
             cellId = cell, physicalBoardId = board, epoch = 1, sequence = revision + 1,
             controllerId = "controller-npub", controllerTerm = 1, lineageId = "lineage",
-            members = setOf("controller-npub", localNode),
-            playlist = playlist, playlistRevision = revision,
+            members = members, playlist = playlist, playlistRevision = revision,
         ).withComputedHash()
     }
 
-    private fun joinable(
-        items: List<Pair<String, Int>> = listOf("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" to 40),
-        rests: List<Int> = listOf(120),
+    private val firstClimb = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    private val addedClimb = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+    private fun shared(
+        entries: List<Triple<String, String, Int>> = listOf(Triple("e1", firstClimb, 120)),
         rest: BoardPlaylistRest? = null,
-        host: String = localNode,
-        members: List<String> = listOf(localNode),
-    ) = BoardPlaylistPolicy.normalize(BoardPlaylistState(
-        sessionId = 7, currentIndex = 0, items = items, restAfterSeconds = rests,
-        hostId = host, members = members, activeRest = rest))
+    ) = BoardPlaylistPolicy.normalize(BoardPlaylistPolicy.apply(
+        BoardPlaylistState(sessionId = 7),
+        entries.map { (id, climb, restAfter) -> BoardPlaylistOp.Add(id, climb, 40, restAfter) },
+    ).copy(activeRest = rest))
 
     /** Host mode is what opens the GATT server a leaf talks to. */
     private suspend fun hostWithLeaf() {
@@ -187,24 +216,18 @@ class JoinablePlaylistGatewayTest {
         serverCommands.emit(GattCommand(leafAddress, SessionQueueProtocol.encodeJoin("Leaf")))
     }
 
-    private val addedClimb = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-
     // ===== The leaf sees the canonical playlist =====
 
     @Test fun `an Android 9 leaf reads the canonical queue and its rest plan`() = runBlocking {
-        publish(joinable(
-            items = listOf("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" to 40, addedClimb to 45),
-            rests = listOf(120, 0)))
+        publish(shared(listOf(Triple("e1", firstClimb, 120), Triple("e2", addedClimb, 0))))
 
         // The leaf's whole view of the playlist is the GATT queue-state frame,
         // which the gateway encodes from its own projection of canonical state.
         val decoded = SessionQueueProtocol.decodeQueueState(queueManager.encodeQueueState())!!
         assertEquals(0, decoded.currentIndex)
-        assertEquals(listOf("AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA".replace("-", ""),
-            addedClimb.uppercase()), decoded.items.map { it.climbUuid })
-        assertEquals(listOf(40, 45), decoded.items.map { it.angle })
-        // The rest plan is canonical state now, so the gateway holds the real
-        // seconds rather than the zero a migrated host used to see.
+        assertEquals(listOf(firstClimb.uppercase(), addedClimb.uppercase()),
+            decoded.items.map { it.climbUuid })
+        assertEquals(listOf(40, 40), decoded.items.map { it.angle })
         assertEquals(listOf(120, 0), queueManager.state.value.queue.map { it.restAfterSeconds })
     }
 
@@ -224,118 +247,66 @@ class JoinablePlaylistGatewayTest {
 
     // ===== The leaf's commands reach the mesh =====
 
-    /** Captures what the bridge hands the BoardCell for a local commit. */
-    private class LocalCommit {
-        val authority = slot<BoardPlaylistAuthority>()
-        val applied = slot<(BoardPlaylistState, Boolean) -> BoardPlaylistState?>()
+    @Test fun `a leaf add becomes one typed operation against the shared playlist`() = runBlocking {
+        every { boardCellManager.isLocalController() } returns true
+        publish(shared())
+        hostWithLeaf()
+
+        serverCommands.emit(GattCommand(leafAddress,
+            SessionQueueProtocol.encodeCommand(SessionCommand.Add(addedClimb, 45))))
+
+        // The gateway did not mutate its own queue and hope: it handed the
+        // BoardCell a bounded, typed operation with a stable occurrence id.
+        val add = submitted.single().ops.single() as BoardPlaylistOp.Add
+        assertEquals(addedClimb.uppercase(), add.climbUuid)
+        assertEquals(45, add.angle)
+        assertTrue(add.entryId.isNotBlank())
+        assertEquals(1L, submitted.single().basePlaylistRevision)
     }
 
-    private fun stubLocalCommit(manager: BoardCellManager): LocalCommit {
-        val capture = LocalCommit()
-        coEvery {
-            manager.commitLocalSessionCommand(any(), any(), capture(capture.authority),
-                capture(capture.applied))
-        } answers {
-            BoardCommandAck("committed-command", BoardCommandStatus.COMMITTED, cell, 1, 1, 5, "hash")
-        }
-        return capture
+    @Test fun `a leaf remove names the occurrence it read, not the index`() = runBlocking {
+        every { boardCellManager.isLocalController() } returns true
+        publish(shared(listOf(Triple("e1", firstClimb, 0), Triple("e2", addedClimb, 0))))
+        hostWithLeaf()
+
+        serverCommands.emit(GattCommand(leafAddress,
+            SessionQueueProtocol.encodeCommand(SessionCommand.Remove(1))))
+
+        assertEquals(BoardPlaylistOp.Remove("e2"), submitted.single().ops.single())
     }
-
-    @Test fun `a leaf add is committed into BoardCell by a gateway that is the controller`() =
-        runBlocking {
-            every { boardCellManager.isLocalController() } returns true
-            every { boardCellManager.isPlaylistMember() } returns true
-            val capture = stubLocalCommit(boardCellManager)
-            publish(joinable())
-            hostWithLeaf()
-
-            serverCommands.emit(GattCommand(leafAddress,
-                SessionQueueProtocol.encodeCommand(SessionCommand.Add(addedClimb, 45))))
-
-            // The gateway did not mutate its own queue and hope: it handed the
-            // BoardCell a derivation of canonical state.
-            assertTrue("gateway must commit into BoardCell", capture.applied.isCaptured)
-            val next = capture.applied.captured(snapshots.value!!.playlist, true)!!
-            assertEquals(2, next.items.size)
-            assertEquals(addedClimb.uppercase() to 45, next.items[1])
-            // Playlist host and membership are untouched by a leaf's edit.
-            assertEquals(localNode, next.hostId)
-            assertEquals(listOf(localNode), next.members)
-            // The gateway is a playlist member in its own right here, so it
-            // needs no proxy authority.
-            assertEquals(BoardPlaylistAuthority.MEMBER, capture.authority.captured)
-        }
-
-    @Test fun `a joined leaf commits even when its gateway never joined the playlist`() =
-        runBlocking {
-            // This is the shape the product rule describes: the API-28 device
-            // takes part through a gateway that is only the technical
-            // controller and is not itself in the playlist.
-            every { boardCellManager.isLocalController() } returns true
-            every { boardCellManager.isPlaylistMember() } returns false
-            val capture = stubLocalCommit(boardCellManager)
-            // The gateway runs its own GATT session for the leaf — that is
-            // what makes it a gateway — while the canonical playlist belongs
-            // to somebody else entirely and this device never joined it.
-            queueManager.startQueue("Gateway", SessionVisibility.JOINABLE)
-            publish(joinable(host = "someone-else", members = listOf("someone-else")))
-            assertNull("the gateway must not be following the playlist",
-                queueManager.state.value.mesh)
-            hostWithLeaf()
-
-            serverCommands.emit(GattCommand(leafAddress,
-                SessionQueueProtocol.encodeCommand(SessionCommand.Add(addedClimb, 45))))
-
-            assertTrue("the leaf's edit must reach canonical state",
-                capture.applied.isCaptured)
-            assertEquals(BoardPlaylistAuthority.GATEWAY_PROXY, capture.authority.captured)
-            val next = capture.applied.captured(snapshots.value!!.playlist, true)!!
-            assertEquals(addedClimb.uppercase() to 45, next.items[1])
-            // The leaf changed the queue and nothing else: the playlist host
-            // and its membership are exactly as they were.
-            assertEquals("someone-else", next.hostId)
-            assertEquals(listOf("someone-else"), next.members)
-        }
 
     @Test fun `a leaf command before JOIN never reaches the BoardCell`() = runBlocking {
         every { boardCellManager.isLocalController() } returns true
-        every { boardCellManager.isPlaylistMember() } returns false
-        val capture = stubLocalCommit(boardCellManager)
-        queueManager.startQueue("Gateway", SessionVisibility.JOINABLE)
-        publish(joinable(host = "someone-else", members = listOf("someone-else")))
+        publish(shared())
         // Sharing is up, so the command really does reach the bridge — the
         // only thing missing is the leaf's JOIN, which is the whole basis of
-        // the gateway's proxy authority.
+        // the gateway carrying anything on its behalf.
         bridge.startSharing()
 
         serverCommands.emit(GattCommand(leafAddress,
             SessionQueueProtocol.encodeCommand(SessionCommand.Add(addedClimb, 45))))
 
-        assertFalse("an ungated leaf must not reach canonical state", capture.applied.isCaptured)
+        assertTrue("an ungated leaf must not reach canonical state", submitted.isEmpty())
 
         // The same command after JOIN does land, so the assertion above is
         // about the gate and not about the plumbing being dead.
         serverCommands.emit(GattCommand(leafAddress, SessionQueueProtocol.encodeJoin("Leaf")))
         serverCommands.emit(GattCommand(leafAddress,
             SessionQueueProtocol.encodeCommand(SessionCommand.Add(addedClimb, 45))))
-        assertTrue("a joined leaf must reach canonical state", capture.applied.isCaptured)
-        assertEquals(BoardPlaylistAuthority.GATEWAY_PROXY, capture.authority.captured)
+        assertEquals(1, submitted.size)
     }
 
-    @Test fun `a leaf resend becomes a bounded projection retry, not a queue edit`() = runBlocking {
+    @Test fun `a leaf resend becomes a projection retry, not a queue edit`() = runBlocking {
         every { boardCellManager.isLocalController() } returns true
-        every { boardCellManager.isPlaylistMember() } returns false
-        val capture = stubLocalCommit(boardCellManager)
-        coEvery { boardCellManager.retryProjectionForLeaf(any()) } returns
-            BoardCommandAck("retry-command", BoardCommandStatus.COMMITTED, cell, 1, 1, 7, "hash")
-        publish(joinable())
+        coEvery { boardCellManager.projectSelectedEntry() } returns true
+        publish(shared())
         hostWithLeaf()
 
         serverCommands.emit(GattCommand(leafAddress,
             SessionQueueProtocol.encodeCommand(SessionCommand.Resend)))
 
-        coVerify(exactly = 1) { boardCellManager.retryProjectionForLeaf(any()) }
-        assertFalse("a resend must not mutate the queue", capture.applied.isCaptured)
+        coVerify(exactly = 1) { boardCellManager.projectSelectedEntry() }
+        assertTrue("a resend must not mutate the playlist", submitted.isEmpty())
     }
 
     @Test fun `the GATT protocol gives a leaf no way to start, end or host a playlist`() {
@@ -357,58 +328,22 @@ class JoinablePlaylistGatewayTest {
             }
     }
 
-    @Test fun `a playlist-member gateway that is not the controller sends its own command`() =
+    @Test fun `a gateway that is not the controller sends the leaf's edit over the mesh`() =
         runBlocking {
             every { boardCellManager.isLocalController() } returns false
-            every { boardCellManager.isPlaylistMember() } returns true
-            val sentCommandId = slot<String>()
-            every {
-                boardCellManager.sendSessionCommand(any(), any(), capture(sentCommandId))
-            } answers { sentCommandId.captured }
-            publish(joinable())
+            publish(shared())
             hostWithLeaf()
 
             serverCommands.emit(GattCommand(leafAddress,
                 SessionQueueProtocol.encodeCommand(SessionCommand.Add(addedClimb, 45))))
             // The controller's real answer, not a local guess, is what the leaf
             // is told; feeding it in releases the waiting gateway.
-            commandAcks.send(BoardCommandAck(sentCommandId.captured,
+            commandAcks.send(BoardCommandAck(submitted.single().commandId,
                 BoardCommandStatus.COMMITTED, cell, 1, 1, 6, "hash"))
 
-            assertTrue("command must travel over FIPS", sentCommandId.isCaptured)
-            // A member sends under its own identity; no proxy claim is made.
-            verify(exactly = 0) { boardCellManager.sendLeafSessionCommand(any(), any(), any()) }
-            assertEquals(1, queueManager.state.value.queue.size)
-        }
-
-    @Test fun `a non-member gateway that is not the controller proxies in one message`() =
-        runBlocking {
-            every { boardCellManager.isLocalController() } returns false
-            every { boardCellManager.isPlaylistMember() } returns false
-            val sentCommandId = slot<String>()
-            every {
-                boardCellManager.sendLeafSessionCommand(any(), any(), capture(sentCommandId))
-            } answers { sentCommandId.captured }
-            queueManager.startQueue("Gateway", SessionVisibility.JOINABLE)
-            publish(joinable(host = "someone-else", members = listOf("someone-else")))
-            hostWithLeaf()
-
-            serverCommands.emit(GattCommand(leafAddress,
-                SessionQueueProtocol.encodeCommand(SessionCommand.Add(addedClimb, 45))))
-            commandAcks.send(BoardCommandAck(sentCommandId.captured,
-                BoardCommandStatus.COMMITTED, cell, 1, 1, 6, "hash"))
-
-            assertTrue("the leaf's edit must travel as a proxied command",
-                sentCommandId.isCaptured)
-            // No join-then-send: the gateway lends its authenticated hop, not
-            // its membership. The old sequence raced — the controller could
-            // commit the edit before the join and refuse it as "not a playlist
-            // member" — and it also made the gateway a full member, so it could
-            // inherit the host role and lose its own queue.
-            coVerify(exactly = 0) { boardCellManager.submitPlaylistControl(any()) }
-            verify(exactly = 0) { boardCellManager.sendSessionCommand(any(), any(), any()) }
-            assertNull("the gateway must not have joined the playlist",
-                queueManager.state.value.mesh)
+            assertEquals(1, submitted.size)
+            // One message and no join first: there is no membership to acquire.
+            assertTrue(submitted.single().ops.single() is BoardPlaylistOp.Add)
         }
 
     // ===== The legacy-only path is untouched =====
@@ -425,16 +360,33 @@ class JoinablePlaylistGatewayTest {
 
             assertEquals(listOf(addedClimb.uppercase()),
                 queueManager.state.value.queue.map { it.climbUuid })
+            assertTrue(submitted.isEmpty())
             assertNull(queueManager.state.value.mesh)
         }
 
-    @Test fun `an Android 9 leaf is never handed the playlist host role`() = runBlocking {
-        publish(joinable())
+    @Test fun `a gateway outside the cell keeps its own local queue`() = runBlocking {
+        every { boardCellManager.isLocalController() } returns false
+        queueManager.startQueue("Gateway", SessionVisibility.LOCAL_ONLY)
+        publish(shared(), members = setOf("controller-npub", "someone-else"))
+        hostWithLeaf()
 
-        // Playlist host is a canonical FIPS identity. A GATT leaf has none, so
-        // it can never appear as one; its gateway vouches for it instead.
-        assertEquals(localNode, snapshots.value!!.playlist.hostId)
-        assertEquals(listOf(localNode), snapshots.value!!.playlist.members)
-        assertTrue(queueManager.state.value.mesh!!.isHost)
+        serverCommands.emit(GattCommand(leafAddress,
+            SessionQueueProtocol.encodeCommand(SessionCommand.Add(addedClimb, 45))))
+
+        assertTrue("a non-member must not edit the board's playlist", submitted.isEmpty())
+        assertEquals(listOf(addedClimb.uppercase()),
+            queueManager.state.value.queue.map { it.climbUuid })
+        assertNull(queueManager.state.value.mesh)
+    }
+
+    @Test fun `an Android 9 leaf is never a member of the board group`() = runBlocking {
+        publish(shared())
+
+        // The playlist has no membership at all, and the board group's is a
+        // set of FIPS identities. A GATT leaf has none, so it can never appear
+        // in either; its gateway carries its edits instead.
+        assertEquals(setOf("controller-npub", localNode), snapshots.value!!.members)
+        assertEquals(listOf("controller-npub", localNode),
+            queueManager.state.value.mesh!!.members)
     }
 }

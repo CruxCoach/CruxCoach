@@ -40,8 +40,11 @@ import com.cruxcoach.android.boardcell.BoardCellPeerDiagnostics
 import com.cruxcoach.android.boardcell.BoardCellHandoverLifecycle
 import com.cruxcoach.android.boardcell.BoardCommandAck
 import com.cruxcoach.android.boardcell.BoardCommandStatus
-import com.cruxcoach.android.boardcell.BoardPlaylistOps
 import com.cruxcoach.android.boardcell.BoardPlaylistState
+import com.cruxcoach.android.boardcell.BoardPlaylistCommand
+import com.cruxcoach.android.boardcell.BoardPlaylistOp
+import com.cruxcoach.android.boardcell.BoardPlaylistOps
+import com.cruxcoach.android.boardcell.BoardPlaylistPolicy
 import com.cruxcoach.android.boardcell.BoardProjection
 import com.cruxcoach.android.boardcell.BoardCellSnapshot
 import com.cruxcoach.android.boardcell.BoardCellScopeRegistry
@@ -49,50 +52,6 @@ import com.cruxcoach.android.boardcell.PhysicalBoardIdentity
 
 enum class PlaylistCommandFeedbackKind { CONFLICT, UNAVAILABLE, FAILED }
 data class PlaylistCommandFeedback(val kind: PlaylistCommandFeedbackKind, val action: String)
-
-/**
- * How long the "waiting for the playlist host" display should stand.
- *
- * The canonical expiry inside the request is the truth; this only decides when
- * the screen stops saying "waiting". Counting a flat 30 s from the local send
- * was wrong whenever the controller committed the request a few seconds later:
- * the display gave up while the host still had time left to answer in, and the
- * user was told "no answer" for a request that was very much still open.
- */
-internal object PlaylistStartTimeout {
-    /** Lets the canonical expiry land before the local display gives up. */
-    const val GRACE_MS = 5_000L
-
-    /**
-     * Used only until this device has seen its own request in a snapshot.
-     *
-     * At that point there may be no canonical deadline at all — the request
-     * may never have reached a controller — so something has to stop the
-     * screen waiting for ever.
-     */
-    fun transportFallbackMs(proposalTimeoutMs: Long): Long = proposalTimeoutMs + GRACE_MS
-
-    /** Used from the moment the request's canonical deadline is known. */
-    fun fromCanonicalDeadline(expiresAtEpochMs: Long, nowEpochMs: Long): Long =
-        (expiresAtEpochMs - nowEpochMs + GRACE_MS).coerceAtLeast(0)
-}
-
-/** What happened to this device's request to start a joinable playlist. */
-enum class PlaylistStartState {
-    IDLE,
-    /** Sent and no playlist existed, or the host said yes. */
-    STARTED,
-    /** A playlist is running; its host has been asked. */
-    WAITING,
-    /** The host said no. */
-    REJECTED,
-    /** The host did not answer within 30 s, which counts as a refusal. */
-    TIMED_OUT,
-    /** Another request is already open — try again in a moment. */
-    BUSY,
-    /** Nothing reached the mesh. */
-    FAILED,
-}
 
 /**
  * Bridges [SessionQueueManager] with BLE GATT for shared sessions.
@@ -136,8 +95,25 @@ class SessionGattBridge(
         private const val MIGRATION_BASE_DELAY_MS = 1000L
         private const val MIGRATION_INDEX_STEP_MS = 3000L
         private const val COMMAND_RESULT_TIMEOUT_MS = 5000L
-        /** Roughly one 30 s proposal window of resends before giving up. */
-        private const val MAX_CONTROL_RETRIES = 6
+        /**
+         * How the shared playlist recovers a dropped command.
+         *
+         * The first resend is deliberately sub-second and on its own timer:
+         * tying it to the 2 s maintenance loop made a single lost BLE frame
+         * cost two seconds of apparent dead UI. The backoff then widens so a
+         * genuinely unreachable controller is not hammered, and the command id
+         * is unchanged throughout, so a resend that crosses a commit is
+         * answered from the durable ack window instead of applied twice.
+         */
+        internal const val PLAYLIST_COMMAND_RETRY_TICK_MS = 200L
+        internal const val PLAYLIST_COMMAND_RETRY_INITIAL_MS = 250L
+        internal const val PLAYLIST_COMMAND_RETRY_MAX_MS = 4_000L
+        internal const val MAX_PLAYLIST_COMMAND_RETRIES = 8
+
+        /** Exponential backoff for resend [attempt], counted from zero. */
+        internal fun playlistRetryBackoffMs(attempt: Int): Long =
+            (PLAYLIST_COMMAND_RETRY_INITIAL_MS shl attempt.coerceIn(0, 8))
+                .coerceAtMost(PLAYLIST_COMMAND_RETRY_MAX_MS)
         private const val COMMAND_RESULT_CACHE_SIZE = 256
         private const val HANDOVER_SCAN_TIMEOUT_MS = 8_000L
         private const val HANDOVER_CONNECT_TIMEOUT_MS = 20_000L
@@ -174,22 +150,25 @@ class SessionGattBridge(
     @Volatile private var sharedBoardDisplayName: String? = null
     private var meshRealmHeldForJoin = false
     private val commandGate = SessionCommandGate()
-    private data class PendingMeshCommand(
+    /**
+     * One playlist edit awaiting the controller's terminal answer.
+     *
+     * Retried on its own sub-second schedule rather than by the 2 s
+     * maintenance loop: a dropped BLE frame used to cost a full maintenance
+     * tick before anybody noticed, which is long enough to feel like the
+     * button did nothing. The command id never changes across retries, so the
+     * controller's durable ack window answers a duplicate instead of applying
+     * it twice — including after a controller handover, which carries that
+     * window in the snapshot it adopts.
+     */
+    private data class PendingPlaylistCommand(
         val label: String,
-        val payload: ByteArray,
-        val context: com.cruxcoach.android.boardcell.BoardPlaylistCommandContext,
-        val basePlaylistRevision: Long,
+        val command: BoardPlaylistCommand,
         @Volatile var attempts: Int = 0,
-        @Volatile var retryAtMs: Long = SystemClock.elapsedRealtime() + 2_000,
+        @Volatile var retryAtMs: Long =
+            SystemClock.elapsedRealtime() + PLAYLIST_COMMAND_RETRY_INITIAL_MS,
     )
-    private val pendingMeshCommands = ConcurrentHashMap<String, PendingMeshCommand>()
-    private data class PendingPlaylistControl(
-        val label: String,
-        val control: com.cruxcoach.android.boardcell.BoardPlaylistControl,
-        @Volatile var attempts: Int = 0,
-        @Volatile var retryAtMs: Long = SystemClock.elapsedRealtime() + 2_000,
-    )
-    private val pendingPlaylistControls = ConcurrentHashMap<String, PendingPlaylistControl>()
+    private val pendingPlaylistCommands = ConcurrentHashMap<String, PendingPlaylistCommand>()
     /**
      * Terminal-ack rendezvous for commands whose caller needs the answer.
      *
@@ -198,12 +177,6 @@ class SessionGattBridge(
      * completes these instead.
      */
     private val meshAckWaiters = ConcurrentHashMap<String, CompletableDeferred<BoardCommandAck>>()
-    private val _playlistStartState = MutableStateFlow(PlaylistStartState.IDLE)
-    val playlistStartState = _playlistStartState.asStateFlow()
-    @Volatile private var pendingStartRequestId: String? = null
-    private var startRequestTimeoutJob: Job? = null
-    /** Canonical expiry of our own open request, once one is visible. */
-    @Volatile private var canonicalStartDeadline: Long? = null
     private val nextRequestId = AtomicLong(System.nanoTime())
     private val pendingBleCommands = ConcurrentHashMap<Long, String>()
     private val _pendingCommandCount = MutableStateFlow(0)
@@ -230,9 +203,7 @@ class SessionGattBridge(
         BoardControllerProfiles.forBoard(bleConnection.connectedBoard).connectionCapacity
 
     init {
-        queueManager.startCanonicalWithFirstClimb = { item, sessionId ->
-            startJoinablePlaylist(listOf(item), sessionId)
-        }
+        queueManager.addToSharedPlaylist = { items -> addToSharedPlaylist(items) }
         userPreferences?.let { preferences ->
             scope.launch {
                 preferences.localUserProfile.collect { profile ->
@@ -245,12 +216,8 @@ class SessionGattBridge(
         scope.launch {
             queueManager.state.collect {
                 if (!it.isActive) {
-                    pendingMeshCommands.clear()
+                    pendingPlaylistCommands.clear()
                     pendingBleCommands.clear()
-                    // Lifecycle commands are scoped to the session that issued
-                    // them; retrying a leave into a playlist that has already
-                    // ended is noise at best.
-                    pendingPlaylistControls.clear()
                     meshAckWaiters.values.forEach { waiter -> waiter.cancel() }
                     meshAckWaiters.clear()
                     _pendingCommandCount.value = 0
@@ -376,33 +343,6 @@ class SessionGattBridge(
                     displayName = sharedBoardDisplayName,
                 )
             }
-            // Resolves this device's own "waiting for the host" status from
-            // canonical state rather than from a second timer: the request is
-            // over the moment it is no longer open, and the answer is whether
-            // this device ended up in the playlist.
-            scope.launch {
-                manager.snapshots.collect { snapshot ->
-                    val requestId = pendingStartRequestId ?: return@collect
-                    if (_playlistStartState.value != PlaylistStartState.WAITING) return@collect
-                    val playlist = snapshot?.playlist
-                    val open = playlist?.proposal?.takeIf { it.requestId == requestId }
-                    if (open != null) {
-                        // The canonical deadline is now known, so stop counting
-                        // from the local send. The controller may have committed
-                        // the request seconds after we sent it, and a local
-                        // 30 s timer would then have said "no answer" while the
-                        // host still had time left to answer in.
-                        rescheduleStartTimeout(requestId, open.expiresAtEpochMs)
-                        return@collect
-                    }
-                    if (playlist == null) return@collect
-                    pendingStartRequestId = null
-                    startRequestTimeoutJob?.cancel()
-                    _playlistStartState.value =
-                        if (manager.localNodeId() in playlist.members) PlaylistStartState.STARTED
-                        else PlaylistStartState.REJECTED
-                }
-            }
             scope.launch {
                 manager.projectionRequests.collect { inbound ->
                     manager.commitProjectionRequest(inbound) {
@@ -411,93 +351,90 @@ class SessionGattBridge(
                 }
             }
             scope.launch {
-                manager.sessionCommands.collect { command ->
-                    handleMeshCommand(command)
-                }
-            }
-            scope.launch {
-                manager.leafCommands.collect { command -> handleLeafCommand(command) }
-            }
-            scope.launch {
                 manager.commandAcks.collect { ack ->
                     if (ack.status != BoardCommandStatus.ACCEPTED) {
                         meshAckWaiters.remove(ack.commandId)?.complete(ack)
                     }
-                    pendingPlaylistControls[ack.commandId]?.let { control ->
-                        if (ack.status == BoardCommandStatus.ACCEPTED) return@collect
-                        pendingPlaylistControls.remove(ack.commandId)
-                        updatePendingCommandCount()
-                        applyPlaylistControlAck(control, ack)
+                    val pending = pendingPlaylistCommands[ack.commandId] ?: return@collect
+                    // ACCEPTED means the controller has it and will answer
+                    // again; that is precisely what stops the sub-second
+                    // resend loop within one round trip.
+                    if (ack.status == BoardCommandStatus.ACCEPTED) {
+                        pending.retryAtMs = SystemClock.elapsedRealtime() + COMMAND_RESULT_TIMEOUT_MS
                         return@collect
                     }
-                    val pending = pendingMeshCommands[ack.commandId] ?: return@collect
-                    val action = pending.label
+                    removePendingCommand(ack.commandId)
                     when (ack.status) {
-                        BoardCommandStatus.COMMITTED -> removePendingCommand(ack.commandId)
+                        BoardCommandStatus.COMMITTED -> Unit
                         BoardCommandStatus.REJECTED_CONFLICT,
                         BoardCommandStatus.REJECTED_STALE,
-                        BoardCommandStatus.SUPERSEDED -> {
-                            removePendingCommand(ack.commandId)
+                        BoardCommandStatus.SUPERSEDED ->
                             _commandFeedback.emit(PlaylistCommandFeedback(
-                                PlaylistCommandFeedbackKind.CONFLICT, action))
-                        }
+                                PlaylistCommandFeedbackKind.CONFLICT, pending.label))
                         BoardCommandStatus.NOT_CONTROLLER,
-                        BoardCommandStatus.BOARD_WRITE_FAILED -> {
-                            removePendingCommand(ack.commandId)
+                        BoardCommandStatus.BOARD_WRITE_FAILED ->
                             _commandFeedback.emit(PlaylistCommandFeedback(
-                                PlaylistCommandFeedbackKind.FAILED, action))
-                        }
+                                PlaylistCommandFeedbackKind.FAILED, pending.label))
                         BoardCommandStatus.ACCEPTED -> Unit
                     }
                 }
             }
+            // A resend loop of its own, ticking far faster than the 2 s
+            // maintenance loop. A playlist edit that vanished with one BLE
+            // frame is back on the wire within a quarter of a second instead
+            // of after a maintenance tick nobody can see coming.
             scope.launch {
                 while (true) {
-                    delay(1_000)
+                    delay(PLAYLIST_COMMAND_RETRY_TICK_MS)
                     val now = SystemClock.elapsedRealtime()
-                    pendingMeshCommands.forEach { (commandId, pending) ->
+                    pendingPlaylistCommands.forEach { (commandId, pending) ->
                         if (now < pending.retryAtMs) return@forEach
-                        manager.retrySessionCommand(pending.payload, pending.context, commandId,
-                            pending.basePlaylistRevision)
-                        pending.attempts++
-                        val backoff = (2_000L shl pending.attempts.coerceAtMost(3)).coerceAtMost(15_000L)
-                        pending.retryAtMs = now + backoff
-                    }
-                    // Control commands carry their original commandId, so a
-                    // retry that arrives after the controller already committed
-                    // is answered from the durable ack window rather than
-                    // starting a second playlist.
-                    pendingPlaylistControls.forEach { (commandId, pending) ->
-                        if (now < pending.retryAtMs) return@forEach
-                        if (pending.attempts >= MAX_CONTROL_RETRIES) {
+                        if (pending.attempts >= MAX_PLAYLIST_COMMAND_RETRIES) {
                             // Give up rather than retry for ever. The command
                             // id stays in the controller's durable ack window,
                             // so a later reconnect still cannot double-apply it
                             // — this only stops the local resend loop and tells
-                            // the user the request did not land.
-                            pendingPlaylistControls.remove(commandId)
-                            updatePendingCommandCount()
-                            if (pending.control is
-                                    com.cruxcoach.android.boardcell.BoardPlaylistControl.Start &&
-                                pendingStartRequestId ==
-                                    (pending.control as
-                                        com.cruxcoach.android.boardcell.BoardPlaylistControl.Start).requestId) {
-                                pendingStartRequestId = null
-                                _playlistStartState.value = PlaylistStartState.FAILED
-                            }
-                            Log.w(TAG, "event=playlist_control_abandoned action=${pending.label}")
+                            // the user the edit did not land.
+                            removePendingCommand(commandId)
+                            Log.w(TAG, "event=playlist_command_abandoned action=${pending.label}")
                             _commandFeedback.emit(PlaylistCommandFeedback(
                                 PlaylistCommandFeedbackKind.UNAVAILABLE, pending.label))
                             return@forEach
                         }
-                        manager.retryPlaylistControl(pending.control)
+                        manager.retryPlaylistCommand(pending.command)
+                        pending.retryAtMs = now + playlistRetryBackoffMs(pending.attempts)
                         pending.attempts++
-                        val backoff = (2_000L shl pending.attempts.coerceAtMost(3)).coerceAtMost(15_000L)
-                        pending.retryAtMs = now + backoff
                     }
                 }
             }
         }
+    }
+
+    /**
+     * Turns one index-based UI or GATT-leaf command into canonical operations.
+     *
+     * Indices are only meaningful against the list they were read from, so
+     * they are resolved here — once, against this device's current replica —
+     * into the occurrence ids the shared playlist actually speaks. An index
+     * that no longer names anything yields no operations, which the caller
+     * reports as a conflict rather than guessing at a neighbour.
+     */
+    private fun playlistOpsFor(
+        command: SessionCommand,
+        playlist: BoardPlaylistState,
+    ): List<BoardPlaylistOp> = when (command) {
+        is SessionCommand.Add -> BoardPlaylistOps.add(command.climbUuid, command.angle)
+        is SessionCommand.Remove -> BoardPlaylistOps.removeAt(playlist, command.index)
+        is SessionCommand.SetCurrent -> BoardPlaylistOps.setCurrentAt(playlist, command.index)
+        SessionCommand.Next ->
+            if (playlist.activeRest != null) BoardPlaylistOps.endRest()
+            else BoardPlaylistOps.next(playlist)
+        SessionCommand.Prev -> BoardPlaylistOps.previous(playlist)
+        is SessionCommand.Move -> BoardPlaylistOps.moveAt(playlist, command.from, command.to)
+        // Re-sending changes nothing about the playlist; it is a request to
+        // the controller to try the physical write again.
+        SessionCommand.Resend -> emptyList()
+        is SessionCommand.Join, SessionCommand.Leave -> emptyList()
     }
 
     /**
@@ -506,58 +443,31 @@ class SessionGattBridge(
      * API 28 has no public BLE L2CAP CoC and therefore cannot be a FIPS node,
      * so it takes part as a leaf: this device is its gateway and commits the
      * command under its own authenticated identity, having already gated the
-     * client through JOIN. When the gateway is not the technical controller
-     * the command travels the same authenticated mesh path any other member's
-     * would, and the leaf's result byte is the controller's real answer rather
-     * than a local guess.
+     * client through JOIN.
+     *
+     * There is no proxy authority left to grant. The leaf's edit is something
+     * the gateway is itself entitled to make — every cell member may edit the
+     * shared playlist — so the command travels the ordinary path and the
+     * leaf's result byte is the controller's real answer rather than a local
+     * guess.
      */
     private suspend fun commitGatewayCommand(
         command: SessionCommand,
-        context: com.cruxcoach.android.boardcell.BoardPlaylistCommandContext,
         snapshot: BoardCellSnapshot,
     ): BoardCommandAck? {
         val manager = boardCellManager ?: return null
         val commandId = UUID.randomUUID().toString()
-        val joinable = snapshot.playlist.isJoinable
-        // Proxy authority applies exactly when the gateway is carrying a
-        // leaf's verb into a playlist it never joined itself. It buys queue
-        // verbs and a projection retry, never lifecycle or host rights, and
-        // the gateway does not become a playlist member by using it — so it
-        // cannot inherit the host role or lose its own local queue.
-        val proxying = joinable && !manager.isPlaylistMember()
-        // Re-sending is a projection retry, not a queue edit, and is one of
-        // the verbs an API-28 leaf is allowed to trigger.
-        if (joinable && command == SessionCommand.Resend) {
-            return when {
-                manager.isLocalController() -> manager.retryProjectionForLeaf(commandId)
-                proxying -> awaitMeshAck(commandId) { manager.sendLeafRetryProjection(commandId) }
-                else -> awaitMeshAck(commandId) {
-                    manager.submitPlaylistControl(
-                        com.cruxcoach.android.boardcell.BoardPlaylistControl.RetryProjection(
-                            commandId, snapshot.playlistRevision))
-                }
-            }
+        if (command == SessionCommand.Resend) {
+            return if (manager.projectSelectedEntry())
+                BoardCommandAck(commandId, BoardCommandStatus.COMMITTED, snapshot.cellId,
+                    snapshot.epoch, snapshot.controllerTerm, snapshot.sequence, snapshot.stateHash)
+            else null
         }
-        if (manager.isLocalController()) {
-            val authority = if (proxying)
-                com.cruxcoach.android.boardcell.BoardPlaylistAuthority.GATEWAY_PROXY
-            else com.cruxcoach.android.boardcell.BoardPlaylistAuthority.MEMBER
-            return manager.commitLocalSessionCommand(commandId, snapshot.playlistRevision,
-                authority) { current, exact ->
-                if (current.isJoinable) applyRebasedCommand(command, context, current, exact)
-                else applyLegacyHostCommand(command, context, current, exact)
-            }
-        }
-        if (!joinable) return null
-        val payload = SessionQueueProtocol.encodeCommand(command)
-        // One message, no join first: the gateway lends its authenticated hop
-        // rather than its membership. The earlier join-then-send raced, because
-        // the controller could commit the edit before the join and refuse it as
-        // "not a playlist member".
-        return awaitMeshAck(commandId) {
-            if (proxying) manager.sendLeafSessionCommand(payload, context, commandId)
-            else manager.sendSessionCommand(payload, context, commandId)
-        }
+        val ops = playlistOpsFor(command, snapshot.playlist)
+        if (ops.isEmpty()) return null
+        val playlistCommand = manager.composePlaylistCommand(ops, commandId) ?: return null
+        if (manager.isLocalController()) return manager.submitPlaylistCommand(playlistCommand)
+        return awaitMeshAck(commandId) { manager.submitPlaylistCommand(playlistCommand) }
     }
 
     /**
@@ -578,43 +488,6 @@ class SessionGattBridge(
         } finally {
             meshAckWaiters.remove(commandId)
         }
-    }
-
-    private suspend fun applyPlaylistControlAck(
-        pending: PendingPlaylistControl,
-        ack: BoardCommandAck,
-    ) {
-        val control = pending.control
-        if (control is com.cruxcoach.android.boardcell.BoardPlaylistControl.Start &&
-            pendingStartRequestId == control.requestId) {
-            _playlistStartState.value = when {
-                ack.status == BoardCommandStatus.COMMITTED -> {
-                    val playlist = boardCellManager?.playlist()
-                    when {
-                        playlist?.proposal?.requestId == control.requestId -> PlaylistStartState.WAITING
-                        boardCellManager?.isPlaylistMember() == true -> PlaylistStartState.STARTED
-                        else -> PlaylistStartState.WAITING
-                    }
-                }
-                ack.detail?.contains("already open") == true -> PlaylistStartState.BUSY
-                ack.status == BoardCommandStatus.REJECTED_CONFLICT -> PlaylistStartState.REJECTED
-                else -> PlaylistStartState.FAILED
-            }
-            if (_playlistStartState.value != PlaylistStartState.WAITING) pendingStartRequestId = null
-        }
-        if (ack.status != BoardCommandStatus.COMMITTED) {
-            Log.w(TAG, "event=playlist_control_result action=${pending.label} status=${ack.status}")
-            _commandFeedback.emit(PlaylistCommandFeedback(
-                PlaylistCommandFeedbackKind.CONFLICT, pending.label))
-        }
-    }
-
-    /** Clears a finished/abandoned start request so the UI stops waiting. */
-    fun acknowledgePlaylistStartState() {
-        _playlistStartState.value = PlaylistStartState.IDLE
-        pendingStartRequestId = null
-        canonicalStartDeadline = null
-        startRequestTimeoutJob?.cancel()
     }
 
     /** Approval is the only entry into this path. Find the physical board whose
@@ -680,8 +553,14 @@ class SessionGattBridge(
         val state = queueManager.state.value
         Log.d(TAG, "startSharing() called, role=${state.role}, isSharing=$isSharing, " +
             "hostJob=${hostJob != null}, joinJob=${joinJob != null}")
-        if (state.role != SessionRole.HOST) {
-            Log.w(TAG, "Cannot share: not in HOST mode")
+        // A member of a BoardCell qualifies as much as a legacy local host
+        // does. The GATT server exists so an API-28 phone can take part
+        // through a gateway, and every member is equally able to be one — its
+        // edits travel as ordinary playlist commands under the gateway's own
+        // identity. Requiring a session HOST role here left no gateway at all
+        // once the shared playlist stopped having one.
+        if (state.role != SessionRole.HOST && state.mesh == null) {
+            Log.w(TAG, "Cannot share: neither a local host nor a board member")
             return
         }
 
@@ -1313,175 +1192,119 @@ class SessionGattBridge(
         }
     }
 
-    // ===== Joinable playlist: lifecycle over FIPS =====
+    // ===== Shared playlist: bounded typed operations over FIPS =====
 
     /**
-     * Start the one joinable playlist of this BoardCell, or ask its host for room.
+     * Append climbs to the BoardCell's one shared playlist.
      *
-     * Every authenticated cell member may do this; the technical controller is
-     * only the serializer and never appears as an authority. Which of the two
-     * happens is decided by the controller's canonical state, not by this
-     * device's possibly stale replica.
+     * There is nothing to start: the playlist exists for as long as the cell
+     * does, and every authenticated member may add to it. The whole list goes
+     * in one atomic command so an interrupted import cannot leave half a
+     * workout behind.
      */
-    fun startJoinablePlaylist(items: List<QueueItem>, sessionId: Int): Boolean {
-        val manager = boardCellManager ?: return false
-        val snapshot = manager.snapshot() ?: return false
+    fun addToSharedPlaylist(items: List<QueueItem>): Boolean {
         if (items.isEmpty()) return false
-        val requestId = UUID.randomUUID().toString()
-        val control = com.cruxcoach.android.boardcell.BoardPlaylistControl.Start(
-            commandId = UUID.randomUUID().toString(),
-            basePlaylistRevision = snapshot.playlistRevision,
-            requestId = requestId,
-            sessionId = sessionId,
-            items = items.map { it.climbUuid to it.angle },
-            restAfterSeconds = items.map { it.restAfterSeconds },
-        )
-        _playlistStartState.value = PlaylistStartState.WAITING
-        pendingStartRequestId = requestId
-        canonicalStartDeadline = null
-        submitControl(control, "start") { ack ->
-            when {
-                ack == null -> PlaylistStartState.FAILED
-                ack.status == BoardCommandStatus.COMMITTED -> {
-                    val playlist = manager.playlist()
-                    when {
-                        playlist?.proposal?.requestId == requestId -> PlaylistStartState.WAITING
-                        manager.isPlaylistMember() -> PlaylistStartState.STARTED
-                        else -> PlaylistStartState.WAITING
-                    }
-                }
-                ack.detail?.contains("already open") == true -> PlaylistStartState.BUSY
-                ack.status == BoardCommandStatus.REJECTED_CONFLICT -> PlaylistStartState.REJECTED
-                else -> PlaylistStartState.FAILED
+        val ops = BoardPlaylistOps.addAll(
+            items.map { Triple(it.climbUuid, it.angle, it.restAfterSeconds) })
+        // A list longer than one command's bound is split, which is why addAll
+        // chains each entry behind the one before it: the import stays
+        // contiguous and in its own order even when another member's add lands
+        // between two chunks.
+        return ops.chunked(BoardPlaylistPolicy.MAX_OPS_PER_COMMAND)
+            .mapIndexed { index, chunk ->
+                submitPlaylistOps("add(${items.size})#$index", chunk)
+            }.all { it }
+    }
+
+    /**
+     * Empty the shared playlist for everybody.
+     *
+     * The replacement for "end the playlist": there is no playlist lifecycle
+     * to end, so the only meaningful group action is clearing what is in it.
+     * The clear carries a generation, so edits that were already in flight
+     * against the emptied list are dropped rather than partially resurrecting
+     * it, and a retried clear changes nothing a second time.
+     */
+    fun clearSharedPlaylist(): Boolean = submitPlaylistOps("clear", BoardPlaylistOps.clear())
+
+    /**
+     * Drop the queued repeats of the climb at [index] for everybody, in one
+     * command.
+     *
+     * One atomic command, because half a dropped block plus the old short rest
+     * is a worse state than either end of the change.
+     */
+    fun dropRepeatedAttempts(index: Int): Boolean {
+        val playlist = boardCellManager?.playlist() ?: return false
+        val ops = BoardPlaylistOps.dropRepeatsAfter(playlist, index)
+        if (ops.isEmpty()) return false
+        return submitPlaylistOps("skip_attempts", ops)
+    }
+
+    /**
+     * The lamp: put the selected entry on the physical board.
+     *
+     * Open to every member, and deliberately usable when the selected entry is
+     * already the confirmed one — pressing it again is a resend.
+     */
+    fun projectSelectedEntry(label: String = "send") {
+        val manager = boardCellManager ?: return
+        scope.launch {
+            if (!manager.projectSelectedEntry()) {
+                _commandFeedback.emit(PlaylistCommandFeedback(
+                    PlaylistCommandFeedbackKind.UNAVAILABLE, label))
             }
         }
-        // Transport fallback only, and only until a canonical deadline exists.
-        // If the request never reaches a controller there is no canonical
-        // expiry to wait for, so something has to stop the screen saying
-        // "waiting" for ever; the moment our own request appears in a snapshot
-        // the collector above reschedules this from its real deadline.
-        armStartTimeout(requestId, PlaylistStartTimeout.transportFallbackMs(
-            com.cruxcoach.android.boardcell.BoardPlaylistPolicy.PROPOSAL_TIMEOUT_MS))
-        return true
-    }
-
-    /** Re-arms the display fallback from the request's canonical deadline. */
-    private fun rescheduleStartTimeout(requestId: String, expiresAtEpochMs: Long) {
-        if (canonicalStartDeadline == expiresAtEpochMs) return
-        canonicalStartDeadline = expiresAtEpochMs
-        armStartTimeout(requestId, PlaylistStartTimeout.fromCanonicalDeadline(
-            expiresAtEpochMs, wallClockEpochMs()))
-    }
-
-    private fun armStartTimeout(requestId: String, delayMs: Long) {
-        startRequestTimeoutJob?.cancel()
-        startRequestTimeoutJob = scope.launch {
-            delay(delayMs)
-            if (pendingStartRequestId == requestId &&
-                _playlistStartState.value == PlaylistStartState.WAITING) {
-                _playlistStartState.value = PlaylistStartState.TIMED_OUT
-                pendingStartRequestId = null
-            }
-        }
-    }
-
-    /** The playlist host answers an open request. */
-    fun decidePlaylistRequest(
-        requestId: String,
-        decision: com.cruxcoach.android.boardcell.BoardPlaylistProposalDecision,
-    ) {
-        val snapshot = boardCellManager?.snapshot() ?: return
-        submitControl(com.cruxcoach.android.boardcell.BoardPlaylistControl.Decide(
-            commandId = UUID.randomUUID().toString(),
-            basePlaylistRevision = snapshot.playlistRevision,
-            requestId = requestId,
-            decision = decision,
-        ), "decide")
-    }
-
-    /** Explicit user join. Mesh membership alone never joins a playlist. */
-    fun joinJoinablePlaylist() {
-        val snapshot = boardCellManager?.snapshot() ?: return
-        submitControl(com.cruxcoach.android.boardcell.BoardPlaylistControl.Join(
-            commandId = UUID.randomUUID().toString(),
-            basePlaylistRevision = snapshot.playlistRevision,
-        ), "join")
-    }
-
-    /** Leave the playlist; a departing host may nominate its successor. */
-    fun leaveJoinablePlaylist(successorId: String? = null) {
-        val snapshot = boardCellManager?.snapshot() ?: return
-        submitControl(com.cruxcoach.android.boardcell.BoardPlaylistControl.Leave(
-            commandId = UUID.randomUUID().toString(),
-            basePlaylistRevision = snapshot.playlistRevision,
-            successorId = successorId,
-        ), "leave")
-    }
-
-    /** End for everyone. The controller refuses while anybody else is joined. */
-    fun endJoinablePlaylist() {
-        val snapshot = boardCellManager?.snapshot() ?: return
-        submitControl(com.cruxcoach.android.boardcell.BoardPlaylistControl.End(
-            commandId = UUID.randomUUID().toString(),
-            basePlaylistRevision = snapshot.playlistRevision,
-        ), "end")
-    }
-
-    /** Any playlist member may ask for the pending send to be tried again. */
-    fun retryPlaylistProjection(label: String = "retry") {
-        val snapshot = boardCellManager?.snapshot() ?: return
-        submitControl(com.cruxcoach.android.boardcell.BoardPlaylistControl.RetryProjection(
-            commandId = UUID.randomUUID().toString(),
-            basePlaylistRevision = snapshot.playlistRevision,
-        ), label)
     }
 
     /** The running rest is over — it ran out, or somebody skipped it. */
     fun endCanonicalRest() {
-        val snapshot = boardCellManager?.snapshot() ?: return
-        if (snapshot.playlist.activeRest == null) return
-        submitControl(com.cruxcoach.android.boardcell.BoardPlaylistControl.RestEnded(
-            commandId = UUID.randomUUID().toString(),
-            basePlaylistRevision = snapshot.playlistRevision,
-        ), "skip_rest")
+        if (boardCellManager?.playlist()?.activeRest == null) return
+        submitPlaylistOps("skip_rest", BoardPlaylistOps.endRest())
     }
 
     /** Change the planned rest that follows one entry, for everybody. */
     fun setCanonicalRest(index: Int, seconds: Int) {
-        val snapshot = boardCellManager?.snapshot() ?: return
-        submitControl(com.cruxcoach.android.boardcell.BoardPlaylistControl.SetRest(
-            commandId = UUID.randomUUID().toString(),
-            basePlaylistRevision = snapshot.playlistRevision,
-            index = index,
-            seconds = seconds,
-        ), "set_rest")
+        val playlist = boardCellManager?.playlist() ?: return
+        submitPlaylistOps("set_rest", BoardPlaylistOps.setRestAt(playlist, index, seconds))
     }
 
-    private fun submitControl(
-        control: com.cruxcoach.android.boardcell.BoardPlaylistControl,
-        label: String,
-        onDecided: ((BoardCommandAck?) -> PlaylistStartState?)? = null,
-    ) {
-        val manager = boardCellManager ?: return
+    /**
+     * Sends one playlist edit and keeps it retryable until it is answered.
+     *
+     * Returns false only when nothing could be composed or sent at all — an
+     * index that no longer names an entry, or no reachable controller. A
+     * command that went out is tracked by its own id, so the retry loop and
+     * the controller's durable ack window between them guarantee it lands
+     * exactly once.
+     */
+    private fun submitPlaylistOps(label: String, ops: List<BoardPlaylistOp>): Boolean {
+        val manager = boardCellManager ?: return false
+        val command = manager.composePlaylistCommand(ops) ?: return false
+        // Acting on the shared playlist is asking to see it, so a player this
+        // device closed earlier comes back rather than leaving the user
+        // editing a list they cannot see.
+        queueManager.resumeFollowingSharedPlaylist()
         scope.launch {
-            val ack = manager.submitPlaylistControl(control)
+            val ack = manager.submitPlaylistCommand(command)
             if (ack != null && ack.status == BoardCommandStatus.ACCEPTED) {
                 // Sent over the mesh; the controller's real answer arrives on
                 // commandAcks. Keep it for retry until then.
-                pendingPlaylistControls[control.commandId] = PendingPlaylistControl(label, control)
+                pendingPlaylistCommands[command.commandId] =
+                    PendingPlaylistCommand(label, command)
                 updatePendingCommandCount()
                 return@launch
             }
-            onDecided?.invoke(ack)?.let { _playlistStartState.value = it }
             if (ack == null) {
                 _commandFeedback.emit(PlaylistCommandFeedback(
                     PlaylistCommandFeedbackKind.UNAVAILABLE, label))
             } else if (ack.status != BoardCommandStatus.COMMITTED) {
-                Log.w(TAG, "event=playlist_control_refused action=$label status=${ack.status}")
+                Log.w(TAG, "event=playlist_command_refused action=$label status=${ack.status}")
                 _commandFeedback.emit(PlaylistCommandFeedback(
                     PlaylistCommandFeedbackKind.CONFLICT, label))
             }
         }
+        return true
     }
 
     // ===== Participant: send commands to host =====
@@ -1508,66 +1331,45 @@ class SessionGattBridge(
         sendParticipantCommand("resend", SessionCommand.Resend)
 
     /**
-     * Fire a participant's control command at the host, and say so when it
+     * Fire one playlist edit at whoever can serialize it, and say so when it
      * does not go out.
      *
-     * These are the only way a participant can steer the playlist, and the
-     * write can fail for mundane reasons — the command characteristic not
-     * resolved yet, the GATT link dropped. The result used to be discarded,
-     * so a failed write looked exactly like a working one that the host chose
-     * to ignore: the button did nothing and nothing said why. The command is
-     * still fire-and-forget by design (the host re-broadcasts the resulting
-     * state, so there is nothing local to roll back) — this only makes the
-     * failure findable.
+     * Inside a BoardCell every edit is a bounded typed operation against
+     * occurrence ids: there is no local shortcut for anybody, including the
+     * technical controller, so remote and local control take the identical
+     * path. Outside a BoardCell this device has a private playlist and simply
+     * edits it, and the legacy GATT client path remains for a participant of a
+     * pre-FIPS session.
      */
     private fun sendParticipantCommand(label: String, command: SessionCommand) {
         scope.launch {
-            val payload = SessionQueueProtocol.encodeCommand(command)
-            val snapshot = boardCellManager?.snapshot()
-            val context = snapshot?.let { PlaylistCommandRebaser.context(command, it.playlist) }
-            val joinable = snapshot?.playlist?.isJoinable == true
-            // Re-sending is a projection retry, never a queue edit, and every
-            // playlist member may ask for it.
-            if (joinable && command == SessionCommand.Resend) {
-                retryPlaylistProjection(label)
-                return@launch
-            }
-            // Whether this device applies the command itself is a question
-            // about the technical controller, not about who hosts the session.
-            // Routing it by session role is exactly what left a session HOST
-            // that was not the controller calling a write it could never
-            // perform, with no command going out and no error shown.
-            val isController = boardCellManager?.isLocalController() == true
-            if (isController || (!joinable && queueManager.state.value.role == SessionRole.HOST)) {
-                if (snapshot == null || context == null) {
-                    applyLegacyLocalCommand(command)
+            val manager = boardCellManager
+            val snapshot = manager?.snapshot()
+            if (manager != null && snapshot != null && manager.isCellMember()) {
+                if (command == SessionCommand.Resend) {
+                    projectSelectedEntry(label)
                     return@launch
                 }
-                val commandId = UUID.randomUUID().toString()
-                val ack = boardCellManager.commitLocalSessionCommand(commandId,
-                    snapshot.playlistRevision) { current, exact ->
-                        if (current.isJoinable) applyRebasedCommand(command, context, current, exact)
-                        else applyLegacyHostCommand(command, context, current, exact)
-                    }
-                if (ack?.status != BoardCommandStatus.COMMITTED) {
+                val ops = playlistOpsFor(command, snapshot.playlist)
+                if (ops.isEmpty()) {
                     _commandFeedback.emit(PlaylistCommandFeedback(
                         PlaylistCommandFeedbackKind.CONFLICT, label))
+                    return@launch
+                }
+                if (!submitPlaylistOps(label, ops)) {
+                    _commandFeedback.emit(PlaylistCommandFeedback(
+                        PlaylistCommandFeedbackKind.UNAVAILABLE, label))
+                } else {
+                    Log.i(TAG, "event=transport_sent transport=fips action=$label")
                 }
                 return@launch
             }
-            val candidateId = UUID.randomUUID().toString()
-            if (context != null) pendingMeshCommands[candidateId] = PendingMeshCommand(
-                label, payload, context, snapshot.playlistRevision)
-            updatePendingCommandCount()
-            val commandId = if (context != null)
-                boardCellManager.sendSessionCommand(payload, context, candidateId) else null
-            val sentByFips = commandId != null
-            if (!sentByFips) removePendingCommand(candidateId)
-            if (sentByFips) {
-                Log.i(TAG, "event=transport_sent transport=fips action=$label")
+            if (queueManager.state.value.role == SessionRole.HOST) {
+                applyLegacyLocalCommand(command)
                 return@launch
             }
 
+            val payload = SessionQueueProtocol.encodeCommand(command)
             val state = queueManager.state.value
             val bleContext = SessionCommandRebaser.context(
                 command, state.sessionId, state.currentIndex, state.queue,
@@ -1609,116 +1411,13 @@ class SessionGattBridge(
     }
 
     private fun removePendingCommand(commandId: String) {
-        pendingMeshCommands.remove(commandId)
+        pendingPlaylistCommands.remove(commandId)
         updatePendingCommandCount()
     }
 
     private fun updatePendingCommandCount() {
-        _pendingCommandCount.value =
-            pendingMeshCommands.size + pendingBleCommands.size + pendingPlaylistControls.size
+        _pendingCommandCount.value = pendingPlaylistCommands.size + pendingBleCommands.size
     }
-
-    /**
-     * FIPS has already authenticated membership and exact BoardCell epoch/sequence.
-     *
-     * The controller no longer needs a local session role to serialize this:
-     * playlist rights come from playlist membership, which the coordinator
-     * checks, and the technical controller is only the serializer.
-     */
-    private suspend fun handleMeshCommand(command: com.cruxcoach.android.boardcell.InboundSessionCommand) {
-        val decoded = SessionQueueProtocol.decodeCommand(command.payload)
-        boardCellManager?.commitSessionCommand(command) { current, exact ->
-            val cmd = decoded ?: return@commitSessionCommand null
-            if (current.isJoinable) applyRebasedCommand(cmd, command.context, current, exact)
-            else if (queueManager.state.value.role == SessionRole.HOST)
-                applyLegacyHostCommand(cmd, command.context, current, exact)
-            else null
-        }
-    }
-
-    /**
-     * A gateway's leaf command, serialized here on the controller.
-     *
-     * Only queue verbs are derived; the transport already refused anything
-     * else, and the coordinator applies it under
-     * [com.cruxcoach.android.boardcell.BoardPlaylistAuthority.GATEWAY_PROXY],
-     * which cannot reach the playlist's lifecycle or its host.
-     */
-    private suspend fun handleLeafCommand(
-        command: com.cruxcoach.android.boardcell.InboundLeafCommand,
-    ) {
-        val manager = boardCellManager ?: return
-        val payload = command.payload
-        if (payload == null) {
-            manager.commitLeafCommand(command, applyCommand = null)
-            return
-        }
-        val decoded = SessionQueueProtocol.decodeCommand(payload)
-        manager.commitLeafCommand(command) { current, exact ->
-            val cmd = decoded ?: return@commitLeafCommand null
-            if (current.isJoinable) applyRebasedCommand(cmd, command.context, current, exact)
-            else null
-        }
-    }
-
-    /**
-     * The pre-joinable path, where the controller's own session queue *is* the
-     * playlist. Kept for legacy GATT sessions that never started a canonical
-     * joinable playlist.
-     */
-    private fun applyLegacyHostCommand(command: SessionCommand,
-        context: com.cruxcoach.android.boardcell.BoardPlaylistCommandContext?,
-        current: BoardPlaylistState, exact: Boolean): BoardPlaylistState? {
-        val resolved = PlaylistCommandRebaser.rebase(command, context, current, exact)
-            as? PlaylistCommandRebaser.Result.Apply ?: return null
-        queueManager.alignHostQueue(current)
-        when (val cmd = resolved.command) {
-            is SessionCommand.Add -> queueManager.addClimb(cmd.climbUuid, cmd.angle)
-            is SessionCommand.Remove -> queueManager.removeClimb(cmd.index)
-            is SessionCommand.SetCurrent -> queueManager.setCurrentClimb(cmd.index)
-            SessionCommand.Next -> (onRemoteNext ?: queueManager::nextClimb).invoke()
-            SessionCommand.Prev -> (onRemotePrev ?: queueManager::previousClimb).invoke()
-            is SessionCommand.Move -> queueManager.moveClimb(cmd.from, cmd.to)
-            SessionCommand.Resend -> queueManager.resendCurrentClimb()
-            is SessionCommand.Join, SessionCommand.Leave -> return null
-        }
-        val state = queueManager.state.value
-        return BoardPlaylistState(state.sessionId, state.currentIndex,
-            state.queue.map { it.climbUuid to it.angle })
-    }
-
-    /**
-     * Derives the next canonical playlist from a (possibly stale) command.
-     *
-     * Runs entirely on canonical state. It used to mutate the controller's own
-     * [SessionQueueManager] and read the result back, which made the technical
-     * controller's private queue part of the shared playlist's data path: a
-     * controller that was not even a playlist member saw its own UI move on
-     * every remote command, and a controller running a local-only playlist had
-     * it overwritten by the shared one.
-     */
-    private fun applyRebasedCommand(command: SessionCommand,
-        context: com.cruxcoach.android.boardcell.BoardPlaylistCommandContext?,
-        current: BoardPlaylistState, exact: Boolean): BoardPlaylistState? {
-        val resolved = PlaylistCommandRebaser.rebase(command, context, current, exact)
-            as? PlaylistCommandRebaser.Result.Apply ?: return null
-        return when (val cmd = resolved.command) {
-            is SessionCommand.Add -> BoardPlaylistOps.add(current, cmd.climbUuid, cmd.angle)
-            is SessionCommand.Remove -> BoardPlaylistOps.remove(current, cmd.index)
-            is SessionCommand.SetCurrent -> BoardPlaylistOps.setCurrent(current, cmd.index)
-            // Advancing stamps the canonical end of the rest it arms. Only the
-            // serializing device reads a clock, so every replica derives the
-            // same bytes — and therefore the same state hash — from it.
-            SessionCommand.Next -> BoardPlaylistOps.next(current, wallClockEpochMs())
-            SessionCommand.Prev -> BoardPlaylistOps.previous(current)
-            is SessionCommand.Move -> BoardPlaylistOps.move(current, cmd.from, cmd.to)
-            // Re-sending changes nothing about the queue; it travels as a
-            // RetryProjection control command so it cannot mutate the playlist.
-            SessionCommand.Resend -> null
-            is SessionCommand.Join, SessionCommand.Leave -> null
-        }
-    }
-
     private fun applyLegacyLocalCommand(command: SessionCommand) {
         when (command) {
             is SessionCommand.Add -> queueManager.addClimb(command.climbUuid, command.angle)
@@ -1827,25 +1526,23 @@ class SessionGattBridge(
 
         Log.d(TAG, "Received joined session command (${cmd.javaClass.simpleName})")
         val snapshot = boardCellManager?.snapshot()
-        if (cmd !is SessionCommand.Leave && snapshot != null) {
-            val semanticContext = PlaylistCommandRebaser.context(cmd, snapshot.playlist)
-            if (semanticContext != null) {
-                val ack = commitGatewayCommand(cmd, semanticContext, snapshot)
-                Log.i(TAG, "event=gatt_command_result action=${cmd.javaClass.simpleName} " +
-                    "status=${ack?.status ?: "unavailable"}")
-                val result = when (ack?.status) {
-                    BoardCommandStatus.COMMITTED -> SessionCommandResult.COMMITTED
-                    BoardCommandStatus.REJECTED_CONFLICT,
-                    BoardCommandStatus.REJECTED_STALE,
-                    BoardCommandStatus.SUPERSEDED -> SessionCommandResult.CONFLICT
-                    else -> SessionCommandResult.FAILED
-                }
-                request.requestId?.let {
-                    rememberCommandResult(deviceAddress, request.context?.sessionId, it, result)
-                    sendCommandResult(deviceAddress, it, result)
-                }
-                return
+        if (cmd !is SessionCommand.Leave && cmd !is SessionCommand.Join && snapshot != null &&
+            boardCellManager.isCellMember()) {
+            val ack = commitGatewayCommand(cmd, snapshot)
+            Log.i(TAG, "event=gatt_command_result action=${cmd.javaClass.simpleName} " +
+                "status=${ack?.status ?: "unavailable"}")
+            val result = when (ack?.status) {
+                BoardCommandStatus.COMMITTED -> SessionCommandResult.COMMITTED
+                BoardCommandStatus.REJECTED_CONFLICT,
+                BoardCommandStatus.REJECTED_STALE,
+                BoardCommandStatus.SUPERSEDED -> SessionCommandResult.CONFLICT
+                else -> SessionCommandResult.FAILED
             }
+            request.requestId?.let {
+                rememberCommandResult(deviceAddress, request.context?.sessionId, it, result)
+                sendCommandResult(deviceAddress, it, result)
+            }
+            return
         }
         when (cmd) {
             is SessionCommand.Add -> queueManager.addClimb(cmd.climbUuid, cmd.angle)

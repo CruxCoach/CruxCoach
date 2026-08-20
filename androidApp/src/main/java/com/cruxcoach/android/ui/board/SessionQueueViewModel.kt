@@ -29,7 +29,6 @@ class SessionQueueViewModel @Inject constructor(
     private val boardRepository: BoardRepository,
     private val playback: com.cruxcoach.android.data.PlaylistPlaybackCoordinator,
     private val userPreferences: com.cruxcoach.android.data.UserPreferences,
-    private val boardCellManager: com.cruxcoach.android.boardcell.BoardCellManager,
     val climbNavState: ClimbNavigationState
 ) : ViewModel() {
 
@@ -37,46 +36,11 @@ class SessionQueueViewModel @Inject constructor(
     val pendingCommandCount = gattBridge.pendingCommandCount
     val commandFeedback = gattBridge.commandFeedback
 
-    /** Status of this device's own request to start a joinable playlist. */
-    val playlistStartState = gattBridge.playlistStartState
+    /** The lamp: put the selected entry on the board. Open to every member. */
+    fun projectSelectedEntry() = playback.projectSelectedEntry()
 
-    /**
-     * A local-only playlist is about to take the wall from the joinable one.
-     *
-     * Read from the injected manager rather than mirrored into this view
-     * model: the question is about shared board state, and a copy here would
-     * be a second truth about whether it is still open.
-     *
-     * Injected rather than read from `BoardCellManager.current`, which is only
-     * set once that singleton has been constructed. Resolving it here would
-     * freeze whatever was true at view-model construction — and if this screen
-     * happened to come first, the dialog would never appear again for the rest
-     * of the process.
-     */
-    val localOverwriteRequest: StateFlow<com.cruxcoach.android.boardcell.LocalOverwriteRequest?> =
-        boardCellManager.localOverwriteRequest
-
-    fun confirmLocalOverwrite() {
-        boardCellManager.confirmLocalOverwrite()
-        // The send that raised the question was refused, so repeat it now that
-        // the answer is in; nothing about the queue moved in between.
-        playback.resendCurrentClimb()
-    }
-
-    fun dismissLocalOverwrite() = boardCellManager.dismissLocalOverwrite()
-
-    /** Any playlist member may ask the controller to try the send again. */
-    fun retryPlaylistProjection() = playback.retryPlaylistProjection()
-
-    /** The playlist host answers somebody else's request to start a playlist. */
-    fun decidePlaylistRequest(
-        requestId: String,
-        decision: com.cruxcoach.android.boardcell.BoardPlaylistProposalDecision,
-    ) = playback.decidePlaylistRequest(requestId, decision)
-
-    fun acknowledgePlaylistStartState() = gattBridge.acknowledgePlaylistStartState()
-
-    fun joinPlaylist() = playback.joinCanonicalPlaylist()
+    /** Empty the board's shared playlist. Open to every member. */
+    fun clearSharedPlaylist() = gattBridge.clearSharedPlaylist()
 
     private val _climbInfos = MutableStateFlow<Map<String, QueueRowInfo>>(emptyMap())
     /** uuid → (name, formatted grade) for the queue rows. */
@@ -112,8 +76,9 @@ class SessionQueueViewModel @Inject constructor(
     }
 
     /**
-     * In a joinable playlist there is no local shortcut for anybody, host
-     * included: the queue on screen is a projection of canonical mesh state,
+     * In the shared playlist there is no local shortcut for anybody, the
+     * technical controller included: the queue on screen is a projection of
+     * canonical mesh state,
      * so an edit applied locally would be overwritten by the next snapshot and
      * would never reach the other members. [sendsCommand] is therefore about
      * where the truth lives, not about which role this device happens to hold.

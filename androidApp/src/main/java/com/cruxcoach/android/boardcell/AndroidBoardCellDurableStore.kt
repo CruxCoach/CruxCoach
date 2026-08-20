@@ -5,7 +5,17 @@ import java.util.UUID
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
-/** SharedPreferences commit() is intentional: this is the WAL, not a UI preference. */
+/**
+ * SharedPreferences commit() is intentional: this is the WAL, not a UI preference.
+ *
+ * `ignoreUnknownKeys = false` is what migrates the store. A snapshot written
+ * before the entry-addressed playlist carries fields this build no longer
+ * knows, so it fails to decode and is simply not restored — the cell is rebuilt
+ * from the mesh instead of being reinterpreted under a shape it was never
+ * written in. Write intents and command acks are untouched by that change and
+ * keep decoding, so an interrupted physical write still survives the upgrade,
+ * which is exactly the record that must not be lost.
+ */
 class AndroidBoardCellDurableStore(context: Context) : BoardCellDurableStore {
     private val prefs = context.getSharedPreferences("board_cell_safety_v2", Context.MODE_PRIVATE)
     private val json = Json { encodeDefaults = true; ignoreUnknownKeys = false; classDiscriminator = "type" }

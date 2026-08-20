@@ -209,7 +209,7 @@ fun PlaylistPlayerScreen(
                 Text(
                     stringResource(
                         when {
-                            boardPlaylist -> R.string.playlist_stop_end_title
+                            boardPlaylist -> R.string.playlist_stop_board_title
                             !playback.isHost -> R.string.playlist_stop_leave_title
                             othersStay -> R.string.playlist_stop_handover_title
                             else -> R.string.playlist_stop_end_title
@@ -221,7 +221,7 @@ fun PlaylistPlayerScreen(
             text = {
                 Text(
                     when {
-                        boardPlaylist -> stringResource(R.string.playlist_stop_end_body)
+                        boardPlaylist -> stringResource(R.string.playlist_stop_board_body)
                         !playback.isHost -> stringResource(R.string.playlist_stop_leave_body)
                         othersStay -> pluralStringResource(
                             R.plurals.playlist_stop_handover_body, remaining, remaining,
@@ -236,7 +236,9 @@ fun PlaylistPlayerScreen(
                     colors = androidx.compose.material3.ButtonDefaults.buttonColors(
                         // Only a real ending is destructive. Leaving and handing
                         // over are not, and red made them look like one.
-                        containerColor = if (boardPlaylist || playback.isHost && !othersStay) {
+                        // Closing a board playlist is not destructive: the group's
+                        // list is untouched and this device stays in it.
+                        containerColor = if (!boardPlaylist && playback.isHost && !othersStay) {
                             MaterialTheme.colorScheme.error
                         } else MaterialTheme.colorScheme.primary,
                     ),
@@ -245,7 +247,7 @@ fun PlaylistPlayerScreen(
                     Text(
                         stringResource(
                             when {
-                                boardPlaylist -> R.string.playlist_stop_end_confirm
+                                boardPlaylist -> R.string.playlist_stop_board_confirm
                                 !playback.isHost -> R.string.playlist_stop_leave_confirm
                                 othersStay -> R.string.playlist_stop_handover_confirm
                                 else -> R.string.playlist_stop_end_confirm

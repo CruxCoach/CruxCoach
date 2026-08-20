@@ -202,15 +202,15 @@ class BoardCellRecoveryFenceTest {
     }
 
     /**
-     * The whole point of preserving the base: the playlist, its host and its
-     * membership have to be there on the other side of the recovery, because
-     * the recovered controller is the device that now has to project it.
+     * The whole point of preserving the base: the playlist has to be there on
+     * the other side of the recovery, because the recovered controller is the
+     * device that now has to project it.
      */
     @Test fun `recovery keeps the canonical playlist, term and membership`() = runTest {
-        val playlist = BoardPlaylistPolicy.normalize(BoardPlaylistState(
-            sessionId = 7, currentIndex = 1,
-            items = listOf("climb-a" to 40, "climb-b" to 45), restAfterSeconds = listOf(120, 0),
-            hostId = "pixel", members = listOf("pixel", "nokia")))
+        val playlist = BoardPlaylistPolicy.apply(BoardPlaylistState(sessionId = 7), listOf(
+            BoardPlaylistOp.Add("e1", "climb-a", 40, 120),
+            BoardPlaylistOp.Add("e2", "climb-b", 45),
+            BoardPlaylistOp.SetCurrent("e2")))
         val frozen = snapshot(playlist = playlist)
         val coordinator = BoardCellCoordinator("nokia", NoOpBoardCellTransport, MemoryStore(),
             settleMs = 0, heartbeatTimeoutMs = leaseTimeoutMs)
@@ -223,19 +223,17 @@ class BoardCellRecoveryFenceTest {
         assertEquals("nokia", recovered.controllerId)
         assertEquals(frozen.controllerTerm + 1, recovered.controllerTerm)
         assertEquals(BoardCellAvailability.ACTIVE, recovered.availability)
-        // The old controller left the cell, and with it the playlist; the
-        // playlist host is untouched because it was somebody else.
+        // The old controller left the cell. The playlist is untouched by that:
+        // it belongs to the BoardCell and the technical role has no seat in it.
         assertFalse("old-controller" in recovered.members)
-        assertEquals("pixel", recovered.playlist.hostId)
-        assertEquals(listOf("pixel", "nokia"), recovered.playlist.members)
-        assertEquals(listOf("climb-a" to 40, "climb-b" to 45), recovered.playlist.items)
-        assertEquals(1, recovered.playlist.currentIndex)
+        assertEquals(listOf("e1", "e2"), recovered.playlist.entries.map { it.entryId })
+        assertEquals("e2", recovered.playlist.currentEntryId)
+        assertEquals(120, recovered.playlist.entries[0].restAfterSeconds)
     }
 
-    @Test fun `losing the old controller hands the playlist on when it was the host`() = runTest {
-        val playlist = BoardPlaylistPolicy.normalize(BoardPlaylistState(
-            sessionId = 7, currentIndex = 0, items = listOf("climb-a" to 40),
-            hostId = "old-controller", members = listOf("old-controller", "pixel", "nokia")))
+    @Test fun `losing the old controller leaves the shared playlist exactly as it was`() = runTest {
+        val playlist = BoardPlaylistPolicy.apply(BoardPlaylistState(sessionId = 7),
+            listOf(BoardPlaylistOp.Add("e1", "climb-a", 40)))
         val frozen = snapshot(playlist = playlist)
         val coordinator = BoardCellCoordinator("nokia", NoOpBoardCellTransport, MemoryStore(),
             settleMs = 0, heartbeatTimeoutMs = leaseTimeoutMs)
@@ -244,12 +242,10 @@ class BoardCellRecoveryFenceTest {
         coordinator.recoverController(board, "exclusive-board-connection:proof", 2_000)
 
         val recovered = coordinator.snapshot(board)!!
-        // The technical role went to this device; the playlist host went to the
-        // longest-active remaining playlist member, which is a different
-        // decision made by a different rule.
+        // The technical role moved to this device. Nothing about the playlist
+        // moved with it, because there is no role in the playlist to move.
         assertEquals("nokia", recovered.controllerId)
-        assertEquals("pixel", recovered.playlist.hostId)
-        assertEquals(listOf("pixel", "nokia"), recovered.playlist.members)
+        assertEquals(playlist, recovered.playlist)
     }
 
     @Test fun `a recovery whose base has already moved on is refused by the coordinator`() = runTest {

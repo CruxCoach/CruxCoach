@@ -70,17 +70,6 @@ data class IncomingBoardJoinRequest(
 )
 
 /**
- * A local-only playlist wants the wall while a joinable playlist is showing
- * something else. [sharedClimbUuid] is what the group currently has on it.
- */
-data class LocalOverwriteRequest(
-    val climbUuid: String,
-    val angle: Int,
-    val sharedClimbUuid: String,
-    val sessionId: Int?,
-)
-
-/**
  * How the technical controller turns a canonical playlist entry into light on
  * the wall.
  *
@@ -182,8 +171,7 @@ class BoardCellManager @Inject constructor(
     private var incomingControllerRequestTimeoutJob: kotlinx.coroutines.Job? = null
     // The suspendable transport callback provides real backpressure: after
     // ACCEPTED no command can disappear, while a hostile peer cannot grow RAM.
-    private val sessionCommandChannel = Channel<InboundSessionCommand>(256)
-    val sessionCommands = sessionCommandChannel.receiveAsFlow()
+    private val playlistCommandChannel = Channel<InboundPlaylistCommand>(256)
     private val commandAckChannel = Channel<BoardCommandAck>(256)
     val commandAcks = commandAckChannel.receiveAsFlow()
     private val projectionRequestChannel = Channel<InboundProjectionRequest>(64)
@@ -215,29 +203,23 @@ class BoardCellManager @Inject constructor(
     @Volatile private var peerDiagnosticsProvider: (() -> BoardCellPeerDiagnostics)? = null
     @Volatile private var lastLocalPeerDiagnostics: BoardCellPeerDiagnostics? = null
     @Volatile private var lastPeerDiagnosticsSentAt = 0L
-    private val playlistControlChannel = Channel<InboundPlaylistControl>(64)
-    private val leafCommandChannel = Channel<InboundLeafCommand>(64)
-    /** Queue edits a gateway is carrying for its own joined API-28 leaf. */
-    val leafCommands = leafCommandChannel.receiveAsFlow()
-    private val _localOverwriteRequest = MutableStateFlow<LocalOverwriteRequest?>(null)
-    /** A local playlist is about to take the wall from the joinable one. */
-    val localOverwriteRequest = _localOverwriteRequest.asStateFlow()
-    @Volatile private var confirmedOverwriteSession: Int? = null
 
     init {
         current = this
         boardConnection.connectionGuard = { board -> !requiresControllerRequest(board) }
-        meshTransport.onSessionCommand = { sessionCommandChannel.send(it) }
+        meshTransport.onPlaylistCommand = { playlistCommandChannel.send(it) }
         meshTransport.onCommandAck = { _, ack ->
             if (ack.status != BoardCommandStatus.ACCEPTED) pendingProjectionRequests.remove(ack.commandId)
             commandAckChannel.send(ack)
         }
         meshTransport.onProjectionRequest = { projectionRequestChannel.send(it) }
-        meshTransport.onPlaylistControl = { playlistControlChannel.send(it) }
-        meshTransport.onLeafCommand = { leafCommandChannel.send(it) }
+        // Playlist operations are self-describing, so the controller commits
+        // them here rather than handing them to a UI layer to interpret. One
+        // consumer, one order, and nothing above this can change what a
+        // member's edit meant.
         scope.launch {
-            for (inbound in playlistControlChannel) {
-                commitPlaylistControl(inbound.senderId, inbound.control)
+            for (inbound in playlistCommandChannel) {
+                commitPlaylistCommand(inbound.senderId, inbound.command)
             }
         }
         meshTransport.onControllerRequest = { sender, request ->
@@ -318,6 +300,7 @@ class BoardCellManager @Inject constructor(
             }
         }
         scope.launch { maintenanceLoop() }
+        scope.launch { gapRepairLoop() }
         scope.launch {
             runtime.bluetoothAvailable.collectLatest { available ->
                 if (!available) handleBluetoothOff()
@@ -550,14 +533,6 @@ class BoardCellManager @Inject constructor(
         }
     }
 
-    suspend fun replacePlaylist(state: BoardPlaylistState, commandId: String = UUID.randomUUID().toString(),
-        baseSequence: Long? = null): Boolean {
-        val board = writableBoard() ?: return false
-        return (coordinator.replacePlaylist(board, state, monotonicNow(), commandId, baseSequence) != null).also {
-            refreshSelected()
-        }
-    }
-
     fun installPlaylistProjectionWriter(value: BoardPlaylistProjectionWriter?) {
         playlistProjectionWriter = value
     }
@@ -579,9 +554,8 @@ class BoardCellManager @Inject constructor(
             meshRole = localRole,
             meshMemberCount = snapshot.members.size,
             controllerAvailable = snapshot.availability == BoardCellAvailability.ACTIVE,
-            canonicalPlaylist = snapshot.playlist.isJoinable,
-            playlistHost = snapshot.playlist.hostId == activeNodeId,
-            playlistMember = activeNodeId in snapshot.playlist.members,
+            canonicalPlaylist = activeNodeId in snapshot.members,
+            playlistSynchronized = isPlaylistSynchronized(),
         )
     }
 
@@ -605,256 +579,185 @@ class BoardCellManager @Inject constructor(
         return current
     }
 
-    /**
-     * Whether a purely local playlist may light the wall over the top of the
-     * joinable playlist's current climb.
-     *
-     * A local playlist stays local: its queue is never published and the shared
-     * playlist and index never move because of it. What it cannot be is
-     * invisible — the wall is shared hardware, so the send itself becomes a
-     * normal BoardCell projection everybody sees. Taking the wall away from a
-     * group mid-session is worth one clear question, asked once per playlist.
-     *
-     * Returns false and publishes [localOverwriteRequest] when the user has to
-     * answer it first.
-     */
-    fun mayOverwriteSharedProjection(projection: BoardProjection): Boolean {
-        val playlist = snapshot()?.playlist ?: return true
-        if (!BoardPlaylistPolicy.requiresOverwriteConsent(playlist, activeNodeId,
-                projection.climbUuid, projection.angle, confirmedOverwriteSession)) return true
-        val current = playlist.currentItem() ?: return true
-        _localOverwriteRequest.value = LocalOverwriteRequest(
-            climbUuid = projection.climbUuid,
-            angle = projection.angle,
-            sharedClimbUuid = current.first,
-            sessionId = playlist.sessionId,
-        )
-        FipsDebugLog.event("playlist", "local_overwrite_confirmation_required",
-            "climb" to FipsDebugLog.id(projection.climbUuid),
-            "sharedClimb" to FipsDebugLog.id(current.first))
-        return false
-    }
-
-    /** The user accepted; remember it for this playlist only. */
-    fun confirmLocalOverwrite() {
-        confirmedOverwriteSession = _localOverwriteRequest.value?.sessionId
-        _localOverwriteRequest.value = null
-    }
-
-    fun dismissLocalOverwrite() { _localOverwriteRequest.value = null }
-
     /** The local node's canonical identity inside the BoardCell. */
     fun localNodeId(): String = activeNodeId
 
     fun playlist(): BoardPlaylistState? = snapshot()?.playlist
 
-    fun isPlaylistHost(): Boolean = snapshot()?.playlist?.hostId == activeNodeId
-
-    fun isPlaylistMember(): Boolean = snapshot()?.playlist?.members?.contains(activeNodeId) == true
+    /** Cell membership is playlist participation; there is no second join. */
+    fun isCellMember(): Boolean = snapshot()?.members?.contains(activeNodeId) == true
 
     /**
-     * Routes one playlist lifecycle command to whoever can serialize it.
+     * Whether this device may present its playlist copy as the group's.
      *
-     * This is the fix for the observed defect: a device that is the session
-     * host but not the technical BoardCell controller used to call
-     * [replacePlaylist], which can only ever write on the controller, so the
-     * canonical snapshot stayed at revision 0 for ever. The product rule is
-     * that the technical controller has no visible authority, so a member
-     * simply sends the command and the controller applies it.
-     *
-     * Returns the ack when the command was decided locally, or a synthetic
-     * ACCEPTED when it went out over the mesh and the real ack will arrive on
-     * [commandAcks].
+     * Having a replica is not the same as being in sync. During a partition —
+     * a frozen cell, an unrepaired gap, a controller that has gone quiet —
+     * this device is looking at the last state it managed to receive, and
+     * saying otherwise would invite somebody to act on a list the group has
+     * already moved past. The controller is trivially synchronised with
+     * itself; everyone else needs recent authenticated evidence of it.
      */
-    suspend fun submitPlaylistControl(control: BoardPlaylistControl): BoardCommandAck? {
+    fun isPlaylistSynchronized(): Boolean {
+        if (!::coordinator.isInitialized) return false
+        val snapshot = snapshot() ?: return false
+        if (snapshot.availability != BoardCellAvailability.ACTIVE) return false
+        if (activeNodeId !in snapshot.members) return false
+        if (snapshot.controllerId == activeNodeId) return true
+        val silent = coordinator.controllerSilentForMs(snapshot.physicalBoardId, monotonicNow())
+            ?: return false
+        return silent < CONTROLLER_SILENCE_DESYNC_MS
+    }
+
+    /**
+     * Submits one playlist edit to whoever can serialize it.
+     *
+     * Every authenticated cell member may do this; the technical controller is
+     * only the serializer and never appears as an authority. Returns the ack
+     * when the command was decided locally, or a synthetic ACCEPTED when it
+     * went out over the mesh and the real ack will arrive on [commandAcks].
+     */
+    suspend fun submitPlaylistCommand(command: BoardPlaylistCommand): BoardCommandAck? {
         if (!::coordinator.isInitialized) {
-            FipsDebugLog.warning("playlist", "control_no_cell",
-                "command" to FipsDebugLog.id(control.commandId))
+            FipsDebugLog.warning("playlist", "command_no_cell",
+                "command" to FipsDebugLog.id(command.commandId))
             return null
         }
         val snapshot = snapshot() ?: return null
         if (activeNodeId !in snapshot.members) {
-            FipsDebugLog.warning("playlist", "control_not_member",
-                "command" to FipsDebugLog.id(control.commandId))
+            FipsDebugLog.warning("playlist", "command_not_member",
+                "command" to FipsDebugLog.id(command.commandId))
             return null
         }
         if (snapshot.controllerId == activeNodeId) {
-            return commitPlaylistControl(activeNodeId, control)
+            return commitPlaylistCommand(activeNodeId, command)
         }
         if (!BoardCellPlatformPolicy.meshAvailable(Build.VERSION.SDK_INT)) {
-            FipsDebugLog.warning("playlist", "control_fips_unavailable",
-                "command" to FipsDebugLog.id(control.commandId), "api" to Build.VERSION.SDK_INT)
+            FipsDebugLog.warning("playlist", "command_fips_unavailable",
+                "command" to FipsDebugLog.id(command.commandId), "api" to Build.VERSION.SDK_INT)
             return null
         }
-        val sent = meshTransport.sendPlaylistControl(snapshot, control)
-        FipsDebugLog.event("playlist", if (sent) "control_sent" else "control_send_refused",
-            "command" to FipsDebugLog.id(control.commandId),
-            "kind" to control.javaClass.simpleName,
+        val sent = meshTransport.sendPlaylistCommand(snapshot, command)
+        FipsDebugLog.event("playlist", if (sent) "command_sent" else "command_send_refused",
+            "command" to FipsDebugLog.id(command.commandId), "ops" to command.ops.size,
             "controller" to FipsDebugLog.id(snapshot.controllerId),
-            "baseRevision" to control.basePlaylistRevision)
-        return if (!sent) null else BoardCommandAck(control.commandId,
+            "baseRevision" to command.basePlaylistRevision)
+        return if (!sent) null else BoardCommandAck(command.commandId,
             BoardCommandStatus.ACCEPTED, snapshot.cellId, snapshot.epoch, snapshot.controllerTerm,
             snapshot.sequence, snapshot.stateHash)
     }
 
     /**
-     * Commit a joined GATT leaf's projection retry on its behalf, as the
-     * technical controller.
-     */
-    suspend fun retryProjectionForLeaf(
-        commandId: String = UUID.randomUUID().toString(),
-    ): BoardCommandAck? {
-        val board = writableBoard() ?: return null
-        val snapshot = coordinator.snapshot(board) ?: return null
-        val ack = coordinator.applyPlaylistControl(board, monotonicNow(), activeNodeId,
-            BoardPlaylistControl.RetryProjection(commandId, snapshot.playlistRevision),
-            BoardPlaylistAuthority.GATEWAY_PROXY)
-        refreshSelected()
-        if (ack?.status == BoardCommandStatus.COMMITTED) syncPlaylistProjection(force = true)
-        return ack
-    }
-
-    /**
-     * Send a joined GATT leaf's queue edit to the controller under bounded
-     * proxy authority.
+     * Composes a command against the current replica.
      *
-     * Replaces an earlier join-then-send: the gateway used to fire a playlist
-     * `Join` and immediately send the edit, which raced — the controller could
-     * commit the edit first and refuse it as "not a playlist member" — and
-     * which also made the gateway a full playlist member, so it could inherit
-     * the host role and lose its own local queue. It now lends its
-     * authenticated hop and stays out of the playlist entirely.
+     * The base revision and clear generation are read here, together, from one
+     * snapshot: composing an edit against one revision and stamping it with
+     * another is exactly how a command comes to mean something its author
+     * never asked for.
      */
-    fun sendLeafSessionCommand(
-        payload: ByteArray,
-        context: BoardPlaylistCommandContext?,
+    fun composePlaylistCommand(
+        ops: List<BoardPlaylistOp>,
         commandId: String = UUID.randomUUID().toString(),
-    ): String? {
-        if (!::coordinator.isInitialized ||
-            !BoardCellPlatformPolicy.meshAvailable(Build.VERSION.SDK_INT)) return null
+    ): BoardPlaylistCommand? {
+        if (ops.isEmpty()) return null
         val snapshot = snapshot() ?: return null
-        val sent = meshTransport.sendLeafSessionCommand(snapshot, commandId, payload, context)
-        FipsDebugLog.event("playlist", if (sent) "leaf_command_sent" else "leaf_command_refused",
-            "command" to FipsDebugLog.id(commandId), "kind" to context?.kind,
-            "controller" to FipsDebugLog.id(snapshot.controllerId))
-        return commandId.takeIf { sent }
-    }
-
-    fun sendLeafRetryProjection(commandId: String = UUID.randomUUID().toString()): String? {
-        if (!::coordinator.isInitialized ||
-            !BoardCellPlatformPolicy.meshAvailable(Build.VERSION.SDK_INT)) return null
-        val snapshot = snapshot() ?: return null
-        return commandId.takeIf { meshTransport.sendLeafRetryProjection(snapshot, commandId) }
-    }
-
-    /**
-     * Serialize an inbound leaf command on the controller.
-     *
-     * [applyCommand] is null for a projection retry, which moves nothing about
-     * the queue and only re-attempts the physical write.
-     */
-    suspend fun commitLeafCommand(
-        command: InboundLeafCommand,
-        applyCommand: ((BoardPlaylistState, Boolean) -> BoardPlaylistState?)?,
-    ) {
-        val board = writableBoard() ?: return
-        val ack = if (applyCommand == null) {
-            coordinator.applyPlaylistControl(board, monotonicNow(), command.senderId,
-                BoardPlaylistControl.RetryProjection(command.commandId, command.basePlaylistRevision),
-                BoardPlaylistAuthority.GATEWAY_PROXY)
-        } else {
-            coordinator.applyPlaylistCommand(board, monotonicNow(), command.commandId,
-                command.basePlaylistRevision, command.senderId,
-                BoardPlaylistAuthority.GATEWAY_PROXY, applyCommand)
-            durableStore.commandAck(command.commandId)
-        }
-        val snapshot = coordinator.snapshot(board) ?: return
-        val resolved = ack ?: BoardCommandAck(
-            commandId = command.commandId,
-            status = BoardCommandStatus.REJECTED_STALE,
-            cellId = snapshot.cellId, epoch = snapshot.epoch,
-            controllerTerm = snapshot.controllerTerm,
-            resultingSequence = snapshot.sequence, resultingHash = snapshot.stateHash,
+        return BoardPlaylistCommand(
+            commandId = commandId,
+            basePlaylistRevision = snapshot.playlistRevision,
+            baseClearGeneration = snapshot.playlist.clearGeneration,
+            ops = ops,
         )
-        FipsDebugLog.event("playlist", "leaf_command_decided",
-            "command" to FipsDebugLog.id(command.commandId),
-            "gateway" to FipsDebugLog.id(command.senderId), "status" to resolved.status)
-        meshTransport.publishCommandAck(command.senderId, resolved)
-        refreshSelected()
-        if (resolved.status == BoardCommandStatus.COMMITTED) {
-            syncPlaylistProjection(force = applyCommand == null)
-        }
     }
 
-    /** Re-send an unacknowledged control command with its original identity. */
-    fun retryPlaylistControl(control: BoardPlaylistControl): Boolean {
+    /** Re-send an unacknowledged command with its original identity. */
+    fun retryPlaylistCommand(command: BoardPlaylistCommand): Boolean {
         val snapshot = snapshot() ?: return false
         if (snapshot.controllerId == activeNodeId) return false
-        return meshTransport.sendPlaylistControl(snapshot, control)
+        return meshTransport.sendPlaylistCommand(snapshot, command)
     }
 
-    private suspend fun commitPlaylistControl(
+    /**
+     * Serializes one playlist command on the technical controller.
+     *
+     * The canonical commit and its replication happen here and are complete
+     * when this returns. Projecting the current entry onto the physical board
+     * is deliberately started afterwards and not awaited: a board that is slow,
+     * busy or missing must never hold up everybody else's playlist.
+     */
+    suspend fun commitPlaylistCommand(
         senderId: String,
-        control: BoardPlaylistControl,
+        command: BoardPlaylistCommand,
     ): BoardCommandAck? {
         val board = BoardCellScopeRegistry.selected.value ?: return null
         if (!::coordinator.isInitialized) return null
-        val ack = coordinator.applyPlaylistControl(board, monotonicNow(), senderId, control)
-        FipsDebugLog.event("playlist", "control_decided",
-            "command" to FipsDebugLog.id(control.commandId),
-            "sender" to FipsDebugLog.id(senderId), "kind" to control.javaClass.simpleName,
+        val ack = coordinator.applyPlaylistCommand(board, monotonicNow(), senderId, command)
+        FipsDebugLog.event("playlist", "command_decided",
+            "command" to FipsDebugLog.id(command.commandId),
+            "sender" to FipsDebugLog.id(senderId), "ops" to command.ops.size,
             "status" to ack?.status, "detail" to ack?.detail)
         if (ack != null && senderId != activeNodeId) meshTransport.publishCommandAck(senderId, ack)
         refreshSelected()
-        if (ack?.status == BoardCommandStatus.COMMITTED) {
-            // A retry deliberately forces the physical write even though the
-            // canonical queue and index did not move; everything else only
-            // projects when the canonical current entry is not on the wall.
-            syncPlaylistProjection(force = control is BoardPlaylistControl.RetryProjection)
-        }
+        // Deliberately nothing here about the physical board. Choosing what
+        // the group is looking at and putting it on the wall are two different
+        // decisions: somebody reordering the list, or stepping through it to
+        // see what is coming, must not take the wall from the person currently
+        // climbing on it. Only an explicit send does that.
         return ack
     }
 
     /**
-     * Puts the canonical current playlist entry on the physical board.
+     * Put the selected entry on the physical board — the lamp.
      *
-     * Runs on the technical controller only, which is exactly why the playlist
-     * host does not have to be the controller. Failure is not an error state
-     * for the playlist: it stays started and records why the wall is dark, so
-     * any playlist member can press retry.
+     * The one thing that ever lights the wall from the shared playlist, and
+     * any member may press it. It carries no canonical playlist state and
+     * cannot be replayed into an edit, which is why a member routes it as a
+     * projection request rather than as a playlist command.
+     *
+     * Deliberately usable when the selected entry is already the confirmed
+     * one: pressing it again is a resend, which is what somebody does when the
+     * wall has been changed underneath them.
      */
-    suspend fun syncPlaylistProjection(force: Boolean = false): Boolean =
+    suspend fun projectSelectedEntry(): Boolean {
+        if (!::coordinator.isInitialized) return false
+        val snapshot = snapshot() ?: return false
+        if (activeNodeId !in snapshot.members) return false
+        val entry = snapshot.playlist.currentEntry() ?: return false
+        if (snapshot.controllerId == activeNodeId) return syncPlaylistProjection()
+        val resolved = playlistProjectionWriter?.resolve(entry.climbUuid, entry.angle)
+            ?: BoardProjection(entry.climbUuid, entry.angle)
+        return sendProjectionRequest(resolved) != null
+    }
+
+    /**
+     * Writes the selected playlist entry to the physical board.
+     *
+     * Runs on the technical controller only, which is exactly why nobody else
+     * has to be one, and only ever because somebody asked. Failure is not an
+     * error state for the playlist: it stays exactly as it is and records why
+     * the wall is dark, so anybody can press the lamp again.
+     */
+    suspend fun syncPlaylistProjection(): Boolean =
         playlistProjectionMutex.withLock {
             val board = writableBoard() ?: return@withLock false
             val snapshot = coordinator.snapshot(board) ?: return@withLock false
             val playlist = snapshot.playlist
-            if (!playlist.isJoinable) return@withLock false
-            val item = playlist.currentItem() ?: return@withLock false
-            val projected = snapshot.projection
-            val alreadyProjected = snapshot.projectionKnown && projected != null &&
-                projected.climbUuid == item.first && projected.angle == item.second
-            val pending = playlist.pendingProjection
-            val pendingForCurrent = pending != null &&
-                pending.climbUuid == item.first && pending.angle == item.second
-            // An already-recorded pending state waits for a deliberate retry.
-            // Without that, the periodic reconciliation below would turn one
-            // failed write into a permanent write storm against the board.
-            if (!force && (alreadyProjected || pendingForCurrent)) return@withLock alreadyProjected
+            val entry = playlist.currentEntry() ?: return@withLock false
             val writer = playlistProjectionWriter
-            val resolved = writer?.resolve(item.first, item.second)
+            val resolved = writer?.resolve(entry.climbUuid, entry.angle)
             if (writer == null || resolved == null) {
-                recordPendingProjection(BoardPlaylistPendingProjection(item.first, item.second,
+                recordPendingProjection(BoardPlaylistPendingProjection(entry.entryId,
+                    entry.climbUuid, entry.angle,
                     BoardPlaylistProjectionPendingReason.CLIMB_UNAVAILABLE))
                 return@withLock false
             }
             val result = coordinator.project(board, resolved, monotonicNow(),
                 UUID.randomUUID().toString(), null) { writer.write(resolved) }
             FipsDebugLog.event("playlist", "projection_attempted",
-                "climb" to FipsDebugLog.id(item.first), "angle" to item.second,
-                "result" to result.javaClass.simpleName, "forced" to force)
+                "climb" to FipsDebugLog.id(entry.climbUuid), "angle" to entry.angle,
+                "result" to result.javaClass.simpleName)
             val committed = result is ProjectionResult.Committed || result is ProjectionResult.Duplicate
             if (!committed) {
-                recordPendingProjection(BoardPlaylistPendingProjection(item.first, item.second,
+                recordPendingProjection(BoardPlaylistPendingProjection(entry.entryId,
+                    entry.climbUuid, entry.angle,
                     BoardPlaylistProjectionPendingReason.BOARD_WRITE_FAILED))
             }
             refreshSelected()
@@ -870,36 +773,13 @@ class BoardCellManager @Inject constructor(
         val board = BoardCellScopeRegistry.selected.value ?: return
         val snapshot = coordinator.snapshot(board) ?: return
         if (snapshot.playlist.pendingProjection == pending) return
-        coordinator.applyPlaylistControl(board, monotonicNow(), activeNodeId,
-            BoardPlaylistControl.ProjectionPending(
-                commandId = UUID.randomUUID().toString(),
-                basePlaylistRevision = snapshot.playlistRevision,
-                pending = pending,
-            ))
+        coordinator.applyPlaylistCommand(board, monotonicNow(), activeNodeId, BoardPlaylistCommand(
+            commandId = UUID.randomUUID().toString(),
+            basePlaylistRevision = snapshot.playlistRevision,
+            baseClearGeneration = snapshot.playlist.clearGeneration,
+            ops = listOf(BoardPlaylistOp.SetPendingProjection(pending)),
+        ))
         refreshSelected()
-    }
-
-    fun sendSessionCommand(payload: ByteArray, context: BoardPlaylistCommandContext?,
-        commandId: String = UUID.randomUUID().toString()): String? {
-        if (!::coordinator.isInitialized || !BoardCellPlatformPolicy.meshAvailable(Build.VERSION.SDK_INT)) {
-            FipsDebugLog.warning("playlist", "command_fips_unavailable",
-                "command" to FipsDebugLog.id(commandId), "api" to Build.VERSION.SDK_INT)
-            return null
-        }
-        val snapshot = snapshot() ?: return null
-        val sent = meshTransport.sendSessionCommand(snapshot, commandId, payload, context)
-        FipsDebugLog.event("playlist", if (sent) "command_sent" else "command_send_refused",
-            "command" to FipsDebugLog.id(commandId), "kind" to context?.kind,
-            "controller" to FipsDebugLog.id(snapshot.controllerId), "bytes" to payload.size,
-            "baseRevision" to snapshot.playlistRevision)
-        return commandId.takeIf { sent }
-    }
-
-    fun retrySessionCommand(payload: ByteArray, context: BoardPlaylistCommandContext?,
-        commandId: String, basePlaylistRevision: Long): Boolean {
-        val snapshot = snapshot() ?: return false
-        return meshTransport.sendSessionCommand(snapshot, commandId, payload, context,
-            basePlaylistRevision)
     }
 
     fun canSendViaMesh(): Boolean {
@@ -920,8 +800,8 @@ class BoardCellManager @Inject constructor(
             snapshot.projection, snapshot.playlistRevision)
         if (!meshTransport.sendProjectionRequest(snapshot, request)) return null
         if (pendingProjectionRequests.size >= MAX_PENDING_PROJECTIONS) {
-            pendingProjectionRequests.entries.minByOrNull { it.value.retryAtMs }?.key
-                ?.let(pendingProjectionRequests::remove)
+            pendingProjectionRequests.entries.minByOrNull { it.value.retryAtMs }
+                ?.key?.let(pendingProjectionRequests::remove)
         }
         pendingProjectionRequests[commandId] = PendingProjectionRequest(
             request, monotonicNow() + PROJECTION_RETRY_INITIAL_MS)
@@ -951,54 +831,6 @@ class BoardCellManager @Inject constructor(
             if (ack != null) meshTransport.publishCommandAck(inbound.senderId, ack)
             refreshSelected()
         }
-    }
-
-    suspend fun commitSessionCommand(
-        command: InboundSessionCommand,
-        applyCommand: (BoardPlaylistState, Boolean) -> BoardPlaylistState?,
-    ) {
-        val board = BoardCellScopeRegistry.selected.value ?: return
-        // An ordinary session command is a member acting for itself, so it
-        // gets no proxy authority: a gateway carrying a leaf's verb has its
-        // own message type and arrives via commitLeafCommand instead.
-        val committed = coordinator.applyPlaylistCommand(board, monotonicNow(), command.commandId,
-            command.basePlaylistRevision, command.senderId, BoardPlaylistAuthority.MEMBER,
-            applyCommand)
-        val snapshot = coordinator.snapshot(board) ?: return
-        val ack = durableStore.commandAck(command.commandId) ?: BoardCommandAck(
-            commandId = command.commandId,
-            status = if (committed != null) BoardCommandStatus.COMMITTED else
-                if (snapshot.controllerId != activeNodeId) BoardCommandStatus.NOT_CONTROLLER
-                else BoardCommandStatus.REJECTED_STALE,
-            cellId = snapshot.cellId,
-            epoch = snapshot.epoch,
-            controllerTerm = snapshot.controllerTerm,
-            resultingSequence = snapshot.sequence,
-            resultingHash = snapshot.stateHash,
-        )
-        if (durableStore.commandAck(command.commandId) == null) durableStore.recordAck(ack)
-        FipsDebugLog.event("playlist", "command_decided", "command" to FipsDebugLog.id(command.commandId),
-            "sender" to FipsDebugLog.id(command.senderId), "status" to ack.status,
-            "baseRevision" to command.basePlaylistRevision,
-            "resultSequence" to ack.resultingSequence, "detail" to ack.detail)
-        meshTransport.publishCommandAck(command.senderId, ack)
-        refreshSelected()
-        if (committed != null) syncPlaylistProjection()
-    }
-
-    suspend fun commitLocalSessionCommand(
-        commandId: String,
-        basePlaylistRevision: Long,
-        authority: BoardPlaylistAuthority = BoardPlaylistAuthority.MEMBER,
-        applyCommand: (BoardPlaylistState, Boolean) -> BoardPlaylistState?,
-    ): BoardCommandAck? {
-        val board = writableBoard() ?: return null
-        val committed = coordinator.applyPlaylistCommand(board, monotonicNow(), commandId,
-            basePlaylistRevision, activeNodeId, authority, applyCommand)
-        val ack = durableStore.commandAck(commandId)
-        refreshSelected()
-        if (committed != null) syncPlaylistProjection()
-        return ack
     }
 
     fun bindPhysicalBoardFallback(observedAddress: String, durableBindingId: String) {
@@ -1801,6 +1633,38 @@ class BoardCellManager @Inject constructor(
     fun snapshot(): BoardCellSnapshot? = if (::coordinator.isInitialized)
         BoardCellScopeRegistry.selected.value?.let(coordinator::snapshot) else null
 
+    /**
+     * Asks for canonical state again while this replica knows it is missing
+     * some, on its own fast schedule.
+     *
+     * The ordinary repair is already immediate — a delta that reveals a gap
+     * makes the coordinator request a snapshot at once. This exists for the
+     * case where that request is lost and nothing else is coming, which used
+     * to be left to the 2 s maintenance tick's anti-entropy digest.
+     */
+    private suspend fun gapRepairLoop() {
+        var attempt = 0
+        var nextAttemptAtMs = 0L
+        while (true) {
+            delay(BoardCellGapRepairPolicy.TICK_MS)
+            if (!::coordinator.isInitialized || !runtime.running.value) continue
+            val board = BoardCellScopeRegistry.selected.value ?: continue
+            val snapshot = coordinator.snapshot(board)
+            if (!BoardCellGapRepairPolicy.needsRepair(snapshot, activeNodeId)) {
+                attempt = 0
+                nextAttemptAtMs = 0L
+                continue
+            }
+            val now = monotonicNow()
+            if (now < nextAttemptAtMs) continue
+            meshTransport.requestSnapshot(snapshot!!.cellId, snapshot.sequence)
+            FipsDebugLog.event("boardcell", "gap_repair_requested",
+                "sequence" to snapshot.sequence, "attempt" to attempt)
+            attempt += 1
+            nextAttemptAtMs = now + BoardCellGapRepairPolicy.nextDelayMs(attempt)
+        }
+    }
+
     private suspend fun maintenanceLoop() {
         while (true) {
             delay(CONTROLLER_HEARTBEAT_INTERVAL_MS)
@@ -1877,12 +1741,12 @@ class BoardCellManager @Inject constructor(
                 }
                 if (boardRealmAvailable.get() && !runtime.isSuspendedForBulkTransfer()) {
                     coordinator.heartbeat(board, monotonicNow())
-                    // Reconciles the wall with the canonical playlist after a
-                    // technical controller handover or recovery, where the new
-                    // controller inherits a playlist it never projected. Both
-                    // the already-lit and the already-pending cases return
-                    // immediately, so this is a no-op in the steady state.
-                    syncPlaylistProjection()
+                    // Deliberately no projection reconciliation. A new
+                    // controller inherits a playlist it never projected, and
+                    // the honest thing to do with that is to leave the wall
+                    // alone and report the mismatch: somebody may well be on
+                    // the climb that is up there, and a background write would
+                    // take it away from them.
                 }
                 // The source must still time out and roll back after its board
                 // disconnect makes boardRealmAvailable false.
@@ -2252,7 +2116,7 @@ class BoardCellManager @Inject constructor(
                 "projection" to next?.projection?.let { "${FipsDebugLog.id(it.climbUuid)}@${it.angle}" },
                 "playlistRevision" to next?.playlistRevision,
                 "playlistIndex" to next?.playlist?.currentIndex,
-                "playlistItems" to next?.playlist?.items?.size,
+                "playlistEntries" to next?.playlist?.entries?.size,
                 "handover" to next?.handover?.phase)
         }
     }
@@ -2315,6 +2179,17 @@ class BoardCellManager @Inject constructor(
         private const val CONTROLLER_TRANSPORT_LOSS_GRACE_MS = 6_000L
         private const val MEMBER_LIVENESS_TIMEOUT_MS = 60_000L
         private const val PEER_DIAGNOSTICS_CHECKPOINT_MS = 10_000L
+
+        /**
+         * How long the controller may be silent before this device stops
+         * calling its playlist copy synchronised.
+         *
+         * Deliberately well below [CONTROLLER_LEASE_TIMEOUT_MS]: freezing the
+         * cell is a heavy, recovery-triggering step, whereas admitting "this
+         * may be stale" costs nothing and is exactly what a member needs to
+         * know during a partition. Three missed 2 s heartbeats.
+         */
+        private const val CONTROLLER_SILENCE_DESYNC_MS = 6_000L
         private const val MAX_LOCAL_RECOVERY_ATTEMPTS = 3
     }
 }

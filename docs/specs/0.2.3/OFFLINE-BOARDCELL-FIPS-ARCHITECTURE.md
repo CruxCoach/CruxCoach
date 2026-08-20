@@ -21,7 +21,7 @@ without mixing in state from an adjacent board.
 Every joined participant must be able to determine:
 
 - which climb was last confirmed as sent to the physical board;
-- the complete playlist and its current item;
+- the complete shared playlist and the occurrence it currently points at;
 - which device is allowed to control the board;
 - which participants belong to the local session;
 - the current state of a local competition.
@@ -201,7 +201,9 @@ The complete snapshot contains at least:
 - members;
 - last confirmed board climb and angle;
 - whether the current physical board content is known;
-- complete playlist/session and current index;
+- the complete shared playlist: its derived session id, its entries with their
+  stable occurrence ids and per-entry rest plan, the current *entry*, any
+  running rest, the pending-send report and the clear generation;
 - a playlist-only revision that is unaffected by controller heartbeats;
 - availability state;
 - hash of the complete state.
@@ -289,47 +291,134 @@ recovery after process and radio interruptions.
 
 Safety and an unambiguous physical board state take priority over availability.
 
-## 8. Nearby Climb, playlist, and session
+## 8. Nearby Climb, the shared playlist, and session
 
 Existing Nearby advertisements remain fast, backwards-compatible hints. Their
 legacy 24-byte format has no board scope, so it is authoritative only while at
 most one board is known. Once multiple boards have been observed, an unscoped
 legacy hint cannot overwrite the selected BoardCell.
 
-After admission, the BoardCell snapshot is always the source of truth:
+### One playlist per BoardCell, and no lifecycle of its own
 
-- `projection` answers which climb was last confirmed as sent;
-- `playlist` contains the complete list, session ID, and current position;
-- each command carries a playlist revision plus semantic references to the
-  affected climb occurrence, current climb and/or move destination anchors;
-- validation/rebase, queue mutation and playlist snapshot commit execute in one
-  cell-critical section, so a rejected command has no local side effect;
-- stale commands are not rejected merely for being stale. Adds, removes,
-  selections and moves are rebased when their actual preconditions remain
-  unchanged. `Next`/`Prev`, changed destination anchors and ambiguous duplicate
-  climbs conflict rather than guessing what the user meant;
-- every command has a durable ID and correlated `ACCEPTED`, `COMMITTED` or
-  terminal failure result. The UI reports a real conflict after applying the
-  latest canonical snapshot instead of silently ignoring the tap;
-- missing terminal acknowledgements are retried with the same command ID and
-  original semantic preconditions using bounded exponential backoff. A slim
-  progress indicator remains visible while commands are pending;
+A BoardCell has exactly one playlist. It is created with the cell — its session
+id is derived from the cell id and epoch, so every replica computes the same
+value and there is no start command to lose — and it lives exactly as long as
+the cell. There is deliberately no playlist host, no separate playlist join or
+leave, no approval and no independent end. Being an admitted member of the
+BoardCell *is* taking part, and every member may edit the playlist arbitrarily.
+
+The technical controller serializes those edits and remains the single writer
+to the physical board. It has no product-level authority over the playlist, and
+nothing in the UI presents it as having any. A controller handover or a fenced
+recovery therefore moves no product role at all: the playlist is untouched by
+both.
+
+Outside a BoardCell a device keeps a private local playlist, which is never
+published and is unaffected by any of this.
+
+### Occurrences, not indices
+
+The same climb may occur any number of times — 4x4s and limit-attempt blocks
+are written out exactly that way — and every occurrence carries its own stable
+`entryId`, minted by the device that adds it. That is what makes concurrent
+duplicate-climb edits unambiguous: two people removing "the second Zombie
+Hands" name the same occurrence and the second removal is a no-op, rather than
+deleting two different entries or the same one twice. It is also what makes a
+retry idempotent — the same add applied twice is one entry, on any controller,
+in any order.
+
+The current entry, the entry a running rest is waiting on and the pending-send
+state all name an occurrence rather than an index, so a concurrent add or move
+cannot silently make any of them mean a different climb.
+
+### Bounded typed operation deltas
+
+A normal edit travels as a bounded, typed operation batch — add, remove, move,
+set-current, set-rest, start/end-rest, clear, and the controller-only
+pending-send report — never as a whole-playlist broadcast. One command is one
+atomic batch, which is how "advance and arm the planned rest" stays a single
+canonical step that a reconnect or a handover cannot split. Committed deltas
+are replayed by every replica through the same pure reducer and verified
+against the envelope's resulting hash, so a divergence is detected rather than
+absorbed.
+
+Full canonical snapshots remain the repair path, unchanged: join, restart, a
+detected gap, anti-entropy, controller recovery and handover all carry complete
+state.
+
+Conflict handling is deterministic and needs no tie-breaking heuristic:
+
+- an add whose anchor has disappeared lands at the end; a move whose anchor has
+  disappeared leaves the entry exactly where it is;
+- removing, pointing at or re-timing something that is already gone is accepted
+  and changes nothing;
+- removing the current entry moves the group to whatever now occupies that
+  position; a move keeps the current entry and any running rest on their own
+  occurrence;
+- every command carries the clear generation it was composed against, so an
+  edit that was in flight while somebody else emptied the playlist is dropped
+  rather than resurrecting one entry of a list that no longer exists — and a
+  retried clear names a generation already reached and does nothing.
+
+### Commits, acknowledgements and repair
+
+- the canonical commit and its replication are complete before the physical
+  board is touched at all. Projecting the current entry onto the wall is a
+  separate, later step, so a board that is slow, busy or missing can never hold
+  up the group's playlist;
+- a failed or impossible projection is recorded canonically with an honest
+  reason and a retry any member may press; it never becomes an error state for
+  the playlist itself;
+- every command has a durable ID and correlated `ACCEPTED` and terminal result.
+  `ACCEPTED` is sent before the command is even applied, so a sender stops
+  resending within one round trip;
+- unacknowledged commands are resent with the same ID on a sub-second schedule
+  of their own — first retry at 250 ms, widening to 4 s — rather than on the
+  2 s maintenance tick;
+- `NOT_CONTROLLER` and `REJECTED_STALE` are statements about the answering
+  device at that moment, not decisions about the command, and are deliberately
+  never cached. Only a real decision is replayed to a retry;
 - the latest 256 committed command IDs travel in the hashed snapshot, so a
   controller receiving a full snapshot retains idempotency across handover;
   the matching durable ACK store is pruned to the same bound;
-- authenticated FIPS and scoped GATT ingress enter the same controller
-  serializer. FIPS uses bounded suspendable backpressure; GATT rejects an ATT
-  write instead of acknowledging and dropping it when its bounded ingress is
-  full. Scoped GATT sends a targeted command-result event back to its caller;
-- reconnecting and newly admitted participants receive a full snapshot rather
-  than only future deltas.
+- a delta that reveals a gap makes the replica request canonical state
+  immediately. A separate 250 ms repair loop re-asks while the replica is still
+  missing state, so a lost repair request does not wait for anti-entropy;
+- a replica never presents itself as synchronised while the cell is frozen or
+  the controller has been silent for three heartbeat windows. During a
+  partition the UI says the list may be out of date rather than passing it off
+  as the group's.
+
+### Wire
+
+`BoardCellWireCodec.VERSION` is 12 and the state hash schema is
+`board-cell-v8`. Older peers fail closed at the exact-version gate, because a
+V11 reader would decode a populated shared playlist as an empty one. Legacy
+hash schemas stay valid only while the playlist is genuinely empty, so no
+pre-V8 shape is ever reinterpreted under the new one; a durable snapshot in the
+old shape fails to decode (`ignoreUnknownKeys = false`) and the cell is rebuilt
+from the mesh, while write intents and command acks — which the change does not
+touch — survive the upgrade.
+
+The controller's stamps are the controller's: a command must leave the rest
+window and the clear generation at zero and may not carry the pending-send
+report at all, and a committed delta must carry them. Both directions are
+enforced at the wire, so no peer can dictate a canonical deadline.
+
+### GATT and Android 9
 
 GATT session info has a backwards-compatible optional BoardCell extension.
 GATT remains an admission/compatibility path and the Android 9/API 28 fallback.
 On API 29+, admitted participants prefer the authenticated FIPS data plane.
-The API 28 wire format still carries legacy indices, so the controller captures
-their semantic meaning at ordered receipt time; it cannot recover an intention
-that was already stale on the Android 9 screen.
+
+An API-28 device has no FIPS identity and takes part as a GATT leaf of a
+gateway. The gateway needs no special authority for this: what the leaf asks
+for is something every cell member may do anyway, so the edit travels the
+ordinary path under the gateway's own identity, and the leaf's result byte is
+the controller's real answer. The API 28 wire format still carries legacy
+indices, so the gateway resolves them into occurrence ids against its own
+replica at ordered receipt time; it cannot recover an intention that was
+already stale on the Android 9 screen.
 
 ## 9. Multi-connect boards and adjacent boards
 

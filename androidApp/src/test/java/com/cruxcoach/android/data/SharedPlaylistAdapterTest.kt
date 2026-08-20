@@ -9,17 +9,17 @@ import com.cruxcoach.android.boardcell.BoardCellManager
 import com.cruxcoach.android.boardcell.BoardCellScopeRegistry
 import com.cruxcoach.android.boardcell.BoardCellSnapshot
 import com.cruxcoach.android.boardcell.BoardCellWriteGateway
+import com.cruxcoach.android.boardcell.BoardPlaylistOp
 import com.cruxcoach.android.boardcell.BoardPlaylistPendingProjection
 import com.cruxcoach.android.boardcell.BoardPlaylistPolicy
 import com.cruxcoach.android.boardcell.BoardPlaylistProjectionPendingReason
 import com.cruxcoach.android.boardcell.BoardPlaylistRest
 import com.cruxcoach.android.boardcell.BoardPlaylistState
+import com.cruxcoach.android.boardcell.BoardProjection
 import com.cruxcoach.android.boardcell.PhysicalBoardId
 import com.cruxcoach.data.repository.BoardRepository
-import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
-import io.mockk.verify
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -38,12 +38,12 @@ import org.junit.Before
 import org.junit.Test
 
 /**
- * [SessionQueueManager] as the *adapter* for the canonical joinable playlist:
+ * [SessionQueueManager] as the *adapter* for the BoardCell's shared playlist:
  * it mirrors mesh state into the UI/GATT projection and never becomes a second
  * source of truth for it.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
-class JoinablePlaylistAdapterTest {
+class SharedPlaylistAdapterTest {
 
     private val testDispatcher = UnconfinedTestDispatcher()
     private lateinit var managerScope: CoroutineScope
@@ -72,6 +72,7 @@ class JoinablePlaylistAdapterTest {
         every { bleConnection.connectionState } returns MutableStateFlow(ConnectionState.DISCONNECTED)
         every { boardCellManager.snapshots } returns snapshots
         every { boardCellManager.localNodeId() } returns localNode
+        every { boardCellManager.isPlaylistSynchronized() } returns true
         managerScope = CoroutineScope(SupervisorJob() + testDispatcher)
         queueManager = SessionQueueManager(
             bleConnection, boardRepository, climbNameResolver, userPreferences, managerScope,
@@ -93,26 +94,34 @@ class JoinablePlaylistAdapterTest {
         Dispatchers.resetMain()
     }
 
-    private fun publish(playlist: BoardPlaylistState, revision: Long = 1) {
+    private fun publish(
+        playlist: BoardPlaylistState,
+        revision: Long = 1,
+        members: Set<String> = setOf("controller-npub", localNode, "other-npub"),
+        controller: String = "controller-npub",
+    ) {
         snapshots.value = BoardCellSnapshot(
             cellId = cell, physicalBoardId = board, epoch = 1, sequence = revision + 1,
-            controllerId = "controller-npub", controllerTerm = 1, lineageId = "lineage",
-            members = setOf("controller-npub", localNode, "other-npub"),
-            playlist = playlist, playlistRevision = revision,
+            controllerId = controller, controllerTerm = 1, lineageId = "lineage",
+            members = members, playlist = playlist, playlistRevision = revision,
         ).withComputedHash()
     }
 
-    private fun joinable(
-        items: List<Pair<String, Int>> = listOf("a" to 40, "b" to 45),
-        rests: List<Int> = listOf(120, 0),
-        index: Int = 0,
-        host: String = localNode,
-        members: List<String> = listOf(localNode),
+    /** The shared playlist as the reducer would have produced it. */
+    private fun shared(
+        entries: List<Triple<String, String, Int>> = listOf(
+            Triple("e1", "a", 120), Triple("e2", "b", 0)),
+        current: String? = entries.firstOrNull()?.first,
         rest: BoardPlaylistRest? = null,
         pending: BoardPlaylistPendingProjection? = null,
-    ) = BoardPlaylistPolicy.normalize(BoardPlaylistState(
-        sessionId = 7, currentIndex = index, items = items, restAfterSeconds = rests,
-        hostId = host, members = members, activeRest = rest, pendingProjection = pending))
+    ): BoardPlaylistState {
+        val base = BoardPlaylistPolicy.apply(BoardPlaylistState(sessionId = 7),
+            entries.map { (id, climb, restAfter) ->
+                BoardPlaylistOp.Add(id, climb, 40, restAfter)
+            })
+        return BoardPlaylistPolicy.normalize(
+            base.copy(currentEntryId = current, activeRest = rest, pendingProjection = pending))
+    }
 
     // ===== LOCAL_ONLY stays local =====
 
@@ -124,21 +133,15 @@ class JoinablePlaylistAdapterTest {
         queueManager.moveClimb(0, 1)
         queueManager.removeClimb(0)
 
-        // The old adapter mirrored every HOST queue change into the canonical
-        // playlist, which both leaked local sessions into the mesh and — on a
-        // device that was not the controller — silently dropped every write.
-        coVerify(exactly = 0) { boardCellManager.replacePlaylist(any(), any(), any()) }
         assertNull(queueManager.state.value.mesh)
         assertEquals(SessionVisibility.LOCAL_ONLY, queueManager.state.value.visibility)
     }
 
-    @Test fun `a joinable playlist this device did not join leaves a local one running`() {
+    @Test fun `a shared playlist on a board this device is not in leaves a local one running`() {
         queueManager.loadPlaylist("Host", listOf(QueueItem("local-a", 40)))
         val before = queueManager.state.value
 
-        // Mesh membership makes the playlist discoverable, nothing more; this
-        // device never joined it, so its own local playlist carries on.
-        publish(joinable(host = "other-npub", members = listOf("other-npub")))
+        publish(shared(), members = setOf("controller-npub", "other-npub"))
 
         val after = queueManager.state.value
         assertNull(after.mesh)
@@ -147,10 +150,10 @@ class JoinablePlaylistAdapterTest {
         assertEquals(SessionRole.HOST, after.role)
     }
 
-    // ===== Canonical state drives the projection =====
+    // ===== Board membership is playlist participation =====
 
-    @Test fun `a playlist member mirrors queue, index and rest plan from canonical state`() {
-        publish(joinable(index = 1, members = listOf(localNode, "other-npub")))
+    @Test fun `a board member mirrors queue, index and rest plan from canonical state`() {
+        publish(shared(current = "e2"))
 
         val state = queueManager.state.value
         assertEquals(listOf("a", "b"), state.queue.map { it.climbUuid })
@@ -158,64 +161,149 @@ class JoinablePlaylistAdapterTest {
         assertEquals(1, state.currentIndex)
         assertEquals(7, state.sessionId)
         assertEquals(SessionVisibility.JOINABLE, state.visibility)
-        assertEquals(2, state.participantCount)
+        assertEquals(3, state.participantCount)
         val mesh = state.mesh!!
-        assertTrue(mesh.isHost)
-        assertTrue(mesh.isMember)
-        assertEquals(listOf(localNode, "other-npub"), mesh.members)
+        assertEquals(listOf("controller-npub", localNode, "other-npub"), mesh.members)
+        assertTrue(mesh.synchronized)
+        assertFalse(mesh.localIsController)
     }
 
-    @Test fun `a member that is not the playlist host projects as participant`() {
-        publish(joinable(host = "other-npub", members = listOf("other-npub", localNode)))
+    /**
+     * There is no join. A device that is in the board group and has never
+     * touched the playlist still follows it the moment there is one, which is
+     * what "membership automatically adopts the playlist" has to mean.
+     */
+    @Test fun `a member adopts the shared playlist without ever joining it`() {
+        assertFalse(queueManager.state.value.isActive)
 
-        val state = queueManager.state.value
-        assertEquals(SessionRole.PARTICIPANT, state.role)
-        assertFalse(state.mesh!!.isHost)
-        assertEquals("other-npub", state.mesh!!.hostId)
-    }
+        publish(shared())
 
-    @Test fun `every board member may end the shared playlist`() {
-        publish(joinable(members = listOf(localNode, "other-npub")))
-        assertTrue(queueManager.state.value.mesh!!.canEnd)
-
-        publish(joinable(members = listOf(localNode)), revision = 2)
-        assertTrue(queueManager.state.value.mesh!!.canEnd)
-    }
-
-    @Test fun `a canonical update replaces the projection rather than merging into it`() {
-        publish(joinable())
-        publish(joinable(items = listOf("x" to 40), rests = listOf(0)), revision = 2)
-
-        assertEquals(listOf("x"), queueManager.state.value.queue.map { it.climbUuid })
-    }
-
-    @Test fun `losing playlist membership ends the mirrored session`() {
-        publish(joinable(members = listOf(localNode, "other-npub")))
         assertTrue(queueManager.state.value.isActive)
+        assertNotNull(queueManager.state.value.mesh)
+    }
 
-        publish(joinable(host = "other-npub", members = listOf("other-npub")), revision = 2)
+    @Test fun `an empty shared playlist is the board's resting state, not a session`() {
+        publish(BoardPlaylistState(sessionId = 7))
 
         assertFalse(queueManager.state.value.isActive)
         assertNull(queueManager.state.value.mesh)
     }
 
-    @Test fun `the playlist ending clears the mirrored session`() {
-        publish(joinable())
+    @Test fun `the technical controller is projected without any product role`() {
+        publish(shared(), controller = localNode)
+
+        val state = queueManager.state.value
+        // Everybody is a participant. Nothing in the projection makes the
+        // serializer look like a host.
+        assertEquals(SessionRole.PARTICIPANT, state.role)
+        assertTrue(state.mesh!!.localIsController)
+    }
+
+    @Test fun `a canonical update replaces the projection rather than merging into it`() {
+        publish(shared())
+        publish(shared(entries = listOf(Triple("x1", "x", 0))), revision = 2)
+
+        assertEquals(listOf("x"), queueManager.state.value.queue.map { it.climbUuid })
+    }
+
+    @Test fun `leaving the board group ends the mirrored session`() {
+        publish(shared())
         assertTrue(queueManager.state.value.isActive)
 
-        publish(BoardPlaylistState(), revision = 2)
+        publish(shared(), revision = 2, members = setOf("controller-npub", "other-npub"))
+
+        assertFalse(queueManager.state.value.isActive)
+        assertNull(queueManager.state.value.mesh)
+    }
+
+    @Test fun `clearing the shared playlist clears the mirrored session everywhere`() {
+        publish(shared())
+        assertTrue(queueManager.state.value.isActive)
+
+        publish(BoardPlaylistState(sessionId = 7, clearGeneration = 1), revision = 2)
 
         assertFalse(queueManager.state.value.isActive)
     }
 
-    @Test fun `a host handover moves the local role without touching the queue`() {
-        publish(joinable(members = listOf(localNode, "other-npub")))
+    /**
+     * Closing the player is local display state and nothing else: no canonical
+     * change, no lost editing rights, and it re-arms the moment the group's
+     * list changes shape again.
+     */
+    @Test fun `closing the player stops the mirror without changing anything canonical`() {
+        publish(shared())
+        assertTrue(queueManager.state.value.isActive)
+
+        queueManager.stopFollowingSharedPlaylist()
+        assertFalse(queueManager.state.value.isActive)
+
+        // Further canonical updates do not drag the player back on screen.
+        publish(shared(entries = listOf(Triple("e1", "a", 0), Triple("e3", "c", 0))), revision = 2)
+        assertFalse(queueManager.state.value.isActive)
+
+        // A clear re-arms it, so the next thing anybody adds is visible again.
+        publish(BoardPlaylistState(sessionId = 7, clearGeneration = 1), revision = 3)
+        publish(shared(entries = listOf(Triple("e9", "z", 0))), revision = 4)
+        assertTrue(queueManager.state.value.isActive)
+    }
+
+    @Test fun `acting on the shared playlist brings a closed player back`() {
+        publish(shared())
+        queueManager.stopFollowingSharedPlaylist()
+        assertFalse(queueManager.state.value.isActive)
+
+        // Editing a list you cannot see is not a state worth being in.
+        queueManager.resumeFollowingSharedPlaylist()
+        publish(shared(entries = listOf(Triple("e1", "a", 0), Triple("e3", "c", 0))), revision = 2)
+
+        assertTrue(queueManager.state.value.isActive)
+        assertEquals(listOf("a", "c"), queueManager.state.value.queue.map { it.climbUuid })
+    }
+
+    @Test fun `a controller handover does not touch the queue`() {
+        publish(shared())
         val queueBefore = queueManager.state.value.queue
 
-        publish(joinable(host = "other-npub", members = listOf("other-npub", localNode)), revision = 2)
+        publish(shared(), revision = 2, controller = localNode)
 
-        assertEquals(SessionRole.PARTICIPANT, queueManager.state.value.role)
         assertEquals(queueBefore, queueManager.state.value.queue)
+        assertEquals(SessionRole.PARTICIPANT, queueManager.state.value.role)
+    }
+
+    /**
+     * Two facts, shown as two facts: what the group has selected, and what the
+     * board last confirmed. Collapsing them would hide the moment somebody
+     * steps through the list while a climb is still lit.
+     */
+    @Test fun `the selected entry and the confirmed board climb are tracked apart`() {
+        publish(shared())
+        assertFalse("nothing has been sent yet", queueManager.state.value.mesh!!.selectionOnBoard)
+
+        snapshots.value = snapshots.value!!.copy(
+            projection = BoardProjection("a", 40), projectionKnown = true).withComputedHash()
+        assertTrue(queueManager.state.value.mesh!!.selectionOnBoard)
+
+        // The group moves on; the wall does not follow by itself.
+        publish(shared(current = "e2"), revision = 2)
+        snapshots.value = snapshots.value!!.copy(
+            projection = BoardProjection("a", 40), projectionKnown = true).withComputedHash()
+        assertFalse(queueManager.state.value.mesh!!.selectionOnBoard)
+    }
+
+    @Test fun `a selection nobody has sent is not reported as an external override`() {
+        publish(shared())
+
+        // The resting state of a shared playlist is "selected but not sent",
+        // which is not another app having taken the board.
+        assertFalse(queueManager.state.value.externalBoardOverride)
+    }
+
+    @Test fun `a partition is reported rather than passed off as being in sync`() {
+        every { boardCellManager.isPlaylistSynchronized() } returns false
+
+        publish(shared())
+
+        assertFalse(queueManager.state.value.mesh!!.synchronized)
     }
 
     // ===== Rest: canonical end instant, counted down locally =====
@@ -223,9 +311,9 @@ class JoinablePlaylistAdapterTest {
     private fun restEndingIn(
         seconds: Int,
         generation: Long,
-        nextIndex: Int = 0,
+        nextEntryId: String = "e1",
         startedAt: Long = startOfTest,
-    ) = BoardPlaylistRest(seconds, generation, nextIndex,
+    ) = BoardPlaylistRest(seconds, generation, nextEntryId,
         endsAtEpochMs = startedAt + seconds * 1_000L, startedAtEpochMs = startedAt)
 
     @Test fun `a new rest generation starts this device's own countdown`() {
@@ -234,11 +322,11 @@ class JoinablePlaylistAdapterTest {
         queueManager.onRestRequested = { started += it }
         queueManager.onRestCleared = { cleared++ }
 
-        publish(joinable(rest = restEndingIn(120, 1)))
+        publish(shared(rest = restEndingIn(120, 1)))
         // The same generation arriving again — an anti-entropy repair or a
         // reconnect replaying the snapshot — must not restart the countdown.
-        publish(joinable(rest = restEndingIn(120, 1)), revision = 2)
-        publish(joinable(rest = restEndingIn(90, 2, nextIndex = 1), index = 1), revision = 3)
+        publish(shared(rest = restEndingIn(120, 1)), revision = 2)
+        publish(shared(current = "e2", rest = restEndingIn(90, 2, nextEntryId = "e2")), revision = 3)
 
         assertEquals(listOf(120, 90), started)
         assertEquals(0, cleared)
@@ -249,8 +337,8 @@ class JoinablePlaylistAdapterTest {
         queueManager.onRestRequested = { }
         queueManager.onRestCleared = { cleared++ }
 
-        publish(joinable(rest = restEndingIn(120, 1)))
-        publish(joinable(), revision = 2)
+        publish(shared(rest = restEndingIn(120, 1)))
+        publish(shared(), revision = 2)
 
         assertEquals(1, cleared)
     }
@@ -265,7 +353,7 @@ class JoinablePlaylistAdapterTest {
         // on the wall, which is exactly what the duration-only rest did.
         val rest = restEndingIn(120, 1)
         clockNow = startOfTest + 40_000
-        publish(joinable(rest = rest))
+        publish(shared(rest = rest))
 
         assertEquals(listOf(80), started)
         assertEquals(120, queueManager.state.value.mesh!!.activeRest!!.totalSeconds)
@@ -278,11 +366,11 @@ class JoinablePlaylistAdapterTest {
         val rest = restEndingIn(120, 7)
 
         clockNow = startOfTest + 20_000
-        publish(joinable(rest = rest))
+        publish(shared(rest = rest))
         clockNow = startOfTest + 50_000
-        publish(joinable(rest = rest), revision = 2)
+        publish(shared(rest = rest), revision = 2)
         clockNow = startOfTest + 80_000
-        publish(joinable(rest = rest), revision = 3)
+        publish(shared(rest = rest), revision = 3)
 
         assertEquals("only the first observation starts a countdown", listOf(100), started)
     }
@@ -296,11 +384,12 @@ class JoinablePlaylistAdapterTest {
         queueManager.onCanonicalRestExpired = { expired++ }
 
         clockNow = startOfTest + 200_000
-        publish(joinable(rest = restEndingIn(120, 1)))
+        publish(shared(rest = restEndingIn(120, 1)), controller = localNode)
 
         assertTrue("an expired rest must not start a countdown", started.isEmpty())
-        // This device is the playlist host, so it is the one that publishes the
-        // end rather than every member racing to send the same command.
+        // Exactly one device publishes the end. The controller is picked
+        // because the group is guaranteed to have precisely one of it, not
+        // because it has any say over the playlist.
         assertEquals(1, expired)
         assertEquals(0, cleared)
     }
@@ -316,19 +405,16 @@ class JoinablePlaylistAdapterTest {
         // "an hour left" and begin the whole thing again; a rest that has not
         // begun by this device's clock is not one to join.
         val aYear = 365L * 24 * 3_600 * 1_000
-        publish(joinable(rest = restEndingIn(3_600, 1, startedAt = startOfTest + aYear)))
+        publish(shared(rest = restEndingIn(3_600, 1, startedAt = startOfTest + aYear)),
+            controller = localNode)
         assertTrue(started.isEmpty())
 
         // A restart re-observes the same state from scratch and still refuses.
-        observedFreshly(rest = restEndingIn(3_600, 1, startedAt = startOfTest + aYear))
-        assertTrue("a restart must not start it either", started.isEmpty())
-        assertEquals("the host publishes the end instead", 2, expired)
-    }
-
-    /** Re-observes canonical state the way a fresh process would. */
-    private fun observedFreshly(rest: BoardPlaylistRest) {
         snapshots.value = null
-        publish(joinable(rest = rest), revision = 2)
+        publish(shared(rest = restEndingIn(3_600, 1, startedAt = startOfTest + aYear)),
+            revision = 2, controller = localNode)
+        assertTrue("a restart must not start it either", started.isEmpty())
+        assertEquals("one device publishes the end instead", 2, expired)
     }
 
     @Test fun `a rest inside ordinary clock skew is still honoured`() {
@@ -337,19 +423,18 @@ class JoinablePlaylistAdapterTest {
 
         // Half a minute of skew between two phones is normal and must not
         // throw the pause away.
-        publish(joinable(rest = restEndingIn(120, 1, startedAt = startOfTest + 30_000)))
+        publish(shared(rest = restEndingIn(120, 1, startedAt = startOfTest + 30_000)))
 
         assertEquals(listOf(120), started)
     }
 
-    @Test fun `a member that is not the playlist host does not publish the expired rest`() {
+    @Test fun `a member that is not the controller does not publish the expired rest`() {
         var expired = 0
         queueManager.onRestRequested = { }
         queueManager.onCanonicalRestExpired = { expired++ }
 
         clockNow = startOfTest + 200_000
-        publish(joinable(rest = restEndingIn(120, 1),
-            host = "other-npub", members = listOf("other-npub", localNode)))
+        publish(shared(rest = restEndingIn(120, 1)))
 
         assertEquals(0, expired)
     }
@@ -357,17 +442,17 @@ class JoinablePlaylistAdapterTest {
     // ===== Pending projection =====
 
     @Test fun `a pending send is visible to every member with an honest reason`() {
-        publish(joinable(members = listOf("other-npub", localNode), host = "other-npub",
-            pending = BoardPlaylistPendingProjection("a", 40,
-                BoardPlaylistProjectionPendingReason.CLIMB_UNAVAILABLE)))
+        publish(shared(pending = BoardPlaylistPendingProjection("e1", "a", 40,
+            BoardPlaylistProjectionPendingReason.CLIMB_UNAVAILABLE)))
 
         val pending = queueManager.state.value.mesh!!.pendingProjection!!
         assertEquals(BoardPlaylistProjectionPendingReason.CLIMB_UNAVAILABLE, pending.reason)
+        assertEquals("e1", pending.entryId)
         assertEquals("a", pending.climbUuid)
     }
 
     @Test fun `a frozen cell surfaces as an error instead of silently stale state`() {
-        publish(joinable())
+        publish(shared())
         snapshots.value = snapshots.value!!.copy(
             availability = BoardCellAvailability.FROZEN_NEEDS_CONTROLLER).withComputedHash()
 

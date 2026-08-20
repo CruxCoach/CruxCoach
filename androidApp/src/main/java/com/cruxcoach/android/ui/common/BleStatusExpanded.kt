@@ -29,7 +29,6 @@ import com.cruxcoach.android.data.OwnSessionState
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.fips.FipsMeshUiState
 import com.cruxcoach.android.ui.fips.NearbyFipsMeshUi
-import com.cruxcoach.android.ui.fips.canJoinPlaylist
 
 @Composable
 internal fun BleStatusExpanded(
@@ -47,8 +46,6 @@ internal fun BleStatusExpanded(
     nearbyMeshes: List<NearbyFipsMeshUi> = emptyList(),
     onJoinMesh: ((NearbyFipsMeshUi) -> Unit)? = null,
     joiningMeshName: String? = null,
-    /** Explicit join of the BoardCell's running joinable playlist. */
-    onJoinPlaylist: (() -> Unit)? = null,
 ) {
     Card(
         modifier = Modifier
@@ -141,7 +138,7 @@ internal fun BleStatusExpanded(
             }
 
             if (activeMesh != null) {
-                ActiveMeshSection(activeMesh, onJoinPlaylist, onLeaveMesh)
+                ActiveMeshSection(activeMesh, onLeaveMesh)
                 Spacer(Modifier.height(8.dp))
             }
 
@@ -165,7 +162,6 @@ internal fun BleStatusExpanded(
 @Composable
 private fun ActiveMeshSection(
     mesh: FipsMeshUiState,
-    onJoinPlaylist: (() -> Unit)?,
     onLeaveMesh: (() -> Unit)?,
 ) {
     val connected = mesh.availability == "ACTIVE"
@@ -210,11 +206,6 @@ private fun ActiveMeshSection(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-        }
-        if (mesh.canJoinPlaylist && onJoinPlaylist != null) {
-            TextButton(onClick = onJoinPlaylist) {
-                Text(stringResource(R.string.mesh_playlist_join))
-            }
         }
         if (onLeaveMesh != null) {
             TextButton(onClick = onLeaveMesh) {

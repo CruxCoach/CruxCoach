@@ -30,10 +30,7 @@ import com.cruxcoach.android.R
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import com.cruxcoach.android.boardcell.BoardPlaylistProjectionPendingReason
-import com.cruxcoach.android.boardcell.BoardPlaylistProposalDecision
-import com.cruxcoach.android.boardcell.LocalOverwriteRequest
 import com.cruxcoach.android.data.MeshPlaylistView
-import com.cruxcoach.android.data.PlaylistStartState
 import com.cruxcoach.android.data.SessionRole
 import com.cruxcoach.android.data.PlaylistCommandFeedbackKind
 import com.cruxcoach.android.ui.theme.OrangeAccent
@@ -52,8 +49,6 @@ fun SessionQueueSheet(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val climbInfos by viewModel.climbInfos.collectAsStateWithLifecycle()
     val pendingCommands by viewModel.pendingCommandCount.collectAsStateWithLifecycle()
-    val startState by viewModel.playlistStartState.collectAsStateWithLifecycle()
-    val localOverwriteRequest by viewModel.localOverwriteRequest.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val conflictMessage = stringResource(R.string.board_queue_command_conflict)
     val unavailableMessage = stringResource(R.string.board_queue_command_unavailable)
@@ -133,18 +128,9 @@ fun SessionQueueSheet(
                 }
             }
 
-            LocalOverwriteConfirmation(
-                request = localOverwriteRequest,
-                onConfirm = viewModel::confirmLocalOverwrite,
-                onDismiss = viewModel::dismissLocalOverwrite,
-            )
-
             MeshPlaylistStatus(
                 mesh = state.mesh,
-                startState = startState,
-                onRetrySend = viewModel::retryPlaylistProjection,
-                onDecide = viewModel::decidePlaylistRequest,
-                onDismissStartState = viewModel::acknowledgePlaylistStartState,
+                onSendToBoard = viewModel::projectSelectedEntry,
             )
 
             Spacer(Modifier.height(16.dp))
@@ -377,30 +363,29 @@ fun SessionQueueSheet(
                 Spacer(Modifier.height(16.dp))
             }
 
-            // A board playlist belongs to the board group. Every member may
-            // end it; leaving the group is handled by the board connection UI.
+            // The board playlist belongs to the board group and outlives
+            // everybody's participation in it, so there is nothing to end or
+            // leave. Emptying it is the one group-visible action left; leaving
+            // the group itself is the board connection UI's job.
             val mesh = state.mesh
             val buttonText = when {
-                mesh != null && mesh.canEnd -> stringResource(R.string.mesh_playlist_end)
-                mesh != null -> stringResource(R.string.mesh_playlist_leave)
+                mesh != null -> stringResource(R.string.mesh_playlist_clear)
                 state.role == SessionRole.HOST -> stringResource(R.string.board_queue_end_session)
                 state.role == SessionRole.PARTICIPANT -> stringResource(R.string.board_queue_leave_session)
                 else -> return@Column
             }
-            if (mesh != null && !mesh.canEnd) {
-                Text(
-                    stringResource(R.string.mesh_playlist_end_blocked),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(8.dp))
-            }
             OutlinedButton(
                 onClick = {
                     // The player routes this through its own stop() so the
-                    // summary sheet appears; standalone contexts keep the
-                    // direct end/leave.
-                    if (onEndPlaylist != null) onEndPlaylist() else viewModel.endOrLeave()
+                    // summary sheet appears; standalone contexts act directly.
+                    when {
+                        // The board's list is emptied for the group here and
+                        // only here; the player's stop button closes the
+                        // player, which is a different, private thing.
+                        mesh != null -> viewModel.clearSharedPlaylist()
+                        onEndPlaylist != null -> onEndPlaylist()
+                        else -> viewModel.endOrLeave()
+                    }
                     onDismiss()
                 },
                 modifier = Modifier.fillMaxWidth(),
@@ -417,49 +402,19 @@ fun SessionQueueSheet(
 }
 
 /**
- * The joinable playlist's own state: who is in it, why the wall may be dark,
- * and its current delivery state.
+ * The Board-Playlist's own state: who is on the board, whether the selected
+ * entry is the one on the wall, and what the last send did.
  *
  * Everything here comes from canonical BoardCell state, so a member that
- * reconnects or a device that inherits the playlist host role shows the same
- * thing without a separate sync path. Nothing in it mentions the technical
+ * reconnects or a device that inherits the technical controller role shows the
+ * same thing without a separate sync path. Nothing in it mentions that
  * controller, which is deliberately not a product role.
  */
 @Composable
 private fun MeshPlaylistStatus(
     mesh: MeshPlaylistView?,
-    startState: PlaylistStartState,
-    onRetrySend: () -> Unit,
-    onDecide: (String, BoardPlaylistProposalDecision) -> Unit,
-    onDismissStartState: () -> Unit,
+    onSendToBoard: () -> Unit,
 ) {
-    val startMessage = when (startState) {
-        PlaylistStartState.WAITING -> stringResource(R.string.mesh_playlist_request_waiting)
-        PlaylistStartState.REJECTED -> stringResource(R.string.mesh_playlist_request_rejected)
-        PlaylistStartState.TIMED_OUT -> stringResource(R.string.mesh_playlist_request_timed_out)
-        PlaylistStartState.BUSY -> stringResource(R.string.mesh_playlist_request_busy)
-        PlaylistStartState.FAILED -> stringResource(R.string.mesh_playlist_request_failed)
-        PlaylistStartState.IDLE, PlaylistStartState.STARTED -> null
-    }
-    if (startMessage != null) {
-        Spacer(Modifier.height(8.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                startMessage,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.weight(1f),
-            )
-            if (startState != PlaylistStartState.WAITING) {
-                TextButton(onClick = onDismissStartState) {
-                    Text(stringResource(R.string.action_close))
-                }
-            }
-        }
-    }
     if (mesh == null) return
 
     Spacer(Modifier.height(8.dp))
@@ -468,6 +423,41 @@ private fun MeshPlaylistStatus(
         style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
+    // Having a copy of the playlist is not the same as being up to date with
+    // the group. During a partition this says so rather than letting the list
+    // on screen pass for the group's.
+    if (!mesh.synchronized) {
+        Text(
+            stringResource(R.string.mesh_playlist_out_of_sync),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.error,
+        )
+    }
+
+    val sendDescription = stringResource(R.string.mesh_playlist_send_description)
+    // Stepping through the list changes what the group is looking at; it does
+    // not change what is on the wall. Saying which is which is the honest
+    // reading, and the lamp is how somebody closes the gap deliberately.
+    if (mesh.pendingProjection == null && !mesh.selectionOnBoard) {
+        Spacer(Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                stringResource(R.string.mesh_playlist_not_on_board),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(
+                onClick = onSendToBoard,
+                modifier = Modifier.semantics { contentDescription = sendDescription },
+            ) {
+                Text(stringResource(R.string.mesh_playlist_send))
+            }
+        }
+    }
 
     // "Send pending" says only what is known: the climb is not on the wall.
     // There is no peer climb transfer in this build, so nothing here may
@@ -479,7 +469,6 @@ private fun MeshPlaylistStatus(
             BoardPlaylistProjectionPendingReason.CLIMB_UNAVAILABLE ->
                 stringResource(R.string.mesh_playlist_pending_send_unavailable)
         }
-        val retryDescription = stringResource(R.string.mesh_playlist_retry_send_description)
         Spacer(Modifier.height(8.dp))
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -500,46 +489,15 @@ private fun MeshPlaylistStatus(
                     color = MaterialTheme.colorScheme.onErrorContainer,
                 )
                 Spacer(Modifier.height(4.dp))
-                // Retry is open to every playlist member, not just its host:
-                // whoever is standing at the wall is the one who notices.
+                // Open to every board member: whoever is standing at the wall
+                // is the one who notices.
                 TextButton(
-                    onClick = onRetrySend,
-                    modifier = Modifier.semantics { contentDescription = retryDescription },
+                    onClick = onSendToBoard,
+                    modifier = Modifier.semantics { contentDescription = sendDescription },
                 ) {
                     Text(stringResource(R.string.mesh_playlist_retry_send))
                 }
             }
         }
     }
-
-}
-
-/**
- * The one question a local-only playlist has to ask before it lights the wall
- * over a running joinable playlist.
- *
- * Asked once per playlist, not per send: the point is consent to take the
- * board, not a confirmation habit. Declining leaves both playlists exactly as
- * they were — the shared queue and index never move because of a local send.
- */
-@Composable
-private fun LocalOverwriteConfirmation(
-    request: LocalOverwriteRequest?,
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    if (request == null) return
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.mesh_playlist_overwrite_title)) },
-        text = { Text(stringResource(R.string.mesh_playlist_overwrite_body)) },
-        confirmButton = {
-            TextButton(onClick = onConfirm) {
-                Text(stringResource(R.string.mesh_playlist_overwrite_confirm))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
-        },
-    )
 }

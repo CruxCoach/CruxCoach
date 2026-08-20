@@ -58,24 +58,19 @@ data class FipsMeshUiState(
     val joinStage: FipsConnectionStage = FipsConnectionStage.IDLE,
     val peers: List<FipsMeshPeerUi> = emptyList(),
     val nearbyMeshes: List<NearbyFipsMeshUi> = emptyList(),
-    /** The BoardCell's one shared playlist, if there is one. */
+    /** The BoardCell's one shared playlist, once it has anything in it. */
     val playlist: MeshPlaylistUi? = null,
 )
 
-/** The canonical joinable playlist as the mesh status strip shows it. */
+/**
+ * The board's shared playlist as the mesh status strip shows it.
+ *
+ * No membership and no host: the BoardCell has exactly one playlist, everyone
+ * on the board is in it, and the strip only says how much is in it.
+ */
 data class MeshPlaylistUi(
     val itemCount: Int,
-    val memberCount: Int,
-    val localIsMember: Boolean,
-    val localIsHost: Boolean,
-) {
-    /** Board membership is playlist membership; there is never a second join. */
-    val offersJoin: Boolean get() = false
-}
-
-/** True exactly when the join button should be offered and would work. */
-val FipsMeshUiState.canJoinPlaylist: Boolean
-    get() = availability == "ACTIVE" && playlist?.offersJoin == true
+)
 
 internal fun visibleNearbyMeshes(
     nearby: List<com.cruxcoach.android.fips.FipsNearbyMesh>,
@@ -188,13 +183,8 @@ class FipsMeshViewModel @Inject constructor(
                     displayName = diagnostics[peer.npub]?.displayName,
                 )
             },
-            playlist = snapshot?.playlist?.takeIf { it.isJoinable }?.let {
-                MeshPlaylistUi(
-                    itemCount = it.items.size,
-                    memberCount = it.members.size,
-                    localIsMember = runtime.localNpub in it.members,
-                    localIsHost = it.hostId == runtime.localNpub,
-                )
+            playlist = snapshot?.playlist?.takeIf { it.entries.isNotEmpty() }?.let {
+                MeshPlaylistUi(itemCount = it.entries.size)
             },
             nearbyMeshes = if (meshAvailable) visibleNearbyMeshes(
                 nearby,

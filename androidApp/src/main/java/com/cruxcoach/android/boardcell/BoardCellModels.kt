@@ -31,14 +31,19 @@ data class BoardProjection(val climbUuid: String, val angle: Int, val projection
 enum class BoardPlaylistProjectionPendingReason { BOARD_WRITE_FAILED, CLIMB_UNAVAILABLE }
 
 /**
- * The playlist is started, but its current climb is not on the board.
+ * The shared playlist's current entry is not on the board.
  *
  * Deliberately carries no promise that anybody is fetching the climb: this
  * build has no peer climb transfer, so the honest UI wording is "not
- * available"/"send pending" plus a retry every playlist member may press.
+ * available"/"send pending" plus a retry every board member may press.
+ *
+ * [entryId] rather than the climb alone, because the same climb may sit in the
+ * playlist any number of times and a pending send belongs to exactly one of
+ * those occurrences.
  */
 @Serializable
 data class BoardPlaylistPendingProjection(
+    val entryId: String,
     val climbUuid: String,
     val angle: Int,
     val reason: BoardPlaylistProjectionPendingReason,
@@ -65,8 +70,14 @@ data class BoardPlaylistPendingProjection(
 data class BoardPlaylistRest(
     val totalSeconds: Int,
     val generation: Long,
-    /** The index the queue already points at while this rest runs. */
-    val nextIndex: Int,
+    /**
+     * The entry the queue already points at while this rest runs.
+     *
+     * An entry id rather than an index: a concurrent add or move shifts every
+     * index, and a rest that silently came to mean a different climb was the
+     * whole reason occurrences became addressable in the first place.
+     */
+    val nextEntryId: String = "",
     /**
      * UTC epoch milliseconds at which this rest is over.
      *
@@ -157,106 +168,103 @@ internal object BoardPlaylistInstant {
         isValid(startEpochMs) && isValid(endEpochMs) && endEpochMs - startEpochMs == expectedMs
 }
 
-@Serializable
-enum class BoardPlaylistProposalDecision { REPLACE, APPEND, REJECT }
-
 /**
- * Somebody asked to start a playlist while one was already running.
+ * One occurrence of a climb in the shared playlist.
  *
- * Lives in the canonical playlist state so a pending question survives
- * reconnect, process restart and technical controller handover, and so the
- * bounded "at most one open request" rule is decided by canonical state
- * rather than by whichever device happened to see the request first.
+ * [entryId] identifies *this occurrence*, not the climb. The same climb may
+ * legitimately appear any number of times — 4x4s and limit-attempt blocks are
+ * written out exactly that way — and an index or a climb id cannot say which
+ * of them a concurrent edit meant. Two people removing "the second Zombie
+ * Hands" at the same moment used to be able to delete two different entries,
+ * or the same one twice; addressing the occurrence removes the ambiguity
+ * without any tie-breaking heuristic.
  *
- * [expiresAtEpochMs] makes the promised 30 s a property of the request rather
- * than of whichever device is currently serializing it. A controller-local
- * timer restarted the full window on every handover and every process
- * restart, so the open state survived but the deadline it promised did not; a
- * canonical instant means a new controller inherits the original deadline and
- * refuses a request that has already run out.
+ * The id is minted by the device that adds the entry and never changes, so a
+ * retry of the same add is a no-op rather than a duplicate, on any controller.
  */
 @Serializable
-data class BoardPlaylistProposal(
-    val requestId: String,
-    val requesterId: String,
-    val sessionId: Int,
-    val items: List<Pair<String, Int>> = emptyList(),
-    val restAfterSeconds: List<Int> = emptyList(),
-    /** UTC epoch milliseconds after which this request counts as declined. */
-    val expiresAtEpochMs: Long = 0,
-    /**
-     * UTC epoch milliseconds at which the controller accepted this request.
-     *
-     * Paired with [expiresAtEpochMs] so every replica can check that the
-     * window really is the promised 30 s. Bounding only the far end left a
-     * controller free to stamp a request that stayed open for years.
-     */
-    val requestedAtEpochMs: Long = 0,
-) {
-    fun hasExpired(nowEpochMs: Long): Boolean = nowEpochMs >= expiresAtEpochMs
-}
+data class BoardPlaylistEntry(
+    val entryId: String,
+    val climbUuid: String,
+    val angle: Int,
+    /** Planned rest after this entry, in seconds. */
+    val restAfterSeconds: Int = 0,
+)
 
 /**
- * The one joinable playlist of a physical BoardCell.
+ * The one canonical playlist of a physical BoardCell.
  *
- * A non-null [hostId] *is* the existence of a joinable playlist. Local-only
- * playlists never reach this type at all — they stay in the host's own
- * [com.cruxcoach.android.data.SessionQueueManager] and may run alongside a
- * joinable one.
+ * It is created with the cell and lives exactly as long as it. There is no
+ * playlist host, no separate playlist join or leave, no approval and no
+ * independent end: being in the mesh *is* taking part, and every member may
+ * edit it arbitrarily. The technical BoardCell controller serializes the edits
+ * and is the single writer to the physical board, but has no product-level
+ * authority over the playlist whatsoever.
  *
- * [members] mirrors the BoardCell members while the playlist exists. It is
- * retained in this wire shape for compatibility and deterministic technical
- * host succession, but it is not a second product-level membership.
+ * Local-only playlists never reach this type at all — a device outside a
+ * BoardCell keeps its own queue in
+ * [com.cruxcoach.android.data.SessionQueueManager].
  */
 @Serializable
 data class BoardPlaylistState(
+    /** Deterministically derived from the cell; stable for the cell's life. */
     val sessionId: Int? = null,
-    val currentIndex: Int = -1,
-    val items: List<Pair<String, Int>> = emptyList(),
-    /** Planned rest after each entry, index-parallel to [items]. */
-    val restAfterSeconds: List<Int> = emptyList(),
-    /** Playlist host; null means no joinable playlist exists. */
-    val hostId: String? = null,
-    /** Playlist members in join order; [hostId] is always one of them. */
-    val members: List<String> = emptyList(),
+    val entries: List<BoardPlaylistEntry> = emptyList(),
+    /** The occurrence the group is on; null exactly while [entries] is empty. */
+    val currentEntryId: String? = null,
     val activeRest: BoardPlaylistRest? = null,
     val pendingProjection: BoardPlaylistPendingProjection? = null,
-    val proposal: BoardPlaylistProposal? = null,
+    /**
+     * How many times this playlist has been cleared.
+     *
+     * An edit carries the generation it was composed against, so an add that
+     * was in flight while somebody else emptied the playlist is dropped
+     * instead of resurrecting one entry of a list that no longer exists. It
+     * also makes the clear itself idempotent: a retry names a generation the
+     * playlist has already reached and changes nothing.
+     */
+    val clearGeneration: Long = 0,
 ) {
-    val isJoinable: Boolean get() = hostId != null
-    fun restAt(index: Int): Int = restAfterSeconds.getOrElse(index) { 0 }
-    fun currentItem(): Pair<String, Int>? = items.getOrNull(currentIndex)
+    val currentIndex: Int
+        get() = currentEntryId?.let { id -> entries.indexOfFirst { it.entryId == id } } ?: -1
 
-    /** True while nothing beyond the pre-joinable fields is in use. */
+    fun currentEntry(): BoardPlaylistEntry? = entries.getOrNull(currentIndex)
+    fun entry(entryId: String): BoardPlaylistEntry? = entries.firstOrNull { it.entryId == entryId }
+    fun indexOf(entryId: String): Int = entries.indexOfFirst { it.entryId == entryId }
+    fun entryIdAt(index: Int): String? = entries.getOrNull(index)?.entryId
+    fun restAt(index: Int): Int = entries.getOrNull(index)?.restAfterSeconds ?: 0
+    val isEmpty: Boolean get() = entries.isEmpty()
+
+    /**
+     * Nothing beyond the pre-shared-playlist fields is in use.
+     *
+     * The only remaining purpose is the legacy state-hash chain: a durable
+     * snapshot written before the shared playlist existed may still validate,
+     * but only while its playlist is genuinely empty, so no older shape is
+     * ever silently reinterpreted as a populated one.
+     */
     internal val usesLegacyShapeOnly: Boolean
-        get() = restAfterSeconds.isEmpty() && hostId == null && members.isEmpty() &&
-            activeRest == null && pendingProjection == null && proposal == null
+        get() = sessionId == null && entries.isEmpty() && currentEntryId == null &&
+            activeRest == null && pendingProjection == null && clearGeneration == 0L
 }
 
-/** Identifies one occurrence without relying on an index that may have moved. */
-@Serializable
-data class BoardPlaylistItemRef(
-    val climbUuid: String,
-    val angle: Int,
-    val occurrence: Int,
-    val totalAtBase: Int,
-)
-
-@Serializable
-enum class BoardPlaylistCommandKind { ADD, REMOVE, SET_CURRENT, NEXT, PREV, MOVE, RESEND }
-
-/** Minimal semantic preconditions needed to safely rebase a playlist command. */
-@Serializable
-data class BoardPlaylistCommandContext(
-    val sessionId: Int?,
-    val kind: BoardPlaylistCommandKind,
-    val subject: BoardPlaylistItemRef? = null,
-    val before: BoardPlaylistItemRef? = null,
-    val after: BoardPlaylistItemRef? = null,
-    val expectedCurrent: BoardPlaylistItemRef? = null,
-    val expectedTarget: BoardPlaylistItemRef? = null,
-)
-
+/**
+ * The playlist session id of one cell, derived rather than negotiated.
+ *
+ * Every replica computes the same value from state it already agrees on, so
+ * the playlist that is created with the cell needs no start command, no
+ * proposal and no round trip — and a controller handover or a restart cannot
+ * change what the group is looking at.
+ */
+internal object BoardPlaylistSession {
+    fun idFor(cellId: BoardCellId, epoch: Long): Int {
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest("board-cell-playlist-session-v1|${cellId.value}|$epoch".encodeToByteArray())
+        val raw = ((digest[0].toInt() and 0x7f) shl 24) or ((digest[1].toInt() and 0xff) shl 16) or
+            ((digest[2].toInt() and 0xff) shl 8) or (digest[3].toInt() and 0xff)
+        return if (raw == 0) 1 else raw
+    }
+}
 @Serializable
 enum class BoardCellAvailability {
     SETTLING, ACTIVE, FROZEN_NEEDS_CONTROLLER, FROZEN_NEEDS_SNAPSHOT,
@@ -422,14 +430,17 @@ data class BoardCellSnapshot(
 
     /**
      * Every legacy schema stays acceptable only while the fields it could not
-     * cover are still at their defaults. A durable V5 snapshot written before
-     * joinable playlists existed therefore keeps validating and is not
-     * silently reinterpreted, while any snapshot that actually carries
-     * playlist host/membership/rest state must hash under V6, and a non-open
-     * join rule must hash under V7.
+     * cover are still at their defaults.
+     *
+     * V8 replaces the index-addressed playlist with stable per-occurrence
+     * entry ids, a derived current entry and a clear generation. None of the
+     * older schemas can express any of that, so they stay valid only while the
+     * playlist is genuinely empty — a populated pre-V8 playlist is never
+     * silently reinterpreted under the new shape, it fails closed and is
+     * repaired from a canonical snapshot instead.
      */
     fun hasValidHash(): Boolean = stateHash == BoardCellHash.compute(copy(stateHash = "")) ||
-        (joinMode == BoardJoinMode.OPEN &&
+        (joinMode == BoardJoinMode.OPEN && playlist.usesLegacyShapeOnly &&
             stateHash == BoardCellHash.computeLegacyV6(copy(stateHash = ""))) ||
         (joinMode == BoardJoinMode.OPEN && playlist.usesLegacyShapeOnly &&
             stateHash == BoardCellHash.computeLegacyV5(copy(stateHash = ""))) ||
@@ -451,7 +462,19 @@ sealed interface BoardCellEvent {
         val recoversUnknownProjection: Boolean = false,
     ) : BoardCellEvent
     @Serializable data class ProjectUnknown(val commandId: String, val reason: String) : BoardCellEvent
-    @Serializable data class PlaylistReplaced(val playlist: BoardPlaylistState, val commandId: String) : BoardCellEvent
+    /**
+     * One committed batch of playlist operations.
+     *
+     * The delta, not the list: a normal edit no longer puts the whole playlist
+     * on the wire. Replicas replay [ops] against the identical predecessor
+     * state and verify the resulting hash, so a divergence is detected rather
+     * than absorbed, and full snapshots stay the repair path for join,
+     * restart, gaps, anti-entropy, recovery and handover.
+     */
+    @Serializable data class PlaylistOpsCommitted(
+        val ops: List<BoardPlaylistOp>,
+        val commandId: String,
+    ) : BoardCellEvent
     @Serializable data class MemberJoined(val memberId: String) : BoardCellEvent
     @Serializable data class JoinModeChanged(val mode: BoardJoinMode) : BoardCellEvent
     @Serializable data class MemberLeft(
@@ -508,7 +531,21 @@ data class BoardCellClaim(
 @Serializable
 enum class BoardCommandStatus {
     ACCEPTED, COMMITTED, SUPERSEDED, REJECTED_STALE, REJECTED_CONFLICT,
-    NOT_CONTROLLER, BOARD_WRITE_FAILED,
+    NOT_CONTROLLER, BOARD_WRITE_FAILED;
+
+    /**
+     * Whether this answer decided the command, and may therefore be cached and
+     * replayed to a retry.
+     *
+     * [ACCEPTED] has not decided anything yet. [NOT_CONTROLLER] and
+     * [REJECTED_STALE] are statements about the answering device at that
+     * moment — it was mid-handover, or it was behind — so replaying them to a
+     * later retry would repeat a refusal whose cause had already gone, and the
+     * edit would be lost with no error anybody could act on.
+     */
+    val isTerminalDecision: Boolean
+        get() = this == COMMITTED || this == SUPERSEDED || this == REJECTED_CONFLICT ||
+            this == BOARD_WRITE_FAILED
 }
 
 @Serializable
@@ -540,22 +577,33 @@ data class BoardWriteIntent(
 )
 
 internal object BoardCellHash {
+    /**
+     * The current schema.
+     *
+     * V8 is the entry-addressed shared playlist: per-occurrence entry ids, a
+     * current *entry* rather than a current index, the per-entry rest plan and
+     * the clear generation. Everything a pre-V8 schema could express about a
+     * playlist is a strict subset that is only reachable while the playlist is
+     * empty, which is exactly the condition [BoardCellSnapshot.hasValidHash]
+     * puts on the legacy chain.
+     */
     fun compute(snapshot: BoardCellSnapshot): String =
-        compute(snapshot, "board-cell-v7", true, true, true, true, true)
+        compute(snapshot, "board-cell-v8", true, true, true, true, true, true)
     fun computeLegacyV6(snapshot: BoardCellSnapshot): String =
-        compute(snapshot, "board-cell-v6", true, true, true, true, false)
+        compute(snapshot, "board-cell-v6", true, true, true, true, false, false)
     fun computeLegacyV5(snapshot: BoardCellSnapshot): String =
-        compute(snapshot, "board-cell-v5", true, true, true, false, false)
+        compute(snapshot, "board-cell-v5", true, true, true, false, false, false)
     fun computeLegacyV4(snapshot: BoardCellSnapshot): String =
-        compute(snapshot, "board-cell-v4", true, true, false, false, false)
+        compute(snapshot, "board-cell-v4", true, true, false, false, false, false)
     fun computeLegacyV3(snapshot: BoardCellSnapshot): String =
-        compute(snapshot, "board-cell-v3", true, false, false, false, false)
+        compute(snapshot, "board-cell-v3", true, false, false, false, false, false)
     fun computeLegacyV2(snapshot: BoardCellSnapshot): String =
-        compute(snapshot, "board-cell-v2", false, false, false, false, false)
+        compute(snapshot, "board-cell-v2", false, false, false, false, false, false)
 
     private fun compute(snapshot: BoardCellSnapshot, schema: String, includePlaylistRevision: Boolean,
         includeControllerRecovery: Boolean, includeMembershipRevision: Boolean,
-        includeJoinablePlaylist: Boolean, includeJoinMode: Boolean): String {
+        includeLegacyPlaylistShape: Boolean, includeJoinMode: Boolean,
+        includeEntryPlaylist: Boolean): String {
         val canonical = buildString {
             append(schema).append('\n').append(snapshot.cellId.value).append('\n')
             append(snapshot.physicalBoardId.value).append('\n').append(snapshot.epoch).append('\n')
@@ -569,26 +617,33 @@ internal object BoardCellHash {
             snapshot.projection?.let { append("p:${it.climbUuid}|${it.angle}|${it.projectionSurvivesDisconnect}\n") }
                 ?: append("p:-\n")
             append("pk:${snapshot.projectionKnown}\n")
-            append("s:${snapshot.playlist.sessionId ?: "-"}|${snapshot.playlist.currentIndex}\n")
-            snapshot.playlist.items.forEach { append("q:${it.first}|${it.second}\n") }
-            if (includeJoinablePlaylist) {
-                val playlist = snapshot.playlist
-                playlist.restAfterSeconds.forEach { append("qr:").append(it).append('\n') }
-                append("ph:${playlist.hostId ?: "-"}\n")
-                playlist.members.forEach { append("pm:").append(it).append('\n') }
+            val playlist = snapshot.playlist
+            if (includeEntryPlaylist) {
+                append("s:${playlist.sessionId ?: "-"}|${playlist.currentEntryId ?: "-"}\n")
+                playlist.entries.forEach {
+                    append("q:${it.entryId}|${it.climbUuid}|${it.angle}|${it.restAfterSeconds}\n")
+                }
+                append("pg:${playlist.clearGeneration}\n")
                 playlist.activeRest?.let {
-                    append("pa:${it.totalSeconds}|${it.generation}|${it.nextIndex}")
+                    append("pa:${it.totalSeconds}|${it.generation}|${it.nextEntryId}")
                     append("|${it.startedAtEpochMs}|${it.endsAtEpochMs}\n")
                 } ?: append("pa:-\n")
                 playlist.pendingProjection?.let {
-                    append("pp:${it.climbUuid}|${it.angle}|${it.reason.name}\n")
+                    append("pp:${it.entryId}|${it.climbUuid}|${it.angle}|${it.reason.name}\n")
                 } ?: append("pp:-\n")
-                playlist.proposal?.let { proposal ->
-                    append("pq:${proposal.requestId}|${proposal.requesterId}|${proposal.sessionId}")
-                    append("|${proposal.requestedAtEpochMs}|${proposal.expiresAtEpochMs}\n")
-                    proposal.items.forEach { append("pqi:${it.first}|${it.second}\n") }
-                    proposal.restAfterSeconds.forEach { append("pqr:").append(it).append('\n') }
-                } ?: append("pq:-\n")
+            } else {
+                // The legacy chain is only ever consulted for an empty
+                // playlist, so these are the exact bytes an older build wrote
+                // for one. Reconstructing them here keeps a pre-V8 durable
+                // snapshot verifiable without keeping its fields alive in the
+                // model.
+                append("s:-|-1\n")
+                if (includeLegacyPlaylistShape) {
+                    append("ph:-\n")
+                    append("pa:-\n")
+                    append("pp:-\n")
+                    append("pq:-\n")
+                }
             }
             if (includePlaylistRevision) append("pr:${snapshot.playlistRevision}\n")
             if (includePlaylistRevision) snapshot.recentCommandIds.forEach { append("ci:").append(it).append('\n') }
@@ -808,6 +863,37 @@ internal object BoardCellFipsBootstrapPolicy {
             (snapshot.members - activeNodeId).isNotEmpty()
 
     private const val LOCAL_FALLBACK_PREFIX = "local-"
+}
+
+/**
+ * When a replica that has noticed a gap should ask for the snapshot again.
+ *
+ * A missed delta is repaired the moment the *next* one arrives — the replica
+ * detects the break in the chain and asks for canonical state there and then.
+ * What this covers is the case where that request itself is lost and no
+ * further delta is coming: without it the only repair left was the 2 s
+ * maintenance tick's anti-entropy digest, so a member could sit in front of a
+ * silently stale playlist for seconds at a time. The first retry is immediate
+ * and the backoff widens quickly, so a genuinely unreachable controller is not
+ * hammered.
+ */
+internal object BoardCellGapRepairPolicy {
+    /** How often the repair loop looks; well under one maintenance tick. */
+    const val TICK_MS = 250L
+    const val MAX_BACKOFF_MS = 2_000L
+
+    fun nextDelayMs(attempt: Int): Long =
+        if (attempt <= 0) 0L else (TICK_MS shl (attempt - 1).coerceAtMost(8))
+            .coerceAtMost(MAX_BACKOFF_MS)
+
+    /**
+     * Only a member missing canonical state repairs, and never the controller:
+     * it *is* the canonical state, so asking itself would strand it for ever.
+     */
+    fun needsRepair(snapshot: BoardCellSnapshot?, localNodeId: String): Boolean =
+        snapshot != null &&
+            snapshot.availability == BoardCellAvailability.FROZEN_NEEDS_SNAPSHOT &&
+            snapshot.controllerId != localNodeId && localNodeId in snapshot.members
 }
 
 /** Canonical, topology-independent staggering for fenced controller recovery. */

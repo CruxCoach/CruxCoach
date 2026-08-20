@@ -58,23 +58,38 @@ class BoardCellReplicaTest {
         assertTrue(changed.hasValidHash())
     }
 
-    @Test fun `joining the board also joins its running playlist`() {
-        val playlist = BoardPlaylistPolicy.normalize(BoardPlaylistState(
-            sessionId = 7,
-            currentIndex = 0,
-            items = listOf("climb" to 40),
-            hostId = "controller",
-            members = listOf("controller", "member"),
-        ))
+    /**
+     * Joining a board is joining its playlist, and there is nothing to record:
+     * the playlist has no membership of its own, so the snapshot the new
+     * member receives already *is* their participation.
+     */
+    @Test fun `joining or leaving the board never changes the shared playlist`() {
+        val playlist = BoardPlaylistPolicy.apply(BoardPlaylistState(sessionId = 7),
+            listOf(BoardPlaylistOp.Add("e1", "climb", 40)))
         val current = initial().copy(playlist = playlist).withComputedHash()
 
-        val joined = BoardCellReplica.reduce(
-            current,
-            BoardCellEvent.MemberJoined("new-member"),
-            1,
-        )
+        val joined = BoardCellReplica.reduce(current, BoardCellEvent.MemberJoined("new-member"), 1)
+        val left = BoardCellReplica.reduce(joined, BoardCellEvent.MemberLeft(
+            "new-member", BoardCellMemberLeaveReason.VOLUNTARY), 2)
 
         assertTrue("new-member" in joined.members)
-        assertTrue("new-member" in joined.playlist.members)
+        assertEquals(playlist, joined.playlist)
+        assertEquals(playlist, left.playlist)
+        // Membership churn must not stale anybody's in-flight playlist command.
+        assertEquals(current.playlistRevision, joined.playlistRevision)
+        assertEquals(current.playlistRevision, left.playlistRevision)
+    }
+
+    @Test fun `a committed operation batch advances the playlist revision once`() {
+        val current = initial()
+
+        val next = BoardCellReplica.reduce(current, BoardCellEvent.PlaylistOpsCommitted(
+            listOf(BoardPlaylistOp.Add("e1", "climb", 40)), "command-0001"), 1)
+
+        assertEquals(listOf("e1"), next.playlist.entries.map { it.entryId })
+        assertEquals("e1", next.playlist.currentEntryId)
+        assertEquals(current.playlistRevision + 1, next.playlistRevision)
+        assertTrue("command-0001" in next.recentCommandIds)
+        assertTrue(next.hasValidHash())
     }
 }

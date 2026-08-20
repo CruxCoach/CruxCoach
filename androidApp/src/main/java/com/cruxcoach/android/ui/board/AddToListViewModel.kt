@@ -148,7 +148,9 @@ class AddToListViewModel @Inject constructor(
             it.availability == BoardCellAvailability.ACTIVE &&
                 boardCellManager.localNodeId() in it.members
         } == true
-        if (boardGroupActive && snapshot.playlist.isJoinable != true) {
+        if (boardGroupActive) {
+            // The BoardCell always has exactly one playlist, so this is always
+            // "add to the group's list" — never "start a second one".
             playback.play(
                 hostName = "",
                 items = listOf(QueueItem(selectedClimbUuid, selectedAngle)),

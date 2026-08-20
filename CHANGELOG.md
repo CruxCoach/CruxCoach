@@ -58,6 +58,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Bluetooth addresses are recognised as one member rather than dialled twice.
 
 ### Changed
+- **One Board-Playlist per board, and nobody owns it** — a BoardCell now
+  creates exactly one playlist with the session and keeps it for as long as the
+  board group exists. Everyone on the board is in it automatically and may add,
+  remove, reorder, jump, re-time and clear it freely. The playlist host, the
+  separate join and leave, the "may I start one?" request with its approval and
+  30-second timeout, and the end-for-everyone rule are all gone: there is
+  nothing to be granted and nothing to be refused. Emptying the list is the one
+  group-visible action left, and closing the player is a private decision that
+  changes nothing for anybody else.
+  - Every occurrence of a climb now has its own stable identity, so the same
+    problem can sit in the list as often as a 4x4 needs it and two people
+    editing at the same moment can never delete each other's entry or the same
+    one twice.
+  - An edit travels as a small typed change instead of a copy of the whole
+    playlist, so a 500-entry list no longer crosses the mesh every time
+    somebody moves one climb. Full state is still sent for joining,
+    restarting, repairing a gap, recovering a controller and handing one over.
+  - A tap is retried within a quarter of a second rather than on the next
+    two-second maintenance tick, and a device that has fallen behind asks for
+    the missing state immediately. While it cannot reach the board group it
+    says so instead of showing a list that may already be out of date.
+  - Choosing what the group is looking at and putting it on the wall are now
+    two different things. Stepping through the list, reordering it or adding
+    to it never lights the board, so nobody can have the climb they are
+    working on taken away by somebody else browsing; an explicit send is what
+    puts the selected climb up, and it stays available as a resend. The device
+    holding the board is still the only writer to it, but the group's list no
+    longer waits for the wall: a slow, busy or missing board cannot hold
+    anybody's edit up. Auto-send remains exactly as it was for a board you are
+    connected to on your own, including its setting.
+  - The mesh wire format moves to version 12 and fails closed against older
+    peers, as it is designed to.
 - **Offline mesh rebuilt on the reviewed FIPS platform integration** — the mesh
   transport moves to FIPS `6580a80`, which is now vendored into this repository
   instead of fetched from a moving upstream branch, so a released build can

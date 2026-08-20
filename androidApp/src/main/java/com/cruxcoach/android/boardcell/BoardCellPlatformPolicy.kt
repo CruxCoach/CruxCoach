@@ -10,17 +10,15 @@ object BoardCellPlatformPolicy {
     fun requiresSafetyBoundary(@Suppress("UNUSED_PARAMETER") apiLevel: Int): Boolean = true
 
     /**
-     * Whether this device may start the BoardCell's one joinable playlist as
-     * canonical mesh state.
+     * Whether this device takes part in the BoardCell's shared playlist.
      *
      * API 28 has no public BLE L2CAP CoC and therefore no FIPS identity, so it
-     * can neither carry a playlist-host identity nor get a control command to
-     * a controller. Answering "yes" here and failing later left the user with
-     * an empty started session instead of the legacy GATT joinable path that
-     * still works perfectly well on that platform — so the platform gate has
-     * to be part of the decision, not a surprise inside it.
+     * cannot be a cell member and cannot get a command to a controller under
+     * its own name; it takes part as a GATT leaf of a gateway instead. Being
+     * an active cell member is the whole condition — there is nothing else to
+     * start, join or be admitted to.
      */
-    fun canStartCanonicalPlaylist(
+    fun participatesInSharedPlaylist(
         apiLevel: Int,
         cellIsActive: Boolean,
         localIsCellMember: Boolean,
@@ -34,10 +32,10 @@ fun interface BoardCellWriteGateway {
 object ActiveBoardCellWriteGateway : BoardCellWriteGateway {
     override suspend fun project(projection: BoardProjection, boardWrite: suspend () -> Boolean): Boolean {
         val manager = BoardCellManager.current ?: return false
-        // A local-only playlist keeps its queue to itself, but the wall is
-        // shared hardware: taking it from a running joinable playlist is a
-        // question for the user, asked once per playlist.
-        if (!manager.mayOverwriteSharedProjection(projection)) return false
+        // No consent question here any more. It existed because a cell member
+        // could be outside the shared playlist and take the wall from it;
+        // membership now *is* participation, so a member lighting a climb is
+        // simply that group using its own board.
         // Not the technical controller: the projection travels as a request so
         // it is serialized with everybody else's and becomes visible canonical
         // state, instead of being dropped because this device cannot write.

@@ -95,8 +95,6 @@ fun BleStatusArea(
     val sessionQueueManager = LocalSessionQueueManager.current
     val queueState by sessionQueueManager.state.collectAsStateWithLifecycle()
 
-    val playback = LocalPlaylistPlayback.current
-
     // Suppress on-board climb on detail screen:
     // 1. UUID match (same climb) — always suppress regardless of source
     // 2. LOCAL_ACTIVE — user is swiping through climbs they're sending to the board;
@@ -168,15 +166,6 @@ fun BleStatusArea(
             nearbyMeshes = nearbyMeshes,
             onJoinMesh = if (joiningBoardCellId == null) meshViewModel::join else null,
             joiningMeshName = joiningMeshName,
-            // Explicit and user-driven, which is the whole rule: mesh
-            // membership only made the playlist visible above. Opening the
-            // queue straight away means the button has a visible consequence
-            // rather than silently changing state somewhere off screen.
-            onJoinPlaylist = {
-                playback.joinCanonicalPlaylist()
-                expanded = false
-                showQueueSheet = true
-            },
         )
     } else {
         BleStatusChip(
