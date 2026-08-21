@@ -131,4 +131,89 @@ class BoardPlaylistLightNowTest {
         assertEquals(listOf("e1", "new-1"), after.entries.map { it.entryId })
         assertEquals("new-1", after.currentEntryId)
     }
+
+    // ── The same climb, twice, with two identities ────────────────────────
+    //
+    // The case the whole entry-id contract exists for: a 4x4 is the same climb
+    // four times, and tapping the third one has to mean the third one.
+
+    @Test
+    fun `two occurrences of one climb are lit individually`() {
+        val state = playlist(
+            entry("e1", "climb-a"),
+            entry("e2", "climb-x"),
+            entry("e3", "climb-b"),
+            entry("e4", "climb-x"),
+            current = "e1",
+        )
+
+        val second = BoardPlaylistOps.lightNow(state, "climb-x", 40, fromEntryId = "e4")
+
+        assertEquals("e4", second.entryId)
+        val after = BoardPlaylistPolicy.apply(state, second.ops)
+        assertEquals("e4", after.currentEntryId)
+        assertEquals(
+            "lighting one occurrence must not disturb the other",
+            listOf("e1", "e2", "e3", "e4"),
+            after.entries.map { it.entryId },
+        )
+    }
+
+    @Test
+    fun `lighting the same occurrence repeatedly changes neither length nor order`() {
+        var state = playlist(
+            entry("e1", "climb-a"),
+            entry("e2", "climb-x"),
+            entry("e3", "climb-x"),
+            current = "e1",
+        )
+        val before = state.entries.map { it.entryId }
+
+        repeat(5) {
+            val plan = BoardPlaylistOps.lightNow(state, "climb-x", 40, fromEntryId = "e3")
+            assertEquals("e3", plan.entryId)
+            state = BoardPlaylistPolicy.apply(state, plan.ops)
+        }
+
+        assertEquals(before, state.entries.map { it.entryId })
+        assertEquals("e3", state.currentEntryId)
+    }
+
+    /**
+     * Alternating between the list's lamp and the climb page's must be the same
+     * operation, not two that fight over the order.
+     */
+    @Test
+    fun `lighting from list and from detail are the same operation`() {
+        val state = playlist(
+            entry("e1", "climb-a"),
+            entry("e2", "climb-x"),
+            current = "e1",
+        )
+
+        val fromList = BoardPlaylistOps.lightNow(state, "climb-x", 40, fromEntryId = "e2")
+        val fromDetail = BoardPlaylistOps.lightNow(state, "climb-x", 40, fromEntryId = "e2")
+
+        assertEquals(fromList.entryId, fromDetail.entryId)
+        assertEquals(fromList.ops, fromDetail.ops)
+    }
+
+    /**
+     * The counterpart: a climb genuinely from outside the list still mints one,
+     * even when an occurrence of the same climb is already on it.
+     */
+    @Test
+    fun `a climb opened from the browser mints one even with a twin on the list`() {
+        val state = playlist(
+            entry("e1", "climb-a"),
+            entry("e2", "climb-x"),
+            current = "e1",
+        )
+
+        val plan = BoardPlaylistOps.lightNow(state, "climb-x", 40, fromEntryId = null) { "new-1" }
+
+        assertEquals("new-1", plan.entryId)
+        val after = BoardPlaylistPolicy.apply(state, plan.ops)
+        assertEquals(listOf("e1", "new-1", "e2"), after.entries.map { it.entryId })
+    }
 }

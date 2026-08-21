@@ -604,6 +604,13 @@ fun CruxCoachNavHost(
                                 launchSingleTop = true
                             }
                         },
+                        // Local on this device: it opens a climb page, it does
+                        // not move anybody's current. The occurrence id travels
+                        // with it so "on the board now" lights this entry
+                        // rather than minting a second one for the same climb.
+                        onOpenEntry = { _, climbUuid, angle ->
+                            navController.navigate(Routes.boardClimbDetail(climbUuid, angle))
+                        },
                     )
                 }
             }

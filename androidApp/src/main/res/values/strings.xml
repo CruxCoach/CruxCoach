@@ -3016,4 +3016,5 @@
     <string name="settings_relay_inbound_desc">What happens when another CruxCoach user sends a climb to your board through this phone. Either way it becomes an occurrence on the shared list, so everybody can see what arrived.</string>
     <string name="settings_relay_inbound_project_now">Straight to the board</string>
     <string name="settings_relay_inbound_append_end">End of the playlist</string>
+    <string name="board_playlist_light_entry">Put this one on the board</string>
 </resources>

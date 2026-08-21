@@ -137,6 +137,8 @@ fun BoardPlaylistScreen(
     onNavigateBack: () -> Unit,
     onNavigateToBrowser: () -> Unit,
     onOpenPlayer: () -> Unit,
+    /** Opens one occurrence on this device only. Carries its stable entry id. */
+    onOpenEntry: (entryId: String, climbUuid: String, angle: Int) -> Unit,
     viewModel: BoardPlaylistViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -339,7 +341,11 @@ fun BoardPlaylistScreen(
                 BoardPlaylistRows(
                     state = state,
                     modifier = Modifier.weight(1f),
-                    onSelect = viewModel::select,
+                    onOpen = { entryId, climbUuid, angle ->
+                        viewModel.rememberOpenedEntry(entryId, climbUuid)
+                        onOpenEntry(entryId, climbUuid, angle)
+                    },
+                    onLight = viewModel::lightEntry,
                     onRemove = viewModel::remove,
                     onRepeat = viewModel::repeatAfter,
                     onMove = viewModel::move,
@@ -610,7 +616,8 @@ private fun BoardPlaylistTransport(
 private fun BoardPlaylistRows(
     state: BoardPlaylistUiState,
     modifier: Modifier,
-    onSelect: (String) -> Unit,
+    onOpen: (entryId: String, climbUuid: String, angle: Int) -> Unit,
+    onLight: (String) -> Unit,
     onRemove: (String) -> Unit,
     onRepeat: (String) -> Unit,
     onMove: (String, BoardPlaylistAnchor) -> Unit,
@@ -707,7 +714,8 @@ private fun BoardPlaylistRows(
             } else null
             BoardPlaylistRowCard(
                 row = row,
-                onSelect = { onSelect(row.entryId) },
+                onOpen = { onOpen(row.entryId, row.climbUuid, row.angle) },
+                onLight = { onLight(row.entryId) },
                 onRemove = { onRemove(row.entryId) },
                 onRepeat = { onRepeat(row.entryId) },
                 onMoveUp = moveUp,
@@ -779,7 +787,8 @@ private fun BoardPlaylistRows(
 @Composable
 private fun BoardPlaylistRowCard(
     row: BoardPlaylistRow,
-    onSelect: () -> Unit,
+    onOpen: () -> Unit,
+    onLight: () -> Unit,
     onRemove: () -> Unit,
     onRepeat: () -> Unit,
     onMoveUp: (() -> Unit)?,
@@ -794,7 +803,11 @@ private fun BoardPlaylistRowCard(
         modifier = Modifier
             .fillMaxWidth()
             .alpha(dim)
-            .clickable(onClick = onSelect)
+            // Opening an entry is a local act. It shows this device the climb;
+            // it does not move the group's current, which is what the lamp is
+            // for. The two used to be the same tap, which meant looking at
+            // something changed what everybody else was looking at.
+            .clickable(onClick = onOpen)
             .testTag("board_playlist_row"),
         colors = CardDefaults.cardColors(
             containerColor = if (row.isCurrent) OrangeAccent.copy(alpha = 0.15f)
@@ -877,6 +890,18 @@ private fun BoardPlaylistRowCard(
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            IconButton(
+                onClick = onLight,
+                modifier = Modifier.size(48.dp).testTag("board_playlist_row_light"),
+            ) {
+                Icon(
+                    Icons.Default.Lightbulb,
+                    contentDescription = stringResource(R.string.board_playlist_light_entry),
+                    tint = if (row.isCurrent) OrangeAccent
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp),
                 )
             }
             IconButton(onClick = onRepeat, modifier = Modifier.size(48.dp)) {

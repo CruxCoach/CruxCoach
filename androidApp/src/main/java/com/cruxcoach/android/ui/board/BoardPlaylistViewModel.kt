@@ -116,6 +116,7 @@ class BoardPlaylistViewModel @Inject constructor(
     private val bleConnection: BoardBleConnection,
     private val fipsMeshRuntime: FipsMeshRuntime,
     private val randomClimbPicker: RandomBoardClimbPicker,
+    private val climbNavState: com.cruxcoach.android.ui.navigation.ClimbNavigationState,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(BoardPlaylistUiState())
@@ -487,6 +488,35 @@ class BoardPlaylistViewModel @Inject constructor(
      */
     fun lightNow(climbUuid: String, angle: Int, fromEntryId: String? = null) =
         gattBridge.lightNow(climbUuid, angle, fromEntryId)
+
+    /**
+     * Remember which occurrence a climb page is being opened for.
+     *
+     * Without it the page would only know the climb, and "on the board now"
+     * would mint a second occurrence for a climb that is already on the list —
+     * the identity would be lost by mirroring an entry down to a climb record.
+     * Paired with the climb uuid so a swipe to the next climb cannot inherit
+     * this occurrence.
+     */
+    fun rememberOpenedEntry(entryId: String, climbUuid: String) {
+        climbNavState.boardPlaylistEntryId = entryId
+        climbNavState.boardPlaylistEntryClimbUuid = climbUuid
+        climbNavState.climbUuids = _state.value.rows.map { it.climbUuid }.distinct()
+        climbNavState.source = com.cruxcoach.android.ui.navigation.ClimbNavigationSource.QUEUE
+    }
+
+    /**
+     * Put one existing occurrence on the wall.
+     *
+     * This is the only thing that moves the group's current from the list.
+     * Opening an entry no longer does — that is local to whoever tapped it —
+     * so the entry somebody is reading about is not the entry everybody is
+     * climbing unless they said so.
+     */
+    fun lightEntry(entryId: String) {
+        val entry = boardCellManager.playlist()?.entry(entryId) ?: return
+        gattBridge.lightNow(entry.climbUuid, entry.angle, entryId)
+    }
 
     private fun submit(
         kind: BoardPlaylistEditKind,

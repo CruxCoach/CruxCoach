@@ -3016,4 +3016,5 @@
     <string name="settings_relay_inbound_desc">Was passiert, wenn dir jemand über dieses Handy einen Climb auf dein Board schickt. In beiden Fällen wird daraus ein Eintrag auf der gemeinsamen Liste, damit alle sehen, was angekommen ist.</string>
     <string name="settings_relay_inbound_project_now">Direkt aufs Board</string>
     <string name="settings_relay_inbound_append_end">Ans Ende der Playlist</string>
+    <string name="board_playlist_light_entry">Diesen aufs Board legen</string>
 </resources>
