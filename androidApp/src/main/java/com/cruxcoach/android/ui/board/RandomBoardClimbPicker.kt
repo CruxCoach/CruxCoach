@@ -8,6 +8,7 @@ import com.cruxcoach.data.repository.ClimbSortField
 import com.cruxcoach.data.repository.ClimbTypeFilter
 import com.cruxcoach.data.repository.PersonalBoardRepository
 import com.cruxcoach.data.repository.SortDirection
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.KilterGradeMapper
 import javax.inject.Inject
 import kotlinx.coroutines.flow.first
@@ -52,17 +53,36 @@ class RandomBoardClimbPicker @Inject constructor(
             maxDifficulty = KilterGradeMapper.indexToFilterMax(filter.maxGrade, french)
             showUngraded = false
         }
-        val climbType = runCatching { ClimbTypeFilter.valueOf(filter.climbType) }
-            .getOrDefault(ClimbTypeFilter.BOULDER)
-        val origin = runCatching { OriginFilter.valueOf(filter.originFilter) }
-            .getOrDefault(OriginFilter.ALL)
+        // The persisted filters were last edited on whatever board the user
+        // was browsing. On a board that has no routes, no benchmarks and no
+        // BoardSesh provenance, carrying those over would leave the dice
+        // silently returning nothing forever — the same trap BoardBrowsePolicy
+        // exists to keep out of the browser, so it decides here too.
+        val brand = BoardBrand.fromWire(boardBrand)
+        val climbType = BoardBrowsePolicy.climbType(
+            brand,
+            runCatching { ClimbTypeFilter.valueOf(filter.climbType) }
+                .getOrDefault(ClimbTypeFilter.BOULDER),
+        )
+        val origin = BoardBrowsePolicy.origin(
+            brand,
+            runCatching { OriginFilter.valueOf(filter.originFilter) }
+                .getOrDefault(OriginFilter.ALL),
+        )
+        val benchmarkOnly = BoardBrowsePolicy.benchmarkOnly(brand, filter.benchmarkOnly)
         val statuses = parseStatusFilter(filter.statusFilter)
         val sent = if (statuses.isEmpty()) emptySet()
             else personalBoardRepository.getUserSentClimbUuids()
         val attempted = if (statuses.isEmpty()) emptySet()
             else personalBoardRepository.getUserAttemptedClimbUuids()
         val ignored = personalBoardRepository.getIgnoredClimbUuids()
-        val sizeId = userPreferences.boardProductSizeId.first()
+        // Quantum model membership is authoritative in its own catalogue, so
+        // the product-size edge predicate must stay inert there.
+        val sizeId = BoardBrowsePolicy.productSizeId(
+            brand,
+            userPreferences.boardProductSizeId.first(),
+        )
+        val exclusionMask = BoardBrowsePolicy.exclusionMask(brand, 0L, filter.quantumRuleMask)
 
         // A batch keeps the tap fast while still letting client-side filters
         // (status, source, benchmark and ignored climbs) reject candidates.
@@ -81,12 +101,13 @@ class RandomBoardClimbPicker @Inject constructor(
                 limit = 32,
                 climbType = climbType,
                 selProductSizeId = sizeId,
+                hsmExcludedMask = exclusionMask,
                 showUngraded = showUngraded,
             )
             val match = BrowserOriginFilter.apply(candidates, origin)
                 .asSequence()
                 .filterNot { it.uuid in ignored }
-                .filter { !filter.benchmarkOnly || it.benchmarkDifficulty > 0.0 }
+                .filter { !benchmarkOnly || it.benchmarkDifficulty > 0.0 }
                 .filter { climb ->
                     statuses.isEmpty() || when {
                         climb.uuid in sent -> ClimbStatusFilter.SENT in statuses
