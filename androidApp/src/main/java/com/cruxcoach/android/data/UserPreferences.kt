@@ -120,8 +120,16 @@ enum class BoardSendMode {
     EXPLICIT;
 
     companion object {
+        /**
+         * Unknown or absent reads as [EXPLICIT].
+         *
+         * Sending is manual by default on every board, single- or
+         * multi-connection: the wall changing is a thing somebody asked for,
+         * not a side effect of looking at a climb. AUTOMATIC is an opt-in and
+         * only reacts to explicit shared board/playlist events.
+         */
         fun fromWire(value: String?): BoardSendMode =
-            entries.firstOrNull { it.name == value } ?: AUTOMATIC
+            entries.firstOrNull { it.name == value } ?: EXPLICIT
     }
 }
 
@@ -307,6 +315,12 @@ object PreferenceKeys {
     // so a later user who deliberately recreates an old default tuple is not
     // disturbed. Never read by UI.
     val LED_DEFAULTS_MIGRATED = booleanPreferencesKey("led_defaults_migrated_v020")
+
+    // One-time guard for the manual-send default (0.2.1 had no per-capacity
+    // distinction, so every install that predates it has to be moved across
+    // exactly once — see migrateToManualSendDefaultIfNeeded).
+    val MANUAL_SEND_DEFAULT_MIGRATED = booleanPreferencesKey("manual_send_default_migrated_v022")
+
     val BLE_AUTO_DISCONNECT_MINUTES = intPreferencesKey("ble_auto_disconnect_minutes")
     // Seconds-precision successor to BLE_AUTO_DISCONNECT_MINUTES. Read
     // by bleAutoDisconnectSeconds, which transparently migrates the
@@ -995,9 +1009,14 @@ class UserPreferences(
     }
 
     /**
-     * Default AUTOMATIC: on a board only you can hold, opening a climb and
-     * having it appear on the wall is the whole point, and nobody else is
-     * affected by it.
+     * Default EXPLICIT, like every other board.
+     *
+     * A board only you can hold used to default to AUTOMATIC, on the argument
+     * that nobody else is affected. In practice the wall changing while you
+     * page through a list is a surprise whoever owns the board, and the tap is
+     * what makes it an intention rather than a side effect. AUTOMATIC stays
+     * available as a deliberate choice and only reacts to explicit shared
+     * board/playlist events.
      */
     val singleConnectionBoardSendMode: Flow<BoardSendMode> = dataStore.data.map { prefs ->
         BoardSendMode.fromWire(
@@ -1208,6 +1227,30 @@ class UserPreferences(
                 }
             }
             prefs[PreferenceKeys.LED_DEFAULTS_MIGRATED] = true
+        }
+    }
+
+    /**
+     * Move every install that predates the manual-send default across, once.
+     *
+     * 0.2.1 had a single `board_send_mode` and no per-capacity distinction, so
+     * an upgrading user carries a value that was written under the old meaning
+     * — or none at all, which used to read as AUTOMATIC. Both have to become
+     * the new manual default exactly once.
+     *
+     * Guarded by its own flag rather than by inspecting the values, because
+     * "already manual" and "deliberately chose manual" are indistinguishable
+     * afterwards, and re-running would silently undo a later opt-in to
+     * AUTOMATIC every time the app cold-starts. Idempotent and safe to call on
+     * every launch; a fresh install simply records the flag and changes
+     * nothing, since [BoardSendMode.fromWire] already answers EXPLICIT.
+     */
+    suspend fun migrateToManualSendDefaultIfNeeded() {
+        dataStore.edit { prefs ->
+            if (prefs[PreferenceKeys.MANUAL_SEND_DEFAULT_MIGRATED] == true) return@edit
+            prefs[PreferenceKeys.SINGLE_CONNECTION_BOARD_SEND_MODE] = BoardSendMode.EXPLICIT.name
+            prefs[PreferenceKeys.MULTI_CONNECTION_BOARD_SEND_MODE] = BoardSendMode.EXPLICIT.name
+            prefs[PreferenceKeys.MANUAL_SEND_DEFAULT_MIGRATED] = true
         }
     }
 
