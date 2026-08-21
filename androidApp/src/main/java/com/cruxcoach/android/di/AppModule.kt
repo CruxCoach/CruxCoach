@@ -510,6 +510,8 @@ object AppModule {
         projectionCoordinator: BoardProjectionCoordinator,
         boardCellManager: com.cruxcoach.android.boardcell.BoardCellManager,
         userPreferences: UserPreferences,
+        gattBridge: com.cruxcoach.android.data.SessionGattBridge,
+        boardRepository: com.cruxcoach.data.repository.BoardRepository,
     ): CruxRelayManager {
         return CruxRelayManager(
             context,
@@ -519,6 +521,8 @@ object AppModule {
             projectionCoordinator,
             boardCellManager,
             userPreferences,
+            gattBridge,
+            boardRepository,
         )
     }
 

@@ -229,6 +229,11 @@ fun SettingsScreen(
                             viewModel::updateMultiConnectionBoardSendMode,
                     )
                     HorizontalDivider()
+                    RelayInboundClimbModeSection(
+                        mode = state.relayInboundClimbMode,
+                        onModeChange = viewModel::updateRelayInboundClimbMode,
+                    )
+                    HorizontalDivider()
                     BoardJoinModeSection(
                         mode = state.boardJoinMode,
                         onModeChange = viewModel::updateBoardJoinMode,

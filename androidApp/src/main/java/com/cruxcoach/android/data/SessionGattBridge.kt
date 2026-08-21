@@ -1364,6 +1364,26 @@ class SessionGattBridge(
         }
     }
 
+    /** Append one occurrence at the end, leaving the wall and selection alone. */
+    fun appendSharedPlaylistEntry(climbUuid: String, angle: Int, label: String = "add") {
+        submitPlaylistOps(label, BoardPlaylistOps.add(climbUuid, angle))
+    }
+
+    /**
+     * Record a climb that is already on the wall as the group's current
+     * occurrence.
+     *
+     * Used by the relay: the guest's own bytes lit the board, so re-encoding
+     * the climb would be a second write of the same thing. This only makes the
+     * shared list agree with what everybody can already see.
+     */
+    fun adoptProjectedEntry(climbUuid: String, angle: Int, label: String = "adopt") {
+        val playlist = boardCellManager?.playlist() ?: return
+        val plan = BoardPlaylistOps.lightNow(playlist, climbUuid, angle)
+        if (plan.ops.isEmpty()) return
+        submitPlaylistOps(label, plan.ops)
+    }
+
     /** The running rest is over — it ran out, or somebody skipped it. */
     fun endCanonicalRest() {
         if (boardCellManager?.playlist()?.activeRest == null) return

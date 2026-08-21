@@ -17,6 +17,8 @@ import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ble.GattConnectionEvent
 import com.cruxcoach.android.ble.RelayGattServer
+import kotlinx.coroutines.flow.first
+import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.android.boardcell.BoardCellEvent
 import com.cruxcoach.android.boardcell.BoardCellAvailability
 import com.cruxcoach.android.boardcell.BoardCellManager
@@ -64,6 +66,15 @@ data class CruxRelayState(
     val error: RelayError? = null,
     /** Raw technical detail for [error] (log-grade, appended to the message). */
     val errorDetail: String? = null,
+    /**
+     * Why the last inbound relay climb did not reach the wall.
+     *
+     * Separate from [error]: a refusal is the relay working — the guest's
+     * write was understood and declined for a stated reason — where an error
+     * means the relay itself is broken. Mixing them would put "sent the same
+     * climb twice" next to "the board is gone".
+     */
+    val inboundRefusal: RelayInboundGate.Refusal? = null,
 )
 
 /**
@@ -91,7 +102,9 @@ class CruxRelayManager(
     private val bleConnection: BoardBleConnection,
     private val projectionCoordinator: BoardProjectionCoordinator,
     private val boardCellManager: BoardCellManager,
-    @Suppress("UNUSED_PARAMETER") userPreferences: UserPreferences,
+    private val userPreferences: UserPreferences,
+    private val gattBridge: SessionGattBridge,
+    private val boardRepository: BoardRepository,
 ) {
     companion object {
         private const val TAG = "CruxRelay/Manager"
@@ -115,6 +128,8 @@ class CruxRelayManager(
      * Exactly the canonical controller owns it; API 28 never becomes one.
      */
     private val relayRequiredFlow = MutableStateFlow(false)
+
+    private val inboundGate = RelayInboundGate()
 
     private var running = false
     private var forwardJob: Job? = null
@@ -290,22 +305,59 @@ class CruxRelayManager(
                 }
             } else {
                 relayServer.climbs.collect { inbound ->
-                    val result = boardCellManager.projectExternal(
-                        boardWrite = { bleConnection.sendRawChunks(inbound.climb.chunks) },
-                        identify = { projectionCoordinator.identifyExternal(inbound.climb) },
+                    // Identify first: what the guest sent decides where it may
+                    // go, and an unidentifiable write can only ever be an
+                    // external one.
+                    val identified = projectionCoordinator.identifyExternal(inbound.climb)
+                    val climb = identified?.let {
+                        runCatching { boardRepository.getClimbByUuid(it.climbUuid, it.angle) }.getOrNull()
+                    }
+                    val decision = inboundGate.evaluate(
+                        mode = userPreferences.relayInboundClimbMode.first(),
+                        climbUuid = identified?.climbUuid,
+                        angle = identified?.angle,
+                        climbBrand = climb?.let { BoardBrand.fromWire(it.boardBrand) },
+                        connectedBrand = bleConnection.connectedBoardBrand.value,
+                        nowMs = System.currentTimeMillis(),
                     )
-                    if (result is ProjectionResult.Committed || result is ProjectionResult.Duplicate) {
-                        advertiser.clearActiveClimb()
-                        identifyJob?.cancel()
-                        identifyJob = scope.launch {
-                            val projection = if (result is ProjectionResult.Committed) {
-                                (result.envelope.event as? BoardCellEvent.ProjectCommitted)?.projection
-                            } else boardCellManager.snapshot()?.projection
-                            projectionCoordinator.onCanonicalExternalBoardWrite(projection)
+                    when (decision) {
+                        is RelayInboundGate.Decision.Refused -> {
+                            Log.i(TAG, "relayed climb refused: ${decision.reason}")
+                            _state.update { it.copy(inboundRefusal = decision.reason) }
                         }
-                    } else {
-                        Log.w(TAG, "relayed climb was not canonically committed: $result")
-                        _state.update { it.copy(error = RelayError.FORWARD_FAILED) }
+                        RelayInboundGate.Decision.AppendToEnd -> {
+                            // The wall keeps what it has; the climb joins the
+                            // end of the list like any other add.
+                            _state.update { it.copy(inboundRefusal = null) }
+                            gattBridge.appendSharedPlaylistEntry(
+                                identified!!.climbUuid, identified.angle, "relay_append")
+                        }
+                        RelayInboundGate.Decision.ProjectNow -> {
+                            _state.update { it.copy(inboundRefusal = null) }
+                            val result = boardCellManager.projectExternal(
+                                boardWrite = { bleConnection.sendRawChunks(inbound.climb.chunks) },
+                                identify = { identified },
+                            )
+                            if (result is ProjectionResult.Committed || result is ProjectionResult.Duplicate) {
+                                advertiser.clearActiveClimb()
+                                // The guest's bytes are what lit the wall, so
+                                // the list records the occurrence rather than
+                                // re-encoding the climb a second time.
+                                identified?.let {
+                                    gattBridge.adoptProjectedEntry(it.climbUuid, it.angle, "relay_project")
+                                }
+                                identifyJob?.cancel()
+                                identifyJob = scope.launch {
+                                    val projection = if (result is ProjectionResult.Committed) {
+                                        (result.envelope.event as? BoardCellEvent.ProjectCommitted)?.projection
+                                    } else boardCellManager.snapshot()?.projection
+                                    projectionCoordinator.onCanonicalExternalBoardWrite(projection)
+                                }
+                            } else {
+                                Log.w(TAG, "relayed climb was not canonically committed: $result")
+                                _state.update { it.copy(error = RelayError.FORWARD_FAILED) }
+                            }
+                        }
                     }
                 }
             }

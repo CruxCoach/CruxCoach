@@ -3009,4 +3009,11 @@
     <string name="cd_board_dock_connecting">Connecting to the board</string>
     <string name="cd_board_dock_unreachable">Board not reachable</string>
     <string name="cd_board_dock_connect_board">Connect a board</string>
+    <string name="board_playlist_add_to_end">Add to end</string>
+    <string name="board_playlist_add_more_options">More ways to add</string>
+    <string name="board_playlist_add_options_hint">The arrow also offers “Add as next”.</string>
+    <string name="settings_relay_inbound_title">Climbs sent to you</string>
+    <string name="settings_relay_inbound_desc">What happens when another CruxCoach user sends a climb to your board through this phone. Either way it becomes an occurrence on the shared list, so everybody can see what arrived.</string>
+    <string name="settings_relay_inbound_project_now">Straight to the board</string>
+    <string name="settings_relay_inbound_append_end">End of the playlist</string>
 </resources>

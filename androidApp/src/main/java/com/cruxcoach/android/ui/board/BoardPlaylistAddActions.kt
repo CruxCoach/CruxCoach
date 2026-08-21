@@ -1,10 +1,14 @@
 package com.cruxcoach.android.ui.board
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -12,18 +16,30 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -33,23 +49,28 @@ import com.cruxcoach.android.ui.theme.DarkBackground
 import com.cruxcoach.android.ui.theme.OrangeAccent
 
 /**
- * "Add" and "Add as next", where the climb actually is.
+ * Putting a climb on the group's list, where the climb is.
  *
- * The two questions somebody has in front of an open climb are "put this on
- * the list" and "put this on the list *now*", and until now the second had no
- * answer at all — you added to the end and then went and dragged it up. Both
- * are prominent rather than hidden behind an overflow, because on a board that
- * a group is sharing this is the main thing a climb page is for.
+ * A plain tap means one thing and only one thing: the end of the list. That is
+ * the answer nine times out of ten, and it is the one that cannot go wrong —
+ * nothing anybody is climbing moves, nothing jumps the queue. The second
+ * option is real and worth having, so it lives one deliberate tap away behind
+ * the arrow rather than sharing the button with the first.
  *
- * Neither of them touches the wall. Adding a climb to the group's list is not
- * a claim on the board somebody else may be climbing on; the lamp on the list
- * and in the player is the only thing that projects.
+ * Two equally-weighted buttons were the previous shape and the problem with
+ * them was not space: it was that both mutated a shared order and neither said
+ * which. A split button makes the common case unambiguous and keeps the
+ * uncommon one findable.
  *
- * The line underneath says how many times the climb is on the list right now.
- * That is live canonical state rather than a toast about the tap that just
- * happened, so it is still true a moment later and it also answers the
- * question somebody arriving at the page already had.
+ * Long-press opens the same menu with haptics — an accelerant for people who
+ * know it is there, never the only way in, and never a shortcut that mutates
+ * the shared order without showing what it is about to do.
+ *
+ * Neither option touches the wall. The line underneath is live canonical state
+ * rather than a toast about the tap that just happened, so it is still true a
+ * moment later and answers the question somebody arriving already had.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun BoardPlaylistAddActions(
     climbUuid: String,
@@ -70,35 +91,124 @@ fun BoardPlaylistAddActions(
     val queued = state.rows.count {
         it.climbUuid.equals(climbUuid, ignoreCase = true) && it.angle == angle
     }
+    var menuOpen by remember { mutableStateOf(false) }
+    val haptics = LocalHapticFeedback.current
+    val addToEnd = stringResource(R.string.board_playlist_add_to_end)
+    val moreOptions = stringResource(R.string.board_playlist_add_more_options)
+
     Column(modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = OrangeAccent,
+            contentColor = DarkBackground,
+            modifier = Modifier.fillMaxWidth().height(44.dp),
         ) {
-            Button(
-                onClick = { viewModel.append(climbUuid, angle) },
-                enabled = enabled,
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
-                modifier = Modifier.weight(1f).testTag("boarddetail_add_to_board_playlist"),
-            ) {
-                Icon(Icons.Default.Add, contentDescription = null,
-                    tint = DarkBackground, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text(stringResource(R.string.board_playlist_add), color = DarkBackground,
-                    fontWeight = FontWeight.Bold)
+            Row(Modifier.fillMaxWidth()) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .combinedClickable(
+                            enabled = enabled,
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = androidx.compose.material3.ripple(),
+                            onClick = { viewModel.append(climbUuid, angle) },
+                            onLongClick = {
+                                // The accelerant, not the only route: the arrow
+                                // beside it opens the identical menu.
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                menuOpen = true
+                            },
+                        )
+                        .semantics {
+                            role = Role.Button
+                            contentDescription = addToEnd
+                        }
+                        .testTag("boarddetail_add_to_board_playlist"),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Add, contentDescription = null,
+                            modifier = Modifier.size(18.dp))
+                        Spacer6()
+                        Text(addToEnd, fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.labelLarge)
+                    }
+                }
+                // A real divider, so the two halves read as two targets rather
+                // than one button with a decoration on the end.
+                Box(
+                    Modifier
+                        .width(1.dp)
+                        .height(28.dp)
+                        .align(Alignment.CenterVertically)
+                        .let { it },
+                ) {
+                    Surface(color = DarkBackground.copy(alpha = 0.28f)) {
+                        Box(Modifier.width(1.dp).height(28.dp))
+                    }
+                }
+                Box {
+                    Box(
+                        modifier = Modifier
+                            .width(46.dp)
+                            .height(44.dp)
+                            .combinedClickable(
+                                enabled = enabled,
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = androidx.compose.material3.ripple(),
+                                onClick = { menuOpen = true },
+                            )
+                            .semantics {
+                                role = Role.Button
+                                contentDescription = moreOptions
+                            }
+                            .testTag("boarddetail_add_options"),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            Icons.Default.ArrowDropDown,
+                            contentDescription = null,
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        DropdownMenuItem(
+                            text = { Text(addToEnd) },
+                            leadingIcon = { Icon(Icons.Default.Add, contentDescription = null) },
+                            onClick = {
+                                menuOpen = false
+                                viewModel.append(climbUuid, angle)
+                            },
+                            modifier = Modifier.testTag("boarddetail_add_menu_end"),
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.board_playlist_add_next)) },
+                            leadingIcon = {
+                                Icon(Icons.AutoMirrored.Filled.PlaylistAdd, contentDescription = null)
+                            },
+                            onClick = {
+                                menuOpen = false
+                                viewModel.appendAsNext(climbUuid, angle)
+                            },
+                            modifier = Modifier.testTag("boarddetail_add_menu_next"),
+                        )
+                    }
+                }
             }
-            OutlinedButton(
-                onClick = { viewModel.appendAsNext(climbUuid, angle) },
-                enabled = enabled,
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.weight(1f).testTag("boarddetail_add_next_board_playlist"),
-            ) {
-                Icon(Icons.AutoMirrored.Filled.PlaylistAdd, contentDescription = null,
-                    modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text(stringResource(R.string.board_playlist_add_next))
-            }
+        }
+        // Shown once, then never again: a hint that keeps reappearing is an
+        // instruction nobody read the first time and everybody resents by the
+        // fifth.
+        val hintSeen by viewModel.addOptionsHintSeen.collectAsStateWithLifecycle()
+        if (!hintSeen) {
+            LaunchedEffect(Unit) { viewModel.markAddOptionsHintSeen() }
+            Text(
+                stringResource(R.string.board_playlist_add_options_hint),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp).testTag("boarddetail_add_options_hint"),
+            )
         }
         if (queued > 0) {
             Text(
@@ -109,4 +219,9 @@ fun BoardPlaylistAddActions(
             )
         }
     }
+}
+
+@Composable
+private fun Spacer6() {
+    Box(Modifier.width(6.dp))
 }

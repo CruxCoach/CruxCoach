@@ -107,7 +107,9 @@ data class SettingsState(
     val ledColors: LedHoldColors = LedHoldColors(),
     val bleAutoDisconnectSeconds: Int = 60,
     val bleAutoDisconnectUnavailable: Boolean = false,
-    val singleConnectionBoardSendMode: BoardSendMode = BoardSendMode.AUTOMATIC,
+    val singleConnectionBoardSendMode: BoardSendMode = BoardSendMode.EXPLICIT,
+    val relayInboundClimbMode: com.cruxcoach.android.data.RelayInboundClimbMode =
+        com.cruxcoach.android.data.RelayInboundClimbMode.PROJECT_NOW,
     /** Mirrors UserPreferences.multiConnectionBoardSendMode's default — a
      *  shared board is not swiped onto by accident. */
     val multiConnectionBoardSendMode: BoardSendMode = BoardSendMode.EXPLICIT,
@@ -665,6 +667,11 @@ class SettingsViewModel @Inject constructor(
     fun updateSingleConnectionBoardSendMode(mode: BoardSendMode) {
         _state.update { it.copy(singleConnectionBoardSendMode = mode) }
         viewModelScope.launch { userPreferences.setSingleConnectionBoardSendMode(mode) }
+    }
+
+    fun updateRelayInboundClimbMode(mode: com.cruxcoach.android.data.RelayInboundClimbMode) {
+        _state.update { it.copy(relayInboundClimbMode = mode) }
+        viewModelScope.launch { userPreferences.setRelayInboundClimbMode(mode) }
     }
 
     fun updateMultiConnectionBoardSendMode(mode: BoardSendMode) {

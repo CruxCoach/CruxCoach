@@ -3009,4 +3009,11 @@
     <string name="cd_board_dock_connecting">Wird mit dem Board verbunden</string>
     <string name="cd_board_dock_unreachable">Board nicht erreichbar</string>
     <string name="cd_board_dock_connect_board">Board verbinden</string>
+    <string name="board_playlist_add_to_end">Ans Ende</string>
+    <string name="board_playlist_add_more_options">Weitere Möglichkeiten zum Hinzufügen</string>
+    <string name="board_playlist_add_options_hint">Über den Pfeil geht auch „Als Nächstes“.</string>
+    <string name="settings_relay_inbound_title">Climbs, die dir geschickt werden</string>
+    <string name="settings_relay_inbound_desc">Was passiert, wenn dir jemand über dieses Handy einen Climb auf dein Board schickt. In beiden Fällen wird daraus ein Eintrag auf der gemeinsamen Liste, damit alle sehen, was angekommen ist.</string>
+    <string name="settings_relay_inbound_project_now">Direkt aufs Board</string>
+    <string name="settings_relay_inbound_append_end">Ans Ende der Playlist</string>
 </resources>

@@ -39,6 +39,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -121,6 +122,14 @@ class BoardPlaylistViewModel @Inject constructor(
     val state: StateFlow<BoardPlaylistUiState> = _state.asStateFlow()
 
     val commandFeedback = gattBridge.commandFeedback
+
+    /** Whether the arrow menu has already been pointed out on this install. */
+    val addOptionsHintSeen: StateFlow<Boolean> = userPreferences.addOptionsHintSeen
+        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, true)
+
+    fun markAddOptionsHintSeen() {
+        viewModelScope.launch { userPreferences.markAddOptionsHintSeen() }
+    }
     /** Why a dice roll came back empty — the two reasons need different answers. */
     private val _randomAddUnavailable = MutableSharedFlow<RandomClimbRoll>(extraBufferCapacity = 1)
     val randomAddUnavailable: SharedFlow<RandomClimbRoll> = _randomAddUnavailable
@@ -467,6 +476,17 @@ class BoardPlaylistViewModel @Inject constructor(
      * is already confirmed is a deliberate resend.
      */
     fun projectSelectedEntry() = gattBridge.projectSelectedEntry()
+
+    /**
+     * Put this climb on the wall now.
+     *
+     * [fromEntryId] is the occurrence the user was looking at, when they came
+     * from the list. Without it the climb is not on the list yet and becomes a
+     * new occurrence right after the current one — never an existing repeat of
+     * the same climb, which belongs where its owner put it.
+     */
+    fun lightNow(climbUuid: String, angle: Int, fromEntryId: String? = null) =
+        gattBridge.lightNow(climbUuid, angle, fromEntryId)
 
     private fun submit(
         kind: BoardPlaylistEditKind,

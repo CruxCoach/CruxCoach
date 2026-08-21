@@ -157,6 +157,19 @@ enum class BoardSendMode {
     }
 }
 
+/** What to do with a climb another CruxCoach user sends over the relay. */
+enum class RelayInboundClimbMode {
+    /** Put it on the wall now, as a new occurrence after the current one. */
+    PROJECT_NOW,
+    /** Queue it at the end of the shared list and leave the wall alone. */
+    APPEND_TO_END;
+
+    companion object {
+        fun fromWire(value: String?): RelayInboundClimbMode =
+            entries.firstOrNull { it.name == value } ?: PROJECT_NOW
+    }
+}
+
 enum class SyncInterval(@androidx.annotation.StringRes val labelRes: Int) {
     // labelRes points to a localized string resource so both the German
     // and English (system-fallback) locales render correctly. Pre-fix
@@ -345,6 +358,11 @@ object PreferenceKeys {
     // exactly once — see migrateToManualSendDefaultIfNeeded).
     val MANUAL_SEND_DEFAULT_MIGRATED = booleanPreferencesKey("manual_send_default_migrated_v022")
 
+    /** Where an inbound CruxRelay climb goes — see [RelayInboundClimbMode]. */
+    val RELAY_INBOUND_CLIMB_MODE = stringPreferencesKey("relay_inbound_climb_mode")
+
+    /** The playlist add button's arrow menu has been pointed out once. */
+    val ADD_OPTIONS_HINT_SEEN = booleanPreferencesKey("board_playlist_add_options_hint_seen")
     val BLE_AUTO_DISCONNECT_MINUTES = intPreferencesKey("ble_auto_disconnect_minutes")
     // Seconds-precision successor to BLE_AUTO_DISCONNECT_MINUTES. Read
     // by bleAutoDisconnectSeconds, which transparently migrates the
@@ -1104,6 +1122,31 @@ class UserPreferences(
     suspend fun setMultiConnectionBoardSendMode(mode: BoardSendMode) {
         dataStore.edit { prefs ->
             prefs[PreferenceKeys.MULTI_CONNECTION_BOARD_SEND_MODE] = mode.name
+        }
+    }
+
+    /**
+     * Where a climb another CruxCoach user relays to this device goes.
+     *
+     * Local to this device on purpose: it describes what this phone does with
+     * somebody else's send, not a property of the board or the group.
+     */
+    val relayInboundClimbMode: Flow<RelayInboundClimbMode> = dataStore.data.map { prefs ->
+        RelayInboundClimbMode.fromWire(prefs[PreferenceKeys.RELAY_INBOUND_CLIMB_MODE])
+    }
+
+    /** False exactly once per install, so the arrow is pointed out and then left alone. */
+    val addOptionsHintSeen: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[PreferenceKeys.ADD_OPTIONS_HINT_SEEN] ?: false
+    }
+
+    suspend fun markAddOptionsHintSeen() {
+        dataStore.edit { prefs -> prefs[PreferenceKeys.ADD_OPTIONS_HINT_SEEN] = true }
+    }
+
+    suspend fun setRelayInboundClimbMode(mode: RelayInboundClimbMode) {
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.RELAY_INBOUND_CLIMB_MODE] = mode.name
         }
     }
 

@@ -18,6 +18,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.data.DarkModeSetting
 import com.cruxcoach.android.data.BoardSendMode
+import com.cruxcoach.android.data.RelayInboundClimbMode
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.SyncInterval
 import androidx.compose.ui.res.stringResource
@@ -258,6 +259,57 @@ internal fun BoardSendModeSection(
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
+}
+
+/**
+ * What happens to a climb another CruxCoach user relays to this device.
+ *
+ * Their send lands on your board through your phone, so which of the two it
+ * means is genuinely yours to decide: put it up now, the way you would your
+ * own, or let it wait its turn at the end of the list while you finish what
+ * you are on.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun RelayInboundClimbModeSection(
+    mode: RelayInboundClimbMode,
+    onModeChange: (RelayInboundClimbMode) -> Unit,
+) {
+    Text(
+        stringResource(R.string.settings_relay_inbound_title),
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.Bold,
+    )
+    Text(
+        stringResource(R.string.settings_relay_inbound_desc),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    SingleChoiceSegmentedButtonRow(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("settings_relay_inbound_mode"),
+    ) {
+        RelayInboundClimbMode.entries.forEachIndexed { index, option ->
+            SegmentedButton(
+                selected = mode == option,
+                onClick = { onModeChange(option) },
+                shape = SegmentedButtonDefaults.itemShape(index, RelayInboundClimbMode.entries.size),
+                label = {
+                    Text(
+                        stringResource(
+                            if (option == RelayInboundClimbMode.PROJECT_NOW) {
+                                R.string.settings_relay_inbound_project_now
+                            } else {
+                                R.string.settings_relay_inbound_append_end
+                            },
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                },
+            )
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
