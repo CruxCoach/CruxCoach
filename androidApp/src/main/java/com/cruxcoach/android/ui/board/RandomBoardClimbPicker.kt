@@ -2,6 +2,7 @@ package com.cruxcoach.android.ui.board
 
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.UserPreferences
+import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.boardcell.BoardCellManager
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.ClimbSortField
@@ -55,6 +56,7 @@ class RandomBoardClimbPicker @Inject constructor(
     private val personalBoardRepository: PersonalBoardRepository,
     private val userPreferences: UserPreferences,
     private val boardCellManager: BoardCellManager,
+    private val bleConnection: BoardBleConnection,
 ) {
     /**
      * Which board a roll is for.
@@ -93,9 +95,23 @@ class RandomBoardClimbPicker @Inject constructor(
                 return RandomClimbBoard(cellBrand, climb.layoutId.toInt(), reference.angle)
             }
         }
-        // Same family: the locally configured layout and angle are the user's
-        // own board and the best answer available.
-        if (cellBrand == filter.boardBrand) return local.copy(boardBrand = cellBrand)
+        // Nothing on the list yet. The locally configured layout and angle are
+        // only this board's if this device is the one attached to it — the
+        // case where somebody starts a group on their own board and rolls the
+        // dice to seed the list. Then the board being browsed, rendered, sent
+        // to and rolled for are all the same board.
+        //
+        // Matching brands is NOT that check. PhysicalBoardId carries a family
+        // and a serial or BLE address, and nothing about the model: a Kilter
+        // Original config on an empty Kilter Homewall group passes a
+        // brand comparison and still rolls for the wrong layout.
+        val connected = bleConnection.connectedBoardDescriptor.value
+        if (connected != null &&
+            cellBrand == filter.boardBrand &&
+            boardCellManager.matchesPhysicalBoard(connected, snapshot)
+        ) {
+            return local.copy(boardBrand = cellBrand)
+        }
         return null
     }
 

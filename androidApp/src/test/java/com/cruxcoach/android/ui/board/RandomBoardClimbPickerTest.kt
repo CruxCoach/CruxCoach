@@ -1,5 +1,7 @@
 package com.cruxcoach.android.ui.board
 
+import com.cruxcoach.android.ble.BoardBleConnection
+import com.cruxcoach.android.ble.DiscoveredBoard
 import com.cruxcoach.android.boardcell.BoardCellId
 import com.cruxcoach.android.boardcell.BoardCellManager
 import com.cruxcoach.android.boardcell.BoardCellSnapshot
@@ -22,6 +24,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -79,6 +82,8 @@ class RandomBoardClimbPickerTest {
         results: List<com.cruxcoach.data.repository.ClimbWithStats>,
         cell: BoardCellSnapshot? = null,
         knownClimbs: Map<String, com.cruxcoach.data.repository.ClimbWithStats> = emptyMap(),
+        /** This device is the one on the cell's physical board. */
+        connectedToCellBoard: Boolean = false,
     ): RandomBoardClimbPicker {
         val repository = mockk<BoardRepository>(relaxed = true)
         every { repository.getClimbByUuid(any(), any()) } answers { knownClimbs[firstArg()] }
@@ -112,7 +117,17 @@ class RandomBoardClimbPickerTest {
         }
         val cells = mockk<BoardCellManager>(relaxed = true)
         every { cells.snapshot() } returns cell
-        return RandomBoardClimbPicker(repository, personal, preferences, cells)
+        every { cells.matchesPhysicalBoard(any(), any()) } returns connectedToCellBoard
+        val ble = mockk<BoardBleConnection>(relaxed = true)
+        every { ble.connectedBoardDescriptor } returns MutableStateFlow(
+            if (connectedToCellBoard) {
+                DiscoveredBoard(
+                    displayName = "board", serial = "SER", apiLevel = 3,
+                    address = "AA:BB:CC:DD:EE:FF", rssi = -50,
+                )
+            } else null
+        )
+        return RandomBoardClimbPicker(repository, personal, preferences, cells, ble)
     }
 
     private fun quantumClimb() = TestClimb.stats(
@@ -311,8 +326,41 @@ class RandomBoardClimbPickerTest {
         assertFalse("the impossible query is never issued", capture.boardBrand.isCaptured)
     }
 
+    /**
+     * The hole review 2 found, and the reason a brand comparison is not the
+     * check it looks like: `PhysicalBoardId` is a family plus a serial or BLE
+     * address, and says nothing about the model. Kilter Original and Kilter
+     * Homewall are the same brand and different layouts.
+     */
     @Test
-    fun `a group on the board this device already browses keeps the local layout`() = runTest {
+    fun `an empty same-brand group is not an excuse to use the local layout`() = runTest {
+        val capture = Capture()
+
+        val roll = picker(
+            // Kilter Original configured locally…
+            filter = snapshot(BoardBrand.KILTER.wireValue),
+            capture = capture,
+            results = listOf(quantumClimb()),
+            // …a Kilter group whose board could just as well be a Homewall.
+            cell = cell(BoardBrand.KILTER.wireValue),
+            connectedToCellBoard = false,
+        ).roll()
+
+        assertTrue(
+            "same brand says nothing about the layout",
+            roll is RandomClimbRoll.BoardUnknown,
+        )
+        assertFalse(capture.boardBrand.isCaptured)
+    }
+
+    /**
+     * The case the refusal must not break: start a group on your own board and
+     * roll the dice to seed the list. This device is the one attached to that
+     * controller, so the board it browses, renders and sends with is the same
+     * board — its configuration is authoritative.
+     */
+    @Test
+    fun `on your own board the local layout is the group's layout`() = runTest {
         val capture = Capture()
 
         val roll = picker(
@@ -320,12 +368,60 @@ class RandomBoardClimbPickerTest {
             capture = capture,
             results = listOf(quantumClimb()),
             cell = cell(BoardBrand.KILTER.wireValue),
+            connectedToCellBoard = true,
         ).roll()
 
         assertTrue(roll is RandomClimbRoll.Picked)
         assertEquals(BoardBrand.KILTER.wireValue, capture.boardBrand.captured)
         assertEquals(9101, capture.layoutId.captured)
         assertEquals(40, capture.angle.captured)
+    }
+
+    @Test
+    fun `a same-brand group on a different layout rolls for the group's layout`() = runTest {
+        val capture = Capture()
+        val onTheList = "99999999-9999-9999-9999-999999999999"
+
+        picker(
+            // Configured for Kilter Original (layout 9101 in this fixture)…
+            filter = snapshot(BoardBrand.KILTER.wireValue),
+            capture = capture,
+            results = listOf(quantumClimb()),
+            // …but the group's climbs are on a different Kilter layout.
+            cell = cell(
+                BoardBrand.KILTER.wireValue,
+                entries = listOf(BoardPlaylistEntry("e1", onTheList, angle = 40)),
+            ),
+            knownClimbs = mapOf(onTheList to catalogueClimb(onTheList, BoardBrand.KILTER, 8)),
+            // Even while attached to it: the group's own climbs win.
+            connectedToCellBoard = true,
+        ).roll()
+
+        assertEquals(8, capture.layoutId.captured)
+    }
+
+    @Test
+    fun `a same-brand group at a different angle rolls at the group's angle`() = runTest {
+        val capture = Capture()
+        val onTheList = "10101010-1010-1010-1010-101010101010"
+
+        picker(
+            // Locally browsing at 40 degrees.
+            filter = snapshot(BoardBrand.KILTER.wireValue),
+            capture = capture,
+            results = listOf(quantumClimb()),
+            cell = cell(
+                BoardBrand.KILTER.wireValue,
+                entries = listOf(BoardPlaylistEntry("e1", onTheList, angle = 20)),
+            ),
+            knownClimbs = mapOf(onTheList to catalogueClimb(onTheList, BoardBrand.KILTER, 9101)),
+            connectedToCellBoard = true,
+        ).roll()
+
+        assertEquals(
+            "the wall is at the angle the group set it to, not the one this phone last browsed",
+            20, capture.angle.captured,
+        )
     }
 
     @Test
