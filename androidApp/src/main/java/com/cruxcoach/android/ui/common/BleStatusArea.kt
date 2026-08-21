@@ -31,6 +31,7 @@ import com.cruxcoach.android.ui.board.BoardPlaylistBrowserCard
 import com.cruxcoach.android.ui.board.BoardPlaylistViewModel
 import com.cruxcoach.android.ui.board.relayErrorText
 import com.cruxcoach.android.ui.fips.FipsMeshViewModel
+import com.cruxcoach.android.ui.fips.boardMembershipDisplayState
 
 private const val TAG = "CruxBLE/UI"
 
@@ -95,6 +96,7 @@ fun BleStatusArea(
     val state by bleShareManager.uiState.collectAsStateWithLifecycle()
     val meshViewModel: FipsMeshViewModel = hiltViewModel()
     val meshState by meshViewModel.state.collectAsStateWithLifecycle()
+    val membershipTransition by meshViewModel.membershipTransition.collectAsStateWithLifecycle()
     val joiningBoardCellId by meshViewModel.joiningBoardCellId.collectAsStateWithLifecycle()
     val meshJoinFailed by meshViewModel.joinFailed.collectAsStateWithLifecycle()
     val nearbyMeshes = meshState.nearbyMeshes.filterNot { it.currentMesh }
@@ -103,6 +105,11 @@ fun BleStatusArea(
         meshState.nearbyMeshes.firstOrNull { it.joinableBoardCellId == cellId }?.boardName
             ?: stringResource(com.cruxcoach.android.R.string.fips_mesh_nearby_other)
     }
+    val meshDisplayState = boardMembershipDisplayState(
+        localIsMember = meshState.cellId != null && meshState.localIsMember,
+        availability = meshState.availability,
+        transition = membershipTransition,
+    )
     LaunchedEffect(meshState.running) {
         if (!meshState.running) meshViewModel.ensureDiscovery()
     }
@@ -205,6 +212,7 @@ fun BleStatusArea(
             nearbyMeshes = visibleNearbyMeshes,
             onJoinMesh = if (joiningBoardCellId == null) meshViewModel::join else null,
             joiningMeshName = joiningMeshName,
+            membershipDisplayState = meshDisplayState,
         )
     } else {
         BleStatusChip(
@@ -224,6 +232,7 @@ fun BleStatusArea(
                 ?: meshState.cellId?.let { stringResource(com.cruxcoach.android.R.string.fips_mesh_nearby_own) },
             activeMeshMemberCount = meshState.memberCount,
             meshControllerAvailable = meshState.availability == "ACTIVE",
+            meshMembershipDisplayState = meshDisplayState,
         )
     }
 }

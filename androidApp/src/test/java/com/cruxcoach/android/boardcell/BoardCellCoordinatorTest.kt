@@ -816,4 +816,89 @@ class BoardCellCoordinatorTest {
         assertEquals(BoardCellAvailability.FROZEN_WRITE_RECOVERY, loser.snapshot(board)!!.availability)
         assertFalse(loser.snapshot(board)!!.projectionKnown)
     }
+
+    @Test fun `unknown competing controller cannot freeze the active board owner`() = runTest {
+        val board = PhysicalBoardId("board-simultaneous-connect")
+        val owner = BoardCellCoordinator(
+            "owner",
+            settleMs = 0,
+            heartbeatTimeoutMs = 100,
+            physicalBoardAuthority = { PhysicalBoardAuthority.HELD },
+        )
+        owner.beginClaim(board, BoardCellId.forPhysical(board), 100)
+        assertNotNull(owner.settle(board, 100))
+        val (competing) = settled("competing", board, now = 100)
+        competing.project(board, BoardProjection("other-climb", 40), 101) { true }
+        val original = owner.snapshot(board)!!
+
+        val result = owner.acceptSnapshot("competing", competing.snapshot(board)!!, 102)
+
+        assertTrue(result is BoardCellApplyResult.Rejected)
+        assertEquals(BoardCellAvailability.ACTIVE, owner.snapshot(board)!!.availability)
+        assertEquals(original.lineageId, owner.snapshot(board)!!.lineageId)
+    }
+
+    @Test fun `fork notice from a non-member cannot freeze the active board owner`() = runTest {
+        val board = PhysicalBoardId("board-untrusted-fork-notice")
+        val owner = BoardCellCoordinator(
+            "owner",
+            settleMs = 0,
+            heartbeatTimeoutMs = 100,
+            physicalBoardAuthority = { PhysicalBoardAuthority.HELD },
+        )
+        owner.beginClaim(board, BoardCellId.forPhysical(board), 100)
+        assertNotNull(owner.settle(board, 100))
+        val (competing) = settled("competing", board, now = 100)
+
+        owner.acceptForkNotice("competing", BoardCellForkNotice(competing.snapshot(board)!!))
+
+        assertEquals(BoardCellAvailability.ACTIVE, owner.snapshot(board)!!.availability)
+    }
+
+    @Test fun `mesh-only competing controller adopts the physical owners lineage`() = runTest {
+        val board = PhysicalBoardId("board-simultaneous-convergence")
+        val (physicalOwner) = settled("physical-owner", board, now = 100)
+        val meshOnly = BoardCellCoordinator(
+            "mesh-only",
+            settleMs = 0,
+            heartbeatTimeoutMs = 100,
+            physicalBoardAuthority = { PhysicalBoardAuthority.NOT_HELD },
+        )
+        meshOnly.beginClaim(board, BoardCellId.forPhysical(board), 100)
+        assertNotNull(meshOnly.settle(board, 100))
+        physicalOwner.joinMember(board, "mesh-only", 101)
+        val canonical = physicalOwner.snapshot(board)!!
+
+        val result = meshOnly.acceptSnapshot("physical-owner", canonical, 102)
+
+        assertTrue(result is BoardCellApplyResult.Applied)
+        assertEquals(canonical.lineageId, meshOnly.snapshot(board)!!.lineageId)
+        assertEquals("physical-owner", meshOnly.snapshot(board)!!.controllerId)
+        assertEquals(BoardCellAvailability.ACTIVE, meshOnly.snapshot(board)!!.availability)
+    }
+
+    @Test fun `losing the physical board changes a competing controller from protected to yielding`() = runTest {
+        val board = PhysicalBoardId("board-authority-transition")
+        var authority = PhysicalBoardAuthority.HELD
+        val local = BoardCellCoordinator(
+            "local",
+            settleMs = 0,
+            heartbeatTimeoutMs = 100,
+            physicalBoardAuthority = { authority },
+        )
+        local.beginClaim(board, BoardCellId.forPhysical(board), 100)
+        assertNotNull(local.settle(board, 100))
+        val (winner) = settled("winner", board, now = 100)
+        local.joinMember(board, "winner", 101)
+        winner.joinMember(board, "local", 101)
+        val canonical = winner.snapshot(board)!!
+
+        assertTrue(local.acceptSnapshot("winner", canonical, 102) is BoardCellApplyResult.Rejected)
+        assertEquals("local", local.snapshot(board)!!.controllerId)
+
+        authority = PhysicalBoardAuthority.NOT_HELD
+        assertTrue(local.acceptSnapshot("winner", canonical, 103) is BoardCellApplyResult.Applied)
+        assertEquals("winner", local.snapshot(board)!!.controllerId)
+        assertEquals(canonical.lineageId, local.snapshot(board)!!.lineageId)
+    }
 }

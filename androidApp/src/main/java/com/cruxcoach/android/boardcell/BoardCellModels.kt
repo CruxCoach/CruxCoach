@@ -1,6 +1,7 @@
 package com.cruxcoach.android.boardcell
 
 import java.security.MessageDigest
+import java.util.concurrent.atomic.AtomicLong
 import java.util.UUID
 import kotlinx.serialization.Serializable
 
@@ -341,6 +342,44 @@ enum class BoardCellAvailability {
 /** User-facing admission rule for one live board session. */
 @Serializable
 enum class BoardJoinMode { OPEN, APPROVAL_REQUIRED }
+
+/** Rejects completions from an older local join/leave attempt. */
+internal class MeshMembershipAttemptGate {
+    private val generation = AtomicLong(0)
+
+    fun begin(): Long = generation.incrementAndGet()
+    fun supersede(): Long = generation.incrementAndGet()
+    fun current(): Long = generation.get()
+    fun isCurrent(candidate: Long): Boolean = generation.get() == candidate
+}
+
+internal object BoardCellAdmissionResultPolicy {
+    fun shouldApplyRejection(
+        candidateId: String,
+        localNodeId: String,
+        approved: Boolean,
+        activeMembership: Boolean,
+        transition: MeshMembershipTransition,
+    ): Boolean = candidateId == localNodeId && !approved && !activeMembership &&
+        transition in setOf(
+            MeshMembershipTransition.JOINING,
+            MeshMembershipTransition.WAITING_APPROVAL,
+        )
+}
+
+internal object MeshMembershipTransitionPolicy {
+    const val ERROR_VISIBLE_MS = 5_000L
+
+    fun resetDelayMs(
+        transition: MeshMembershipTransition,
+        retryAfterEpochMs: Long,
+        nowEpochMs: Long,
+    ): Long? = when (transition) {
+        MeshMembershipTransition.ERROR -> ERROR_VISIBLE_MS
+        MeshMembershipTransition.COOLDOWN -> (retryAfterEpochMs - nowEpochMs).coerceAtLeast(0L)
+        else -> null
+    }
+}
 
 @Serializable
 enum class HandoverPhase { PREPARED, SOURCE_RELEASED, TARGET_READY, COMMITTED, COMPLETED, ABORTED }
@@ -929,6 +968,7 @@ internal object BoardCellDurableResumePolicy {
             it.availability in setOf(
                 BoardCellAvailability.ACTIVE,
                 BoardCellAvailability.FROZEN_NEEDS_CONTROLLER,
+                BoardCellAvailability.FROZEN_NEEDS_SNAPSHOT,
             ) &&
             localNodeId in it.members && it.controllerId != localNodeId &&
             it.handover?.phase !in setOf(
@@ -938,6 +978,21 @@ internal object BoardCellDurableResumePolicy {
                 HandoverPhase.COMMITTED,
             )
     }
+
+    /**
+     * Migration escape hatch for snapshots frozen by the old simultaneous-connect bug.
+     * A live sponsor always gets the first chance to supply canonical state. Only after
+     * that grace period, and only while this device physically owns this exact board, may
+     * the unrecoverable local fork record be replaced by a fresh claim.
+     */
+    fun mayReplaceUnrecoverableFork(
+        snapshot: BoardCellSnapshot?,
+        cellId: BoardCellId,
+        localNodeId: String,
+    ): Boolean = snapshot?.let {
+        it.cellId == cellId && it.hasValidHash() && localNodeId in it.members &&
+            it.availability == BoardCellAvailability.FROZEN_FORK
+    } == true
 }
 
 /** Distinguishes a live-mesh replica from a snapshot created without FIPS. */

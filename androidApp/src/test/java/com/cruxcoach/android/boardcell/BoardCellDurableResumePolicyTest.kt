@@ -60,6 +60,24 @@ class BoardCellDurableResumePolicyTest {
         assertNull(BoardCellDurableResumePolicy.memberRecoverySeed(base, cell, "stranger"))
         assertNull(BoardCellDurableResumePolicy.memberRecoverySeed(
             base.copy(stateHash = "tampered"), cell, "member"))
+        assertEquals(
+            base.copy(availability = BoardCellAvailability.FROZEN_NEEDS_SNAPSHOT).withComputedHash(),
+            BoardCellDurableResumePolicy.memberRecoverySeed(
+                base.copy(availability = BoardCellAvailability.FROZEN_NEEDS_SNAPSHOT).withComputedHash(),
+                cell,
+                "member",
+            ),
+        )
+    }
+
+    @Test fun `only a valid local frozen fork may be replaced after physical fencing`() {
+        val frozen = base.copy(availability = BoardCellAvailability.FROZEN_FORK).withComputedHash()
+
+        assertTrue(BoardCellDurableResumePolicy.mayReplaceUnrecoverableFork(frozen, cell, "member"))
+        assertFalse(BoardCellDurableResumePolicy.mayReplaceUnrecoverableFork(base, cell, "member"))
+        assertFalse(BoardCellDurableResumePolicy.mayReplaceUnrecoverableFork(frozen, cell, "stranger"))
+        assertFalse(BoardCellDurableResumePolicy.mayReplaceUnrecoverableFork(
+            frozen.copy(stateHash = "tampered"), cell, "member"))
     }
 
     @Test fun `local fallback singleton is not mistaken for a foreign mesh controller`() {

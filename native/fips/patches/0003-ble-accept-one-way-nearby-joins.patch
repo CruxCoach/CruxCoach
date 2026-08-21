@@ -1,0 +1,211 @@
+diff --git a/src/transport/ble/mod.rs b/src/transport/ble/mod.rs
+index 83f2ef6d..868de6a0 100644
+--- a/src/transport/ble/mod.rs
++++ b/src/transport/ble/mod.rs
+@@ -63,7 +63,7 @@ use stats::BleStats;
+ use stream_read::BleStreamRead;
+ 
+ use secp256k1::XOnlyPublicKey;
+-use std::collections::HashMap;
++use std::collections::{HashMap, HashSet};
+ use std::sync::Arc;
+ use tokio::io::AsyncReadExt;
+ use tokio::sync::Mutex;
+@@ -140,6 +140,15 @@ pub struct BleTransport<I: BleIo> {
+     pool: Arc<Mutex<ConnectionPool<Arc<I::Stream>>>>,
+     /// Pending connection attempts.
+     connecting: Arc<Mutex<HashMap<TransportAddr, ConnectingEntry>>>,
++    /// Link addresses for which the scan loop is genuinely building the
++    /// opposite (outbound) half of a cross-connect race.
++    ///
++    /// The identity-order tie-breaker is only valid while both halves exist.
++    /// Treating every inbound as a race stranded one-way joiners whenever the
++    /// receiving Android device could advertise but did not observe the
++    /// joiner's advertisement: it repeatedly dropped the only valid channel
++    /// in expectation of an outbound channel that was never attempted.
++    outbound_scan_attempts: Arc<Mutex<HashSet<BleAddr>>>,
+     /// Advertisements observed by the scan loop, shared with direct node-layer
+     /// reconnects so they use the peer's current platform-assigned PSM and do
+     /// not redial an address that is no longer on air.
+@@ -198,6 +207,7 @@ impl<I: BleIo> BleTransport<I> {
+             io: Arc::new(io),
+             pool: Arc::new(Mutex::new(ConnectionPool::new(max_conns))),
+             connecting: Arc::new(Mutex::new(HashMap::new())),
++            outbound_scan_attempts: Arc::new(Mutex::new(HashSet::new())),
+             observed_adverts: Arc::new(Mutex::new(HashMap::new())),
+             packet_tx,
+             accept_task: None,
+@@ -275,6 +285,8 @@ impl<I: BleIo> BleTransport<I> {
+                         self.local_pubkey,
+                         Arc::clone(&self.neighbor_buffer),
+                         local_node_addr,
++                        Arc::clone(&self.connecting),
++                        Arc::clone(&self.outbound_scan_attempts),
+                     )));
+                     debug!(
+                         adapter = %adapter,
+@@ -323,6 +335,7 @@ impl<I: BleIo> BleTransport<I> {
+                         self.packet_tx.clone(),
+                         self.transport_id,
+                         Arc::clone(&self.observed_adverts),
++                        Arc::clone(&self.outbound_scan_attempts),
+                     )));
+                     debug!(adapter = %adapter, "BLE scan+probe loop started");
+                 }
+@@ -351,6 +364,10 @@ impl<I: BleIo> BleTransport<I> {
+         if let Some(task) = self.scan_probe_task.take() {
+             task.abort();
+         }
++        // An aborted probe cannot run its normal per-outcome cleanup. Never
++        // let that stale bookkeeping turn a one-way join after restart back
++        // into a fictitious cross-connect race.
++        self.outbound_scan_attempts.lock().await.clear();
+ 
+         // Drain connecting pool
+         {
+@@ -938,6 +955,8 @@ async fn accept_loop<A>(
+     local_pubkey: Option<[u8; 32]>,
+     neighbor_buffer: Arc<NeighborBuffer>,
+     local_node_addr: Option<NodeAddr>,
++    connecting: Arc<Mutex<HashMap<TransportAddr, ConnectingEntry>>>,
++    outbound_scan_attempts: Arc<Mutex<HashSet<BleAddr>>>,
+ ) where
+     A: io::BleAcceptor,
+     A::Stream: 'static,
+@@ -1001,10 +1020,18 @@ async fn accept_loop<A>(
+                             }
+ 
+                             // Cross-probe tie-breaker: smaller NodeAddr's
+-                            // outbound wins. If we're smaller, our outbound
+-                            // should win — drop this inbound.
++                            // outbound wins, but only when this is an actual
++                            // two-way race. A targeted nearby join is allowed
++                            // to be one-way (not every Android radio can scan,
++                            // advertise and hold the board link concurrently),
++                            // so dropping its sole inbound channel would make
++                            // joining deterministically impossible for half of
++                            // all identity orderings.
++                            let active_outbound = connecting.lock().await.contains_key(&ta)
++                                || outbound_scan_attempts.lock().await.contains(&addr);
+                             if let Some(ref our_addr) = local_node_addr
+                                 && our_addr < &peer_node
++                                && active_outbound
+                             {
+                                 stats.record_tiebreaker_drop();
+                                 debug!(
+@@ -1287,6 +1314,7 @@ async fn scan_probe_loop<I: io::BleIo>(
+     packet_tx: PacketTx,
+     transport_id: TransportId,
+     observed_adverts: Arc<Mutex<HashMap<BleAddr, ObservedAdvert>>>,
++    outbound_scan_attempts: Arc<Mutex<HashSet<BleAddr>>>,
+ ) {
+     // Addresses discovered but not yet connected — retried after cooldown even
+     // if the scanner doesn't fire again (BlueZ deduplicates), on a per-address
+@@ -1410,6 +1438,7 @@ async fn scan_probe_loop<I: io::BleIo>(
+         // Stamped here so every outcome below can report how long the peer
+         // took to go from advertisement to conclusion.
+         let probe_started = tokio::time::Instant::now();
++        outbound_scan_attempts.lock().await.insert(addr.clone());
+         let stream = match tokio::time::timeout(
+             std::time::Duration::from_millis(connect_timeout_ms),
+             io.connect(&addr, dial_psm),
+@@ -1418,6 +1447,7 @@ async fn scan_probe_loop<I: io::BleIo>(
+         {
+             Ok(Ok(s)) => s,
+             Ok(Err(e)) => {
++                outbound_scan_attempts.lock().await.remove(&addr);
+                 stats.record_connect_error();
+                 let failures = pending.record_failure(&addr, tokio::time::Instant::now());
+                 debug!(
+@@ -1434,6 +1464,7 @@ async fn scan_probe_loop<I: io::BleIo>(
+                 continue;
+             }
+             Err(_) => {
++                outbound_scan_attempts.lock().await.remove(&addr);
+                 stats.record_connect_timeout();
+                 let failures = pending.record_failure(&addr, tokio::time::Instant::now());
+                 debug!(
+@@ -1465,6 +1496,7 @@ async fn scan_probe_loop<I: io::BleIo>(
+                 if let Some(ref our_addr) = local_node_addr
+                     && our_addr >= &peer_node
+                 {
++                    outbound_scan_attempts.lock().await.remove(&addr);
+                     stats.record_tiebreaker_yield();
+                     debug!(
+                         addr = %addr,
+@@ -1496,6 +1528,7 @@ async fn scan_probe_loop<I: io::BleIo>(
+                 if let Some(existing) = dup
+                     && existing != ta
+                 {
++                    outbound_scan_attempts.lock().await.remove(&addr);
+                     debug!(
+                         addr = %ta,
+                         role = "central",
+@@ -1562,6 +1595,7 @@ async fn scan_probe_loop<I: io::BleIo>(
+                     }
+                 }
+                 drop(pool_guard);
++                outbound_scan_attempts.lock().await.remove(&addr);
+                 stats.record_connection_established();
+                 pending.resolve(&addr);
+ 
+@@ -1569,6 +1603,7 @@ async fn scan_probe_loop<I: io::BleIo>(
+                 buffer.add_peer_with_pubkey(&addr, peer_pubkey);
+             }
+             Err(e) => {
++                outbound_scan_attempts.lock().await.remove(&addr);
+                 stats.record_pubkey_exchange_failure();
+                 let failures = pending.record_failure(&addr, tokio::time::Instant::now());
+                 debug!(
+@@ -2615,6 +2650,14 @@ mod tests {
+         inbound_side.set_local_pubkey(smaller);
+         inbound_side.start_async().await.unwrap();
+ 
++        // This is a real cross-probe race: the inbound side is concurrently
++        // trying the opposite direction to this exact link address.
++        inbound_side
++            .outbound_scan_attempts
++            .lock()
++            .await
++            .insert(test_addr(2));
++
+         let (ours, peer) = MockBleStream::pair(test_addr(1), test_addr(2), 2048);
+         inbound_side.io.inject_inbound(ours).await;
+         peer_side_exchange(&peer, &larger).await;
+@@ -2680,6 +2723,36 @@ mod tests {
+         outbound_side.stop_async().await.unwrap();
+     }
+ 
++    /// A targeted nearby join can be a one-way connection. Android devices
++    /// are not guaranteed to observe the joiner's advertisement while they
++    /// advertise the occupied board and hold its BLE link. Identity ordering
++    /// alone must therefore never discard the only usable channel.
++    #[tokio::test]
++    async fn test_one_way_inbound_is_accepted_without_an_outbound_attempt() {
++        let (smaller, larger) = pubkeys_ordered_by_node_addr();
++        let io = MockBleIo::new("hci0", test_addr(1));
++        let (tx, _rx) = tokio::sync::mpsc::channel(64);
++        let mut transport =
++            BleTransport::new(TransportId::new(1), None, identity_test_config(), io, tx);
++        transport.set_local_pubkey(smaller);
++        transport.start_async().await.unwrap();
++
++        let (ours, peer) = MockBleStream::pair(test_addr(1), test_addr(2), 2048);
++        transport.io.inject_inbound(ours).await;
++        peer_side_exchange(&peer, &larger).await;
++        {
++            let pool = Arc::clone(&transport.pool);
++            wait_for("one-way inbound to enter the pool", || {
++                pool.try_lock().is_ok_and(|guard| guard.len() == 1)
++            })
++            .await;
++        }
++
++        assert_eq!(transport.stats.snapshot().tiebreaker_drops, 0);
++        assert_eq!(transport.pool.lock().await.len(), 1);
++        transport.stop_async().await.unwrap();
++    }
++
+     /// An oversized packet is a caller bug, not a property of the peer's
+     /// link. Folding it into `send_errors` would make that number useless as
+     /// evidence.

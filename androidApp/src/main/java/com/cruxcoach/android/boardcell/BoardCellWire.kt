@@ -669,7 +669,10 @@ class BoardCellMeshTransport(private val link: AuthenticatedMeshLink) : BoardCel
 
     fun sendProjectionRequest(snapshot: BoardCellSnapshot, request: BoardProjectionRequest): Boolean {
         if (link.localNpub !in snapshot.members || link.localNpub == snapshot.controllerId ||
-            snapshot.availability != BoardCellAvailability.ACTIVE) return false
+            snapshot.availability !in setOf(
+                BoardCellAvailability.ACTIVE,
+                BoardCellAvailability.FROZEN_WRITE_RECOVERY,
+            )) return false
         return link.send(snapshot.controllerId,
             frameFor(snapshot, BoardCellWireMessage.ProjectionRequest(request)))
     }

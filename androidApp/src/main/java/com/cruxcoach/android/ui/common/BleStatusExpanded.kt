@@ -28,6 +28,7 @@ import com.cruxcoach.android.data.OnBoardSource
 import com.cruxcoach.android.data.OwnSessionState
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.fips.FipsMeshUiState
+import com.cruxcoach.android.ui.fips.BoardMembershipDisplayState
 import com.cruxcoach.android.ui.fips.NearbyFipsMeshUi
 
 @Composable
@@ -46,6 +47,7 @@ internal fun BleStatusExpanded(
     nearbyMeshes: List<NearbyFipsMeshUi> = emptyList(),
     onJoinMesh: ((NearbyFipsMeshUi) -> Unit)? = null,
     joiningMeshName: String? = null,
+    membershipDisplayState: BoardMembershipDisplayState = BoardMembershipDisplayState.INACTIVE,
 ) {
     Card(
         modifier = Modifier
@@ -138,7 +140,7 @@ internal fun BleStatusExpanded(
             }
 
             if (activeMesh != null) {
-                ActiveMeshSection(activeMesh, onLeaveMesh)
+                ActiveMeshSection(activeMesh, membershipDisplayState, onLeaveMesh)
                 Spacer(Modifier.height(8.dp))
             }
 
@@ -162,9 +164,10 @@ internal fun BleStatusExpanded(
 @Composable
 private fun ActiveMeshSection(
     mesh: FipsMeshUiState,
+    displayState: BoardMembershipDisplayState,
     onLeaveMesh: (() -> Unit)?,
 ) {
-    val connected = mesh.availability == "ACTIVE"
+    val connected = displayState == BoardMembershipDisplayState.ACTIVE
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -188,7 +191,16 @@ private fun ActiveMeshSection(
                     mesh.memberCount,
                     mesh.memberCount,
                 )
-                else stringResource(R.string.fips_mesh_own_inactive),
+                else stringResource(
+                    when (displayState) {
+                        BoardMembershipDisplayState.CONTROLLER_RECOVERY -> R.string.fips_mesh_role_recovering
+                        BoardMembershipDisplayState.JOINING -> R.string.fips_mesh_role_joining
+                        BoardMembershipDisplayState.LEAVING -> R.string.fips_mesh_leaving
+                        BoardMembershipDisplayState.CONFIRM_BOARD -> R.string.fips_mesh_role_confirm_board
+                        BoardMembershipDisplayState.SYNCHRONIZING -> R.string.fips_mesh_role_synchronizing
+                        else -> R.string.fips_mesh_own_inactive
+                    },
+                ),
                 style = MaterialTheme.typography.labelSmall,
                 color = if (mesh.availability == "ACTIVE") OrangeAccent
                 else MaterialTheme.colorScheme.error,
@@ -208,8 +220,18 @@ private fun ActiveMeshSection(
             )
         }
         if (onLeaveMesh != null) {
-            TextButton(onClick = onLeaveMesh) {
-                Text(stringResource(R.string.fips_mesh_leave_action))
+            TextButton(
+                onClick = onLeaveMesh,
+                enabled = displayState !in setOf(
+                    BoardMembershipDisplayState.INACTIVE,
+                    BoardMembershipDisplayState.JOINING,
+                    BoardMembershipDisplayState.LEAVING,
+                ),
+            ) {
+                Text(stringResource(
+                    if (displayState == BoardMembershipDisplayState.LEAVING) R.string.fips_mesh_leaving
+                    else R.string.fips_mesh_leave_action,
+                ))
             }
         }
     }

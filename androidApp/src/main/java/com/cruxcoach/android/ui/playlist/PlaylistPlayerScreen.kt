@@ -1016,15 +1016,33 @@ private fun PlayerControls(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        IconButton(
-            onClick = onOpenQueue,
-            modifier = Modifier.size(44.dp).testTag("player_queue"),
-        ) {
-            Icon(
-                Icons.AutoMirrored.Filled.PlaylistPlay,
-                contentDescription = stringResource(R.string.board_queue_title),
-                modifier = Modifier.size(28.dp),
-            )
+        if (playback.isCanonicalPlaylist) {
+            // The board list is the layer below this focused view, so Back is
+            // its single, predictable way out. The left edge is the useful
+            // one-tap add action instead of a second route to the same list.
+            IconButton(
+                onClick = onAddRandom,
+                modifier = Modifier.size(44.dp).testTag("player_add_random"),
+            ) {
+                Icon(
+                    Icons.Default.Casino,
+                    contentDescription = stringResource(R.string.board_playlist_add_random),
+                    modifier = Modifier.size(28.dp),
+                )
+            }
+        } else {
+            // Legacy local playback still owns its queue sheet; unlike the
+            // board playlist there is no list destination underneath it.
+            IconButton(
+                onClick = onOpenQueue,
+                modifier = Modifier.size(44.dp).testTag("player_queue"),
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Filled.PlaylistPlay,
+                    contentDescription = stringResource(R.string.board_queue_title),
+                    modifier = Modifier.size(28.dp),
+                )
+            }
         }
         // Back and forward, the same size, always both. The centre used to
         // hold play/pause, and putting "next" there kept the media-player
@@ -1090,29 +1108,15 @@ private fun PlayerControls(
                 modifier = Modifier.size(36.dp),
             )
         }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(
-                onClick = onAddRandom,
-                modifier = Modifier.size(40.dp).testTag("player_add_random"),
-            ) {
-                Icon(
-                    Icons.Default.Casino,
-                    contentDescription = stringResource(R.string.board_playlist_add_random),
-                    modifier = Modifier.size(25.dp),
-                )
-            }
-            // Deliberate selection and the one-tap dice are adjacent add
-            // actions; neither changes what is currently on the wall.
-            IconButton(
-                onClick = onAddClimbs,
-                modifier = Modifier.size(40.dp).testTag("player_add"),
-            ) {
-                Icon(
-                    Icons.Default.Add,
-                    contentDescription = stringResource(R.string.playlist_player_add_climbs),
-                    modifier = Modifier.size(27.dp),
-                )
-            }
+        IconButton(
+            onClick = onAddClimbs,
+            modifier = Modifier.size(44.dp).testTag("player_add"),
+        ) {
+            Icon(
+                Icons.Default.Add,
+                contentDescription = stringResource(R.string.playlist_player_add_climbs),
+                modifier = Modifier.size(28.dp),
+            )
         }
     }
 }

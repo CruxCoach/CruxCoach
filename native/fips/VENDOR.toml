@@ -59,10 +59,11 @@ paths = [
 patches = [
     "0001-node-restore-the-app-owned-identity-seam.patch",
     "0002-ble-share-advertised-psms-with-direct-reconnects.patch",
+    "0003-ble-accept-one-way-nearby-joins.patch",
 ]
 
 # sha256 over `"<sha256>  <path>\n"` lines for the pristine upstream source
 # and the patched source respectively, sorted by path. CI reverses the patch
 # series, checks `upstream_sha256`, reapplies it, and checks `vendored_sha256`.
 upstream_sha256 = "80e43a0cae72e536b891430f2b8b0386609ee8eb1400f971d60e276716bf4ba2"
-vendored_sha256 = "a958db5d2be7f6eaa9afe8a57ec043a6f8741199b102aefff2d597afcc98b984"
+vendored_sha256 = "fbe47b98e136f93a1a47f307ebc6056f24640d1736e05a8e0414ac5f23131c4b"

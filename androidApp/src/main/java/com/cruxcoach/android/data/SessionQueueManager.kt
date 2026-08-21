@@ -385,6 +385,7 @@ class SessionQueueManager(
         val previous = observedRestGeneration
         if (rest == null) {
             observedRestGeneration = null
+            expiredRestEndRequestedGeneration = null
             if (previous != null) onRestCleared?.invoke()
             return
         }
@@ -398,7 +399,7 @@ class SessionQueueManager(
             if (previous != null) onRestCleared?.invoke()
             Log.w(TAG, "Ignoring a canonical rest that starts in the future " +
                 "(${rest.startedAtEpochMs - now} ms ahead)")
-            if (publishesRestEnd) onCanonicalRestExpired?.invoke()
+            requestCanonicalRestEndOnce(rest.generation, publishesRestEnd)
             return
         }
         val remaining = rest.remainingSeconds(now)
@@ -408,11 +409,27 @@ class SessionQueueManager(
             // a countdown that has no time left in it.
             observedRestGeneration = rest.generation
             if (previous != null) onRestCleared?.invoke()
-            if (publishesRestEnd) onCanonicalRestExpired?.invoke()
+            requestCanonicalRestEndOnce(rest.generation, publishesRestEnd)
             return
         }
         observedRestGeneration = rest.generation
         if (rest.generation != previous) onRestRequested?.invoke(remaining)
+    }
+
+    /**
+     * End a stale canonical rest at most once per observed generation.
+     *
+     * The callback submits a playlist command. That command deliberately
+     * makes the shared playlist visible again, which used to synchronously
+     * re-apply this same snapshot and invoke the callback recursively until
+     * Android killed the process with a StackOverflowError. Marking the
+     * generation before invoking the callback makes this safe even when a
+     * future callback is re-entrant for another reason.
+     */
+    private fun requestCanonicalRestEndOnce(generation: Long, publishesRestEnd: Boolean) {
+        if (!publishesRestEnd || expiredRestEndRequestedGeneration == generation) return
+        expiredRestEndRequestedGeneration = generation
+        onCanonicalRestExpired?.invoke()
     }
 
     /**
@@ -460,7 +477,14 @@ class SessionQueueManager(
 
     /** The user acted on the shared playlist, so they want to see it again. */
     fun resumeFollowingSharedPlaylist() {
+        val wasStopped = stoppedFollowingSharedPlaylist
         stoppedFollowingSharedPlaylist = false
+        // A playlist command calls this before it is sent. When the playlist
+        // is already visible, re-applying the same snapshot is both needless
+        // and dangerous: canonical callbacks are allowed to submit commands
+        // themselves. The snapshot collector remains responsible for every
+        // actual canonical update.
+        if (!wasStopped && _state.value.mesh != null) return
         // Canonical adoption normally runs only when another snapshot arrives.
         // Re-adopt the snapshot already on this device so opening the focused
         // player cannot land on an inactive queue after the user closed it.
@@ -574,6 +598,7 @@ class SessionQueueManager(
         // handover all arrive as snapshots — and a session that cleared them
         // would then count its pauses down in silence.
         observedRestGeneration = null
+        expiredRestEndRequestedGeneration = null
         isPlaylistQueue = false
         bleConnection.releaseKeepAlive(BoardConnectionOwner.SESSION)
         fipsMeshRuntime?.release(MeshOwners.SESSION.value)
@@ -1015,6 +1040,9 @@ class SessionQueueManager(
 
     /** Generation of the canonical rest this device has already started. */
     private var observedRestGeneration: Long? = null
+
+    /** Generation for which this process already requested the canonical end. */
+    private var expiredRestEndRequestedGeneration: Long? = null
 
     /**
      * This device closed the shared playlist's player and does not want it

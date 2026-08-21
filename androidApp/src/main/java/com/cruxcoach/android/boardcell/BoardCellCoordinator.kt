@@ -23,6 +23,9 @@ object NoOpBoardCellTransport : BoardCellTransport {
     override suspend fun requestSnapshot(cellId: BoardCellId, afterSequence: Long) = Unit
 }
 
+/** Local fencing knowledge used only to resolve simultaneous first-connect histories. */
+enum class PhysicalBoardAuthority { UNKNOWN, HELD, NOT_HELD }
+
 @Serializable data class HandoverReady(
     val transferId: String,
     val cellId: BoardCellId,
@@ -55,6 +58,10 @@ class BoardCellCoordinator(
     private val heartbeatTimeoutMs: Long = 15_000L,
     private val handoverTimeoutMs: Long = 45_000L,
     private val initialJoinMode: BoardJoinMode = BoardJoinMode.OPEN,
+    /** Whether this process currently owns the exclusive physical board connection. */
+    private val physicalBoardAuthority: () -> PhysicalBoardAuthority = {
+        PhysicalBoardAuthority.UNKNOWN
+    },
     /**
      * UTC wall clock, injectable for tests.
      *
@@ -163,13 +170,36 @@ class BoardCellCoordinator(
         if (senderId !in incoming.members ||
             (senderId != incoming.controllerId && senderId != committedSource))
             return@withLock BoardCellApplyResult.Rejected("snapshot sender is not controller/member")
-        val current = replicas[incoming.physicalBoardId]?.snapshot
+        var current = replicas[incoming.physicalBoardId]?.snapshot
         if (current != null && incoming.cellId != current.cellId)
             return@withLock BoardCellApplyResult.Rejected("conflicting cell id")
         val resolvesCurrentFork = current != null && current.lineageId in incoming.resolvedLineages &&
             incoming.resolvedLineages.size >= 2 &&
             incoming.lineageId == BoardCellLineage.resolvedId(incoming.cellId, incoming.resolvedLineages) &&
             incoming.availability == BoardCellAvailability.FROZEN_WRITE_RECOVERY
+        if (current != null && incoming.lineageId != current.lineageId && !resolvesCurrentFork) {
+            // Simultaneous GATT attempts can create two histories before the radios meet. The
+            // exclusive physical connection is the fencing token: its owner must never freeze or
+            // surrender to a competing mesh-only history.
+            if (current.controllerId == nodeId &&
+                physicalBoardAuthority() == PhysicalBoardAuthority.HELD)
+                return@withLock BoardCellApplyResult.Rejected("physical board owner keeps canonical lineage")
+
+            // Conversely, a self-elected replica that no longer owns the board must yield once the
+            // already-known physical controller sends a snapshot that includes this node. This is
+            // the normal convergence path after two simultaneous first-connect attempts, not an
+            // operator-recoverable fork.
+            val yieldsToPhysicalController = current.controllerId == nodeId &&
+                physicalBoardAuthority() == PhysicalBoardAuthority.NOT_HELD &&
+                senderId == incoming.controllerId && nodeId in incoming.members &&
+                incoming.availability == BoardCellAvailability.ACTIVE && incoming.hasValidHash()
+            if (yieldsToPhysicalController) {
+                replicas.remove(incoming.physicalBoardId)
+                observedForkLineages.remove(incoming.physicalBoardId)
+                observedForkMembers.remove(incoming.physicalBoardId)
+                current = null
+            }
+        }
         val recovery = incoming.lastControllerRecovery
         val repairsMissedRecovery = current != null &&
             current.availability == BoardCellAvailability.FROZEN_NEEDS_CONTROLLER &&
@@ -525,6 +555,29 @@ class BoardCellCoordinator(
         BoardCellEvent.ProjectCommitted(projection, commandId, recoversUnknownProjection = true)
     }
 
+    /** Same recovery action, retaining the participant lamp request's semantic stale check. */
+    suspend fun reprojectSemanticallyAfterRecovery(
+        boardId: PhysicalBoardId,
+        request: BoardProjectionRequest,
+        nowMonotonicMs: Long,
+        boardWrite: suspend () -> Boolean,
+    ): ProjectionResult = projectInternal(
+        boardId = boardId,
+        requested = request.projection,
+        nowMonotonicMs = nowMonotonicMs,
+        commandId = request.commandId,
+        baseSequence = request.baseSequence,
+        boardWrite = boardWrite,
+        allowRecovery = true,
+        semanticRequest = request,
+    ) {
+        BoardCellEvent.ProjectCommitted(
+            request.projection,
+            request.commandId,
+            recoversUnknownProjection = true,
+        )
+    }
+
     suspend fun projectExternal(
         boardId: PhysicalBoardId,
         nowMonotonicMs: Long,
@@ -720,6 +773,8 @@ class BoardCellCoordinator(
         val replica = replicas[remote.physicalBoardId] ?: return@withLock
         val current = replica.snapshot ?: return@withLock
         if (!remote.hasValidHash() || senderId != remote.controllerId || senderId !in remote.members ||
+            physicalBoardAuthority() == PhysicalBoardAuthority.HELD ||
+            senderId !in current.members ||
             remote.cellId != current.cellId || remote.physicalBoardId != current.physicalBoardId ||
             remote.lineageId == current.lineageId) return@withLock
         observedForkLineages.getOrPut(remote.physicalBoardId) { mutableSetOf(current.lineageId) }

@@ -432,6 +432,34 @@ class SharedPlaylistAdapterTest {
         assertEquals(0, cleared)
     }
 
+    @Test fun `an expired rest end callback may re-enter playlist adoption without recursion`() {
+        var expired = 0
+        queueManager.onCanonicalRestExpired = {
+            expired++
+            // Mirrors SessionGattBridge.endCanonicalRest(): submitting the
+            // command resumes the shared playlist before its coroutine sends.
+            queueManager.resumeFollowingSharedPlaylist()
+        }
+
+        clockNow = startOfTest + 200_000
+        publish(shared(rest = restEndingIn(120, 91)), controller = localNode)
+
+        assertEquals("the same generation is ended exactly once", 1, expired)
+    }
+
+    @Test fun `replayed snapshots do not request the same expired rest end again`() {
+        var expired = 0
+        queueManager.onCanonicalRestExpired = { expired++ }
+        val rest = restEndingIn(120, 92)
+
+        clockNow = startOfTest + 200_000
+        publish(shared(rest = rest), revision = 1, controller = localNode)
+        publish(shared(rest = rest), revision = 2, controller = localNode)
+        publish(shared(rest = rest), revision = 3, controller = localNode)
+
+        assertEquals(1, expired)
+    }
+
     @Test fun `a rest stamped in the future is refused rather than started again`() {
         val started = mutableListOf<Int>()
         var expired = 0

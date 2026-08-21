@@ -2555,6 +2555,9 @@
     <string name="mesh_status_via_controller">%1$s · über Mesh bereit</string>
     <string name="mesh_status_direct_controller">%1$s · direkt verbunden · Mesh-Controller</string>
     <string name="mesh_status_recovering">%1$s · Board-Controller wird wiederhergestellt…</string>
+    <string name="mesh_status_synchronizing">%1$s · Board wird synchronisiert…</string>
+    <string name="mesh_status_leaving">%1$s · Board wird verlassen…</string>
+    <string name="mesh_status_confirm_board">%1$s · Boulder mit dem Lampensymbol bestätigen</string>
     <string name="mesh_controller_request_action">Steuerung anfragen</string>
     <string name="mesh_controller_request_waiting">Warte auf den aktuellen Controller…</string>
     <string name="mesh_controller_request_accepted">Zugestimmt. Das passende Board wird verbunden…</string>
@@ -2910,6 +2913,9 @@
     <string name="fips_mesh_role_controls">Steuert Board</string>
     <string name="fips_mesh_role_connected">Verbunden</string>
     <string name="fips_mesh_role_recovering">Neuer Controller wird bestimmt…</string>
+    <string name="fips_mesh_role_joining">Board wird beigetreten…</string>
+    <string name="fips_mesh_role_synchronizing">Board wird synchronisiert…</string>
+    <string name="fips_mesh_role_confirm_board">Lampensymbol drücken, um den Boulder am Board zu bestätigen</string>
     <string name="fips_mesh_peer_controller_short">Board-Steuerung</string>
     <string name="fips_mesh_peer_number">Teilnehmer %1$d</string>
     <string name="fips_mesh_text">Lokaler Board-Zustand wird mit Teilnehmenden synchronisiert</string>

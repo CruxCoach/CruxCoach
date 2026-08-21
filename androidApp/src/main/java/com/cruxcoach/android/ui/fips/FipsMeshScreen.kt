@@ -95,7 +95,7 @@ fun FipsMeshScreen(
             }
             item { CurrentMeshCard(state,
                 relayClientCount = relayState.clientCount.takeIf { relayState.enabled },
-                leaving = membershipTransition == MeshMembershipTransition.LEAVING,
+                membershipTransition = membershipTransition,
                 leaveFailed = leaveFailed,
                 onLeave = viewModel::leave,
                 onJoinModeChange = viewModel::setJoinMode,
@@ -138,19 +138,53 @@ fun FipsMeshScreen(
     }
 }
 
+internal enum class BoardMembershipDisplayState {
+    INACTIVE,
+    ACTIVE,
+    JOINING,
+    LEAVING,
+    CONTROLLER_RECOVERY,
+    CONFIRM_BOARD,
+    SYNCHRONIZING,
+}
+
+internal fun boardMembershipDisplayState(
+    localIsMember: Boolean,
+    availability: String?,
+    transition: MeshMembershipTransition,
+): BoardMembershipDisplayState {
+    if (!localIsMember) return BoardMembershipDisplayState.INACTIVE
+    if (transition == MeshMembershipTransition.LEAVING) return BoardMembershipDisplayState.LEAVING
+    if (transition in setOf(
+            MeshMembershipTransition.JOINING,
+            MeshMembershipTransition.WAITING_APPROVAL,
+        )) return BoardMembershipDisplayState.JOINING
+    if (availability == "ACTIVE") return BoardMembershipDisplayState.ACTIVE
+    if (availability == "FROZEN_NEEDS_CONTROLLER" && transition == MeshMembershipTransition.IDLE)
+        return BoardMembershipDisplayState.CONTROLLER_RECOVERY
+    if (availability == "FROZEN_WRITE_RECOVERY")
+        return BoardMembershipDisplayState.CONFIRM_BOARD
+    return BoardMembershipDisplayState.SYNCHRONIZING
+}
+
 @Composable
 private fun CurrentMeshCard(
     state: FipsMeshUiState,
     relayClientCount: Int?,
-    leaving: Boolean,
+    membershipTransition: MeshMembershipTransition,
     leaveFailed: Boolean,
     onLeave: () -> Unit,
     onJoinModeChange: (BoardJoinMode) -> Unit,
     onConnect: () -> Unit,
 ) {
     val hasMembership = state.cellId != null && state.localIsMember
-    val active = hasMembership && state.availability == "ACTIVE"
-    val recovering = hasMembership && !active
+    val displayState = boardMembershipDisplayState(
+        localIsMember = hasMembership,
+        availability = state.availability,
+        transition = membershipTransition,
+    )
+    val active = displayState == BoardMembershipDisplayState.ACTIVE
+    val leaving = displayState == BoardMembershipDisplayState.LEAVING
     MeshCard(container = if (active) SuccessGreen.copy(alpha = 0.10f) else InfoBlue.copy(alpha = 0.08f)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Hub, contentDescription = null, tint = if (active) SuccessGreen else InfoBlue)
@@ -159,7 +193,10 @@ private fun CurrentMeshCard(
                 Text(
                     when {
                         active -> stringResource(R.string.fips_mesh_own_active)
-                        recovering -> stringResource(R.string.fips_mesh_own_recovering)
+                        displayState == BoardMembershipDisplayState.LEAVING ->
+                            stringResource(R.string.fips_mesh_leaving)
+                        displayState != BoardMembershipDisplayState.INACTIVE ->
+                            stringResource(R.string.fips_mesh_own_recovering)
                         else -> stringResource(R.string.fips_mesh_own_inactive)
                     },
                     style = MaterialTheme.typography.titleMedium,
@@ -181,7 +218,16 @@ private fun CurrentMeshCard(
                 stringResource(R.string.fips_mesh_role),
                 stringResource(
                     when {
-                        recovering -> R.string.fips_mesh_role_recovering
+                        displayState == BoardMembershipDisplayState.CONTROLLER_RECOVERY ->
+                            R.string.fips_mesh_role_recovering
+                        displayState == BoardMembershipDisplayState.JOINING ->
+                            R.string.fips_mesh_role_joining
+                        displayState == BoardMembershipDisplayState.LEAVING ->
+                            R.string.fips_mesh_leaving
+                        displayState == BoardMembershipDisplayState.CONFIRM_BOARD ->
+                            R.string.fips_mesh_role_confirm_board
+                        displayState == BoardMembershipDisplayState.SYNCHRONIZING ->
+                            R.string.fips_mesh_role_synchronizing
                         state.localNpub == state.controllerNpub -> R.string.fips_mesh_role_controls
                         else -> R.string.fips_mesh_role_connected
                     },
@@ -216,7 +262,11 @@ private fun CurrentMeshCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error)
             }
-            Button(onClick = onLeave, enabled = !leaving, modifier = Modifier.fillMaxWidth()) {
+            Button(
+                onClick = onLeave,
+                enabled = membershipTransition == MeshMembershipTransition.IDLE,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
                 Text(stringResource(if (leaving) R.string.fips_mesh_leaving
                     else R.string.fips_mesh_leave_action))
             }

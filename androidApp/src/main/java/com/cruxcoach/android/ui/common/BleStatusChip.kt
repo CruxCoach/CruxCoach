@@ -46,6 +46,7 @@ import com.cruxcoach.android.ui.theme.ErrorRed
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.SuccessGreen
 import com.cruxcoach.android.ui.theme.WarningYellow
+import com.cruxcoach.android.ui.fips.BoardMembershipDisplayState
 
 @Composable
 internal fun BleStatusChip(
@@ -59,6 +60,8 @@ internal fun BleStatusChip(
     activeMeshName: String? = null,
     activeMeshMemberCount: Int = 0,
     meshControllerAvailable: Boolean = true,
+    meshMembershipDisplayState: BoardMembershipDisplayState =
+        BoardMembershipDisplayState.ACTIVE,
     /**
      * The board's shared list is running, so this row must not become a second
      * copy of it.
@@ -111,7 +114,15 @@ internal fun BleStatusChip(
       Column {
         val meshSummary = activeMeshName?.let { name ->
             when {
-                !meshControllerAvailable -> stringResource(R.string.mesh_status_recovering, name)
+                meshMembershipDisplayState == BoardMembershipDisplayState.CONTROLLER_RECOVERY ->
+                    stringResource(R.string.mesh_status_recovering, name)
+                meshMembershipDisplayState == BoardMembershipDisplayState.LEAVING ->
+                    stringResource(R.string.mesh_status_leaving, name)
+                meshMembershipDisplayState == BoardMembershipDisplayState.JOINING ->
+                    stringResource(R.string.fips_mesh_joining, name)
+                meshMembershipDisplayState == BoardMembershipDisplayState.CONFIRM_BOARD ->
+                    stringResource(R.string.mesh_status_confirm_board, name)
+                !meshControllerAvailable -> stringResource(R.string.mesh_status_synchronizing, name)
                 else -> pluralStringResource(
                     R.plurals.board_group_people_summary,
                     activeMeshMemberCount,

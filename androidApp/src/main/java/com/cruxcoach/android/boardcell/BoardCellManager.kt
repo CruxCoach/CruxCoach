@@ -162,6 +162,7 @@ class BoardCellManager @Inject constructor(
     val controllerRequestState = _controllerRequestState.asStateFlow()
     private val _membershipTransition = MutableStateFlow(MeshMembershipTransition.IDLE)
     val membershipTransition = _membershipTransition.asStateFlow()
+    private val membershipAttemptGate = MeshMembershipAttemptGate()
     private val _incomingJoinRequests = MutableStateFlow<List<IncomingBoardJoinRequest>>(emptyList())
     val incomingJoinRequests = _incomingJoinRequests.asStateFlow()
     private val _joinRetryAfterEpochMs = MutableStateFlow(0L)
@@ -203,6 +204,34 @@ class BoardCellManager @Inject constructor(
     private val playlistProjectionMutex = Mutex()
     @Volatile private var playlistProjectionWriter: BoardPlaylistProjectionWriter? = null
     @Volatile private var peerDiagnosticsProvider: (() -> BoardCellPeerDiagnostics)? = null
+
+    private fun beginMembershipAttempt(state: MeshMembershipTransition): Long =
+        membershipAttemptGate.begin().also { _membershipTransition.value = state }
+
+    private fun updateMembershipAttempt(generation: Long, state: MeshMembershipTransition) {
+        if (!membershipAttemptGate.isCurrent(generation)) return
+        _membershipTransition.value = state
+        val resetDelayMs = MeshMembershipTransitionPolicy.resetDelayMs(
+            state,
+            _joinRetryAfterEpochMs.value,
+            System.currentTimeMillis(),
+        ) ?: return
+        scope.launch {
+            delay(resetDelayMs)
+            if (membershipAttemptGate.isCurrent(generation) &&
+                _membershipTransition.value == state) {
+                _membershipTransition.value = MeshMembershipTransition.IDLE
+            }
+        }
+    }
+
+    private fun updateCurrentMembershipAttempt(state: MeshMembershipTransition) =
+        updateMembershipAttempt(membershipAttemptGate.current(), state)
+
+    private fun supersedeMembershipAttempt(state: MeshMembershipTransition) {
+        membershipAttemptGate.supersede()
+        _membershipTransition.value = state
+    }
     @Volatile private var lastLocalPeerDiagnostics: BoardCellPeerDiagnostics? = null
     @Volatile private var lastPeerDiagnosticsSentAt = 0L
 
@@ -375,6 +404,9 @@ class BoardCellManager @Inject constructor(
                     }
                     return@collectLatest
                 }
+                // A physical selection is itself a new lifecycle generation. Any delayed
+                // completion from an earlier nearby join/leave may no longer change its UI state.
+                val physicalAttemptGeneration = beginMembershipAttempt(MeshMembershipTransition.IDLE)
                 val physical = PhysicalBoardIdentity.resolve(board, boardBindings.bindingFor(board.address))
                 val physicalCell = BoardCellId.forPhysical(physical)
                 if (locallyDepartedCell == physicalCell) locallyDepartedCell = null
@@ -440,7 +472,11 @@ class BoardCellManager @Inject constructor(
                 boardRealmAvailable.set(true)
                 coordinator = BoardCellCoordinator(activeNodeId, activeTransport, durableStore,
                     settleMs = 2_000, heartbeatTimeoutMs = CONTROLLER_LEASE_TIMEOUT_MS,
-                    initialJoinMode = userPreferences.boardJoinMode.first())
+                    initialJoinMode = userPreferences.boardJoinMode.first(),
+                    physicalBoardAuthority = {
+                        if (boardRealmAvailable.get()) PhysicalBoardAuthority.HELD
+                        else PhysicalBoardAuthority.NOT_HELD
+                    })
                 if (fipsActive) meshTransport.attach(coordinator)
                 val restoredForNode = restored?.takeIf { activeNodeId in it.members }
                 if (!fipsActive && restoredForNode != null &&
@@ -482,19 +518,43 @@ class BoardCellManager @Inject constructor(
                             ),
                             reason = "physical_board_reconnect",
                         )
-                    if (!knownSharedCell) {
+                    val replaceUnrecoverableFork = knownSharedCell && !rejoined &&
+                        !resumedController && !restoredRecoveryBase &&
+                        BoardCellDurableResumePolicy.mayReplaceUnrecoverableFork(
+                            restored, cellId, activeNodeId,
+                        )
+                    if (!knownSharedCell || replaceUnrecoverableFork) {
+                        if (replaceUnrecoverableFork) {
+                            // Old builds could persist a false fork when two phones raced for one
+                            // single-connect board. Live membership was given the grace period
+                            // above; the exclusive GATT owner can now safely start a clean history.
+                            durableStore.clearSnapshot(physical)
+                            FipsDebugLog.warning(
+                                "boardcell", "unrecoverable_fork_replaced_by_physical_owner",
+                                "cell" to FipsDebugLog.id(cellId.value),
+                            )
+                        }
                         FipsDebugLog.event("boardcell", "new_cell_claim_begin",
                             "cell" to FipsDebugLog.id(cellId.value), "node" to FipsDebugLog.id(activeNodeId))
-                        _membershipTransition.value = if (claimAndSettle(physical, cellId) != null)
-                            MeshMembershipTransition.IDLE else MeshMembershipTransition.ERROR
+                        updateMembershipAttempt(
+                            physicalAttemptGeneration,
+                            if (claimAndSettle(physical, cellId) != null)
+                                MeshMembershipTransition.IDLE else MeshMembershipTransition.ERROR,
+                        )
                     } else if (rejoined || resumedController || restoredRecoveryBase) {
-                        _membershipTransition.value = MeshMembershipTransition.IDLE
+                        updateMembershipAttempt(
+                            physicalAttemptGeneration,
+                            MeshMembershipTransition.IDLE,
+                        )
                     } else {
                         // Never create a competing lineage merely because the
                         // previous live members are temporarily unreachable.
                         // The stable realm identity remains available for the
                         // normal authenticated sponsor/admission path.
-                        _membershipTransition.value = MeshMembershipTransition.ERROR
+                        updateMembershipAttempt(
+                            physicalAttemptGeneration,
+                            MeshMembershipTransition.ERROR,
+                        )
                         FipsDebugLog.warning("boardcell", "known_cell_rejoin_pending",
                             "cell" to FipsDebugLog.id(cellId.value),
                             "knownMembers" to (restored?.members?.size ?: 0))
@@ -527,7 +587,19 @@ class BoardCellManager @Inject constructor(
         FipsDebugLog.event("boardcell", "projection_requested", "command" to FipsDebugLog.id(commandId),
             "climb" to FipsDebugLog.id(projection.climbUuid), "angle" to projection.angle,
             "baseSequence" to baseSequence)
-        return coordinator.project(board, projection, monotonicNow(), commandId, baseSequence, boardWrite).also {
+        val current = coordinator.snapshot(board)
+        val result = if (current?.controllerId == activeNodeId &&
+            current.availability == BoardCellAvailability.FROZEN_WRITE_RECOVERY) {
+            // This frozen state intentionally cannot guess what the wall shows after a crash.
+            // Pressing the lamp is the user's explicit answer, so the same ordinary action both
+            // reprojects the selected climb and returns the cell to ACTIVE.
+            coordinator.reprojectAfterRecovery(
+                board, projection, monotonicNow(), commandId, boardWrite,
+            )
+        } else {
+            coordinator.project(board, projection, monotonicNow(), commandId, baseSequence, boardWrite)
+        }
+        return result.also {
             FipsDebugLog.event("boardcell", "projection_result", "command" to FipsDebugLog.id(commandId),
                 "result" to it.javaClass.simpleName)
             refreshSelected()
@@ -772,8 +844,14 @@ class BoardCellManager @Inject constructor(
                 baseProjection = snapshot.projection,
                 basePlaylistRevision = snapshot.playlistRevision,
             )
-            val result = coordinator.projectSemantically(board, request, monotonicNow()) {
-                writer.write(resolved)
+            val result = if (snapshot.availability == BoardCellAvailability.FROZEN_WRITE_RECOVERY) {
+                coordinator.reprojectSemanticallyAfterRecovery(board, request, monotonicNow()) {
+                    writer.write(resolved)
+                }
+            } else {
+                coordinator.projectSemantically(board, request, monotonicNow()) {
+                    writer.write(resolved)
+                }
             }
             FipsDebugLog.event("playlist", "projection_attempted",
                 "climb" to FipsDebugLog.id(entry.climbUuid), "angle" to entry.angle,
@@ -808,7 +886,10 @@ class BoardCellManager @Inject constructor(
 
     fun canSendViaMesh(): Boolean {
         val snapshot = snapshot() ?: return false
-        return snapshot.availability == BoardCellAvailability.ACTIVE &&
+        return snapshot.availability in setOf(
+            BoardCellAvailability.ACTIVE,
+            BoardCellAvailability.FROZEN_WRITE_RECOVERY,
+        ) &&
             activeNodeId in snapshot.members && snapshot.controllerId != activeNodeId &&
             runtime.running.value
     }
@@ -842,12 +923,18 @@ class BoardCellManager @Inject constructor(
         // do not conflict with the board projection the participant saw. The
         // rebase happens inside the coordinator's mutex, so nothing can commit
         // between deciding the request is current and writing the wall.
-        return coordinator.projectSemantically(board, request, monotonicNow(), boardWrite).also { result ->
-            val ack = when (result) {
-                is ProjectionResult.Committed -> result.ack
-                is ProjectionResult.Duplicate -> result.ack
-                is ProjectionResult.Refused -> result.ack
-                is ProjectionResult.BoardWriteFailed -> result.ack
+        val current = coordinator.snapshot(board)
+        val result = if (current?.availability == BoardCellAvailability.FROZEN_WRITE_RECOVERY) {
+            coordinator.reprojectSemanticallyAfterRecovery(board, request, monotonicNow(), boardWrite)
+        } else {
+            coordinator.projectSemantically(board, request, monotonicNow(), boardWrite)
+        }
+        return result.also {
+            val ack = when (it) {
+                is ProjectionResult.Committed -> it.ack
+                is ProjectionResult.Duplicate -> it.ack
+                is ProjectionResult.Refused -> it.ack
+                is ProjectionResult.BoardWriteFailed -> it.ack
             }
             if (ack != null) meshTransport.publishCommandAck(inbound.senderId, ack)
             refreshSelected()
@@ -903,7 +990,8 @@ class BoardCellManager @Inject constructor(
         val existing = if (::coordinator.isInitialized) coordinator.snapshot(physical) else null
         if (existing?.cellId != cell || activeNodeId !in existing.members) {
             coordinator = BoardCellCoordinator(activeNodeId, meshTransport, durableStore,
-                settleMs = 2_000, heartbeatTimeoutMs = CONTROLLER_LEASE_TIMEOUT_MS)
+                settleMs = 2_000, heartbeatTimeoutMs = CONTROLLER_LEASE_TIMEOUT_MS,
+                physicalBoardAuthority = { PhysicalBoardAuthority.NOT_HELD })
             meshTransport.attach(coordinator)
             durableStore.clearSnapshot(physical)
         }
@@ -930,6 +1018,7 @@ class BoardCellManager @Inject constructor(
         nearbyJoinMutex.withLock {
         if (!BoardCellPlatformPolicy.meshAvailable(Build.VERSION.SDK_INT)) return false
         val cell = runCatching { BoardCellId(boardCellId) }.getOrNull() ?: return false
+        val attemptGeneration = beginMembershipAttempt(MeshMembershipTransition.JOINING)
         if (locallyDepartedCell == cell) locallyDepartedCell = null
         FipsDebugLog.event(
             "boardcell", "nearby_mesh_join_requested",
@@ -939,7 +1028,10 @@ class BoardCellManager @Inject constructor(
         )
         snapshot()?.let { active ->
             if (active.cellId == cell && activeNodeId in active.members &&
-                active.availability == BoardCellAvailability.ACTIVE && runtime.running.value) return true
+                active.availability == BoardCellAvailability.ACTIVE && runtime.running.value) {
+                updateMembershipAttempt(attemptGeneration, MeshMembershipTransition.IDLE)
+                return true
+            }
             if (active.availability != BoardCellAvailability.ACTIVE) {
                 // A frozen replica cannot perform a canonical leave and must
                 // not spend the normal leave timeout asking its vanished old
@@ -949,9 +1041,9 @@ class BoardCellManager @Inject constructor(
                 teardownLocalMembership(active)
                 locallyDepartedCell = null
             } else {
-                _membershipTransition.value = MeshMembershipTransition.LEAVING
+                updateMembershipAttempt(attemptGeneration, MeshMembershipTransition.LEAVING)
                 if (!leaveCurrentMeshLocked()) {
-                    _membershipTransition.value = MeshMembershipTransition.ERROR
+                    updateMembershipAttempt(attemptGeneration, MeshMembershipTransition.ERROR)
                     return false
                 }
             }
@@ -973,10 +1065,10 @@ class BoardCellManager @Inject constructor(
                 "boardcell", "nearby_mesh_join_kept_active_controller",
                 "cell" to FipsDebugLog.id(cell.value),
             )
-            _membershipTransition.value = MeshMembershipTransition.IDLE
+            updateMembershipAttempt(attemptGeneration, MeshMembershipTransition.IDLE)
             return true
         }
-        _membershipTransition.value = MeshMembershipTransition.JOINING
+        updateMembershipAttempt(attemptGeneration, MeshMembershipTransition.JOINING)
         _joinRetryAfterEpochMs.value = 0L
         // Entering another cell is an explicit realm change. This feature's own
         // leases on the previous realm go first, so the new realm is granted
@@ -1004,13 +1096,20 @@ class BoardCellManager @Inject constructor(
             }
         } catch (failure: CancellationException) {
             rollbackNearbyJoin(cell)
-            _membershipTransition.value = MeshMembershipTransition.IDLE
+            updateMembershipAttempt(attemptGeneration, MeshMembershipTransition.IDLE)
             throw failure
         } catch (failure: Exception) {
             FipsDebugLog.warning("boardcell", "nearby_mesh_join_failed",
                 "cell" to FipsDebugLog.id(cell.value),
                 "error" to (failure.message ?: failure.javaClass.simpleName))
             false
+        }
+        if (!membershipAttemptGate.isCurrent(attemptGeneration)) {
+            FipsDebugLog.event(
+                "boardcell", "nearby_mesh_join_activation_superseded",
+                "cell" to FipsDebugLog.id(cell.value),
+            )
+            return false
         }
         if (!activated) {
             FipsDebugLog.warning(
@@ -1020,15 +1119,16 @@ class BoardCellManager @Inject constructor(
             )
             rollbackNearbyJoin(cell)
             if (_joinRetryAfterEpochMs.value > System.currentTimeMillis()) {
-                _membershipTransition.value = MeshMembershipTransition.COOLDOWN
+                updateMembershipAttempt(attemptGeneration, MeshMembershipTransition.COOLDOWN)
             } else {
-                _membershipTransition.value = MeshMembershipTransition.ERROR
+                updateMembershipAttempt(attemptGeneration, MeshMembershipTransition.ERROR)
             }
             return false
         }
         activeNodeId = meshLink.localNpub
         coordinator = BoardCellCoordinator(activeNodeId, meshTransport, durableStore,
-            settleMs = 2_000, heartbeatTimeoutMs = CONTROLLER_LEASE_TIMEOUT_MS)
+            settleMs = 2_000, heartbeatTimeoutMs = CONTROLLER_LEASE_TIMEOUT_MS,
+            physicalBoardAuthority = { PhysicalBoardAuthority.NOT_HELD })
         meshTransport.attach(coordinator)
         // A durable snapshot in which this device used to be controller is
         // historical recovery material here, not authority to compete with
@@ -1055,27 +1155,44 @@ class BoardCellManager @Inject constructor(
             "psm" to nearbyPsm,
         )
         val failedPhase = try {
-            JOIN_PHASES.firstOrNull { phase ->
-                !awaitNearbyJoinPhase(cell, phase.stage, phase.timeoutMs)
+            val outcome = withTimeoutOrNull(JOIN_TOTAL_TIMEOUT_MS) {
+                NearbyJoinOutcome(JOIN_PHASES.firstOrNull { phase ->
+                    !awaitNearbyJoinPhase(
+                        cell,
+                        phase.stage,
+                        phase.timeoutMs,
+                        attemptGeneration,
+                    )
+                })
             }
+            if (outcome == null) NearbyJoinPhase(
+                "total_join_timeout", null, JOIN_TOTAL_TIMEOUT_MS,
+            ) else outcome.failedPhase
         } catch (failure: CancellationException) {
             rollbackNearbyJoin(cell)
-            _membershipTransition.value = MeshMembershipTransition.IDLE
+            updateMembershipAttempt(attemptGeneration, MeshMembershipTransition.IDLE)
             throw failure
+        }
+        if (!membershipAttemptGate.isCurrent(attemptGeneration)) {
+            FipsDebugLog.event(
+                "boardcell", "nearby_mesh_join_superseded",
+                "cell" to FipsDebugLog.id(cell.value),
+            )
+            return false
         }
         val joined = failedPhase == null && snapshot()?.let {
             it.cellId == cell && activeNodeId in it.members &&
                 it.availability == BoardCellAvailability.ACTIVE
         } == true
         if (joined) {
-            _membershipTransition.value = MeshMembershipTransition.IDLE
+            updateMembershipAttempt(attemptGeneration, MeshMembershipTransition.IDLE)
             val current = snapshot()
             meshLink.session?.settleMembership()
             FipsDebugLog.event("boardcell", "nearby_mesh_join_succeeded",
                 "cell" to FipsDebugLog.id(cell.value), "members" to current?.members?.size,
                 "controller" to FipsDebugLog.id(current?.controllerId))
         } else {
-            _membershipTransition.value = MeshMembershipTransition.ERROR
+            updateMembershipAttempt(attemptGeneration, MeshMembershipTransition.ERROR)
             FipsDebugLog.warning("boardcell", "nearby_mesh_join_timed_out",
                 "cell" to FipsDebugLog.id(cell.value),
                 "phase" to (failedPhase?.name ?: "membership_snapshot"),
@@ -1089,9 +1206,13 @@ class BoardCellManager @Inject constructor(
         cell: BoardCellId,
         expectedStage: FipsConnectionStage?,
         timeoutMs: Long,
+        attemptGeneration: Long,
     ): Boolean {
         val reached = withTimeoutOrNull(timeoutMs) {
             while (true) {
+                if (!membershipAttemptGate.isCurrent(attemptGeneration)) {
+                    return@withTimeoutOrNull false
+                }
                 if (expectedStage != null) {
                     val progress = runtime.connectionProgress.value
                     if (progress.cellId == cell.value && progress.stage.ordinal >= expectedStage.ordinal) {
@@ -1182,10 +1303,12 @@ class BoardCellManager @Inject constructor(
     /** Voluntary leave is canonical when reachable and converges through the
      * same liveness timeout when the last request races a partition. */
     suspend fun leaveCurrentMesh(): Boolean = nearbyJoinMutex.withLock {
-        _membershipTransition.value = MeshMembershipTransition.LEAVING
+        val attemptGeneration = beginMembershipAttempt(MeshMembershipTransition.LEAVING)
         val left = leaveCurrentMeshLocked()
-        _membershipTransition.value = if (left) MeshMembershipTransition.IDLE
-            else MeshMembershipTransition.ERROR
+        updateMembershipAttempt(
+            attemptGeneration,
+            if (left) MeshMembershipTransition.IDLE else MeshMembershipTransition.ERROR,
+        )
         left
     }
 
@@ -1196,7 +1319,7 @@ class BoardCellManager @Inject constructor(
      * converge through their normal heartbeat eviction in that partition. */
     suspend fun leaveMeshForBoardDisconnect(): Boolean = withContext(NonCancellable) {
         nearbyJoinMutex.withLock {
-            _membershipTransition.value = MeshMembershipTransition.LEAVING
+            val attemptGeneration = beginMembershipAttempt(MeshMembershipTransition.LEAVING)
             val initial = snapshot()
             try {
                 val canonical = runCatching { leaveCurrentMeshLocked() }.getOrElse { failure ->
@@ -1213,7 +1336,7 @@ class BoardCellManager @Inject constructor(
                 }
                 canonical || initial != null
             } finally {
-                _membershipTransition.value = MeshMembershipTransition.IDLE
+                updateMembershipAttempt(attemptGeneration, MeshMembershipTransition.IDLE)
             }
         }
     }
@@ -1221,6 +1344,13 @@ class BoardCellManager @Inject constructor(
     private suspend fun leaveCurrentMeshLocked(): Boolean {
         val initial = snapshot() ?: return true
         if (activeNodeId !in initial.members) {
+            teardownLocalMembership(initial)
+            return true
+        }
+        // A frozen replica cannot order a canonical leave. Local intent still wins:
+        // forget it immediately and let live peers converge by their normal liveness rules.
+        // This guarantees that recovery/fork state can never trap the user on a board.
+        if (initial.availability != BoardCellAvailability.ACTIVE) {
             teardownLocalMembership(initial)
             return true
         }
@@ -1325,7 +1455,7 @@ class BoardCellManager @Inject constructor(
             // heartbeats provide the canonical removal.
             teardownLocalMembership(current,
                 preserveRejoinHint = (current.members - activeNodeId).isNotEmpty())
-            _membershipTransition.value = MeshMembershipTransition.IDLE
+            supersedeMembershipAttempt(MeshMembershipTransition.IDLE)
         } finally {
             pendingLocalLeave.set(false)
         }
@@ -1571,7 +1701,12 @@ class BoardCellManager @Inject constructor(
     private fun surfaceAdmission(prompt: BoardCellAdmissionPrompt) {
         if (prompt.expiresAtEpochMs <= System.currentTimeMillis()) return
         if (prompt.candidateId == activeNodeId) {
-            _membershipTransition.value = MeshMembershipTransition.WAITING_APPROVAL
+            if (_membershipTransition.value in setOf(
+                    MeshMembershipTransition.JOINING,
+                    MeshMembershipTransition.WAITING_APPROVAL,
+                )) {
+                updateCurrentMembershipAttempt(MeshMembershipTransition.WAITING_APPROVAL)
+            }
             return
         }
         val next = (_incomingJoinRequests.value.filterNot { it.requestId == prompt.requestId } +
@@ -1633,13 +1768,37 @@ class BoardCellManager @Inject constructor(
         if (!result.approved && result.retryAfterEpochMs > System.currentTimeMillis()) {
             admissionCooldowns[result.candidateId] = result.retryAfterEpochMs
         }
-        if (result.candidateId == activeNodeId && !result.approved) {
-            _joinRetryAfterEpochMs.value = result.retryAfterEpochMs
-            _membershipTransition.value = if (result.retryAfterEpochMs > System.currentTimeMillis()) {
-                MeshMembershipTransition.COOLDOWN
-            } else {
-                MeshMembershipTransition.ERROR
+        if (result.candidateId == activeNodeId) {
+            // The canonical membership snapshot is authoritative. A delayed
+            // denial from an older attempt must never downgrade an already
+            // joined device or resurrect a cooldown after convergence.
+            val joined = snapshot()?.let { current ->
+                activeNodeId in current.members && current.availability == BoardCellAvailability.ACTIVE
+            } == true
+            if (joined) {
+                if (_membershipTransition.value in setOf(
+                        MeshMembershipTransition.JOINING,
+                        MeshMembershipTransition.WAITING_APPROVAL,
+                    )) {
+                    updateCurrentMembershipAttempt(MeshMembershipTransition.IDLE)
+                }
+                return
             }
+            if (!BoardCellAdmissionResultPolicy.shouldApplyRejection(
+                    candidateId = result.candidateId,
+                    localNodeId = activeNodeId,
+                    approved = result.approved,
+                    activeMembership = false,
+                    transition = _membershipTransition.value,
+                )) return
+            _joinRetryAfterEpochMs.value = result.retryAfterEpochMs
+            updateCurrentMembershipAttempt(
+                if (result.retryAfterEpochMs > System.currentTimeMillis()) {
+                    MeshMembershipTransition.COOLDOWN
+                } else {
+                    MeshMembershipTransition.ERROR
+                },
+            )
         }
     }
 
@@ -2209,6 +2368,8 @@ class BoardCellManager @Inject constructor(
             val stage: FipsConnectionStage?,
             val timeoutMs: Long,
         )
+        private data class NearbyJoinOutcome(val failedPhase: NearbyJoinPhase?)
+        private const val JOIN_TOTAL_TIMEOUT_MS = 35_000L
         private val JOIN_PHASES = listOf(
             NearbyJoinPhase("advertisement", FipsConnectionStage.ADVERTISEMENT_SEEN, 8_000L),
             NearbyJoinPhase("l2cap_channel", FipsConnectionStage.CHANNEL_OPEN, 12_000L),
