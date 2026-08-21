@@ -11,6 +11,16 @@ internal enum class BoardDeliveryTarget {
     DIRECT_BOARD,
     MESH_BOARD,
     SHARED_QUEUE,
+
+    /**
+     * Through the group's list, as a new current occurrence.
+     *
+     * The board still has exactly one way onto it — the shared playlist and its
+     * controller — but the climb page no longer makes somebody queue a climb
+     * and then go and press it somewhere else. What lands on the wall becomes
+     * an occurrence everybody can see, in the order it happened.
+     */
+    BOARD_PLAYLIST,
 }
 
 internal data class BoardDeliveryDecision(
@@ -73,16 +83,21 @@ internal object BoardDeliveryPolicy {
         /** This device is in an active BoardCell, so the board has a list. */
         boardCellActive: Boolean = false,
     ): BoardDeliveryDecision {
-        // A board with a group on it has exactly one way onto the wall — the
-        // lamp on the shared list — and exactly one way into the list, which
-        // is Add / Add as next on this very screen. A third control here would
-        // be a second thing that lights a wall somebody may be climbing on,
-        // reachable without ever having seen the group's list.
+        // A board with a group on it still has exactly one way onto the wall:
+        // the group's controller, in the group's order. What changed is who is
+        // allowed to ask. Making a climber queue a climb and then walk to
+        // another screen to press it was protecting the wall from the person
+        // standing in front of it — so the button is here, and it goes through
+        // the same sequencer as the lamp on the list and leaves an occurrence
+        // behind that says what happened.
+        //
+        // Never automatically, whatever the send-mode preference says: paging
+        // through climbs is not asking for anything.
         if (boardCellActive) {
             return BoardDeliveryDecision(
-                target = BoardDeliveryTarget.NONE,
+                target = BoardDeliveryTarget.BOARD_PLAYLIST,
                 dispatchAutomatically = false,
-                showAction = false,
+                showAction = true,
             )
         }
 
@@ -137,15 +152,20 @@ internal object BoardDeliveryPolicy {
     fun lampMode(
         decision: BoardDeliveryDecision,
         hasDirectPayload: Boolean,
-        boardConnected: Boolean,
-        /** A BoardCell group or a joining shared session owns delivery. */
+        reachability: BoardReachability,
+        /** A joining shared session owns delivery for the moment. */
         boardOwnedByOthers: Boolean,
     ): BoardDetailLampMode = when {
         decision.showAction && decision.target == BoardDeliveryTarget.SHARED_QUEUE ->
             BoardDetailLampMode.SHARED_QUEUE
         decision.showAction -> BoardDetailLampMode.LIGHT
         boardOwnedByOthers -> BoardDetailLampMode.HIDDEN
-        hasDirectPayload && !boardConnected -> BoardDetailLampMode.CONNECT
+        // Nothing to send is the one case with no useful button: connecting a
+        // board would not help a climb that has no holds to put on it.
+        !hasDirectPayload -> BoardDetailLampMode.HIDDEN
+        // No path to any board. The button names what is actually in the way
+        // rather than showing a lamp that cannot light.
+        !reachability.canReachBoard -> BoardDetailLampMode.CONNECT
         else -> BoardDetailLampMode.HIDDEN
     }
 }

@@ -801,6 +801,53 @@ class BoardCellManager @Inject constructor(
      * one: pressing it again is a resend, which is what somebody does when the
      * wall has been changed underneath them.
      */
+    /**
+     * Put a climb on the wall now and make it the group's current occurrence.
+     *
+     * One logical transaction, sequenced by the controller. The two halves —
+     * the canonical list edit and the physical write — start together rather
+     * than one after the other, because waiting for a list round trip before
+     * anything lights is latency nobody asked for.
+     *
+     * They cannot disagree afterwards. On the controller both happen under the
+     * projection mutex, so the entry that becomes current is the entry that was
+     * written. On a member both messages go to the same controller, which
+     * serialises them with everybody else's; the projection names a climb and
+     * an angle rather than an entry id, so arriving in either order still puts
+     * the same climb on the same wall.
+     *
+     * A write that fails or never answers does not become the confirmed
+     * current: [projectInternal] only commits its event after the write
+     * succeeds, so the previously confirmed projection stays exactly where it
+     * was and the failure is recorded as a pending projection anybody can
+     * press again.
+     */
+    suspend fun lightNow(climbUuid: String, angle: Int, fromEntryId: String? = null): Boolean {
+        if (!::coordinator.isInitialized) return false
+        val snapshot = snapshot() ?: return false
+        if (activeNodeId !in snapshot.members) return false
+        val plan = BoardPlaylistOps.lightNow(snapshot.playlist, climbUuid, angle, fromEntryId)
+        val resolved = playlistProjectionWriter?.resolve(climbUuid, angle)
+            ?: BoardProjection(climbUuid, angle)
+
+        if (snapshot.controllerId == activeNodeId) {
+            if (plan.ops.isNotEmpty()) {
+                val command = composePlaylistCommand(plan.ops) ?: return false
+                val ack = commitPlaylistCommand(activeNodeId, command)
+                if (ack?.status != BoardCommandStatus.COMMITTED) return false
+            }
+            return syncPlaylistProjection()
+        }
+
+        // Member: both halves leave now, and the controller orders them.
+        val command = composePlaylistCommand(plan.ops)
+        val listSent = plan.ops.isEmpty() ||
+            (command != null && meshTransport.sendPlaylistCommand(snapshot, command))
+        val projected = sendProjectionRequest(resolved) != null
+        refreshSelected()
+        return listSent && projected
+    }
+
     suspend fun projectSelectedEntry(): Boolean {
         if (!::coordinator.isInitialized) return false
         val snapshot = snapshot() ?: return false

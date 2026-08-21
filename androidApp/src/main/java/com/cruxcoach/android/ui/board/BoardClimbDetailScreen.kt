@@ -442,6 +442,18 @@ fun BoardClimbDetailScreen(
             frames = climb.frames,
         )
     } == true
+    // One answer to "can this climb reach a board", for the dock and nothing
+    // else to second-guess. A member on somebody else's controller has a path
+    // without holding a BLE link of their own.
+    val reachability = BoardReachabilityPolicy.resolve(
+        connectionState = state.ble.connectionState,
+        connectedViaMesh = state.ble.connectedViaMesh || boardGroupActive,
+        connectedViaRelay = state.ble.connectedViaRelay,
+        bluetoothEnabled = bleConnState.isBluetoothEnabled,
+        hasBluetoothPermission = bleConnState.hasConnectionPermission,
+        hasEverSeenBoard = bleConnState.rememberedBoardControllersLoaded &&
+            bleConnState.connectedBoardName != null,
+    )
     val deliveryDecision = BoardDeliveryPolicy.resolve(
         sendMode = state.boardSendMode,
         sessionRole = detailQueueState.role,
@@ -478,10 +490,14 @@ fun BoardClimbDetailScreen(
                     state = state,
                     decision = deliveryDecision,
                     hasDirectPayload = hasDirectPayload,
-                    boardOwnedByOthers = boardGroupActive || detailQueueState.isConnecting,
+                    reachability = reachability,
+                    boardOwnedByOthers = detailQueueState.isConnecting,
                     onAttempt = { viewModel.quickLogAscent(isSend = false) },
                     onLight = viewModel::deliverClimb,
-                    onConnectBoard = { showBleSheet = true },
+                    // Whatever is in the way, the sheet that fixes it is the
+                    // same one — it handles permission, a disabled adapter,
+                    // scanning and reconnecting.
+                    onResolveBoard = { showBleSheet = true },
                     onSend = { viewModel.quickLogAscent(isSend = true) },
                 )
             }
@@ -1707,22 +1723,24 @@ private fun ClimbDetailPageContent(
 /**
  * The whole bottom of a climb page, in the order somebody needs it.
  *
- * Two rows at most: the group's list first when there is one, then the three
- * things this climber does with the climb in front of them. They are stacked
- * rather than merged because they answer different questions — "put this in
- * front of everybody" and "that burn just happened" — and a row that
- * sometimes means one and sometimes the other is a row nobody can use fast.
+ * Two rows at most. The group's list first when there is one — a split button
+ * whose plain tap has exactly one meaning — then the three things this climber
+ * does with the climb in front of them. They are stacked rather than merged
+ * because they answer different questions: one changes what everybody sees,
+ * the other records what just happened to you. With no list on the board the
+ * first row is not there at all, rather than sitting empty.
  */
 @Composable
 private fun BoardDetailBottomActions(
     state: ClimbDetailState,
     decision: BoardDeliveryDecision,
     hasDirectPayload: Boolean,
-    /** A board group, or a shared session mid-join, owns delivery. */
+    reachability: BoardReachability,
+    /** A shared session is mid-join and owns delivery for the moment. */
     boardOwnedByOthers: Boolean,
     onAttempt: () -> Unit,
     onLight: () -> Unit,
-    onConnectBoard: () -> Unit,
+    onResolveBoard: () -> Unit,
     onSend: () -> Unit,
 ) {
     val climb = state.climb ?: return
@@ -1738,8 +1756,8 @@ private fun BoardDetailBottomActions(
                 .padding(horizontal = 14.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            // Draws nothing unless this device is actually in a board's group,
-            // so the dock keeps its usual height everywhere else.
+            // Draws nothing at all unless this device is in a board's group,
+            // so every other board keeps the dock at its usual height.
             BoardPlaylistAddActions(
                 climbUuid = climb.uuid,
                 angle = state.angle,
@@ -1750,11 +1768,10 @@ private fun BoardDetailBottomActions(
                 lamp = BoardDeliveryPolicy.lampMode(
                     decision = decision,
                     hasDirectPayload = hasDirectPayload,
-                    boardConnected = state.ble.connectionState == ConnectionState.CONNECTED ||
-                        state.ble.connectionState == ConnectionState.SENDING ||
-                        state.ble.connectedViaMesh,
+                    reachability = reachability,
                     boardOwnedByOthers = boardOwnedByOthers,
                 ),
+                reachability = reachability,
                 // Disabled, not removed: mid-countdown the climb is already on
                 // its way to the wall, and a middle button that disappears
                 // resizes the two next to it under the user's thumb.
@@ -1762,138 +1779,213 @@ private fun BoardDetailBottomActions(
                 lightInProgress = state.ble.isSending,
                 onAttempt = onAttempt,
                 onLight = onLight,
-                onConnectBoard = onConnectBoard,
+                onResolveBoard = onResolveBoard,
                 onSend = onSend,
             )
         }
     }
 }
 
+/**
+ * Three actions, three words.
+ *
+ * The icons alone were a guess — a lamp especially, which could as easily mean
+ * a hint or a light-up hold. Each one keeps its icon and gains the one word it
+ * actually means, short enough that three of them fit on a narrow phone and
+ * unambiguous enough to hit without reading twice. The full sentence stays in
+ * the accessibility description, which is where a longer one belongs.
+ *
+ * The two outside actions are personal: they write to this climber's logbook
+ * and nothing else. The middle one changes what everybody in the room sees.
+ * They look different for that reason.
+ */
 @Composable
 private fun BoardDetailActionDock(
     loggingEnabled: Boolean,
     lamp: BoardDetailLampMode,
+    reachability: BoardReachability,
     lightEnabled: Boolean,
     lightInProgress: Boolean,
     onAttempt: () -> Unit,
     onLight: () -> Unit,
-    onConnectBoard: () -> Unit,
+    onResolveBoard: () -> Unit,
     onSend: () -> Unit,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Surface(
+        DockAction(
+            modifier = Modifier.weight(1f).testTag("boarddetail_quick_attempt"),
             onClick = onAttempt,
             enabled = loggingEnabled,
-            modifier = Modifier
-                .weight(1f)
-                .height(58.dp)
-                .testTag("boarddetail_quick_attempt"),
-            shape = RoundedCornerShape(18.dp),
-            color = ErrorRed.copy(alpha = 0.13f),
-            contentColor = ErrorRed,
-            border = androidx.compose.foundation.BorderStroke(1.dp, ErrorRed.copy(alpha = 0.42f)),
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    Icons.Default.Close,
-                    contentDescription = stringResource(R.string.board_ascent_attempt),
-                    modifier = Modifier.size(32.dp),
-                )
-            }
-        }
+            icon = Icons.Default.Close,
+            label = stringResource(R.string.board_dock_try),
+            description = stringResource(R.string.cd_board_dock_try),
+            container = ErrorRed.copy(alpha = 0.13f),
+            content = ErrorRed,
+            border = ErrorRed.copy(alpha = 0.42f),
+        )
         when (lamp) {
             BoardDetailLampMode.HIDDEN -> Unit
-            BoardDetailLampMode.CONNECT -> Surface(
-                onClick = onConnectBoard,
-                enabled = lightEnabled,
-                modifier = Modifier
-                    .weight(1.12f)
-                    .height(58.dp)
-                    .testTag("boarddetail_connect_board_button"),
-                shape = RoundedCornerShape(18.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                border = androidx.compose.foundation.BorderStroke(
-                    1.dp,
-                    MaterialTheme.colorScheme.outlineVariant,
-                ),
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        Icons.Default.Bluetooth,
-                        contentDescription = stringResource(R.string.cd_board_connect),
-                        modifier = Modifier.size(31.dp),
-                    )
-                }
-            }
+            BoardDetailLampMode.CONNECT -> DockAction(
+                modifier = Modifier.weight(1.12f).testTag("boarddetail_connect_board_button"),
+                onClick = onResolveBoard,
+                enabled = true,
+                icon = reachability.dockIcon(),
+                label = stringResource(reachability.dockLabel()),
+                description = stringResource(reachability.dockDescription()),
+                container = MaterialTheme.colorScheme.surfaceVariant,
+                content = MaterialTheme.colorScheme.onSurfaceVariant,
+                border = MaterialTheme.colorScheme.outlineVariant,
+            )
             BoardDetailLampMode.LIGHT,
             BoardDetailLampMode.SHARED_QUEUE -> {
                 val sharedQueue = lamp == BoardDetailLampMode.SHARED_QUEUE
                 val busy = lightInProgress && !sharedQueue
-                Surface(
-                    onClick = onLight,
-                    enabled = lightEnabled && !busy,
+                DockAction(
                     modifier = Modifier
                         .weight(1.12f)
-                        .height(58.dp)
                         .testTag(
                             if (sharedQueue) "boarddetail_add_to_shared_queue_button"
                             else "boarddetail_light_climb_button",
                         ),
-                    shape = RoundedCornerShape(18.dp),
-                    color = OrangeAccent,
-                    contentColor = DarkBackground,
-                    shadowElevation = 4.dp,
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        if (busy) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(25.dp),
-                                strokeWidth = 2.5.dp,
-                                color = DarkBackground,
-                            )
-                        } else {
-                            Box(Modifier.size(38.dp), contentAlignment = Alignment.Center) {
-                                Icon(
-                                    if (sharedQueue) Icons.AutoMirrored.Filled.PlaylistAdd
-                                    else Icons.Default.Lightbulb,
-                                    contentDescription = stringResource(
-                                        if (sharedQueue) R.string.cd_add_climb_to_shared_queue
-                                        else R.string.cd_light_climb_on_board,
-                                    ),
-                                    modifier = Modifier.size(31.dp),
-                                )
-                            }
-                        }
-                    }
-                }
+                    onClick = onLight,
+                    enabled = lightEnabled && !busy,
+                    icon = if (sharedQueue) Icons.AutoMirrored.Filled.PlaylistAdd
+                    else Icons.Default.Lightbulb,
+                    label = stringResource(R.string.board_dock_board),
+                    description = stringResource(
+                        if (sharedQueue) R.string.cd_add_climb_to_shared_queue
+                        else R.string.cd_board_dock_board,
+                    ),
+                    container = OrangeAccent,
+                    content = DarkBackground,
+                    border = null,
+                    elevated = true,
+                    busy = busy,
+                    // Mesh and relay are worth naming; a direct link is the
+                    // unremarkable case and gets no decoration.
+                    badge = if (reachability.carriesBadge) reachability.dockIcon() else null,
+                )
             }
         }
-        Surface(
+        DockAction(
+            modifier = Modifier.weight(1f).testTag("boarddetail_quick_send"),
             onClick = onSend,
             enabled = loggingEnabled,
-            modifier = Modifier
-                .weight(1f)
-                .height(58.dp)
-                .testTag("boarddetail_quick_send"),
-            shape = RoundedCornerShape(18.dp),
-            color = SuccessGreen.copy(alpha = 0.16f),
-            contentColor = SuccessGreen,
-            border = androidx.compose.foundation.BorderStroke(1.dp, SuccessGreen.copy(alpha = 0.46f)),
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    Icons.Default.Check,
-                    contentDescription = stringResource(R.string.board_ascent_send),
-                    modifier = Modifier.size(32.dp),
+            icon = Icons.Default.Check,
+            label = stringResource(R.string.board_dock_top),
+            description = stringResource(R.string.cd_board_dock_top),
+            container = SuccessGreen.copy(alpha = 0.16f),
+            content = SuccessGreen,
+            border = SuccessGreen.copy(alpha = 0.46f),
+        )
+    }
+}
+
+/** One dock seat: icon over word, with the sentence kept for screen readers. */
+@Composable
+private fun DockAction(
+    modifier: Modifier,
+    onClick: () -> Unit,
+    enabled: Boolean,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    description: String,
+    container: Color,
+    content: Color,
+    border: Color?,
+    elevated: Boolean = false,
+    busy: Boolean = false,
+    badge: androidx.compose.ui.graphics.vector.ImageVector? = null,
+) {
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier
+            .height(58.dp)
+            .semantics { contentDescription = description },
+        shape = RoundedCornerShape(18.dp),
+        color = container,
+        contentColor = content,
+        border = border?.let { androidx.compose.foundation.BorderStroke(1.dp, it) },
+        shadowElevation = if (elevated) 4.dp else 0.dp,
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            if (busy) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(24.dp),
+                    strokeWidth = 2.5.dp,
+                    color = content,
                 )
+            } else {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(1.dp),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            icon,
+                            // The word underneath says it; repeating it here
+                            // would make TalkBack read the seat twice.
+                            contentDescription = null,
+                            modifier = Modifier.size(22.dp),
+                        )
+                        badge?.let {
+                            Icon(
+                                it,
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .size(11.dp),
+                            )
+                        }
+                    }
+                    Text(
+                        label,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                    )
+                }
             }
         }
     }
 }
+
+/** What the middle seat says when there is no path to a board. */
+@StringRes
+private fun BoardReachability.dockLabel(): Int = when (this) {
+    BoardReachability.BLUETOOTH_OFF -> R.string.board_dock_bluetooth_off
+    BoardReachability.PERMISSION_MISSING -> R.string.board_dock_bluetooth_permission
+    BoardReachability.CONNECTING -> R.string.board_dock_connecting
+    BoardReachability.UNREACHABLE -> R.string.board_dock_unreachable
+    BoardReachability.NO_BOARD -> R.string.board_dock_connect_board
+    // A reachable board never renders this branch; the lamp does.
+    BoardReachability.DIRECT, BoardReachability.MESH, BoardReachability.RELAY ->
+        R.string.board_dock_board
+}
+
+/** The same seat, said in full for a screen reader. */
+@StringRes
+private fun BoardReachability.dockDescription(): Int = when (this) {
+    BoardReachability.BLUETOOTH_OFF -> R.string.cd_board_dock_bluetooth_off
+    BoardReachability.PERMISSION_MISSING -> R.string.cd_board_dock_bluetooth_permission
+    BoardReachability.CONNECTING -> R.string.cd_board_dock_connecting
+    BoardReachability.UNREACHABLE -> R.string.cd_board_dock_unreachable
+    BoardReachability.NO_BOARD -> R.string.cd_board_dock_connect_board
+    BoardReachability.DIRECT, BoardReachability.MESH, BoardReachability.RELAY ->
+        R.string.cd_board_dock_board
+}
+
+private fun BoardReachability.dockIcon(): androidx.compose.ui.graphics.vector.ImageVector =
+    when (this) {
+        BoardReachability.MESH -> Icons.Default.CellTower
+        BoardReachability.RELAY -> Icons.Default.Groups
+        BoardReachability.CONNECTING -> Icons.Default.BluetoothConnected
+        else -> Icons.Default.Bluetooth
+    }
 
 @Composable
 private fun CompactClimbOverview(

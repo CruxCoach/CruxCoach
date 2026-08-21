@@ -1409,6 +1409,15 @@ class BoardClimbDetailViewModel @Inject constructor(
             BoardDeliveryTarget.MESH_BOARD -> sendController.sendToBoard()
             BoardDeliveryTarget.SHARED_QUEUE ->
                 sessionQueueManager.addClimb(climb.uuid, climbState.angle)
+            // One route to a group's wall, and it is the group's own: the
+            // occurrence, the current and the physical write commit together
+            // through the controller instead of this screen writing behind the
+            // list's back.
+            BoardDeliveryTarget.BOARD_PLAYLIST -> viewModelScope.launch {
+                val entryId = climbNavState.boardPlaylistEntryId
+                    ?.takeIf { climbNavState.boardPlaylistEntryClimbUuid == climb.uuid }
+                boardCellManager.lightNow(climb.uuid, climbState.angle, entryId)
+            }
             BoardDeliveryTarget.NONE -> Unit
         }
     }

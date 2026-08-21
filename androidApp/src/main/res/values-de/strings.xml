@@ -2993,4 +2993,20 @@
     <string name="board_layer_color_yellow">Gelb</string>
     <string name="board_layer_color_unavailable">%1$s — auf dem Board bereits vergeben</string>
     <string name="board_layer_error_other_board">Diese Ebenen wurden für ein anderes Board zusammengestellt. Weise sie auf diesem neu zu.</string>
+    <string name="board_dock_try">Versuch</string>
+    <string name="board_dock_board">Board</string>
+    <string name="board_dock_top">Top</string>
+    <string name="cd_board_dock_try">Versuch protokollieren</string>
+    <string name="cd_board_dock_board">Climb jetzt auf dem Board anzeigen</string>
+    <string name="cd_board_dock_top">Durchstieg protokollieren</string>
+    <string name="board_dock_bluetooth_off">Bluetooth</string>
+    <string name="board_dock_bluetooth_permission">Erlauben</string>
+    <string name="board_dock_connecting">Verbindet</string>
+    <string name="board_dock_unreachable">Kein Board</string>
+    <string name="board_dock_connect_board">Verbinden</string>
+    <string name="cd_board_dock_bluetooth_off">Bluetooth einschalten</string>
+    <string name="cd_board_dock_bluetooth_permission">Bluetooth erlauben</string>
+    <string name="cd_board_dock_connecting">Wird mit dem Board verbunden</string>
+    <string name="cd_board_dock_unreachable">Board nicht erreichbar</string>
+    <string name="cd_board_dock_connect_board">Board verbinden</string>
 </resources>

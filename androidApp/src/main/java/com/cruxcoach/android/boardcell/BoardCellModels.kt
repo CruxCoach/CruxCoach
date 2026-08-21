@@ -27,6 +27,31 @@ value class BoardCellId(val value: String) {
 @Serializable
 data class BoardProjection(val climbUuid: String, val angle: Int, val projectionSurvivesDisconnect: Boolean = true)
 
+/**
+ * How well this device knows what the wall is showing.
+ *
+ * Kept as five distinct answers rather than a boolean, because the UI has to
+ * be able to say which one it is: "on its way" and "the board refused it" are
+ * both "not confirmed" and mean opposite things to somebody standing in front
+ * of the wall, and "nobody knows" is not the same as "not yours".
+ *
+ * Derived, never transmitted. Adding a confidence field to the BoardCell wire
+ * model would need a protocol version and a mixed-client rollout; every input
+ * this needs is already canonical.
+ */
+enum class BoardProjectionConfidence {
+    /** A projection is on its way and has not been answered yet. */
+    PENDING,
+    /** The transport completed. The strongest claim a write-only board allows. */
+    TRANSPORTED,
+    /** The controller was asked and named this climb — Quantum only. */
+    CONTROLLER_CONFIRMED,
+    /** Something wrote to the board outside CruxCoach, or state was lost. */
+    UNKNOWN,
+    /** The write was attempted and did not land. */
+    FAILED,
+}
+
 /** Why the canonical current climb is not on the wall. */
 @Serializable
 enum class BoardPlaylistProjectionPendingReason { BOARD_WRITE_FAILED, CLIMB_UNAVAILABLE }

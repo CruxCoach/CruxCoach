@@ -617,6 +617,49 @@ object BoardPlaylistOps {
         }
     }
 
+    /** The ops and the occurrence "put this on the board now" resolves to. */
+    data class LightNow(val entryId: String, val ops: List<BoardPlaylistOp>)
+
+    /**
+     * Put one climb on the wall, as an occurrence the group can see.
+     *
+     * Opened from a playlist entry, that entry is what lights — its own stable
+     * id, so a repeat of the same climb three rows down is not what moves and
+     * the list does not reorder itself under anybody.
+     *
+     * Opened from anywhere else — the browser, a search, a deep link — the
+     * climb is not on the list yet, so it becomes a new occurrence directly
+     * after the current one. Never an existing occurrence of the same climb
+     * found by searching: duplicates are legitimate (a 4x4 is four of them),
+     * and quietly reusing or moving one is how somebody's later go disappears
+     * from where they put it.
+     */
+    fun lightNow(
+        state: BoardPlaylistState,
+        climbUuid: String,
+        angle: Int,
+        fromEntryId: String? = null,
+        newEntryId: () -> String = BoardPlaylistEntryId::random,
+    ): LightNow {
+        val existing = fromEntryId?.let(state::entry)
+        if (existing != null) {
+            val ops = if (state.currentEntryId == existing.entryId) emptyList()
+            else listOf(BoardPlaylistOp.SetCurrent(existing.entryId))
+            return LightNow(existing.entryId, ops)
+        }
+        val entryId = newEntryId()
+        val anchor = state.currentEntryId
+            ?.let { BoardPlaylistAnchor.After(it) }
+            ?: BoardPlaylistAnchor.Tail
+        return LightNow(
+            entryId,
+            listOf(
+                BoardPlaylistOp.Add(entryId, climbUuid, angle, anchor = anchor),
+                BoardPlaylistOp.SetCurrent(entryId),
+            ),
+        )
+    }
+
     fun removeAt(state: BoardPlaylistState, index: Int): List<BoardPlaylistOp> =
         state.entryIdAt(index)?.let { listOf(BoardPlaylistOp.Remove(it)) }.orEmpty()
 

@@ -2993,4 +2993,20 @@
     <string name="board_layer_color_yellow">Yellow</string>
     <string name="board_layer_color_unavailable">%1$s — already in use on the board</string>
     <string name="board_layer_error_other_board">These layers were put together for a different board. Assign them again on this one.</string>
+    <string name="board_dock_try">Try</string>
+    <string name="board_dock_board">Board</string>
+    <string name="board_dock_top">Top</string>
+    <string name="cd_board_dock_try">Log an attempt</string>
+    <string name="cd_board_dock_board">Show this climb on the board now</string>
+    <string name="cd_board_dock_top">Log a send</string>
+    <string name="board_dock_bluetooth_off">Bluetooth</string>
+    <string name="board_dock_bluetooth_permission">Allow</string>
+    <string name="board_dock_connecting">Connecting</string>
+    <string name="board_dock_unreachable">No board</string>
+    <string name="board_dock_connect_board">Connect</string>
+    <string name="cd_board_dock_bluetooth_off">Turn Bluetooth on</string>
+    <string name="cd_board_dock_bluetooth_permission">Allow Bluetooth</string>
+    <string name="cd_board_dock_connecting">Connecting to the board</string>
+    <string name="cd_board_dock_unreachable">Board not reachable</string>
+    <string name="cd_board_dock_connect_board">Connect a board</string>
 </resources>

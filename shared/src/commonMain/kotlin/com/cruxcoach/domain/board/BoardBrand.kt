@@ -120,6 +120,18 @@ enum class BoardBrand(val wireValue: String) {
     /** True when one projection can be removed without clearing the others. */
     val supportsIndependentClimbLayers: Boolean get() = maxSimultaneousClimbs > 1
 
+    /**
+     * The controller can be asked what it is actually showing.
+     *
+     * Quantum answers `REQUEST_USER_ROUTE_LIST` with the route, user and colour
+     * it currently holds, so a send can be confirmed against the controller's
+     * own state rather than against the fact that the writes went out. Every
+     * other board here is write-only: a completed transport is the strongest
+     * honest claim available, and pretending otherwise would be inventing a
+     * readback the protocol does not have.
+     */
+    val confirmsProjectionByControllerReadback: Boolean get() = this == QUANTUM
+
     /** Climbs can be authored in the in-app editor — every interactive board.
      *  Kilter additionally pushes to the user's own Kilter account (see
      *  [supportsOfficialAppPublish]); every other interactive board (MoonBoard +

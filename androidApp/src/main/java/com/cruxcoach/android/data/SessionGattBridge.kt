@@ -1344,6 +1344,26 @@ class SessionGattBridge(
         }
     }
 
+    /**
+     * "On the board now", from a climb page.
+     *
+     * The group keeps one way onto the wall — this goes through the same
+     * controller and the same sequencer as the lamp on the list — but nobody
+     * has to queue a climb and then go and press it. What the wall shows stays
+     * an occurrence on the shared list, so everybody can see what happened and
+     * where it sits.
+     */
+    fun lightNow(climbUuid: String, angle: Int, fromEntryId: String? = null, label: String = "light_now") {
+        val manager = boardCellManager ?: return
+        queueManager.resumeFollowingSharedPlaylist()
+        scope.launch {
+            if (!manager.lightNow(climbUuid, angle, fromEntryId)) {
+                _commandFeedback.emit(PlaylistCommandFeedback(
+                    PlaylistCommandFeedbackKind.UNAVAILABLE, label))
+            }
+        }
+    }
+
     /** The running rest is over — it ran out, or somebody skipped it. */
     fun endCanonicalRest() {
         if (boardCellManager?.playlist()?.activeRest == null) return

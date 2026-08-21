@@ -20,6 +20,23 @@ class ClimbNavigationState @Inject constructor() {
     var climbUuids: List<String> = emptyList()
     var angle: Int = 40
     var source: ClimbNavigationSource = ClimbNavigationSource.BROWSER
+
+    /**
+     * The shared-playlist occurrence this detail screen was opened from.
+     *
+     * "On the board now" needs to know whether the climb in front of the user
+     * is already a specific entry on the group's list. If it is, that entry is
+     * what becomes current — its own stable id, so a repeat of the same climb
+     * further down is not what moves. If it is not, the climb is not on the
+     * list at all and becomes a new occurrence after the current one.
+     *
+     * Null for every route that does not come from an occurrence, which is
+     * every route today: the browser, search, the logbook and deep links all
+     * open a climb, not an entry. Paired with the climb uuid it was set for so
+     * a swipe to the next climb cannot inherit the previous one's entry.
+     */
+    var boardPlaylistEntryId: String? = null
+    var boardPlaylistEntryClimbUuid: String? = null
     /** Set by detail VM after ascent/bid insert or delete; read & reset by browser VM on refresh. */
     var statusDataChanged: Boolean = false
     /** UUIDs of climbs whose status changed (logged/deleted). Consumed together with the flag. */

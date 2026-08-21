@@ -251,13 +251,17 @@ class BoardDeliveryPolicyTest {
     }
 
     /**
-     * On a board that a group is on, the shared list's lamp is the only route
-     * to the wall. A climb page that could light it as well would be a second
-     * control reachable without ever having seen the list — and the wall it
-     * would take is one somebody else may be standing on.
+     * A group's board keeps one route to the wall — the group's controller,
+     * in the group's order — but the climb page is allowed to use it.
+     *
+     * This reverses the rule the merge shipped with, on the owner's decision:
+     * making a climber queue a climb and then walk to another screen to press
+     * it was protecting the wall from the person standing in front of it. What
+     * lands there still becomes an occurrence everybody can see, committed by
+     * the same sequencer as the lamp on the list.
      */
     @Test
-    fun `a board with a group on it offers no direct route to the wall`() {
+    fun `a board with a group on it routes through the group's list`() {
         val decision = BoardDeliveryPolicy.resolve(
             sendMode = BoardSendMode.EXPLICIT,
             sessionRole = SessionRole.NONE,
@@ -267,13 +271,13 @@ class BoardDeliveryPolicyTest {
             boardCellActive = true,
         )
 
-        assertEquals(BoardDeliveryTarget.NONE, decision.target)
-        assertFalse(decision.showAction)
+        assertEquals(BoardDeliveryTarget.BOARD_PLAYLIST, decision.target)
+        assertTrue(decision.showAction)
         assertFalse(decision.dispatchAutomatically)
     }
 
     @Test
-    fun `automatic send mode cannot light a shared board either`() {
+    fun `automatic send mode still cannot light a shared board by itself`() {
         val decision = BoardDeliveryPolicy.resolve(
             sendMode = BoardSendMode.AUTOMATIC,
             sessionRole = SessionRole.NONE,
@@ -282,14 +286,15 @@ class BoardDeliveryPolicyTest {
             boardCellActive = true,
         )
 
-        // Swiping through climbs must not project onto a wall the group is
-        // working on, whatever this device's own preference says.
+        // Paging through climbs must not project onto a wall the group is
+        // working on, whatever this device's own preference says. The button
+        // came back; the automatic dispatch did not.
         assertFalse(decision.dispatchAutomatically)
-        assertEquals(BoardDeliveryTarget.NONE, decision.target)
+        assertEquals(BoardDeliveryTarget.BOARD_PLAYLIST, decision.target)
     }
 
     @Test
-    fun `the shared-queue action also gives way to the board list's own add`() {
+    fun `a group's board outranks the legacy session queue`() {
         val decision = BoardDeliveryPolicy.resolve(
             sendMode = BoardSendMode.EXPLICIT,
             sessionRole = SessionRole.PARTICIPANT,
@@ -299,26 +304,27 @@ class BoardDeliveryPolicyTest {
             boardCellActive = true,
         )
 
-        // Add / Add as next sit on the same screen and say which end of the
-        // list they mean; a nameless third add button next to them does not.
-        assertEquals(BoardDeliveryTarget.NONE, decision.target)
-        assertFalse(decision.showAction)
+        // Both exist only in the middle of a migration; the canonical list is
+        // the one that owns the wall.
+        assertEquals(BoardDeliveryTarget.BOARD_PLAYLIST, decision.target)
+        assertTrue(decision.showAction)
     }
 
     // ── The dock's middle seat ─────────────────────────────────────────────
     //
-    // The dock renders lampMode(); it does not decide anything itself. These
-    // pin the two ways resolve() can say no, which the old dock conflated.
+    // The dock renders lampMode(); it does not decide anything itself. What it
+    // has to get right is that "no path to a board" and "somebody else is
+    // mid-join" are different answers, and that a mesh or relay path is a path.
 
     private fun lamp(
         decision: BoardDeliveryDecision,
         hasDirectPayload: Boolean = true,
-        boardConnected: Boolean = true,
+        reachability: BoardReachability = BoardReachability.DIRECT,
         boardOwnedByOthers: Boolean = false,
     ) = BoardDeliveryPolicy.lampMode(
         decision = decision,
         hasDirectPayload = hasDirectPayload,
-        boardConnected = boardConnected,
+        reachability = reachability,
         boardOwnedByOthers = boardOwnedByOthers,
     )
 
@@ -346,9 +352,9 @@ class BoardDeliveryPolicyTest {
         assertEquals(BoardDetailLampMode.SHARED_QUEUE, lamp(decision))
     }
 
-    /** Nothing is connected and the climb would fit on a wall: an invitation. */
+    /** Nothing reachable and the climb would fit on a wall: an invitation. */
     @Test
-    fun `no board connected offers to connect one`() {
+    fun `no board at all offers to resolve that`() {
         val decision = BoardDeliveryPolicy.resolve(
             sendMode = BoardSendMode.EXPLICIT,
             sessionRole = SessionRole.NONE,
@@ -357,17 +363,22 @@ class BoardDeliveryPolicyTest {
         )
 
         assertEquals(BoardDeliveryTarget.NONE, decision.target)
-        assertEquals(BoardDetailLampMode.CONNECT, lamp(decision, boardConnected = false))
+        assertEquals(
+            BoardDetailLampMode.CONNECT,
+            lamp(decision, reachability = BoardReachability.NO_BOARD),
+        )
     }
 
     /**
-     * The distinction the old dock did not make. "Nothing is connected" and
-     * "a group owns this board" are both NONE, and only the first one is an
-     * invitation — offering to connect to the other is offering to take a wall
-     * somebody is climbing on, from a page that never showed their list.
+     * A group's board is a board this climb can reach — through the group.
+     *
+     * The owner reversed the older rule that a shared board offered no route
+     * from a climb page at all: making somebody queue a climb and then walk to
+     * another screen to press it was protecting the wall from the person
+     * standing in front of it.
      */
     @Test
-    fun `a group's board is never offered as a board to connect to`() {
+    fun `a group's board offers the lamp, through the group`() {
         val decision = BoardDeliveryPolicy.resolve(
             sendMode = BoardSendMode.EXPLICIT,
             sessionRole = SessionRole.NONE,
@@ -376,10 +387,26 @@ class BoardDeliveryPolicyTest {
             boardCellActive = true,
         )
 
+        assertEquals(BoardDeliveryTarget.BOARD_PLAYLIST, decision.target)
+        assertTrue(decision.showAction)
+        assertFalse("paging is still not asking for anything", decision.dispatchAutomatically)
         assertEquals(
-            BoardDetailLampMode.HIDDEN,
-            lamp(decision, boardConnected = false, boardOwnedByOthers = true),
+            BoardDetailLampMode.LIGHT,
+            lamp(decision, reachability = BoardReachability.MESH),
         )
+    }
+
+    @Test
+    fun `automatic cannot light a group's board either`() {
+        val decision = BoardDeliveryPolicy.resolve(
+            sendMode = BoardSendMode.AUTOMATIC,
+            sessionRole = SessionRole.NONE,
+            boardConnected = true,
+            hasDirectPayload = true,
+            boardCellActive = true,
+        )
+
+        assertFalse(decision.dispatchAutomatically)
     }
 
     @Test
@@ -393,7 +420,7 @@ class BoardDeliveryPolicyTest {
 
         assertEquals(
             BoardDetailLampMode.HIDDEN,
-            lamp(decision, hasDirectPayload = false, boardConnected = false),
+            lamp(decision, hasDirectPayload = false, reachability = BoardReachability.NO_BOARD),
         )
     }
 
@@ -409,7 +436,7 @@ class BoardDeliveryPolicyTest {
 
         assertEquals(
             BoardDetailLampMode.HIDDEN,
-            lamp(decision, boardConnected = false, boardOwnedByOthers = true),
+            lamp(decision, reachability = BoardReachability.NO_BOARD, boardOwnedByOthers = true),
         )
     }
 }
