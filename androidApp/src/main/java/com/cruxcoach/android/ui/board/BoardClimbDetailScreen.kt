@@ -56,6 +56,7 @@ import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -309,6 +310,8 @@ fun BoardClimbDetailScreen(
                 climbUuid = climb.uuid,
                 angle = state.angle,
                 onDismiss = { viewModel.dismissAddToListDialog() },
+                // Add / Add as next are in the dock, two taps closer.
+                showBoardPlaylistShortcut = false,
                 viewModel = addToListViewModel,
             )
         }
@@ -1084,7 +1087,9 @@ private fun BoardLayerRack(
     onSendAll: () -> Unit,
     onRemove: (Int) -> Unit,
 ) {
-    val maxLayers = BoardBrand.QUANTUM.maxSimultaneousClimbs
+    val maxLayers = state.climb?.brand?.maxSimultaneousClimbs
+        ?.takeIf { it > 1 }
+        ?: BoardBrand.QUANTUM.maxSimultaneousClimbs
     val ownBySlot = state.boardLayers.layers.associateBy { it.slot }
     val currentLayer = state.climb?.uuid?.let { uuid ->
         state.boardLayers.layers.firstOrNull { it.climbUuid == uuid }
@@ -1695,9 +1700,11 @@ private fun BoardDetailBottomActions(
                         state.ble.connectionState == ConnectionState.SENDING ||
                         state.ble.connectedViaMesh,
                     boardOwnedByOthers = boardOwnedByOthers,
-                    countdownRunning = state.playback.countdownSeconds > 0,
                 ),
-                lightEnabled = !state.isLoading,
+                // Disabled, not removed: mid-countdown the climb is already on
+                // its way to the wall, and a middle button that disappears
+                // resizes the two next to it under the user's thumb.
+                lightEnabled = !state.isLoading && state.playback.countdownSeconds == 0,
                 lightInProgress = state.ble.isSending,
                 onAttempt = onAttempt,
                 onLight = onLight,
@@ -1771,9 +1778,10 @@ private fun BoardDetailActionDock(
             BoardDetailLampMode.LIGHT,
             BoardDetailLampMode.SHARED_QUEUE -> {
                 val sharedQueue = lamp == BoardDetailLampMode.SHARED_QUEUE
+                val busy = lightInProgress && !sharedQueue
                 Surface(
                     onClick = onLight,
-                    enabled = lightEnabled && !lightInProgress,
+                    enabled = lightEnabled && !busy,
                     modifier = Modifier
                         .weight(1.12f)
                         .height(58.dp)
@@ -1787,7 +1795,7 @@ private fun BoardDetailActionDock(
                     shadowElevation = 4.dp,
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        if (lightInProgress) {
+                        if (busy) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(25.dp),
                                 strokeWidth = 2.5.dp,
@@ -1869,18 +1877,27 @@ private fun CompactClimbOverview(
                     )
                     setter?.takeIf { it.isNotBlank() }?.let {
                         val pubkey = climb.createdByPubkey?.takeIf(String::isNotBlank)
+                        // Only CruxCoach setters have a profile to open. When
+                        // they do, the name has to say so — the full card is
+                        // already tappable for something else, so an
+                        // undecorated name inside it reads as plain text.
+                        val isClickable = climb.origin == "cruxcoach" && pubkey != null
                         Spacer(Modifier.width(7.dp))
                         Text(
                             text = it,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                textDecoration = if (isClickable) TextDecoration.Underline
+                                else TextDecoration.None,
+                            ),
+                            color = if (isClickable) OrangeAccent
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier
                                 .widthIn(max = 112.dp)
                                 .then(
-                                    if (climb.origin == "cruxcoach" && pubkey != null) {
-                                        Modifier.clickable { onNavigateToSetter(pubkey) }
+                                    if (isClickable) {
+                                        Modifier.clickable { onNavigateToSetter(pubkey!!) }
                                     }
                                     else Modifier,
                                 ),
@@ -2024,6 +2041,47 @@ private fun CompactAngleMenu(
     }
 }
 
+/**
+ * Where this climb exists, for climbs where that is not obvious.
+ *
+ * `nostr_event_id` is the discriminator, not `sync_status`: it is set exactly
+ * when at least one publish reached at least one relay, whereas a successful
+ * publish can drift to 'failed' on a later attempt and still have a live event.
+ * Without that distinction an Aurora-imported draft sitting only on this phone
+ * showed the same chip as a genuinely published community climb.
+ */
+@Composable
+private fun ClimbProvenanceBadge(climb: com.cruxcoach.data.repository.ClimbWithStats) {
+    val hasLivePublication = !climb.nostrEventId.isNullOrBlank()
+    val (text, color) = when {
+        climb.origin == "cruxcoach" && hasLivePublication -> when (climb.kilterStatus) {
+            // Both Nostr and Kilter hold this climb.
+            "synced" -> stringResource(R.string.climb_detail_badge_on_kilter) to OrangeAccent
+            // A local edit Kilter refused: the older version is still there.
+            "diverged" -> stringResource(R.string.climb_detail_badge_kilter_diverged) to
+                MaterialTheme.colorScheme.tertiary
+            else -> stringResource(R.string.climb_detail_badge_cruxcoach_only) to
+                MaterialTheme.colorScheme.onSurfaceVariant
+        }
+        // Imported: never published to Kilter or Nostr, so no state applies.
+        climb.origin == "boardsesh" -> stringResource(R.string.climb_detail_badge_boardsesh) to
+            MaterialTheme.colorScheme.onSurfaceVariant
+        else -> return
+    }
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = color.copy(alpha = 0.15f),
+        modifier = Modifier.testTag("boarddetail_provenance_badge"),
+    ) {
+        Text(
+            text,
+            style = MaterialTheme.typography.labelSmall,
+            color = color,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+        )
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ClimbDetailInfoSheet(
@@ -2054,6 +2112,7 @@ private fun ClimbDetailInfoSheet(
                 ),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            ClimbProvenanceBadge(climb)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly,

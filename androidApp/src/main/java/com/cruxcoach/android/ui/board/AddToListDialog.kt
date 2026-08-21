@@ -50,6 +50,14 @@ fun AddToListDialogHost(
     climbUuid: String,
     angle: Int,
     onDismiss: () -> Unit,
+    /**
+     * False where the board's shared list already has its own buttons on
+     * screen. The shortcut exists for surfaces that have no other way in, like
+     * the browser's long-press; offering it a second time from inside the
+     * personal-lists dialog is a weaker copy of a control the user can already
+     * see, and it does not offer "add as next" or the queued count.
+     */
+    showBoardPlaylistShortcut: Boolean = true,
     viewModel: AddToListViewModel = androidx.hilt.navigation.compose.hiltViewModel(),
 ) {
     androidx.compose.runtime.LaunchedEffect(climbUuid, angle) {
@@ -64,8 +72,9 @@ fun AddToListDialogHost(
         onNewListNameChanged = viewModel::updateNewListName,
         onCreateAndAdd = viewModel::createNewListAndAdd,
         onDismiss = onDismiss,
-        showAddToRunning = state.playbackActive || state.boardGroupActive,
-        boardGroupActive = state.boardGroupActive,
+        showAddToRunning = state.playbackActive ||
+            (state.boardGroupActive && showBoardPlaylistShortcut),
+        boardGroupActive = state.boardGroupActive && showBoardPlaylistShortcut,
         addedToRunning = state.addedToRunning,
         onAddToRunning = { viewModel.addToBoardPlaylist() },
     )

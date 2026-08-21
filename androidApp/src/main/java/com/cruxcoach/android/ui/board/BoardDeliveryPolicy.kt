@@ -140,10 +140,7 @@ internal object BoardDeliveryPolicy {
         boardConnected: Boolean,
         /** A BoardCell group or a joining shared session owns delivery. */
         boardOwnedByOthers: Boolean,
-        countdownRunning: Boolean,
     ): BoardDetailLampMode = when {
-        // Mid-countdown the climb is already on its way to the wall.
-        countdownRunning -> BoardDetailLampMode.HIDDEN
         decision.showAction && decision.target == BoardDeliveryTarget.SHARED_QUEUE ->
             BoardDetailLampMode.SHARED_QUEUE
         decision.showAction -> BoardDetailLampMode.LIGHT

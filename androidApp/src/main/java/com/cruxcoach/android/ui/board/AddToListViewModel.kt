@@ -3,7 +3,6 @@ package com.cruxcoach.android.ui.board
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.ble.QueueItem
-import com.cruxcoach.android.boardcell.BoardCellAvailability
 import com.cruxcoach.android.boardcell.BoardCellManager
 import com.cruxcoach.android.data.PlaylistPlaybackCoordinator
 import com.cruxcoach.android.data.SessionQueueManager
@@ -66,10 +65,12 @@ class AddToListViewModel @Inject constructor(
                     lists = lists,
                     climbInListIds = inIds,
                     playbackActive = playback.state.value.isActive,
-                    boardGroupActive = boardCellManager.snapshot()?.let { snapshot ->
-                        snapshot.availability == BoardCellAvailability.ACTIVE &&
-                            boardCellManager.localNodeId() in snapshot.members
-                    } == true,
+                    // Membership, not availability. Controller recovery
+                    // freezes writes without ending membership, and during
+                    // that handover this dialog was silently falling back to
+                    // the legacy session queue while the group's list was
+                    // still the thing that owned the board.
+                    boardGroupActive = boardCellManager.localParticipatesInSharedPlaylist(),
                 )
             }
         }
@@ -143,12 +144,7 @@ class AddToListViewModel @Inject constructor(
         if (_state.value.addedToRunning && climbUuid == selectedClimbUuid && angle == selectedAngle) return
         climbUuid = selectedClimbUuid
         angle = selectedAngle
-        val snapshot = boardCellManager.snapshot()
-        val boardGroupActive = snapshot?.let {
-            it.availability == BoardCellAvailability.ACTIVE &&
-                boardCellManager.localNodeId() in it.members
-        } == true
-        if (boardGroupActive) {
+        if (boardCellManager.localParticipatesInSharedPlaylist()) {
             // The BoardCell always has exactly one playlist, so this is always
             // "add to the group's list" — never "start a second one".
             playback.play(

@@ -30,6 +30,7 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -307,5 +308,153 @@ class BoardSendControllerTest {
                 layerManager.beginProjection(1)
                 layerManager.confirmProjection(1)
             }
+        }
+
+    /**
+     * The one thing a board group must not be able to do to a Quantum rack.
+     *
+     * A layer write carries a route, a user identity and a colour. The mesh
+     * carries one canonical BoardProjection with nowhere to put them, and
+     * ActiveBoardCellWriteGateway reports the request accepted, so an
+     * ungated layer send would light nothing and then be marked confirmed on
+     * a controller that never heard of it.
+     */
+    @Test
+    fun `a board group's wall refuses layer sends instead of faking them`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val climb = moonClimb.copy(
+                uuid = "11111111-2222-3333-4444-555555555555",
+                name = "Quantum in a group",
+                boardBrand = BoardBrand.QUANTUM.wireValue,
+                layoutId = 9101,
+            )
+            val holds = listOf(BoardHold(10, 1), BoardHold(20, 2))
+            val userId = "99999999-8888-7777-6666-555555555555"
+            val detailState = MutableStateFlow(ClimbDetailState(
+                isLoading = false,
+                climb = climb,
+                holds = holds,
+                angle = 40,
+                ble = BoardSendState(connectionState = ConnectionState.CONNECTED),
+                selectedBoardLayerSlot = 1,
+            ))
+            val layerState = MutableStateFlow(BoardLayerState(
+                brand = BoardBrand.QUANTUM,
+                layers = listOf(BoardClimbLayer(
+                    slot = 1,
+                    climbUuid = climb.uuid,
+                    routeUuid = climb.uuid,
+                    climbName = climb.name,
+                    angle = 40,
+                    userUuid = userId,
+                    color = BoardLayerManager.LAYER_COLORS[1],
+                    holds = holds,
+                    status = com.cruxcoach.android.ble.BoardLayerStatus.PREVIEW,
+                )),
+            ))
+            val layerManager = mockk<BoardLayerManager>(relaxed = true) {
+                every { state } returns layerState
+                every { layerForClimb(climb.uuid) } returns layerState.value.layers.single()
+                every { identityForSlot(1) } returns userId
+                every { hasControllerCapacityFor(any(), any()) } returns true
+                every { canProjectAll(any()) } returns true
+            }
+            val ble = mockk<BoardBleConnection>(relaxed = true) {
+                every { connectedBoardBrand } returns MutableStateFlow(BoardBrand.QUANTUM)
+                every { connectionState } returns MutableStateFlow(ConnectionState.CONNECTED)
+            }
+            val preferences = mockk<UserPreferences>(relaxed = true) {
+                every { boardBrand } returns flowOf(BoardBrand.QUANTUM.wireValue)
+                every { boardProductSizeId } returns flowOf(9201)
+            }
+            val queue = mockk<SessionQueueManager>(relaxed = true) {
+                every { state } returns MutableStateFlow(SessionQueueState())
+            }
+            val controller = BoardSendController(
+                scope = this,
+                state = detailState,
+                boardRepository = mockk(relaxed = true),
+                personalBoardRepo = mockk(relaxed = true),
+                bleConnection = ble,
+                userPreferences = preferences,
+                climbAdvertiser = mockk(relaxed = true),
+                sessionQueueManager = queue,
+                isSharingEnabled = { false },
+                boardLayerManager = layerManager,
+                boardCellWriteGateway = BoardCellWriteGateway { _, write -> write() },
+                ioDispatcher = UnconfinedTestDispatcher(testScheduler),
+                boardCellOwnsBoard = { true },
+            )
+
+            controller.sendBoardLayer(1)
+            controller.sendAllBoardLayers()
+            controller.sendToBoard()
+            advanceUntilIdle()
+
+            coVerify(exactly = 0) { ble.sendClimb(any(), any(), any(), any(), any(), any()) }
+            verify(exactly = 0) { layerManager.confirmProjection(any()) }
+            verify(exactly = 0) { layerManager.beginProjection(any<Int>()) }
+            assertEquals(
+                com.cruxcoach.android.R.string.board_layer_group_owns_board,
+                detailState.value.ble.error,
+            )
+            assertFalse(detailState.value.ble.isSending)
+        }
+
+    @Test
+    fun `dropping an unsent preview stays possible inside a board group`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val climb = moonClimb.copy(
+                uuid = "11111111-2222-3333-4444-555555555555",
+                boardBrand = BoardBrand.QUANTUM.wireValue,
+                layoutId = 9101,
+            )
+            val preview = BoardClimbLayer(
+                slot = 0,
+                climbUuid = climb.uuid,
+                routeUuid = climb.uuid,
+                climbName = climb.name,
+                angle = 40,
+                userUuid = "99999999-8888-7777-6666-555555555555",
+                color = BoardLayerManager.LAYER_COLORS[0],
+                holds = listOf(BoardHold(10, 1)),
+                status = com.cruxcoach.android.ble.BoardLayerStatus.PREVIEW,
+                // Never reached the controller, so removing it is local.
+                confirmedRouteUuid = null,
+            )
+            val layerState = MutableStateFlow(
+                BoardLayerState(brand = BoardBrand.QUANTUM, layers = listOf(preview)),
+            )
+            val layerManager = mockk<BoardLayerManager>(relaxed = true) {
+                every { state } returns layerState
+            }
+            val ble = mockk<BoardBleConnection>(relaxed = true) {
+                every { connectedBoardBrand } returns MutableStateFlow(BoardBrand.QUANTUM)
+                every { connectionState } returns MutableStateFlow(ConnectionState.CONNECTED)
+            }
+            val queue = mockk<SessionQueueManager>(relaxed = true) {
+                every { state } returns MutableStateFlow(SessionQueueState())
+            }
+            val controller = BoardSendController(
+                scope = this,
+                state = MutableStateFlow(ClimbDetailState(climb = climb)),
+                boardRepository = mockk(relaxed = true),
+                personalBoardRepo = mockk(relaxed = true),
+                bleConnection = ble,
+                userPreferences = mockk(relaxed = true),
+                climbAdvertiser = mockk(relaxed = true),
+                sessionQueueManager = queue,
+                isSharingEnabled = { false },
+                boardLayerManager = layerManager,
+                boardCellWriteGateway = BoardCellWriteGateway { _, write -> write() },
+                ioDispatcher = UnconfinedTestDispatcher(testScheduler),
+                boardCellOwnsBoard = { true },
+            )
+
+            controller.removeBoardLayer(0)
+            advanceUntilIdle()
+
+            verify(exactly = 1) { layerManager.removePreview(0) }
+            coVerify(exactly = 0) { ble.removeQuantumLayer(any()) }
         }
 }

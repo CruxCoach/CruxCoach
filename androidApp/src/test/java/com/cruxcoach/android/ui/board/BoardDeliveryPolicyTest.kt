@@ -304,4 +304,112 @@ class BoardDeliveryPolicyTest {
         assertEquals(BoardDeliveryTarget.NONE, decision.target)
         assertFalse(decision.showAction)
     }
+
+    // ── The dock's middle seat ─────────────────────────────────────────────
+    //
+    // The dock renders lampMode(); it does not decide anything itself. These
+    // pin the two ways resolve() can say no, which the old dock conflated.
+
+    private fun lamp(
+        decision: BoardDeliveryDecision,
+        hasDirectPayload: Boolean = true,
+        boardConnected: Boolean = true,
+        boardOwnedByOthers: Boolean = false,
+    ) = BoardDeliveryPolicy.lampMode(
+        decision = decision,
+        hasDirectPayload = hasDirectPayload,
+        boardConnected = boardConnected,
+        boardOwnedByOthers = boardOwnedByOthers,
+    )
+
+    @Test
+    fun `a connected board gets a lamp`() {
+        val decision = BoardDeliveryPolicy.resolve(
+            sendMode = BoardSendMode.EXPLICIT,
+            sessionRole = SessionRole.NONE,
+            boardConnected = true,
+            hasDirectPayload = true,
+        )
+
+        assertEquals(BoardDetailLampMode.LIGHT, lamp(decision))
+    }
+
+    @Test
+    fun `a shared session gets the queue action, not a lamp`() {
+        val decision = BoardDeliveryPolicy.resolve(
+            sendMode = BoardSendMode.EXPLICIT,
+            sessionRole = SessionRole.PARTICIPANT,
+            boardConnected = true,
+            hasDirectPayload = true,
+        )
+
+        assertEquals(BoardDetailLampMode.SHARED_QUEUE, lamp(decision))
+    }
+
+    /** Nothing is connected and the climb would fit on a wall: an invitation. */
+    @Test
+    fun `no board connected offers to connect one`() {
+        val decision = BoardDeliveryPolicy.resolve(
+            sendMode = BoardSendMode.EXPLICIT,
+            sessionRole = SessionRole.NONE,
+            boardConnected = false,
+            hasDirectPayload = true,
+        )
+
+        assertEquals(BoardDeliveryTarget.NONE, decision.target)
+        assertEquals(BoardDetailLampMode.CONNECT, lamp(decision, boardConnected = false))
+    }
+
+    /**
+     * The distinction the old dock did not make. "Nothing is connected" and
+     * "a group owns this board" are both NONE, and only the first one is an
+     * invitation — offering to connect to the other is offering to take a wall
+     * somebody is climbing on, from a page that never showed their list.
+     */
+    @Test
+    fun `a group's board is never offered as a board to connect to`() {
+        val decision = BoardDeliveryPolicy.resolve(
+            sendMode = BoardSendMode.EXPLICIT,
+            sessionRole = SessionRole.NONE,
+            boardConnected = false,
+            hasDirectPayload = true,
+            boardCellActive = true,
+        )
+
+        assertEquals(
+            BoardDetailLampMode.HIDDEN,
+            lamp(decision, boardConnected = false, boardOwnedByOthers = true),
+        )
+    }
+
+    @Test
+    fun `a climb with nothing to send offers nothing`() {
+        val decision = BoardDeliveryPolicy.resolve(
+            sendMode = BoardSendMode.EXPLICIT,
+            sessionRole = SessionRole.NONE,
+            boardConnected = false,
+            hasDirectPayload = false,
+        )
+
+        assertEquals(
+            BoardDetailLampMode.HIDDEN,
+            lamp(decision, hasDirectPayload = false, boardConnected = false),
+        )
+    }
+
+    @Test
+    fun `a joining session shows no board action at all`() {
+        val decision = BoardDeliveryPolicy.resolve(
+            sendMode = BoardSendMode.EXPLICIT,
+            sessionRole = SessionRole.NONE,
+            sessionConnecting = true,
+            boardConnected = false,
+            hasDirectPayload = true,
+        )
+
+        assertEquals(
+            BoardDetailLampMode.HIDDEN,
+            lamp(decision, boardConnected = false, boardOwnedByOthers = true),
+        )
+    }
 }
