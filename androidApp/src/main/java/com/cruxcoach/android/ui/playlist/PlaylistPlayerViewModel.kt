@@ -65,14 +65,18 @@ class PlaylistPlayerViewModel @Inject constructor(
 
     private val _state = MutableStateFlow(PlaylistPlayerState())
     val state = _state.asStateFlow()
-    private val _randomAddUnavailable = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
-    val randomAddUnavailable: SharedFlow<Unit> = _randomAddUnavailable
+    private val _randomAddUnavailable =
+        MutableSharedFlow<com.cruxcoach.android.ui.board.RandomClimbRoll>(extraBufferCapacity = 1)
+    val randomAddUnavailable: SharedFlow<com.cruxcoach.android.ui.board.RandomClimbRoll> =
+        _randomAddUnavailable
 
     fun addRandomClimb() {
         viewModelScope.launch {
-            val pick = withContext(Dispatchers.IO) { randomClimbPicker.pick() }
-            if (pick == null) _randomAddUnavailable.emit(Unit)
-            else playback.addClimb(pick.climbUuid, pick.angle)
+            when (val roll = withContext(Dispatchers.IO) { randomClimbPicker.roll() }) {
+                is com.cruxcoach.android.ui.board.RandomClimbRoll.Picked ->
+                    playback.addClimb(roll.climbUuid, roll.angle)
+                else -> _randomAddUnavailable.emit(roll)
+            }
         }
     }
 

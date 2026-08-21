@@ -121,8 +121,9 @@ class BoardPlaylistViewModel @Inject constructor(
     val state: StateFlow<BoardPlaylistUiState> = _state.asStateFlow()
 
     val commandFeedback = gattBridge.commandFeedback
-    private val _randomAddUnavailable = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
-    val randomAddUnavailable: SharedFlow<Unit> = _randomAddUnavailable
+    /** Why a dice roll came back empty — the two reasons need different answers. */
+    private val _randomAddUnavailable = MutableSharedFlow<RandomClimbRoll>(extraBufferCapacity = 1)
+    val randomAddUnavailable: SharedFlow<RandomClimbRoll> = _randomAddUnavailable
 
     private val climbInfos = HashMap<String, QueueRowInfo>()
     private var personalLogMarks = emptyMap<String, BoardPlaylistLogMark>()
@@ -379,9 +380,10 @@ class BoardPlaylistViewModel @Inject constructor(
     /** Add one filtered random occurrence; selection and wall stay untouched. */
     fun appendRandom() {
         viewModelScope.launch {
-            val pick = withContext(Dispatchers.IO) { randomClimbPicker.pick() }
-            if (pick == null) _randomAddUnavailable.emit(Unit)
-            else append(pick.climbUuid, pick.angle)
+            when (val roll = withContext(Dispatchers.IO) { randomClimbPicker.roll() }) {
+                is RandomClimbRoll.Picked -> append(roll.climbUuid, roll.angle)
+                else -> _randomAddUnavailable.emit(roll)
+            }
         }
     }
 

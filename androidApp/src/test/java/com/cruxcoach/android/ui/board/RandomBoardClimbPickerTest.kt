@@ -1,6 +1,12 @@
 package com.cruxcoach.android.ui.board
 
+import com.cruxcoach.android.boardcell.BoardCellId
 import com.cruxcoach.android.boardcell.BoardCellManager
+import com.cruxcoach.android.boardcell.BoardCellSnapshot
+import com.cruxcoach.android.boardcell.BoardPlaylistEntry
+import com.cruxcoach.android.boardcell.BoardPlaylistState
+import com.cruxcoach.android.boardcell.BoardProjection
+import com.cruxcoach.android.boardcell.PhysicalBoardId
 import com.cruxcoach.android.data.BoardFilterSnapshot
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.UserPreferences
@@ -19,7 +25,8 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -59,6 +66,8 @@ class RandomBoardClimbPickerTest {
 
     private class Capture {
         val boardBrand = slot<String>()
+        val layoutId = slot<Int>()
+        val angle = slot<Int>()
         val climbType = slot<ClimbTypeFilter>()
         val productSizeId = slot<Int>()
         val excludedMask = slot<Long>()
@@ -68,12 +77,16 @@ class RandomBoardClimbPickerTest {
         filter: BoardFilterSnapshot,
         capture: Capture,
         results: List<com.cruxcoach.data.repository.ClimbWithStats>,
+        cell: BoardCellSnapshot? = null,
+        knownClimbs: Map<String, com.cruxcoach.data.repository.ClimbWithStats> = emptyMap(),
     ): RandomBoardClimbPicker {
         val repository = mockk<BoardRepository>(relaxed = true)
+        every { repository.getClimbByUuid(any(), any()) } answers { knownClimbs[firstArg()] }
+        every { repository.getClimbByUuidNormalized(any(), any()) } returns null
         every {
             repository.searchClimbsSorted(
-                angle = any(),
-                layoutId = any(),
+                angle = capture(capture.angle),
+                layoutId = capture(capture.layoutId),
                 boardBrand = capture(capture.boardBrand),
                 minDifficulty = any(),
                 maxDifficulty = any(),
@@ -97,10 +110,8 @@ class RandomBoardClimbPickerTest {
             coEvery { getBoardFilterSnapshot() } returns filter
             every { boardProductSizeId } returns flowOf(9201)
         }
-        // No cell, so the picker keeps the persisted board family.
-        val cells = mockk<BoardCellManager>(relaxed = true) {
-            every { snapshot() } returns null
-        }
+        val cells = mockk<BoardCellManager>(relaxed = true)
+        every { cells.snapshot() } returns cell
         return RandomBoardClimbPicker(repository, personal, preferences, cells)
     }
 
@@ -117,13 +128,13 @@ class RandomBoardClimbPickerTest {
     @Test
     fun `a route filter left over from another board cannot empty a Quantum dice roll`() = runTest {
         val capture = Capture()
-        val pick = picker(
+        val pick: RandomClimbRoll = picker(
             filter = snapshot(BoardBrand.QUANTUM.wireValue, climbType = "ROUTE"),
             capture = capture,
             results = listOf(quantumClimb()),
-        ).pick()
+        ).roll()
 
-        assertNotNull(pick)
+        assertTrue(pick is RandomClimbRoll.Picked)
         // Quantum's vendor catalogue is single-frame: "route" is not a thing
         // it can return, so asking for one would always come back empty.
         assertEquals(ClimbTypeFilter.BOULDER, capture.climbType.captured)
@@ -136,7 +147,7 @@ class RandomBoardClimbPickerTest {
             filter = snapshot(BoardBrand.QUANTUM.wireValue),
             capture = capture,
             results = listOf(quantumClimb()),
-        ).pick()
+        ).roll()
 
         assertEquals(0, capture.productSizeId.captured)
     }
@@ -148,7 +159,7 @@ class RandomBoardClimbPickerTest {
             filter = snapshot(BoardBrand.QUANTUM.wireValue, quantumRuleMask = 0b1010L),
             capture = capture,
             results = listOf(quantumClimb()),
-        ).pick()
+        ).roll()
 
         assertEquals(0b1010L, capture.excludedMask.captured)
     }
@@ -158,27 +169,180 @@ class RandomBoardClimbPickerTest {
         val capture = Capture()
         // The catalogue row carries benchmarkDifficulty = 0.0, so a surviving
         // benchmark filter would reject it after the query and return null.
-        val pick = picker(
+        val pick: RandomClimbRoll = picker(
             filter = snapshot(BoardBrand.QUANTUM.wireValue, benchmarkOnly = true),
             capture = capture,
             results = listOf(quantumClimb()),
-        ).pick()
+        ).roll()
 
-        assertNotNull(pick)
+        assertTrue(pick is RandomClimbRoll.Picked)
     }
 
     @Test
     fun `Kilter keeps every filter it persisted`() = runTest {
         val capture = Capture()
-        val pick = picker(
+        val pick: RandomClimbRoll = picker(
             filter = snapshot(BoardBrand.KILTER.wireValue, climbType = "ROUTE"),
             capture = capture,
             results = listOf(quantumClimb()),
-        ).pick()
+        ).roll()
 
-        assertNotNull(pick)
+        assertTrue(pick is RandomClimbRoll.Picked)
         assertEquals(ClimbTypeFilter.ROUTE, capture.climbType.captured)
         assertEquals(9201, capture.productSizeId.captured)
         assertEquals(0L, capture.excludedMask.captured)
+    }
+
+    // ── The board the group is actually on ───────────────────────────────
+    //
+    // The persisted filters describe the board this device last looked at.
+    // Taking only the family from the group and keeping that board's layout
+    // and angle asks the catalogue an impossible question — brand=quantum,
+    // layout=1 — which returns nothing for as long as the group lasts, under
+    // a message blaming filters the Quantum filter sheet does not even show.
+
+    private fun cell(
+        brand: String,
+        entries: List<BoardPlaylistEntry> = emptyList(),
+        currentEntryId: String? = entries.firstOrNull()?.entryId,
+        projection: BoardProjection? = null,
+    ): BoardCellSnapshot {
+        val physical = PhysicalBoardId("$brand:ble:AA:BB:CC:DD:EE:FF")
+        return BoardCellSnapshot(
+            cellId = BoardCellId.forPhysical(physical),
+            physicalBoardId = physical,
+            epoch = 1,
+            sequence = 1,
+            controllerId = "controller",
+            lineageId = "lineage",
+            members = setOf("controller", "me"),
+            projection = projection,
+            playlist = BoardPlaylistState(entries = entries, currentEntryId = currentEntryId),
+        )
+    }
+
+    private fun catalogueClimb(uuid: String, brand: BoardBrand, layoutId: Long) =
+        TestClimb.stats(
+            uuid = uuid, name = "On the group's board", setterUsername = "s",
+            difficulty = 12.0, quality = 3.0, ascensionists = 4, frames = "",
+        ).copy(boardBrand = brand.wireValue, layoutId = layoutId)
+
+    @Test
+    fun `joining a Quantum board takes its layout and angle from the group, not from Kilter`() = runTest {
+        val capture = Capture()
+        val onTheList = "55555555-5555-5555-5555-555555555555"
+
+        picker(
+            // Last browsed Kilter Original at 40 degrees.
+            filter = snapshot(BoardBrand.KILTER.wireValue),
+            capture = capture,
+            results = listOf(quantumClimb()),
+            cell = cell(
+                BoardBrand.QUANTUM.wireValue,
+                entries = listOf(BoardPlaylistEntry("e1", onTheList, angle = 25)),
+            ),
+            knownClimbs = mapOf(onTheList to catalogueClimb(onTheList, BoardBrand.QUANTUM, 9102)),
+        ).roll()
+
+        assertEquals(BoardBrand.QUANTUM.wireValue, capture.boardBrand.captured)
+        assertEquals(9102, capture.layoutId.captured)
+        assertEquals(25, capture.angle.captured)
+    }
+
+    @Test
+    fun `joining a Kilter board from Quantum works the same way round`() = runTest {
+        val capture = Capture()
+        val onTheList = "66666666-6666-6666-6666-666666666666"
+
+        val roll = picker(
+            filter = snapshot(BoardBrand.QUANTUM.wireValue),
+            capture = capture,
+            results = listOf(quantumClimb()),
+            cell = cell(
+                BoardBrand.KILTER.wireValue,
+                entries = listOf(BoardPlaylistEntry("e1", onTheList, angle = 50)),
+            ),
+            knownClimbs = mapOf(onTheList to catalogueClimb(onTheList, BoardBrand.KILTER, 1)),
+        ).roll()
+
+        assertTrue(roll is RandomClimbRoll.Picked)
+        assertEquals(BoardBrand.KILTER.wireValue, capture.boardBrand.captured)
+        assertEquals(1, capture.layoutId.captured)
+        assertEquals(50, capture.angle.captured)
+        // And Kilter's own filters come back with it.
+        assertEquals(9201, capture.productSizeId.captured)
+    }
+
+    @Test
+    fun `what the board is showing counts as much as what the list points at`() = runTest {
+        val capture = Capture()
+        val projected = "77777777-7777-7777-7777-777777777777"
+
+        picker(
+            filter = snapshot(BoardBrand.KILTER.wireValue),
+            capture = capture,
+            results = listOf(quantumClimb()),
+            cell = cell(
+                BoardBrand.QUANTUM.wireValue,
+                projection = BoardProjection(projected, angle = 30, projectionSurvivesDisconnect = false),
+            ),
+            knownClimbs = mapOf(projected to catalogueClimb(projected, BoardBrand.QUANTUM, 9103)),
+        ).roll()
+
+        assertEquals(9103, capture.layoutId.captured)
+        assertEquals(30, capture.angle.captured)
+    }
+
+    @Test
+    fun `an empty list on an unfamiliar board declines instead of guessing`() = runTest {
+        val capture = Capture()
+
+        val roll = picker(
+            filter = snapshot(BoardBrand.KILTER.wireValue),
+            capture = capture,
+            results = listOf(quantumClimb()),
+            cell = cell(BoardBrand.QUANTUM.wireValue),
+        ).roll()
+
+        assertTrue(
+            "brand=quantum with Kilter's layout would return nothing forever",
+            roll is RandomClimbRoll.BoardUnknown,
+        )
+        assertFalse("the impossible query is never issued", capture.boardBrand.isCaptured)
+    }
+
+    @Test
+    fun `a group on the board this device already browses keeps the local layout`() = runTest {
+        val capture = Capture()
+
+        val roll = picker(
+            filter = snapshot(BoardBrand.KILTER.wireValue),
+            capture = capture,
+            results = listOf(quantumClimb()),
+            cell = cell(BoardBrand.KILTER.wireValue),
+        ).roll()
+
+        assertTrue(roll is RandomClimbRoll.Picked)
+        assertEquals(BoardBrand.KILTER.wireValue, capture.boardBrand.captured)
+        assertEquals(9101, capture.layoutId.captured)
+        assertEquals(40, capture.angle.captured)
+    }
+
+    @Test
+    fun `a climb the catalogue does not know cannot characterise the board`() = runTest {
+        val capture = Capture()
+        val unknown = "88888888-8888-8888-8888-888888888888"
+
+        val roll = picker(
+            filter = snapshot(BoardBrand.KILTER.wireValue),
+            capture = capture,
+            results = listOf(quantumClimb()),
+            cell = cell(
+                BoardBrand.QUANTUM.wireValue,
+                entries = listOf(BoardPlaylistEntry("e1", unknown, angle = 25)),
+            ),
+        ).roll()
+
+        assertTrue(roll is RandomClimbRoll.BoardUnknown)
     }
 }

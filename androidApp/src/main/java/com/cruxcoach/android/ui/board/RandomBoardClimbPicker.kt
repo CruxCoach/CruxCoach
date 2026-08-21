@@ -22,24 +22,87 @@ import kotlinx.coroutines.flow.first
  * state. SQLite supplies a shuffled candidate batch and the few filters that
  * live above SQL are applied here as well.
  */
+/** The outcome of one dice roll, including the two ways it can decline. */
+sealed interface RandomClimbRoll {
+    data class Picked(val climbUuid: String, val angle: Int) : RandomClimbRoll
+
+    /** The catalogue holds nothing that fits the filters on that board. */
+    data object NoMatch : RandomClimbRoll
+
+    /**
+     * A group is on a board this device has never browsed and its list is
+     * still empty, so nothing here knows which layout or angle would fit.
+     *
+     * Kept apart from [NoMatch] because the two need different answers: one
+     * is "loosen your filters", the other is "nobody has put a climb on this
+     * board yet". Guessing instead — which is what querying the group's brand
+     * with the previously browsed board's layout amounted to — produces an
+     * impossible combination that returns nothing for as long as the group
+     * lasts, under a message blaming filters the user cannot even see.
+     */
+    data object BoardUnknown : RandomClimbRoll
+}
+
+/** Board, layout and angle a dice roll must actually fit. */
+internal data class RandomClimbBoard(
+    val boardBrand: String,
+    val layoutId: Int,
+    val angle: Int,
+)
+
 class RandomBoardClimbPicker @Inject constructor(
     private val boardRepository: BoardRepository,
     private val personalBoardRepository: PersonalBoardRepository,
     private val userPreferences: UserPreferences,
     private val boardCellManager: BoardCellManager,
 ) {
-    data class Pick(val climbUuid: String, val angle: Int)
+    /**
+     * Which board a roll is for.
+     *
+     * The persisted browser filters describe the board this device was last
+     * looking at, which is not necessarily the board it is standing in front
+     * of. A BoardCell's physical identity settles the family; the layout and
+     * the angle have to come from the group as well, because the identity
+     * carries neither — so they are read off a climb the group already put on
+     * its list. Only when the group has no climbs yet and its family differs
+     * from the local filter is there genuinely nothing to go on.
+     */
+    private fun resolveBoard(filter: com.cruxcoach.android.data.BoardFilterSnapshot): RandomClimbBoard? {
+        val local = RandomClimbBoard(filter.boardBrand, filter.layoutId, filter.angle)
+        val snapshot = boardCellManager.snapshot() ?: return local
+        val cellBrand = snapshot.physicalBoardId.value
+            .substringBefore(':')
+            .takeUnless { it == "crux" || it == "legacy" }
+            ?: return local
 
-    suspend fun pick(): Pick? {
+        // A climb the group has already agreed on: the occurrence it is
+        // pointing at, then whatever the board is showing, then the head of
+        // the list. Any of the three was put there by somebody standing in
+        // front of this board.
+        val playlist = snapshot.playlist
+        val reference = playlist.entries.firstOrNull { it.entryId == playlist.currentEntryId }
+            ?.let { BoardPlaylistReference(it.climbUuid, it.angle) }
+            ?: snapshot.projection?.let { BoardPlaylistReference(it.climbUuid, it.angle) }
+            ?: playlist.entries.firstOrNull()
+                ?.let { BoardPlaylistReference(it.climbUuid, it.angle) }
+
+        if (reference != null) {
+            val climb = boardRepository.getClimbByUuid(reference.climbUuid, reference.angle)
+                ?: boardRepository.getClimbByUuidNormalized(reference.climbUuid, reference.angle)
+            if (climb != null && climb.boardBrand == cellBrand) {
+                return RandomClimbBoard(cellBrand, climb.layoutId.toInt(), reference.angle)
+            }
+        }
+        // Same family: the locally configured layout and angle are the user's
+        // own board and the best answer available.
+        if (cellBrand == filter.boardBrand) return local.copy(boardBrand = cellBrand)
+        return null
+    }
+
+    suspend fun roll(): RandomClimbRoll {
         val filter = userPreferences.getBoardFilterSnapshot()
-        // A participant may have browsed another board before joining. The
-        // physical BoardCell identity is authoritative for the family; never
-        // let that stale local choice add (for example) a MoonBoard problem to
-        // a Kilter Board playlist.
-        val boardBrand = boardCellManager.snapshot()?.physicalBoardId?.value
-            ?.substringBefore(':')
-            ?.takeUnless { it == "crux" || it == "legacy" }
-            ?: filter.boardBrand
+        val board = resolveBoard(filter) ?: return RandomClimbRoll.BoardUnknown
+        val boardBrand = board.boardBrand
         val french = filter.gradeScale == GradeScale.FRENCH
         val minDifficulty: Double
         val maxDifficulty: Double
@@ -90,8 +153,8 @@ class RandomBoardClimbPicker @Inject constructor(
         // fixed catalogue prefix.
         repeat(4) {
             val candidates = boardRepository.searchClimbsSorted(
-                angle = filter.angle,
-                layoutId = filter.layoutId,
+                angle = board.angle,
+                layoutId = board.layoutId,
                 boardBrand = boardBrand,
                 minDifficulty = minDifficulty,
                 maxDifficulty = maxDifficulty,
@@ -116,8 +179,11 @@ class RandomBoardClimbPicker @Inject constructor(
                     }
                 }
                 .firstOrNull()
-            if (match != null) return Pick(match.uuid, filter.angle)
+            if (match != null) return RandomClimbRoll.Picked(match.uuid, board.angle)
         }
-        return null
+        return RandomClimbRoll.NoMatch
     }
 }
+
+/** One climb the group has already agreed on, as a board fingerprint. */
+private data class BoardPlaylistReference(val climbUuid: String, val angle: Int)

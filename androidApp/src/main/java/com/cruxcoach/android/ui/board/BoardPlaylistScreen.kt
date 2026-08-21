@@ -151,6 +151,7 @@ fun BoardPlaylistScreen(
     val unavailableMessage = stringResource(R.string.board_playlist_command_unavailable)
     val failedMessage = stringResource(R.string.board_playlist_command_failed)
     val noRandomMatchMessage = stringResource(R.string.board_playlist_random_unavailable)
+    val unknownBoardMessage = stringResource(R.string.board_playlist_random_board_unknown)
     LaunchedEffect(viewModel) {
         viewModel.commandFeedback.collect { feedback ->
             snackbarHostState.showSnackbar(
@@ -163,8 +164,11 @@ fun BoardPlaylistScreen(
         }
     }
     LaunchedEffect(viewModel) {
-        viewModel.randomAddUnavailable.collect {
-            snackbarHostState.showSnackbar(noRandomMatchMessage)
+        viewModel.randomAddUnavailable.collect { roll ->
+            snackbarHostState.showSnackbar(
+                if (roll is RandomClimbRoll.BoardUnknown) unknownBoardMessage
+                else noRandomMatchMessage,
+            )
         }
     }
 
