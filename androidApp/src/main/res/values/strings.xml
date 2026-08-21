@@ -2984,4 +2984,6 @@
     <string name="board_detail_log_ascent_detailed">Log with details…</string>
     <string name="board_layers_open">Open board layers</string>
     <string name="board_layer_group_owns_board">The group on this board controls the wall through its shared list. You can keep arranging layers here; lighting them needs a board this device drives on its own.</string>
+    <string name="export_category_climb_notes">Private climb notes</string>
+    <string name="import_result_notes">%1$d climb notes</string>
 </resources>

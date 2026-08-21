@@ -130,6 +130,14 @@ class FakePersonalBoardRepository : PersonalBoardRepository {
         if (normalized.isEmpty()) climbNotes.remove(climbUuid)
         else climbNotes[climbUuid] = normalized
     }
+    override fun getClimbNotesForBackup(): List<com.cruxcoach.data.repository.ClimbNoteBackupRow> =
+        climbNotes.entries.sortedBy { it.key }.map {
+            com.cruxcoach.data.repository.ClimbNoteBackupRow(it.key, it.value, "2026-01-01T00:00:00Z")
+        }
+    override fun restoreClimbNote(row: com.cruxcoach.data.repository.ClimbNoteBackupRow) {
+        val normalized = row.note.trim()
+        if (normalized.isNotEmpty()) climbNotes[row.climbUuid] = normalized
+    }
     override fun getClimbListEntriesRaw(): List<RawClimbListEntry> = emptyList()
     override fun getListPlaybackStepsRaw(): List<RawListPlaybackStep> = emptyList()
     override fun getClimbListsForBackup(): List<com.cruxcoach.data.repository.ClimbListBackupRow> = emptyList()

@@ -2984,4 +2984,6 @@
     <string name="board_detail_log_ascent_detailed">Mit Details loggen…</string>
     <string name="board_layers_open">Board-Ebenen öffnen</string>
     <string name="board_layer_group_owns_board">Die Gruppe an diesem Board steuert die Wand über ihre gemeinsame Liste. Du kannst hier weiter Ebenen zusammenstellen; zum Leuchten braucht es ein Board, das dieses Gerät allein steuert.</string>
+    <string name="export_category_climb_notes">Private Climb-Notizen</string>
+    <string name="import_result_notes">%1$d Climb-Notizen</string>
 </resources>

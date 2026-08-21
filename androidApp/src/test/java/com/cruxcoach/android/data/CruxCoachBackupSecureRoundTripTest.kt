@@ -364,4 +364,134 @@ class CruxCoachBackupSecureRoundTripTest {
         val result = import(target, export(source))
         assertEquals(2, result.workoutLogs, "the old date|rpe|duration key swallowed the second one")
     }
+
+    // ── 6. Private climb notes ───────────────────────────────────
+    //
+    // Notes are the one thing in the secure DB nothing else can rebuild: the
+    // catalogue can be re-downloaded and the logbook re-derived, but the beta
+    // somebody typed at the wall exists only here. A "complete" backup that
+    // silently drops them loses user content on every device change.
+
+    private val notedClimbA = "33333333-3333-3333-3333-333333333333"
+    private val notedClimbB = "44444444-4444-4444-4444-444444444444"
+
+    @Test
+    fun `private climb notes survive a device change`() {
+        source.personal.saveClimbNote(notedClimbA, "Heel hook the volume, then cross to the sloper")
+        source.personal.saveClimbNote(notedClimbB, "Skip the intermediate")
+
+        val result = import(target, export(source))
+
+        assertEquals(2, result.climbNotes, "both notes are reported as restored")
+        assertEquals(
+            "Heel hook the volume, then cross to the sloper",
+            target.personal.getClimbNote(notedClimbA),
+        )
+        assertEquals("Skip the intermediate", target.personal.getClimbNote(notedClimbB))
+    }
+
+    @Test
+    fun `a restored note keeps the timestamp it was written with`() {
+        source.personal.saveClimbNote(notedClimbA, "written on the source device")
+        val writtenAt = source.personal.getClimbNotesForBackup().single().updatedAt
+
+        import(target, export(source))
+
+        assertEquals(
+            writtenAt, target.personal.getClimbNotesForBackup().single().updatedAt,
+            "restore must not stamp the note with the time of the restore",
+        )
+    }
+
+    @Test
+    fun `re-importing the same backup neither duplicates nor changes a note`() {
+        source.personal.saveClimbNote(notedClimbA, "one note")
+        val json = export(source)
+
+        import(target, json)
+        import(target, json)
+
+        assertEquals(
+            listOf("one note"), target.personal.getClimbNotesForBackup().map { it.note },
+            "the table is keyed on the climb uuid and the write is an upsert",
+        )
+    }
+
+    @Test
+    fun `a note edited after the backup is overwritten by a restore, not merged`() {
+        source.personal.saveClimbNote(notedClimbA, "the backed-up beta")
+        val json = export(source)
+        target.personal.saveClimbNote(notedClimbA, "something typed on the new device")
+
+        import(target, json)
+
+        assertEquals("the backed-up beta", target.personal.getClimbNote(notedClimbA))
+    }
+
+    @Test
+    fun `notes are only exported when their category was selected`() {
+        source.personal.saveClimbNote(notedClimbA, "private")
+
+        val withoutNotes = CruxCoachBackup.export(
+            categories = CruxCoachBackup.Category.entries.toSet() - CruxCoachBackup.Category.CLIMB_NOTES,
+            userRepository = userRepo,
+            bodyStatRepository = mockk<BodyStatRepository>(relaxed = true) {
+                every { getAll() } returns emptyList()
+            },
+            workoutRepository = source.workouts,
+            climbRepository = source.climbs,
+            planRepository = mockk<PlanRepository>(relaxed = true),
+            personalBoardRepo = source.personal,
+            boardRepository = mockk<BoardRepository>(relaxed = true),
+            exportedAt = "2026-07-11T12:00:00Z",
+            nostrPubkey = null,
+        )
+
+        assertEquals(0, CruxCoachBackup.preview(withoutNotes).climbNotes)
+        assertEquals(1, CruxCoachBackup.preview(export(source)).climbNotes)
+    }
+
+    /**
+     * The reason this field is additive inside version 3 rather than a version
+     * bump: a client that predates notes must still restore everything else,
+     * and a backup that predates them must still import here.
+     */
+    @Test
+    fun `a version 3 backup written before notes existed still imports`() {
+        source.personal.saveClimbNote(notedClimbA, "will be stripped from the file")
+        source.personal.addClimbToList(source.personal.ensureFavoritesListExists(), notedClimbB)
+
+        val stripped = Json.encodeToString(
+            JsonObject.serializer(),
+            JsonObject(
+                Json.parseToJsonElement(export(source)).jsonObject - "climbNotes"
+            ),
+        )
+
+        val result = import(target, stripped)
+
+        assertEquals(0, result.climbNotes)
+        assertTrue(target.personal.isClimbFavorited(notedClimbB), "the rest still restores")
+        assertEquals(null, target.personal.getClimbNote(notedClimbA))
+    }
+
+    @Test
+    fun `an empty note in a hand-edited backup does not create a row`() {
+        source.personal.saveClimbNote(notedClimbA, "real note")
+        val edited = Json.parseToJsonElement(export(source)).jsonObject.toMutableMap()
+        edited["climbNotes"] = buildJsonArray {
+            add(buildJsonObject {
+                put("climbUuid", kotlinx.serialization.json.JsonPrimitive(notedClimbB))
+                put("note", kotlinx.serialization.json.JsonPrimitive("   "))
+                put("updatedAt", kotlinx.serialization.json.JsonPrimitive("2026-07-11T12:00:00Z"))
+            })
+        }
+
+        import(target, Json.encodeToString(JsonObject.serializer(), JsonObject(edited)))
+
+        assertEquals(
+            emptyList(), target.personal.getClimbNotesForBackup(),
+            "a blank note is what saveClimbNote deletes; restore must not resurrect it as a row",
+        )
+    }
 }

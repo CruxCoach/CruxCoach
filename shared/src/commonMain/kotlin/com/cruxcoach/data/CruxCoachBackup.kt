@@ -112,6 +112,7 @@ object CruxCoachBackup {
         requireSize("climbLists", climbLists.size)
         requireSize("boardClimbs", boardClimbs.size)
         requireSize("boardClimbStats", boardClimbStats.size)
+        requireSize("climbNotes", climbNotes.size)
 
         profile?.let { p ->
             requireLen("profile.name", p.name, MAX_NAME_LEN)
@@ -337,6 +338,17 @@ object CruxCoachBackup {
             requireFinite("ownClimbStat.benchmarkDifficulty", s.benchmarkDifficulty)
         }
 
+        for (n in climbNotes) {
+            // Same mixed-case/no-dash tolerance as the ascent uuids: a note
+            // can be attached to a Kilter-logbook-imported climb whose uuid
+            // never went through the dashed form.
+            requireUuid("climbNote.climbUuid", n.climbUuid)
+            // The editor caps at 1000; MAX_NOTES_LEN (4000) is the envelope's
+            // guard against a crafted file, not a second product rule.
+            requireLen("climbNote.note", n.note, MAX_NOTES_LEN)
+            requireLen("climbNote.updatedAt", n.updatedAt, MAX_DATE_LEN)
+        }
+
         return this
     }
 
@@ -352,7 +364,12 @@ object CruxCoachBackup {
         BOARD_LOGBOOK("Board-Sends & -Versuche"),
         BOARD_SESSIONS("Board-Sessions"),
         CLIMB_LISTS("Climb-Listen & Favoriten"),
-        OWN_CLIMBS("Eigene Climbs & Drafts")
+        OWN_CLIMBS("Eigene Climbs & Drafts"),
+        /** Private per-climb notes. Their own category rather than a rider on
+         *  CLIMB_LISTS: the catalogue can be re-downloaded and the logbook
+         *  re-derived, but nothing anywhere can reconstruct what the user
+         *  wrote, so it must be selectable — and visible — on its own. */
+        CLIMB_NOTES("Private Climb-Notizen")
     }
 
     // ── Serializable backup envelope ────────────────────────────
@@ -390,6 +407,22 @@ object CruxCoachBackup {
         // primary key — modelling it as a child collection of OwnClimbExport
         // would force the JSON to denormalise and bloat re-export diffs.
         val boardClimbStats: List<OwnClimbStatExport> = emptyList(),
+        // ── Additive, still version 3 ──────────────────────────────
+        // Private per-climb notes (secure DB). Deliberately NOT a version
+        // bump: the field defaults to empty and the reader has
+        // ignoreUnknownKeys, so a 0.1.4+ client that predates notes still
+        // restores everything else from a backup that carries them. Bumping
+        // to 4 would instead make every one of those clients reject the whole
+        // file at `require(version in 1..3)` — strictly less compatible for
+        // the sake of a field they can safely ignore.
+        val climbNotes: List<ClimbNoteExport> = emptyList(),
+    )
+
+    @Serializable
+    data class ClimbNoteExport(
+        val climbUuid: String,
+        val note: String,
+        val updatedAt: String,
     )
 
     @Serializable
@@ -583,6 +616,7 @@ object CruxCoachBackup {
         val boardSessions: Int = 0,
         val climbLists: Int = 0,
         val ownClimbs: Int = 0,
+        val climbNotes: Int = 0,
     ) {
         /** Which categories have data in this backup? */
         fun detectedCategories(): Set<Category> {
@@ -597,6 +631,7 @@ object CruxCoachBackup {
             if (boardSessions > 0) cats.add(Category.BOARD_SESSIONS)
             if (climbLists > 0) cats.add(Category.CLIMB_LISTS)
             if (ownClimbs > 0) cats.add(Category.OWN_CLIMBS)
+            if (climbNotes > 0) cats.add(Category.CLIMB_NOTES)
             return cats
         }
 
@@ -611,6 +646,7 @@ object CruxCoachBackup {
             Category.BOARD_SESSIONS -> "$boardSessions Sessions"
             Category.CLIMB_LISTS -> "$climbLists Listen"
             Category.OWN_CLIMBS -> "$ownClimbs eigene Climbs"
+            Category.CLIMB_NOTES -> "$climbNotes Notizen"
         }
     }
 
@@ -630,6 +666,7 @@ object CruxCoachBackup {
             boardSessions = backup.boardSessions.size,
             climbLists = backup.climbLists.size,
             ownClimbs = backup.boardClimbs.size,
+            climbNotes = backup.climbNotes.size,
         )
     }
 
@@ -804,6 +841,18 @@ object CruxCoachBackup {
             }
         } else emptyList()
 
+        // Private notes. Cheap to read (one small table) and impossible to
+        // reconstruct from anything else in the file.
+        val climbNotes = if (Category.CLIMB_NOTES in categories) {
+            personalBoardRepo.getClimbNotesForBackup().map { row ->
+                ClimbNoteExport(
+                    climbUuid = row.climbUuid,
+                    note = row.note,
+                    updatedAt = row.updatedAt,
+                )
+            }
+        } else emptyList()
+
         val backup = Backup(
             exportedAt = exportedAt, nostrPubkey = nostrPubkey, profile = profile,
             assessments = assessments, bodyStats = bodyStats,
@@ -811,6 +860,7 @@ object CruxCoachBackup {
             trainingPlans = plansWithSessions, boardAscents = ascents,
             boardBids = bids, boardSessions = boardSessions, climbLists = climbLists,
             boardClimbs = ownClimbs, boardClimbStats = ownClimbStats,
+            climbNotes = climbNotes,
         )
 
         return json.encodeToString(backup)
@@ -834,6 +884,10 @@ object CruxCoachBackup {
         val ownClimbs: Int = 0,
         /** Per-angle stats rows upserted for the imported own climbs. */
         val ownClimbStats: Int = 0,
+        /** Private per-climb notes written back. Restore is an upsert keyed on
+         *  the climb uuid, so re-running an import is a no-op rather than a
+         *  duplicate. */
+        val climbNotes: Int = 0,
         val skippedDuplicates: Int = 0
     )
 
@@ -1197,6 +1251,28 @@ object CruxCoachBackup {
                     }
                 }
                 result = result.copy(climbLists = backup.climbLists.size)
+            }
+
+            // 10b. Private climb notes. Inside the secure-DB transaction with
+            // everything else it belongs to, and idempotent by construction:
+            // the table is keyed on the climb uuid and the write is an upsert,
+            // so a re-import overwrites rather than duplicating.
+            if (Category.CLIMB_NOTES in selectedCategories && backup.climbNotes.isNotEmpty()) {
+                var notes = 0
+                for (note in backup.climbNotes) {
+                    // Lowercase for the same reason as the list entries above:
+                    // a note can be attached to a climb whose uuid was stored
+                    // upper-case by an older logbook import.
+                    personalBoardRepo.restoreClimbNote(
+                        ClimbNoteBackupRow(
+                            climbUuid = note.climbUuid.lowercase(),
+                            note = note.note,
+                            updatedAt = note.updatedAt,
+                        )
+                    )
+                    notes++
+                }
+                result = result.copy(climbNotes = notes)
             }
 
             result.copy(skippedDuplicates = skipped)

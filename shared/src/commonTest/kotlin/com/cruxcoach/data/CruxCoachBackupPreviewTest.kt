@@ -52,7 +52,7 @@ class CruxCoachBackupPreviewTest {
             assessments = 1, bodyStats = 1, workoutLogs = 1,
             climbLogs = 1, trainingPlans = 1,
             boardAscents = 1, boardSessions = 1, climbLists = 1,
-            ownClimbs = 1,
+            ownClimbs = 1, climbNotes = 1,
         )
         val cats = p.detectedCategories()
         assertEquals(CruxCoachBackup.Category.values().toSet(), cats)
@@ -74,7 +74,7 @@ class CruxCoachBackupPreviewTest {
             assessments = 7, bodyStats = 12, workoutLogs = 3,
             climbLogs = 42, trainingPlans = 2,
             boardAscents = 55, boardBids = 14,
-            boardSessions = 9, climbLists = 4,
+            boardSessions = 9, climbLists = 4, climbNotes = 6,
         )
         assertEquals("Profil", p.summaryLine(CruxCoachBackup.Category.PROFILE))
         assertEquals("7 Assessments", p.summaryLine(CruxCoachBackup.Category.ASSESSMENTS))
@@ -85,6 +85,7 @@ class CruxCoachBackupPreviewTest {
         assertEquals("55 Sends, 14 Versuche", p.summaryLine(CruxCoachBackup.Category.BOARD_LOGBOOK))
         assertEquals("9 Sessions", p.summaryLine(CruxCoachBackup.Category.BOARD_SESSIONS))
         assertEquals("4 Listen", p.summaryLine(CruxCoachBackup.Category.CLIMB_LISTS))
+        assertEquals("6 Notizen", p.summaryLine(CruxCoachBackup.Category.CLIMB_NOTES))
     }
 
     // ── preview() counting across populated JSON ───────────────────

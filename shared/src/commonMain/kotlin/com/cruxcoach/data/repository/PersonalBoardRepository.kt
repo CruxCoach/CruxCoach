@@ -161,6 +161,15 @@ interface PersonalBoardRepository {
     /** Stores a trimmed note, or removes it when [note] is blank. */
     fun saveClimbNote(climbUuid: String, note: String)
 
+    /** Every note, for the backup envelope. Notes are the one thing on a
+     *  climb page nothing else can reconstruct — the catalogue has the climb,
+     *  the logbook has the ascents, and only this has what the user wrote. */
+    fun getClimbNotesForBackup(): List<ClimbNoteBackupRow>
+
+    /** Restore-side write that keeps the backup's own timestamp instead of
+     *  stamping "now", so a restored note still says when it was written. */
+    fun restoreClimbNote(row: ClimbNoteBackupRow)
+
     fun getClimbListEntriesRaw(): List<RawClimbListEntry>
     fun getListPlaybackStepsRaw(): List<RawListPlaybackStep>
 
@@ -273,6 +282,13 @@ interface PersonalBoardRepository {
     fun deleteUserBoardDataForBrands(brands: Set<String>, listEntryClimbUuids: Collection<String>)
     fun runInTransaction(block: () -> Unit)
 }
+
+/** One private climb note, as the backup carries it. */
+data class ClimbNoteBackupRow(
+    val climbUuid: String,
+    val note: String,
+    val updatedAt: String,
+)
 
 data class QuickLogBidInput(
     val uuid: String,
