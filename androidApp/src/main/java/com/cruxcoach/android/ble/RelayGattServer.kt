@@ -57,7 +57,12 @@ class RelayGattServer(private val context: Context) {
 
     companion object {
         private const val TAG = "CruxRelay/Server"
-        private const val MAX_CONNECTED_DEVICES = 4
+        /**
+         * The server's own ceiling. Not the answer on its own: the radio is
+         * shared with the mesh and the board link, so [availableSlots] is what
+         * actually decides — this only bounds it.
+         */
+        const val MAX_CONNECTED_DEVICES = 4
         private const val LIVENESS_CHECK_INTERVAL_MS = 10_000L
         private const val CLIENT_DISCONNECT_GRACE_MS = 300L
         private const val SERVICE_REGISTRATION_TIMEOUT_MS = 2_000L
@@ -84,6 +89,17 @@ class RelayGattServer(private val context: Context) {
     // All BLE callbacks run on the binder thread — guard shared state on [lock].
     private val lock = Any()
     private val connectedDevices = mutableSetOf<String>()
+
+    /**
+     * How many guests the radio can still take, asked at accept time.
+     *
+     * A guest arriving is a radio slot leaving, and the mesh is what makes the
+     * cell converge — so this is re-evaluated per connection rather than once
+     * at start, and the relay yields rather than the mesh being starved.
+     * Defaults to the server ceiling so a server used without a manager
+     * behaves as it always did.
+     */
+    var availableSlots: () -> Int = { MAX_CONNECTED_DEVICES - getConnectedCount() }
     private val reassemblers = HashMap<String, RelayFrameReassembler>()
 
     /**
@@ -120,7 +136,9 @@ class RelayGattServer(private val context: Context) {
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
                     synchronized(lock) {
-                        if (connectedDevices.size >= MAX_CONNECTED_DEVICES) {
+                        if (connectedDevices.size >= MAX_CONNECTED_DEVICES ||
+                            runCatching { availableSlots() }.getOrDefault(0) <= 0
+                        ) {
                             Log.w(TAG, "Max devices reached, rejecting $address")
                             gattServer?.cancelConnection(device)
                             return

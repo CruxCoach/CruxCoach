@@ -512,6 +512,7 @@ object AppModule {
         userPreferences: UserPreferences,
         gattBridge: com.cruxcoach.android.data.SessionGattBridge,
         boardRepository: com.cruxcoach.data.repository.BoardRepository,
+        fipsMeshRuntime: com.cruxcoach.android.fips.FipsMeshRuntime,
     ): CruxRelayManager {
         return CruxRelayManager(
             context,
@@ -523,6 +524,7 @@ object AppModule {
             userPreferences,
             gattBridge,
             boardRepository,
+            fipsMeshRuntime,
         )
     }
 

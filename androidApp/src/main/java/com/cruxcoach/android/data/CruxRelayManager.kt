@@ -75,6 +75,10 @@ data class CruxRelayState(
      * climb twice" next to "the board is gone".
      */
     val inboundRefusal: RelayInboundGate.Refusal? = null,
+    /** Guests the radio can still take. Zero means the offer is withdrawn. */
+    val availableSlots: Int = 0,
+    /** Why no relay is being offered, when none is. */
+    val suppression: RelaySuppression? = null,
 )
 
 /**
@@ -105,6 +109,7 @@ class CruxRelayManager(
     private val userPreferences: UserPreferences,
     private val gattBridge: SessionGattBridge,
     private val boardRepository: BoardRepository,
+    private val fipsMeshRuntime: com.cruxcoach.android.fips.FipsMeshRuntime,
 ) {
     companion object {
         private const val TAG = "CruxRelay/Manager"
@@ -131,6 +136,15 @@ class CruxRelayManager(
 
     private val inboundGate = RelayInboundGate()
 
+    /** The lease this offer was started under, so a superseded one knows itself. */
+    private var startedUnder: RelayLease? = null
+
+    /** Whether a connectable advertisement is currently out there. */
+    private var advertisingOffer = false
+
+    /** When the board link went, so a blip can be told from a departure. */
+    private var boardLinkLostAtMs: Long? = null
+
     private var running = false
     private var forwardJob: Job? = null
     private var eventJob: Job? = null
@@ -153,20 +167,58 @@ class CruxRelayManager(
         // superseded controller must stop advertising immediately; the target
         // starts only after its ACTIVE snapshot is canonical.
         scope.launch {
-            boardCellManager.snapshots.collect { snapshot ->
-                relayRequiredFlow.value =
-                    BoardCellPlatformPolicy.meshAvailable(Build.VERSION.SDK_INT) &&
-                    snapshot?.availability == BoardCellAvailability.ACTIVE &&
-                    snapshot.controllerId == boardCellManager.localNodeId() &&
-                    boardCellManager.localNodeId() in snapshot.members &&
-                    // Stop before releasing the physical GATT connection. If
-                    // the old relay remains discoverable during PREPARED, the
-                    // successor can mistake it for the board it must take over.
-                    (snapshot.handover == null ||
-                        snapshot.handover.phase == HandoverPhase.COMPLETED)
+            boardCellManager.snapshots.collect { reconcile() }
+        }
+        // Capacity is live, not a constant: a peer joining the mesh takes a
+        // radio slot the relay was counting on, and the offer has to shrink
+        // with it rather than keep advertising a slot that is gone.
+        scope.launch {
+            fipsMeshRuntime.directAuthenticatedPeers.collect { reconcile() }
+        }
+        // Board loss is a moment, and the grace window is measured from it.
+        scope.launch {
+            bleConnection.connectionState.collect { state ->
+                if (state == ConnectionState.CONNECTED || state == ConnectionState.SENDING) {
+                    boardLinkLostAtMs = null
+                } else if (boardLinkLostAtMs == null) {
+                    boardLinkLostAtMs = System.currentTimeMillis()
+                    // Re-evaluate once the window is over, so an offer that is
+                    // merely suppressed becomes properly stopped.
+                    scope.launch {
+                        delay(CruxRelayOwnershipPolicy.GRACE_MS + 250)
+                        reconcile()
+                    }
+                }
             }
         }
     }
+
+    /** The current offer decision, from canonical state and live capacity. */
+    private fun currentOffer(): RelayOffer = CruxRelayOwnershipPolicy.evaluate(
+        localNodeId = boardCellManager.localNodeId(),
+        snapshot = boardCellManager.snapshot(),
+        startedUnder = startedUnder,
+        meshAvailable = BoardCellPlatformPolicy.meshAvailable(Build.VERSION.SDK_INT),
+        boardHealth = boardHealth(),
+        meshPeers = fipsMeshRuntime.directAuthenticatedPeers.value.size,
+        activeRelayClients = relayServer.getConnectedCount(),
+        serverCeiling = RelayGattServer.MAX_CONNECTED_DEVICES,
+    )
+
+    private fun boardHealth(): RelayBoardLinkHealth = CruxRelayOwnershipPolicy.health(
+        connectionState = bleConnection.connectionState.value,
+        msSinceBoardLinkLost = boardLinkLostAtMs?.let { System.currentTimeMillis() - it },
+    )
+
+    /**
+     * Whether a guest's write may be reported as landed.
+     *
+     * The GATT layer has already told the guest's app the write succeeded, so
+     * this is the only place left that can decline to make a dark wall look
+     * like a delivered climb.
+     */
+    fun mayAcknowledgeInboundWrite(): Boolean =
+        CruxRelayOwnershipPolicy.mayAcknowledgeWrite(boardHealth())
 
     /** Legacy binary-compatible entry point; BoardCell ownership cannot be toggled. */
     @Deprecated("CruxRelay follows BoardCell controller ownership")
@@ -188,12 +240,19 @@ class CruxRelayManager(
     }
 
     private suspend fun reconcile() {
-        // Always read current StateFlow values here. A relay stop suspends while
-        // restoring the adapter name and closing GATT; captured combine values
-        // can therefore describe the controller state from before a handover.
-        val required = relayRequiredFlow.value
-        val boardState = bleConnection.connectionState.value
-        _state.update { it.copy(enabled = required) }
+        // Always read current values here. A relay stop suspends while
+        // restoring the adapter name and closing GATT, so anything captured
+        // earlier can describe the controller state from before a handover.
+        val offer = currentOffer()
+        val required = offer is RelayOffer.Offer
+        relayRequiredFlow.value = required
+        _state.update {
+            it.copy(
+                enabled = required,
+                availableSlots = (offer as? RelayOffer.Offer)?.slots ?: 0,
+                suppression = (offer as? RelayOffer.Suppressed)?.reason,
+            )
+        }
         if (required && !BlePermissionHelper.hasAdvertisingPermission(context)) {
             if (running) stopRelay()
             _state.update {
@@ -202,14 +261,22 @@ class CruxRelayManager(
             }
             return
         }
-        // Only front the board while actually CONNECTED to it. (SENDING is a
-        // transient connected sub-state during a write — neither starts nor
-        // stops the relay, so a relayed send never tears itself down.)
-        if (required && boardState == ConnectionState.CONNECTED && !running) {
-            when (BoardRelayPolicy.availability(
-                board = bleConnection.connectedBoard,
-            )) {
-                BoardRelayAvailability.AVAILABLE -> startRelay()
+        if (required && !running) {
+            when (BoardRelayPolicy.availability(board = bleConnection.connectedBoard)) {
+                BoardRelayAvailability.AVAILABLE -> {
+                    // Remember the lease this offer belongs to. A resurrected
+                    // old owner recognises itself by it and stays quiet.
+                    boardCellManager.snapshot()?.let { snapshot ->
+                        startedUnder = RelayLease(
+                            epoch = snapshot.epoch,
+                            controllerTerm = snapshot.controllerTerm,
+                            physicalBoardId = snapshot.physicalBoardId.value,
+                        )
+                    }
+                    relayServer.availableSlots = { currentRelaySlots() }
+                    inboundGate.reset()
+                    startRelay()
+                }
                 BoardRelayAvailability.UNSUPPORTED_PROTOCOL,
                 BoardRelayAvailability.MULTI_CONNECT_NOT_NEEDED,
                 BoardRelayAvailability.RELAY_ENDPOINT,
@@ -217,27 +284,47 @@ class CruxRelayManager(
                     rejectEnable(RelayError.UNSUPPORTED_BOARD)
                 BoardRelayAvailability.NO_BOARD -> Unit
             }
-        } else if (running && (!required || boardState == ConnectionState.DISCONNECTED)) {
-            stopRelay()
-            val reportBoardLoss = BoardRelayPolicy.shouldReportBoardLoss(
-                relayStillRequired = relayRequiredFlow.value,
-                boardDisconnected = bleConnection.connectionState.value == ConnectionState.DISCONNECTED,
-                membershipTransition = boardCellManager.membershipTransition.value,
-            )
-            if (reportBoardLoss) {
-                postStoppedNotification(R.string.relay_error_board_lost)
-                _state.update { it.copy(enabled = true, error = RelayError.BOARD_LOST) }
-            } else {
-                _state.update {
-                    if (it.error == RelayError.BOARD_LOST) {
-                        it.copy(enabled = relayRequiredFlow.value, error = null, errorDetail = null)
-                    } else {
-                        it.copy(enabled = relayRequiredFlow.value)
-                    }
+            return
+        }
+        if (!running) return
+
+        val reason = (offer as? RelayOffer.Suppressed)?.reason
+        // Recovery is the one suppression that keeps the server warm: the guest
+        // stays connected and the board is expected back within the window. The
+        // offer is withdrawn either way — nothing may be acknowledged as landed
+        // while the wall cannot be reached.
+        if (reason == RelaySuppression.BOARD_RECOVERING) {
+            if (advertisingOffer) stopAdvertisingOffer()
+            return
+        }
+        stopRelay()
+        startedUnder = null
+        val reportBoardLoss = BoardRelayPolicy.shouldReportBoardLoss(
+            relayStillRequired = reason == RelaySuppression.BOARD_LOST,
+            boardDisconnected = bleConnection.connectionState.value == ConnectionState.DISCONNECTED,
+            membershipTransition = boardCellManager.membershipTransition.value,
+        )
+        if (reportBoardLoss) {
+            postStoppedNotification(R.string.relay_error_board_lost)
+            _state.update { it.copy(enabled = true, error = RelayError.BOARD_LOST) }
+        } else {
+            _state.update {
+                if (it.error == RelayError.BOARD_LOST) {
+                    it.copy(enabled = false, error = null, errorDetail = null)
+                } else {
+                    it.copy(enabled = false)
                 }
             }
         }
     }
+
+    /** Slots the radio can actually spare right now, for the GATT server. */
+    private fun currentRelaySlots(): Int = CruxRelayOwnershipPolicy.availableSlots(
+        meshPeers = fipsMeshRuntime.directAuthenticatedPeers.value.size,
+        boardLinkHeld = boardHealth() != RelayBoardLinkHealth.LOST,
+        activeRelayClients = relayServer.getConnectedCount(),
+        serverCeiling = RelayGattServer.MAX_CONNECTED_DEVICES,
+    )
 
     private fun rejectEnable(error: RelayError) {
         _state.update { it.copy(enabled = relayRequiredFlow.value, error = error, errorDetail = null) }
@@ -333,6 +420,15 @@ class CruxRelayManager(
                                 identified!!.climbUuid, identified.angle, "relay_append")
                         }
                         RelayInboundGate.Decision.ProjectNow -> {
+                            // The GATT layer has already told the guest's app
+                            // the write succeeded. Without a usable path to the
+                            // wall this is the last place that can decline to
+                            // make a dark board look like a delivered climb.
+                            if (!mayAcknowledgeInboundWrite()) {
+                                Log.w(TAG, "relayed climb arrived without a usable board path")
+                                _state.update { it.copy(error = RelayError.BOARD_LOST) }
+                                return@collect
+                            }
                             _state.update { it.copy(inboundRefusal = null) }
                             val result = boardCellManager.projectExternal(
                                 boardWrite = { bleConnection.sendRawChunks(inbound.climb.chunks) },
@@ -379,6 +475,7 @@ class CruxRelayManager(
             abortStart(RelayError.ADVERTISE_FAILED, advertisingFailure)
             return
         }
+        advertisingOffer = true
         _state.update { it.copy(advertising = true, advertisedName = desired) }
 
         // FGS keeps advertising alive (Android 12+ throttles background
@@ -402,12 +499,29 @@ class CruxRelayManager(
         }
     }
 
+    /**
+     * Withdraw the offer without tearing the relay down.
+     *
+     * The one state where those differ: the board dropped a moment ago and is
+     * expected back. Guests already connected stay connected — their link is
+     * not the problem — but nothing new may attach to a relay that currently
+     * cannot reach a wall, and nothing may be acknowledged as landed.
+     */
+    private fun stopAdvertisingOffer() {
+        if (!advertisingOffer) return
+        advertisingOffer = false
+        runCatching { advertiser.stopRelayAdvertising() }
+            .onFailure { Log.w(TAG, "withdrawing the relay offer failed", it) }
+        _state.update { it.copy(advertising = false) }
+    }
+
     private suspend fun restartRelayAdvertising() {
         if (!running) return
         _state.update { it.copy(advertising = false) }
         val failure = startRelayAdvertisingAndAwait()
         if (!running) return
         if (failure == null) {
+            advertisingOffer = true
             _state.update { it.copy(advertising = true, error = null, errorDetail = null) }
         } else {
             Log.e(TAG, "relay re-advertising failed: $failure")
@@ -434,6 +548,7 @@ class CruxRelayManager(
         identifyJob?.cancel(); identifyJob = null
         bleConnection.releaseKeepAlive(BoardConnectionOwner.RELAY)
 
+        advertisingOffer = false
         advertiser.stopRelayAdvertising()
         relayServer.stop()
 
