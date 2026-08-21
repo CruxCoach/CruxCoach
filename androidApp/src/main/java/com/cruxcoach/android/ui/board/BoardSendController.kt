@@ -23,6 +23,7 @@ import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.PersonalBoardRepository
 import com.cruxcoach.data.repository.brand
 import com.cruxcoach.domain.board.BoardBrand
+import com.cruxcoach.domain.board.BoardHold
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -88,27 +89,57 @@ internal class BoardSendController(
      * variant's result as the new one's: "sent", a layer selection, a history
      * entry, all for a climb the user has already navigated away from.
      */
-    private data class SendVariant(val climbUuid: String?, val angle: Int)
+    private data class SendVariant(
+        val climbUuid: String?,
+        val angle: Int,
+        /**
+         * The holds actually being sent, not a flag that stands in for them.
+         *
+         * Mirroring is one way the hold set changes under a running send;
+         * stepping a route frame is another, and neither touches the climb or
+         * the angle. Identifying the variant by what goes on the wall covers
+         * every way it can change, including ones nobody has added yet.
+         */
+        val holds: List<BoardHold>,
+    )
+
+    private fun ClimbDetailState.variant() = SendVariant(climb?.uuid, angle, holds)
+
+    /** One send, and the variant it was started for. */
+    private data class SendFence(val id: Long, val variant: SendVariant)
+
+    private var sendSequence = 0L
+
+    private fun beginSendFence(snapshot: ClimbDetailState = state.value): SendFence {
+        sendSequence += 1
+        return SendFence(sendSequence, snapshot.variant())
+    }
 
     /**
-     * Climb and angle only, deliberately.
+     * A state write from a send that may already have been superseded.
      *
-     * Those are the two the screen resets `isSending` for when it changes them
-     * ([BoardClimbDetailViewModel.switchClimb] and `onAngleSelected`), so a
-     * dropped result can never leave a spinner running with nothing behind it.
-     * The mirror toggle changes neither, and adding it here would trade this
-     * bug for a stuck one.
+     * Two questions, deliberately answered apart:
+     *
+     *  - the **claim** — "sent", an error, a layer selection, a history entry —
+     *    belongs to the variant it was made for, and is dropped once the screen
+     *    has moved on. That is the whole point of the fence.
+     *  - the **spinner** belongs to this controller, not to any variant. If a
+     *    dropped claim also dropped the `isSending = false` that came with it,
+     *    the screen would sit busy forever with nothing behind it. So it is
+     *    cleared whenever this is still the newest send; when a newer one has
+     *    already started, that one owns the spinner and this write leaves it be.
      */
-    private fun ClimbDetailState.variant() = SendVariant(climb?.uuid, angle)
-
-    private fun currentVariant(): SendVariant = state.value.variant()
-
-    /** A state write that a superseded send silently drops. */
     private fun updateForVariant(
-        variant: SendVariant,
+        fence: SendFence,
         transform: (ClimbDetailState) -> ClimbDetailState,
     ) {
-        state.update { current -> if (current.variant() == variant) transform(current) else current }
+        state.update { current ->
+            when {
+                current.variant() == fence.variant -> transform(current)
+                fence.id == sendSequence -> current.copy(ble = current.ble.copy(isSending = false))
+                else -> current
+            }
+        }
     }
 
     /** Record a successful board-send into the local "Verlauf" history.
@@ -144,25 +175,20 @@ internal class BoardSendController(
             Log.d(TAG, "sendToBoard: suppressed (session queue active)")
             return
         }
-        val meshManager = com.cruxcoach.android.boardcell.BoardCellManager.current
-        if (meshManager?.canSendViaMesh() == true) {
-            val s = state.value
-            val climb = s.climb ?: return
-            val commandId = meshManager.sendProjectionRequest(BoardProjection(
-                climb.uuid,
-                s.angle,
-                BoardProjectionPolicy.projectionSurvivesDisconnect(climb.brand),
-            ))
-            state.update { current -> current.copy(
-                ble = current.ble.copy(
-                    isSending = false,
-                    success = commandId != null,
-                    error = if (commandId == null) R.string.board_send_error_send_failed else null,
-                ),
-                nearby = current.nearby.copy(
-                    debugInfo = if (commandId != null) "sent via board mesh" else "mesh send failed")
-            ) }
-            if (commandId != null) scope.launch { recordSentToHistory(s) }
+        // The same question [canSendToBoard] answers, asked again here because
+        // a caller cannot ask it atomically. Route playback checks first and
+        // dispatches after; a group forming in between used to land a whole
+        // climb on the wall the group had just taken over. Ownership decides
+        // at the dispatch, not one call earlier.
+        //
+        // This is also why there is no mesh branch below any more. A member's
+        // climb reaches the wall through the group's list — the shared
+        // playlist's own projection path — and never from this screen; that
+        // has been BoardDeliveryPolicy's rule since the merge, and a second
+        // route here was a way around it that nothing needed and a race could
+        // still find.
+        if (boardCellOwnsBoard()) {
+            Log.d(TAG, "sendToBoard: suppressed (a group's list owns this board)")
             return
         }
         // FEAT-027: a MoonBoard climb sends an ASCII `frames` payload — it has
@@ -201,7 +227,7 @@ internal class BoardSendController(
             nearby = it.nearby.copy(debugInfo = "sending...")
         ) }
         Log.i(TAG, "sendToBoard: start frames=${s.holds.size}")
-        val variant = s.variant()
+        val variant = beginSendFence(s)
         sendJob = scope.launch {
             try {
                 // Board-match guard, part 1: the CONNECTED board's brand wins.
@@ -338,7 +364,7 @@ internal class BoardSendController(
             state.update { it.copy(ble = it.ble.copy(error = R.string.board_layer_error_all_assigned)) }
             return
         }
-        val variant = snapshot.variant()
+        val variant = beginSendFence(snapshot)
         scope.launch {
             val layer = buildQuantumLayer(snapshot, slot) ?: return@launch
             boardLayerManager.assignPreview(layer)
@@ -391,7 +417,7 @@ internal class BoardSendController(
             return
         }
         sendJob?.cancel()
-        val variant = snapshot.variant()
+        val variant = beginSendFence(snapshot)
         sendJob = scope.launch {
             val connectedBrand = bleConnection.connectedBoardBrand.value
             if (connectedBrand != null && connectedBrand != BoardBrand.QUANTUM) {
@@ -467,11 +493,11 @@ internal class BoardSendController(
             return
         }
         sendJob?.cancel()
-        val variant = currentVariant()
+        val variant = beginSendFence()
         sendJob = scope.launch { sendQuantumLayers(slots, variant) }
     }
 
-    private suspend fun sendQuantumLayers(slots: List<Int>, variant: SendVariant) {
+    private suspend fun sendQuantumLayers(slots: List<Int>, variant: SendFence) {
         if (BoardBrand.fromWire(userPreferences.boardBrand.first()) != BoardBrand.QUANTUM) {
             updateForVariant(variant) { it.copy(
                 ble = it.ble.copy(error = R.string.board_send_error_brand_mismatch),
@@ -511,7 +537,7 @@ internal class BoardSendController(
         }
     }
 
-    private suspend fun sendQuantumLayer(layer: BoardClimbLayer, variant: SendVariant): Boolean {
+    private suspend fun sendQuantumLayer(layer: BoardClimbLayer, variant: SendFence): Boolean {
         if (!boardLayerManager.hasControllerCapacityFor(layer.slot)) {
             boardLayerManager.failProjection(layer.slot)
             updateForVariant(variant) { it.copy(ble = it.ble.copy(error = R.string.board_layer_error_board_full)) }
@@ -603,7 +629,7 @@ internal class BoardSendController(
             nearby = it.nearby.copy(debugInfo = "sending (moonboard)...")
         ) }
         Log.i(TAG, "sendMoonBoardToBoard: start frames=${frames.length}")
-        val sendVariant = s.variant()
+        val sendVariant = beginSendFence(s)
         sendJob = scope.launch {
             try {
                 // Board-match guard, part 1: the CONNECTED board must be a
@@ -740,7 +766,7 @@ internal class BoardSendController(
         if (refuseLayerCommandForGroup()) return
         if (bleConnection.connectedBoardBrand.value != BoardBrand.QUANTUM) return
         sendJob?.cancel()
-        val variant = currentVariant()
+        val variant = beginSendFence()
         state.update { it.copy(ble = it.ble.copy(isSending = true, success = false, error = null)) }
         sendJob = scope.launch {
             val success = runCatching { bleConnection.removeQuantumLayer(layer.userUuid) }.getOrDefault(false)

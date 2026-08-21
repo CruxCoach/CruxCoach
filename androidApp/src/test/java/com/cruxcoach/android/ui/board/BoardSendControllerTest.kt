@@ -7,6 +7,7 @@ import com.cruxcoach.android.ble.BoardClimbLayer
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.boardcell.BoardCellWriteGateway
+import com.cruxcoach.android.boardcell.BoardProjection
 import com.cruxcoach.android.data.SessionQueueManager
 import com.cruxcoach.android.data.SessionQueueState
 import com.cruxcoach.android.data.UserPreferences
@@ -309,6 +310,152 @@ class BoardSendControllerTest {
                 layerManager.beginProjection(1)
                 layerManager.confirmProjection(1)
             }
+        }
+
+    /**
+     * Review 2, finding 1. The pass-2 fence identified a variant by climb and
+     * angle, and a mirror flip changes neither — so an unmirrored send came
+     * back and reported the mirrored view as lit. The fence now identifies a
+     * variant by the holds that actually go to the wall, which is what mirror,
+     * frame stepping and anything else that swaps the hold set all change.
+     */
+    @Test
+    fun `a mirror flip during the write cannot be reported as a mirrored send`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val climb = moonClimb.copy(
+                uuid = "11111111-2222-3333-4444-555555555555",
+                boardBrand = BoardBrand.KILTER.wireValue,
+                layoutId = 1,
+            )
+            val unmirrored = listOf(BoardHold(10, 12))
+            val mirrored = listOf(BoardHold(90, 12))
+            val detailState = MutableStateFlow(ClimbDetailState(
+                isLoading = false,
+                climb = climb,
+                holds = unmirrored,
+                angle = 40,
+                isMirrored = false,
+                ble = BoardSendState(connectionState = ConnectionState.CONNECTED),
+            ))
+            val personal = mockk<PersonalBoardRepository>(relaxed = true)
+            val repository = mockk<BoardRepository>(relaxed = true) {
+                every { getPlacementLedMap(any(), BoardBrand.KILTER.wireValue) } returns
+                    mapOf(10 to 100, 90 to 900)
+                every { getRoleColorMapForBrand(BoardBrand.KILTER.wireValue) } returns mapOf(12 to 1)
+            }
+            val ble = mockk<BoardBleConnection>(relaxed = true) {
+                every { connectedBoardBrand } returns MutableStateFlow(BoardBrand.KILTER)
+                every { connectionState } returns MutableStateFlow(ConnectionState.CONNECTED)
+                // The user flips the mirror while the controller is still
+                // answering — exactly what toggleMirror() writes, reset included.
+                coEvery { sendClimb(any(), any(), any(), any(), any(), any()) } answers {
+                    detailState.update { current ->
+                        current.copy(
+                            isMirrored = true,
+                            holds = mirrored,
+                            ble = current.ble.copy(isSending = false, success = false, error = null),
+                        )
+                    }
+                    true
+                }
+            }
+            val preferences = mockk<UserPreferences>(relaxed = true) {
+                every { boardBrand } returns flowOf(BoardBrand.KILTER.wireValue)
+                every { boardProductSizeId } returns flowOf(10)
+            }
+            val queue = mockk<SessionQueueManager>(relaxed = true)
+            every { queue.state } returns MutableStateFlow(SessionQueueState())
+            val controller = BoardSendController(
+                scope = this,
+                state = detailState,
+                boardRepository = repository,
+                personalBoardRepo = personal,
+                bleConnection = ble,
+                userPreferences = preferences,
+                climbAdvertiser = mockk(relaxed = true),
+                sessionQueueManager = queue,
+                isSharingEnabled = { false },
+                boardLayerManager = mockk(relaxed = true),
+                boardCellWriteGateway = BoardCellWriteGateway { _, write -> write() },
+                ioDispatcher = UnconfinedTestDispatcher(testScheduler),
+            )
+
+            controller.sendToBoard()
+            advanceUntilIdle()
+
+            assertTrue(detailState.value.isMirrored)
+            assertFalse(
+                "the unmirrored holds are on the wall; the mirrored view was never sent",
+                detailState.value.ble.success,
+            )
+            assertFalse("and the spinner still has to come down", detailState.value.ble.isSending)
+        }
+
+    /**
+     * Review 2, finding 3. Route playback asks canSendToBoard() and dispatches
+     * afterwards; a group forming in between used to slip through, because
+     * sendToBoard() had no ownership check of its own and its mesh branch
+     * committed a canonical projection immediately.
+     */
+    @Test
+    fun `a group forming between the check and the dispatch still stops the send`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val climb = moonClimb.copy(
+                uuid = "11111111-2222-3333-4444-555555555555",
+                boardBrand = BoardBrand.KILTER.wireValue,
+                layoutId = 1,
+            )
+            val detailState = MutableStateFlow(ClimbDetailState(
+                isLoading = false,
+                climb = climb,
+                holds = listOf(BoardHold(10, 12)),
+                angle = 40,
+                ble = BoardSendState(connectionState = ConnectionState.CONNECTED),
+            ))
+            val ble = mockk<BoardBleConnection>(relaxed = true) {
+                every { connectedBoardBrand } returns MutableStateFlow(BoardBrand.KILTER)
+                every { connectionState } returns MutableStateFlow(ConnectionState.CONNECTED)
+            }
+            val queue = mockk<SessionQueueManager>(relaxed = true)
+            every { queue.state } returns MutableStateFlow(SessionQueueState())
+            val projections = mutableListOf<BoardProjection>()
+            var groupOwnsBoard = false
+            val controller = BoardSendController(
+                scope = this,
+                state = detailState,
+                boardRepository = mockk(relaxed = true),
+                personalBoardRepo = mockk(relaxed = true),
+                bleConnection = ble,
+                userPreferences = mockk<UserPreferences>(relaxed = true) {
+                    every { boardBrand } returns flowOf(BoardBrand.KILTER.wireValue)
+                    every { boardProductSizeId } returns flowOf(10)
+                },
+                climbAdvertiser = mockk(relaxed = true),
+                sessionQueueManager = queue,
+                isSharingEnabled = { false },
+                boardLayerManager = mockk(relaxed = true),
+                boardCellWriteGateway = BoardCellWriteGateway { projection, write ->
+                    projections += projection
+                    write()
+                },
+                ioDispatcher = UnconfinedTestDispatcher(testScheduler),
+                boardCellOwnsBoard = { groupOwnsBoard },
+            )
+
+            // The caller's pre-check passes…
+            assertTrue(controller.canSendToBoard())
+            // …and the group forms before the dispatch reaches the wall.
+            groupOwnsBoard = true
+            controller.sendToBoard()
+            advanceUntilIdle()
+
+            coVerify(exactly = 0) { ble.sendClimb(any(), any(), any(), any(), any(), any()) }
+            assertEquals(
+                "the group's canonical projection must not be overwritten",
+                emptyList<BoardProjection>(), projections,
+            )
+            assertFalse(detailState.value.ble.isSending)
+            assertFalse(detailState.value.ble.success)
         }
 
     /**
