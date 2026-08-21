@@ -8,10 +8,12 @@ import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.BoardConnectionCapacity
 import com.cruxcoach.android.ble.BoardControllerProfiles
 import com.cruxcoach.android.ble.BoardProjectionPolicy
+import com.cruxcoach.android.ble.BoardLayerBoardIdentity
 import com.cruxcoach.android.ble.BoardLayerManager
 import com.cruxcoach.android.ble.BoardLayerState
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.boardcell.BoardCellManager
+import com.cruxcoach.android.boardcell.PhysicalBoardIdentity
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.data.BleShareManager
 import com.cruxcoach.android.data.BleShareUiState
@@ -436,6 +438,20 @@ class BoardClimbDetailViewModel @Inject constructor(
                 _state.update { current -> current.copy(boardLayers = layers) }
             }
         }
+        // Attach the rack to the board it is for, before anything reconciles
+        // into it. The rack survives a disconnect on purpose — the controller
+        // keeps its projections and a reconnect must be able to recognise its
+        // own slots again — but that is only true of the same board. Carried
+        // to a different controller the previews are a plan for holds that are
+        // not there, and on the same model they would send.
+        viewModelScope.launch {
+            kotlinx.coroutines.flow.combine(
+                bleConnection.connectedBoardDescriptor,
+                userPreferences.boardProductSizeId,
+            ) { board, productSizeId -> connectedLayerBoard(board, productSizeId) }
+                .distinctUntilChanged()
+                .collect(boardLayerManager::bindBoard)
+        }
         viewModelScope.launch {
             bleConnection.quantumControllerState.collect { controller ->
                 if (controller.authoritative) {
@@ -845,6 +861,23 @@ class BoardClimbDetailViewModel @Inject constructor(
 
     fun consumeOwnPublishFeedback() {
         _state.update { it.copy(ownPublishFeedback = null) }
+    }
+
+    /**
+     * Which board the layer rack is currently staged for, or null when there is
+     * nothing connected to stage against.
+     *
+     * Only Quantum has more than one layer, so only Quantum can strand a
+     * preview on the wrong controller; every other board reports null here and
+     * leaves the rack untouched.
+     */
+    private fun connectedLayerBoard(
+        board: com.cruxcoach.android.ble.DiscoveredBoard?,
+        productSizeId: Int,
+    ): BoardLayerBoardIdentity? {
+        if (board == null || board.boardBrand != BoardBrand.QUANTUM) return null
+        val physical = runCatching { PhysicalBoardIdentity.resolve(board) }.getOrNull() ?: return null
+        return BoardLayerBoardIdentity(physical.value, productSizeId.toLong())
     }
 
     /**

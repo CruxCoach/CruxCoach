@@ -2992,4 +2992,5 @@
     <string name="board_layer_color_magenta">Magenta</string>
     <string name="board_layer_color_yellow">Gelb</string>
     <string name="board_layer_color_unavailable">%1$s — auf dem Board bereits vergeben</string>
+    <string name="board_layer_error_other_board">Diese Ebenen wurden für ein anderes Board zusammengestellt. Weise sie auf diesem neu zu.</string>
 </resources>

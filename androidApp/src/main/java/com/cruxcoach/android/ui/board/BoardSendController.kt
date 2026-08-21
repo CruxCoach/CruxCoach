@@ -4,6 +4,7 @@ import android.util.Log
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.BoardClimbLayer
+import com.cruxcoach.android.ble.BoardLayerBoardIdentity
 import com.cruxcoach.android.ble.BoardLayerManager
 import com.cruxcoach.android.ble.BoardLayerStatus
 import com.cruxcoach.android.ble.BoardLayerConflictPolicy
@@ -14,6 +15,7 @@ import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.boardcell.BoardProjection
 import com.cruxcoach.android.boardcell.ActiveBoardCellWriteGateway
 import com.cruxcoach.android.boardcell.BoardCellManager
+import com.cruxcoach.android.boardcell.PhysicalBoardIdentity
 import com.cruxcoach.android.boardcell.BoardCellWriteGateway
 import com.cruxcoach.android.data.LedHoldColors
 import com.cruxcoach.android.data.SessionQueueManager
@@ -382,6 +384,24 @@ internal class BoardSendController(
      * different page; the layer owns the immutable route/hold snapshot. */
     fun sendBoardLayer(slot: Int) = launchQuantumLayerSend(listOf(slot))
 
+    /**
+     * The rack is staged for the board that is on the link right now.
+     *
+     * The binding in [BoardClimbDetailViewModel] clears the rack when the board
+     * changes, so this is the window it cannot cover: a swap that lands between
+     * the tap and the write. A layer is a diode plan for one controller, and
+     * sending it to another one lights holds nobody chose.
+     */
+    private suspend fun layersBelongToConnectedBoard(): Boolean {
+        val board = bleConnection.connectedBoardDescriptor.value ?: return false
+        if (board.boardBrand != BoardBrand.QUANTUM) return false
+        val physical = runCatching { PhysicalBoardIdentity.resolve(board) }.getOrNull() ?: return false
+        val productSizeId = userPreferences.boardProductSizeId.first()
+        return boardLayerManager.isBoundTo(
+            BoardLayerBoardIdentity(physical.value, productSizeId.toLong())
+        )
+    }
+
     /** True when a layer command must not leave this device. */
     private fun refuseLayerCommandForGroup(): Boolean {
         if (!boardCellOwnsBoard()) return false
@@ -498,6 +518,15 @@ internal class BoardSendController(
     }
 
     private suspend fun sendQuantumLayers(slots: List<Int>, variant: SendFence) {
+        if (!layersBelongToConnectedBoard()) {
+            updateForVariant(variant) { it.copy(
+                ble = it.ble.copy(
+                    isSending = false,
+                    error = R.string.board_layer_error_other_board,
+                ),
+            ) }
+            return
+        }
         if (BoardBrand.fromWire(userPreferences.boardBrand.first()) != BoardBrand.QUANTUM) {
             updateForVariant(variant) { it.copy(
                 ble = it.ble.copy(error = R.string.board_send_error_brand_mismatch),

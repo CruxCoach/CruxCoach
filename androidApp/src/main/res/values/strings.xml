@@ -2992,4 +2992,5 @@
     <string name="board_layer_color_magenta">Magenta</string>
     <string name="board_layer_color_yellow">Yellow</string>
     <string name="board_layer_color_unavailable">%1$s — already in use on the board</string>
+    <string name="board_layer_error_other_board">These layers were put together for a different board. Assign them again on this one.</string>
 </resources>

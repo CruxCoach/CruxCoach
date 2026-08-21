@@ -5,6 +5,7 @@ import com.cruxcoach.android.ble.BoardLayerManager
 import com.cruxcoach.android.ble.BoardLayerState
 import com.cruxcoach.android.ble.BoardClimbLayer
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
+import com.cruxcoach.android.ble.DiscoveredBoard
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.boardcell.BoardCellWriteGateway
 import com.cruxcoach.android.boardcell.BoardProjection
@@ -247,6 +248,16 @@ class BoardSendControllerTest {
                 // descriptor without an inferred family and lets this test
                 // focus on the Quantum layer payload.
                 every { connectedBoardBrand } returns MutableStateFlow(null)
+                // The rack is staged for the board on the link — the ordinary
+                // case. Sending a rack staged for a different board is its own
+                // test in BoardLayerBoardBindingTest.
+                every { connectedBoardDescriptor } returns MutableStateFlow(
+                    DiscoveredBoard(
+                        displayName = "Quantum", serial = "SER-1", apiLevel = 3,
+                        address = "AA:BB:CC:DD:EE:FF", rssi = -40,
+                        boardBrand = BoardBrand.QUANTUM,
+                    )
+                )
                 coEvery {
                     sendClimb(holds, any(), any(), routeId, userId, BoardLayerManager.LAYER_COLORS[1])
                 } returns true
@@ -261,6 +272,7 @@ class BoardSendControllerTest {
             val layerState = MutableStateFlow(BoardLayerState())
             every { layerManager.state } returns layerState
             with(layerManager) {
+                every { isBoundTo(any()) } returns true
                 every { layerForClimb(climb.uuid) } returns null
                 every { nextAvailableSlot(BoardBrand.QUANTUM, 1) } returns 1
                 every { identityForSlot(1) } returns userId
