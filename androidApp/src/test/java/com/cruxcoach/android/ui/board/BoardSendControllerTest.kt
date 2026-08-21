@@ -24,6 +24,7 @@ import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -399,6 +400,87 @@ class BoardSendControllerTest {
                 detailState.value.ble.error,
             )
             assertFalse(detailState.value.ble.isSending)
+        }
+
+    /**
+     * The window cancellation cannot close.
+     *
+     * A send is a chain of suspensions — preference reads, an LED-map query,
+     * the BLE write. Cancelling it stops everything still suspended, but a job
+     * already past its last suspension point runs to its next statement, and
+     * that statement is the one that says "sent". After an angle change that
+     * claim lands on a climb variant whose holds were never on the wall.
+     */
+    @Test
+    fun `a send that finishes after an angle change cannot mark the new angle sent`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val climb = moonClimb.copy(
+                uuid = "11111111-2222-3333-4444-555555555555",
+                boardBrand = BoardBrand.KILTER.wireValue,
+                layoutId = 1,
+            )
+            val holds = listOf(BoardHold(10, 12))
+            val detailState = MutableStateFlow(ClimbDetailState(
+                isLoading = false,
+                climb = climb,
+                holds = holds,
+                angle = 40,
+                ble = BoardSendState(connectionState = ConnectionState.CONNECTED),
+            ))
+            val personal = mockk<PersonalBoardRepository>(relaxed = true)
+            val repository = mockk<BoardRepository>(relaxed = true) {
+                every { getPlacementLedMap(any(), BoardBrand.KILTER.wireValue) } returns mapOf(10 to 100)
+                every { getRoleColorMapForBrand(BoardBrand.KILTER.wireValue) } returns mapOf(12 to 1)
+            }
+            val ble = mockk<BoardBleConnection>(relaxed = true) {
+                every { connectedBoardBrand } returns MutableStateFlow(BoardBrand.KILTER)
+                every { connectionState } returns MutableStateFlow(ConnectionState.CONNECTED)
+                // The user changes the angle while the controller is still
+                // answering: by the time this returns, the screen has moved on.
+                coEvery { sendClimb(any(), any(), any(), any(), any(), any()) } answers {
+                    // Exactly what onAngleSelected() writes, including its
+                    // reset of the send flags.
+                    detailState.update { current ->
+                        current.copy(
+                            angle = 45,
+                            holds = listOf(BoardHold(20, 12)),
+                            ble = current.ble.copy(isSending = false, success = false, error = null),
+                        )
+                    }
+                    true
+                }
+            }
+            val preferences = mockk<UserPreferences>(relaxed = true) {
+                every { boardBrand } returns flowOf(BoardBrand.KILTER.wireValue)
+                every { boardProductSizeId } returns flowOf(10)
+            }
+            val queue = mockk<SessionQueueManager>(relaxed = true)
+            every { queue.state } returns MutableStateFlow(SessionQueueState())
+            val controller = BoardSendController(
+                scope = this,
+                state = detailState,
+                boardRepository = repository,
+                personalBoardRepo = personal,
+                bleConnection = ble,
+                userPreferences = preferences,
+                climbAdvertiser = mockk(relaxed = true),
+                sessionQueueManager = queue,
+                isSharingEnabled = { false },
+                boardLayerManager = mockk(relaxed = true),
+                boardCellWriteGateway = BoardCellWriteGateway { _, write -> write() },
+                ioDispatcher = UnconfinedTestDispatcher(testScheduler),
+            )
+
+            controller.sendToBoard()
+            advanceUntilIdle()
+
+            assertEquals(45, detailState.value.angle)
+            assertFalse(
+                "40° succeeded, not 45° — the screen must not claim the new angle is lit",
+                detailState.value.ble.success,
+            )
+            assertFalse(detailState.value.ble.isSending)
+            coVerify(exactly = 0) { personal.recordClimbHistory(any(), any(), 45L, any(), any(), any(), any(), any()) }
         }
 
     @Test

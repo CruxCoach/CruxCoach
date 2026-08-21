@@ -142,6 +142,7 @@ class BoardClimbDetailOwnPublishTest {
             userPreferences = userPreferences,
             bleConnection = bleConnection,
             boardLayerManager = boardLayerManager,
+            boardCellManager = mockk(relaxed = true),
             sessionManager = sessionManager,
             zoneManager = zoneManager,
             climbAdvertiser = climbAdvertiser,

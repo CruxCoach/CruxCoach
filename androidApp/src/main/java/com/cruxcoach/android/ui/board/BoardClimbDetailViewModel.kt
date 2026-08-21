@@ -11,6 +11,7 @@ import com.cruxcoach.android.ble.BoardProjectionPolicy
 import com.cruxcoach.android.ble.BoardLayerManager
 import com.cruxcoach.android.ble.BoardLayerState
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
+import com.cruxcoach.android.boardcell.BoardCellManager
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.data.BleShareManager
 import com.cruxcoach.android.data.BleShareUiState
@@ -328,6 +329,9 @@ class BoardClimbDetailViewModel @Inject constructor(
     private val userPreferences: UserPreferences,
     private val bleConnection: BoardBleConnection,
     private val boardLayerManager: BoardLayerManager,
+    /** The board's group, when there is one. Read for exactly one question:
+     *  whether this screen may command the wall at all. */
+    private val boardCellManager: BoardCellManager,
     private val sessionManager: BoardSessionManager,
     private val zoneManager: IntensityZoneManager,
     private val climbAdvertiser: ClimbBleAdvertiser,
@@ -422,6 +426,7 @@ class BoardClimbDetailViewModel @Inject constructor(
         sessionQueueManager = sessionQueueManager,
         isSharingEnabled = { bleShareManager.uiState.value.sharingEnabled },
         boardLayerManager = boardLayerManager,
+        boardCellOwnsBoard = { boardCellManager.localParticipatesInSharedPlaylist() },
     )
 
     init {
@@ -566,14 +571,18 @@ class BoardClimbDetailViewModel @Inject constructor(
             }
         }
         // Keep the playback controls honest about whether a frame can land.
-        // Both inputs matter: the link can drop, and a playlist can take the
-        // wall over while this screen is open.
+        // Three inputs matter: the link can drop, a legacy session queue can
+        // take the wall over while this screen is open, and a group can form
+        // on the board — and a group is the case where a frame does not fail
+        // loudly, it arrives as a whole-climb projection and leaves the wall
+        // on frame 1.
         viewModelScope.launch {
             try {
                 kotlinx.coroutines.flow.combine(
                     bleConnection.connectionState,
                     sessionQueueManager.state,
-                ) { _, _ -> sendController.canSendToBoard() }
+                    boardCellManager.snapshots,
+                ) { _, _, _ -> sendController.canSendToBoard() }
                     .distinctUntilChanged()
                     .collect { canReach ->
                         _state.update {
@@ -838,15 +847,28 @@ class BoardClimbDetailViewModel @Inject constructor(
         _state.update { it.copy(ownPublishFeedback = null) }
     }
 
+    /**
+     * Everything in flight that belonged to the variant being left behind.
+     *
+     * Climb and angle are the same kind of change as far as the board is
+     * concerned — both replace the holds — so both have to tear down the same
+     * things. Keeping that in one place rather than two is the point: the two
+     * paths had already drifted apart once, and the half that forgot to cancel
+     * let a finished send mark the newly shown variant as lit.
+     */
+    private fun stopWorkForPreviousVariant() {
+        playbackController.stopPlayback()
+        sendController.cancelSend()
+        loadJob?.cancel()
+    }
+
     fun switchClimb(uuid: String, angle: Int) {
         if (uuid == currentClimbUuid && angle == currentAngle) return
         ascentLogger.finishQuickSequence()
         Log.d(TAG, "switchClimb: $uuid angle=$angle (was: $currentClimbUuid)")
         currentClimbUuid = uuid
         currentAngle = angle
-        playbackController.stopPlayback()
-        loadJob?.cancel()
-        sendController.cancelSend()
+        stopWorkForPreviousVariant()
         // Reset BLE send state so a stale isSending=true from the previous climb
         // doesn't block auto-send for the new climb.
         val currentConn = bleConnection.connectionState.value
@@ -887,7 +909,13 @@ class BoardClimbDetailViewModel @Inject constructor(
     fun onAngleSelected(angle: Int) {
         if (angle == currentAngle) return
         ascentLogger.finishQuickSequence()
-        loadJob?.cancel()
+        // Only clearing isSending in the state below used to leave the send
+        // itself running: it came back past its last suspension point and
+        // marked the angle now on screen as lit, with the other angle's holds
+        // on the wall. The send controller fences the residual window after
+        // the last suspension; this closes the one that was open for the
+        // whole job.
+        stopWorkForPreviousVariant()
         currentAngle = angle
         _state.update { current ->
             current.copy(
