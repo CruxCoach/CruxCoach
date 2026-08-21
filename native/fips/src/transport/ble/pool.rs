@@ -60,14 +60,26 @@ impl<S> Drop for BleConnection<S> {
 pub struct ConnectionPool<S> {
     connections: HashMap<TransportAddr, BleConnection<S>>,
     max_connections: usize,
+    protected_discovered_connections: usize,
+    capacity_changed: std::sync::Arc<tokio::sync::Notify>,
 }
 
 impl<S> ConnectionPool<S> {
     /// Create a new pool with the given maximum capacity.
     pub fn new(max_connections: usize) -> Self {
+        Self::new_with_policy(max_connections, 0)
+    }
+
+    /// Create a pool with an explicit stable-backbone policy.
+    pub fn new_with_policy(
+        max_connections: usize,
+        protected_discovered_connections: usize,
+    ) -> Self {
         Self {
             connections: HashMap::new(),
             max_connections,
+            protected_discovered_connections,
+            capacity_changed: std::sync::Arc::new(tokio::sync::Notify::new()),
         }
     }
 
@@ -86,9 +98,28 @@ impl<S> ConnectionPool<S> {
         self.connections.len() >= self.max_connections
     }
 
+    /// Whether a new connection of this class can be retained by the pool.
+    ///
+    /// Callers use this as an admission fast path before paying for an L2CAP
+    /// dial or pubkey exchange. [`insert`](Self::insert) remains authoritative
+    /// because another connection can fill the last slot concurrently.
+    pub fn can_accept(&self, new_is_static: bool) -> bool {
+        if !self.is_full() {
+            return true;
+        }
+        self.find_eviction_candidate(new_is_static).is_ok()
+    }
+
     /// Get the maximum pool capacity.
     pub fn max_connections(&self) -> usize {
         self.max_connections
+    }
+
+    /// Notification used by capacity-sensitive services such as BLE
+    /// advertising. `Notify` stores a permit, so a transition cannot be lost
+    /// if it happens just before the watcher goes back to sleep.
+    pub fn capacity_notifier(&self) -> std::sync::Arc<tokio::sync::Notify> {
+        std::sync::Arc::clone(&self.capacity_changed)
     }
 
     /// Look up a connection by transport address.
@@ -152,12 +183,14 @@ impl<S> ConnectionPool<S> {
         // Already connected — replace
         if let Entry::Occupied(mut e) = self.connections.entry(addr.clone()) {
             e.insert(conn);
+            self.capacity_changed.notify_one();
             return Ok(None);
         }
 
         // Room available
         if !self.is_full() {
             self.connections.insert(addr, conn);
+            self.capacity_changed.notify_one();
             return Ok(None);
         }
 
@@ -165,12 +198,17 @@ impl<S> ConnectionPool<S> {
         let evicted = self.find_eviction_candidate(conn.is_static)?;
         self.connections.remove(&evicted);
         self.connections.insert(addr, conn);
+        self.capacity_changed.notify_one();
         Ok(Some(evicted))
     }
 
     /// Remove a connection by address.
     pub fn remove(&mut self, addr: &TransportAddr) -> Option<BleConnection<S>> {
-        self.connections.remove(addr)
+        let removed = self.connections.remove(addr);
+        if removed.is_some() {
+            self.capacity_changed.notify_one();
+        }
+        removed
     }
 
     /// Get all connection addresses.
@@ -180,31 +218,48 @@ impl<S> ConnectionPool<S> {
 
     /// Find the best eviction candidate.
     ///
-    /// Static peers requesting a slot can evict the oldest non-static peer.
-    /// Non-static peers cannot evict anyone if all slots are static.
+    /// Static peers requesting a slot can evict the oldest unprotected,
+    /// non-static peer. Dynamic peers follow the same protection boundary.
     fn find_eviction_candidate(
         &self,
         new_is_static: bool,
     ) -> Result<TransportAddr, TransportError> {
         if new_is_static {
-            // Static peer can evict oldest non-static
-            self.connections
+            // Static peers preserve their legacy priority, but never pierce
+            // the explicitly protected discovered backbone.
+            let mut discovered: Vec<_> = self
+                .connections
                 .iter()
                 .filter(|(_, c)| !c.is_static)
-                .min_by_key(|(_, c)| c.established_at)
+                .collect();
+            discovered.sort_by_key(|(_, connection)| connection.established_at);
+            discovered
+                .into_iter()
+                .skip(self.protected_discovered_connections)
+                .min_by_key(|(_, connection)| connection.established_at)
                 .map(|(addr, _)| addr.clone())
                 .ok_or_else(|| {
-                    TransportError::NotSupported("BLE pool full: all connections are static".into())
+                    TransportError::NotSupported(
+                        "BLE pool full: all connections are static or protected".into(),
+                    )
                 })
         } else {
-            // Non-static peer evicts oldest non-static
-            self.connections
+            let mut discovered: Vec<_> = self
+                .connections
                 .iter()
                 .filter(|(_, c)| !c.is_static)
-                .min_by_key(|(_, c)| c.established_at)
+                .collect();
+            discovered.sort_by_key(|(_, connection)| connection.established_at);
+
+            // The oldest N links are the stable backbone. Only explicitly
+            // unprotected slots retain the legacy oldest-first replacement.
+            discovered
+                .into_iter()
+                .skip(self.protected_discovered_connections)
+                .min_by_key(|(_, connection)| connection.established_at)
                 .map(|(addr, _)| addr.clone())
                 .ok_or_else(|| {
-                    TransportError::NotSupported("BLE pool full: all connections are static".into())
+                    TransportError::NotSupported("BLE pool full: stable backbone protected".into())
                 })
         }
     }
@@ -282,6 +337,216 @@ mod tests {
         assert!(result.unwrap().is_some()); // something was evicted
         assert_eq!(pool.len(), 3);
         assert!(pool.contains(&test_addr(4)));
+    }
+
+    #[test]
+    fn protected_discovered_links_reject_a_burst_instead_of_churning() {
+        let mut pool: ConnectionPool<()> = ConnectionPool::new_with_policy(3, 3);
+        pool.insert(test_addr(1), test_conn(1, false)).unwrap();
+        pool.insert(test_addr(2), test_conn(2, false)).unwrap();
+        pool.insert(test_addr(3), test_conn(3, false)).unwrap();
+
+        let result = pool.insert(test_addr(4), test_conn(4, false));
+
+        assert!(result.is_err());
+        assert_eq!(pool.len(), 3);
+        assert!(pool.contains(&test_addr(1)));
+        assert!(pool.contains(&test_addr(2)));
+        assert!(pool.contains(&test_addr(3)));
+        assert!(!pool.contains(&test_addr(4)));
+    }
+
+    #[test]
+    fn hard_limit_six_seven_eight_preserves_all_seven_then_admits_after_disconnect() {
+        let mut pool: ConnectionPool<()> = ConnectionPool::new_with_policy(7, 7);
+        for peer in 1..=6 {
+            assert!(
+                pool.insert(test_addr(peer), test_conn(peer, false))
+                    .unwrap()
+                    .is_none()
+            );
+        }
+        assert!(
+            !pool.is_full(),
+            "six direct peers still leave one honest join slot"
+        );
+        assert!(pool.can_accept(false));
+
+        pool.insert(test_addr(7), test_conn(7, false)).unwrap();
+        assert!(pool.is_full(), "seven is the hard direct-peer boundary");
+        assert!(!pool.can_accept(false));
+
+        for attempt in 0..100 {
+            let candidate = if attempt % 2 == 0 { 8 } else { 9 };
+            assert!(
+                pool.insert(test_addr(candidate), test_conn(candidate, false))
+                    .is_err()
+            );
+        }
+        assert_eq!(7, pool.len());
+        for incumbent in 1..=7 {
+            assert!(
+                pool.contains(&test_addr(incumbent)),
+                "incumbent {incumbent} was displaced"
+            );
+        }
+
+        pool.remove(&test_addr(7));
+        assert!(
+            pool.can_accept(false),
+            "a disconnect must self-heal capacity"
+        );
+        assert!(
+            pool.insert(test_addr(8), test_conn(8, false))
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(7, pool.len());
+        for backbone in 1..=6 {
+            assert!(pool.contains(&test_addr(backbone)));
+        }
+        assert!(pool.contains(&test_addr(8)));
+    }
+
+    #[test]
+    fn protected_pool_rejects_static_replacement_of_the_stable_backbone() {
+        let mut pool: ConnectionPool<()> = ConnectionPool::new_with_policy(2, 2);
+        pool.insert(test_addr(1), test_conn(1, false)).unwrap();
+        pool.insert(test_addr(2), test_conn(2, false)).unwrap();
+
+        let result = pool.insert(test_addr(3), test_conn(3, true));
+
+        assert!(result.is_err());
+        assert_eq!(pool.len(), 2);
+        assert!(pool.contains(&test_addr(1)));
+        assert!(pool.contains(&test_addr(2)));
+        assert!(!pool.contains(&test_addr(3)));
+    }
+
+    #[test]
+    fn protected_full_pool_declines_dynamic_admission_work() {
+        let mut pool: ConnectionPool<()> = ConnectionPool::new_with_policy(2, 2);
+        assert!(pool.can_accept(false));
+        pool.insert(test_addr(1), test_conn(1, false)).unwrap();
+        pool.insert(test_addr(2), test_conn(2, false)).unwrap();
+
+        assert!(!pool.can_accept(false));
+        assert!(!pool.can_accept(true));
+    }
+
+    #[test]
+    fn an_explicitly_unprotected_slot_rotates_without_touching_the_backbone() {
+        let mut pool: ConnectionPool<()> = ConnectionPool::new_with_policy(3, 2);
+        let mut first = test_conn(1, false);
+        first.established_at -= std::time::Duration::from_secs(30);
+        let mut second = test_conn(2, false);
+        second.established_at -= std::time::Duration::from_secs(20);
+        let mut rotating = test_conn(3, false);
+        rotating.established_at -= std::time::Duration::from_secs(10);
+        pool.insert(test_addr(1), first).unwrap();
+        pool.insert(test_addr(2), second).unwrap();
+        pool.insert(test_addr(3), rotating).unwrap();
+
+        let evicted = pool.insert(test_addr(4), test_conn(4, false)).unwrap();
+
+        assert_eq!(Some(test_addr(3)), evicted);
+        assert!(pool.contains(&test_addr(1)));
+        assert!(pool.contains(&test_addr(2)));
+        assert!(pool.contains(&test_addr(4)));
+    }
+
+    #[test]
+    fn nineteen_simultaneous_joiners_redirect_until_all_twenty_nodes_converge() {
+        use std::collections::BTreeSet;
+
+        const PARTICIPANTS: usize = 20;
+        const DEGREE: usize = 7;
+        let mut pools: Vec<ConnectionPool<()>> = (0..PARTICIPANTS)
+            .map(|_| ConnectionPool::new_with_policy(DEGREE, DEGREE))
+            .collect();
+        let mut edges = vec![BTreeSet::new(); PARTICIPANTS];
+        let mut joined = BTreeSet::from([0usize]);
+        // Every joiner initially saw only the controller's advertisement.
+        let mut pending: Vec<(usize, Vec<usize>)> =
+            (1..PARTICIPANTS).map(|node| (node, vec![0])).collect();
+        let mut capacity_redirects = 0;
+
+        for _round in 0..PARTICIPANTS {
+            if pending.is_empty() {
+                break;
+            }
+            let advertisers: Vec<_> = joined
+                .iter()
+                .copied()
+                .filter(|node| !pools[*node].is_full())
+                .collect();
+            let mut retry = Vec::new();
+
+            for (node, candidates) in pending {
+                let target = candidates
+                    .into_iter()
+                    .find(|candidate| {
+                        advertisers.contains(candidate) && !pools[*candidate].is_full()
+                    })
+                    .or_else(|| {
+                        advertisers
+                            .iter()
+                            .copied()
+                            .find(|candidate| *candidate != node && !pools[*candidate].is_full())
+                    });
+                let Some(target) = target else {
+                    retry.push((node, advertisers.clone()));
+                    capacity_redirects += 1;
+                    continue;
+                };
+
+                let to_target = test_addr(target as u8);
+                let to_joiner = test_addr(node as u8);
+                assert!(
+                    pools[node]
+                        .insert(to_target, test_conn(target as u8, false))
+                        .unwrap()
+                        .is_none()
+                );
+                assert!(
+                    pools[target]
+                        .insert(to_joiner, test_conn(node as u8, false))
+                        .unwrap()
+                        .is_none()
+                );
+                edges[node].insert(target);
+                edges[target].insert(node);
+                joined.insert(node);
+            }
+            pending = retry;
+        }
+
+        assert_eq!(
+            PARTICIPANTS,
+            joined.len(),
+            "every simultaneous joiner must find fallback capacity"
+        );
+        assert!(
+            capacity_redirects > 0,
+            "the chaos wave must exercise redirect/backoff"
+        );
+        assert!(pools.iter().all(|pool| pool.len() <= DEGREE));
+        assert!(edges.iter().all(|neighbors| neighbors.len() <= DEGREE));
+
+        let mut reached = BTreeSet::from([0usize]);
+        let mut frontier = vec![0usize];
+        while let Some(node) = frontier.pop() {
+            for peer in &edges[node] {
+                if reached.insert(*peer) {
+                    frontier.push(*peer);
+                }
+            }
+        }
+        assert_eq!(
+            PARTICIPANTS,
+            reached.len(),
+            "the resulting bounded-degree mesh must be connected"
+        );
     }
 
     #[test]

@@ -152,13 +152,16 @@ pub struct BleTransport<I: BleIo> {
     /// Advertisements observed by the scan loop, shared with direct node-layer
     /// reconnects so they use the peer's current platform-assigned PSM and do
     /// not redial an address that is no longer on air.
-    observed_adverts: Arc<Mutex<HashMap<BleAddr, ObservedAdvert>>>,
+    observed_adverts: Arc<Mutex<ObservedAdverts>>,
     /// Channel for delivering received packets to Node.
     packet_tx: PacketTx,
     /// Accept loop task handle.
     accept_task: Option<JoinHandle<()>>,
     /// Combined scan + probe loop task handle.
     scan_probe_task: Option<JoinHandle<()>>,
+    /// Capacity-aware advertising controller. Full nodes keep listening and
+    /// scanning, but disappear as join targets until a direct slot reopens.
+    advertising_task: Option<JoinHandle<()>>,
     /// Neighbor buffer for discovered peers.
     neighbor_buffer: Arc<NeighborBuffer>,
     /// Transport statistics.
@@ -183,6 +186,45 @@ struct ObservedAdvert {
     seen_at: tokio::time::Instant,
 }
 
+/// Bound on address/PSM observations retained from the untrusted radio.
+/// This covers four rotating aliases per participant at the first 20-device
+/// field target without allowing an advertisement flood to grow forever.
+const MAX_OBSERVED_ADVERTS: usize = 80;
+
+#[derive(Default)]
+struct ObservedAdverts {
+    entries: HashMap<BleAddr, ObservedAdvert>,
+}
+
+impl ObservedAdverts {
+    fn insert(&mut self, addr: BleAddr, advert: ObservedAdvert) {
+        if !self.entries.contains_key(&addr) && self.entries.len() >= MAX_OBSERVED_ADVERTS {
+            if let Some(oldest) = self
+                .entries
+                .iter()
+                .min_by_key(|(_, observed)| observed.seen_at)
+                .map(|(address, _)| address.clone())
+            {
+                self.entries.remove(&oldest);
+            }
+        }
+        self.entries.insert(addr, advert);
+    }
+
+    fn get(&self, addr: &BleAddr) -> Option<&ObservedAdvert> {
+        self.entries.get(addr)
+    }
+
+    fn get_mut(&mut self, addr: &BleAddr) -> Option<&mut ObservedAdvert> {
+        self.entries.get_mut(addr)
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.entries.len()
+    }
+}
+
 /// A low-power scan can pause for several seconds, but an address absent for
 /// this long must not monopolise recovery while fresh rotating addresses are
 /// being advertised. This gate applies only to node-layer direct reconnects;
@@ -199,19 +241,24 @@ impl<I: BleIo> BleTransport<I> {
         packet_tx: PacketTx,
     ) -> Self {
         let max_conns = config.max_connections();
+        let protected_discovered_connections = config.protected_discovered_connections();
         Self {
             transport_id,
             name,
             config,
             state: TransportState::Configured,
             io: Arc::new(io),
-            pool: Arc::new(Mutex::new(ConnectionPool::new(max_conns))),
+            pool: Arc::new(Mutex::new(ConnectionPool::new_with_policy(
+                max_conns,
+                protected_discovered_connections,
+            ))),
             connecting: Arc::new(Mutex::new(HashMap::new())),
             outbound_scan_attempts: Arc::new(Mutex::new(HashSet::new())),
-            observed_adverts: Arc::new(Mutex::new(HashMap::new())),
+            observed_adverts: Arc::new(Mutex::new(ObservedAdverts::default())),
             packet_tx,
             accept_task: None,
             scan_probe_task: None,
+            advertising_task: None,
             neighbor_buffer: Arc::new(NeighborBuffer::new(transport_id)),
             stats: Arc::new(BleStats::new()),
             local_pubkey: None,
@@ -303,18 +350,33 @@ impl<I: BleIo> BleTransport<I> {
             }
         }
 
-        // Start continuous advertising
+        // Advertise only while an inbound connection can be retained without
+        // evicting an established link. A watcher below withdraws the advert
+        // when the pool fills and restores it when a link disappears.
         if self.config.advertise() {
-            if let Err(e) = self.io.start_advertising(listener_psm).await {
+            let initially_has_capacity = !self.pool.lock().await.is_full();
+            let mut initially_advertising = false;
+            if initially_has_capacity && let Err(e) = self.io.start_advertising(listener_psm).await
+            {
                 warn!(adapter = %adapter, error = %e, "failed to start BLE advertising");
-            } else {
+            } else if initially_has_capacity {
+                initially_advertising = true;
                 self.stats.record_advertisement();
                 debug!(
                     adapter = %adapter,
                     psm = listener_psm,
-                    "BLE advertising started (continuous)"
+                    "BLE advertising started (capacity available)"
                 );
             }
+            let notifier = self.pool.lock().await.capacity_notifier();
+            self.advertising_task = Some(tokio::spawn(capacity_advertising_loop(
+                Arc::clone(&self.io),
+                Arc::clone(&self.pool),
+                notifier,
+                Arc::clone(&self.stats),
+                listener_psm,
+                initially_advertising,
+            )));
         }
 
         // Start combined scan + probe loop
@@ -352,7 +414,11 @@ impl<I: BleIo> BleTransport<I> {
 
     /// Stop the transport asynchronously.
     pub async fn stop_async(&mut self) -> Result<(), TransportError> {
-        // Stop advertising
+        // Stop the controller before its final platform stop, otherwise a
+        // capacity notification can race shutdown and restart advertising.
+        if let Some(task) = self.advertising_task.take() {
+            task.abort();
+        }
         let _ = self.io.stop_advertising().await;
 
         // Abort accept loop
@@ -446,6 +512,11 @@ impl<I: BleIo> BleTransport<I> {
     /// Retained for manual debugging / testing scenarios.
     #[allow(dead_code)]
     async fn connect_inline(&self, addr: &TransportAddr) -> Result<(), TransportError> {
+        if !self.pool.lock().await.can_accept(false) {
+            self.stats.record_connection_rejected();
+            return Err(TransportError::ConnectionRefused);
+        }
+
         let ble_addr = BleAddr::parse(
             addr.as_str()
                 .ok_or_else(|| TransportError::InvalidAddress("not valid UTF-8".into()))?,
@@ -572,11 +643,17 @@ impl<I: BleIo> BleTransport<I> {
     /// Spawns a background task that connects with timeout and promotes
     /// to the pool on success. Poll `connection_state_sync()` to check.
     pub async fn connect_async(&self, addr: &TransportAddr) -> Result<(), TransportError> {
-        // Already connected?
+        // Already connected, or unable to retain another link? Decline before
+        // spending radio and handshake resources. Insert remains authoritative
+        // for races among attempts that observed the final free slot.
         {
             let pool = self.pool.lock().await;
             if pool.contains(addr) {
                 return Ok(());
+            }
+            if !pool.can_accept(false) {
+                self.stats.record_connection_rejected();
+                return Err(TransportError::ConnectionRefused);
             }
         }
 
@@ -605,6 +682,14 @@ impl<I: BleIo> BleTransport<I> {
         let addr_clone = addr.clone();
         let local_pubkey = self.local_pubkey;
         let neighbor_buffer = Arc::clone(&self.neighbor_buffer);
+
+        // Hold the map lock until the task handle is registered. Otherwise a
+        // very fast failure can remove itself before this insertion and leave
+        // a permanent phantom "connecting" entry behind.
+        let mut connecting_guard = self.connecting.lock().await;
+        if connecting_guard.contains_key(addr) {
+            return Ok(());
+        }
 
         let task = tokio::spawn(async move {
             let result = tokio::time::timeout(
@@ -704,10 +789,7 @@ impl<I: BleIo> BleTransport<I> {
             }
         });
 
-        self.connecting
-            .lock()
-            .await
-            .insert(addr.clone(), ConnectingEntry { task });
+        connecting_guard.insert(addr.clone(), ConnectingEntry { task });
 
         Ok(())
     }
@@ -719,7 +801,8 @@ impl<I: BleIo> BleTransport<I> {
         }
         let now = tokio::time::Instant::now();
         let observed = self.observed_adverts.lock().await.get(addr).copied();
-        match observed.filter(|entry| now.duration_since(entry.seen_at) <= DIRECT_ADVERT_FRESHNESS) {
+        match observed.filter(|entry| now.duration_since(entry.seen_at) <= DIRECT_ADVERT_FRESHNESS)
+        {
             Some(entry) => {
                 let psm = entry.psm.unwrap_or(configured);
                 if psm != configured {
@@ -938,9 +1021,61 @@ async fn pubkey_exchange<S: BleStream + 'static>(
         .map_err(|e| TransportError::RecvFailed(format!("pubkey exchange: invalid key: {}", e)))
 }
 
-// Beacon loop removed — advertising is now continuous (started once
-// in start_async, stopped in stop_async). BLE advertising overhead
-// is negligible (~0.15% duty cycle on advertising channels).
+/// Keep the join advertisement aligned with actual inbound capacity.
+///
+/// The pool emits a notification on every successful insert/remove. The
+/// periodic tick is only a repair path for platform start/stop failures; it
+/// also makes the controller self-healing if a future mutation forgets to
+/// notify. Scanning and the L2CAP listener remain active while full, allowing
+/// outbound fallback without presenting the node as an inbound join target.
+async fn capacity_advertising_loop<I: BleIo>(
+    io: Arc<I>,
+    pool: Arc<Mutex<ConnectionPool<Arc<I::Stream>>>>,
+    capacity_changed: Arc<tokio::sync::Notify>,
+    stats: Arc<BleStats>,
+    listener_psm: u16,
+    mut advertising: bool,
+) {
+    let mut repair = tokio::time::interval(std::time::Duration::from_secs(1));
+    repair.tick().await;
+    loop {
+        tokio::select! {
+            _ = capacity_changed.notified() => {}
+            _ = repair.tick() => {}
+        }
+
+        let should_advertise = !pool.lock().await.is_full();
+        if should_advertise == advertising {
+            continue;
+        }
+
+        if should_advertise {
+            match io.start_advertising(listener_psm).await {
+                Ok(()) => {
+                    advertising = true;
+                    stats.record_advertisement();
+                    debug!(
+                        psm = listener_psm,
+                        "BLE advertising restored after capacity reopened"
+                    );
+                }
+                Err(e) => {
+                    warn!(error = %e, "failed to restore BLE advertising");
+                }
+            }
+        } else {
+            match io.stop_advertising().await {
+                Ok(()) => {
+                    advertising = false;
+                    debug!("BLE advertising withdrawn at connection capacity");
+                }
+                Err(e) => {
+                    warn!(error = %e, "failed to withdraw BLE advertising at capacity");
+                }
+            }
+        }
+    }
+}
 
 /// Accept loop: accepts inbound L2CAP connections, exchanges pubkeys,
 /// and adds to pool.
@@ -972,6 +1107,18 @@ async fn accept_loop<A>(
                     let pool_guard = pool.lock().await;
                     if pool_guard.contains(&ta) {
                         debug!(addr = %ta, "BLE inbound: already connected, skipping");
+                        continue;
+                    }
+                    // An inbound connection arrived through our join advert.
+                    // Never use that path to evict an established edge: the
+                    // advertiser is withdrawn at capacity, and a stale radio
+                    // sighting is declined cheaply here.
+                    if pool_guard.is_full() {
+                        stats.record_connection_rejected();
+                        debug!(
+                            addr = %ta, role = "peripheral", outcome = "capacity-decline",
+                            "BLE pool full, declining inbound connection before pubkey exchange"
+                        );
                         continue;
                     }
                 }
@@ -1159,6 +1306,20 @@ const MAX_PROBE_BACKOFF_SHIFT: u32 = 5;
 /// bounded too (at most one dial per retry tick, spread over the book).
 const MAX_PENDING_PROBES: usize = 32;
 
+/// Identity aliases learned after pubkey exchange are also attacker-fed and
+/// rotate naturally. Keep enough for the same 20-device/four-alias target as
+/// the PSM cache, while bounding duplicate-suppression state.
+const MAX_KNOWN_NODE_ALIASES: usize = 80;
+
+fn remember_known_node(aliases: &mut HashMap<BleAddr, NodeAddr>, addr: BleAddr, node: NodeAddr) {
+    if !aliases.contains_key(&addr) && aliases.len() >= MAX_KNOWN_NODE_ALIASES {
+        if let Some(victim) = aliases.keys().next().cloned() {
+            aliases.remove(&victim);
+        }
+    }
+    aliases.insert(addr, node);
+}
+
 /// One discovered address awaiting a successful probe.
 #[derive(Debug, Clone)]
 struct PendingProbe {
@@ -1289,7 +1450,8 @@ impl PendingProbes {
 
 /// Combined scan + probe loop.
 ///
-/// Scanner events arrive continuously (both sides advertise continuously).
+/// Scanner events arrive while peers have inbound capacity; a full peer keeps
+/// scanning but withdraws its own join advertisement.
 /// Each scan result is probed immediately unless the address is in cooldown
 /// (recently probed) or already connected. On successful probe, the
 /// connection is promoted directly into the pool (no second L2CAP connect
@@ -1313,7 +1475,7 @@ async fn scan_probe_loop<I: io::BleIo>(
     local_node_addr: Option<NodeAddr>,
     packet_tx: PacketTx,
     transport_id: TransportId,
-    observed_adverts: Arc<Mutex<HashMap<BleAddr, ObservedAdvert>>>,
+    observed_adverts: Arc<Mutex<ObservedAdverts>>,
     outbound_scan_attempts: Arc<Mutex<HashSet<BleAddr>>>,
 ) {
     // Addresses discovered but not yet connected — retried after cooldown even
@@ -1394,6 +1556,18 @@ async fn scan_probe_loop<I: io::BleIo>(
         // Skip if in cooldown, or backed off after consecutive failures
         if !pending.is_due(&addr, now) {
             continue;
+        }
+
+        // Keep the candidate pending but do not spend radio and handshake
+        // capacity when this node cannot retain another discovered link. The
+        // retry timer or a fresh scan result will reconsider it as soon as a
+        // real slot opens. Capacity-aware advertising independently prevents
+        // a full node from presenting itself as an inbound join target.
+        {
+            let pool_guard = pool.lock().await;
+            if !pool_guard.can_accept(false) {
+                continue;
+            }
         }
 
         // Skip an address already known to belong to a peer we are connected
@@ -1511,7 +1685,7 @@ async fn scan_probe_loop<I: io::BleIo>(
                     // address outright instead of paying another connect and
                     // exchange to yield again. The tie-breaker decision itself
                     // is unchanged — only the cost of re-reaching it.
-                    known_node_of.insert(addr.clone(), peer_node);
+                    remember_known_node(&mut known_node_of, addr.clone(), peer_node);
                     let announced = announced_addr(&pool, &peer_node, &addr).await;
                     buffer.add_peer_with_pubkey(&announced, peer_pubkey);
                     continue;
@@ -1541,7 +1715,7 @@ async fn scan_probe_loop<I: io::BleIo>(
                     // Remember what this address resolved to, so the next
                     // cooldown skips it outright rather than paying another
                     // connect and exchange to reach the same conclusion.
-                    known_node_of.insert(addr.clone(), peer_node);
+                    remember_known_node(&mut known_node_of, addr.clone(), peer_node);
                     // Report the peer under the address its live link is on,
                     // so the node layer is not handed an alias with no
                     // connection behind it.
@@ -1574,10 +1748,11 @@ async fn scan_probe_loop<I: io::BleIo>(
                 };
 
                 let mut pool_guard = pool.lock().await;
-                match pool_guard.insert(ta.clone(), conn) {
+                let promoted = match pool_guard.insert(ta.clone(), conn) {
                     Ok(Some(evicted)) => {
                         stats.record_pool_eviction();
                         debug!(addr = %ta, evicted = %evicted, "BLE probe promoted (evicted peer)");
+                        true
                     }
                     Ok(None) => {
                         debug!(
@@ -1585,6 +1760,7 @@ async fn scan_probe_loop<I: io::BleIo>(
                             discovery_ms = probe_started.elapsed().as_millis() as u64,
                             "BLE probe promoted to pool"
                         );
+                        true
                     }
                     Err(e) => {
                         stats.record_connection_rejected();
@@ -1592,15 +1768,19 @@ async fn scan_probe_loop<I: io::BleIo>(
                             addr = %ta, role = "central", outcome = "pool-rejected",
                             error = %e, "BLE pool full, probe connection dropped"
                         );
+                        false
                     }
-                }
+                };
                 drop(pool_guard);
                 outbound_scan_attempts.lock().await.remove(&addr);
-                stats.record_connection_established();
-                pending.resolve(&addr);
+                if promoted {
+                    stats.record_connection_established();
+                    pending.resolve(&addr);
 
-                // Report to node layer for auto-connect / handshake
-                buffer.add_peer_with_pubkey(&addr, peer_pubkey);
+                    // Report to node layer for auto-connect / handshake only
+                    // when the transport actually retained the connection.
+                    buffer.add_peer_with_pubkey(&addr, peer_pubkey);
+                }
             }
             Err(e) => {
                 outbound_scan_attempts.lock().await.remove(&addr);
@@ -1810,6 +1990,32 @@ mod tests {
         assert_eq!(p.next_due(t0), Some(a(1)));
     }
 
+    #[test]
+    fn timed_out_candidate_backs_off_while_an_alternative_and_later_retry_succeed() {
+        let mut p = probes();
+        let t0 = tokio::time::Instant::now();
+        p.observe(&a(7), t0);
+        p.observe(&a(8), t0);
+
+        p.mark_attempt(&a(7), t0);
+        p.record_failure(&a(7), t0);
+        assert_eq!(
+            p.next_due(t0),
+            Some(a(8)),
+            "a timed-out seventh-link candidate must not block another peer",
+        );
+        p.resolve(&a(8));
+
+        let retry_at = t0 + TEST_COOLDOWN;
+        assert_eq!(p.next_due(retry_at), Some(a(7)));
+        p.resolve(&a(7));
+        p.observe(&a(7), retry_at);
+        assert!(
+            p.is_due(&a(7), retry_at),
+            "a later successful outcome must clear the old timeout history",
+        );
+    }
+
     /// Nothing is due when everything is backed off — the tick idles rather
     /// than dialling something it just said it would not.
     #[test]
@@ -1853,6 +2059,37 @@ mod tests {
         p.drop_connected(|addr| addr == &a(1));
         assert_eq!(p.entries.len(), 2);
         assert!(p.position(&a(1)).is_none());
+    }
+
+    #[test]
+    fn hostile_advertisement_aliases_keep_all_native_books_bounded() {
+        let now = tokio::time::Instant::now();
+        let mut observed = ObservedAdverts::default();
+        let mut aliases = HashMap::new();
+        let node = NodeAddr::from_pubkey(
+            &XOnlyPublicKey::from_slice(&test_pubkey(1)).expect("valid test pubkey"),
+        );
+
+        for n in 0..200u16 {
+            let addr = BleAddr::parse(&format!(
+                "ble{}/AA:BB:CC:DD:{:02X}:{:02X}",
+                n / 256,
+                n / 256,
+                n % 256,
+            ))
+            .unwrap();
+            observed.insert(
+                addr.clone(),
+                ObservedAdvert {
+                    psm: Some(0x0085),
+                    seen_at: now + std::time::Duration::from_millis(n.into()),
+                },
+            );
+            remember_known_node(&mut aliases, addr, node);
+        }
+
+        assert_eq!(MAX_OBSERVED_ADVERTS, observed.len());
+        assert_eq!(MAX_KNOWN_NODE_ALIASES, aliases.len());
     }
 
     /// Deterministic x-only pubkey for exchange tests.
@@ -1941,6 +2178,107 @@ mod tests {
         assert_eq!(transport.state(), TransportState::Down);
     }
 
+    #[tokio::test]
+    async fn full_node_withdraws_join_advertisement_and_restores_it_after_disconnect() {
+        let io = MockBleIo::new("hci0", test_addr(1));
+        let (tx, _rx) = tokio::sync::mpsc::channel(16);
+        let config = BleConfig {
+            max_connections: Some(7),
+            protected_discovered_connections: Some(7),
+            scan: Some(false),
+            ..BleConfig::default()
+        };
+        let mut transport = BleTransport::new(TransportId::new(1), None, config, io, tx);
+        transport.start_async().await.unwrap();
+        assert_eq!(transport.io.advertised_psm(), Some(transport.config.psm()));
+
+        let mut peers = Vec::new();
+        for peer_id in 2..=8 {
+            let (stream, peer) = MockBleStream::pair(test_addr(1), test_addr(peer_id), 2048);
+            transport
+                .pool
+                .lock()
+                .await
+                .insert(
+                    test_addr(peer_id).to_transport_addr(),
+                    BleConnection {
+                        stream: Arc::new(stream),
+                        recv_task: None,
+                        send_mtu: 2048,
+                        recv_mtu: 2048,
+                        established_at: tokio::time::Instant::now(),
+                        is_static: false,
+                        addr: test_addr(peer_id),
+                        node_addr: None,
+                    },
+                )
+                .unwrap();
+            peers.push(peer);
+            settle().await;
+            if peer_id < 8 {
+                assert_eq!(
+                    transport.io.advertised_psm(),
+                    Some(transport.config.psm()),
+                    "six direct peers must still advertise the seventh slot",
+                );
+            }
+        }
+        wait_for("seven-peer node to withdraw its join advert", || {
+            transport.io.advertised_psm().is_none()
+        })
+        .await;
+
+        let (rejected_stream, rejected_peer) =
+            MockBleStream::pair(test_addr(1), test_addr(9), 2048);
+        let rejected = transport.pool.lock().await.insert(
+            test_addr(9).to_transport_addr(),
+            BleConnection {
+                stream: Arc::new(rejected_stream),
+                recv_task: None,
+                send_mtu: 2048,
+                recv_mtu: 2048,
+                established_at: tokio::time::Instant::now(),
+                is_static: false,
+                addr: test_addr(9),
+                node_addr: None,
+            },
+        );
+        assert!(
+            rejected.is_err(),
+            "the eighth direct peer must not evict an incumbent"
+        );
+        let pool = transport.pool.lock().await;
+        assert_eq!(7, pool.len());
+        for incumbent in 2..=8 {
+            assert!(pool.contains(&test_addr(incumbent).to_transport_addr()));
+        }
+        drop(pool);
+
+        let eighth_addr = test_addr(9).to_transport_addr();
+        assert!(matches!(
+            transport.connect_async(&eighth_addr).await,
+            Err(TransportError::ConnectionRefused)
+        ));
+        assert_eq!(
+            transport.connection_state_sync(&eighth_addr),
+            ConnectionState::None,
+            "a capacity decline must not leave a phantom dial in progress",
+        );
+
+        transport
+            .pool
+            .lock()
+            .await
+            .remove(&test_addr(2).to_transport_addr());
+        wait_for("join advert to return after capacity reopens", || {
+            transport.io.advertised_psm() == Some(transport.config.psm())
+        })
+        .await;
+
+        transport.stop_async().await.unwrap();
+        drop((peers, rejected_peer));
+    }
+
     #[tokio::test(start_paused = true)]
     async fn test_scan_discovers_peers() {
         let io = MockBleIo::new("hci0", test_addr(1));
@@ -1998,6 +2336,123 @@ mod tests {
             transport.connection_state_sync(&addr),
             ConnectionState::None
         );
+    }
+
+    #[tokio::test]
+    async fn a_fast_platform_failure_clears_the_registered_connect_task() {
+        let io = MockBleIo::new("hci0", test_addr(1));
+        io.set_connect_handler(|_, _| Err(TransportError::ConnectionRefused));
+        let config = BleConfig {
+            scan: Some(false),
+            advertise: Some(false),
+            accept_connections: Some(false),
+            ..BleConfig::default()
+        };
+        let (tx, _rx) = tokio::sync::mpsc::channel(16);
+        let transport = BleTransport::new(TransportId::new(1), None, config, io, tx);
+        let addr = test_addr(2).to_transport_addr();
+
+        transport.connect_async(&addr).await.unwrap();
+        let stats = Arc::clone(&transport.stats);
+        wait_for("the immediate platform failure to complete", || {
+            stats.snapshot().connect_errors == 1
+        })
+        .await;
+
+        assert_eq!(
+            transport.connection_state_sync(&addr),
+            ConnectionState::None
+        );
+        assert!(transport.connecting.lock().await.is_empty());
+        assert!(transport.pool.lock().await.is_empty());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn seventh_link_timeout_preserves_six_then_an_alternative_peer_succeeds() {
+        let io = MockBleIo::new("hci0", test_addr(1));
+        io.set_connect_delay_ms(200);
+        let (peer_tx, _peer_rx) = tokio::sync::mpsc::unbounded_channel();
+        io.set_connect_handler(move |addr, _| {
+            let (ours, peer) = MockBleStream::pair(test_addr(1), addr.clone(), 2048);
+            peer_tx
+                .send(peer)
+                .map_err(|_| TransportError::ConnectionRefused)?;
+            Ok(ours)
+        });
+        let config = BleConfig {
+            max_connections: Some(7),
+            protected_discovered_connections: Some(7),
+            connect_timeout_ms: Some(100),
+            scan: Some(false),
+            advertise: Some(false),
+            accept_connections: Some(false),
+            ..BleConfig::default()
+        };
+        let (tx, _rx) = tokio::sync::mpsc::channel(16);
+        let transport = BleTransport::new(TransportId::new(1), None, config, io, tx);
+        let mut incumbent_peers = Vec::new();
+        for peer_id in 2..=7 {
+            let (stream, peer) = MockBleStream::pair(test_addr(1), test_addr(peer_id), 2048);
+            transport
+                .pool
+                .lock()
+                .await
+                .insert(
+                    test_addr(peer_id).to_transport_addr(),
+                    BleConnection {
+                        stream: Arc::new(stream),
+                        recv_task: None,
+                        send_mtu: 2048,
+                        recv_mtu: 2048,
+                        established_at: tokio::time::Instant::now(),
+                        is_static: false,
+                        addr: test_addr(peer_id),
+                        node_addr: None,
+                    },
+                )
+                .unwrap();
+            incumbent_peers.push(peer);
+        }
+
+        let failed = test_addr(8).to_transport_addr();
+        transport.connect_async(&failed).await.unwrap();
+        settle().await;
+        assert_eq!(
+            transport.connection_state_sync(&failed),
+            ConnectionState::Connecting
+        );
+        tokio::time::advance(std::time::Duration::from_millis(101)).await;
+        settle().await;
+
+        assert_eq!(transport.stats.snapshot().connect_timeouts, 1);
+        assert_eq!(
+            transport.connection_state_sync(&failed),
+            ConnectionState::None
+        );
+        assert_eq!(transport.pool.lock().await.len(), 6);
+        for incumbent in 2..=7 {
+            assert!(
+                transport
+                    .pool
+                    .lock()
+                    .await
+                    .contains(&test_addr(incumbent).to_transport_addr()),
+                "incumbent {incumbent} was displaced by a failed seventh dial",
+            );
+        }
+
+        transport.io.set_connect_delay_ms(0);
+        let alternative = test_addr(9).to_transport_addr();
+        transport.connect_async(&alternative).await.unwrap();
+        settle().await;
+
+        assert_eq!(
+            transport.connection_state_sync(&alternative),
+            ConnectionState::Connected
+        );
+        assert_eq!(transport.pool.lock().await.len(), 7);
+        assert!(!transport.pool.lock().await.contains(&failed));
+        drop(incumbent_peers);
     }
 
     /// Verify that the cross-probe tie-breaker follows the same convention
@@ -2434,7 +2889,10 @@ mod tests {
             },
         );
 
-        assert_eq!(transport.direct_dial_psm(&test_addr(2)).await.unwrap(), 0x00c1);
+        assert_eq!(
+            transport.direct_dial_psm(&test_addr(2)).await.unwrap(),
+            0x00c1
+        );
         assert_eq!(transport.stats.snapshot().dynamic_psm_dials, 1);
     }
 

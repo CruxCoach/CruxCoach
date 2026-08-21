@@ -308,9 +308,19 @@ pub extern "system" fn Java_com_cruxcoach_android_fips_NativeFips_start(
         // be attributed to. It lives in app-private storage.
         config.node.control.enabled = true;
         config.node.control.socket_path = socket_path.to_string_lossy().into_owned();
+        // Seven is an admission ceiling, not a hardware promise. OEM stacks
+        // may refuse an earlier CoC (especially beside the physical board
+        // link); that real dial error stays outside the pool and drives the
+        // bounded per-address fallback. Seven-link capability still requires
+        // validation on each supported device family.
+        let max_ble_connections = max_direct_connections.clamp(1, 7) as usize;
         config.transports.ble = TransportInstances::Single(BleConfig {
             adapter: Some("ble0".into()),
-            max_connections: Some(max_direct_connections.clamp(1, 7) as usize),
+            max_connections: Some(max_ble_connections),
+            // Every retained mobile link is backbone/relay capacity. The 8th
+            // and later join attempts must redirect to another advertising
+            // member, never evict one of this node's established seven.
+            protected_discovered_connections: Some(max_ble_connections),
             // Kotlin cancels an OEM BluetoothSocket connect after 10 seconds.
             // Keep the native waiter slightly longer so it observes that
             // explicit failure instead of leaving an orphaned 30-second dial.

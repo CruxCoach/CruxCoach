@@ -686,6 +686,8 @@ pub struct MockBleIo {
     scan_tx: tokio::sync::mpsc::Sender<ScanAdvert>,
     scan_rx: std::sync::Mutex<Option<tokio::sync::mpsc::Receiver<ScanAdvert>>>,
     connect_handler: std::sync::Mutex<Option<ConnectHandler>>,
+    /// Artificial platform delay before the connect handler runs.
+    connect_delay_ms: std::sync::atomic::AtomicU64,
     /// PSM `listen` reports back, overriding the requested one.
     ///
     /// Simulates a platform that assigns the PSM itself.
@@ -707,6 +709,7 @@ impl MockBleIo {
             scan_tx,
             scan_rx: std::sync::Mutex::new(Some(scan_rx)),
             connect_handler: std::sync::Mutex::new(None),
+            connect_delay_ms: std::sync::atomic::AtomicU64::new(0),
             bound_psm: std::sync::Mutex::new(None),
             advertised_psm: std::sync::Mutex::new(None),
         }
@@ -752,6 +755,12 @@ impl MockBleIo {
             .lock()
             .unwrap_or_else(|e| e.into_inner()) = Some(Box::new(handler));
     }
+
+    /// Delay outbound connects, allowing deterministic timeout tests.
+    pub fn set_connect_delay_ms(&self, delay_ms: u64) {
+        self.connect_delay_ms
+            .store(delay_ms, std::sync::atomic::Ordering::Relaxed);
+    }
 }
 
 impl BleIo for MockBleIo {
@@ -775,6 +784,12 @@ impl BleIo for MockBleIo {
     }
 
     async fn connect(&self, addr: &BleAddr, psm: u16) -> Result<Self::Stream, TransportError> {
+        let delay_ms = self
+            .connect_delay_ms
+            .load(std::sync::atomic::Ordering::Relaxed);
+        if delay_ms > 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+        }
         let handler = self
             .connect_handler
             .lock()
@@ -794,6 +809,10 @@ impl BleIo for MockBleIo {
     }
 
     async fn stop_advertising(&self) -> Result<(), TransportError> {
+        *self
+            .advertised_psm
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = None;
         Ok(())
     }
 

@@ -216,8 +216,9 @@ internal class FipsScanCoalescer(
         const val RSSI_MARGIN_DB = 12
         /** No longer than the join nonce is considered fresh anywhere else. */
         const val GROUP_TTL_MS = DirectJoinProof.MAX_AGE_MS
-        /** A BoardCell is a handful of phones; the bound keeps a noisy or
-         * hostile environment from growing this map. */
-        const val MAX_GROUPS = 16
+        /** Four times the first 20-device field target. The map stays bounded
+         * under hostile advertisements without cycling legitimate candidates
+         * out before a full peer's backoff can redirect the joiner to them. */
+        const val MAX_GROUPS = 80
     }
 }

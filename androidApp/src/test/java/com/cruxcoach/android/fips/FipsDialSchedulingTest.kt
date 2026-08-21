@@ -203,6 +203,40 @@ class FipsScanCoalescerTest {
     }
 
     @Test
+    fun `a twenty device join wave retains every distinct member candidate`() {
+        val coalescer = FipsScanCoalescer()
+
+        repeat(20) { index ->
+            val nonce = "%08x".format(index + 1)
+            val address = "AA:BB:CC:DD:EE:%02X".format(index)
+            assertTrue(
+                coalescer.offer(realm, cell, nonce, address, -50 - index, index.toLong())
+                    is Decision.Deliver,
+            )
+        }
+
+        assertEquals(20, coalescer.trackedMembers())
+    }
+
+    @Test
+    fun `hostile nonce flood cannot grow the scan coalescer past its hard bound`() {
+        val coalescer = FipsScanCoalescer()
+
+        repeat(1_000) { index ->
+            coalescer.offer(
+                realm,
+                cell,
+                "%08x".format(index),
+                "attacker-$index",
+                -10,
+                index.toLong(),
+            )
+        }
+
+        assertEquals(FipsScanCoalescer.MAX_GROUPS, coalescer.trackedMembers())
+    }
+
+    @Test
     fun `matching realm scans remain active after canonical membership`() {
         // FIPS needs both peers to cross-probe so its authenticated node-key
         // tie-breaker can retain exactly one deterministic direction.

@@ -2369,7 +2369,11 @@ class BoardCellManager @Inject constructor(
             val timeoutMs: Long,
         )
         private data class NearbyJoinOutcome(val failedPhase: NearbyJoinPhase?)
-        private const val JOIN_TOTAL_TIMEOUT_MS = 35_000L
+        // A normal join still returns immediately. This is only the outer
+        // failure budget for a simultaneous room-scale wave: after the first
+        // full peer rejects a path, transport backoff and CruxCoach-scoped
+        // scan delivery get enough time to select another advertising member.
+        private const val JOIN_TOTAL_TIMEOUT_MS = 60_000L
         private val JOIN_PHASES = listOf(
             NearbyJoinPhase("advertisement", FipsConnectionStage.ADVERTISEMENT_SEEN, 8_000L),
             NearbyJoinPhase("l2cap_channel", FipsConnectionStage.CHANNEL_OPEN, 12_000L),

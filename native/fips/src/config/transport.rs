@@ -728,6 +728,11 @@ pub struct BleConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_connections: Option<usize>,
 
+    /// Number of the oldest discovered BLE links protected from dynamic
+    /// replacement when the pool is full. Default: 0 (legacy behaviour).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub protected_discovered_connections: Option<usize>,
+
     /// Outbound connect timeout in milliseconds. Default: 10000.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub connect_timeout_ms: Option<u64>,
@@ -773,6 +778,11 @@ impl BleConfig {
     /// Get the maximum concurrent connections. Default: 7.
     pub fn max_connections(&self) -> usize {
         self.max_connections.unwrap_or(DEFAULT_BLE_MAX_CONNECTIONS)
+    }
+
+    /// How many oldest discovered links form the stable backbone.
+    pub fn protected_discovered_connections(&self) -> usize {
+        self.protected_discovered_connections.unwrap_or(0)
     }
 
     /// Get the connect timeout in milliseconds. Default: 10000.
