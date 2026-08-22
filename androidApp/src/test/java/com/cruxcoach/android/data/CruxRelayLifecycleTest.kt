@@ -79,10 +79,16 @@ class CruxRelayLifecycleTest {
     private val meshPeers = MutableStateFlow<Set<String>>(emptySet())
     private val connectionEvents = MutableSharedFlow<GattConnectionEvent>(extraBufferCapacity = 8)
     private var guests = 0
-    /** Wall clock the manager reads, so the grace window can really expire. */
-    private var clockMs = 10_000L
+    /** Wall clock the manager reads. */
+    private var clockMs = 1_786_968_000_000L
+    /** Monotonic clock the grace deadline is measured on. */
+    private var monotonicClockMs = 10_000L
+    /** Set to block the canonical claim publication mid-reconcile. */
+    private var claimGate: kotlinx.coroutines.CompletableDeferred<Unit>? = null
+    private var advertisingFails = false
     private var advertisingCalls = 0
     private var advertisingStopped = 0
+    private val claims = mutableListOf<com.cruxcoach.android.boardcell.BoardCellRelayState>()
 
     private lateinit var relayServer: RelayGattServer
     private lateinit var advertiser: ClimbBleAdvertiser
@@ -121,7 +127,10 @@ class CruxRelayLifecycleTest {
             coEvery { start() } returns true
         }
         advertiser = mockk(relaxed = true) {
-            coEvery { startRelayAdvertising() } answers { advertisingCalls++; "started" }
+            coEvery { startRelayAdvertising() } answers {
+                advertisingCalls++
+                if (advertisingFails) "failed" else "started"
+            }
             coEvery { awaitRelayAdvertisingStart() } returns AdvertisingSetCallback.ADVERTISE_SUCCESS
             every { stopRelayAdvertising() } answers { advertisingStopped++ }
         }
@@ -135,6 +144,14 @@ class CruxRelayLifecycleTest {
             every { snapshot() } answers { this@CruxRelayLifecycleTest.snapshots.value }
             every { localNodeId() } returns me
             every { membershipTransition } returns MutableStateFlow(MeshMembershipTransition.IDLE)
+            // The claim travels through the coordinator and the mesh, so it
+            // suspends — and a test can hold it there to see what the relay is
+            // doing meanwhile.
+            coEvery { publishRelayState(any()) } coAnswers {
+                claims += firstArg<com.cruxcoach.android.boardcell.BoardCellRelayState>()
+                claimGate?.await()
+                true
+            }
         }
         val meshRuntime = mockk<FipsMeshRuntime>(relaxed = true) {
             every { directAuthenticatedPeers } returns meshPeers
@@ -151,6 +168,7 @@ class CruxRelayLifecycleTest {
             boardRepository = mockk<BoardRepository>(relaxed = true),
             fipsMeshRuntime = meshRuntime,
             nowMs = { clockMs },
+            monotonicMs = { monotonicClockMs },
         )
     }
 
@@ -276,7 +294,7 @@ class CruxRelayLifecycleTest {
         assertFalse(manager.state.value.advertising)
 
         // Now the window really passes, and the re-check finds a departure.
-        clockMs += CruxRelayOwnershipPolicy.GRACE_MS + 1_000
+        monotonicClockMs += CruxRelayOwnershipPolicy.GRACE_MS
         advanceUntilIdle()
 
         assertFalse(manager.state.value.advertising)
@@ -293,6 +311,107 @@ class CruxRelayLifecycleTest {
 
         assertFalse(manager.state.value.enabled)
         assertEquals(RelaySuppression.NOT_CONTROLLER, manager.state.value.suppression)
+        io.mockk.coVerify(atLeast = 1) { relayServer.stop() }
+    }
+
+    // ── The invitation is withdrawn before anything that waits ────────────
+
+    /**
+     * The blocker: the claim publication suspends, and it used to run *before*
+     * the advertisement came down. A slow or stuck mesh therefore left a relay
+     * that had just lost its board sitting there connectable.
+     */
+    @Test
+    fun `a board loss withdraws the offer even while the claim is still publishing`() =
+        runTest(dispatcher) {
+            startOffering()
+            assertTrue(manager.state.value.advertising)
+
+            // Hold the canonical publication open for the rest of the test.
+            claimGate = kotlinx.coroutines.CompletableDeferred()
+            connectionState.value = ConnectionState.DISCONNECTED
+            runCurrent()
+
+            assertFalse("nothing may still be inviting guests", manager.state.value.advertising)
+            assertFalse(
+                "and nothing may be accepted from one who got in",
+                manager.mayAcknowledgeInboundWrite(),
+            )
+        }
+
+    /** The same for a full relay: no room means no invitation, publish or not. */
+    @Test
+    fun `a full relay withdraws the offer before publishing`() = runTest(dispatcher) {
+        meshPeers.value = (1..5).map { "peer-$it" }.toSet()
+        startOffering()
+
+        claimGate = kotlinx.coroutines.CompletableDeferred()
+        guests = 1
+        connectionEvents.emit(GattConnectionEvent.Connected("GG:11"))
+        runCurrent()
+
+        assertFalse(manager.state.value.advertising)
+    }
+
+    // ── What the cell is told ─────────────────────────────────────────────
+
+    /** A claim says "offered" only when an advertisement is genuinely out. */
+    @Test
+    fun `an advertising start failure is retracted canonically`() = runTest(dispatcher) {
+        advertisingFails = true
+
+        startOffering()
+
+        assertFalse(manager.state.value.advertising)
+        assertTrue("the cell was told something", claims.isNotEmpty())
+        assertTrue(
+            "and never that a relay is on offer",
+            claims.none { it.offered },
+        )
+    }
+
+    @Test
+    fun `a live advertisement is published as offered`() = runTest(dispatcher) {
+        startOffering()
+
+        assertTrue(manager.state.value.advertising)
+        assertTrue(claims.any { it.offered })
+    }
+
+    // ── The grace window is a ceiling ─────────────────────────────────────
+
+    /**
+     * Eight seconds is the contract's maximum, so at eight seconds the board
+     * is gone. The previous check was scheduled at 8 s + 250 ms and measured
+     * against the wall clock, which could be stepped either way underneath it.
+     */
+    @Test
+    fun `the board is lost at exactly eight seconds, not later`() = runTest(dispatcher) {
+        startOffering()
+
+        connectionState.value = ConnectionState.DISCONNECTED
+        runCurrent()
+
+        // One millisecond short: still a blip.
+        monotonicClockMs += CruxRelayOwnershipPolicy.GRACE_MS - 1
+        assertEquals(
+            RelayBoardLinkHealth.GRACE,
+            CruxRelayOwnershipPolicy.health(
+                ConnectionState.DISCONNECTED, CruxRelayOwnershipPolicy.GRACE_MS - 1,
+            ),
+        )
+        io.mockk.coVerify(exactly = 0) { relayServer.stop() }
+
+        // At the deadline: gone, and the relay is down.
+        monotonicClockMs += 1
+        advanceUntilIdle()
+
+        assertEquals(
+            RelayBoardLinkHealth.LOST,
+            CruxRelayOwnershipPolicy.health(
+                ConnectionState.DISCONNECTED, CruxRelayOwnershipPolicy.GRACE_MS,
+            ),
+        )
         io.mockk.coVerify(atLeast = 1) { relayServer.stop() }
     }
 }

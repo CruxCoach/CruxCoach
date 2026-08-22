@@ -115,7 +115,14 @@ object CruxRelayOwnershipPolicy {
      */
     const val GUARANTEED_GUEST_SLOT = FipsMeshRuntime.RELAY_GUEST_RESERVE
 
-    /** Long enough for an OEM reconnect, short enough not to strand a guest. */
+    /**
+     * Long enough for an OEM reconnect, short enough not to strand a guest.
+     *
+     * A ceiling, not a target: at exactly this many milliseconds the link is
+     * gone. Measured on a monotonic clock, because a wall clock can be stepped
+     * by NTP or a timezone change and would hand out a grace window of an
+     * arbitrary length in either direction.
+     */
     const val GRACE_MS = 8_000L
 
     fun health(
@@ -127,6 +134,8 @@ object CruxRelayOwnershipPolicy {
         // would make a relay tear itself down in the middle of relaying.
         connectionState == ConnectionState.CONNECTED ||
             connectionState == ConnectionState.SENDING -> RelayBoardLinkHealth.HEALTHY
+        // Strictly inside the window. At the deadline itself the board is lost,
+        // so the contractual "at most eight seconds" is exactly that.
         msSinceBoardLinkLost != null && msSinceBoardLinkLost < graceMs -> RelayBoardLinkHealth.GRACE
         else -> RelayBoardLinkHealth.LOST
     }

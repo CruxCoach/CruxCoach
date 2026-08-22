@@ -118,6 +118,16 @@ class CruxRelayManager(
      * fast-forwards virtual time only. Production passes the real clock.
      */
     private val nowMs: () -> Long = System::currentTimeMillis,
+    /**
+     * Monotonic clock for the grace deadline.
+     *
+     * Separate from [nowMs] on purpose: the wall clock can be stepped by NTP
+     * or a timezone change, and a grace window measured against it can come
+     * out arbitrarily long — or negative. `elapsedRealtime` only ever moves
+     * forward, and keeps counting while the device sleeps, which is exactly
+     * the property a "the board has been gone for N seconds" question needs.
+     */
+    private val monotonicMs: () -> Long = android.os.SystemClock::elapsedRealtime,
 ) {
     companion object {
         private const val TAG = "CruxRelay/Manager"
@@ -188,6 +198,8 @@ class CruxRelayManager(
 
     private val lifecycleMutex = kotlinx.coroutines.sync.Mutex()
     private var lifecycle = RelayLifecycle.STOPPED
+    /** Whether guest writes are currently admitted; see [withdrawOfferNow]. */
+    private var admissionOpen = false
     private val running get() = lifecycle != RelayLifecycle.STOPPED
     private var forwardJob: Job? = null
     private var eventJob: Job? = null
@@ -238,7 +250,7 @@ class CruxRelayManager(
 
     private fun boardHealth(): RelayBoardLinkHealth = CruxRelayOwnershipPolicy.health(
         connectionState = bleConnection.connectionState.value,
-        msSinceBoardLinkLost = boardLinkLostAtMs?.let { nowMs() - it },
+        msSinceBoardLinkLost = boardLinkLostAtMs?.let { monotonicMs() - it },
     )
 
     /**
@@ -301,6 +313,13 @@ class CruxRelayManager(
                 suppression = (offer as? RelayOffer.Suppressed)?.reason,
             )
         }
+        // Withdraw first, publish second — and never the other way round.
+        // Publishing the claim suspends (it commits through the coordinator and
+        // travels the mesh), and a relay that is no longer entitled to guests
+        // must not stay connectable for however long that takes. Nothing here
+        // waits on anything: stopping the advertisement and closing write
+        // admission are local and immediate.
+        if (!required || offer is RelayOffer.Serving) withdrawOfferNow()
         publishRelayClaim(offer)
         if (required && !BlePermissionHelper.hasAdvertisingPermission(context)) {
             if (running) stopRelay()
@@ -368,11 +387,16 @@ class CruxRelayManager(
         if (state == ConnectionState.CONNECTED || state == ConnectionState.SENDING) {
             boardLinkLostAtMs = null
         } else if (boardLinkLostAtMs == null) {
-            boardLinkLostAtMs = nowMs()
-            // Come back once the window is over, so an offer that is merely
-            // withdrawn becomes a relay that is properly stopped.
+            boardLinkLostAtMs = monotonicMs()
+            // Come back exactly at the deadline, so an offer that is merely
+            // withdrawn becomes a relay that is properly stopped. Not a
+            // millisecond later: eight seconds is the contractual ceiling for
+            // how long a guest may sit in front of a wall this device can no
+            // longer reach, and `delay` plus the deadline check both read the
+            // same monotonic clock.
+            val deadline = boardLinkLostAtMs!! + CruxRelayOwnershipPolicy.GRACE_MS
             scope.launch {
-                delay(CruxRelayOwnershipPolicy.GRACE_MS + 250)
+                delay((deadline - monotonicMs()).coerceAtLeast(0))
                 reconcile()
             }
         }
@@ -395,6 +419,7 @@ class CruxRelayManager(
                 // Answered on the GATT thread: only the board path, and
                 // only what this device can know without asking anything.
                 relayServer.admitWrite = { mayAcknowledgeInboundWrite() }
+                admissionOpen = true
                 inboundGate.reset()
                 startRelay()
             }
@@ -420,9 +445,22 @@ class CruxRelayManager(
     private suspend fun matchAdvertisementToCapacity() {
         val free = currentRelaySlots()
         when {
-            free <= 0 -> stopAdvertisingOffer()
-            !advertisingOffer -> restartRelayAdvertising()
+            free <= 0 -> withdrawOfferNow()
+            !advertisingOffer -> {
+                restartRelayAdvertising()
+                if (advertisingOffer && !admissionOpen) reopenAdmission()
+            }
+            !admissionOpen -> reopenAdmission()
         }
+        // Whatever the advertisement ended up doing, the cell is told the
+        // truth about it — including a failed start, which retracts the claim
+        // rather than leaving a canonical invitation standing.
+        publishRelayClaim(currentOffer())
+    }
+
+    private fun reopenAdmission() {
+        relayServer.admitWrite = { mayAcknowledgeInboundWrite() }
+        admissionOpen = true
     }
 
     /**
@@ -437,8 +475,58 @@ class CruxRelayManager(
     private suspend fun publishRelayClaim(offer: RelayOffer) {
         val snapshot = boardCellManager.snapshot() ?: return
         if (snapshot.controllerId != boardCellManager.localNodeId()) return
+        // `offered` is what a member acts on — "there is a connectable relay
+        // over there" — so it comes from the advertisement being out, not from
+        // this device's intention to put one out. Publishing the intention
+        // meant a permission failure or an advertising error left the cell
+        // holding a canonical invitation to a relay that was never there.
         val claim = CruxRelayOwnershipPolicy.claimFor(snapshot, offer, boardHealth())
+            .copy(offered = advertisingOffer)
         boardCellManager.publishRelayState(claim)
+    }
+
+    /**
+     * Stop inviting guests, immediately and without suspending.
+     *
+     * Both halves of the invitation go together: the advertisement a stranger
+     * scans for, and the admission that would accept their write if they got
+     * in anyway. Anything that waits belongs after this, not before it.
+     */
+    private fun withdrawOfferNow() {
+        stopAdvertisingOffer()
+        relayServer.admitWrite = { false }
+    }
+
+    /**
+     * The intention this guest write belongs to.
+     *
+     * Canonical state is consulted first and this device's memory not at all:
+     * the record of an open request is replicated precisely so that a
+     * controller which has never seen the write can still recognise the retry.
+     * Nothing open means this is a new intention, which is exactly what a
+     * second guest, or the same guest asking again later, is.
+     */
+    private fun intentFor(
+        climbUuid: String,
+        angle: Int,
+        framesHash: Long,
+        deviceAddress: String,
+        nowEpochMs: Long,
+    ): RelayInboundGate.Operation {
+        val fingerprint = RelayIngressIdentity.fingerprint(
+            cellId = boardCellManager.snapshot()?.cellId?.value.orEmpty(),
+            climbUuid = climbUuid,
+            angle = angle,
+            framesHash = framesHash,
+        )
+        val guest = RelayIngressIdentity.guestKey(deviceAddress)
+        val connected = relayServer.connectedAddresses()
+            .map { RelayIngressIdentity.guestKey(it) }
+            .toSet()
+        val open = boardCellManager.playlist()?.let {
+            RelayIngressIdentity.openIntent(it, fingerprint, guest, nowEpochMs, connected)
+        }
+        return open ?: RelayIngressIdentity.newIntent(fingerprint, guest, nowEpochMs)
     }
 
     /**
@@ -461,8 +549,15 @@ class CruxRelayManager(
     /** The canonical answer arrived: terminal on success, retryable otherwise. */
     private fun settleOperation(operation: RelayInboundGate.Operation, committed: Boolean) {
         val at = nowMs()
-        if (committed) inboundGate.markLanded(operation, at)
-        else inboundGate.markFailed(operation, at)
+        if (committed) {
+            inboundGate.markLanded(operation, at)
+            // Landed is canonical as well: it is what tells a later controller
+            // that this request is finished, so an identical write after the
+            // window is a new intention rather than a retry of a live one.
+            gattBridge.recordRelayIntent(operation.copy(stampedAtEpochMs = at, landed = true))
+        } else {
+            inboundGate.markFailed(operation, at)
+        }
     }
 
     /** Slots the radio can actually spare right now, for the GATT server. */
@@ -547,18 +642,17 @@ class CruxRelayManager(
                         runCatching { boardRepository.getClimbByUuid(it.climbUuid, it.angle) }.getOrNull()
                     }
                     val now = nowMs()
-                    // Derived, not minted: the cell, the climb and the hold
-                    // data decide the ids, so whichever controller ends up
-                    // serving this write computes the same pair. The guest's
-                    // BLE address is deliberately not part of it — it rotates,
-                    // and a reconnecting guest is the same person.
+                    // One intention, one nonce — and the intention is looked
+                    // up in canonical state, not in this device's memory. A
+                    // controller that has just taken the board over finds the
+                    // guest's open request there and reuses its ids; two
+                    // guests sending the same climb do not collide, because
+                    // the guest is part of what "the same request" means; and
+                    // a genuine re-send later finds nothing open and starts a
+                    // new occurrence, which is what it is.
                     val operation = identified?.let {
-                        RelayIngressIdentity.of(
-                            cellId = boardCellManager.snapshot()?.cellId?.value.orEmpty(),
-                            climbUuid = it.climbUuid,
-                            angle = it.angle,
-                            framesHash = inbound.climb.framesHash,
-                        )
+                        intentFor(it.climbUuid, it.angle, inbound.climb.framesHash,
+                            inbound.deviceAddress, now)
                     }
                     val decision = inboundGate.evaluate(
                         mode = userPreferences.relayInboundClimbMode.first(),
@@ -581,6 +675,7 @@ class CruxRelayManager(
                             _state.update { it.copy(inboundRefusal = decision.reason) }
                         }
                         is RelayInboundGate.Decision.AppendToEnd -> {
+                            gattBridge.recordRelayIntent(decision.operation)
                             // The wall keeps what it has; the climb joins the
                             // end of the list like any other add — under the
                             // occurrence id decided at ingress, so a repeat of
@@ -614,6 +709,11 @@ class CruxRelayManager(
                                 return@collect
                             }
                             _state.update { it.copy(inboundRefusal = null) }
+                            // Before the wall is touched: a handover in the
+                            // middle of this write must find the intention
+                            // already in canonical state, or the successor
+                            // would mint a second one for the retry.
+                            gattBridge.recordRelayIntent(decision.operation)
                             val result = boardCellManager.projectExternal(
                                 boardWrite = { bleConnection.sendRawChunks(inbound.climb.chunks) },
                                 identify = { identified },
@@ -750,6 +850,7 @@ class CruxRelayManager(
     private suspend fun stopRelay() {
         if (!running) return
         lifecycle = RelayLifecycle.STOPPED
+        admissionOpen = false
         forwardJob?.cancel(); forwardJob = null
         eventJob?.cancel(); eventJob = null
         identifyJob?.cancel(); identifyJob = null

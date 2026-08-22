@@ -1,54 +1,117 @@
 package com.cruxcoach.android.data
 
+import com.cruxcoach.android.boardcell.BoardPlaylistEntryId
+import com.cruxcoach.android.boardcell.BoardRelayOperation
+import com.cruxcoach.android.boardcell.BoardPlaylistState
 import java.security.MessageDigest
 import java.util.Locale
 
 /**
- * The identity of one relayed guest write, derived rather than remembered.
+ * The identity of one relayed guest write.
  *
- * A guest's climb becomes an operation on the board and an occurrence on the
- * shared list, and both need an id that is the same on every device that could
- * end up serving the write. A locally minted id cannot be: the successor after
- * a controller handover runs its own `CruxRelayManager` with its own ledger,
- * and would mint a second pair for the retry the guest is about to send —
- * which is exactly how one write became two occurrences.
+ * Two things have to be true at once, and the first two attempts each got one
+ * of them:
  *
- * So the ids are a pure function of what the write *is*: the cell it is being
- * relayed into, the climb and angle it resolved to, and the hash of the hold
- * data itself. Every controller in that cell derives the same pair from the
- * same bytes, without transferring anything and without a lease to lose.
+ *  - **A retry is the same operation.** A guest's app re-sending, a reconnect,
+ *    or a controller handover mid-write must all converge on one occurrence.
+ *    Minting the id locally (pass 6) failed this: the successor after a
+ *    handover has its own manager and would mint a second one.
+ *  - **A new intention is a new operation.** Two guests sending the same climb
+ *    are two people asking for it, and one guest sending it again an hour
+ *    later is asking for another go. Deriving the id from the content (pass 7)
+ *    failed this: identical bytes collapsed into one occurrence forever.
  *
- * Deliberately **not** part of the input:
+ * So the id is a **nonce, minted once per intention**, and the *record* of that
+ * intention is replicated in canonical state. A controller that has never seen
+ * the write looks the intention up in the shared playlist and reuses its ids;
+ * a write with no matching intention starts a new one.
  *
- *  - the guest's BLE address, which rotates and changes on a reconnect — the
- *    same person re-sending after a reconnect is the same operation;
- *  - anything local to a device, a process or a moment, which is what made the
- *    previous version look right in a test and fail in production.
+ * The fingerprint is what "the same write" means — the cell, the climb, the
+ * angle and the hold data — and the guest key is what "the same person" means.
+ * Both are needed: without the guest, two people collapse into one occurrence;
+ * without the content, a guest's *second, different* climb would be mistaken
+ * for a retry of their first.
  */
 object RelayIngressIdentity {
 
     /**
-     * @param cellId scopes the identity to one board's cell, so the same climb
-     *   relayed to two different walls is two operations.
-     * @param framesHash the reassembler's hold-data hash: insensitive to
-     *   re-chunking, sensitive to a changed hold.
+     * How long an intention stays open for a retry.
+     *
+     * Past this, a write that looks identical is somebody asking again rather
+     * than the same request arriving twice, and guessing wrong in that
+     * direction is the harmless one: an occurrence somebody wanted.
      */
-    fun of(
-        cellId: String,
-        climbUuid: String,
-        angle: Int,
-        framesHash: Long,
-    ): RelayInboundGate.Operation {
-        val fingerprint = "relay|$cellId|${climbUuid.lowercase(Locale.ROOT)}|$angle|$framesHash"
-        val digest = MessageDigest.getInstance("SHA-256")
-            .digest(fingerprint.toByteArray(Charsets.UTF_8))
-            .joinToString("") { "%02x".format(it) }
-        return RelayInboundGate.Operation(
-            operationId = "relay-op-${digest.substring(0, 32)}",
-            // Well inside MAX_ENTRY_ID_LENGTH, and prefixed so an occurrence a
-            // guest caused is recognisable in a log without a lookup.
-            entryId = "rl${digest.substring(32, 62)}",
-            fingerprint = fingerprint,
-        )
+    const val INTENT_TTL_MS = 10 * 60_000L
+
+    /**
+     * What the wire and the hash carry for one guest write.
+     *
+     * Deliberately not the raw address: a hash of it is enough to tell two
+     * guests apart, and the cell has no business replicating the BLE addresses
+     * of people who are not even in it.
+     */
+    fun fingerprint(cellId: String, climbUuid: String, angle: Int, framesHash: Long): String =
+        digest("relay|$cellId|${climbUuid.lowercase(Locale.ROOT)}|$angle|$framesHash").take(32)
+
+    fun guestKey(deviceAddress: String): String = digest("guest|$deviceAddress").take(16)
+
+    /**
+     * The intention this write belongs to, from canonical state.
+     *
+     * Null when there is none — which is the signal to start one. A landed
+     * record past [INTENT_TTL_MS] is deliberately *not* a match: the request it
+     * recorded is finished, so an identical write after it is a new one.
+     *
+     * [connectedGuestKeys] is what makes a reconnect distinguishable from a
+     * second guest. A central's BLE address rotates, so the same person coming
+     * back looks like somebody new; but if the only open request for these
+     * exact bytes belongs to a guest who is no longer attached, there is
+     * nobody else it could be. Two guests both connected keep their own
+     * intentions, because both keys are live and neither is adopted.
+     *
+     * Where it genuinely cannot be told — two matching open requests, or the
+     * original guest still attached — a new intention is started. That is the
+     * safe direction: an extra occurrence somebody asked for, rather than two
+     * people's requests merged into one.
+     */
+    fun openIntent(
+        playlist: BoardPlaylistState,
+        fingerprint: String,
+        guestKey: String,
+        nowEpochMs: Long,
+        connectedGuestKeys: Set<String> = emptySet(),
+    ): BoardRelayOperation? {
+        fun live(record: BoardRelayOperation) =
+            record.fingerprint == fingerprint &&
+                (!record.landed || nowEpochMs - record.stampedAtEpochMs < INTENT_TTL_MS)
+
+        playlist.relayOperations.firstOrNull { live(it) && it.guestKey == guestKey }
+            ?.let { return it }
+
+        val orphaned = playlist.relayOperations.filter {
+            live(it) && !it.landed && it.guestKey !in connectedGuestKeys &&
+                nowEpochMs - it.stampedAtEpochMs < INTENT_TTL_MS
+        }
+        // Exactly one, or it is a guess rather than a deduction.
+        return orphaned.singleOrNull()?.copy(guestKey = guestKey)
     }
+
+    /** A fresh intention: random ids, so nothing about it is guessable. */
+    fun newIntent(
+        fingerprint: String,
+        guestKey: String,
+        nowEpochMs: Long,
+        newId: () -> String = BoardPlaylistEntryId::random,
+    ): BoardRelayOperation = BoardRelayOperation(
+        fingerprint = fingerprint,
+        guestKey = guestKey,
+        operationId = "relay-op-${newId()}",
+        entryId = "rl${newId().take(30)}",
+        stampedAtEpochMs = nowEpochMs,
+    )
+
+    private fun digest(value: String): String =
+        MessageDigest.getInstance("SHA-256")
+            .digest(value.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
 }

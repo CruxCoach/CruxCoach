@@ -717,11 +717,14 @@ class SharedPlaylistMeshTest {
         val gate = com.cruxcoach.android.data.RelayInboundGate()
 
         /**
-         * A guest write arriving at this host.
+         * A guest write arriving at this host, exactly as `CruxRelayManager`
+         * handles one: the intention is looked up in **canonical state**, and
+         * only minted when there is none open.
          *
-         * [guestAddress] is passed and deliberately unused in the identity: a
-         * reconnecting guest gets a different BLE address, and the same person
-         * re-sending the same climb has to remain the same operation.
+         * That is what carries a retry across a handover — the successor has
+         * its own gate and has never seen the write, but the cell has the
+         * record — and what keeps two guests apart, because the guest is part
+         * of what "the same request" means.
          */
         fun ingest(
             climbUuid: String,
@@ -730,12 +733,18 @@ class SharedPlaylistMeshTest {
             nowMs: Long,
             guestAddress: String,
         ): com.cruxcoach.android.data.RelayInboundGate.Decision {
-            val cellId = node.snapshot().cellId.value
-            val operation = com.cruxcoach.android.data.RelayIngressIdentity.of(
-                cellId = cellId, climbUuid = climbUuid, angle = angle, framesHash = framesHash,
+            val identity = com.cruxcoach.android.data.RelayIngressIdentity
+            val fingerprint = identity.fingerprint(
+                cellId = node.snapshot().cellId.value,
+                climbUuid = climbUuid, angle = angle, framesHash = framesHash,
             )
-            require(guestAddress.isNotBlank())
+            val guestKey = identity.guestKey(guestAddress)
             val playlist = node.playlist()
+            // Nobody is attached to this host in the test harness, so a
+            // reconnecting guest's orphaned intention is adoptable — which is
+            // the production case this models: the old address is gone.
+            val operation = identity.openIntent(playlist, fingerprint, guestKey, nowMs, emptySet())
+                ?: identity.newIntent(fingerprint, guestKey, nowMs)
             val projection = node.snapshot().projection
             val landed = playlist.currentEntryId == operation.entryId &&
                 playlist.entry(operation.entryId) != null &&
@@ -750,6 +759,14 @@ class SharedPlaylistMeshTest {
                 operation = operation,
                 canonicallyLanded = landed,
             )
+        }
+
+        /** What the manager does the moment the gate accepts. */
+        suspend fun publishIntent(operation: com.cruxcoach.android.data.RelayInboundGate.Operation) {
+            node.commitLocally(node.compose(
+                "intent-${operation.entryId}",
+                *BoardPlaylistOps.recordRelayOperation(operation).toTypedArray(),
+            ))
         }
     }
 
@@ -768,10 +785,11 @@ class SharedPlaylistMeshTest {
         val writes = mutableListOf<String>()
 
         val operation = operationOf(
-            host.ingest("climb-guest", 40, framesHash = 77L, nowMs = 1_000, guestAddress = "AA:01"),
+            host.ingest("climb-guest", 40, framesHash = 77L, nowMs = wallClock, guestAddress = "AA:01"),
         )
+        host.publishIntent(operation)
         assertTrue(host.node.relayGuestWrite(operation, "climb-guest", 40, writes))
-        host.gate.markLanded(operation, 1_000)
+        host.gate.markLanded(operation, wallClock)
         network.deliver()
 
         network.assertConverged()
@@ -797,10 +815,11 @@ class SharedPlaylistMeshTest {
         val writes = mutableListOf<String>()
 
         val operation = operationOf(
-            oldHost.ingest("climb-guest", 40, framesHash = 77L, nowMs = 1_000, guestAddress = "AA:01"),
+            oldHost.ingest("climb-guest", 40, framesHash = 77L, nowMs = wallClock, guestAddress = "AA:01"),
         )
+        oldHost.publishIntent(operation)
         assertTrue(old.relayGuestWrite(operation, "climb-guest", 40, writes))
-        oldHost.gate.markLanded(operation, 1_000)
+        oldHost.gate.markLanded(operation, wallClock)
         network.deliver()
 
         old.coordinator.prepareHandover(board, "nokia", network.monotonic, "transfer-0001")
@@ -818,7 +837,7 @@ class SharedPlaylistMeshTest {
         // and re-sent the same climb, and the successor's gate has never heard
         // of any of it.
         val retryDecision = newHost.ingest(
-            "climb-guest", 40, framesHash = 77L, nowMs = 2_500, guestAddress = "BB:02",
+            "climb-guest", 40, framesHash = 77L, nowMs = wallClock + 2_500, guestAddress = "BB:02",
         )
         // The cell itself says it already landed, which is the ACK state the
         // successor's own ledger cannot have: no second write to the wall.
@@ -855,10 +874,13 @@ class SharedPlaylistMeshTest {
         val writes = mutableListOf<String>()
 
         val first = operationOf(
-            oldHost.ingest("climb-guest", 40, framesHash = 77L, nowMs = 1_000, guestAddress = "AA:01"),
+            oldHost.ingest("climb-guest", 40, framesHash = 77L, nowMs = wallClock, guestAddress = "AA:01"),
         )
-        // The board refused it; nothing canonical happened.
-        oldHost.gate.markFailed(first, 1_100)
+        // The intention is canonical before the wall is touched; the write
+        // itself then failed, so nothing else about it is.
+        oldHost.publishIntent(first)
+        network.deliver()
+        oldHost.gate.markFailed(first, wallClock + 100)
 
         old.coordinator.prepareHandover(board, "nokia", network.monotonic, "transfer-0002")
         network.deliver()
@@ -872,9 +894,15 @@ class SharedPlaylistMeshTest {
         assertEquals("nokia", nokia.snapshot().controllerId)
 
         val retry = operationOf(
-            newHost.ingest("climb-guest", 40, framesHash = 77L, nowMs = 2_500, guestAddress = "BB:02"),
+            newHost.ingest("climb-guest", 40, framesHash = 77L, nowMs = wallClock + 2_500, guestAddress = "BB:02"),
         )
-        assertEquals("the successor derives the same identity", first, retry)
+        // The ids are what the wall and the list are addressed by, and they
+        // survive: the successor adopted the intention the cell was carrying.
+        // The guest key is rebound to the address they came back on, which is
+        // the point — it is how the next retry is recognised too.
+        assertEquals("the successor serves the same operation", first.operationId, retry.operationId)
+        assertEquals("and the same occurrence", first.entryId, retry.entryId)
+        assertNotEquals("under the address they reconnected with", first.guestKey, retry.guestKey)
         assertTrue(nokia.relayGuestWrite(retry, "climb-guest", 40, writes))
         network.deliver()
 
@@ -892,8 +920,9 @@ class SharedPlaylistMeshTest {
         val writes = mutableListOf<String>()
 
         val operation = operationOf(
-            host.ingest("climb-guest", 40, framesHash = 77L, nowMs = 1_000, guestAddress = "AA:01"),
+            host.ingest("climb-guest", 40, framesHash = 77L, nowMs = wallClock, guestAddress = "AA:01"),
         )
+        host.publishIntent(operation)
         assertTrue(host.node.relayGuestWrite(operation, "climb-guest", 40, writes))
         assertTrue(host.node.relayGuestWrite(operation, "climb-guest", 40, writes))
         network.deliver()

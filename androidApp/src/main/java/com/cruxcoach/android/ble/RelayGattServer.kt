@@ -311,6 +311,9 @@ class RelayGattServer(private val context: Context) {
 
     fun getConnectedCount(): Int = synchronized(lock) { connectedDevices.size }
 
+    /** Who is attached right now — used to tell a reconnect from a second guest. */
+    fun connectedAddresses(): Set<String> = synchronized(lock) { connectedDevices.toSet() }
+
     @SuppressLint("MissingPermission")
     private fun checkForStaleConnections() {
         val manager = bluetoothManager ?: return

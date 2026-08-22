@@ -48,17 +48,15 @@ class RelayInboundGate(
     /**
      * One guest write, from arrival to wall.
      *
-     * Both ids are decided before the first byte goes out, and they are not
-     * decided *here*: [RelayIngressIdentity] derives them from the write
-     * itself, so every controller in the cell computes the same pair. This
-     * class only tracks what has happened to the operation — which is state a
-     * device may lose without the operation losing its identity.
+     * The ids are decided before the first byte goes out, and they are not
+     * decided *here*: a nonce is minted once per intention and the record of
+     * it is replicated in canonical state, so a controller that takes the
+     * board over reads the same pair instead of minting a second. See
+     * [RelayIngressIdentity]. This class only tracks what has happened to the
+     * operation locally, which is state a device may lose without the
+     * operation losing its identity.
      */
-    data class Operation(
-        val operationId: String,
-        val entryId: String,
-        val fingerprint: String,
-    )
+    typealias Operation = com.cruxcoach.android.boardcell.BoardRelayOperation
 
     sealed interface Decision {
         /** Write it to the wall and record it as the current occurrence. */
@@ -141,11 +139,16 @@ class RelayInboundGate(
         if (climbUuid == null || angle == null || operation == null) {
             return Decision.ProjectNow(
                 operation ?: Operation(
-                    "relay-op-unidentified-$nowMs", "rl-unidentified-$nowMs", "unidentified",
+                    fingerprint = "unidentified-$nowMs",
+                    guestKey = "unidentified",
+                    operationId = "relay-op-unidentified-$nowMs",
+                    entryId = "rl-unidentified-$nowMs",
                 ),
             )
         }
-        val fingerprint = operation.fingerprint
+        // The ledger is keyed by the intention, not by the content: the same
+        // bytes from two different guests are two intentions with two nonces.
+        val fingerprint = "${operation.fingerprint}|${operation.guestKey}|${operation.entryId}"
 
         // A climb the connected board cannot show is not a climb this board's
         // group should be told is on the wall. Brand is the coarsest of the
@@ -185,11 +188,10 @@ class RelayInboundGate(
                     if (nowMs - record.updatedAtMs < duplicateWindowMs) {
                         Decision.Refused(Refusal.DUPLICATE)
                     } else {
-                        // Long enough after the fact to be somebody putting the
-                        // same climb up again on purpose. The ids are the same
-                        // — they describe this write, and it is the same write
-                        // — so the occurrence it already has is re-lit rather
-                        // than duplicated.
+                        // Long enough after the fact to be a new intention.
+                        // The caller has already decided that — it minted a new
+                        // nonce rather than finding an open one — so this is a
+                        // different operation with a different occurrence.
                         start(mode, operation, nowMs)
                     }
             }
@@ -204,13 +206,16 @@ class RelayInboundGate(
 
     /** The write reached the wall. Anything identical for a while now is a re-send. */
     fun markLanded(operation: Operation, nowMs: Long) {
-        ledger[operation.fingerprint]?.let { it.state = State.LANDED; it.updatedAtMs = nowMs }
+        ledger[keyOf(operation)]?.let { it.state = State.LANDED; it.updatedAtMs = nowMs }
     }
 
     /** The write did not land. The next attempt is a retry, not a new climb. */
     fun markFailed(operation: Operation, nowMs: Long) {
-        ledger[operation.fingerprint]?.let { it.state = State.FAILED; it.updatedAtMs = nowMs }
+        ledger[keyOf(operation)]?.let { it.state = State.FAILED; it.updatedAtMs = nowMs }
     }
+
+    private fun keyOf(operation: Operation): String =
+        "${operation.fingerprint}|${operation.guestKey}|${operation.entryId}"
 
     /**
      * A new relay session paces from scratch.
@@ -228,7 +233,7 @@ class RelayInboundGate(
         operation: Operation,
         nowMs: Long,
     ): Decision {
-        ledger[operation.fingerprint] = Record(operation, State.PENDING, nowMs)
+        ledger[keyOf(operation)] = Record(operation, State.PENDING, nowMs)
         lastAcceptedAtMs = nowMs
         return decisionFor(mode, operation)
     }

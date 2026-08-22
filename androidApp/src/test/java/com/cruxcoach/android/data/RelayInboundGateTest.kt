@@ -21,16 +21,37 @@ class RelayInboundGateTest {
     private fun gate() = RelayInboundGate()
 
     /**
-     * The identity every controller derives for the same write. Tests use the
-     * real derivation rather than a stand-in, because "two devices compute the
-     * same pair" is the property under test everywhere below.
+     * A guest write's intention.
+     *
+     * The nonce is minted per intention, so two calls with the same content
+     * are two different operations unless one of them was *found* rather than
+     * minted — which is what canonical state is for and what
+     * [RelayIngressIdentityTest] covers. Here the ids are supplied, so the
+     * gate's own rules are what is under test.
      */
+    private var nonce = 0
+
+    /**
+     * The intention this test's guest is on.
+     *
+     * One per test, because that is what the ingress does: it looks the open
+     * intention up in canonical state and only mints when there is none. A
+     * fresh one per call would make every send a different request.
+     */
+    private val currentIntent by lazy { identity() }
+
     private fun identity(
         cellId: String = "cell-1",
         climb: String = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
         angle: Int = 40,
         framesHash: Long = 4242L,
-    ) = RelayIngressIdentity.of(cellId, climb, angle, framesHash)
+        guest: String = "AA:01",
+    ) = RelayIngressIdentity.newIntent(
+        fingerprint = RelayIngressIdentity.fingerprint(cellId, climb, angle, framesHash),
+        guestKey = RelayIngressIdentity.guestKey(guest),
+        nowEpochMs = 1_786_968_000_000L,
+        newId = { "nonce-${nonce++}" },
+    )
 
     private fun RelayInboundGate.send(
         mode: RelayInboundClimbMode = RelayInboundClimbMode.PROJECT_NOW,
@@ -39,7 +60,7 @@ class RelayInboundGateTest {
         climbBrand: BoardBrand? = BoardBrand.KILTER,
         connectedBrand: BoardBrand? = BoardBrand.KILTER,
         nowMs: Long,
-        operation: RelayInboundGate.Operation? = identity(),
+        operation: RelayInboundGate.Operation? = currentIntent,
         climbLayoutId: Long? = null,
         connectedLayoutId: Long? = null,
         connectedAngle: Int? = null,
@@ -82,50 +103,36 @@ class RelayInboundGateTest {
     fun `an accepted write is one operation with one occurrence`() {
         val operation = operationOf(gate().send(nowMs = 1_000))
 
-        assertEquals(identity().operationId, operation.operationId)
-        assertEquals(identity().entryId, operation.entryId)
+        assertTrue(operation.operationId.isNotBlank())
+        assertTrue(operation.entryId.isNotBlank())
         assertNotEquals(operation.operationId, operation.entryId)
-    }
-
-    /**
-     * The property the whole handover case rests on: the ids are a function of
-     * the write, so a device that has never seen it before derives the same
-     * pair — no ledger, no transfer, no lease.
-     */
-    @Test
-    fun `two devices derive the same identity for the same write`() {
-        val onOldController = RelayIngressIdentity.of("cell-1", "climb-x", 40, 99L)
-        val onNewController = RelayIngressIdentity.of("cell-1", "climb-x", 40, 99L)
-
-        assertEquals(onOldController, onNewController)
-    }
-
-    /** Uppercase from one catalogue path, lowercase from another: one climb. */
-    @Test
-    fun `climb uuid casing does not change the identity`() {
-        assertEquals(
-            RelayIngressIdentity.of("cell-1", "CLIMB-X", 40, 99L),
-            RelayIngressIdentity.of("cell-1", "climb-x", 40, 99L),
-        )
-    }
-
-    @Test
-    fun `a different climb, angle, cell or hold set is a different operation`() {
-        val base = RelayIngressIdentity.of("cell-1", "climb-x", 40, 99L)
-
-        assertNotEquals(base, RelayIngressIdentity.of("cell-1", "climb-y", 40, 99L))
-        assertNotEquals(base, RelayIngressIdentity.of("cell-1", "climb-x", 25, 99L))
-        assertNotEquals(base, RelayIngressIdentity.of("cell-2", "climb-x", 40, 99L))
-        assertNotEquals(base, RelayIngressIdentity.of("cell-1", "climb-x", 40, 100L))
     }
 
     /** An entry id has to fit the playlist's own bounds to survive normalisation. */
     @Test
-    fun `the derived entry id is within the playlist id bounds`() {
+    fun `the minted entry id is within the playlist id bounds`() {
         val operation = identity()
 
         assertTrue(operation.entryId.isNotBlank())
         assertTrue(operation.entryId.length <= 64)
+    }
+
+    /**
+     * The blocker this replaces: two guests sending the same climb are two
+     * people asking for it, so they are two operations with two occurrences.
+     */
+    @Test
+    fun `two guests sending the same climb are two operations`() {
+        val gate = gate()
+        val first = identity(guest = "AA:01")
+        val second = identity(guest = "BB:02")
+
+        assertNotEquals(first.entryId, second.entryId)
+        assertTrue(gate.send(nowMs = 1_000, operation = first) is RelayInboundGate.Decision.ProjectNow)
+        // The second guest is paced like anybody else, but not deduplicated
+        // away: past the interval their request stands on its own.
+        val decision = gate.send(nowMs = 5_000, operation = second)
+        assertEquals(second, operationOf(decision))
     }
 
     /**
@@ -181,9 +188,12 @@ class RelayInboundGateTest {
         // Same write, so the same occurrence — it is re-lit rather than
         // duplicated, which is what "existing entry id = no-op" means on every
         // other path into the playlist too.
-        val second = operationOf(gate.send(nowMs = 60_000))
+        // A deliberate re-send is a new intention, so the caller mints a new
+        // nonce for it — and the gate treats it as the new operation it is.
+        val later = identity()
+        val second = operationOf(gate.send(nowMs = 60_000, operation = later))
 
-        assertEquals(first, second)
+        assertNotEquals(first.entryId, second.entryId)
     }
 
     @Test
@@ -300,10 +310,8 @@ class RelayInboundGateTest {
         gate.markLanded(first, 1_000)
 
         // Inside the duplicate window this is a re-send; long after it, the
-        // record is gone and the write is accepted again — under the same
-        // derived identity, because that describes the write and not the
-        // memory of it.
-        val later = gate.send(nowMs = 1_000 + 11 * 60_000)
+        // record is gone and an identical write is accepted again.
+        val later = gate.send(nowMs = 1_000 + 11 * 60_000, operation = first)
 
         assertTrue(later is RelayInboundGate.Decision.ProjectNow)
         assertEquals(first, operationOf(later))
