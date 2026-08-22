@@ -1,7 +1,9 @@
 package com.cruxcoach.android.boardcell
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -65,6 +67,57 @@ class BoardPlaylistCurrentContractTest {
 
         assertEquals("e3", state.selectedEntryId)
         assertNull(state.currentEntryId)
+    }
+
+    /**
+     * Pointing the group at an occurrence is a selection, from anybody.
+     *
+     * The ViewModel's `select()` emitted `SetCurrent` — the operation that
+     * means "the board is confirmed to be showing this". On the controller
+     * that moved the confirmed current with no projection behind it; from a
+     * member it was a command the controller-only policy refuses outright, so
+     * the member could not select at all.
+     */
+    @Test
+    fun `a member may point the group at an occurrence`() {
+        val before = listOfThree()
+
+        val outcome = BoardPlaylistPolicy.resolve(
+            current = before,
+            senderId = "member-npub",
+            command = BoardPlaylistCommand(
+                commandId = "command-select-01",
+                basePlaylistRevision = 0,
+                baseClearGeneration = 0,
+                ops = listOf(BoardPlaylistOp.SetSelection("e3")),
+            ),
+            nowEpochMs = now,
+            senderIsController = false,
+        )
+
+        assertFalse("a member may select", outcome is BoardPlaylistPolicy.Outcome.Reject)
+        val after = BoardPlaylistPolicy.apply(before, listOf(BoardPlaylistOp.SetSelection("e3")))
+        assertEquals("e3", after.selectedEntryId)
+        assertNull("and it claims nothing about the wall", after.currentEntryId)
+    }
+
+    /** The confirmed current stays the controller's to state. */
+    @Test
+    fun `a member may not claim the board is showing an occurrence`() {
+        val outcome = BoardPlaylistPolicy.resolve(
+            current = listOfThree(),
+            senderId = "member-npub",
+            command = BoardPlaylistCommand(
+                commandId = "command-claim-01",
+                basePlaylistRevision = 0,
+                baseClearGeneration = 0,
+                ops = listOf(BoardPlaylistOp.SetCurrent("e3")),
+            ),
+            nowEpochMs = now,
+            senderIsController = false,
+        )
+
+        assertTrue(outcome is BoardPlaylistPolicy.Outcome.Reject)
     }
 
     /** The one operation that may set it, and only after the wall answered. */

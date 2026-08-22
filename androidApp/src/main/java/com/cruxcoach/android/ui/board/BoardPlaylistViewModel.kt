@@ -443,10 +443,19 @@ class BoardPlaylistViewModel @Inject constructor(
     fun previous() =
         submit(BoardPlaylistEditKind.SELECT, "previous") { BoardPlaylistOps.previous(it) }
 
+    /**
+     * Points the group at one occurrence. Says nothing about the wall.
+     *
+     * It emitted `SetCurrent` — the operation that means "the board is
+     * confirmed to be showing this" — which on the controller moved the
+     * confirmed current with no projection behind it, and from a member was a
+     * command the controller-only policy refuses outright. The documentation
+     * above it has said "selection, and nothing else" since the two were split.
+     */
     fun select(entryId: String) =
         submit(BoardPlaylistEditKind.SELECT, "select") {
             if (it.entry(entryId) == null) emptyList()
-            else listOf(BoardPlaylistOp.SetCurrent(entryId))
+            else listOf(BoardPlaylistOp.SetSelection(entryId))
         }
 
     fun remove(entryId: String) =
