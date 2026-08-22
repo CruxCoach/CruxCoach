@@ -87,13 +87,17 @@ class CruxRelayIngressAckTest {
     private val climbs = MutableSharedFlow<RelayInboundClimb>(extraBufferCapacity = 8)
 
     private var clockMs = 1_786_968_000_000L
-    private var identified: BoardProjection? = BoardProjection("climb-a", 40)
+    /** What the catalogue could establish about the guest's bytes. */
+    private var writeIdentity: RelayWriteIdentity = RelayWriteIdentity.Named("climb-a", 40)
     private var layoutId = 1
     /** What the catalogue says the guest's climb belongs to. */
     private var climbLayoutId = 1L
     private var boardAngle = 40
     private var routingMode = RelayInboundClimbMode.PROJECT_NOW
     private var intentAccepted = true
+    /** Whether the controller commits the terminal `landed` record of a write
+     *  that has no occurrence to carry it. */
+    private var landedRecordAccepted = true
     /** Whether the controller commits the joint occurrence + landed batch. */
     private var terminalCommitAccepted = true
     private var projectionSucceeds = true
@@ -188,7 +192,7 @@ class CruxRelayIngressAckTest {
             }
         }
         val projectionCoordinator = mockk<BoardProjectionCoordinator>(relaxed = true) {
-            coEvery { identifyExternal(any()) } answers { identified }
+            coEvery { identifyExternal(any()) } answers { writeIdentity }
         }
         val repository = mockk<BoardRepository>(relaxed = true) {
             every { getClimbByUuid(any(), any()) } answers {
@@ -210,6 +214,8 @@ class CruxRelayIngressAckTest {
         }
         bridge = mockk(relaxed = true) {
             coEvery { recordRelayIntent(any()) } answers {
+                val terminal = firstArg<BoardRelayOperation>().landed
+                val intentAccepted = if (terminal) landedRecordAccepted else intentAccepted
                 if (intentAccepted) {
                     canonicalPlaylist = BoardPlaylistPolicy.apply(
                         canonicalPlaylist,
@@ -283,7 +289,7 @@ class CruxRelayIngressAckTest {
     /** A climb this board cannot show: the guest is told, not thanked. */
     @Test
     fun `an angle mismatch is refused at the ATT layer`() = runTest(dispatcher) {
-        identified = BoardProjection("climb-a", 25)
+        writeIdentity = RelayWriteIdentity.Named("climb-a", 25)
         relayRunning()
 
         climbs.emit(inbound(requestId = 21))
@@ -314,7 +320,7 @@ class CruxRelayIngressAckTest {
 
         climbs.emit(inbound(requestId = 31, framesHash = 1L))
         advanceUntilIdle()
-        identified = BoardProjection("climb-b", 40)
+        writeIdentity = RelayWriteIdentity.Named("climb-b", 40)
         clockMs += 100
         climbs.emit(inbound(requestId = 32, framesHash = 2L))
         advanceUntilIdle()
@@ -797,4 +803,121 @@ class CruxRelayIngressAckTest {
         coVerify { relayServer.settle(304, true) }
         assertTrue(canonicalPlaylist.relayOperations.single().landed)
     }
+
+    // ── A write with no name is still a write with rules ──────────────────
+
+    /**
+     * An unlisted or mirrored climb reaches the wall — that is what a relay is
+     * for — but it reaches it as an operation: derived identity, canonical
+     * record, and "finished" committed before the guest is told.
+     */
+    @Test
+    fun `an unnamed climb is delivered and canonically finished`() = runTest(dispatcher) {
+        writeIdentity = RelayWriteIdentity.Anonymous
+        relayRunning()
+
+        climbs.emit(inbound(requestId = 141))
+        advanceUntilIdle()
+
+        coVerify { relayServer.settle(141, true) }
+        assertEquals("the wall was written", 1, boardWrites)
+        assertTrue("the request is canonically finished",
+            canonicalPlaylist.relayOperations.single().landed)
+        assertTrue("there is nothing to put on the list", canonicalPlaylist.entries.isEmpty())
+    }
+
+    /**
+     * The retry. The ids used to be made out of the clock, so the same bytes
+     * arriving again were a different operation and wrote the wall a second
+     * time.
+     */
+    @Test
+    fun `a repeated unnamed write neither re-writes the wall nor mints a second operation`() =
+        runTest(dispatcher) {
+            writeIdentity = RelayWriteIdentity.Anonymous
+            relayRunning()
+            climbs.emit(inbound(requestId = 142))
+            advanceUntilIdle()
+
+            clockMs += 5_000
+            climbs.emit(inbound(requestId = 143))
+            advanceUntilIdle()
+
+            coVerify { relayServer.settle(143, true) }
+            assertEquals("the wall is written once", 1, boardWrites)
+            assertEquals("one operation, not two", 1, canonicalPlaylist.relayOperations.size)
+        }
+
+    /** LEDs this board does not have: refused, and the wall never touched. */
+    @Test
+    fun `a climb written for another board never reaches the wall`() = runTest(dispatcher) {
+        writeIdentity = RelayWriteIdentity.ForeignBoard
+        relayRunning()
+
+        climbs.emit(inbound(requestId = 144))
+        advanceUntilIdle()
+
+        coVerify { relayServer.settle(144, false) }
+        assertEquals("the wall was not written", 0, boardWrites)
+    }
+
+    /** Nothing decidable at all — and a wall is not changed on nothing. */
+    @Test
+    fun `an unreadable write never reaches the wall`() = runTest(dispatcher) {
+        writeIdentity = RelayWriteIdentity.Undecidable
+        relayRunning()
+
+        climbs.emit(inbound(requestId = 145))
+        advanceUntilIdle()
+
+        coVerify { relayServer.settle(145, false) }
+        assertEquals("the wall was not written", 0, boardWrites)
+    }
+
+    /**
+     * `APPEND_TO_END` means the wall is not taken. A write with no occurrence
+     * to queue used to be projected under it anyway, which is that setting's
+     * exact opposite.
+     */
+    @Test
+    fun `an unnamed climb does not take the wall when the group asked for the queue`() =
+        runTest(dispatcher) {
+            routingMode = RelayInboundClimbMode.APPEND_TO_END
+            writeIdentity = RelayWriteIdentity.Anonymous
+            relayRunning()
+
+            climbs.emit(inbound(requestId = 146))
+            advanceUntilIdle()
+
+            coVerify { relayServer.settle(146, false) }
+            assertEquals("the wall was not written", 0, boardWrites)
+        }
+
+    /**
+     * "Both or neither" for a write that cannot have an occurrence: the
+     * `landed` record is the terminal half, so a refused one is answered
+     * negative — and the retry still writes the wall exactly once.
+     */
+    @Test
+    fun `an unnamed delivery whose terminal record is refused is not reported as delivered`() =
+        runTest(dispatcher) {
+            writeIdentity = RelayWriteIdentity.Anonymous
+            landedRecordAccepted = false
+            relayRunning()
+
+            climbs.emit(inbound(requestId = 147))
+            advanceUntilIdle()
+
+            coVerify { relayServer.settle(147, false) }
+            assertEquals(1, boardWrites)
+
+            landedRecordAccepted = true
+            clockMs += 5_000
+            climbs.emit(inbound(requestId = 148))
+            advanceUntilIdle()
+
+            coVerify { relayServer.settle(148, true) }
+            assertEquals("the wall is written once for the two attempts", 1, boardWrites)
+            assertEquals("one operation, not two", 1, canonicalPlaylist.relayOperations.size)
+        }
 }

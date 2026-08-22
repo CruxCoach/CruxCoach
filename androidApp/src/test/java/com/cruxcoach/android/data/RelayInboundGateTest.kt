@@ -55,6 +55,7 @@ class RelayInboundGateTest {
 
     private fun RelayInboundGate.send(
         mode: RelayInboundClimbMode = RelayInboundClimbMode.PROJECT_NOW,
+        identity: RelayInboundGate.Identity = RelayInboundGate.Identity.NAMED,
         climb: String? = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
         angle: Int? = 40,
         climbBrand: BoardBrand? = BoardBrand.KILTER,
@@ -67,6 +68,7 @@ class RelayInboundGateTest {
         canonicallyLanded: Boolean = false,
     ) = evaluate(
         mode = mode,
+        identity = identity,
         climbUuid = climb,
         angle = angle,
         climbBrand = climbBrand,
@@ -247,19 +249,141 @@ class RelayInboundGateTest {
         assertTrue(decision is RelayInboundGate.Decision.ProjectNow)
     }
 
+    // ── What could not be identified is not one situation ─────────────────
+
     /**
-     * An unidentifiable write — a MoonBoard byte stream, or an Aurora frame no
-     * catalogue climb matches — cannot be deduplicated or queued as an
-     * occurrence, so it only ever passes through as an external write.
+     * An unnamed write is still a command on somebody's wall.
+     *
+     * An unlisted climb, a mirrored one, a board-clear: nothing to put on a
+     * list, but it can go to the board — and every rule that does not need a
+     * climb identity applies to it. It used to bypass all of them.
      */
     @Test
-    fun `an unidentifiable write passes through whatever the setting says`() {
+    fun `an unnamed write is projected under the default setting`() {
         val decision = gate().send(
-            mode = RelayInboundClimbMode.APPEND_TO_END,
+            identity = RelayInboundGate.Identity.ANONYMOUS,
             climb = null, angle = null, climbBrand = null,
             nowMs = 1_000,
         )
         assertTrue(decision is RelayInboundGate.Decision.ProjectNow)
+    }
+
+    /**
+     * `APPEND_TO_END` means "inbound climbs do not take my wall". A write with
+     * no occurrence to queue cannot be honoured any other way, so honouring it
+     * would be that setting's exact opposite.
+     */
+    @Test
+    fun `an unnamed write is refused when the group asked for the queue`() {
+        val decision = gate().send(
+            mode = RelayInboundClimbMode.APPEND_TO_END,
+            identity = RelayInboundGate.Identity.ANONYMOUS,
+            climb = null, angle = null, climbBrand = null,
+            nowMs = 1_000,
+        )
+        assertEquals(
+            RelayInboundGate.Decision.Refused(RelayInboundGate.Refusal.NOT_QUEUEABLE),
+            decision,
+        )
+    }
+
+    /** LEDs this board does not have: written for a different wall entirely. */
+    @Test
+    fun `a write for another board is refused before anything else`() {
+        val decision = gate().send(
+            identity = RelayInboundGate.Identity.FOREIGN_BOARD,
+            climb = null, angle = null, climbBrand = null,
+            nowMs = 1_000,
+        )
+        assertEquals(
+            RelayInboundGate.Decision.Refused(RelayInboundGate.Refusal.BOARD_MISMATCH),
+            decision,
+        )
+    }
+
+    /** Nothing decidable at all — and a wall is not changed on nothing. */
+    @Test
+    fun `an unreadable write is refused`() {
+        val decision = gate().send(
+            identity = RelayInboundGate.Identity.UNREADABLE,
+            climb = null, angle = null, climbBrand = null,
+            nowMs = 1_000,
+        )
+        assertEquals(
+            RelayInboundGate.Decision.Refused(RelayInboundGate.Refusal.UNREADABLE),
+            decision,
+        )
+    }
+
+    /** No derived identity means no way to recognise the retry — so, no. */
+    @Test
+    fun `a write with no derived operation is refused`() {
+        val decision = gate().send(
+            identity = RelayInboundGate.Identity.ANONYMOUS,
+            climb = null, angle = null, climbBrand = null,
+            nowMs = 1_000, operation = null,
+        )
+        assertEquals(
+            RelayInboundGate.Decision.Refused(RelayInboundGate.Refusal.UNREADABLE),
+            decision,
+        )
+    }
+
+    /** Pacing reaches an unnamed write exactly as it reaches a named one. */
+    @Test
+    fun `an unnamed write is paced`() {
+        val gate = gate()
+        gate.send(nowMs = 1_000)
+        val decision = gate.send(
+            identity = RelayInboundGate.Identity.ANONYMOUS,
+            climb = null, angle = null, climbBrand = null,
+            nowMs = 1_100, operation = identity(framesHash = 9L),
+        )
+        assertEquals(
+            RelayInboundGate.Decision.Refused(RelayInboundGate.Refusal.RATE_LIMITED),
+            decision,
+        )
+    }
+
+    /**
+     * And a raw stream is not, because it must not be: one MoonBoard command
+     * spans several writes, so pacing them as commands would drop a command's
+     * own tail rather than throttling anybody.
+     */
+    @Test
+    fun `a raw stream is not paced`() {
+        val gate = gate()
+        gate.send(
+            identity = RelayInboundGate.Identity.RAW_STREAM,
+            climb = null, angle = null, climbBrand = null,
+            nowMs = 1_000, operation = identity(framesHash = 8L),
+        )
+        val decision = gate.send(
+            identity = RelayInboundGate.Identity.RAW_STREAM,
+            climb = null, angle = null, climbBrand = null,
+            nowMs = 1_010, operation = identity(framesHash = 9L),
+        )
+        assertTrue(decision is RelayInboundGate.Decision.ProjectNow)
+    }
+
+    /** The same bytes again, already on the wall: a replay, not a second write. */
+    @Test
+    fun `an unnamed write that already landed is replayed`() {
+        val gate = gate()
+        val operation = identity(framesHash = 7L)
+        gate.send(
+            identity = RelayInboundGate.Identity.ANONYMOUS,
+            climb = null, angle = null, climbBrand = null,
+            nowMs = 1_000, operation = operation,
+        )
+        gate.markLanded(operation, 1_100)
+
+        val decision = gate.send(
+            identity = RelayInboundGate.Identity.ANONYMOUS,
+            climb = null, angle = null, climbBrand = null,
+            nowMs = 1_200, operation = operation,
+        )
+        assertTrue(decision is RelayInboundGate.Decision.AlreadyDelivered)
     }
 
     @Test

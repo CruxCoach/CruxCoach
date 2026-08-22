@@ -67,7 +67,38 @@ object RelayIngressIdentity {
     fun fingerprint(cellId: String, climbUuid: String, angle: Int, framesHash: Long): String =
         digest("relay|$cellId|${climbUuid.lowercase(Locale.ROOT)}|$angle|$framesHash").take(32)
 
+    /**
+     * The same, for a write whose climb has no name.
+     *
+     * An unlisted climb, a board-clear, a MoonBoard byte stream: the content is
+     * all there is to go on, so that is what the fingerprint is over. It does
+     * the one job the fingerprint has — making a retry recognisable as the same
+     * request — and the ids themselves stay nonces, so identical bytes sent
+     * again after the window are a new intention rather than the same one for
+     * ever. The previous shape derived nothing at all and stamped the clock
+     * into the ids, which made every retry a fresh operation and every fresh
+     * operation another board write.
+     */
+    fun anonymousFingerprint(cellId: String, contentHash: Long): String =
+        digest("relay-anon|$cellId|$contentHash").take(32)
+
     fun guestKey(deviceAddress: String): String = digest("guest|$deviceAddress").take(16)
+
+    /**
+     * A stable 64-bit hash of raw guest bytes (FNV-1a).
+     *
+     * For a transport with no framing there is no `framesHash` to reuse, and
+     * the fingerprint still has to be the same on a retry and on a successor
+     * after a handover — so it is derived, never minted.
+     */
+    fun contentHash(value: ByteArray): Long {
+        var hash = -0x340d631b7bdddcdbL
+        for (byte in value) {
+            hash = hash xor (byte.toLong() and 0xFF)
+            hash *= 0x100000001b3L
+        }
+        return hash
+    }
 
     /**
      * The intention this write belongs to, from canonical state.

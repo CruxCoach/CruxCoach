@@ -22,6 +22,7 @@ import com.cruxcoach.android.boardcell.BoardCellEvent
 import com.cruxcoach.android.boardcell.BoardCellAvailability
 import com.cruxcoach.android.boardcell.BoardCellManager
 import com.cruxcoach.android.boardcell.BoardCellPlatformPolicy
+import com.cruxcoach.android.boardcell.BoardProjection
 import com.cruxcoach.android.boardcell.HandoverPhase
 import com.cruxcoach.android.boardcell.ProjectionResult
 import com.cruxcoach.domain.board.BoardBrand
@@ -560,19 +561,13 @@ class CruxRelayManager(
      * Nothing open means this is a new intention, which is exactly what a
      * second guest, or the same guest asking again later, is.
      */
+    private fun cellId(): String = boardCellManager.snapshot()?.cellId?.value.orEmpty()
+
     private fun intentFor(
-        climbUuid: String,
-        angle: Int,
-        framesHash: Long,
+        fingerprint: String,
         deviceAddress: String,
         nowEpochMs: Long,
     ): RelayInboundGate.Operation {
-        val fingerprint = RelayIngressIdentity.fingerprint(
-            cellId = boardCellManager.snapshot()?.cellId?.value.orEmpty(),
-            climbUuid = climbUuid,
-            angle = angle,
-            framesHash = framesHash,
-        )
         val guest = RelayIngressIdentity.guestKey(deviceAddress)
         val connected = relayServer.connectedAddresses()
             .map { RelayIngressIdentity.guestKey(it) }
@@ -606,6 +601,105 @@ class CruxRelayManager(
         val at = nowMs()
         if (committed) inboundGate.markLanded(operation, at)
         else inboundGate.markFailed(operation, at)
+    }
+
+    /**
+     * Everything a `ProjectNow` decision does between the decision and the wall.
+     *
+     * Both transports run it — Aurora's reassembled climbs and MoonBoard's raw
+     * stream — because everything in here is about the guest's request and
+     * nothing about what the bytes mean: the board-path check, the two deadline
+     * fences around the canonical intent barrier, the barrier itself, and the
+     * board write through the shared serializer under the operation id decided
+     * at ingress. The MoonBoard path used to have none of it.
+     *
+     * Returns null when the write never reached the wall; the guest has already
+     * been answered in that case, and the operation left retryable.
+     */
+    private suspend fun projectRelayedWrite(
+        operation: RelayInboundGate.Operation,
+        pendingResponse: Int?,
+        deadlineAtMs: Long,
+        nowEpochMs: Long,
+        chunks: List<ByteArray>,
+        projection: BoardProjection?,
+    ): ProjectionResult? {
+        fun fail(error: RelayError, why: String): ProjectionResult? {
+            Log.w(TAG, why)
+            _state.update { it.copy(error = error) }
+            // Not landed, so the guest's next attempt is a retry of this
+            // operation rather than a request the list has never heard of.
+            inboundGate.markFailed(operation, nowEpochMs)
+            relayServer.settle(pendingResponse, accepted = false)
+            return null
+        }
+        // Without a usable path to the wall there is nothing to deliver, and
+        // the guest is told so rather than being handed a success for a write
+        // that reached a dark board.
+        if (!mayAcknowledgeInboundWrite()) {
+            return fail(RelayError.BOARD_LOST, "a relayed write arrived without a usable board path")
+        }
+        _state.update { it.copy(inboundRefusal = null) }
+        if (operationExpired(deadlineAtMs)) {
+            return fail(RelayError.FORWARD_FAILED, "a relayed write passed its deadline before the barrier")
+        }
+        // Before the wall is touched, and *waited for*: a handover in the
+        // middle of this write must find the intention already in canonical
+        // state, or the successor mints a second one for the retry. A refusal —
+        // a revision conflict, a controller that has moved on — means this
+        // device has no right to write the wall for this guest yet, so it does
+        // not.
+        if (!gattBridge.recordRelayIntent(operation)) {
+            return fail(RelayError.FORWARD_FAILED, "a relayed write has no canonical intention; not writing the board")
+        }
+        // The fence. Past the operation's deadline the guest has already been
+        // told this failed, so starting a board write now would put something
+        // on the wall nobody is waiting for and that their retry would ask for
+        // again. A write already under way is a different matter and is never
+        // cancelled — half a climb is a state the board protocol has no way to
+        // undo.
+        if (operationExpired(deadlineAtMs)) {
+            return fail(RelayError.FORWARD_FAILED, "a relayed write passed its deadline before the board write")
+        }
+        val result = boardCellManager.projectExternal(
+            boardWrite = { bleConnection.sendRawChunks(chunks) },
+            identify = { projection },
+            // The operation id decided at ingress. The canonical serializer
+            // deduplicates by it, so a repeat after a handover — or a retry
+            // after a terminal commit this device could not finish — writes the
+            // wall exactly once.
+            commandId = operation.operationId,
+        )
+        if (result !is ProjectionResult.Committed && result !is ProjectionResult.Duplicate) {
+            return fail(RelayError.FORWARD_FAILED, "a relayed write was not canonically committed: $result")
+        }
+        return result
+    }
+
+    /**
+     * The terminal half for a write that can never become an occurrence.
+     *
+     * There is no climb to put on the list, so the canonical `landed` record is
+     * the whole of what "this request is finished" can mean — and it commits
+     * before the guest is told, exactly as the occurrence does for a named
+     * write. Recording it only in this device's memory, which is what this did,
+     * left a successor after a handover and a restarted process with no reason
+     * not to write the wall again for the same retry.
+     */
+    private suspend fun recordAnonymousDelivery(
+        operation: RelayInboundGate.Operation,
+        pendingResponse: Int?,
+        nowEpochMs: Long,
+    ) {
+        val recorded = gattBridge.recordRelayIntent(
+            operation.copy(stampedAtEpochMs = nowEpochMs, landed = true),
+        )
+        if (!recorded) {
+            Log.w(TAG, "a delivered relay write could not be recorded as landed")
+            _state.update { it.copy(error = RelayError.FORWARD_FAILED) }
+        }
+        settleOperation(operation, recorded)
+        settleDelivered(pendingResponse, recorded)
     }
 
     /** Slots the radio can actually spare right now, for the GATT server. */
@@ -643,6 +737,9 @@ class CruxRelayManager(
         // 2) Keep the real board link parked while this independent transport
         // is enabled. Relay never creates or tears down a shared queue.
         bleConnection.acquireKeepAlive(BoardConnectionOwner.RELAY)
+        // Which of the two ingress paths owns a guest's write — and therefore
+        // owes it an answer. Exactly one of them does; see [rawWritesDecide].
+        relayServer.rawWritesDecide = { board.boardBrand == BoardBrand.MOONBOARD }
         // Our own board link would otherwise register as the first relay
         // client the moment the server opens (see RelayGattServer).
         relayServer.boardAddressProvider = { bleConnection.connectedBoard?.address }
@@ -664,28 +761,83 @@ class CruxRelayManager(
                 // guest write in order and byte-for-byte; there is no Aurora
                 // packet grouping for RelayFrameReassembler to perform.
                 relayServer.writes.collect { inbound ->
-                    // MoonBoard writes cannot currently be mapped back to a
-                    // CruxCoach climb UUID, but they still cross the canonical
-                    // serializer. Every replica therefore learns that the
-                    // physical projection changed externally instead of
-                    // continuing to claim the playlist climb is on the wall.
-                    val result = boardCellManager.projectExternal(
-                        boardWrite = { bleConnection.sendRawChunks(listOf(inbound.value)) },
-                        identify = { null },
+                    // MoonBoard writes cannot be mapped back to a CruxCoach
+                    // climb UUID, so they can never become an occurrence — but
+                    // they are still a guest's command on somebody else's wall,
+                    // and they now get everything that fact implies: a derived
+                    // identity that survives a retry and a handover, the gate,
+                    // the deadline, the canonical record, and an answer that
+                    // waits for the wall instead of preceding it.
+                    val now = nowMs()
+                    val operation = intentFor(
+                        RelayIngressIdentity.anonymousFingerprint(
+                            cellId(), RelayIngressIdentity.contentHash(inbound.value),
+                        ),
+                        inbound.deviceAddress, now,
                     )
-                    if (result is ProjectionResult.Committed || result is ProjectionResult.Duplicate) {
-                        advertiser.clearActiveClimb()
-                    } else {
-                        Log.w(TAG, "canonical MoonBoard relay write failed: $result")
-                        _state.update { it.copy(error = RelayError.FORWARD_FAILED) }
+                    val decision = inboundGate.evaluate(
+                        mode = userPreferences.relayInboundClimbMode.first(),
+                        identity = RelayInboundGate.Identity.RAW_STREAM,
+                        climbUuid = null,
+                        angle = null,
+                        climbBrand = null,
+                        connectedBrand = bleConnection.connectedBoardBrand.value,
+                        nowMs = now,
+                        operation = operation,
+                        canonicallyLanded = operation.landed,
+                    )
+                    when (decision) {
+                        is RelayInboundGate.Decision.ProjectNow -> {
+                            val result = projectRelayedWrite(
+                                operation = decision.operation,
+                                pendingResponse = inbound.pendingResponse,
+                                deadlineAtMs = inbound.deadlineAtMs,
+                                nowEpochMs = now,
+                                chunks = listOf(inbound.value),
+                                projection = null,
+                            ) ?: return@collect
+                            check(result is ProjectionResult.Committed ||
+                                result is ProjectionResult.Duplicate)
+                            advertiser.clearActiveClimb()
+                            recordAnonymousDelivery(
+                                decision.operation, inbound.pendingResponse, now,
+                            )
+                        }
+                        is RelayInboundGate.Decision.AlreadyDelivered -> {
+                            // The same bytes again from the same guest, already
+                            // on the wall. Replaying the success is the only
+                            // answer a retrying guest can act on — and it does
+                            // not write the board a second time.
+                            Log.i(TAG, "relayed write already delivered; replaying the success")
+                            settleDelivered(inbound.pendingResponse, delivered = true)
+                        }
+                        is RelayInboundGate.Decision.Refused -> {
+                            Log.i(TAG, "relayed write refused: ${decision.reason}")
+                            _state.update { it.copy(inboundRefusal = decision.reason) }
+                            relayServer.settle(inbound.pendingResponse, accepted = false)
+                        }
+                        is RelayInboundGate.Decision.AppendToEnd -> {
+                            // Unreachable: a raw write has no occurrence to
+                            // queue, so the gate refuses it under that mode
+                            // rather than routing it here. Refusing rather
+                            // than falling through keeps that a fact and not
+                            // an assumption.
+                            Log.w(TAG, "a raw relay write cannot be queued")
+                            _state.update { it.copy(inboundRefusal = RelayInboundGate.Refusal.NOT_QUEUEABLE) }
+                            relayServer.settle(inbound.pendingResponse, accepted = false)
+                        }
                     }
                 }
             } else {
                 relayServer.climbs.collect { inbound ->
                     // Identify first: what the guest sent decides where it may
-                    // go, and an unidentifiable write can only ever be an
-                    // external one.
-                    val identified = projectionCoordinator.identifyExternal(inbound.climb)
+                    // go — including whether it may go anywhere at all. A write
+                    // whose LEDs are not on this board, or that decodes into
+                    // nothing, is refused here rather than being treated as an
+                    // ordinary unnamed climb and forwarded.
+                    val identity = projectionCoordinator.identifyExternal(inbound.climb)
+                    val identified = (identity as? RelayWriteIdentity.Named)
+                        ?.let { BoardProjection(it.climbUuid, it.angle) }
                     val climb = identified?.let {
                         runCatching { boardRepository.getClimbByUuid(it.climbUuid, it.angle) }.getOrNull()
                     }
@@ -706,12 +858,37 @@ class CruxRelayManager(
                     // the guest is part of what "the same request" means; and
                     // a genuine re-send later finds nothing open and starts a
                     // new occurrence, which is what it is.
-                    val operation = identified?.let {
-                        intentFor(it.climbUuid, it.angle, inbound.climb.framesHash,
-                            inbound.deviceAddress, now)
+                    // Derived either way. An unnamed climb has only its bytes
+                    // to be recognised by, and that is enough: it is the same
+                    // request on a retry and the same request to a successor
+                    // after a handover, which is exactly what the invented
+                    // timestamp ids were not.
+                    val operation = when (identity) {
+                        is RelayWriteIdentity.Named -> intentFor(
+                            RelayIngressIdentity.fingerprint(
+                                cellId(), identity.climbUuid, identity.angle,
+                                inbound.climb.framesHash,
+                            ),
+                            inbound.deviceAddress, now,
+                        )
+                        RelayWriteIdentity.Anonymous -> intentFor(
+                            RelayIngressIdentity.anonymousFingerprint(
+                                cellId(), inbound.climb.framesHash,
+                            ),
+                            inbound.deviceAddress, now,
+                        )
+                        RelayWriteIdentity.ForeignBoard, RelayWriteIdentity.Undecidable -> null
                     }
                     val decision = inboundGate.evaluate(
                         mode = userPreferences.relayInboundClimbMode.first(),
+                        identity = when (identity) {
+                            is RelayWriteIdentity.Named -> RelayInboundGate.Identity.NAMED
+                            RelayWriteIdentity.Anonymous -> RelayInboundGate.Identity.ANONYMOUS
+                            RelayWriteIdentity.ForeignBoard ->
+                                RelayInboundGate.Identity.FOREIGN_BOARD
+                            RelayWriteIdentity.Undecidable ->
+                                RelayInboundGate.Identity.UNREADABLE
+                        },
                         climbUuid = identified?.climbUuid,
                         angle = identified?.angle,
                         climbBrand = climb?.let { BoardBrand.fromWire(it.boardBrand) },
@@ -815,119 +992,51 @@ class CruxRelayManager(
                             )
                         }
                         is RelayInboundGate.Decision.ProjectNow -> {
-                            // Without a usable path to the wall there is
-                            // nothing to deliver, and the guest is told so
-                            // rather than being handed a success for a write
-                            // that reached a dark board.
-                            if (!mayAcknowledgeInboundWrite()) {
-                                Log.w(TAG, "relayed climb arrived without a usable board path")
-                                _state.update { it.copy(error = RelayError.BOARD_LOST) }
-                                // Not landed, so the guest's next attempt is a
-                                // retry of this operation rather than a climb
-                                // the list has never heard of.
-                                inboundGate.markFailed(decision.operation, now)
-                                relayServer.settle(inbound.pendingResponse, accepted = false)
-                                return@collect
-                            }
-                            _state.update { it.copy(inboundRefusal = null) }
-                            if (operationExpired(deadlineAt)) {
-                                Log.w(TAG, "relayed climb passed its deadline before the barrier")
-                                _state.update { it.copy(error = RelayError.FORWARD_FAILED) }
-                                inboundGate.markFailed(decision.operation, now)
-                                relayServer.settle(inbound.pendingResponse, accepted = false)
-                                return@collect
-                            }
-                            // Before the wall is touched, and *waited for*: a
-                            // handover in the middle of this write must find
-                            // the intention already in canonical state, or the
-                            // successor mints a second one for the retry. A
-                            // refusal — a revision conflict, a controller that
-                            // has moved on — means this device has no right to
-                            // write the wall for this guest yet, so it does not.
-                            if (!gattBridge.recordRelayIntent(decision.operation)) {
-                                Log.w(TAG, "relayed climb has no canonical intention; not writing the board")
-                                _state.update { it.copy(error = RelayError.FORWARD_FAILED) }
-                                inboundGate.markFailed(decision.operation, now)
-                                relayServer.settle(inbound.pendingResponse, accepted = false)
-                                return@collect
-                            }
-                            // The fence. Past the operation's deadline the
-                            // guest has already been told this failed, so
-                            // starting a board write now would put a climb on
-                            // the wall nobody is waiting for and that their
-                            // retry would ask for again. A write already under
-                            // way is a different matter and is never cancelled
-                            // — half a climb is a state the board protocol has
-                            // no way to undo.
-                            if (operationExpired(deadlineAt)) {
-                                Log.w(TAG, "relayed climb passed its deadline before the board write")
-                                _state.update { it.copy(error = RelayError.FORWARD_FAILED) }
-                                inboundGate.markFailed(decision.operation, now)
-                                relayServer.settle(inbound.pendingResponse, accepted = false)
-                                return@collect
-                            }
-                            val result = boardCellManager.projectExternal(
-                                boardWrite = { bleConnection.sendRawChunks(inbound.climb.chunks) },
-                                identify = { identified },
-                                // The operation id decided at ingress. The
-                                // canonical serializer deduplicates by it, so a
-                                // repeat after a handover writes the wall once.
-                                commandId = decision.operation.operationId,
-                            )
-                            if (result is ProjectionResult.Committed || result is ProjectionResult.Duplicate) {
-                                advertiser.clearActiveClimb()
-                                // The wall has it, so the guest is told so now.
-                                // The occurrence still has to become canonical,
-                                // but holding their ATT transaction open for a
-                                // playlist commit would answer a question they
-                                // did not ask.
-                                //
-                                // The guest is told after the occurrence and
-                                // "this request is finished" have committed
-                                // together, not after the bytes reached the
-                                // wall. Answering earlier — which is what this
-                                // did — produced the one combination nobody can
-                                // recover from: the board written, the guest
-                                // told success, and a canonical playlist with
-                                // no occurrence and no `landed`, so nobody has
-                                // any reason to retry. "Both or neither" has to
-                                // include the answer.
-                                //
-                                // A refusal, a stop or a handover therefore
-                                // answers negative, and the ids stay retryable:
-                                // the retry finds the same operation, the
-                                // canonical serializer refuses to write the
-                                // wall twice for it, and the list gains exactly
-                                // one occurrence.
-                                if (identified != null) {
-                                    gattBridge.adoptProjectedEntry(
-                                        identified.climbUuid, identified.angle, "relay_project",
-                                        entryId = decision.operation.entryId,
-                                        completing = decision.operation.copy(stampedAtEpochMs = now),
-                                        onTerminal = { committed ->
-                                            settleOperation(decision.operation, committed)
-                                            settleDelivered(inbound.pendingResponse, committed)
-                                        },
-                                    )
-                                } else {
-                                    // Nothing identifiable to record, so the
-                                    // board write is the whole of the operation
-                                    // and the wall is the only fact there is.
-                                    settleOperation(decision.operation, true)
-                                    settleDelivered(inbound.pendingResponse, delivered = true)
-                                }
-                                identifyJob?.cancel()
-                                identifyJob = scope.launch {
-                                    val projection = if (result is ProjectionResult.Committed) {
-                                        (result.envelope.event as? BoardCellEvent.ProjectCommitted)?.projection
-                                    } else boardCellManager.snapshot()?.projection
-                                    projectionCoordinator.onCanonicalExternalBoardWrite(projection)
-                                }
+                            val result = projectRelayedWrite(
+                                operation = decision.operation,
+                                pendingResponse = inbound.pendingResponse,
+                                deadlineAtMs = deadlineAt,
+                                nowEpochMs = now,
+                                chunks = inbound.climb.chunks,
+                                projection = identified,
+                            ) ?: return@collect
+                            advertiser.clearActiveClimb()
+                            // The guest is told after the occurrence and "this
+                            // request is finished" have committed together, not
+                            // after the bytes reached the wall. Answering
+                            // earlier produced the one combination nobody can
+                            // recover from: the board written, the guest told
+                            // success, and a canonical playlist with no
+                            // occurrence and no `landed`, so nobody has any
+                            // reason to retry. "Both or neither" has to include
+                            // the answer.
+                            //
+                            // A refusal, a stop or a handover therefore answers
+                            // negative, and the ids stay retryable: the retry
+                            // finds the same operation, the canonical
+                            // serializer refuses to write the wall twice for
+                            // it, and the list gains exactly one occurrence.
+                            if (identified != null) {
+                                gattBridge.adoptProjectedEntry(
+                                    identified.climbUuid, identified.angle, "relay_project",
+                                    entryId = decision.operation.entryId,
+                                    completing = decision.operation.copy(stampedAtEpochMs = now),
+                                    onTerminal = { committed ->
+                                        settleOperation(decision.operation, committed)
+                                        settleDelivered(inbound.pendingResponse, committed)
+                                    },
+                                )
                             } else {
-                                Log.w(TAG, "relayed climb was not canonically committed: $result")
-                                _state.update { it.copy(error = RelayError.FORWARD_FAILED) }
-                                inboundGate.markFailed(decision.operation, now)
-                                relayServer.settle(inbound.pendingResponse, accepted = false)
+                                recordAnonymousDelivery(
+                                    decision.operation, inbound.pendingResponse, now,
+                                )
+                            }
+                            identifyJob?.cancel()
+                            identifyJob = scope.launch {
+                                val projection = if (result is ProjectionResult.Committed) {
+                                    (result.envelope.event as? BoardCellEvent.ProjectCommitted)?.projection
+                                } else boardCellManager.snapshot()?.projection
+                                projectionCoordinator.onCanonicalExternalBoardWrite(projection)
                             }
                         }
                     }

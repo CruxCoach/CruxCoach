@@ -183,11 +183,79 @@ class RelayGattAckContractTest {
     @Test
     fun `a raw write dropped on a full buffer is refused`() {
         val answers = Answers()
-        val server = server(answers).apply { emitWrite = { false } }
+        val server = server(answers).apply {
+            rawWritesDecide = { true }
+            emitWrite = { false }
+        }
 
         server.write(climbStream(), requestId = 6)
 
         assertEquals(6 to false, answers.last)
+    }
+
+    // ── The unframed stream answers for itself ────────────────────────────
+
+    /**
+     * MoonBoard has no framing, so the write *is* the command — and its
+     * transaction has to wait for what became of it. It used to be answered
+     * success the moment the bytes were handed on, while the board write and
+     * the canonical commit behind it had not started.
+     */
+    @Test
+    fun `a raw write is not answered until the forwarder decides`() {
+        val answers = Answers()
+        val server = server(answers).apply { rawWritesDecide = { true } }
+        val seen = mutableListOf<RelayInboundWrite>()
+        server.emitWrite = { seen += it; true }
+
+        server.write(climbStream(), requestId = 101)
+
+        assertEquals("the raw write carries the transaction", listOf(101),
+            seen.map { it.pendingResponse })
+        assertTrue("nothing has decided it yet", answers.statuses.isEmpty())
+        server.settle(101, accepted = true)
+        assertEquals(101 to true, answers.last)
+    }
+
+    /** A transport failure downstream is the guest's answer, not a success. */
+    @Test
+    fun `a raw write that fails downstream is an ATT error`() {
+        val answers = Answers()
+        val server = server(answers).apply { rawWritesDecide = { true } }
+
+        server.write(climbStream(), requestId = 102)
+        server.settle(102, accepted = false)
+
+        assertEquals(listOf(102 to false), answers.statuses)
+    }
+
+    /**
+     * Exactly one path handles a write. Running both meant the raw path could
+     * report success for a write the Aurora path had still to decide.
+     */
+    @Test
+    fun `an aurora write never reaches the raw stream`() {
+        val answers = Answers()
+        val server = server(answers)
+        var rawWrites = 0
+        server.emitWrite = { rawWrites += 1; true }
+
+        server.write(climbStream(), requestId = 103)
+
+        assertEquals(0, rawWrites)
+    }
+
+    /** And on a raw board nothing is reassembled behind the forwarder's back. */
+    @Test
+    fun `a raw write is never reassembled as a climb`() {
+        val answers = Answers()
+        val server = server(answers).apply { rawWritesDecide = { true } }
+        var climbs = 0
+        server.emitClimb = { climbs += 1; true }
+
+        server.write(climbStream(), requestId = 104)
+
+        assertEquals(0, climbs)
     }
 
     // ── Nothing waits forever ─────────────────────────────────────────────

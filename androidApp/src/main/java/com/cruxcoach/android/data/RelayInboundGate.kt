@@ -49,6 +49,60 @@ class RelayInboundGate(
 
         /** Written for an angle this board is not set to. */
         ANGLE_MISMATCH,
+
+        /**
+         * Nothing could be established about it at all.
+         *
+         * Not a decodable command, or a catalogue that could not answer. A
+         * write like this used to be projected regardless, with invented
+         * timestamp ids and none of the checks above ever run.
+         */
+        UNREADABLE,
+
+        /**
+         * It can go on a wall, but it cannot go on a list — and this group
+         * asked for the list.
+         *
+         * Under `APPEND_TO_END` the user has said inbound relay climbs do not
+         * take the wall. A write with no climb identity has no occurrence to
+         * queue, so honouring it would mean projecting it, which is that
+         * setting's exact opposite.
+         */
+        NOT_QUEUEABLE,
+    }
+
+    /**
+     * How far the relay got in working out what a guest sent.
+     *
+     * The gate needs this as an input because "unidentified" is not one
+     * situation: an unlisted climb and a climb for somebody else's wall look
+     * identical from here, and exactly one of them may be written to a board.
+     */
+    enum class Identity {
+        /** A catalogue climb, named and angled: the full path. */
+        NAMED,
+
+        /**
+         * Real bytes for this wall with no name — an unlisted or mirrored
+         * climb, a hold set too small to identify, a board-clear. Every rule
+         * that does not need a climb identity still applies to it.
+         */
+        ANONYMOUS,
+
+        /**
+         * A transport with no framing, forwarded byte-for-byte (MoonBoard).
+         *
+         * Anonymous, and additionally exempt from pacing: one command spans
+         * several writes there, so a per-write rate limit would drop a
+         * command's own tail rather than throttling anybody.
+         */
+        RAW_STREAM,
+
+        /** LEDs this board does not have: written for a different wall. */
+        FOREIGN_BOARD,
+
+        /** Nothing decidable at all. */
+        UNREADABLE,
     }
 
     /**
@@ -121,19 +175,18 @@ class RelayInboundGate(
     private var lastAcceptedAtMs: Long? = null
 
     /**
-     * [climbUuid] and [angle] are null when the write could not be identified
-     * against the catalogue — a MoonBoard byte stream, or an Aurora frame no
-     * catalogue climb matches. Those cannot be deduplicated or queued as an
-     * occurrence, so they only ever pass straight through as an external write.
+     * [climbUuid] and [angle] are set only for [Identity.NAMED]. A write with
+     * no climb identity cannot become an occurrence, but it is still a command
+     * on somebody else's wall: it is deduplicated, paced and fenced like any
+     * other, and it is refused outright when the wall it names is not this one.
      *
-     * [fingerprint] identifies the guest's write itself (who sent it and what
-     * the bytes were), which is what makes a retry recognisable as the same
-     * operation. [newId] supplies fresh ids and is injectable for tests.
-     */
-    /**
+     * @param identity how far identification got; see [Identity]. This used to
+     *   be inferred from `climbUuid == null`, which collapsed "an unlisted
+     *   climb" and "a climb for a different board" into one answer — and that
+     *   answer was to write the board.
      * @param operation the derived identity of this write; see
-     *   [RelayIngressIdentity]. Null only for a write that could not be
-     *   identified at all, which cannot become an occurrence anyway.
+     *   [RelayIngressIdentity]. Null when there was nothing to derive one
+     *   from, which is a refusal rather than a licence.
      * @param canonicallyLanded the shared playlist already shows this
      *   operation's occurrence on the wall. That is the ACK state a successor
      *   after a handover has and its local ledger does not, and believing it
@@ -142,6 +195,7 @@ class RelayInboundGate(
      */
     fun evaluate(
         mode: RelayInboundClimbMode,
+        identity: Identity,
         climbUuid: String?,
         angle: Int?,
         climbBrand: BoardBrand?,
@@ -154,16 +208,31 @@ class RelayInboundGate(
         canonicallyLanded: Boolean = false,
     ): Decision {
         evictExpired(nowMs)
-        if (climbUuid == null || angle == null || operation == null) {
-            return Decision.ProjectNow(
-                operation ?: Operation(
-                    fingerprint = "unidentified-$nowMs",
-                    guestKey = "unidentified",
-                    operationId = "relay-op-unidentified-$nowMs",
-                    entryId = "rl-unidentified-$nowMs",
-                ),
-            )
+        // What could not be established decides first, because everything
+        // below assumes the write is one this board could legitimately show.
+        // The previous version returned `ProjectNow` here with ids made out of
+        // the clock: it skipped the board, layout and angle checks, the rate
+        // limit, the ledger and the routing mode, and because the ids were
+        // timestamps the guest's own retry arrived as a different operation
+        // and wrote the wall again.
+        when (identity) {
+            Identity.FOREIGN_BOARD -> return Decision.Refused(Refusal.BOARD_MISMATCH)
+            Identity.UNREADABLE -> return Decision.Refused(Refusal.UNREADABLE)
+            Identity.ANONYMOUS, Identity.RAW_STREAM ->
+                if (mode == RelayInboundClimbMode.APPEND_TO_END) {
+                    return Decision.Refused(Refusal.NOT_QUEUEABLE)
+                }
+            Identity.NAMED ->
+                if (climbUuid == null || angle == null) {
+                    return Decision.Refused(Refusal.UNREADABLE)
+                }
         }
+        // No derived identity means no way to recognise the retry, and a
+        // request that cannot be recognised twice is one that can be delivered
+        // twice.
+        if (operation == null) return Decision.Refused(Refusal.UNREADABLE)
+        // One MoonBoard command spans several writes; see [Identity.RAW_STREAM].
+        val paced = identity != Identity.RAW_STREAM
         // The ledger is keyed by the intention, not by the content: the same
         // bytes from two different guests are two intentions with two nonces.
         val fingerprint = "${operation.fingerprint}|${operation.guestKey}|${operation.entryId}"
@@ -179,7 +248,9 @@ class RelayInboundGate(
         if (climbLayoutId != null && connectedLayoutId != null && climbLayoutId != connectedLayoutId) {
             return Decision.Refused(Refusal.LAYOUT_MISMATCH)
         }
-        if (connectedAngle != null && angle != connectedAngle) {
+        // Only a named write has an angle to compare. An anonymous one is not
+        // "at the wrong angle"; it is at no stated angle at all.
+        if (angle != null && connectedAngle != null && angle != connectedAngle) {
             return Decision.Refused(Refusal.ANGLE_MISMATCH)
         }
 
@@ -200,7 +271,7 @@ class RelayInboundGate(
                 State.PENDING, State.FAILED -> {
                     record.state = State.PENDING
                     record.updatedAtMs = nowMs
-                    decisionFor(mode, record.operation)
+                    decisionFor(mode, record.operation, identity)
                 }
                 State.LANDED ->
                     if (nowMs - record.updatedAtMs < duplicateWindowMs) {
@@ -213,7 +284,7 @@ class RelayInboundGate(
                         // The caller has already decided that — it minted a new
                         // nonce rather than finding an open one — so this is a
                         // different operation with a different occurrence.
-                        start(mode, operation, nowMs)
+                        start(mode, operation, nowMs, paced, identity)
                     }
             }
         }
@@ -221,8 +292,12 @@ class RelayInboundGate(
         // A climb nobody has seen before still cannot arrive faster than the
         // wall can be used. Guest apps retry, and a retry storm would otherwise
         // be a stream of occurrences nobody put there.
-        lastAcceptedAtMs?.let { if (nowMs - it < minIntervalMs) return Decision.Refused(Refusal.RATE_LIMITED) }
-        return start(mode, operation, nowMs)
+        if (paced) {
+            lastAcceptedAtMs?.let {
+                if (nowMs - it < minIntervalMs) return Decision.Refused(Refusal.RATE_LIMITED)
+            }
+        }
+        return start(mode, operation, nowMs, paced, identity)
     }
 
     /** The write reached the wall. Anything identical for a while now is a re-send. */
@@ -253,15 +328,28 @@ class RelayInboundGate(
         mode: RelayInboundClimbMode,
         operation: Operation,
         nowMs: Long,
+        paced: Boolean,
+        identity: Identity,
     ): Decision {
         ledger[keyOf(operation)] = Record(operation, State.PENDING, nowMs)
-        lastAcceptedAtMs = nowMs
-        return decisionFor(mode, operation)
+        if (paced) lastAcceptedAtMs = nowMs
+        return decisionFor(mode, operation, identity)
     }
 
-    private fun decisionFor(mode: RelayInboundClimbMode, operation: Operation): Decision = when (mode) {
+    /**
+     * A write with no climb identity has no occurrence to queue, so the only
+     * routing left for it is the wall — and `APPEND_TO_END` has already
+     * refused it above rather than quietly projecting it anyway.
+     */
+    private fun decisionFor(
+        mode: RelayInboundClimbMode,
+        operation: Operation,
+        identity: Identity,
+    ): Decision = when (mode) {
         RelayInboundClimbMode.PROJECT_NOW -> Decision.ProjectNow(operation)
-        RelayInboundClimbMode.APPEND_TO_END -> Decision.AppendToEnd(operation)
+        RelayInboundClimbMode.APPEND_TO_END ->
+            if (identity == Identity.NAMED) Decision.AppendToEnd(operation)
+            else Decision.Refused(Refusal.NOT_QUEUEABLE)
     }
 
     private fun evictExpired(nowMs: Long) {

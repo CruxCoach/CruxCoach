@@ -16,6 +16,37 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
+ * What a relayed guest write could be established to be.
+ *
+ * Identification used to answer with a climb or with `null`, and `null` was
+ * doing four jobs at once: an unlisted climb, a board-clear, a climb written
+ * for a different wall, and bytes that are not a command at all. The relay
+ * treated all four the same way — straight to the board, with no board check,
+ * no pacing, no deduplication and a made-up identity — so the two that are
+ * genuinely dangerous rode in on the back of the two that are ordinary.
+ */
+sealed interface RelayWriteIdentity {
+    /** A catalogue climb, on the board this phone is connected to. */
+    data class Named(val climbUuid: String, val angle: Int) : RelayWriteIdentity
+
+    /**
+     * Real bytes for this wall that cannot be given a name.
+     *
+     * An unlisted or mirrored climb, a hold set too small to identify, or a
+     * board-clear. It may be projected — that is what the relay is for — but
+     * it can never become a playlist occurrence, because there is nothing to
+     * put on the list.
+     */
+    object Anonymous : RelayWriteIdentity
+
+    /** LEDs the configured board does not have: written for another wall. */
+    object ForeignBoard : RelayWriteIdentity
+
+    /** Not a command, or the catalogue cannot answer. Nothing is known. */
+    object Undecidable : RelayWriteIdentity
+}
+
+/**
  * Puts a climb identity back on a relayed board write (FEAT-044).
  *
  * A CruxCoach sender advertises the climb UUID over BLE, so nearby phones can
@@ -31,9 +62,12 @@ import javax.inject.Singleton
  * ties: the @2 wire format scales colours by a power budget, so a colour is a
  * hint, never a key.
  *
- * A miss is normal (mirrored climb, unlisted climb, a board the catalogue does
- * not cover) and costs nothing but a log line — the relay forward has already
- * happened before this runs and must never depend on it.
+ * A miss is normal (mirrored climb, unlisted climb) — but "miss" was one
+ * `null` standing for four different situations, and only two of them are
+ * writes this board should ever be shown. [RelayWriteIdentity] separates them:
+ * a climb whose LEDs are not even on this board is a write for somebody else's
+ * wall, and bytes that decode into nothing are not a command at all. Both used
+ * to reach the board exactly as a named climb did.
  */
 @Singleton
 class RelayClimbIdentifier @Inject constructor(
@@ -41,16 +75,15 @@ class RelayClimbIdentifier @Inject constructor(
     private val userPreferences: UserPreferences,
 ) {
 
-    data class Identified(val uuid: String, val angle: Int)
-
     private val mutex = Mutex()
     private var indexEnsured = false
     private var ledMapKey: Pair<String, Int>? = null
     private var ledToPlacement: Map<Int, Int> = emptyMap()
     /** Small LRU: the official app re-sends the same climb on every angle
      *  change and every re-light, and a repeat must not re-scan the DB. */
-    private val resolved = object : LinkedHashMap<Long, Identified?>(16, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Long, Identified?>?) = size > 32
+    private val resolved = object : LinkedHashMap<Long, RelayWriteIdentity>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Long, RelayWriteIdentity>?) =
+            size > 32
     }
 
     /**
@@ -69,10 +102,9 @@ class RelayClimbIdentifier @Inject constructor(
         }
     }
 
-    suspend fun identify(climb: CompleteClimb): Identified? = mutex.withLock {
-        if (resolved.containsKey(climb.framesHash)) {
-            val hit = resolved[climb.framesHash]
-            Log.d(TAG, "cache ${if (hit != null) "hit ${hit.uuid.take(8)}" else "miss (known)"}")
+    suspend fun identify(climb: CompleteClimb): RelayWriteIdentity = mutex.withLock {
+        resolved[climb.framesHash]?.let { hit ->
+            Log.d(TAG, "cache hit: $hit")
             return@withLock hit
         }
         val result = try {
@@ -80,21 +112,25 @@ class RelayClimbIdentifier @Inject constructor(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            // The catalogue could not answer. That is not "no catalogue climb
+            // matches" — it is "nothing is known", and a write nothing is
+            // known about does not get to change a wall.
             Log.w(TAG, "relay climb identification failed", e)
-            null
+            RelayWriteIdentity.Undecidable
         }
         resolved[climb.framesHash] = result
         result
     }
 
-    private suspend fun resolve(climb: CompleteClimb): Identified? {
+    private suspend fun resolve(climb: CompleteClimb): RelayWriteIdentity {
         val decoded = RelayLedDecoder.decode(climb.rawBytes) ?: run {
             Log.d(TAG, "no decodable packet in a ${climb.rawBytes.size}-byte write")
-            return null
+            return RelayWriteIdentity.Undecidable
         }
         if (decoded.leds.isEmpty()) {
+            // A board-clear is a real command with nothing to name.
             Log.d(TAG, "board-clear write — nothing to identify")
-            return null
+            return RelayWriteIdentity.Anonymous
         }
 
         val brand = userPreferences.boardBrand.first()
@@ -109,23 +145,30 @@ class RelayClimbIdentifier @Inject constructor(
             ledMapKey = brand to productSizeId
         }
         if (ledToPlacement.isEmpty()) {
+            // Without the map nothing about these LEDs can be checked, not
+            // even whether they belong to this board.
             Log.w(TAG, "no LED map for size=$productSizeId brand=$brand")
-            return null
+            return RelayWriteIdentity.Undecidable
         }
 
         val placements = decoded.leds.map { ledToPlacement[it.position] }
         if (placements.any { it == null }) {
+            // LEDs this board does not have. Whatever it is, it was written
+            // for a different wall, and forwarding it here would light holds
+            // that mean something else.
             Log.d(
                 TAG,
                 "${placements.count { it == null }}/${placements.size} LEDs outside the " +
                     "configured board (size=$productSizeId) — not this board's climb"
             )
-            return null
+            return RelayWriteIdentity.ForeignBoard
         }
         val placementSet = placements.filterNotNull().toSet()
         if (placementSet.size < MIN_HOLDS) {
+            // Every LED is on this board; there are just too few of them to
+            // name a climb. Nameless, not foreign.
             Log.d(TAG, "only ${placementSet.size} holds — too little to identify")
-            return null
+            return RelayWriteIdentity.Anonymous
         }
 
         // Frame entries read "p<placement>r<role>", so the string length is
@@ -164,7 +207,7 @@ class RelayClimbIdentifier @Inject constructor(
         )
 
         val hit = when {
-            matches.isEmpty() -> null
+            matches.isEmpty() -> return RelayWriteIdentity.Anonymous
             matches.size == 1 -> matches.first()
             // Same holds, different roles (a foot-only variant of the same
             // shape) — the colours decide, and only then. Beyond that the
@@ -173,8 +216,8 @@ class RelayClimbIdentifier @Inject constructor(
             else -> disambiguateByRoles(matches, decoded, brand) ?: matches.first().also {
                 Log.d(TAG, "${matches.size} climbs share these holds — taking the most climbed")
             }
-        } ?: return null
-        return Identified(uuid = hit.uuid, angle = angle)
+        }
+        return RelayWriteIdentity.Named(climbUuid = hit.uuid, angle = angle)
     }
 
     private fun disambiguateByRoles(

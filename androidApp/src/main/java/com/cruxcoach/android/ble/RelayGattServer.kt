@@ -63,10 +63,23 @@ data class RelayInboundClimb(
     val deadlineAtMs: Long = Long.MAX_VALUE,
 )
 
-/** One Nordic-UART write exactly as a guest sent it. MoonBoard uses an ASCII
- * stream instead of Aurora's framed packets, so these writes are forwarded
- * byte-for-byte without [RelayFrameReassembler]. */
-data class RelayInboundWrite(val deviceAddress: String, val value: ByteArray)
+/**
+ * One Nordic-UART write exactly as a guest sent it.
+ *
+ * MoonBoard uses an ASCII stream instead of Aurora's framed packets, so these
+ * writes are forwarded byte-for-byte without [RelayFrameReassembler] — which
+ * means the write *is* the command, and [pendingResponse] is the guest's
+ * transaction waiting on what became of it. It used to be answered the moment
+ * the bytes were handed on, while the board write and the canonical commit
+ * behind it had not started.
+ */
+data class RelayInboundWrite(
+    val deviceAddress: String,
+    val value: ByteArray,
+    val pendingResponse: Int? = null,
+    /** See [RelayInboundClimb.deadlineAtMs]; the same clock and the same rule. */
+    val deadlineAtMs: Long = Long.MAX_VALUE,
+)
 
 /**
  * The board-emulation GATT server of CruxRelay (FEAT-044).
@@ -137,6 +150,18 @@ class RelayGattServer(private val context: Context) {
      * behaves exactly as it did before.
      */
     var admitWrite: (() -> Boolean)? = null
+
+    /**
+     * Whether the raw byte stream is the path that decides a guest's write.
+     *
+     * MoonBoard speaks an unframed ASCII stream, so there is nothing for
+     * [RelayFrameReassembler] to complete and the forwarded write is itself the
+     * command; Aurora is the other way round. Exactly one of the two paths
+     * handles any given write, and the one that handles it is the one that
+     * answers it. Running both — which is what this did — meant the raw path
+     * could report success for a write the Aurora path had still to decide.
+     */
+    var rawWritesDecide: () -> Boolean = { false }
 
     private val _climbs = MutableSharedFlow<RelayInboundClimb>(extraBufferCapacity = 64)
     val climbs: SharedFlow<RelayInboundClimb> = _climbs.asSharedFlow()
@@ -352,14 +377,22 @@ class RelayGattServer(private val context: Context) {
                 respond(device, requestId, responseNeeded, accepted = true)
                 return
             }
-            // Preserve the exact write for protocols such as MoonBoard.
-            // CruxRelayManager selects this stream only when the physical
-            // board is not using Aurora packet framing.
-            if (!emitWrite(RelayInboundWrite(address, value.copyOf()))) {
-                // Dropped on the floor. Reporting that as a delivered write is
-                // the plainest lie this server could tell.
-                Log.w(TAG, "writes buffer full — dropping a write from $address")
-                respond(device, requestId, responseNeeded, accepted = false)
+            if (runCatching { rawWritesDecide() }.getOrDefault(false)) {
+                // An unframed stream: this write is the command, so its verdict
+                // is the guest's answer and the ATT transaction waits for it
+                // exactly as it does on the Aurora side.
+                val rawDeadlineAt = monotonicMs() + responseDeadlineMs
+                val rawPending = if (responseNeeded) requestId else null
+                if (rawPending != null) {
+                    registerPending(requestId, device, rawDeadlineAt, outstanding = 1)
+                }
+                if (!emitWrite(RelayInboundWrite(address, value.copyOf(), rawPending, rawDeadlineAt))) {
+                    // Dropped on the floor. Reporting that as a delivered write
+                    // is the plainest lie this server could tell.
+                    Log.w(TAG, "writes buffer full — dropping a write from $address")
+                    if (rawPending != null) settle(rawPending, accepted = false)
+                    else respond(device, requestId, responseNeeded, accepted = false)
+                }
                 return
             }
             // Reassemble per client; a complete climb (ONLY / FIRST..LAST)

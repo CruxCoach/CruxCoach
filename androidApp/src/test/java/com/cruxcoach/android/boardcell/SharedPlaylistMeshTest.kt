@@ -751,6 +751,7 @@ class SharedPlaylistMeshTest {
                 projection?.climbUuid == climbUuid && projection.angle == angle
             return gate.evaluate(
                 mode = com.cruxcoach.android.data.RelayInboundClimbMode.PROJECT_NOW,
+                identity = com.cruxcoach.android.data.RelayInboundGate.Identity.NAMED,
                 climbUuid = climbUuid,
                 angle = angle,
                 climbBrand = null,

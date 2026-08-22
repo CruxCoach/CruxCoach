@@ -16,6 +16,10 @@ import com.cruxcoach.android.boardcell.BoardProjection
  * ([RelayClimbIdentifier]) — the "on the board" banner then names it like any
  * CruxCoach send instead of going blank. Only a genuinely unidentifiable write
  * clears the state.
+ *
+ * What could *not* be established is reported as precisely as what could; see
+ * [RelayWriteIdentity]. A relay that cannot tell "an unlisted climb" from "a
+ * climb for a different wall" has no way to refuse the second one.
  */
 class BoardProjectionCoordinator(
     private val sessionQueueManager: SessionQueueManager,
@@ -28,8 +32,15 @@ class BoardProjectionCoordinator(
         climbIdentifier?.warmUp()
     }
 
-    suspend fun identifyExternal(climb: CompleteClimb): BoardProjection? =
-        climbIdentifier?.identify(climb)?.let { BoardProjection(it.uuid, it.angle) }
+    /**
+     * What this write is, as far as the catalogue can say.
+     *
+     * With no identifier installed nothing can be established at all, which is
+     * [RelayWriteIdentity.Undecidable] and not "an unnamed climb" — the
+     * difference decides whether a wall gets written.
+     */
+    suspend fun identifyExternal(climb: CompleteClimb): RelayWriteIdentity =
+        climbIdentifier?.identify(climb) ?: RelayWriteIdentity.Undecidable
 
     suspend fun onCanonicalExternalBoardWrite(projection: BoardProjection?) {
         if (sessionQueueManager.state.value.role == SessionRole.HOST) {
