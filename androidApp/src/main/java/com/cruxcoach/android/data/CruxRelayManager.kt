@@ -254,14 +254,63 @@ class CruxRelayManager(
     )
 
     /**
-     * Whether a guest's write may be reported as landed.
+     * Whether a guest's write may be admitted at all right now.
      *
-     * The GATT layer has already told the guest's app the write succeeded, so
-     * this is the only place left that can decline to make a dark wall look
-     * like a delivered climb.
+     * Answered on the GATT thread, so board health only — it is the question
+     * "is there a wall on the other side of me", asked before anything is
+     * accepted. Reporting a *delivery* is a different and later question; see
+     * [mayReportDelivered].
      */
     fun mayAcknowledgeInboundWrite(): Boolean =
         CruxRelayOwnershipPolicy.mayAcknowledgeWrite(boardHealth())
+
+    /**
+     * Whether this device may tell a guest their climb was delivered — now.
+     *
+     * Asked again at the moment of answering, and that is the whole point. A
+     * relayed operation suspends: the intent barrier travels the mesh, the
+     * board write waits on chunks, the terminal playlist commit waits on the
+     * controller. The link can drop inside any of them, and the lifecycle
+     * deliberately keeps the forward collector alive through the grace window
+     * so a blip does not tear a working relay down. Checking board health only
+     * where the operation *started* therefore allowed the one sequence the
+     * contract forbids:
+     *
+     *     accepted while healthy → operation runs → board link drops
+     *     → advertising and admission withdrawn → grace → success ACK
+     *
+     * The lease is here for the same reason. A handover, a frozen cell or a
+     * different board underneath means this device is no longer the one whose
+     * word about that wall counts, whatever it was when the bytes arrived.
+     *
+     * A write that really did land is still recorded canonically — see the
+     * call sites — so the guest's retry after recovery replays the success
+     * without a second write or a second occurrence. Withholding the ACK costs
+     * them a round trip; sending it would cost them the truth.
+     */
+    private fun mayReportDelivered(): Boolean {
+        if (!mayAcknowledgeInboundWrite()) return false
+        val snapshot = boardCellManager.snapshot() ?: return false
+        if (snapshot.controllerId != boardCellManager.localNodeId()) return false
+        if (snapshot.availability != BoardCellAvailability.ACTIVE) return false
+        snapshot.handover?.let { if (it.phase != HandoverPhase.COMPLETED) return false }
+        startedUnder?.let { lease ->
+            if (lease.epoch != snapshot.epoch || lease.controllerTerm != snapshot.controllerTerm) {
+                return false
+            }
+            if (lease.physicalBoardId != snapshot.physicalBoardId.value) return false
+        }
+        return true
+    }
+
+    /** The verdict for a guest write, refused unless this device may still say so. */
+    private fun settleDelivered(pendingResponse: Int?, delivered: Boolean) {
+        val may = delivered && mayReportDelivered()
+        if (delivered && !may) {
+            Log.w(TAG, "withholding a delivery ACK: the board path or the lease has moved")
+        }
+        relayServer.settle(pendingResponse, may)
+    }
 
     /** Legacy binary-compatible entry point; BoardCell ownership cannot be toggled. */
     @Deprecated("CruxRelay follows BoardCell controller ownership")
@@ -699,7 +748,12 @@ class CruxRelayManager(
                             // it is the only one a retrying guest can act on.
                             Log.i(TAG, "relayed climb already delivered; replaying the success")
                             _state.update { it.copy(inboundRefusal = null) }
-                            relayServer.settle(inbound.pendingResponse, accepted = true)
+                            // Fenced like any other delivery ACK. Their climb is
+                            // canonically on the wall, but during grace this
+                            // device cannot see the wall to say so — and the
+                            // record keeps the fact, so the next retry after
+                            // recovery replays it.
+                            settleDelivered(inbound.pendingResponse, delivered = true)
                         }
                         is RelayInboundGate.Decision.AppendToEnd -> {
                             // Fenced like the projection is: the guest may
@@ -749,10 +803,14 @@ class CruxRelayManager(
                                 completing = decision.operation.copy(stampedAtEpochMs = now),
                                 onTerminal = { committed ->
                                     settleOperation(decision.operation, committed)
-                                    // Queued means queued: the guest's write is
-                                    // on the shared list, which is what
-                                    // "Ans Ende" promised them.
-                                    relayServer.settle(inbound.pendingResponse, committed)
+                                    // Queued means queued — but the controller
+                                    // answers this callback whenever it gets
+                                    // round to it, and the link can have gone
+                                    // in the meantime. The occurrence stays on
+                                    // the list either way; only the ACK waits
+                                    // for a device that can still speak for
+                                    // this board.
+                                    settleDelivered(inbound.pendingResponse, committed)
                                 },
                             )
                         }
@@ -830,7 +888,13 @@ class CruxRelayManager(
                                 // wall really is showing it and canonical state
                                 // has to agree with the room — and their retry
                                 // then finds it landed and gets a success.
-                                relayServer.settle(inbound.pendingResponse, accepted = true)
+                                //
+                                // The same holds if the link dropped while the
+                                // chunks were going out: the climb reached the
+                                // wall, the record keeps that, and the guest is
+                                // told only once this device can see the board
+                                // again.
+                                settleDelivered(inbound.pendingResponse, delivered = true)
                                 if (identified != null) {
                                     gattBridge.adoptProjectedEntry(
                                         identified.climbUuid, identified.angle, "relay_project",

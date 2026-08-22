@@ -44,6 +44,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -113,9 +114,9 @@ class CruxRelayIngressAckTest {
     private lateinit var boardCellManager: BoardCellManager
     private lateinit var manager: CruxRelayManager
 
-    private fun snapshot() = BoardCellSnapshot(
+    private fun snapshot(controller: String = me) = BoardCellSnapshot(
         cellId = BoardCellId.forPhysical(physical), physicalBoardId = physical,
-        epoch = 1, sequence = 4, controllerId = me, controllerTerm = 1,
+        epoch = 1, sequence = 4, controllerId = controller, controllerTerm = 1,
         lineageId = "lineage", members = setOf(me), availability = BoardCellAvailability.ACTIVE,
         playlist = BoardPlaylistState(sessionId = 7),
     ).withComputedHash()
@@ -565,5 +566,153 @@ class CruxRelayIngressAckTest {
 
         coVerify { relayServer.settle(142, true) }
         coVerify(exactly = 1) { boardCellManager.projectExternal(any(), any(), any(), any()) }
+    }
+
+    // ── The link dropping while an accepted operation is in flight ────────
+    //
+    // The sequence the contract forbids, and the one the old tests missed —
+    // they only covered a write that *arrived* after the link was gone:
+    //
+    //     accepted while healthy → operation runs → board link drops
+    //     → advertising and admission withdrawn → grace → success ACK
+    //
+    // Health was checked where the operation started and never again, and
+    // every step in between suspends.
+
+    /** The link goes while the intent barrier is travelling the mesh. */
+    @Test
+    fun `a link lost during the intent barrier withholds the success`() = runTest(dispatcher) {
+        relayRunning()
+        coEvery { bridge.recordRelayIntent(any()) } coAnswers {
+            connectionState.value = ConnectionState.DISCONNECTED
+            runCurrent()
+            true
+        }
+
+        climbs.emit(inbound(requestId = 201))
+        advanceUntilIdle()
+
+        coVerify(exactly = 0) { relayServer.settle(201, true) }
+    }
+
+    /** The link goes while the chunks are going out. */
+    @Test
+    fun `a link lost during the board write withholds the success`() = runTest(dispatcher) {
+        relayRunning()
+        coEvery { boardCellManager.projectExternal(any(), any(), any(), any()) } coAnswers {
+            connectionState.value = ConnectionState.DISCONNECTED
+            runCurrent()
+            ProjectionResult.Duplicate(mockk(relaxed = true))
+        }
+
+        climbs.emit(inbound(requestId = 202))
+        advanceUntilIdle()
+
+        coVerify(exactly = 0) { relayServer.settle(202, true) }
+        coVerify { relayServer.settle(202, false) }
+    }
+
+    /** And the climb that did reach the wall is still recorded. */
+    @Test
+    fun `a write that landed as the link went is still canonical`() = runTest(dispatcher) {
+        relayRunning()
+        coEvery { boardCellManager.projectExternal(any(), any(), any(), any()) } coAnswers {
+            connectionState.value = ConnectionState.DISCONNECTED
+            runCurrent()
+            ProjectionResult.Duplicate(mockk(relaxed = true))
+        }
+
+        climbs.emit(inbound(requestId = 203))
+        advanceUntilIdle()
+
+        assertTrue(
+            "the occurrence is on the list even though the guest was not told",
+            canonicalPlaylist.relayOperations.any { it.landed },
+        )
+    }
+
+    /**
+     * Which is what makes the withheld ACK recoverable: once the board is back,
+     * the same request replays its success with no second write.
+     */
+    @Test
+    fun `the withheld success is replayed after the board comes back`() = runTest(dispatcher) {
+        relayRunning()
+        coEvery { boardCellManager.projectExternal(any(), any(), any(), any()) } coAnswers {
+            connectionState.value = ConnectionState.DISCONNECTED
+            runCurrent()
+            ProjectionResult.Duplicate(mockk(relaxed = true))
+        }
+        climbs.emit(inbound(requestId = 204))
+        advanceUntilIdle()
+        coVerify { relayServer.settle(204, false) }
+
+        // Reconnect inside the grace window, then the guest retries.
+        connectionState.value = ConnectionState.CONNECTED
+        runCurrent()
+        clockMs += 5_000
+        climbs.emit(inbound(requestId = 205))
+        advanceUntilIdle()
+
+        coVerify { relayServer.settle(205, true) }
+        coVerify(exactly = 1) { boardCellManager.projectExternal(any(), any(), any(), any()) }
+    }
+
+    /** The append branch answers late too, and is fenced the same way. */
+    @Test
+    fun `a link lost before the append callback withholds the success`() = runTest(dispatcher) {
+        routingMode = RelayInboundClimbMode.APPEND_TO_END
+        relayRunning()
+        every {
+            bridge.appendSharedPlaylistEntry(any(), any(), any(), any(), any(), any())
+        } answers {
+            arg<BoardRelayOperation?>(4)?.let { operation ->
+                canonicalPlaylist = BoardPlaylistPolicy.apply(
+                    canonicalPlaylist,
+                    BoardPlaylistOps.recordRelayOperation(operation, landed = true),
+                )
+            }
+            connectionState.value = ConnectionState.DISCONNECTED
+            runCurrent()
+            lastArg<((Boolean) -> Unit)?>()?.invoke(true)
+        }
+
+        climbs.emit(inbound(requestId = 206))
+        advanceUntilIdle()
+
+        coVerify(exactly = 0) { relayServer.settle(206, true) }
+        assertTrue(canonicalPlaylist.relayOperations.any { it.landed })
+    }
+
+    /** Grace expiring is not a different answer — it is the same one, later. */
+    @Test
+    fun `a success is still withheld once the grace window expires`() = runTest(dispatcher) {
+        relayRunning()
+        coEvery { boardCellManager.projectExternal(any(), any(), any(), any()) } coAnswers {
+            connectionState.value = ConnectionState.DISCONNECTED
+            advanceTimeBy(CruxRelayOwnershipPolicy.GRACE_MS + 100)
+            ProjectionResult.Duplicate(mockk(relaxed = true))
+        }
+
+        climbs.emit(inbound(requestId = 207))
+        advanceUntilIdle()
+
+        coVerify(exactly = 0) { relayServer.settle(207, true) }
+    }
+
+    /** A handover mid-operation is the other half of the fence. */
+    @Test
+    fun `a lease lost during the operation withholds the success`() = runTest(dispatcher) {
+        relayRunning()
+        coEvery { boardCellManager.projectExternal(any(), any(), any(), any()) } coAnswers {
+            snapshots.value = snapshot(controller = "node-other")
+            runCurrent()
+            ProjectionResult.Duplicate(mockk(relaxed = true))
+        }
+
+        climbs.emit(inbound(requestId = 208))
+        advanceUntilIdle()
+
+        coVerify(exactly = 0) { relayServer.settle(208, true) }
     }
 }
