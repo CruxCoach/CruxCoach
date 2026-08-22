@@ -118,7 +118,13 @@ class RelayClimbIdentifier @Inject constructor(
             Log.w(TAG, "relay climb identification failed", e)
             RelayWriteIdentity.Undecidable
         }
-        resolved[climb.framesHash] = result
+        // Deterministic answers are cached; "nothing is known" is not. It is
+        // reached both by bytes that will never decode — cheap to re-derive —
+        // and by a catalogue that could not answer this once, and caching the
+        // second kind would turn one transient failure into a climb this relay
+        // refuses for the rest of the cache's life. That mattered less when a
+        // miss meant "forward it anyway"; it decides the write now.
+        if (result != RelayWriteIdentity.Undecidable) resolved[climb.framesHash] = result
         result
     }
 
