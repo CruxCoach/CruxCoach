@@ -781,6 +781,8 @@ class SharedPlaylistMeshTest {
     ): com.cruxcoach.android.data.RelayInboundGate.Operation = when (decision) {
         is com.cruxcoach.android.data.RelayInboundGate.Decision.ProjectNow -> decision.operation
         is com.cruxcoach.android.data.RelayInboundGate.Decision.AppendToEnd -> decision.operation
+        is com.cruxcoach.android.data.RelayInboundGate.Decision.AlreadyDelivered ->
+            decision.operation
         is com.cruxcoach.android.data.RelayInboundGate.Decision.Refused ->
             fail("the guest write was refused: ${decision.reason}").let { error("unreachable") }
     }
@@ -846,12 +848,16 @@ class SharedPlaylistMeshTest {
             "climb-guest", 40, framesHash = 77L, nowMs = wallClock + 2_500, guestAddress = "BB:02",
         )
         // The cell itself says it already landed, which is the ACK state the
-        // successor's own ledger cannot have: no second write to the wall.
+        // successor's own ledger cannot have. So: no second write to the wall,
+        // no second occurrence — and a *success*, because the climb the guest
+        // is asking for is on the board. Answering their retry with an error
+        // was what invited a contradictory second action.
+        assertTrue(
+            retryDecision is com.cruxcoach.android.data.RelayInboundGate.Decision.AlreadyDelivered,
+        )
         assertEquals(
-            com.cruxcoach.android.data.RelayInboundGate.Decision.Refused(
-                com.cruxcoach.android.data.RelayInboundGate.Refusal.DUPLICATE,
-            ),
-            retryDecision,
+            "under the ids the first attempt used",
+            operation.entryId, operationOf(retryDecision).entryId,
         )
         assertEquals("the wall is written once, by one controller", 1, writes.size)
 
@@ -963,6 +969,89 @@ class SharedPlaylistMeshTest {
             )
         }
         network.assertConverged()
+    }
+
+    /**
+     * The success answer never reached the guest and their address rotated.
+     *
+     * Both facts at once, which is the ordinary shape of a lost ACK over BLE:
+     * the link dropped, which is *why* the answer was lost and why the address
+     * is new. Their retry has to find the same request — anything else mints a
+     * second occurrence for one climb.
+     */
+    @Test fun `a lost success ack is replayed after an address rotation`() = runTest {
+        val network = mesh("controller", "nokia")
+        val host = RelayHost(network.node("controller"))
+        val writes = mutableListOf<String>()
+
+        val operation = operationOf(
+            host.ingest("climb-guest", 40, framesHash = 77L, nowMs = wallClock, guestAddress = "AA:01"),
+        )
+        assertTrue(host.publishIntent(operation))
+        assertTrue(host.node.relayGuestWrite(operation, "climb-guest", 40, writes))
+        assertTrue(host.publishIntent(operation.copy(landed = true)))
+        network.deliver()
+
+        // Same person, new address, same climb — inside the reconnect window.
+        val retry = host.ingest(
+            "climb-guest", 40, framesHash = 77L,
+            nowMs = wallClock + 2_000, guestAddress = "BB:02",
+        )
+
+        assertTrue(
+            "their climb is on the wall, so this is a success",
+            retry is com.cruxcoach.android.data.RelayInboundGate.Decision.AlreadyDelivered,
+        )
+        assertEquals(operation.entryId, operationOf(retry).entryId)
+        assertEquals("and the wall is written once", 1, writes.size)
+        network.assertConverged()
+        network.nodes.values.forEach {
+            assertEquals(listOf(operation.entryId), it.playlist().entries.map { e -> e.entryId })
+        }
+    }
+
+    /** The same, with the board changing hands in between. */
+    @Test fun `a lost success ack is replayed by the new controller`() = runTest {
+        val network = mesh("controller", "nokia")
+        val old = network.node("controller")
+        val nokia = network.node("nokia")
+        val oldHost = RelayHost(old)
+        val newHost = RelayHost(nokia)
+        val writes = mutableListOf<String>()
+
+        val operation = operationOf(
+            oldHost.ingest("climb-guest", 40, framesHash = 77L, nowMs = wallClock, guestAddress = "AA:01"),
+        )
+        assertTrue(oldHost.publishIntent(operation))
+        assertTrue(old.relayGuestWrite(operation, "climb-guest", 40, writes))
+        assertTrue(oldHost.publishIntent(operation.copy(landed = true)))
+        network.deliver()
+
+        old.coordinator.prepareHandover(board, "nokia", network.monotonic, "transfer-0003")
+        network.deliver()
+        old.coordinator.sourceReleased(board, "transfer-0003", network.monotonic)
+        network.deliver()
+        nokia.coordinator.targetReady(board, "board-connection-proof")
+        network.deliver()
+        old.coordinator.completeHandover(board, "transfer-0003", network.monotonic)
+        nokia.coordinator.completeHandover(board, "transfer-0003", network.monotonic)
+        network.deliver()
+        assertEquals("nokia", nokia.snapshot().controllerId)
+
+        val retry = newHost.ingest(
+            "climb-guest", 40, framesHash = 77L,
+            nowMs = wallClock + 2_000, guestAddress = "BB:02",
+        )
+
+        assertTrue(
+            retry is com.cruxcoach.android.data.RelayInboundGate.Decision.AlreadyDelivered,
+        )
+        assertEquals(operation.entryId, operationOf(retry).entryId)
+        assertEquals(1, writes.size)
+        network.assertConverged()
+        network.nodes.values.forEach {
+            assertEquals(listOf(operation.entryId), it.playlist().entries.map { e -> e.entryId })
+        }
     }
 
     @Test fun `a retry on the same controller writes the board once`() = runTest {

@@ -29,7 +29,13 @@ class RelayInboundGate(
 ) {
     /** Why an inbound relay climb did not reach the wall. */
     enum class Refusal {
-        /** The same climb again, within the window a re-send lands in. */
+        /**
+         * The same climb again, within the window a re-send lands in.
+         *
+         * Retained for a repeat this device can neither deliver nor confirm.
+         * A repeat of a write that *did* land is [Decision.AlreadyDelivered],
+         * which is a success — see there for why the difference matters.
+         */
         DUPLICATE,
 
         /** Arriving faster than anybody could be climbing them. */
@@ -64,6 +70,18 @@ class RelayInboundGate(
 
         /** Queue it at the end; the wall keeps what it has. */
         data class AppendToEnd(val operation: Operation) : Decision
+
+        /**
+         * This exact request has already been delivered.
+         *
+         * Nothing to write and nothing to add — and it is a **success**, not a
+         * refusal. A guest whose success answer was lost re-sends, and the
+         * honest reply is that the climb they asked for is on the wall. Telling
+         * them it failed, which is what a duplicate refusal did, invites the
+         * one thing exactly-once semantics cannot survive: a retry that means
+         * something different from the request it repeats.
+         */
+        data class AlreadyDelivered(val operation: Operation) : Decision
 
         data class Refused(val reason: Refusal) : Decision
     }
@@ -170,7 +188,7 @@ class RelayInboundGate(
         // otherwise re-write a wall that is already showing this very climb.
         if (canonicallyLanded && ledger[fingerprint]?.state != State.FAILED) {
             ledger[fingerprint] = Record(operation, State.LANDED, nowMs)
-            return Decision.Refused(Refusal.DUPLICATE)
+            return Decision.AlreadyDelivered(operation)
         }
         ledger[fingerprint]?.let { record ->
             return when (record.state) {
@@ -186,7 +204,10 @@ class RelayInboundGate(
                 }
                 State.LANDED ->
                     if (nowMs - record.updatedAtMs < duplicateWindowMs) {
-                        Decision.Refused(Refusal.DUPLICATE)
+                        // The same request again, and it is already on the
+                        // wall. Answering it as delivered is both true and the
+                        // only answer a retrying guest can act on.
+                        Decision.AlreadyDelivered(record.operation)
                     } else {
                         // Long enough after the fact to be a new intention.
                         // The caller has already decided that — it minted a new

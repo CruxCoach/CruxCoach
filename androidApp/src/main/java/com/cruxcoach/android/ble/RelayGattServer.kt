@@ -76,6 +76,24 @@ class RelayGattServer(private val context: Context) {
          * actually decides — this only bounds it.
          */
         const val MAX_CONNECTED_DEVICES = 4
+
+        /**
+         * How long one relayed guest write may take, end to end.
+         *
+         * One number for the ATT transaction and for the operation behind it,
+         * because two numbers drift and the gap between them is where a guest
+         * gets an error for a climb that then appears on the wall. Sized for a
+         * real multi-chunk write — several `WRITE_TIMEOUT_MS` waits plus the
+         * canonical round trips — and still comfortably inside the ATT
+         * transaction timeout of 30 s.
+         *
+         * Past it the relay stops *starting* work; a board write already under
+         * way is never cancelled, because a half-written climb leaves the wall
+         * in a state the protocol has no way to undo. A write that lands late
+         * is committed canonically and made good by the success replay: the
+         * guest's retry is answered `AlreadyDelivered`.
+         */
+        const val RELAY_OPERATION_DEADLINE_MS = 20_000L
         private const val LIVENESS_CHECK_INTERVAL_MS = 10_000L
         private const val CLIENT_DISCONNECT_GRACE_MS = 300L
         private const val SERVICE_REGISTRATION_TIMEOUT_MS = 2_000L
@@ -157,17 +175,13 @@ class RelayGattServer(private val context: Context) {
     /**
      * How long a guest's write may wait for a verdict.
      *
-     * Comfortably inside the ATT transaction timeout (30 s) and comfortably
-     * beyond a board round trip. A verdict that has not arrived by then is
-     * reported as a failure rather than left to time out, because a timeout
-     * looks like a broken link and a failure looks like what it is.
-     *
-     * Per request, and measured on a monotonic clock. One shared timer meant a
-     * write that arrived five seconds into somebody else's window got one
-     * second, which is neither the documented six nor anything a guest could
-     * predict.
+     * Per request, on a monotonic clock, and the *same* number the relay gives
+     * the operation itself — see [RELAY_OPERATION_DEADLINE_MS]. Six seconds was
+     * shorter than a legitimate board write: one BLE chunk alone may wait five
+     * (`BoardBleConnection.WRITE_TIMEOUT_MS`), and a climb is many chunks. The
+     * guest was told "failed" while their climb went on to reach the wall.
      */
-    private val responseDeadlineMs = 6_000L
+    private val responseDeadlineMs = RELAY_OPERATION_DEADLINE_MS
 
     @VisibleForTesting
     internal var monotonicMs: () -> Long = SystemClock::elapsedRealtime

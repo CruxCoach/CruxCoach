@@ -83,6 +83,7 @@ class RelayInboundGateTest {
         when (decision) {
             is RelayInboundGate.Decision.ProjectNow -> decision.operation
             is RelayInboundGate.Decision.AppendToEnd -> decision.operation
+            is RelayInboundGate.Decision.AlreadyDelivered -> decision.operation
             is RelayInboundGate.Decision.Refused -> error("refused: ${decision.reason}")
         }
 
@@ -173,10 +174,10 @@ class RelayInboundGateTest {
         val first = operationOf(gate.send(nowMs = 1_000))
         gate.markLanded(first, 1_000)
 
-        assertEquals(
-            RelayInboundGate.Decision.Refused(RelayInboundGate.Refusal.DUPLICATE),
-            gate.send(nowMs = 3_000),
-        )
+        val again = gate.send(nowMs = 3_000)
+
+        assertTrue(again is RelayInboundGate.Decision.AlreadyDelivered)
+        assertEquals("one send, one occurrence", first, operationOf(again))
     }
 
     @Test
@@ -285,10 +286,9 @@ class RelayInboundGateTest {
 
         gate.reset()
 
-        assertEquals(
-            RelayInboundGate.Decision.Refused(RelayInboundGate.Refusal.DUPLICATE),
-            gate.send(nowMs = 1_100),
-        )
+        val again = gate.send(nowMs = 1_100)
+        assertTrue(again is RelayInboundGate.Decision.AlreadyDelivered)
+        assertEquals(first, operationOf(again))
     }
 
     /** What the restart does clear is this device's own pacing. */

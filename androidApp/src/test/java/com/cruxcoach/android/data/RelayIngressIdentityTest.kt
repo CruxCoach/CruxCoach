@@ -195,13 +195,53 @@ class RelayIngressIdentityTest {
         assertNull(third)
     }
 
-    /** A landed request is finished, so it is never adopted by a reconnect. */
+    /**
+     * A landed request *is* recognised across an address change, briefly.
+     *
+     * A guest whose success answer was lost reconnects within seconds and
+     * re-sends; without this their retry mints new ids and becomes a second
+     * occurrence. Inside the window they keep theirs and are told it is already
+     * delivered.
+     */
     @Test
-    fun `a landed request is not adopted as somebody's reconnect`() {
+    fun `a landed request is adopted by a reconnect inside the replay window`() {
+        val landed = intent(guest = "AA:01").copy(landed = true)
+        val cellState = playlistWith(landed)
+
+        val back = RelayIngressIdentity.openIntent(
+            cellState, fingerprint(), RelayIngressIdentity.guestKey("BB:02"), now + 1_000,
+        )
+
+        assertEquals(landed.operationId, back?.operationId)
+        assertEquals(landed.entryId, back?.entryId)
+    }
+
+    /**
+     * And not beyond it. Past the replay window an identical payload from
+     * somebody who was not here is a new intention — replaying a stranger's
+     * occurrence at them would lose theirs.
+     */
+    @Test
+    fun `a landed request is not adopted once the replay window has passed`() {
         val cellState = playlistWith(intent(guest = "AA:01").copy(landed = true))
 
         val other = RelayIngressIdentity.openIntent(
+            cellState, fingerprint(), RelayIngressIdentity.guestKey("BB:02"),
+            now + RelayIngressIdentity.RECONNECT_REPLAY_MS + 1,
+        )
+
+        assertNull(other)
+    }
+
+    /** The original guest, still attached, is never adopted from either. */
+    @Test
+    fun `a landed request of an attached guest is not adopted`() {
+        val landed = intent(guest = "AA:01").copy(landed = true)
+        val cellState = playlistWith(landed)
+
+        val other = RelayIngressIdentity.openIntent(
             cellState, fingerprint(), RelayIngressIdentity.guestKey("BB:02"), now + 1_000,
+            connectedGuestKeys = setOf(landed.guestKey),
         )
 
         assertNull(other)
@@ -280,15 +320,17 @@ class RelayIngressIdentityTest {
         assertEquals(1, cell.relayOperations.size)
         assertTrue(cell.relayOperations.single().landed)
 
-        // 4. A different guest sends the identical payload. Nothing is open for
-        //    them to adopt, so they get their own nonce and occurrence.
+        // 4. A different guest sends the identical payload, past the window in
+        //    which a reconnect would explain it. Nothing is left for them to
+        //    adopt, so they get their own nonce and occurrence.
+        val later = now + RelayIngressIdentity.RECONNECT_REPLAY_MS + 1_000
         val other = RelayIngressIdentity.openIntent(
-            cell, fingerprint(), RelayIngressIdentity.guestKey("CC:03"), now + 2_000,
+            cell, fingerprint(), RelayIngressIdentity.guestKey("CC:03"), later,
         )
         assertNull("no orphan is left behind to adopt", other)
 
         val theirs = RelayIngressIdentity.newIntent(
-            fingerprint(), RelayIngressIdentity.guestKey("CC:03"), now + 2_000,
+            fingerprint(), RelayIngressIdentity.guestKey("CC:03"), later,
         )
         assertNotEquals(first.entryId, theirs.entryId)
         assertNotEquals(first.operationId, theirs.operationId)

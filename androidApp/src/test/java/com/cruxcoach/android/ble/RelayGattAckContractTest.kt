@@ -290,11 +290,12 @@ class RelayGattAckContractTest {
         val answers = Answers()
         val server = server(answers)
 
+        val window = RelayGattServer.RELAY_OPERATION_DEADLINE_MS
         server.write(climbStream(), requestId = 71)
-        advanceTimeBy(5_000)
+        advanceTimeBy(window - 1_000)
         server.write(climbStream(), requestId = 72, address = "BB:02")
 
-        // The first one is out of time; the second still has five seconds.
+        // The first one is out of time; the second still has most of its own.
         advanceTimeBy(1_100)
         assertEquals(listOf(71 to false), answers.statuses)
 
@@ -309,12 +310,13 @@ class RelayGattAckContractTest {
         val answers = Answers()
         val server = server(answers)
 
+        val window = RelayGattServer.RELAY_OPERATION_DEADLINE_MS
         server.write(climbStream(), requestId = 81)
-        advanceTimeBy(6_100)
+        advanceTimeBy(window + 100)
         assertEquals(listOf(81 to false), answers.statuses)
 
         server.write(climbStream(), requestId = 82, address = "CC:03")
-        advanceTimeBy(5_000)
+        advanceTimeBy(window - 1_000)
         assertEquals("still inside its own window", 1, answers.statuses.size)
 
         advanceTimeBy(1_100)

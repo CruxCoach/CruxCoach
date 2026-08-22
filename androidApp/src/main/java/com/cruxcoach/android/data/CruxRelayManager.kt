@@ -552,6 +552,16 @@ class CruxRelayManager(
     }
 
     /**
+     * Whether this operation has outlived the answer the guest was given.
+     *
+     * The same window the GATT server uses for the ATT transaction, so the two
+     * cannot drift: the moment the guest has been told "failed", this device
+     * stops starting anything new on their behalf.
+     */
+    private fun operationExpired(startedAtMonotonicMs: Long): Boolean =
+        monotonicMs() - startedAtMonotonicMs >= RelayGattServer.RELAY_OPERATION_DEADLINE_MS
+
+    /**
      * The canonical answer arrived: terminal on success, retryable otherwise.
      *
      * The canonical half of "finished" is not published from here. It rides in
@@ -648,6 +658,9 @@ class CruxRelayManager(
                         runCatching { boardRepository.getClimbByUuid(it.climbUuid, it.angle) }.getOrNull()
                     }
                     val now = nowMs()
+                    // One clock for the whole operation, started where the
+                    // bytes arrived rather than where each step begins.
+                    val startedAt = monotonicMs()
                     // One intention, one nonce — and the intention is looked
                     // up in canonical state, not in this device's memory. A
                     // controller that has just taken the board over finds the
@@ -680,9 +693,18 @@ class CruxRelayManager(
                             Log.i(TAG, "relayed climb refused: ${decision.reason}")
                             _state.update { it.copy(inboundRefusal = decision.reason) }
                             // A refusal the guest's app can see: board, layout
-                            // or angle against the wrong board, too fast, or
-                            // the same write twice.
+                            // or angle against the wrong board, or too fast.
                             relayServer.settle(inbound.pendingResponse, accepted = false)
+                        }
+                        is RelayInboundGate.Decision.AlreadyDelivered -> {
+                            // Their climb is on the wall — this is the same
+                            // request arriving again because the first answer
+                            // did not get back to them. Nothing to write and
+                            // nothing to add; the honest reply is success, and
+                            // it is the only one a retrying guest can act on.
+                            Log.i(TAG, "relayed climb already delivered; replaying the success")
+                            _state.update { it.copy(inboundRefusal = null) }
+                            relayServer.settle(inbound.pendingResponse, accepted = true)
                         }
                         is RelayInboundGate.Decision.AppendToEnd -> {
                             // The barrier, before anything else happens.
@@ -748,6 +770,21 @@ class CruxRelayManager(
                                 relayServer.settle(inbound.pendingResponse, accepted = false)
                                 return@collect
                             }
+                            // The fence. Past the operation's deadline the
+                            // guest has already been told this failed, so
+                            // starting a board write now would put a climb on
+                            // the wall nobody is waiting for and that their
+                            // retry would ask for again. A write already under
+                            // way is a different matter and is never cancelled
+                            // — half a climb is a state the board protocol has
+                            // no way to undo.
+                            if (operationExpired(startedAt)) {
+                                Log.w(TAG, "relayed climb passed its deadline before the board write")
+                                _state.update { it.copy(error = RelayError.FORWARD_FAILED) }
+                                inboundGate.markFailed(decision.operation, now)
+                                relayServer.settle(inbound.pendingResponse, accepted = false)
+                                return@collect
+                            }
                             val result = boardCellManager.projectExternal(
                                 boardWrite = { bleConnection.sendRawChunks(inbound.climb.chunks) },
                                 identify = { identified },
@@ -758,19 +795,18 @@ class CruxRelayManager(
                             )
                             if (result is ProjectionResult.Committed || result is ProjectionResult.Duplicate) {
                                 advertiser.clearActiveClimb()
-                                // The guest's bytes are what lit the wall, so
-                                // the list records the occurrence rather than
-                                // re-encoding the climb a second time.
-                                // The wall has it; the occurrence still has to
-                                // be canonical before this counts as landed,
-                                // or a refused commit would leave a lit wall
-                                // with no occurrence and no way to retry.
-                                // The wall has it, so the guest is told so now:
-                                // the occurrence still has to become canonical,
-                                // but the bytes they sent are on the board and
-                                // holding their ATT transaction open for a
+                                // The wall has it, so the guest is told so now.
+                                // The occurrence still has to become canonical,
+                                // but holding their ATT transaction open for a
                                 // playlist commit would answer a question they
                                 // did not ask.
+                                //
+                                // If the write ran past the deadline this is a
+                                // no-op: they were already told it failed. The
+                                // occurrence is committed anyway, because the
+                                // wall really is showing it and canonical state
+                                // has to agree with the room — and their retry
+                                // then finds it landed and gets a success.
                                 relayServer.settle(inbound.pendingResponse, accepted = true)
                                 if (identified != null) {
                                     gattBridge.adoptProjectedEntry(

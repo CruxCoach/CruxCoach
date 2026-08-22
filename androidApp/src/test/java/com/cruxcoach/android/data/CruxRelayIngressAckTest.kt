@@ -14,6 +14,9 @@ import com.cruxcoach.android.boardcell.BoardCellAvailability
 import com.cruxcoach.android.boardcell.BoardCellId
 import com.cruxcoach.android.boardcell.BoardCellManager
 import com.cruxcoach.android.boardcell.BoardCellSnapshot
+import com.cruxcoach.android.boardcell.BoardPlaylistOps
+import com.cruxcoach.android.boardcell.BoardPlaylistPolicy
+import com.cruxcoach.android.boardcell.BoardRelayOperation
 import com.cruxcoach.android.boardcell.BoardPlaylistState
 import com.cruxcoach.android.boardcell.BoardProjection
 import com.cruxcoach.android.boardcell.MeshMembershipTransition
@@ -35,6 +38,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
@@ -86,9 +90,24 @@ class CruxRelayIngressAckTest {
     private var boardAngle = 40
     private var intentAccepted = true
     private var projectionSucceeds = true
+    /** How long the board takes to answer, in virtual time. */
+    private var boardWriteDelayMs = 0L
+    /** Monotonic time the manager reads, driven by the test scheduler. */
+    private val monotonic get() = 10_000L + dispatcher.scheduler.currentTime
+
+    /**
+     * Canonical playlist state, as the controller would really hold it.
+     *
+     * The relay's identity comes out of the cell, so a mock that never records
+     * anything makes every retry re-mint its ids — which is a property of the
+     * mock and not of the code. This keeps the one piece of canonical state the
+     * ingress reads.
+     */
+    private var canonicalPlaylist = BoardPlaylistState(sessionId = 7)
 
     private lateinit var relayServer: RelayGattServer
     private lateinit var bridge: SessionGattBridge
+    private lateinit var boardCellManager: BoardCellManager
     private lateinit var manager: CruxRelayManager
 
     private fun snapshot() = BoardCellSnapshot(
@@ -128,13 +147,15 @@ class CruxRelayIngressAckTest {
             every { connectedBoardBrand } returns MutableStateFlow(BoardBrand.KILTER)
             coEvery { sendRawChunks(any()) } returns true
         }
-        val boardCellManager = mockk<BoardCellManager>(relaxed = true) {
+        boardCellManager = mockk(relaxed = true) {
             every { this@mockk.snapshots } returns this@CruxRelayIngressAckTest.snapshots
             every { snapshot() } answers { this@CruxRelayIngressAckTest.snapshots.value }
-            every { playlist() } answers { this@CruxRelayIngressAckTest.snapshots.value?.playlist }
+            every { playlist() } answers { canonicalPlaylist }
             every { localNodeId() } returns me
             every { membershipTransition } returns MutableStateFlow(MeshMembershipTransition.IDLE)
-            coEvery { projectExternal(any(), any(), any(), any()) } answers {
+            coEvery { projectExternal(any(), any(), any(), any()) } coAnswers {
+                // The board takes as long as the test says it does.
+                if (boardWriteDelayMs > 0) kotlinx.coroutines.delay(boardWriteDelayMs)
                 // Duplicate counts as delivered — the wall already shows it —
                 // and needs only an ack, so the success path is reachable
                 // without standing up a whole envelope.
@@ -162,7 +183,29 @@ class CruxRelayIngressAckTest {
                 MutableStateFlow(this@CruxRelayIngressAckTest.boardAngle)
         }
         bridge = mockk(relaxed = true) {
-            coEvery { recordRelayIntent(any()) } answers { intentAccepted }
+            coEvery { recordRelayIntent(any()) } answers {
+                if (intentAccepted) {
+                    canonicalPlaylist = BoardPlaylistPolicy.apply(
+                        canonicalPlaylist,
+                        BoardPlaylistOps.recordRelayOperation(firstArg()),
+                    )
+                }
+                intentAccepted
+            }
+            // The controller committed it, occurrence and terminal record
+            // together — without this the terminal callback never fires and
+            // nothing is ever recorded as landed.
+            every {
+                adoptProjectedEntry(any(), any(), any(), any(), any(), any())
+            } answers {
+                arg<BoardRelayOperation?>(4)?.let { operation ->
+                    canonicalPlaylist = BoardPlaylistPolicy.apply(
+                        canonicalPlaylist,
+                        BoardPlaylistOps.recordRelayOperation(operation, landed = true),
+                    )
+                }
+                lastArg<((Boolean) -> Unit)?>()?.invoke(true)
+            }
         }
         manager = CruxRelayManager(
             context = context,
@@ -182,7 +225,7 @@ class CruxRelayIngressAckTest {
                 every { directAuthenticatedPeers } returns MutableStateFlow(emptySet())
             },
             nowMs = { clockMs },
-            monotonicMs = { 10_000L },
+            monotonicMs = { monotonic },
         )
     }
 
@@ -256,10 +299,13 @@ class CruxRelayIngressAckTest {
     fun `a write with no usable board path is refused at the ATT layer`() = runTest(dispatcher) {
         relayRunning()
         connectionState.value = ConnectionState.DISCONNECTED
-        advanceUntilIdle()
+        // Only the immediate reconciliation: inside the grace window the
+        // server is still up, which is exactly the state where a write must
+        // not be acknowledged as delivered.
+        runCurrent()
 
         climbs.emit(inbound(requestId = 51))
-        advanceUntilIdle()
+        runCurrent()
 
         coVerify { relayServer.settle(51, false) }
     }
@@ -298,5 +344,79 @@ class CruxRelayIngressAckTest {
         // Exactly one intent publication: the opening barrier. The terminal
         // half is part of the occurrence command.
         coVerify(exactly = 1) { bridge.recordRelayIntent(any()) }
+    }
+
+    // ── When the board takes longer than the guest's deadline ─────────────
+
+    /**
+     * A legitimate multi-chunk write can outlive the ATT window: one BLE chunk
+     * alone may wait five seconds. The guest is told it failed — the
+     * transaction cannot be held open forever — and the climb still reaches
+     * the wall, so canonical state records it. What must not happen is the
+     * combination the old code produced: an error the guest retries into a
+     * *second* action.
+     */
+    @Test
+    fun `a board write that outlives the deadline still lands, and the retry succeeds`() =
+        runTest(dispatcher) {
+            boardWriteDelayMs = RelayGattServer.RELAY_OPERATION_DEADLINE_MS + 2_000
+            relayRunning()
+
+            climbs.emit(inbound(requestId = 91))
+            advanceUntilIdle()
+
+            // The occurrence was adopted: the wall really is showing it, so
+            // canonical state has to agree with the room.
+            coVerify {
+                bridge.adoptProjectedEntry(any(), any(), any(), any(), any(), any())
+            }
+
+            // And the guest's retry is answered as delivered rather than as a
+            // duplicate error, so it cannot become a contradictory second act.
+            clockMs += 5_000
+            climbs.emit(inbound(requestId = 92))
+            advanceUntilIdle()
+
+            coVerify { relayServer.settle(92, true) }
+        }
+
+    /**
+     * The fence: once the guest has been told it failed, this device does not
+     * *start* a board write on their behalf. A write already under way is a
+     * different matter and is never cancelled — half a climb is a state the
+     * board protocol cannot undo.
+     */
+    @Test
+    fun `an operation past its deadline does not start a board write`() = runTest(dispatcher) {
+        relayRunning()
+        // The intent barrier itself takes longer than the whole window.
+        coEvery { bridge.recordRelayIntent(any()) } coAnswers {
+            kotlinx.coroutines.delay(RelayGattServer.RELAY_OPERATION_DEADLINE_MS + 1_000)
+            true
+        }
+
+        climbs.emit(inbound(requestId = 93))
+        advanceUntilIdle()
+
+        coVerify(exactly = 0) { boardCellManager.projectExternal(any(), any(), any(), any()) }
+        coVerify { relayServer.settle(93, false) }
+    }
+
+    // ── A success answer that never reached the guest ─────────────────────
+
+    /** Same address: the retry finds the landed record and is told so. */
+    @Test
+    fun `a lost success ack is replayed on the same address`() = runTest(dispatcher) {
+        relayRunning()
+        climbs.emit(inbound(requestId = 101))
+        advanceUntilIdle()
+
+        clockMs += 5_000
+        climbs.emit(inbound(requestId = 102))
+        advanceUntilIdle()
+
+        coVerify { relayServer.settle(102, true) }
+        // Exactly one board write for the two attempts.
+        coVerify(exactly = 1) { boardCellManager.projectExternal(any(), any(), any(), any()) }
     }
 }

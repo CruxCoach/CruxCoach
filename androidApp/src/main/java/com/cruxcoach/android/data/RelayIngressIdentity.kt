@@ -48,6 +48,16 @@ object RelayIngressIdentity {
     const val INTENT_TTL_MS = 10 * 60_000L
 
     /**
+     * How long a *delivered* request stays recognisable across an address change.
+     *
+     * Long enough for a guest whose success answer was lost to reconnect and
+     * re-send — the BLE stack takes seconds, not minutes — and short enough
+     * that a different person arriving later with the same climb gets their own
+     * intention rather than a replay of somebody else's.
+     */
+    const val RECONNECT_REPLAY_MS = 30_000L
+
+    /**
      * What the wire and the hash carry for one guest write.
      *
      * Deliberately not the raw address: a hash of it is enough to tell two
@@ -99,8 +109,18 @@ object RelayIngressIdentity {
         playlist.relayOperations.firstOrNull { live(it) && it.guestKey == guestKey }
             ?.let { return it }
 
+        // A landed record is adoptable too, but only for as long as a
+        // reconnect plausibly explains the new address. A guest whose success
+        // answer was lost comes back within seconds and re-sends; recognising
+        // their request is what turns that into a replayed success instead of a
+        // second occurrence with new ids.
+        //
+        // Deliberately far shorter than the intent TTL. Beyond this window an
+        // identical payload from somebody who was not here is a new intention,
+        // and replaying a stranger's occurrence at them would lose theirs.
         val orphaned = playlist.relayOperations.filter {
-            live(it) && !it.landed && it.guestKey !in connectedGuestKeys
+            live(it) && it.guestKey !in connectedGuestKeys &&
+                (!it.landed || nowEpochMs - it.stampedAtEpochMs < RECONNECT_REPLAY_MS)
         }
         // Exactly one, or it is a guess rather than a deduction.
         return orphaned.singleOrNull()?.copy(guestKey = guestKey)
