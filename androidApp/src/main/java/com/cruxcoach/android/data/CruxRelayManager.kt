@@ -331,6 +331,11 @@ class CruxRelayManager(
         }
         if (required && !running) {
             startForOffer()
+            // What actually happened, published after it happened. The claim
+            // above was made before the attempt, so on its own it says the
+            // relay is not advertising — and on a retry after a failed start it
+            // says nothing at all, because it is unchanged and commits nothing.
+            publishRelayClaim(currentOffer())
             return
         }
         if (required) {
@@ -554,7 +559,16 @@ class CruxRelayManager(
             // Landed is canonical as well: it is what tells a later controller
             // that this request is finished, so an identical write after the
             // window is a new intention rather than a retry of a live one.
-            gattBridge.recordRelayIntent(operation.copy(stampedAtEpochMs = at, landed = true))
+            // Unlike the opening barrier this one is not load-bearing — the
+            // occurrence is already on the list — so a refusal is logged and
+            // the next reconcile's record wins.
+            scope.launch {
+                if (!gattBridge.recordRelayIntent(
+                        operation.copy(stampedAtEpochMs = at, landed = true))
+                ) {
+                    Log.w(TAG, "could not record the relayed write as landed")
+                }
+            }
         } else {
             inboundGate.markFailed(operation, at)
         }
@@ -675,7 +689,13 @@ class CruxRelayManager(
                             _state.update { it.copy(inboundRefusal = decision.reason) }
                         }
                         is RelayInboundGate.Decision.AppendToEnd -> {
-                            gattBridge.recordRelayIntent(decision.operation)
+                            // The barrier, before anything else happens.
+                            if (!gattBridge.recordRelayIntent(decision.operation)) {
+                                Log.w(TAG, "relayed climb has no canonical intention; not queueing")
+                                _state.update { it.copy(error = RelayError.FORWARD_FAILED) }
+                                inboundGate.markFailed(decision.operation, now)
+                                return@collect
+                            }
                             // The wall keeps what it has; the climb joins the
                             // end of the list like any other add — under the
                             // occurrence id decided at ingress, so a repeat of
@@ -709,11 +729,19 @@ class CruxRelayManager(
                                 return@collect
                             }
                             _state.update { it.copy(inboundRefusal = null) }
-                            // Before the wall is touched: a handover in the
-                            // middle of this write must find the intention
-                            // already in canonical state, or the successor
-                            // would mint a second one for the retry.
-                            gattBridge.recordRelayIntent(decision.operation)
+                            // Before the wall is touched, and *waited for*: a
+                            // handover in the middle of this write must find
+                            // the intention already in canonical state, or the
+                            // successor mints a second one for the retry. A
+                            // refusal — a revision conflict, a controller that
+                            // has moved on — means this device has no right to
+                            // write the wall for this guest yet, so it does not.
+                            if (!gattBridge.recordRelayIntent(decision.operation)) {
+                                Log.w(TAG, "relayed climb has no canonical intention; not writing the board")
+                                _state.update { it.copy(error = RelayError.FORWARD_FAILED) }
+                                inboundGate.markFailed(decision.operation, now)
+                                return@collect
+                            }
                             val result = boardCellManager.projectExternal(
                                 boardWrite = { bleConnection.sendRawChunks(inbound.climb.chunks) },
                                 identify = { identified },

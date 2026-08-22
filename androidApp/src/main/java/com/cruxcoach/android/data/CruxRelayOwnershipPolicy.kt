@@ -88,10 +88,17 @@ data class RelayLease(
  * "especially beside the physical board link". Advertising seven mesh peers
  * plus four guests plus a board is a promise no device keeps.
  *
- * So the relay yields. Mesh links are what make a cell converge; a guest is a
- * convenience. A controller with a full mesh offers nothing and stops
- * advertising — which is the honest answer, and better than a connectable
- * advertisement that refuses every connection.
+ * So the budget is split before the mesh starts: seven links, one reserved for
+ * the board, one held open for a guest, five direct peers. The reservation is
+ * unconditional because any member can become the controller through a
+ * handover and the native budget is fixed at start-up — a slot that only
+ * appears once the role changes is not there when it is needed. Further
+ * members attach through the mesh rather than directly.
+ *
+ * Above that ceiling — a peer count this device did not admit — the
+ * subtraction still refuses to promise what the radio does not have, and a
+ * relay with its one guest slot in use keeps serving that guest while
+ * advertising nothing. Full is not finished.
  */
 object CruxRelayOwnershipPolicy {
 

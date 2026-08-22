@@ -414,4 +414,40 @@ class CruxRelayLifecycleTest {
         )
         io.mockk.coVerify(atLeast = 1) { relayServer.stop() }
     }
+
+    /**
+     * The claim published *before* the start says the relay is not advertising,
+     * because at that moment it is not. Nothing published the state it reached,
+     * so the cell was left believing there is no relay when there is one.
+     */
+    @Test
+    fun `the achieved advertising state is published after the start`() = runTest(dispatcher) {
+        startOffering()
+
+        assertTrue(manager.state.value.advertising)
+        assertTrue("the cell was told the relay is up", claims.last().offered)
+    }
+
+    /**
+     * The case that made it visible: a retry after a failed start. The
+     * pre-start claim is unchanged from last time, so it commits nothing and
+     * wakes no reconcile — only publishing the achieved state says anything.
+     */
+    @Test
+    fun `a retry after a failed start publishes the relay it managed to open`() =
+        runTest(dispatcher) {
+            advertisingFails = true
+            startOffering()
+            assertFalse(manager.state.value.advertising)
+            assertTrue(claims.none { it.offered })
+
+            // The radio comes good and the next reconciliation tries again.
+            advertisingFails = false
+            snapshots.value = snapshots.value?.copy(sequence = snapshots.value!!.sequence + 1)
+                ?.withComputedHash()
+            advanceUntilIdle()
+
+            assertTrue(manager.state.value.advertising)
+            assertTrue("the recovered relay is canonical", claims.last().offered)
+        }
 }

@@ -1431,14 +1431,30 @@ class SessionGattBridge(
         this != null && status == BoardCommandStatus.COMMITTED
 
     /**
-     * Publish a relayed guest write's intention to the whole cell.
+     * Publish a relayed guest write's intention to the whole cell, and wait.
+     *
+     * Suspends until the controller has answered, and that is the point: the
+     * intention has to exist canonically **before** the wall is written, or a
+     * handover in between leaves the successor with no record to find and it
+     * mints a second id for the guest's retry. Fire-and-forget looked correct
+     * because the submit returns "sent", which is not an answer about the
+     * shared list at all.
      *
      * Controller-only by construction — the op is refused from anybody else —
      * and idempotent by `(fingerprint, guest)`, so recording it again on
      * success updates the one record rather than adding a second.
+     *
+     * @return true only when the controller committed it.
      */
-    fun recordRelayIntent(operation: BoardRelayOperation) {
-        submitPlaylistOps("relay_intent", BoardPlaylistOps.recordRelayOperation(operation))
+    suspend fun recordRelayIntent(operation: BoardRelayOperation): Boolean {
+        val answered = kotlinx.coroutines.CompletableDeferred<Boolean>()
+        val started = submitPlaylistOps(
+            "relay_intent",
+            BoardPlaylistOps.recordRelayOperation(operation),
+            onTerminal = { ack -> answered.complete(ack.isCommitted()) },
+        )
+        if (!started) return false
+        return answered.await()
     }
 
     /** The running rest is over — it ran out, or somebody skipped it. */

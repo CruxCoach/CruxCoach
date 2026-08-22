@@ -761,13 +761,19 @@ class SharedPlaylistMeshTest {
             )
         }
 
-        /** What the manager does the moment the gate accepts. */
-        suspend fun publishIntent(operation: com.cruxcoach.android.data.RelayInboundGate.Operation) {
-            node.commitLocally(node.compose(
-                "intent-${operation.entryId}",
-                *BoardPlaylistOps.recordRelayOperation(operation).toTypedArray(),
-            ))
-        }
+        /**
+         * What the manager does the moment the gate accepts — and waits for.
+         *
+         * The return value is the barrier: production must not write the wall
+         * until the intention is canonical, because a handover in between
+         * leaves the successor with nothing to find.
+         */
+        suspend fun publishIntent(
+            operation: com.cruxcoach.android.data.RelayInboundGate.Operation,
+        ): Boolean = node.commitLocally(node.compose(
+            "intent-${operation.entryId}",
+            *BoardPlaylistOps.recordRelayOperation(operation).toTypedArray(),
+        ))?.status == BoardCommandStatus.COMMITTED
     }
 
     private fun operationOf(
@@ -787,7 +793,7 @@ class SharedPlaylistMeshTest {
         val operation = operationOf(
             host.ingest("climb-guest", 40, framesHash = 77L, nowMs = wallClock, guestAddress = "AA:01"),
         )
-        host.publishIntent(operation)
+        assertTrue(host.publishIntent(operation))
         assertTrue(host.node.relayGuestWrite(operation, "climb-guest", 40, writes))
         host.gate.markLanded(operation, wallClock)
         network.deliver()
@@ -817,7 +823,7 @@ class SharedPlaylistMeshTest {
         val operation = operationOf(
             oldHost.ingest("climb-guest", 40, framesHash = 77L, nowMs = wallClock, guestAddress = "AA:01"),
         )
-        oldHost.publishIntent(operation)
+        assertTrue(oldHost.publishIntent(operation))
         assertTrue(old.relayGuestWrite(operation, "climb-guest", 40, writes))
         oldHost.gate.markLanded(operation, wallClock)
         network.deliver()
@@ -878,7 +884,7 @@ class SharedPlaylistMeshTest {
         )
         // The intention is canonical before the wall is touched; the write
         // itself then failed, so nothing else about it is.
-        oldHost.publishIntent(first)
+        assertTrue(oldHost.publishIntent(first))
         network.deliver()
         oldHost.gate.markFailed(first, wallClock + 100)
 
@@ -914,6 +920,51 @@ class SharedPlaylistMeshTest {
     }
 
     /** Twice on the same controller is deduplicated before the wall is touched. */
+    /**
+     * The barrier, from the wrong side: a member cannot publish an intention,
+     * so a device that is no longer the controller gets a refusal — and a
+     * refusal must stop the write rather than being ignored.
+     */
+    @Test fun `an intention refused by the cell precedes no board write`() = runTest {
+        val network = mesh("controller", "nokia")
+        val nokia = network.node("nokia")
+        val host = RelayHost(nokia)
+        val writes = mutableListOf<String>()
+
+        val operation = operationOf(
+            host.ingest("climb-guest", 40, framesHash = 77L, nowMs = wallClock, guestAddress = "AA:01"),
+        )
+        // nokia is a member, not the controller: the op is controller-only.
+        val published = host.publishIntent(operation)
+
+        assertFalse("a member may not record an ingress", published)
+        // Production returns here rather than writing; the assertion is that
+        // there is nothing to write *with* — no canonical intention exists.
+        network.deliver()
+        assertTrue(writes.isEmpty())
+        network.nodes.values.forEach { assertTrue(it.playlist().relayOperations.isEmpty()) }
+    }
+
+    /** And the intention really is on every replica before the wall is touched. */
+    @Test fun `the intention is canonical everywhere before the write`() = runTest {
+        val network = mesh("controller", "nokia")
+        val host = RelayHost(network.node("controller"))
+
+        val operation = operationOf(
+            host.ingest("climb-guest", 40, framesHash = 77L, nowMs = wallClock, guestAddress = "AA:01"),
+        )
+        assertTrue(host.publishIntent(operation))
+        network.deliver()
+
+        network.nodes.values.forEach {
+            assertEquals(
+                listOf(operation.entryId),
+                it.playlist().relayOperations.map { record -> record.entryId },
+            )
+        }
+        network.assertConverged()
+    }
+
     @Test fun `a retry on the same controller writes the board once`() = runTest {
         val network = mesh("controller", "nokia")
         val host = RelayHost(network.node("controller"))
@@ -922,7 +973,7 @@ class SharedPlaylistMeshTest {
         val operation = operationOf(
             host.ingest("climb-guest", 40, framesHash = 77L, nowMs = wallClock, guestAddress = "AA:01"),
         )
-        host.publishIntent(operation)
+        assertTrue(host.publishIntent(operation))
         assertTrue(host.node.relayGuestWrite(operation, "climb-guest", 40, writes))
         assertTrue(host.node.relayGuestWrite(operation, "climb-guest", 40, writes))
         network.deliver()
