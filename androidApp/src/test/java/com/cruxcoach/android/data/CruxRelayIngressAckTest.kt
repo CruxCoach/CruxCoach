@@ -44,6 +44,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -93,9 +94,14 @@ class CruxRelayIngressAckTest {
     private var boardAngle = 40
     private var routingMode = RelayInboundClimbMode.PROJECT_NOW
     private var intentAccepted = true
+    /** Whether the controller commits the joint occurrence + landed batch. */
+    private var terminalCommitAccepted = true
     private var projectionSucceeds = true
     /** How long the board takes to answer, in virtual time. */
     private var boardWriteDelayMs = 0L
+    /** How many times the wall was actually written. */
+    private var boardWrites = 0
+    private val relayOperationsWritten = mutableSetOf<String>()
     /** Monotonic time the manager reads, driven by the test scheduler. */
     private val monotonic get() = 10_000L + dispatcher.scheduler.currentTime
 
@@ -171,6 +177,9 @@ class CruxRelayIngressAckTest {
             coEvery { projectExternal(any(), any(), any(), any()) } coAnswers {
                 // The board takes as long as the test says it does.
                 if (boardWriteDelayMs > 0) kotlinx.coroutines.delay(boardWriteDelayMs)
+                // The canonical serializer deduplicates by command id, so a
+                // retry of the same operation reaches the wall only once.
+                if (relayOperationsWritten.add(arg<String>(2))) boardWrites++
                 // Duplicate counts as delivered — the wall already shows it —
                 // and needs only an ack, so the success path is reachable
                 // without standing up a whole envelope.
@@ -226,13 +235,19 @@ class CruxRelayIngressAckTest {
             every {
                 adoptProjectedEntry(any(), any(), any(), any(), any(), any())
             } answers {
-                arg<BoardRelayOperation?>(4)?.let { operation ->
-                    canonicalPlaylist = BoardPlaylistPolicy.apply(
-                        canonicalPlaylist,
-                        BoardPlaylistOps.recordRelayOperation(operation, landed = true),
-                    )
+                // Refusing is a real outcome — a revision conflict, a stop, a
+                // handover — and a mock that always commits leaves the path
+                // that matters most untested.
+                val committed = terminalCommitAccepted
+                if (committed) {
+                    arg<BoardRelayOperation?>(4)?.let { operation ->
+                        canonicalPlaylist = BoardPlaylistPolicy.apply(
+                            canonicalPlaylist,
+                            BoardPlaylistOps.recordRelayOperation(operation, landed = true),
+                        )
+                    }
                 }
-                lastArg<((Boolean) -> Unit)?>()?.invoke(true)
+                lastArg<((Boolean) -> Unit)?>()?.invoke(committed)
             }
         }
         manager = CruxRelayManager(
@@ -714,5 +729,72 @@ class CruxRelayIngressAckTest {
         advanceUntilIdle()
 
         coVerify(exactly = 0) { relayServer.settle(208, true) }
+    }
+
+    // ── The answer waits for the joint commit ─────────────────────────────
+
+    /**
+     * The board took the bytes and the controller refused the batch that would
+     * have recorded them.
+     *
+     * The old order answered the guest as soon as the wall had the climb, which
+     * produces the one combination nobody recovers from: board written, guest
+     * told success, canonical playlist with no occurrence and no `landed` — so
+     * nobody has any reason to retry. "Both or neither" has to include the
+     * answer.
+     */
+    @Test
+    fun `a refused terminal commit is not reported as success`() = runTest(dispatcher) {
+        terminalCommitAccepted = false
+        relayRunning()
+
+        climbs.emit(inbound(requestId = 301))
+        advanceUntilIdle()
+
+        coVerify(exactly = 0) { relayServer.settle(301, true) }
+        coVerify { relayServer.settle(301, false) }
+        assertTrue("nothing was recorded", canonicalPlaylist.relayOperations.none { it.landed })
+    }
+
+    /**
+     * And the retry makes it good: the same ids, exactly one occurrence, and no
+     * second write — the canonical serializer refuses to put the same operation
+     * on the wall twice.
+     */
+    @Test
+    fun `the retry after a refused commit lands once, without writing again`() =
+        runTest(dispatcher) {
+            terminalCommitAccepted = false
+            relayRunning()
+            climbs.emit(inbound(requestId = 302))
+            advanceUntilIdle()
+            coVerify { relayServer.settle(302, false) }
+
+            // Same bytes, same guest: the same operation, retried.
+            terminalCommitAccepted = true
+            clockMs += 5_000
+            climbs.emit(inbound(requestId = 303))
+            advanceUntilIdle()
+
+            coVerify { relayServer.settle(303, true) }
+            val recorded = canonicalPlaylist.relayOperations
+            assertEquals("one operation, not two", 1, recorded.size)
+            assertTrue(recorded.single().landed)
+            assertEquals(
+                "the wall is written once for the two attempts",
+                1, boardWrites,
+            )
+        }
+
+    /** The guest is answered after the record exists, not before it. */
+    @Test
+    fun `the success follows the commit rather than the board write`() = runTest(dispatcher) {
+        relayRunning()
+
+        climbs.emit(inbound(requestId = 304))
+        advanceUntilIdle()
+
+        coVerify { relayServer.settle(304, true) }
+        assertTrue(canonicalPlaylist.relayOperations.single().landed)
     }
 }

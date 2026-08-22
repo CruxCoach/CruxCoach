@@ -882,19 +882,23 @@ class CruxRelayManager(
                                 // playlist commit would answer a question they
                                 // did not ask.
                                 //
-                                // If the write ran past the deadline this is a
-                                // no-op: they were already told it failed. The
-                                // occurrence is committed anyway, because the
-                                // wall really is showing it and canonical state
-                                // has to agree with the room — and their retry
-                                // then finds it landed and gets a success.
+                                // The guest is told after the occurrence and
+                                // "this request is finished" have committed
+                                // together, not after the bytes reached the
+                                // wall. Answering earlier — which is what this
+                                // did — produced the one combination nobody can
+                                // recover from: the board written, the guest
+                                // told success, and a canonical playlist with
+                                // no occurrence and no `landed`, so nobody has
+                                // any reason to retry. "Both or neither" has to
+                                // include the answer.
                                 //
-                                // The same holds if the link dropped while the
-                                // chunks were going out: the climb reached the
-                                // wall, the record keeps that, and the guest is
-                                // told only once this device can see the board
-                                // again.
-                                settleDelivered(inbound.pendingResponse, delivered = true)
+                                // A refusal, a stop or a handover therefore
+                                // answers negative, and the ids stay retryable:
+                                // the retry finds the same operation, the
+                                // canonical serializer refuses to write the
+                                // wall twice for it, and the list gains exactly
+                                // one occurrence.
                                 if (identified != null) {
                                     gattBridge.adoptProjectedEntry(
                                         identified.climbUuid, identified.angle, "relay_project",
@@ -902,10 +906,15 @@ class CruxRelayManager(
                                         completing = decision.operation.copy(stampedAtEpochMs = now),
                                         onTerminal = { committed ->
                                             settleOperation(decision.operation, committed)
+                                            settleDelivered(inbound.pendingResponse, committed)
                                         },
                                     )
                                 } else {
+                                    // Nothing identifiable to record, so the
+                                    // board write is the whole of the operation
+                                    // and the wall is the only fact there is.
                                     settleOperation(decision.operation, true)
+                                    settleDelivered(inbound.pendingResponse, delivered = true)
                                 }
                                 identifyJob?.cancel()
                                 identifyJob = scope.launch {
