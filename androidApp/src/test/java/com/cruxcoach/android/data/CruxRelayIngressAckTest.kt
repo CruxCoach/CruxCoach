@@ -920,4 +920,44 @@ class CruxRelayIngressAckTest {
             assertEquals("the wall is written once for the two attempts", 1, boardWrites)
             assertEquals("one operation, not two", 1, canonicalPlaylist.relayOperations.size)
         }
+
+    /**
+     * A deliberate re-light, not a retry.
+     *
+     * The official apps re-send the same climb on every re-light and every
+     * angle change. Replaying "already delivered" for the whole intent TTL
+     * meant the second tap did nothing at all — and if the wall had moved on
+     * to somebody else's climb in between, it stayed on theirs.
+     */
+    @Test
+    fun `the same climb sent again well after delivery reaches the wall again`() =
+        runTest(dispatcher) {
+            relayRunning()
+            climbs.emit(inbound(requestId = 151))
+            advanceUntilIdle()
+            assertEquals(1, boardWrites)
+
+            clockMs += RelayIngressIdentity.DELIVERED_REPLAY_MS + 1_000
+            climbs.emit(inbound(requestId = 152))
+            advanceUntilIdle()
+
+            coVerify { relayServer.settle(152, true) }
+            assertEquals("the wall was written for the second tap too", 2, boardWrites)
+        }
+
+    /** Inside the window it is still a retry, and still answered without a write. */
+    @Test
+    fun `the same climb retried inside the window is replayed rather than rewritten`() =
+        runTest(dispatcher) {
+            relayRunning()
+            climbs.emit(inbound(requestId = 153))
+            advanceUntilIdle()
+
+            clockMs += 5_000
+            climbs.emit(inbound(requestId = 154))
+            advanceUntilIdle()
+
+            coVerify { relayServer.settle(154, true) }
+            assertEquals("the wall is written once", 1, boardWrites)
+        }
 }

@@ -48,14 +48,21 @@ object RelayIngressIdentity {
     const val INTENT_TTL_MS = 10 * 60_000L
 
     /**
-     * How long a *delivered* request stays recognisable across an address change.
+     * How long a *delivered* request stays recognisable at all.
      *
-     * Long enough for a guest whose success answer was lost to reconnect and
-     * re-send — the BLE stack takes seconds, not minutes — and short enough
-     * that a different person arriving later with the same climb gets their own
-     * intention rather than a replay of somebody else's.
+     * Long enough for a guest whose success answer was lost to re-send — with
+     * or without a reconnect, since the BLE stack takes seconds, not minutes —
+     * and short enough that the same bytes later are the person asking again.
+     *
+     * It bounds the same-guest case and the reconnect case alike, and that
+     * symmetry is the point. Bounding only the reconnect meant a guest on an
+     * unchanged address had their *delivered* request replayed for the full
+     * [INTENT_TTL_MS]: the official apps re-send the same climb on every
+     * re-light and every angle change, so a deliberate re-light minutes later
+     * was answered "already delivered" and the wall — which had moved on to
+     * somebody else's climb in the meantime — was never written.
      */
-    const val RECONNECT_REPLAY_MS = 30_000L
+    const val DELIVERED_REPLAY_MS = 30_000L
 
     /**
      * What the wire and the hash carry for one guest write.
@@ -133,25 +140,34 @@ object RelayIngressIdentity {
         // deliberate send an hour later was put back on the old operation's
         // ids. A request nobody has completed within the window is not a
         // request somebody is still making.
+        //
+        // A *delivered* record is live only for [DELIVERED_REPLAY_MS], because
+        // "this request is finished" stops being the answer to the same bytes
+        // long before the intention itself ages out. An unfinished one stays
+        // live for the whole TTL: that is the record a handover or a slow
+        // controller needs to find, and adopting it is what stops one guest tap
+        // becoming two occurrences.
         fun live(record: BoardRelayOperation) =
             record.fingerprint == fingerprint &&
-                nowEpochMs - record.stampedAtEpochMs < INTENT_TTL_MS
+                nowEpochMs - record.stampedAtEpochMs < INTENT_TTL_MS &&
+                (!record.landed || nowEpochMs - record.stampedAtEpochMs < DELIVERED_REPLAY_MS)
 
         playlist.relayOperations.firstOrNull { live(it) && it.guestKey == guestKey }
             ?.let { return it }
 
-        // A landed record is adoptable too, but only for as long as a
-        // reconnect plausibly explains the new address. A guest whose success
-        // answer was lost comes back within seconds and re-sends; recognising
-        // their request is what turns that into a replayed success instead of a
-        // second occurrence with new ids.
+        // A record left by an address that is no longer attached is adoptable
+        // too: a central's address rotates, so the same person coming back
+        // looks like somebody new. If the only live request for these exact
+        // bytes belongs to a guest who is no longer here, there is nobody else
+        // it could be — and recognising it is what turns a lost answer into a
+        // replayed success instead of a second occurrence with new ids.
         //
-        // Deliberately far shorter than the intent TTL. Beyond this window an
-        // identical payload from somebody who was not here is a new intention,
-        // and replaying a stranger's occurrence at them would lose theirs.
+        // The landed bound is in `live` and applies here identically. Beyond
+        // it an identical payload from somebody who was not here is a new
+        // intention, and replaying a stranger's occurrence at them would lose
+        // theirs.
         val orphaned = playlist.relayOperations.filter {
-            live(it) && it.guestKey !in connectedGuestKeys &&
-                (!it.landed || nowEpochMs - it.stampedAtEpochMs < RECONNECT_REPLAY_MS)
+            live(it) && it.guestKey !in connectedGuestKeys
         }
         // Exactly one, or it is a guess rather than a deduction.
         return orphaned.singleOrNull()?.copy(guestKey = guestKey)

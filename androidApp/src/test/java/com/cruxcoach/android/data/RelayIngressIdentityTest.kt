@@ -119,6 +119,40 @@ class RelayIngressIdentityTest {
         assertNull("the request it recorded is finished", later)
     }
 
+    /**
+     * The official apps re-send the same climb on every re-light and every
+     * angle change. A *delivered* record therefore stops being the answer to
+     * those bytes long before the intention ages out — otherwise a deliberate
+     * re-light minutes later is answered "already delivered" and the wall,
+     * which has moved on to somebody else's climb, is never written.
+     */
+    @Test
+    fun `a delivered request stops being theirs once the replay window passes`() {
+        val landed = intent().copy(landed = true)
+        val cellState = playlistWith(landed)
+
+        val again = RelayIngressIdentity.openIntent(
+            cellState, fingerprint(), landed.guestKey,
+            now + RelayIngressIdentity.DELIVERED_REPLAY_MS + 1,
+        )
+
+        assertNull("a re-send this much later is the person asking again", again)
+    }
+
+    /** An *unfinished* one is a different matter: that is what a handover finds. */
+    @Test
+    fun `an open request is still theirs well past the replay window`() {
+        val open = intent()
+        val cellState = playlistWith(open)
+
+        val retry = RelayIngressIdentity.openIntent(
+            cellState, fingerprint(), open.guestKey,
+            now + RelayIngressIdentity.DELIVERED_REPLAY_MS + 1,
+        )
+
+        assertEquals(open, retry)
+    }
+
     @Test
     fun `a fresh nonce is not guessable from the content`() {
         assertNotEquals(intent().entryId, intent().entryId)
@@ -227,7 +261,7 @@ class RelayIngressIdentityTest {
 
         val other = RelayIngressIdentity.openIntent(
             cellState, fingerprint(), RelayIngressIdentity.guestKey("BB:02"),
-            now + RelayIngressIdentity.RECONNECT_REPLAY_MS + 1,
+            now + RelayIngressIdentity.DELIVERED_REPLAY_MS + 1,
         )
 
         assertNull(other)
@@ -323,7 +357,7 @@ class RelayIngressIdentityTest {
         // 4. A different guest sends the identical payload, past the window in
         //    which a reconnect would explain it. Nothing is left for them to
         //    adopt, so they get their own nonce and occurrence.
-        val later = now + RelayIngressIdentity.RECONNECT_REPLAY_MS + 1_000
+        val later = now + RelayIngressIdentity.DELIVERED_REPLAY_MS + 1_000
         val other = RelayIngressIdentity.openIntent(
             cell, fingerprint(), RelayIngressIdentity.guestKey("CC:03"), later,
         )

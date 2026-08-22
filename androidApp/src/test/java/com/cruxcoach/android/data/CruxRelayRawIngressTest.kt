@@ -306,4 +306,25 @@ class CruxRelayRawIngressTest {
         coVerify { relayServer.settle(209, true) }
         assertEquals("both halves reached the wall", 2, boardWrites)
     }
+
+    /**
+     * The same bytes long after delivery are the person asking again — which
+     * for a raw stream includes the board-clear an official app sends every
+     * time somebody clears the wall.
+     */
+    @Test
+    fun `the same raw write sent again well after delivery reaches the board again`() =
+        runTest(dispatcher) {
+            relayRunning()
+            writes.emit(inbound(requestId = 210))
+            advanceUntilIdle()
+            assertEquals(1, boardWrites)
+
+            clockMs += RelayIngressIdentity.DELIVERED_REPLAY_MS + 1_000
+            writes.emit(inbound(requestId = 211))
+            advanceUntilIdle()
+
+            coVerify { relayServer.settle(211, true) }
+            assertEquals("the board was written for the second command too", 2, boardWrites)
+        }
 }
