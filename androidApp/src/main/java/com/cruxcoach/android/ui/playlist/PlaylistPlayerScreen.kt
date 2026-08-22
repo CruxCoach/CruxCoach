@@ -80,6 +80,8 @@ import com.cruxcoach.android.data.PlaybackPhase
 import com.cruxcoach.android.data.PlaylistPlaybackState
 import com.cruxcoach.android.data.SessionVisibility
 import com.cruxcoach.android.ui.board.QueueDeliveryPolicy
+import com.cruxcoach.android.ui.board.BoardActionVisual
+import com.cruxcoach.android.ui.board.BoardActionVisualPolicy
 import com.cruxcoach.android.ui.board.BleConnectionSheet
 import com.cruxcoach.android.ui.board.BleConnectionViewModel
 import com.cruxcoach.android.ui.board.ClimbMetaLine
@@ -104,6 +106,7 @@ import androidx.compose.ui.platform.LocalContext
 import com.cruxcoach.android.ble.BlePermissionHelper
 import com.cruxcoach.android.ble.ConnectionState
 import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.automirrored.filled.BluetoothSearching
 import androidx.compose.ui.res.pluralStringResource
 
 /**
@@ -565,6 +568,7 @@ fun PlaylistPlayerScreen(
                 onPrevious = viewModel::previous,
                 onNext = viewModel::next,
                 onLamp = viewModel::resendFocused,
+                onConnect = { showBleSheet = true },
                 onOpenQueue = {
                     if (playback.isCanonicalPlaylist) onOpenBoardPlaylist()
                     else showQueueSheet = true
@@ -1052,10 +1056,20 @@ private fun PlayerControls(
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onLamp: () -> Unit,
+    onConnect: () -> Unit,
     onOpenQueue: () -> Unit,
     onAddClimbs: () -> Unit,
     onAddRandom: () -> Unit,
 ) {
+    val sendCapable = when {
+        playback.isCanonicalPlaylist -> playback.mesh?.boardReady == true
+        playback.isParticipant -> true
+        else -> QueueDeliveryPolicy.canSend(playback.isHost, playback.boardConnected)
+    }
+    val boardVisual = BoardActionVisualPolicy.resolve(
+        sendCapable = sendCapable,
+        connecting = playback.boardConnecting,
+    )
     // Tactile confirmation on transport actions — at the wall you tap
     // with chalked fingers and don't stare at the screen.
     val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
@@ -1120,7 +1134,7 @@ private fun PlayerControls(
                 modifier = Modifier.size(36.dp),
             )
         }
-        // The lamp, between the two arrows and nowhere else.
+        // The physical-board action, between the two arrows and nowhere else.
         //
         // Previous and Next move what the group is looking at and deliberately
         // leave the wall alone — somebody flipping ahead through the list must
@@ -1131,11 +1145,10 @@ private fun PlayerControls(
         // shared list sets it whenever the selection is not the confirmed
         // climb, and the explicit send mode sets it on a private one.
         FilledIconButton(
-            onClick = withHaptic(onLamp),
-            enabled = playback.currentClimb != null && (
-                playback.isCanonicalPlaylist || playback.isParticipant ||
-                    QueueDeliveryPolicy.canSend(playback.isHost, playback.boardConnected)
-                ),
+            onClick = withHaptic(
+                if (boardVisual == BoardActionVisual.LAMP) onLamp else onConnect,
+            ),
+            enabled = playback.currentClimb != null,
             // Successful projection never disables a resend. The lamp is an
             // action, not a status light, so it stays visually active while a
             // climb can be sent and only greys out when sending is impossible.
@@ -1143,11 +1156,24 @@ private fun PlayerControls(
                 containerColor = OrangeAccent,
                 contentColor = DarkBackground,
             ),
-            modifier = Modifier.size(60.dp).testTag("player_lamp"),
+            modifier = Modifier.size(60.dp).testTag(
+                if (boardVisual == BoardActionVisual.LAMP) "player_lamp" else "player_connect",
+            ),
         ) {
             Icon(
-                Icons.Default.Lightbulb,
-                contentDescription = stringResource(R.string.board_playlist_lamp),
+                when (boardVisual) {
+                    BoardActionVisual.LAMP -> Icons.Default.Lightbulb
+                    BoardActionVisual.CONNECTING ->
+                        Icons.AutoMirrored.Filled.BluetoothSearching
+                    BoardActionVisual.CONNECT -> Icons.Default.Bluetooth
+                },
+                contentDescription = stringResource(
+                    when (boardVisual) {
+                        BoardActionVisual.LAMP -> R.string.board_playlist_lamp
+                        BoardActionVisual.CONNECTING -> R.string.cd_board_dock_connecting
+                        BoardActionVisual.CONNECT -> R.string.cd_board_connect
+                    },
+                ),
                 modifier = Modifier.size(34.dp),
             )
         }

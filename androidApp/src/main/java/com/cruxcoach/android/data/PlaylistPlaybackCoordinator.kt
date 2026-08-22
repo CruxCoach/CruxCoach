@@ -47,6 +47,8 @@ data class PlaylistPlaybackState(
      * the send path silently discards.
      */
     val boardConnected: Boolean = false,
+    /** A direct board path is being established; recovery controls show progress, not a lamp. */
+    val boardConnecting: Boolean = false,
     val queue: List<QueueItem> = emptyList(),
     val currentIndex: Int = -1,
     val currentClimb: QueueItem? = null,
@@ -215,7 +217,9 @@ class PlaylistPlaybackCoordinator(
         visibility = queue.visibility,
         visibilityRequested = queue.visibilityRequested,
         awaitingExplicitSend = queue.awaitingExplicitSend,
-        boardConnected = connection == ConnectionState.CONNECTED,
+        boardConnected = connection == ConnectionState.CONNECTED ||
+            connection == ConnectionState.SENDING,
+        boardConnecting = connection == ConnectionState.CONNECTING,
         queue = queue.queue,
         currentIndex = queue.currentIndex,
         currentClimb = queue.currentClimb,

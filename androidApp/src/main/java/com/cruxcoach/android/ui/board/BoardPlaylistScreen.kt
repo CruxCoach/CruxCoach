@@ -21,7 +21,9 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.BluetoothSearching
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.CheckCircle
@@ -146,6 +148,11 @@ fun BoardPlaylistScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     var showClearConfirm by remember { mutableStateOf(false) }
+    var showBleSheet by remember { mutableStateOf(false) }
+
+    if (showBleSheet) {
+        BleConnectionSheet(onDismiss = { showBleSheet = false })
+    }
 
     // Re-entering this destination after logging a climb must immediately
     // repaint the personal (never shared) success/attempt colours.
@@ -298,6 +305,7 @@ fun BoardPlaylistScreen(
                     onPrevious = viewModel::previous,
                     onNext = viewModel::next,
                     onLamp = viewModel::projectSelectedEntry,
+                    onConnect = { showBleSheet = true },
                     onAdd = onNavigateToBrowser,
                     onAddRandom = viewModel::appendRandom,
                 )
@@ -353,6 +361,7 @@ fun BoardPlaylistScreen(
                         onOpenEntry(entryId, climbUuid, angle)
                     },
                     onLight = viewModel::lightEntry,
+                    onConnect = { showBleSheet = true },
                     onRemove = viewModel::remove,
                     onRepeat = viewModel::repeatAfter,
                     onMove = viewModel::move,
@@ -613,14 +622,19 @@ private fun BoardPlaylistUnavailable() {
  * so no visually hidden selection is manipulated here.
  */
 @Composable
-private fun BoardPlaylistTransport(
+internal fun BoardPlaylistTransport(
     state: BoardPlaylistUiState,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onLamp: () -> Unit,
+    onConnect: () -> Unit,
     onAdd: () -> Unit,
     onAddRandom: () -> Unit,
 ) {
+    val visual = BoardActionVisualPolicy.resolve(
+        sendCapable = state.boardReady,
+        connecting = state.boardConnecting,
+    )
     val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
     fun withHaptic(action: () -> Unit): () -> Unit = {
         haptics.performHapticFeedback(
@@ -650,15 +664,31 @@ private fun BoardPlaylistTransport(
             // is a selected climb instead of turning it into a grey status
             // indicator after the first successful send.
             FilledIconButton(
-                onClick = withHaptic(onLamp),
+                onClick = withHaptic(if (visual == BoardActionVisual.LAMP) onLamp else onConnect),
                 enabled = !state.isEmpty,
                 colors = IconButtonDefaults.filledIconButtonColors(
                     containerColor = OrangeAccent,
                     contentColor = DarkBackground,
                 ),
-                modifier = Modifier.size(64.dp).testTag("board_playlist_lamp"),
+                modifier = Modifier.size(64.dp).testTag(
+                    if (visual == BoardActionVisual.LAMP) "board_playlist_lamp"
+                    else "board_playlist_connect",
+                ),
             ) {
-                Icon(Icons.Default.Lightbulb, stringResource(R.string.board_playlist_lamp),
+                Icon(
+                    when (visual) {
+                        BoardActionVisual.LAMP -> Icons.Default.Lightbulb
+                        BoardActionVisual.CONNECTING ->
+                            Icons.AutoMirrored.Filled.BluetoothSearching
+                        BoardActionVisual.CONNECT -> Icons.Default.Bluetooth
+                    },
+                    stringResource(
+                        when (visual) {
+                            BoardActionVisual.LAMP -> R.string.board_playlist_lamp
+                            BoardActionVisual.CONNECTING -> R.string.cd_board_dock_connecting
+                            BoardActionVisual.CONNECT -> R.string.cd_board_connect
+                        },
+                    ),
                     modifier = Modifier.size(32.dp))
             }
             IconButton(
@@ -699,6 +729,7 @@ private fun BoardPlaylistRows(
     modifier: Modifier,
     onOpen: (entryId: String, climbUuid: String, angle: Int) -> Unit,
     onLight: (String) -> Unit,
+    onConnect: () -> Unit,
     onRemove: (String) -> Unit,
     onRepeat: (String) -> Unit,
     onMove: (String, BoardPlaylistAnchor) -> Unit,
@@ -795,8 +826,12 @@ private fun BoardPlaylistRows(
             } else null
             BoardPlaylistRowCard(
                 row = row,
+                boardReady = state.boardReady,
+                boardConnecting = state.boardConnecting,
                 onOpen = { onOpen(row.entryId, row.climbUuid, row.angle) },
-                onLight = { onLight(row.entryId) },
+                onLight = {
+                    if (state.boardReady) onLight(row.entryId) else onConnect()
+                },
                 onRemove = { onRemove(row.entryId) },
                 onRepeat = { onRepeat(row.entryId) },
                 onMoveUp = moveUp,
@@ -868,6 +903,8 @@ private fun BoardPlaylistRows(
 @Composable
 private fun BoardPlaylistRowCard(
     row: BoardPlaylistRow,
+    boardReady: Boolean,
+    boardConnecting: Boolean,
     onOpen: () -> Unit,
     onLight: () -> Unit,
     onRemove: () -> Unit,
@@ -876,6 +913,7 @@ private fun BoardPlaylistRowCard(
     onMoveDown: (() -> Unit)?,
     dragModifier: Modifier,
 ) {
+    val boardVisual = BoardActionVisualPolicy.resolve(boardReady, boardConnecting)
     // Lightly dimmed, not greyed out: an entry the group has gone past is
     // still there, still editable and still something somebody may want
     // another go at. It is behind you, not gone.
@@ -995,12 +1033,26 @@ private fun BoardPlaylistRowCard(
             }
             IconButton(
                 onClick = onLight,
-                modifier = Modifier.size(48.dp).testTag("board_playlist_row_light"),
+                modifier = Modifier.size(48.dp).testTag(
+                    if (boardVisual == BoardActionVisual.LAMP) "board_playlist_row_light"
+                    else "board_playlist_row_connect",
+                ),
             ) {
                 Icon(
-                    Icons.Default.Lightbulb,
-                    contentDescription = stringResource(R.string.board_playlist_light_entry),
-                    tint = if (row.isOnBoard) SuccessGreen
+                    when (boardVisual) {
+                        BoardActionVisual.LAMP -> Icons.Default.Lightbulb
+                        BoardActionVisual.CONNECTING ->
+                            Icons.AutoMirrored.Filled.BluetoothSearching
+                        BoardActionVisual.CONNECT -> Icons.Default.Bluetooth
+                    },
+                    contentDescription = stringResource(
+                        when (boardVisual) {
+                            BoardActionVisual.LAMP -> R.string.board_playlist_light_entry
+                            BoardActionVisual.CONNECTING -> R.string.cd_board_dock_connecting
+                            BoardActionVisual.CONNECT -> R.string.cd_board_connect
+                        },
+                    ),
+                    tint = if (boardReady && row.isOnBoard) SuccessGreen
                     else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(18.dp),
                 )

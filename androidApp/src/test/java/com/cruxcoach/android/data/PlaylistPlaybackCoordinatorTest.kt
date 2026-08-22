@@ -54,11 +54,13 @@ class PlaylistPlaybackCoordinatorTest {
 
     private val sessionState = MutableStateFlow(BoardSessionState())
     private val restState = MutableStateFlow(RestTimerState())
+    private val connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
 
     @Before
     fun setup() {
         Dispatchers.setMain(testDispatcher)
-        every { bleConnection.connectionState } returns MutableStateFlow(ConnectionState.DISCONNECTED)
+        connectionState.value = ConnectionState.DISCONNECTED
+        every { bleConnection.connectionState } returns connectionState
         every { boardSessionManager.state } returns sessionState
         every { boardSessionManager.restTimer } returns restState
         every { gattBridge.onRemoteNext = any() } answers { remoteNext = firstArg() }
@@ -119,6 +121,22 @@ class PlaylistPlaybackCoordinatorTest {
         val resting = awaitState { it.isResting }.phase
         assertTrue(resting is PlaybackPhase.Resting)
         assertEquals(120, (resting as PlaybackPhase.Resting).secondsRemaining)
+    }
+
+    @Test
+    fun `a send in progress remains board ready for connection affordances`() {
+        connectionState.value = ConnectionState.SENDING
+
+        assertTrue(awaitState { it.boardConnected }.boardConnected)
+    }
+
+    @Test
+    fun `connecting is distinct from a send capable board`() {
+        connectionState.value = ConnectionState.CONNECTING
+
+        val state = awaitState { it.boardConnecting }
+        assertTrue(state.boardConnecting)
+        assertFalse(state.boardConnected)
     }
 
     @Test

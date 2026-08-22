@@ -3,6 +3,7 @@ package com.cruxcoach.android.ui.board
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.ble.BoardBleConnection
+import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.boardcell.BoardCellManager
 import com.cruxcoach.android.boardcell.BoardCellSnapshot
 import com.cruxcoach.android.boardcell.BoardPlaylistAnchor
@@ -88,6 +89,9 @@ data class BoardPlaylistUiState(
     val memberCount: Int = 0,
     /** False during a partition: what is on screen may already be stale. */
     val synchronized: Boolean = true,
+    /** A canonical command can reach the physical board through this device or its controller. */
+    val boardReady: Boolean = false,
+    val boardConnecting: Boolean = false,
     val rows: List<BoardPlaylistRow> = emptyList(),
     /** Canonical occurrence confirmed current-on-board, for transport and dimming. */
     val currentIndex: Int = -1,
@@ -215,6 +219,9 @@ class BoardPlaylistViewModel @Inject constructor(
             bleConnection.quantumControllerState.collect { render(boardCellManager.snapshot()) }
         }
         viewModelScope.launch {
+            bleConnection.connectionState.collect { render(boardCellManager.snapshot()) }
+        }
+        viewModelScope.launch {
             gattBridge.pendingPlaylistCommandCount.collect { pending ->
                 _state.update { it.copy(pendingCommands = pending) }
             }
@@ -259,6 +266,15 @@ class BoardPlaylistViewModel @Inject constructor(
             retainedBoardName = null
         }
         val playlist = snapshot.playlist
+        val localNodeId = boardCellManager.localNodeId()
+        val directBoardReady = bleConnection.connectionState.value.let {
+            it == ConnectionState.CONNECTED || it == ConnectionState.SENDING
+        }
+        val boardReady = if (snapshot.controllerId == localNodeId) {
+            directBoardReady
+        } else {
+            boardCellManager.canSendViaMesh()
+        }
         resolveMissingNames(playlist)
         if (token != renderToken) return
         val currentIndex = playlist.currentIndex
@@ -315,6 +331,9 @@ class BoardPlaylistViewModel @Inject constructor(
             boardName = currentBoardName(snapshot),
             memberCount = snapshot.members.size,
             synchronized = boardCellManager.isPlaylistSynchronized(),
+            boardReady = boardReady,
+            boardConnecting = snapshot.controllerId == localNodeId &&
+                bleConnection.connectionState.value == ConnectionState.CONNECTING,
             rows = rows,
             currentIndex = currentIndex,
             selectionOnBoard = selectionOnBoard,

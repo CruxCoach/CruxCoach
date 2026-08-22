@@ -144,6 +144,45 @@ membership settles. Collapsed Nearby status is derived from the same visible
 discovery rows as expanded Nearby; an expired occupied counter cannot leave a
 “Board occupied” banner when no board or joinable playlist exists.
 
+## Connection affordance and lamp semantics
+
+A lamp is a physical-action promise, not a generic board logo. A surface may
+draw a lamp only while it has a send-capable direct, mesh, or relay path to the
+board. A cached climb, remembered controller, retained Quantum layer, playlist
+membership, or locally focused occurrence does not establish that path. While
+connecting, use the Bluetooth-searching state; without a path, use Bluetooth or
+Bluetooth-disabled and make the action lead to connection recovery. Loading and
+ownership gates may disable that recovery action, but must not turn its icon
+back into a lamp.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Disconnected
+    Disconnected --> Connecting: connect / permission / scan
+    Connecting --> BoardReady: direct, mesh or relay path ready
+    BoardReady --> Projected: terminal canonical projection
+    Projected --> BoardReady: another climb / board clears
+    BoardReady --> Disconnected: path lost
+    Connecting --> Disconnected: failure or cancel
+```
+
+The repository-wide audit applied this rule as follows:
+
+| Surface | Disconnected or unavailable | Board-ready |
+|---|---|---|
+| Generic climb-detail dock | Orange Connect action with Bluetooth icon | Orange Board action with lamp; mesh/relay may carry a small path badge |
+| Quantum Layers | Bluetooth/searching icon and Connect label; group ownership remains disabled | Lamp per layer and for “send all”; confirmed layers may be green |
+| Shared playlist list and row actions | Bluetooth icon opening connection recovery | Lamp that projects the addressed occurrence |
+| Playlist player transport | Bluetooth icon opening connection recovery | Lamp that projects the locally focused occurrence |
+| Mini-player | No lamp unless the local host has an actual board link | Lamp only for its send-capable resend shortcut |
+| Browser, climb detail, list detail, playlist detail and climb editor headers | Bluetooth icon | Bluetooth-connected icon |
+| Connection sheet, Nearby/session and board banners | Bluetooth-disabled/searching, radio, mesh or relay symbols matching their stated transport state | Bluetooth-connected, hub or signal symbols; never a decorative lamp |
+
+The developer-contact lightbulb is intentionally outside this rule: it denotes
+an idea/feature request and is not a board or BLE affordance. Lamps inside the
+board render and Quantum layer controls remain where they genuinely mean
+physical holds or an immediately sendable projection.
+
 ## Failure decisions
 
 - **Stale base:** no board write; refresh before a new action.

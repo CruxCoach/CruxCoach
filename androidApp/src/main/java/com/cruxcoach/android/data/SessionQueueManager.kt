@@ -119,6 +119,8 @@ data class MeshPlaylistView(
     val pendingProjection: BoardPlaylistPendingProjection? = null,
     /** False during a partition: the copy on screen may already be stale. */
     val synchronized: Boolean = true,
+    /** The canonical controller is presently able to accept a physical projection request. */
+    val boardReady: Boolean = false,
     /** Occurrence identity parallel to the rendered queue. Local player focus uses this. */
     val entryIds: List<String> = emptyList(),
     /** The occurrence actually confirmed on the physical board. */
@@ -294,6 +296,12 @@ class SessionQueueManager(
             activeRest = playlist.activeRest,
             pendingProjection = playlist.pendingProjection,
             synchronized = manager.isPlaylistSynchronized(),
+            boardReady = if (snapshot.controllerId == localNodeId) {
+                bleConnection.connectionState.value == ConnectionState.CONNECTED ||
+                    bleConnection.connectionState.value == ConnectionState.SENDING
+            } else {
+                manager.canSendViaMesh()
+            },
             entryIds = playlist.entries.map { it.entryId },
             currentEntryId = playlist.currentEntryId,
             localIsController = snapshot.controllerId == localNodeId,

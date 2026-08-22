@@ -83,3 +83,25 @@ internal object BoardReachabilityPolicy {
         return if (hasEverSeenBoard) BoardReachability.UNREACHABLE else BoardReachability.NO_BOARD
     }
 }
+
+/**
+ * Semantic icon state for a control whose eventual effect is a physical board write.
+ *
+ * A lamp is a promise that the control can affect a board now. Merely having a climb,
+ * playlist occurrence, remembered board, or cached projection does not satisfy that
+ * promise. Connection recovery keeps the same useful control position, but uses the
+ * Bluetooth metaphor until a direct, mesh, or relay projection path is ready.
+ */
+internal enum class BoardActionVisual {
+    CONNECT,
+    CONNECTING,
+    LAMP,
+}
+
+internal object BoardActionVisualPolicy {
+    fun resolve(sendCapable: Boolean, connecting: Boolean = false): BoardActionVisual = when {
+        sendCapable -> BoardActionVisual.LAMP
+        connecting -> BoardActionVisual.CONNECTING
+        else -> BoardActionVisual.CONNECT
+    }
+}

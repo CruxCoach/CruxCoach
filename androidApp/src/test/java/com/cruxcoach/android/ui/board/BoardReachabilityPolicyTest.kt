@@ -104,4 +104,24 @@ class BoardReachabilityPolicyTest {
             BoardReachability.UNREACHABLE,
         ).forEach { assertFalse(it.name, it.canReachBoard) }
     }
+
+    @Test
+    fun `a board action without a projection path uses connect not a lamp`() {
+        assertEquals(
+            BoardActionVisual.CONNECT,
+            BoardActionVisualPolicy.resolve(sendCapable = false),
+        )
+    }
+
+    @Test
+    fun `a board action in progress uses connecting until it is send capable`() {
+        assertEquals(
+            BoardActionVisual.CONNECTING,
+            BoardActionVisualPolicy.resolve(sendCapable = false, connecting = true),
+        )
+        assertEquals(
+            BoardActionVisual.LAMP,
+            BoardActionVisualPolicy.resolve(sendCapable = true, connecting = true),
+        )
+    }
 }

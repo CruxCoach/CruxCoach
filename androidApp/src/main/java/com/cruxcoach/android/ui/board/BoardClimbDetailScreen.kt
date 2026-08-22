@@ -19,7 +19,7 @@ import androidx.compose.material.icons.automirrored.filled.CallSplit
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Bluetooth
-import androidx.compose.material.icons.filled.BluetoothSearching
+import androidx.compose.material.icons.automirrored.filled.BluetoothSearching
 import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.BluetoothConnected
 import androidx.compose.material.icons.filled.Check
@@ -970,6 +970,7 @@ fun BoardClimbDetailScreen(
                     onNavigateBack = onNavigateBack,
                     onNavigateToBugReport = onNavigateToBugReport,
                     onNavigateToSetter = onNavigateToSetter,
+                    onResolveBoard = { showBleSheet = true },
                 )
             }
         } else {
@@ -981,6 +982,7 @@ fun BoardClimbDetailScreen(
                 onNavigateBack = onNavigateBack,
                 onNavigateToBugReport = onNavigateToBugReport,
                 onNavigateToSetter = onNavigateToSetter,
+                onResolveBoard = { showBleSheet = true },
                 modifier = Modifier.padding(padding)
             )
         }
@@ -1111,6 +1113,7 @@ private fun BoardLayerSheet(
     onAssignCurrent: () -> Unit,
     onSendSlot: (Int) -> Unit,
     onSendAll: () -> Unit,
+    onResolveBoard: () -> Unit,
     onRemove: (Int) -> Unit,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -1129,6 +1132,7 @@ private fun BoardLayerSheet(
                 onAssignCurrent = onAssignCurrent,
                 onSendSlot = onSendSlot,
                 onSendAll = onSendAll,
+                onResolveBoard = onResolveBoard,
                 onRemove = onRemove,
             )
             Spacer(Modifier.height(24.dp))
@@ -1196,6 +1200,7 @@ private fun BoardLayerRack(
     onAssignCurrent: () -> Unit,
     onSendSlot: (Int) -> Unit,
     onSendAll: () -> Unit,
+    onResolveBoard: () -> Unit,
     onRemove: (Int) -> Unit,
 ) {
     val maxLayers = state.climb?.brand?.maxSimultaneousClimbs
@@ -1223,7 +1228,13 @@ private fun BoardLayerRack(
         .filterNot { it.slot == selectedSlot }.mapTo(mutableSetOf()) { it.color } +
         state.boardLayers.externalLayers.map { it.color }
     val selectedColorConflict = selectedColor != null && selectedColor in colorsOnOtherLayers
-    val connected = state.ble.connectionState == ConnectionState.CONNECTED && !boardGroupActive
+    val connected = state.ble.connectionState.let {
+        it == ConnectionState.CONNECTED || it == ConnectionState.SENDING
+    } && !boardGroupActive
+    val boardVisual = BoardActionVisualPolicy.resolve(
+        sendCapable = connected,
+        connecting = state.ble.connectionState == ConnectionState.CONNECTING,
+    )
     val duplicateHoldCount = state.boardLayers.layers
         .flatMap { it.holds.map { hold -> hold.placementId } }
         .groupingBy { it }.eachCount().count { it.value > 1 }
@@ -1372,8 +1383,10 @@ private fun BoardLayerRack(
                                     }
                                     if (layer != null) {
                                         IconButton(
-                                            onClick = { onSendSlot(slot) },
-                                            enabled = connected && !state.ble.isSending &&
+                                            onClick = {
+                                                if (connected) onSendSlot(slot) else onResolveBoard()
+                                            },
+                                            enabled = !boardGroupActive && !state.ble.isSending &&
                                                 (layer.confirmedRouteUuid != null ||
                                                     state.boardLayers.occupiedCount < maxLayers),
                                             modifier = Modifier
@@ -1381,12 +1394,27 @@ private fun BoardLayerRack(
                                                 .testTag("board_layer_send_${slot + 1}"),
                                         ) {
                                             Icon(
-                                                Icons.Default.Lightbulb,
-                                                contentDescription = stringResource(
-                                                    R.string.board_layer_send_one,
-                                                    slot + 1,
-                                                ),
-                                                tint = if (layer.status == BoardLayerStatus.CONFIRMED) {
+                                                when (boardVisual) {
+                                                    BoardActionVisual.LAMP -> Icons.Default.Lightbulb
+                                                    BoardActionVisual.CONNECTING ->
+                                                        Icons.AutoMirrored.Filled.BluetoothSearching
+                                                    BoardActionVisual.CONNECT -> Icons.Default.Bluetooth
+                                                },
+                                                contentDescription = when (boardVisual) {
+                                                    BoardActionVisual.LAMP -> stringResource(
+                                                        R.string.board_layer_send_one,
+                                                        slot + 1,
+                                                    )
+                                                    BoardActionVisual.CONNECTING -> stringResource(
+                                                        R.string.cd_board_dock_connecting,
+                                                    )
+                                                    BoardActionVisual.CONNECT -> stringResource(
+                                                        R.string.cd_board_connect,
+                                                    )
+                                                },
+                                                tint = if (connected &&
+                                                    layer.status == BoardLayerStatus.CONFIRMED
+                                                ) {
                                                     SuccessGreen
                                                 } else OrangeAccent,
                                                 modifier = Modifier.size(18.dp),
@@ -1479,14 +1507,28 @@ private fun BoardLayerRack(
             }
 
             Button(
-                onClick = onSendAll,
-                enabled = connected && !state.ble.isSending &&
+                onClick = { if (connected) onSendAll() else onResolveBoard() },
+                enabled = !boardGroupActive && !state.ble.isSending &&
                     state.boardLayers.layers.isNotEmpty() && canSendAll && duplicateHoldCount == 0,
                 modifier = Modifier.fillMaxWidth().testTag("board_layer_send_all"),
             ) {
-                Icon(Icons.Default.Lightbulb, contentDescription = null)
+                Icon(
+                    when (boardVisual) {
+                        BoardActionVisual.LAMP -> Icons.Default.Lightbulb
+                        BoardActionVisual.CONNECTING ->
+                            Icons.AutoMirrored.Filled.BluetoothSearching
+                        BoardActionVisual.CONNECT -> Icons.Default.Bluetooth
+                    },
+                    contentDescription = null,
+                )
                 Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.board_layer_send_all))
+                Text(stringResource(
+                    when (boardVisual) {
+                        BoardActionVisual.LAMP -> R.string.board_layer_send_all
+                        BoardActionVisual.CONNECTING -> R.string.board_dock_connecting
+                        BoardActionVisual.CONNECT -> R.string.board_dock_connect_board
+                    },
+                ))
             }
             if (boardGroupActive) {
                 // Already explained above; do not also claim a capacity or
@@ -1517,6 +1559,7 @@ private fun ClimbDetailPageContent(
     boardGroupActive: Boolean,
     viewModel: BoardClimbDetailViewModel,
     onNavigateBack: () -> Unit,
+    onResolveBoard: () -> Unit,
     onNavigateToBugReport: (title: String, description: String) -> Unit = { _, _ -> },
     onNavigateToSetter: (pubkey: String) -> Unit = {},
     modifier: Modifier = Modifier
@@ -1572,6 +1615,7 @@ private fun ClimbDetailPageContent(
             onAssignCurrent = viewModel::assignCurrentToBoardLayer,
             onSendSlot = viewModel::sendBoardLayer,
             onSendAll = viewModel::sendAllBoardLayers,
+            onResolveBoard = onResolveBoard,
             onRemove = viewModel::removeBoardLayer,
         )
     }
@@ -1891,7 +1935,7 @@ internal fun BoardDetailActionDock(
                 modifier = Modifier.weight(1.12f).testTag("boarddetail_connecting_board_button"),
                 onClick = onResolveBoard,
                 enabled = true,
-                icon = Icons.Default.BluetoothSearching,
+                icon = Icons.AutoMirrored.Filled.BluetoothSearching,
                 label = stringResource(R.string.board_detail_dock_connecting),
                 description = stringResource(R.string.board_detail_dock_connecting_description),
                 container = MaterialTheme.colorScheme.surfaceVariant,
@@ -1906,9 +1950,10 @@ internal fun BoardDetailActionDock(
                 icon = reachability.dockIcon(),
                 label = stringResource(reachability.dockLabel()),
                 description = stringResource(reachability.dockDescription()),
-                container = MaterialTheme.colorScheme.surfaceVariant,
-                content = MaterialTheme.colorScheme.onSurfaceVariant,
-                border = MaterialTheme.colorScheme.outlineVariant,
+                container = OrangeAccent,
+                content = DarkBackground,
+                border = null,
+                elevated = true,
             )
             BoardDetailLampMode.LIGHT,
             BoardDetailLampMode.SHARED_QUEUE -> {
@@ -2054,7 +2099,7 @@ private fun BoardReachability.dockIcon(): androidx.compose.ui.graphics.vector.Im
     when (this) {
         BoardReachability.MESH -> Icons.Default.CellTower
         BoardReachability.RELAY -> Icons.Default.Groups
-        BoardReachability.CONNECTING -> Icons.Default.BluetoothConnected
+        BoardReachability.CONNECTING -> Icons.AutoMirrored.Filled.BluetoothSearching
         else -> Icons.Default.Bluetooth
     }
 
