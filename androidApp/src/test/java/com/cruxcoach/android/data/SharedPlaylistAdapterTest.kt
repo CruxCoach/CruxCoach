@@ -121,7 +121,7 @@ class SharedPlaylistAdapterTest {
                 BoardPlaylistOp.Add(id, climb, 40, restAfter)
             })
         return BoardPlaylistPolicy.normalize(
-            base.copy(currentEntryId = current, activeRest = rest, pendingProjection = pending))
+            base.copy(selectedEntryId = current, activeRest = rest, pendingProjection = pending))
     }
 
     // ===== LOCAL_ONLY stays local =====

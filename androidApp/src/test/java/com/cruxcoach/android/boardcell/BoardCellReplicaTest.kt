@@ -87,7 +87,8 @@ class BoardCellReplicaTest {
             listOf(BoardPlaylistOp.Add("e1", "climb", 40)), "command-0001"), 1)
 
         assertEquals(listOf("e1"), next.playlist.entries.map { it.entryId })
-        assertEquals("e1", next.playlist.currentEntryId)
+        assertEquals("e1", next.playlist.selectedEntryId)
+        assertNull("adding a climb is not a board write", next.playlist.currentEntryId)
         assertEquals(current.playlistRevision + 1, next.playlistRevision)
         assertTrue("command-0001" in next.recentCommandIds)
         assertTrue(next.hasValidHash())

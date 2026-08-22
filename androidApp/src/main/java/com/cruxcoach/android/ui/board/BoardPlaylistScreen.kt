@@ -881,7 +881,7 @@ private fun BoardPlaylistRowCard(
     // Lightly dimmed, not greyed out: an entry the group has gone past is
     // still there, still editable and still something somebody may want
     // another go at. It is behind you, not gone.
-    val dim = if (row.isPast && !row.isCurrent) 0.62f else 1f
+    val dim = if (row.isPast && !row.isSelected) 0.62f else 1f
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -893,7 +893,7 @@ private fun BoardPlaylistRowCard(
             .clickable(onClick = onOpen)
             .testTag("board_playlist_row"),
         colors = CardDefaults.cardColors(
-            containerColor = if (row.isCurrent) OrangeAccent.copy(alpha = 0.15f)
+            containerColor = if (row.isSelected) OrangeAccent.copy(alpha = 0.15f)
             else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
         ),
         shape = RoundedCornerShape(12.dp),
@@ -936,7 +936,7 @@ private fun BoardPlaylistRowCard(
                     Text(
                         row.name,
                         style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = if (row.isCurrent) FontWeight.Bold else FontWeight.Normal,
+                        fontWeight = if (row.isSelected) FontWeight.Bold else FontWeight.Normal,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false),
@@ -968,6 +968,17 @@ private fun BoardPlaylistRowCard(
                         color = MaterialTheme.colorScheme.error,
                         modifier = Modifier.testTag("board_playlist_row_failed"),
                     )
+                } else if (row.isOnBoard) {
+                    // Written out, not left to the lamp's tint: "the group is
+                    // here" and "the board is showing this" are different
+                    // facts and may be different rows, and colour alone cannot
+                    // say which is which.
+                    Text(
+                        stringResource(R.string.board_playlist_row_on_board),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = SuccessGreen,
+                        modifier = Modifier.testTag("board_playlist_row_on_board"),
+                    )
                 }
                 Text(
                     buildString {
@@ -990,7 +1001,8 @@ private fun BoardPlaylistRowCard(
                 Icon(
                     Icons.Default.Lightbulb,
                     contentDescription = stringResource(R.string.board_playlist_light_entry),
-                    tint = if (row.isCurrent) OrangeAccent
+                    tint = if (row.isOnBoard) SuccessGreen
+                    else if (row.isSelected) OrangeAccent
                     else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(18.dp),
                 )

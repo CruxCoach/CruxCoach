@@ -23,10 +23,15 @@ class BoardPlaylistClearRestoreTest {
     private fun entry(id: String, climb: String = "climb-$id", angle: Int = 40, rest: Int = 0) =
         BoardPlaylistEntry(id, climb, angle, rest)
 
-    private fun playlist(vararg entries: BoardPlaylistEntry, current: String? = null) =
-        BoardPlaylistPolicy.normalize(BoardPlaylistState(
-            sessionId = 7, entries = entries.toList(),
-            currentEntryId = current ?: entries.firstOrNull()?.entryId))
+    /** [selected] is the cursor; [confirmed] is a board write that landed. */
+    private fun playlist(
+        vararg entries: BoardPlaylistEntry,
+        selected: String? = null,
+        confirmed: String? = null,
+    ) = BoardPlaylistPolicy.normalize(BoardPlaylistState(
+        sessionId = 7, entries = entries.toList(),
+        selectedEntryId = selected ?: entries.firstOrNull()?.entryId,
+        currentEntryId = confirmed))
 
     private fun command(
         vararg ops: BoardPlaylistOp,
@@ -60,7 +65,7 @@ class BoardPlaylistClearRestoreTest {
     // ===== The offer =====
 
     @Test fun `clearing keeps what it emptied and stamps the window it stands for`() {
-        val base = playlist(entry("e1"), entry("e2", rest = 90), current = "e2")
+        val base = playlist(entry("e1"), entry("e2", rest = 90), selected = "e2")
 
         val cleared = commit(base, BoardPlaylistOp.Clear())
 
@@ -68,7 +73,7 @@ class BoardPlaylistClearRestoreTest {
         val undo = present(cleared.lastClear)
         assertEquals(1L, undo.generation)
         assertEquals(listOf("e1", "e2"), undo.entries.map { it.entryId })
-        assertEquals("e2", undo.currentEntryId)
+        assertEquals("e2", undo.selectedEntryId)
         assertEquals(90, undo.entries.last().restAfterSeconds)
         assertEquals(now, undo.clearedAtEpochMs)
         assertEquals(now + BoardPlaylistPolicy.RESTORE_WINDOW_MS, undo.restorableUntilEpochMs)
@@ -113,12 +118,12 @@ class BoardPlaylistClearRestoreTest {
     }
 
     @Test fun `a restore puts the group back on the entry it was on`() {
-        val base = playlist(entry("e1"), entry("e2"), entry("e3"), current = "e2")
+        val base = playlist(entry("e1"), entry("e2"), entry("e3"), selected = "e2")
         val cleared = commit(base, BoardPlaylistOp.Clear())
 
         val restored = commit(cleared, BoardPlaylistOp.RestoreClear(1))
 
-        assertEquals("e2", restored.currentEntryId)
+        assertEquals("e2", restored.selectedEntryId)
     }
 
     @Test fun `any member may restore, not only whoever cleared`() {

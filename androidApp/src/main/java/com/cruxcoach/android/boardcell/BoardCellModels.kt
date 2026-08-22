@@ -292,8 +292,14 @@ data class BoardPlaylistClearUndo(
     /** The clear generation this record belongs to; never reused. */
     val generation: Long,
     val entries: List<BoardPlaylistEntry> = emptyList(),
-    /** What the group was looking at when the list was emptied. */
-    val currentEntryId: String? = null,
+    /**
+     * What the group was looking at when the list was emptied.
+     *
+     * The cursor, not the confirmed current: taking a clear back re-adds
+     * occurrences, it does not project one, so there is no board write to
+     * restore.
+     */
+    val selectedEntryId: String? = null,
     val clearedAtEpochMs: Long = 0,
     val restorableUntilEpochMs: Long = 0,
 ) {
@@ -327,12 +333,58 @@ data class BoardPlaylistClearUndo(
  * BoardCell keeps its own queue in
  * [com.cruxcoach.android.data.SessionQueueManager].
  */
+/**
+ * One relayed guest write, as the whole cell can see it.
+ *
+ * Replicated for exactly one reason: a controller that takes the board over
+ * mid-write has never seen the guest's request, and without this it cannot
+ * tell their retry from a new intention. It is the "übertragene bzw.
+ * replizierte Operationsidentität" the relay contract asks for — the nonce is
+ * minted once, by whoever admitted the write, and everybody else reads it.
+ *
+ * Small and bounded on purpose: a fingerprint, a hashed guest key, two ids, a
+ * controller-stamped instant and whether it landed. No addresses, no payloads,
+ * no unbounded history.
+ */
+@Serializable
+data class BoardRelayOperation(
+    val fingerprint: String,
+    val guestKey: String,
+    val operationId: String,
+    val entryId: String,
+    val stampedAtEpochMs: Long = 0,
+    val landed: Boolean = false,
+)
+
 @Serializable
 data class BoardPlaylistState(
     /** Deterministically derived from the cell; stable for the cell's life. */
     val sessionId: Int? = null,
     val entries: List<BoardPlaylistEntry> = emptyList(),
-    /** The occurrence the group is on; null exactly while [entries] is empty. */
+    /**
+     * The occurrence the group is looking at; null exactly while [entries] is
+     * empty.
+     *
+     * A cursor and nothing more. Stepping through the list, adding, removing
+     * and resting all move it, and none of them touches the wall — which is
+     * exactly why it had to stop being the same field as [currentEntryId].
+     */
+    val selectedEntryId: String? = null,
+    /**
+     * The occurrence the board is confirmed to be showing.
+     *
+     * Set only after a transport for *that* occurrence terminally succeeded,
+     * and only by the controller. Nothing about the shape of the list moves
+     * it: a remove, a next, a restore or an empty list arriving at its first
+     * entry are all changes to what people are looking at, not to what the
+     * wall is doing.
+     *
+     *     a new current  =>  the physical transport for exactly that
+     *                        occurrence succeeded
+     *
+     * Null is an honest and common state — nothing has been sent yet, or the
+     * occurrence that was on the wall has been removed from the list.
+     */
     val currentEntryId: String? = null,
     val activeRest: BoardPlaylistRest? = null,
     val pendingProjection: BoardPlaylistPendingProjection? = null,
@@ -356,7 +408,21 @@ data class BoardPlaylistState(
      * snackbar on the device that pressed the button.
      */
     val lastClear: BoardPlaylistClearUndo? = null,
+    /**
+     * Guest writes this cell has admitted recently, oldest first.
+     *
+     * Bounded to [BoardPlaylistPolicy.MAX_RELAY_OPERATIONS]; the oldest falls
+     * off. See [BoardRelayOperation] for why it is canonical at all.
+     */
+    val relayOperations: List<BoardRelayOperation> = emptyList(),
 ) {
+    /** Where the group is looking. Use this for stepping, resting and drawing. */
+    val selectedIndex: Int
+        get() = selectedEntryId?.let { id -> entries.indexOfFirst { it.entryId == id } } ?: -1
+
+    fun selectedEntry(): BoardPlaylistEntry? = entries.getOrNull(selectedIndex)
+
+    /** Where the board is. Use this only to say what the wall is showing. */
     val currentIndex: Int
         get() = currentEntryId?.let { id -> entries.indexOfFirst { it.entryId == id } } ?: -1
 
@@ -376,9 +442,10 @@ data class BoardPlaylistState(
      * ever silently reinterpreted as a populated one.
      */
     internal val usesLegacyShapeOnly: Boolean
-        get() = sessionId == null && entries.isEmpty() && currentEntryId == null &&
+        get() = sessionId == null && entries.isEmpty() && selectedEntryId == null &&
+            currentEntryId == null &&
             activeRest == null && pendingProjection == null && clearGeneration == 0L &&
-            lastClear == null
+            lastClear == null && relayOperations.isEmpty()
 
     /**
      * Nothing a pre-V9 schema could not express is in use.
@@ -643,10 +710,15 @@ data class BoardCellSnapshot(
      * repaired from a canonical snapshot instead.
      */
     fun hasValidHash(): Boolean = stateHash == BoardCellHash.compute(copy(stateHash = "")) ||
+        // A build that predates the selection field had one field for the
+        // cursor and the confirmed current. Its bytes stay exact for as long as
+        // the two say the same thing, which is every snapshot it could write.
+        (playlist.selectedEntryId == playlist.currentEntryId &&
+            stateHash == BoardCellHash.computeLegacyV10(copy(stateHash = ""))) ||
         // A build that predates the relay field wrote V9 bytes. That stays
         // exact for as long as nothing is offered, which is every snapshot it
         // could write — so an upgrade does not fork the cell.
-        (relay == BoardCellRelayState.NONE &&
+        (relay == BoardCellRelayState.NONE && playlist.selectedEntryId == playlist.currentEntryId &&
             stateHash == BoardCellHash.computeLegacyV9(copy(stateHash = ""))) ||
         (relay == BoardCellRelayState.NONE && playlist.usesPreRestoreShapeOnly &&
             stateHash == BoardCellHash.computeLegacyV8(copy(stateHash = ""))) ||
@@ -825,27 +897,36 @@ internal object BoardCellHash {
      * is restorable, which is every snapshot that build could write.
      */
     fun compute(snapshot: BoardCellSnapshot): String =
-        compute(snapshot, "board-cell-v10", true, true, true, true, true, true, true, true)
+        compute(snapshot, "board-cell-v11", true, true, true, true, true, true, true, true, true)
+    /**
+     * V10 wrote the cursor and the confirmed current as one field.
+     *
+     * Exact for as long as the two agree, which is every snapshot a V10 build
+     * could produce — it had only the one field — so an upgrade does not fork
+     * a cell that has not moved since.
+     */
+    fun computeLegacyV10(snapshot: BoardCellSnapshot): String =
+        compute(snapshot, "board-cell-v10", true, true, true, true, true, true, true, true, false)
     fun computeLegacyV9(snapshot: BoardCellSnapshot): String =
-        compute(snapshot, "board-cell-v9", true, true, true, true, true, true, true, false)
+        compute(snapshot, "board-cell-v9", true, true, true, true, true, true, true, false, false)
     fun computeLegacyV8(snapshot: BoardCellSnapshot): String =
-        compute(snapshot, "board-cell-v8", true, true, true, true, true, true, false, false)
+        compute(snapshot, "board-cell-v8", true, true, true, true, true, true, false, false, false)
     fun computeLegacyV6(snapshot: BoardCellSnapshot): String =
-        compute(snapshot, "board-cell-v6", true, true, true, true, false, false, false, false)
+        compute(snapshot, "board-cell-v6", true, true, true, true, false, false, false, false, false)
     fun computeLegacyV5(snapshot: BoardCellSnapshot): String =
-        compute(snapshot, "board-cell-v5", true, true, true, false, false, false, false, false)
+        compute(snapshot, "board-cell-v5", true, true, true, false, false, false, false, false, false)
     fun computeLegacyV4(snapshot: BoardCellSnapshot): String =
-        compute(snapshot, "board-cell-v4", true, true, false, false, false, false, false, false)
+        compute(snapshot, "board-cell-v4", true, true, false, false, false, false, false, false, false)
     fun computeLegacyV3(snapshot: BoardCellSnapshot): String =
-        compute(snapshot, "board-cell-v3", true, false, false, false, false, false, false, false)
+        compute(snapshot, "board-cell-v3", true, false, false, false, false, false, false, false, false)
     fun computeLegacyV2(snapshot: BoardCellSnapshot): String =
-        compute(snapshot, "board-cell-v2", false, false, false, false, false, false, false, false)
+        compute(snapshot, "board-cell-v2", false, false, false, false, false, false, false, false, false)
 
     private fun compute(snapshot: BoardCellSnapshot, schema: String, includePlaylistRevision: Boolean,
         includeControllerRecovery: Boolean, includeMembershipRevision: Boolean,
         includeLegacyPlaylistShape: Boolean, includeJoinMode: Boolean,
         includeEntryPlaylist: Boolean, includeClearUndo: Boolean,
-        includeRelay: Boolean): String {
+        includeRelay: Boolean, includeSelection: Boolean): String {
         val canonical = buildString {
             append(schema).append('\n').append(snapshot.cellId.value).append('\n')
             append(snapshot.physicalBoardId.value).append('\n').append(snapshot.epoch).append('\n')
@@ -862,6 +943,15 @@ internal object BoardCellHash {
             val playlist = snapshot.playlist
             if (includeEntryPlaylist) {
                 append("s:${playlist.sessionId ?: "-"}|${playlist.currentEntryId ?: "-"}\n")
+                // The cursor is canonical state of its own from V11 on. Before
+                // that there was one field for both, and its bytes are above.
+                if (includeSelection) {
+                    append("sel:${playlist.selectedEntryId ?: "-"}\n")
+                    playlist.relayOperations.forEach {
+                        append("ro:${it.fingerprint}|${it.guestKey}|${it.operationId}")
+                        append("|${it.entryId}|${it.stampedAtEpochMs}|${it.landed}\n")
+                    }
+                }
                 playlist.entries.forEach {
                     append("q:${it.entryId}|${it.climbUuid}|${it.angle}|${it.restAfterSeconds}\n")
                 }
@@ -875,7 +965,7 @@ internal object BoardCellHash {
                 } ?: append("pp:-\n")
                 if (includeClearUndo) {
                     playlist.lastClear?.let { undo ->
-                        append("pc:${undo.generation}|${undo.currentEntryId ?: "-"}")
+                        append("pc:${undo.generation}|${undo.selectedEntryId ?: "-"}")
                         append("|${undo.clearedAtEpochMs}|${undo.restorableUntilEpochMs}\n")
                         undo.entries.forEach {
                             append("pu:${it.entryId}|${it.climbUuid}|${it.angle}|${it.restAfterSeconds}\n")

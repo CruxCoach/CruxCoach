@@ -26,7 +26,7 @@ class BoardPlaylistRemoteRemoveTest {
             entry("e2", "climb-x"),
             entry("e3", "climb-x"),
         ),
-        currentEntryId = "e1",
+        selectedEntryId = "e1",
     )
 
     @Test
@@ -85,6 +85,6 @@ class BoardPlaylistRemoteRemoveTest {
         val after = BoardPlaylistPolicy.apply(marked, listOf(BoardPlaylistOp.Remove("e3")))
 
         assertNull(after.pendingProjection)
-        assertEquals("e1", after.currentEntryId)
+        assertEquals("e1", after.selectedEntryId)
     }
 }

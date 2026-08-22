@@ -185,7 +185,7 @@ class SharedPlaylistMeshTest {
 
         network.assertConverged()
         assertEquals(listOf("e1", "e2"), nokia.playlist().entries.map { it.entryId })
-        assertEquals("e1", nokia.playlist().currentEntryId)
+        assertEquals("e1", nokia.playlist().selectedEntryId)
         assertEquals(120, nokia.playlist().entries[0].restAfterSeconds)
         // The controller serializes and nothing else: it holds no product role
         // in the result at all.
@@ -266,12 +266,12 @@ class SharedPlaylistMeshTest {
         pixel.submit(pixel.compose("command-move",
             BoardPlaylistOp.Move("e3", BoardPlaylistAnchor.Head)))
         network.node("controller").commitLocally(network.node("controller")
-            .compose("command-current", BoardPlaylistOp.SetCurrent("e3")))
+            .compose("command-current", BoardPlaylistOp.SetSelection("e3")))
         network.deliver()
 
         network.assertConverged()
         assertEquals(listOf("e3", "e1"), nokia.playlist().entries.map { it.entryId })
-        assertEquals("e3", nokia.playlist().currentEntryId)
+        assertEquals("e3", nokia.playlist().selectedEntryId)
     }
 
     // ===== Loss, reordering and duplication =====
@@ -532,11 +532,11 @@ class SharedPlaylistMeshTest {
             BoardPlaylistOp.Add("e1", "climb-a", 40),
             BoardPlaylistOp.Add("e2", "climb-b", 40)))
         network.deliver()
-        nokia.submit(nokia.compose("command-select", BoardPlaylistOp.SetCurrent("e2")))
+        nokia.submit(nokia.compose("command-select", BoardPlaylistOp.SetSelection("e2")))
         network.deliver()
 
         network.assertConverged()
-        assertEquals("e2", controller.playlist().currentEntryId)
+        assertEquals("e2", controller.playlist().selectedEntryId)
         // The board is exactly as it was: nothing prepared a write intent and
         // nothing became the confirmed projection.
         assertNull(controller.snapshot().projection)
@@ -548,6 +548,23 @@ class SharedPlaylistMeshTest {
      * The selected entry and the climb the board last confirmed are two
      * separate canonical facts, and a projection moves only the second.
      */
+    @Test fun `a member cannot claim the board is showing an occurrence`() = runTest {
+        val network = mesh("controller", "nokia")
+        val nokia = network.node("nokia")
+        nokia.submit(nokia.compose("command-seed", BoardPlaylistOp.Add("e1", "climb-a", 40)))
+        network.deliver()
+
+        // Nothing was written to any wall; this is a bare claim that it was.
+        nokia.submit(nokia.compose("command-claim", BoardPlaylistOp.SetCurrent("e1")))
+        network.deliver()
+
+        network.nodes.values.forEach {
+            assertNull("only the controller confirms what the board shows",
+                it.playlist().currentEntryId)
+        }
+        network.assertConverged()
+    }
+
     @Test fun `an explicit send moves the confirmed projection and not the selection`() = runTest {
         val network = mesh("controller", "nokia")
         val nokia = network.node("nokia")
@@ -558,7 +575,7 @@ class SharedPlaylistMeshTest {
         network.deliver()
 
         var writes = 0
-        val entry = controller.playlist().currentEntry()!!
+        val entry = controller.playlist().selectedEntry()!!
         val result = controller.coordinator.project(board,
             BoardProjection(entry.climbUuid, entry.angle), network.monotonic,
             "projection-0001", null) { writes++; true }
@@ -567,12 +584,12 @@ class SharedPlaylistMeshTest {
         assertTrue(result is ProjectionResult.Committed)
         assertEquals(1, writes)
         assertEquals("climb-a", controller.snapshot().projection?.climbUuid)
-        assertEquals("e1", controller.playlist().currentEntryId)
+        assertEquals("e1", controller.playlist().selectedEntryId)
         // And the selection can now move away from it without the wall
         // following along.
-        nokia.submit(nokia.compose("command-select", BoardPlaylistOp.SetCurrent("e2")))
+        nokia.submit(nokia.compose("command-select", BoardPlaylistOp.SetSelection("e2")))
         network.deliver()
-        assertEquals("e2", nokia.playlist().currentEntryId)
+        assertEquals("e2", nokia.playlist().selectedEntryId)
         assertEquals("climb-a", nokia.snapshot().projection?.climbUuid)
         assertEquals(1, writes)
         network.assertConverged()
@@ -633,7 +650,7 @@ class SharedPlaylistMeshTest {
         // The same climb appears many times over, and every occurrence is
         // separately addressable.
         assertTrue(entries.count { it.climbUuid == "climb-00" } > 1)
-        assertEquals(entries.first().entryId, network.node("member-20").playlist().currentEntryId)
+        assertEquals(entries.first().entryId, network.node("member-20").playlist().selectedEntryId)
     }
 
     @Test fun `a forty member playlist still fits one canonical snapshot frame`() = runTest {

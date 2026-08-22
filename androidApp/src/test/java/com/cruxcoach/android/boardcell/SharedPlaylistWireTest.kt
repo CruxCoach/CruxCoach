@@ -43,7 +43,8 @@ class SharedPlaylistWireTest {
         rest: BoardPlaylistRest? = null,
         pending: BoardPlaylistPendingProjection? = null,
         clearGeneration: Long = 0,
-    ) = BoardPlaylistState(7, entries, current, rest, pending, clearGeneration)
+        selected: String? = current,
+    ) = BoardPlaylistState(7, entries, selected, current, rest, pending, clearGeneration)
 
     private fun snapshot(playlist: BoardPlaylistState) = BoardCellSnapshot(
         cellId = cell, physicalBoardId = board, epoch = 1, sequence = 3,
@@ -158,7 +159,7 @@ class SharedPlaylistWireTest {
 
     @Test fun `a snapshot carrying a restore offer round trips`() {
         val value = snapshot(playlist(clearGeneration = 4).copy(
-            entries = emptyList(), currentEntryId = null, lastClear = undo()))
+            entries = emptyList(), selectedEntryId = null, currentEntryId = null, lastClear = undo()))
 
         val decoded = BoardCellWireCodec.decode(
             BoardCellWireCodec.encode(frame(BoardCellWireMessage.Snapshot(value))))
@@ -168,14 +169,14 @@ class SharedPlaylistWireTest {
 
     @Test fun `an offer that does not belong to the current clear is refused`() {
         refuses(BoardCellWireMessage.Snapshot(snapshot(playlist(clearGeneration = 4).copy(
-            entries = emptyList(), currentEntryId = null, lastClear = undo(generation = 3)))))
+            entries = emptyList(), selectedEntryId = null, currentEntryId = null, lastClear = undo(generation = 3)))))
     }
 
     @Test fun `an offer whose window is not really a window is refused`() {
         // Bounding only the far end would let a "thirty second" offer stand
         // until 2099, which every replica would then hash and count down.
         refuses(BoardCellWireMessage.Snapshot(snapshot(playlist(clearGeneration = 4).copy(
-            entries = emptyList(), currentEntryId = null,
+            entries = emptyList(), selectedEntryId = null, currentEntryId = null,
             lastClear = undo(until = now + 80L * 365 * 86_400_000)))))
     }
 

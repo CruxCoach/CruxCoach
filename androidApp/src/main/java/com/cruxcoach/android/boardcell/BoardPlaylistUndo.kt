@@ -88,11 +88,11 @@ object BoardPlaylistUndo {
             listOf(
                 BoardPlaylistOp.Add(entry.entryId, entry.climbUuid, entry.angle,
                     entry.restAfterSeconds, anchorOf(before, entry.entryId)),
-            ) + if (before.currentEntryId == entry.entryId) {
+            ) + if (before.selectedEntryId == entry.entryId) {
                 // The removal moved the group on. Putting the entry back
                 // without putting the selection back would leave everybody
                 // looking at the wrong climb with the right list.
-                listOf(BoardPlaylistOp.SetCurrent(entry.entryId))
+                listOf(BoardPlaylistOp.SetSelection(entry.entryId))
             } else emptyList()
         } ?: emptyList()
 
@@ -100,14 +100,21 @@ object BoardPlaylistUndo {
             if (before.entry(op.entryId) == null) emptyList()
             else listOf(BoardPlaylistOp.Move(op.entryId, anchorOf(before, op.entryId)))
 
-        is BoardPlaylistOp.SetCurrent -> if (before.activeRest != null) {
+        is BoardPlaylistOp.SetSelection -> if (before.activeRest != null) {
             // Selection cancels the running clock. That elapsed clock cannot
             // be reconstructed honestly later, so a partial undo is withheld.
             null
-        } else before.currentEntryId
+        } else before.selectedEntryId
             ?.takeIf { it != op.entryId }
-            ?.let { listOf(BoardPlaylistOp.SetCurrent(it)) }
+            ?.let { listOf(BoardPlaylistOp.SetSelection(it)) }
             .orEmpty()
+
+        // The confirmed current is not an edit anybody made; it is the record
+        // of a board write that succeeded. There is no honest inverse — undoing
+        // it would claim the wall went back to something it did not. The same
+        // goes for the record of a guest write this controller admitted.
+        is BoardPlaylistOp.SetCurrent -> null
+        is BoardPlaylistOp.RecordRelayOperation -> null
 
         is BoardPlaylistOp.SetRest -> before.entry(op.entryId)
             ?.let { listOf(BoardPlaylistOp.SetRest(op.entryId, it.restAfterSeconds)) }

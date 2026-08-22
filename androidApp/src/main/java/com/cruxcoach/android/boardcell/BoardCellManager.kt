@@ -928,7 +928,7 @@ class BoardCellManager @Inject constructor(
         if (!::coordinator.isInitialized) return false
         val snapshot = snapshot() ?: return false
         if (activeNodeId !in snapshot.members) return false
-        val entry = snapshot.playlist.currentEntry() ?: return false
+        val entry = snapshot.playlist.selectedEntry() ?: return false
         if (snapshot.controllerId == activeNodeId) return syncPlaylistProjection()
         val resolved = playlistProjectionWriter?.resolve(entry.climbUuid, entry.angle)
             ?: BoardProjection(entry.climbUuid, entry.angle)
@@ -948,7 +948,10 @@ class BoardCellManager @Inject constructor(
             val board = writableBoard() ?: return@withLock false
             val snapshot = coordinator.snapshot(board) ?: return@withLock false
             val playlist = snapshot.playlist
-            val entry = playlist.currentEntry() ?: return@withLock false
+            // The selected occurrence is the one somebody asked to see on the
+            // wall. The confirmed current is the record of the last write that
+            // landed, so projecting *that* would re-send what is already up.
+            val entry = playlist.selectedEntry() ?: return@withLock false
             val writer = playlistProjectionWriter
             val resolved = writer?.resolve(entry.climbUuid, entry.angle)
             if (writer == null || resolved == null) {
@@ -2500,7 +2503,7 @@ class BoardCellManager @Inject constructor(
                 "availability" to next?.availability,
                 "projection" to next?.projection?.let { "${FipsDebugLog.id(it.climbUuid)}@${it.angle}" },
                 "playlistRevision" to next?.playlistRevision,
-                "playlistIndex" to next?.playlist?.currentIndex,
+                "playlistIndex" to next?.playlist?.selectedIndex,
                 "playlistEntries" to next?.playlist?.entries?.size,
                 "handover" to next?.handover?.phase)
         }

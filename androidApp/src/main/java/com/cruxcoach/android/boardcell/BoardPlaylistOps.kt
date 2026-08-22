@@ -65,7 +65,37 @@ sealed interface BoardPlaylistOp {
     @SerialName("move")
     data class Move(val entryId: String, val anchor: BoardPlaylistAnchor) : BoardPlaylistOp
 
-    /** Point the group at one occurrence. Cancels a running rest. */
+    /**
+     * Point the group at one occurrence. Cancels a running rest.
+     *
+     * The cursor, and only the cursor: what people are looking at, stepping
+     * through and resting against. It says nothing about the wall, which is
+     * why it is separate from [SetCurrent] and why anybody may send it.
+     */
+    @Serializable
+    @SerialName("selection")
+    data class SetSelection(val entryId: String) : BoardPlaylistOp
+
+    /**
+     * Record a relayed guest write's intention, so the whole cell shares it.
+     *
+     * A physical fact about a write this controller admitted, so only the
+     * controller may assert it. Idempotent by `(fingerprint, guestKey)`: the
+     * same intention recorded twice updates the one record rather than adding
+     * a second.
+     */
+    @Serializable
+    @SerialName("relay_op")
+    data class RecordRelayOperation(val operation: BoardRelayOperation) : BoardPlaylistOp
+
+    /**
+     * Record that the board is confirmed to be showing one occurrence.
+     *
+     * A physical fact about the controller's own board write, so only the
+     * controller may assert it and it is refused when it arrives from the
+     * wire. Emitted by exactly one thing: a transport for that occurrence that
+     * terminally succeeded.
+     */
     @Serializable
     @SerialName("current")
     data class SetCurrent(val entryId: String) : BoardPlaylistOp
@@ -195,6 +225,15 @@ object BoardPlaylistPolicy {
     const val MAX_ENTRY_ID_LENGTH = 64
 
     /**
+     * Relayed guest writes remembered at once.
+     *
+     * Enough for the handful of guests a single board can physically have,
+     * and small enough that the record can never become a place to store
+     * things in somebody else's canonical state.
+     */
+    const val MAX_RELAY_OPERATIONS = 8
+
+    /**
      * How long a clear can be taken back.
      *
      * Long enough to notice the wall's list has gone and reach for the button,
@@ -243,10 +282,23 @@ object BoardPlaylistPolicy {
         }
         // The group is always looking at something while there is anything to
         // look at. Falling back to the first entry rather than to "nothing"
-        // keeps the player, the wall and every replica in agreement after a
-        // remove that happened to take the current climb.
-        val current = playlist.currentEntryId?.takeIf { id -> entries.any { it.entryId == id } }
+        // keeps the player and every replica in agreement after a remove that
+        // happened to take the selected climb.
+        //
+        // A snapshot written before the selection existed carries its cursor in
+        // `currentEntryId`, which is what that field used to be; adopting it
+        // here is a pure function of the state, so every replica derives the
+        // identical selection from the identical bytes.
+        val selected = playlist.selectedEntryId?.takeIf { id -> entries.any { it.entryId == id } }
+            ?: playlist.currentEntryId?.takeIf { id -> entries.any { it.entryId == id } }
             ?: entries.firstOrNull()?.entryId
+        // The confirmed current gets no fallback of any kind. It names the
+        // occurrence whose transport succeeded, so inventing one — which is
+        // what the shared field used to do on every remove and every first add
+        // — would be claiming a board write that never happened. Gone from the
+        // list means gone from here; the wall's own climb lives in
+        // `BoardCellSnapshot.projection` and is untouched by any of this.
+        val current = playlist.currentEntryId?.takeIf { id -> entries.any { it.entryId == id } }
         // The window must really be the duration it claims. Checking only the
         // far end let a "two minute" pause end in 2099, which every replica
         // would then have hashed and honoured, and which a process restart
@@ -281,8 +333,8 @@ object BoardPlaylistPolicy {
                 undo.entries.size in 1..MAX_ENTRIES &&
                 undo.entries.distinctBy { it.entryId }.size == undo.entries.size &&
                 undo.entries.none { it.entryId.isBlank() || it.climbUuid.isBlank() } &&
-                (undo.currentEntryId == null ||
-                    undo.entries.any { it.entryId == undo.currentEntryId }) &&
+                (undo.selectedEntryId == null ||
+                    undo.entries.any { it.entryId == undo.selectedEntryId }) &&
                 BoardPlaylistInstant.isWindow(undo.clearedAtEpochMs,
                     undo.restorableUntilEpochMs, RESTORE_WINDOW_MS)
         }?.let { undo ->
@@ -291,16 +343,33 @@ object BoardPlaylistPolicy {
             val restorableEntries = undo.entries.take((MAX_ENTRIES - entries.size).coerceAtLeast(0))
             if (restorableEntries.isEmpty()) null else undo.copy(
                 entries = restorableEntries,
-                currentEntryId = undo.currentEntryId?.takeIf { id ->
+                selectedEntryId = undo.selectedEntryId?.takeIf { id ->
                     restorableEntries.any { it.entryId == id }
                 },
             )
         }
+        // Bounded, and the oldest goes first. A relay's ingress history is a
+        // convenience for matching retries, not a log — an unbounded one would
+        // be an attacker-shaped queue in canonical state.
+        val relayOperations = playlist.relayOperations
+            .filter { record ->
+                record.fingerprint.length in 1..MAX_ID_LENGTH &&
+                    record.guestKey.length in 1..MAX_ID_LENGTH &&
+                    record.operationId.length in 1..MAX_ID_LENGTH &&
+                    record.entryId.length in 1..MAX_ENTRY_ID_LENGTH &&
+                    // The same instant the wire insists on, so a record that
+                    // survives validation also survives normalisation.
+                    BoardPlaylistInstant.isValid(record.stampedAtEpochMs)
+            }
+            .distinctBy { it.fingerprint to it.guestKey }
+            .takeLast(MAX_RELAY_OPERATIONS)
         return playlist.copy(
             entries = entries,
+            selectedEntryId = selected,
             currentEntryId = current,
             activeRest = rest,
             pendingProjection = pending,
+            relayOperations = relayOperations,
             clearGeneration = clearGeneration,
             lastClear = lastClear,
         )
@@ -323,9 +392,12 @@ object BoardPlaylistPolicy {
             is BoardPlaylistOp.Add -> add(state, op)
             is BoardPlaylistOp.Remove -> remove(state, op.entryId)
             is BoardPlaylistOp.Move -> move(state, op)
+            is BoardPlaylistOp.SetSelection ->
+                if (state.entry(op.entryId) == null) state
+                else state.copy(selectedEntryId = op.entryId, activeRest = null)
             is BoardPlaylistOp.SetCurrent ->
                 if (state.entry(op.entryId) == null) state
-                else state.copy(currentEntryId = op.entryId, activeRest = null)
+                else state.copy(currentEntryId = op.entryId)
             is BoardPlaylistOp.SetRest -> setRest(state, op)
             is BoardPlaylistOp.StartRest -> startRest(state, op)
             BoardPlaylistOp.EndRest -> state.copy(activeRest = null)
@@ -335,6 +407,13 @@ object BoardPlaylistPolicy {
                 if (state.lastClear?.generation == op.generation) state.copy(lastClear = null)
                 else state
             is BoardPlaylistOp.SetPendingProjection -> state.copy(pendingProjection = op.pending)
+            is BoardPlaylistOp.RecordRelayOperation -> state.copy(
+                relayOperations = state.relayOperations
+                    .filterNot {
+                        it.fingerprint == op.operation.fingerprint &&
+                            it.guestKey == op.operation.guestKey
+                    } + op.operation,
+            )
         }
 
     /**
@@ -353,6 +432,11 @@ object BoardPlaylistPolicy {
                 RESTORE_WINDOW_MS)
         return state.copy(
             entries = emptyList(),
+            // The cursor has nothing left to point at. The confirmed current
+            // goes for a different reason: the occurrence it named no longer
+            // exists, so it can no longer name it — the wall itself is
+            // untouched and still says what it is showing.
+            selectedEntryId = null,
             currentEntryId = null,
             activeRest = null,
             pendingProjection = null,
@@ -360,7 +444,7 @@ object BoardPlaylistPolicy {
             lastClear = if (!restorable) null else BoardPlaylistClearUndo(
                 generation = op.generation,
                 entries = state.entries,
-                currentEntryId = state.currentEntryId,
+                selectedEntryId = state.selectedEntryId,
                 clearedAtEpochMs = op.clearedAtEpochMs,
                 restorableUntilEpochMs = op.restorableUntilEpochMs,
             ),
@@ -388,8 +472,11 @@ object BoardPlaylistPolicy {
         if (restored.isEmpty()) return state.copy(lastClear = null)
         return state.copy(
             entries = restored + state.entries,
-            currentEntryId = undo.currentEntryId?.takeIf { id -> restored.any { it.entryId == id } }
-                ?: state.currentEntryId,
+            // What comes back is where the group was looking. Nothing was
+            // projected by taking a clear back, so the confirmed current is
+            // not restored — it would be a board write nobody performed.
+            selectedEntryId = undo.selectedEntryId?.takeIf { id -> restored.any { it.entryId == id } }
+                ?: state.selectedEntryId,
             lastClear = null,
         )
     }
@@ -415,14 +502,21 @@ object BoardPlaylistPolicy {
         val index = state.indexOf(entryId)
         if (index < 0) return state
         val entries = state.entries.toMutableList().apply { removeAt(index) }
-        val current = when {
-            state.currentEntryId != entryId -> state.currentEntryId
+        val selected = when {
+            state.selectedEntryId != entryId -> state.selectedEntryId
             entries.isEmpty() -> null
             else -> entries[index.coerceAtMost(entries.lastIndex)].entryId
         }
         return state.copy(
             entries = entries,
-            currentEntryId = current,
+            // The cursor moves to whatever now occupies that position, which is
+            // what "the next one" means to somebody looking at the list. The
+            // confirmed current does not move anywhere: removing the occurrence
+            // the wall was showing means nothing on the list names it any more,
+            // and normalisation drops it. Handing it to the neighbour — which
+            // is what this did — was claiming a board write for a climb nobody
+            // had sent.
+            selectedEntryId = selected,
             activeRest = state.activeRest?.takeIf { it.nextEntryId != entryId },
         )
     }
@@ -519,6 +613,13 @@ object BoardPlaylistPolicy {
             return Outcome.Reject("clear generation is ahead of the controller")
         if (command.ops.any { it is BoardPlaylistOp.SetPendingProjection } && !senderIsController)
             return Outcome.Reject("only the controller reports the physical send")
+        // The confirmed current is a statement about the board, not an edit.
+        // A member that could set it could tell the whole group a climb is on
+        // the wall without anything ever having been written.
+        if (command.ops.any { it is BoardPlaylistOp.SetCurrent } && !senderIsController)
+            return Outcome.Reject("only the controller confirms what the board shows")
+        if (command.ops.any { it is BoardPlaylistOp.RecordRelayOperation } && !senderIsController)
+            return Outcome.Reject("only the controller admits a relayed write")
         if (command.ops.any { it is BoardPlaylistOp.ExpireClearUndo } && !senderIsController)
             return Outcome.Reject("only the controller retires the restore offer")
         // Somebody reached for the restore a moment too late. Saying so is the
@@ -649,7 +750,7 @@ object BoardPlaylistOps {
         val existing = fromEntryId?.let(state::entry)
         if (existing != null) return LightNow(existing.entryId, emptyList())
         val entryId = newEntryId()
-        val anchor = state.currentEntryId
+        val anchor = state.selectedEntryId
             ?.let { BoardPlaylistAnchor.After(it) }
             ?: BoardPlaylistAnchor.Tail
         // The occurrence only. Making it current is the *second* phase and
@@ -678,7 +779,7 @@ object BoardPlaylistOps {
         val ensure = if (state.entry(entryId) != null) emptyList() else listOf(
             BoardPlaylistOp.Add(
                 entryId, climbUuid, angle,
-                anchor = state.currentEntryId?.let { BoardPlaylistAnchor.After(it) }
+                anchor = state.selectedEntryId?.let { BoardPlaylistAnchor.After(it) }
                     ?: BoardPlaylistAnchor.Tail,
             ),
         )
@@ -702,7 +803,12 @@ object BoardPlaylistOps {
             .takeIf { state.pendingProjection?.entryId == entryId }
         val current = BoardPlaylistOp.SetCurrent(entryId)
             .takeIf { state.currentEntryId != entryId }
-        return listOfNotNull(current, clear)
+        // The wall took it, so this is also where the group now is. The cursor
+        // follows the confirmed write — never the other way round, which is
+        // the whole point of them being two fields.
+        val selection = BoardPlaylistOp.SetSelection(entryId)
+            .takeIf { state.selectedEntryId != entryId }
+        return listOfNotNull(selection, current, clear)
     }
 
     /**
@@ -727,11 +833,18 @@ object BoardPlaylistOps {
             )
         }.orEmpty()
 
+    /** Record an intention, and optionally that it has landed. */
+    fun recordRelayOperation(
+        operation: BoardRelayOperation,
+        landed: Boolean = operation.landed,
+    ): List<BoardPlaylistOp> =
+        listOf(BoardPlaylistOp.RecordRelayOperation(operation.copy(landed = landed)))
+
     fun removeAt(state: BoardPlaylistState, index: Int): List<BoardPlaylistOp> =
         state.entryIdAt(index)?.let { listOf(BoardPlaylistOp.Remove(it)) }.orEmpty()
 
-    fun setCurrentAt(state: BoardPlaylistState, index: Int): List<BoardPlaylistOp> =
-        state.entryIdAt(index)?.let { listOf(BoardPlaylistOp.SetCurrent(it)) }.orEmpty()
+    fun selectAt(state: BoardPlaylistState, index: Int): List<BoardPlaylistOp> =
+        state.entryIdAt(index)?.let { listOf(BoardPlaylistOp.SetSelection(it)) }.orEmpty()
 
     fun setRestAt(state: BoardPlaylistState, index: Int, seconds: Int): List<BoardPlaylistOp> =
         state.entryIdAt(index)?.let { listOf(BoardPlaylistOp.SetRest(it, seconds)) }.orEmpty()
@@ -757,11 +870,11 @@ object BoardPlaylistOps {
      * was resting in front of the wall.
      */
     fun next(state: BoardPlaylistState): List<BoardPlaylistOp> {
-        val index = state.currentIndex
+        val index = state.selectedIndex
         if (index < 0 || index >= state.entries.lastIndex) return emptyList()
         val leaving = state.entries[index]
         val target = state.entries[index + 1].entryId
-        val ops = mutableListOf<BoardPlaylistOp>(BoardPlaylistOp.SetCurrent(target))
+        val ops = mutableListOf<BoardPlaylistOp>(BoardPlaylistOp.SetSelection(target))
         if (leaving.restAfterSeconds > 0) {
             ops += BoardPlaylistOp.StartRest(target, leaving.restAfterSeconds)
         }
@@ -769,9 +882,9 @@ object BoardPlaylistOps {
     }
 
     fun previous(state: BoardPlaylistState): List<BoardPlaylistOp> {
-        val index = state.currentIndex
+        val index = state.selectedIndex
         if (index <= 0) return emptyList()
-        return listOf(BoardPlaylistOp.SetCurrent(state.entries[index - 1].entryId))
+        return listOf(BoardPlaylistOp.SetSelection(state.entries[index - 1].entryId))
     }
 
     /**

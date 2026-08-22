@@ -44,10 +44,15 @@ class BoardPlaylistUndoTest {
     private fun entry(id: String, climb: String = "climb-$id", angle: Int = 40, rest: Int = 0) =
         BoardPlaylistEntry(id, climb, angle, rest)
 
-    private fun playlist(vararg entries: BoardPlaylistEntry, current: String? = null) =
-        BoardPlaylistPolicy.normalize(BoardPlaylistState(
-            sessionId = 7, entries = entries.toList(),
-            currentEntryId = current ?: entries.firstOrNull()?.entryId))
+    /** [selected] is the cursor; [confirmed] is a board write that landed. */
+    private fun playlist(
+        vararg entries: BoardPlaylistEntry,
+        selected: String? = null,
+        confirmed: String? = null,
+    ) = BoardPlaylistPolicy.normalize(BoardPlaylistState(
+        sessionId = 7, entries = entries.toList(),
+        selectedEntryId = selected ?: entries.firstOrNull()?.entryId,
+        currentEntryId = confirmed))
 
     private fun roundTrip(before: BoardPlaylistState, vararg ops: BoardPlaylistOp) {
         val after = BoardPlaylistPolicy.apply(before, ops.toList())
@@ -80,12 +85,12 @@ class BoardPlaylistUndoTest {
      * wrong problem on a list that looks right.
      */
     @Test fun `undoing a remove of the current entry restores the selection too`() {
-        val before = playlist(entry("e1"), entry("e2"), entry("e3"), current = "e2")
+        val before = playlist(entry("e1"), entry("e2"), entry("e3"), selected = "e2")
 
         roundTrip(before, BoardPlaylistOp.Remove("e2"))
 
         val after = BoardPlaylistPolicy.apply(before, listOf(BoardPlaylistOp.Remove("e2")))
-        assertEquals("e3", after.currentEntryId)
+        assertEquals("e3", after.selectedEntryId)
     }
 
     @Test fun `undoing a move puts the entry back between the same neighbours`() {
@@ -97,9 +102,9 @@ class BoardPlaylistUndoTest {
     }
 
     @Test fun `undoing a selection change returns the group to what it was on`() {
-        val before = playlist(entry("e1"), entry("e2"), entry("e3"), current = "e1")
+        val before = playlist(entry("e1"), entry("e2"), entry("e3"), selected = "e1")
 
-        roundTrip(before, BoardPlaylistOp.SetCurrent("e3"))
+        roundTrip(before, BoardPlaylistOp.SetSelection("e3"))
     }
 
     @Test fun `undoing a rest change restores the old plan`() {
@@ -114,13 +119,13 @@ class BoardPlaylistUndoTest {
      * own operation saw.
      */
     @Test fun `undoing a batch unwinds the whole batch`() {
-        val before = playlist(entry("e1"), entry("e2"), entry("e3"), current = "e1")
+        val before = playlist(entry("e1"), entry("e2"), entry("e3"), selected = "e1")
 
         roundTrip(
             before,
             BoardPlaylistOp.Remove("e2"),
             BoardPlaylistOp.Add("e9", "replacement", 40, 0, BoardPlaylistAnchor.After("e1")),
-            BoardPlaylistOp.SetCurrent("e9"),
+            BoardPlaylistOp.SetSelection("e9"),
         )
     }
 
@@ -156,7 +161,7 @@ class BoardPlaylistUndoTest {
     }
 
     @Test fun `selection while a rest is running offers no partial undo`() {
-        val before = playlist(entry("e1"), entry("e2"), current = "e2").copy(
+        val before = playlist(entry("e1"), entry("e2"), selected = "e2").copy(
             activeRest = BoardPlaylistRest(
                 totalSeconds = 60,
                 generation = 1,
@@ -168,15 +173,15 @@ class BoardPlaylistUndoTest {
 
         assertTrue(BoardPlaylistUndo.inverseOf(
             before,
-            listOf(BoardPlaylistOp.SetCurrent("e1")),
+            listOf(BoardPlaylistOp.SetSelection("e1")),
         ).isEmpty())
     }
 
     @Test fun `advance that starts a rest offers no misleading selection undo`() {
-        val before = playlist(entry("e1", rest = 60), entry("e2"), current = "e1")
+        val before = playlist(entry("e1", rest = 60), entry("e2"), selected = "e1")
 
         assertTrue(BoardPlaylistUndo.inverseOf(before, listOf(
-            BoardPlaylistOp.SetCurrent("e2"),
+            BoardPlaylistOp.SetSelection("e2"),
             BoardPlaylistOp.StartRest(
                 "e2",
                 60,
@@ -209,7 +214,7 @@ class BoardPlaylistUndoTest {
         assertTrue(BoardPlaylistUndo.inverseOf(before,
             listOf(BoardPlaylistOp.Move("gone", BoardPlaylistAnchor.Head))).isEmpty())
         assertTrue(BoardPlaylistUndo.inverseOf(before,
-            listOf(BoardPlaylistOp.SetCurrent("e1"))).isEmpty())
+            listOf(BoardPlaylistOp.SetSelection("e1"))).isEmpty())
     }
 
     @Test fun `an undo is itself idempotent when somebody else got there first`() {

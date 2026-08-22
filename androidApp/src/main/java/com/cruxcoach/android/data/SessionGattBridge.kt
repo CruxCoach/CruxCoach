@@ -45,6 +45,7 @@ import com.cruxcoach.android.boardcell.BoardPlaylistCommand
 import com.cruxcoach.android.boardcell.BoardPlaylistOp
 import com.cruxcoach.android.boardcell.BoardPlaylistEntryId
 import com.cruxcoach.android.boardcell.BoardPlaylistOps
+import com.cruxcoach.android.boardcell.BoardRelayOperation
 import com.cruxcoach.android.boardcell.BoardPlaylistPolicy
 import com.cruxcoach.android.boardcell.BoardProjection
 import com.cruxcoach.android.boardcell.BoardCellSnapshot
@@ -453,7 +454,7 @@ class SessionGattBridge(
     ): List<BoardPlaylistOp> = when (command) {
         is SessionCommand.Add -> BoardPlaylistOps.add(command.climbUuid, command.angle)
         is SessionCommand.Remove -> BoardPlaylistOps.removeAt(playlist, command.index)
-        is SessionCommand.SetCurrent -> BoardPlaylistOps.setCurrentAt(playlist, command.index)
+        is SessionCommand.SetCurrent -> BoardPlaylistOps.selectAt(playlist, command.index)
         SessionCommand.Next ->
             if (playlist.activeRest != null) BoardPlaylistOps.endRest()
             else BoardPlaylistOps.next(playlist)
@@ -1428,6 +1429,17 @@ class SessionGattBridge(
     /** A command the controller committed, and nothing weaker. */
     private fun BoardCommandAck?.isCommitted(): Boolean =
         this != null && status == BoardCommandStatus.COMMITTED
+
+    /**
+     * Publish a relayed guest write's intention to the whole cell.
+     *
+     * Controller-only by construction — the op is refused from anybody else —
+     * and idempotent by `(fingerprint, guest)`, so recording it again on
+     * success updates the one record rather than adding a second.
+     */
+    fun recordRelayIntent(operation: BoardRelayOperation) {
+        submitPlaylistOps("relay_intent", BoardPlaylistOps.recordRelayOperation(operation))
+    }
 
     /** The running rest is over — it ran out, or somebody skipped it. */
     fun endCanonicalRest() {

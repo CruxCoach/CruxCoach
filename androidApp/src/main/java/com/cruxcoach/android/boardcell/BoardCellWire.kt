@@ -232,6 +232,15 @@ object BoardCellWireCodec {
                 }
                 is BoardPlaylistOp.Remove ->
                     require(op.entryId.length in 1..BoardPlaylistPolicy.MAX_ENTRY_ID_LENGTH)
+                is BoardPlaylistOp.SetSelection ->
+                    require(op.entryId.length in 1..BoardPlaylistPolicy.MAX_ENTRY_ID_LENGTH)
+                is BoardPlaylistOp.RecordRelayOperation -> {
+                    // A committed record carries the controller's stamp; an
+                    // uncommitted one cannot invent it, exactly like a rest.
+                    requireRelayOperationBounds(op.operation)
+                    if (!committed) require(op.operation.stampedAtEpochMs == 0L)
+                    else require(BoardPlaylistInstant.isValid(op.operation.stampedAtEpochMs))
+                }
                 is BoardPlaylistOp.Move -> {
                     require(op.entryId.length in 1..BoardPlaylistPolicy.MAX_ENTRY_ID_LENGTH)
                     requireAnchorBounds(op.anchor)
@@ -296,6 +305,14 @@ object BoardCellWireCodec {
      * self-inconsistent playlist out of the durable store and out of the state
      * hash, instead of relying on every later reader to be defensive.
      */
+    private fun requireRelayOperationBounds(operation: BoardRelayOperation) {
+        require(operation.fingerprint.length in 1..BoardPlaylistPolicy.MAX_ID_LENGTH)
+        require(operation.guestKey.length in 1..BoardPlaylistPolicy.MAX_ID_LENGTH)
+        require(operation.operationId.length in 1..BoardPlaylistPolicy.MAX_ID_LENGTH)
+        require(operation.entryId.length in 1..BoardPlaylistPolicy.MAX_ENTRY_ID_LENGTH)
+        require(operation.stampedAtEpochMs >= 0)
+    }
+
     private fun requirePlaylistBounds(playlist: BoardPlaylistState) {
         require(playlist.entries.size <= BoardPlaylistPolicy.MAX_ENTRIES)
         require(playlist.clearGeneration >= 0)
@@ -309,8 +326,22 @@ object BoardCellWireCodec {
             // which is precisely what stable ids exist to prevent.
             require(ids.add(it.entryId))
         }
+        // The cursor always points somewhere while there is anything to point
+        // at. The confirmed current does not: null is the honest state of a
+        // list nobody has sent from yet, and requiring one here is what used to
+        // force the invented current that made "on the board" a lie.
+        playlist.selectedEntryId?.let { selected -> require(selected in ids) }
+        require(playlist.selectedEntryId != null || playlist.entries.isEmpty())
         playlist.currentEntryId?.let { current -> require(current in ids) }
-        require(playlist.currentEntryId != null || playlist.entries.isEmpty())
+        require(playlist.relayOperations.size <= BoardPlaylistPolicy.MAX_RELAY_OPERATIONS)
+        val relayKeys = HashSet<Pair<String, String>>(playlist.relayOperations.size * 2)
+        playlist.relayOperations.forEach {
+            requireRelayOperationBounds(it)
+            require(BoardPlaylistInstant.isValid(it.stampedAtEpochMs))
+            // One record per intention, or a peer could pad canonical state
+            // with copies of the same one.
+            require(relayKeys.add(it.fingerprint to it.guestKey))
+        }
         playlist.activeRest?.let {
             require(it.totalSeconds in 1..BoardPlaylistPolicy.MAX_REST_SECONDS)
             require(it.generation > 0)
@@ -346,7 +377,7 @@ object BoardCellWireCodec {
                 requireRestBounds(it.restAfterSeconds)
                 require(undoIds.add(it.entryId))
             }
-            undo.currentEntryId?.let { current -> require(current in undoIds) }
+            undo.selectedEntryId?.let { selected -> require(selected in undoIds) }
             require(BoardPlaylistInstant.isWindow(undo.clearedAtEpochMs,
                 undo.restorableUntilEpochMs, BoardPlaylistPolicy.RESTORE_WINDOW_MS))
         }

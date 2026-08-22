@@ -16,10 +16,15 @@ class BoardPlaylistPolicyTest {
     private fun entry(id: String, climb: String = "climb-$id", angle: Int = 40, rest: Int = 0) =
         BoardPlaylistEntry(id, climb, angle, rest)
 
-    private fun playlist(vararg entries: BoardPlaylistEntry, current: String? = null) =
-        BoardPlaylistPolicy.normalize(BoardPlaylistState(
-            sessionId = 7, entries = entries.toList(),
-            currentEntryId = current ?: entries.firstOrNull()?.entryId))
+    /** [selected] is the cursor; [confirmed] is a board write that landed. */
+    private fun playlist(
+        vararg entries: BoardPlaylistEntry,
+        selected: String? = null,
+        confirmed: String? = null,
+    ) = BoardPlaylistPolicy.normalize(BoardPlaylistState(
+        sessionId = 7, entries = entries.toList(),
+        selectedEntryId = selected ?: entries.firstOrNull()?.entryId,
+        currentEntryId = confirmed))
 
     private fun command(
         vararg ops: BoardPlaylistOp,
@@ -58,7 +63,7 @@ class BoardPlaylistPolicyTest {
 
         assertEquals(listOf("e1", "e2", "e3"), state.entries.map { it.entryId })
         assertEquals(3, state.entries.count { it.climbUuid == "zombie-hands" })
-        assertEquals("e1", state.currentEntryId)
+        assertEquals("e1", state.selectedEntryId)
     }
 
     @Test fun `removing one occurrence of a repeated climb leaves the others alone`() {
@@ -114,7 +119,7 @@ class BoardPlaylistPolicyTest {
         val ops = listOf(
             BoardPlaylistOp.Add("e1", "a", 40),
             BoardPlaylistOp.Add("e2", "b", 40),
-            BoardPlaylistOp.SetCurrent("e2"),
+            BoardPlaylistOp.SetSelection("e2"),
             BoardPlaylistOp.SetRest("e1", 90),
         )
 
@@ -150,37 +155,56 @@ class BoardPlaylistPolicyTest {
 
     @Test fun `a move keeps the current entry and the running rest on their own occurrence`() {
         val base = BoardPlaylistPolicy.apply(playlist(entry("e1"), entry("e2"), entry("e3")),
-            listOf(BoardPlaylistOp.SetCurrent("e3")))
+            listOf(BoardPlaylistOp.SetSelection("e3")))
         val resting = BoardPlaylistPolicy.apply(base, listOf(
             BoardPlaylistOp.StartRest("e3", 120, 1, now, now + 120_000L)))
 
         val state = commit(resting, BoardPlaylistOp.Move("e3", BoardPlaylistAnchor.Head))
 
         assertEquals(listOf("e3", "e1", "e2"), state.entries.map { it.entryId })
-        assertEquals("e3", state.currentEntryId)
+        assertEquals("e3", state.selectedEntryId)
         assertEquals("e3", state.activeRest?.nextEntryId)
     }
 
-    @Test fun `removing the current entry moves the group to what took its place`() {
+    @Test fun `removing the selected entry moves the group to what took its place`() {
         val base = BoardPlaylistPolicy.apply(playlist(entry("e1"), entry("e2"), entry("e3")),
-            listOf(BoardPlaylistOp.SetCurrent("e2")))
+            listOf(BoardPlaylistOp.SetSelection("e2")))
 
         val state = commit(base, BoardPlaylistOp.Remove("e2"))
 
-        assertEquals("e3", state.currentEntryId)
-        assertEquals(1, state.currentIndex)
+        assertEquals("e3", state.selectedEntryId)
+        assertEquals(1, state.selectedIndex)
+    }
+
+    /**
+     * The other half, and the one that used to be wrong: removing an entry
+     * moves the cursor and must not hand the *confirmed* current to whatever
+     * takes its place. That would be claiming a board write for a climb nobody
+     * had sent — and the previous shared field did exactly that.
+     */
+    @Test fun `removing the confirmed entry does not hand the board to its neighbour`() {
+        val base = BoardPlaylistPolicy.apply(
+            playlist(entry("e1"), entry("e2"), entry("e3"), confirmed = "e2"),
+            listOf(BoardPlaylistOp.SetSelection("e2")),
+        )
+        assertEquals("e2", base.currentEntryId)
+
+        val state = commit(base, BoardPlaylistOp.Remove("e2"))
+
+        assertEquals("e3", state.selectedEntryId)
+        assertNull("nothing on the list is confirmed to be on the wall", state.currentEntryId)
     }
 
     @Test fun `removing the last entry leaves nothing current`() {
         val state = commit(playlist(entry("e1")), BoardPlaylistOp.Remove("e1"))
 
         assertTrue(state.entries.isEmpty())
-        assertNull(state.currentEntryId)
+        assertNull(state.selectedEntryId)
     }
 
     @Test fun `removing the entry a rest is waiting on ends the rest`() {
         val base = BoardPlaylistPolicy.apply(playlist(entry("e1"), entry("e2")), listOf(
-            BoardPlaylistOp.SetCurrent("e2"),
+            BoardPlaylistOp.SetSelection("e2"),
             BoardPlaylistOp.StartRest("e2", 120, 1, now, now + 120_000L)))
 
         val state = commit(base, BoardPlaylistOp.Remove("e2"))
@@ -189,7 +213,7 @@ class BoardPlaylistPolicyTest {
     }
 
     @Test fun `pointing at an entry that has gone changes nothing`() {
-        val outcome = resolve(playlist(entry("e1")), command(BoardPlaylistOp.SetCurrent("gone")))
+        val outcome = resolve(playlist(entry("e1")), command(BoardPlaylistOp.SetSelection("gone")))
 
         assertTrue(outcome is BoardPlaylistPolicy.Outcome.Accepted)
     }
@@ -202,7 +226,7 @@ class BoardPlaylistPolicyTest {
         val ops = BoardPlaylistOps.next(base)
         val state = commit(base, *ops.toTypedArray())
 
-        assertEquals("e2", state.currentEntryId)
+        assertEquals("e2", state.selectedEntryId)
         assertEquals(90, state.activeRest?.totalSeconds)
         assertEquals("e2", state.activeRest?.nextEntryId)
         assertEquals(now + 90_000L, state.activeRest?.endsAtEpochMs)
@@ -223,7 +247,7 @@ class BoardPlaylistPolicyTest {
         val base = BoardPlaylistPolicy.apply(playlist(entry("e1"), entry("e2")), listOf(
             BoardPlaylistOp.StartRest("e2", 60, 1, now, now + 60_000L)))
 
-        val state = commit(base, BoardPlaylistOp.SetCurrent("e2"))
+        val state = commit(base, BoardPlaylistOp.SetSelection("e2"))
 
         assertNull(state.activeRest)
     }
@@ -259,7 +283,7 @@ class BoardPlaylistPolicyTest {
         val state = commit(base, BoardPlaylistOp.Clear())
 
         assertTrue(state.entries.isEmpty())
-        assertNull(state.currentEntryId)
+        assertNull(state.selectedEntryId)
         assertEquals(1L, state.clearGeneration)
         assertEquals(7, state.sessionId)
     }
@@ -325,7 +349,7 @@ class BoardPlaylistPolicyTest {
                 "e2", "climb-e2", 40, BoardPlaylistProjectionPendingReason.CLIMB_UNAVAILABLE))))
 
         assertEquals("e2", state.pendingProjection?.entryId)
-        assertEquals("e1", state.currentEntryId)
+        assertEquals("e1", state.selectedEntryId)
     }
 
     @Test fun `a pending send naming no occurrence at all is dropped`() {
@@ -388,7 +412,7 @@ class BoardPlaylistPolicyTest {
         assertEquals(listOf("e1", "e2"), state.entries.map { it.entryId })
         assertEquals(0, state.entries[0].restAfterSeconds)
         assertEquals(BoardPlaylistPolicy.MAX_REST_SECONDS, state.entries[1].restAfterSeconds)
-        assertEquals("e1", state.currentEntryId)
+        assertEquals("e1", state.selectedEntryId)
     }
 
     @Test fun `an empty command is accepted without moving anything`() {
@@ -403,7 +427,7 @@ class BoardPlaylistPolicyTest {
         val base = playlist(entry("e1"), entry("e2"), entry("e3"))
 
         assertEquals(listOf(BoardPlaylistOp.Remove("e2")), BoardPlaylistOps.removeAt(base, 1))
-        assertEquals(listOf(BoardPlaylistOp.SetCurrent("e3")), BoardPlaylistOps.setCurrentAt(base, 2))
+        assertEquals(listOf(BoardPlaylistOp.SetSelection("e3")), BoardPlaylistOps.selectAt(base, 2))
         assertEquals(listOf(BoardPlaylistOp.SetRest("e1", 30)), BoardPlaylistOps.setRestAt(base, 0, 30))
         assertEquals(emptyList<BoardPlaylistOp>(), BoardPlaylistOps.removeAt(base, 9))
     }
@@ -495,9 +519,9 @@ class BoardPlaylistPolicyTest {
 
     @Test fun `advancing past the last entry produces no operations`() {
         val base = BoardPlaylistPolicy.apply(playlist(entry("e1"), entry("e2")),
-            listOf(BoardPlaylistOp.SetCurrent("e2")))
+            listOf(BoardPlaylistOp.SetSelection("e2")))
 
         assertEquals(emptyList<BoardPlaylistOp>(), BoardPlaylistOps.next(base))
-        assertEquals(listOf(BoardPlaylistOp.SetCurrent("e1")), BoardPlaylistOps.previous(base))
+        assertEquals(listOf(BoardPlaylistOp.SetSelection("e1")), BoardPlaylistOps.previous(base))
     }
 }

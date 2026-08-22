@@ -39,7 +39,7 @@ class BoardPlaylistConfidenceUiTest {
 
     private fun row() = BoardPlaylistRow(
         entryId = "e1", climbUuid = "climb-a", angle = 40, name = "Test climb",
-        gradeLabel = "6A", restAfterSeconds = 0, isCurrent = true, isPast = false,
+        gradeLabel = "6A", restAfterSeconds = 0, isSelected = true, isPast = false,
         mark = BoardPlaylistLogMark.UNATTEMPTED, duplicateIndex = 1, duplicateCount = 1,
     )
 
@@ -62,7 +62,7 @@ class BoardPlaylistConfidenceUiTest {
     ) = BoardPlaylistUiState(
         available = true,
         rows = listOf(row()),
-        currentIndex = 0,
+        selectedIndex = 0,
         selectionOnBoard = selectionOnBoard,
         projectionConfidence = confidence,
         boardClimbUnknown = confidence == BoardProjectionConfidence.UNKNOWN,

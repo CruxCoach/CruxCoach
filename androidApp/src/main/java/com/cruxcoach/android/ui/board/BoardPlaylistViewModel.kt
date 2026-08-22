@@ -55,7 +55,10 @@ data class BoardPlaylistRow(
     val gradeLabel: String?,
     val restAfterSeconds: Int,
     /** The occurrence the whole group is pointing at. */
-    val isCurrent: Boolean,
+    /** The occurrence the group is looking at. Says nothing about the wall. */
+    val isSelected: Boolean,
+    /** The occurrence the board is confirmed to be showing. */
+    val isOnBoard: Boolean = false,
     /** Behind the current entry — done with, as far as the list is concerned. */
     val isPast: Boolean,
     val mark: BoardPlaylistLogMark,
@@ -89,7 +92,8 @@ data class BoardPlaylistUiState(
     /** False during a partition: what is on screen may already be stale. */
     val synchronized: Boolean = true,
     val rows: List<BoardPlaylistRow> = emptyList(),
-    val currentIndex: Int = -1,
+    /** Where the group is looking — the cursor, for stepping and dimming. */
+    val selectedIndex: Int = -1,
     /** The selected entry is the one the board last confirmed. */
     val selectionOnBoard: Boolean = false,
     /**
@@ -123,8 +127,8 @@ data class BoardPlaylistUiState(
     val failedEntryId: String? get() = pendingProjection?.entryId
 
     val isEmpty: Boolean get() = rows.isEmpty()
-    val hasPrevious: Boolean get() = currentIndex > 0
-    val hasNext: Boolean get() = currentIndex >= 0 && currentIndex < rows.size - 1
+    val hasPrevious: Boolean get() = selectedIndex > 0
+    val hasNext: Boolean get() = selectedIndex >= 0 && selectedIndex < rows.size - 1
 }
 
 /**
@@ -260,8 +264,9 @@ class BoardPlaylistViewModel @Inject constructor(
         val playlist = snapshot.playlist
         resolveMissingNames(playlist)
         if (token != renderToken) return
-        val current = playlist.currentEntryId
-        val currentIndex = playlist.currentIndex
+        val selected = playlist.selectedEntryId
+        val selectedIndex = playlist.selectedIndex
+        val confirmedCurrent = playlist.currentEntryId
         val status = projectionStatus(snapshot)
         val occurrences = HashMap<String, Int>()
         val totals = playlist.entries.groupingBy { duplicateKey(it) }.eachCount()
@@ -277,8 +282,12 @@ class BoardPlaylistViewModel @Inject constructor(
                 name = info?.name ?: entry.climbUuid.take(8),
                 gradeLabel = info?.gradeLabel,
                 restAfterSeconds = entry.restAfterSeconds,
-                isCurrent = entry.entryId == current,
-                isPast = currentIndex >= 0 && index < currentIndex,
+                isSelected = entry.entryId == selected,
+                // Two different facts, so two different marks. The board can be
+                // showing an occurrence nobody is looking at, and the group can
+                // be looking at one that has never been sent.
+                isOnBoard = entry.entryId == confirmedCurrent && status.shows(entry),
+                isPast = selectedIndex >= 0 && index < selectedIndex,
                 mark = personalLogMarks[boardPlaylistLogKey(entry.climbUuid, entry.angle)]
                     ?: BoardPlaylistLogMark.UNATTEMPTED,
                 duplicateIndex = occurrence,
@@ -286,8 +295,8 @@ class BoardPlaylistViewModel @Inject constructor(
                 projection = status.confidenceFor(entry),
             )
         }
-        val currentEntry = playlist.currentEntry()
-        val selectionOnBoard = status.shows(currentEntry)
+        val selectedEntry = playlist.selectedEntry()
+        val selectionOnBoard = status.shows(selectedEntry)
         val failedEntry = playlist.pendingProjection?.let { playlist.entry(it.entryId) }
         // What the wall shows *instead*, and only where that is worth
         // saying: an in-flight or failed send is already its own answer.
@@ -312,7 +321,7 @@ class BoardPlaylistViewModel @Inject constructor(
             memberCount = snapshot.members.size,
             synchronized = boardCellManager.isPlaylistSynchronized(),
             rows = rows,
-            currentIndex = currentIndex,
+            selectedIndex = selectedIndex,
             selectionOnBoard = selectionOnBoard,
             projectionConfidence = status.confidence,
             boardClimbUnknown = status.confidence == BoardProjectionConfidence.UNKNOWN,

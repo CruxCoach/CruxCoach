@@ -282,7 +282,7 @@ class SessionQueueManager(
         // BoardCell already has — and a start, a join, a process restart, an
         // anti-entropy repair and a controller handover all converge on the
         // same visible result without any of them needing their own path.
-        val canonicalItem = playlist.currentEntry()
+        val canonicalItem = playlist.selectedEntry()
         val selectionOnBoard = snapshot.projectionKnown && canonicalItem != null &&
             snapshot.projection?.let {
                 it.climbUuid == canonicalItem.climbUuid && it.angle == canonicalItem.angle
@@ -327,7 +327,10 @@ class SessionQueueManager(
                 queue = playlist.entries.map {
                     QueueItem(it.climbUuid, it.angle, it.restAfterSeconds)
                 },
-                currentIndex = playlist.currentIndex,
+                // The legacy queue's "current index" is where the group is
+                // looking, which is the selection. The board's own confirmed
+                // occurrence is reported separately through the mesh view.
+                currentIndex = playlist.selectedIndex,
                 visibility = SessionVisibility.JOINABLE,
                 visibilityRequested = SessionVisibility.JOINABLE,
                 participantCount = snapshot.members.size,

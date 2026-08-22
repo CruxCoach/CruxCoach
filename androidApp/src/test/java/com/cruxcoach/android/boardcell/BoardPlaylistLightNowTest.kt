@@ -25,11 +25,20 @@ class BoardPlaylistLightNowTest {
     private fun entry(id: String, climb: String, angle: Int = 40) =
         BoardPlaylistEntry(entryId = id, climbUuid = climb, angle = angle)
 
-    private fun playlist(vararg entries: BoardPlaylistEntry, current: String? = null) =
-        BoardPlaylistState(
-            entries = entries.toList(),
-            currentEntryId = current ?: entries.firstOrNull()?.entryId,
-        )
+    /**
+     * [selected] is where the group is looking. A confirmed current is set only
+     * by a landed write, so these fixtures start without one — which is also
+     * the honest starting state of a list nobody has sent from yet.
+     */
+    private fun playlist(
+        vararg entries: BoardPlaylistEntry,
+        selected: String? = null,
+        confirmed: String? = null,
+    ) = BoardPlaylistState(
+        entries = entries.toList(),
+        selectedEntryId = selected ?: entries.firstOrNull()?.entryId,
+        currentEntryId = confirmed,
+    )
 
     /** Phase one, then the wall answered yes. */
     private fun lit(state: BoardPlaylistState, plan: BoardPlaylistOps.LightNow): BoardPlaylistState {
@@ -48,7 +57,7 @@ class BoardPlaylistLightNowTest {
         val state = playlist(
             entry("e1", "climb-a"),
             entry("e2", "climb-b"),
-            current = "e1",
+            selected = "e1",
         )
 
         val plan = BoardPlaylistOps.lightNow(state, "climb-b", 40, fromEntryId = "e2")
@@ -59,8 +68,8 @@ class BoardPlaylistLightNowTest {
     }
 
     @Test
-    fun `lighting the entry already current changes nothing at all`() {
-        val state = playlist(entry("e1", "climb-a"), current = "e1")
+    fun `lighting the entry already on the board changes nothing at all`() {
+        val state = playlist(entry("e1", "climb-a"), selected = "e1", confirmed = "e1")
 
         val plan = BoardPlaylistOps.lightNow(state, "climb-a", 40, fromEntryId = "e1")
 
@@ -75,7 +84,7 @@ class BoardPlaylistLightNowTest {
             entry("e1", "climb-a"),
             entry("e2", "climb-b"),
             entry("e3", "climb-c"),
-            current = "e2",
+            selected = "e2",
         )
 
         val plan = BoardPlaylistOps.lightNow(state, "climb-x", 25) { "new-1" }
@@ -114,7 +123,8 @@ class BoardPlaylistLightNowTest {
         val state = playlist(
             entry("e1", "climb-a"),
             entry("e2", "climb-b"),
-            current = "e1",
+            selected = "e1",
+            confirmed = "e1",
         )
 
         val plan = BoardPlaylistOps.lightNow(state, "climb-x", 40) { "new-1" }
@@ -144,7 +154,9 @@ class BoardPlaylistLightNowTest {
      */
     @Test
     fun `a failure marker survives on an occurrence that is not current`() {
-        val state = playlist(entry("e1", "climb-a"), entry("e2", "climb-b"), current = "e1")
+        val state = playlist(
+            entry("e1", "climb-a"), entry("e2", "climb-b"), selected = "e1", confirmed = "e1",
+        )
 
         val marked = BoardPlaylistPolicy.apply(
             state,
@@ -158,7 +170,7 @@ class BoardPlaylistLightNowTest {
     /** What it must not survive: the occurrence it names being taken off the list. */
     @Test
     fun `removing the failed occurrence takes its marker with it`() {
-        val state = playlist(entry("e1", "climb-a"), entry("e2", "climb-b"), current = "e1")
+        val state = playlist(entry("e1", "climb-a"), entry("e2", "climb-b"), selected = "e1")
         val marked = BoardPlaylistPolicy.apply(state, BoardPlaylistOps.recordLightFailure(state, "e2"))
 
         val after = BoardPlaylistPolicy.apply(marked, listOf(BoardPlaylistOp.Remove("e2")))
@@ -169,20 +181,21 @@ class BoardPlaylistLightNowTest {
     /** Nothing at all is claimed until the wall has answered, either way. */
     @Test
     fun `phase one adds the occurrence and claims nothing`() {
-        val state = playlist(entry("e1", "climb-a"), current = "e1")
+        val state = playlist(entry("e1", "climb-a"), selected = "e1", confirmed = "e1")
 
         val plan = BoardPlaylistOps.lightNow(state, "climb-x", 40) { "new-1" }
         val added = BoardPlaylistPolicy.apply(state, plan.ops)
 
         assertEquals(listOf("e1", "new-1"), added.entries.map { it.entryId })
-        assertEquals("e1", added.currentEntryId)
+        assertEquals("the board still has the occurrence it confirmed", "e1", added.currentEntryId)
+        assertEquals("and nobody has been moved anywhere", "e1", added.selectedEntryId)
         assertNull(added.pendingProjection)
     }
 
     /** Nothing to confirm and nothing to blame: an occurrence nobody added. */
     @Test
     fun `neither phase two acts on an occurrence that is not there`() {
-        val state = playlist(entry("e1", "climb-a"), current = "e1")
+        val state = playlist(entry("e1", "climb-a"), selected = "e1")
 
         assertEquals(emptyList<BoardPlaylistOp>(), BoardPlaylistOps.confirmLit(state, "gone"))
         assertEquals(emptyList<BoardPlaylistOp>(), BoardPlaylistOps.recordLightFailure(state, "gone"))
@@ -196,7 +209,7 @@ class BoardPlaylistLightNowTest {
      */
     @Test
     fun `the controller completes a light-now whose add has not arrived yet`() {
-        val state = playlist(entry("e1", "climb-a"), current = "e1")
+        val state = playlist(entry("e1", "climb-a"), selected = "e1")
 
         val ops = BoardPlaylistOps.completeLightNow(state, "m-1", "climb-x", 40, landed = true)
         val after = BoardPlaylistPolicy.apply(state, ops)
@@ -208,7 +221,7 @@ class BoardPlaylistLightNowTest {
     /** And the member's own add, arriving late, merges into it rather than doubling it. */
     @Test
     fun `a late add for the same occurrence adds nothing`() {
-        val state = playlist(entry("e1", "climb-a"), current = "e1")
+        val state = playlist(entry("e1", "climb-a"), selected = "e1")
         val settled = BoardPlaylistPolicy.apply(
             state,
             BoardPlaylistOps.completeLightNow(state, "m-1", "climb-x", 40, landed = true),
@@ -225,7 +238,7 @@ class BoardPlaylistLightNowTest {
 
     @Test
     fun `a controller-completed light-now that did not land says so`() {
-        val state = playlist(entry("e1", "climb-a"), current = "e1")
+        val state = playlist(entry("e1", "climb-a"), selected = "e1", confirmed = "e1")
 
         val after = BoardPlaylistPolicy.apply(
             state,
@@ -251,7 +264,7 @@ class BoardPlaylistLightNowTest {
             entry("e1", "climb-a"),
             entry("e2", "climb-x"),
             entry("e3", "climb-b"),
-            current = "e1",
+            selected = "e1",
         )
 
         val plan = BoardPlaylistOps.lightNow(state, "climb-x", 40) { "new-1" }
@@ -283,7 +296,7 @@ class BoardPlaylistLightNowTest {
      */
     @Test
     fun `an entry id that no longer exists mints a new occurrence`() {
-        val state = playlist(entry("e1", "climb-a"), current = "e1")
+        val state = playlist(entry("e1", "climb-a"), selected = "e1")
 
         val plan = BoardPlaylistOps.lightNow(state, "climb-b", 40, fromEntryId = "gone") { "new-1" }
 
@@ -305,7 +318,7 @@ class BoardPlaylistLightNowTest {
             entry("e2", "climb-x"),
             entry("e3", "climb-b"),
             entry("e4", "climb-x"),
-            current = "e1",
+            selected = "e1",
         )
 
         val second = BoardPlaylistOps.lightNow(state, "climb-x", 40, fromEntryId = "e4")
@@ -326,7 +339,7 @@ class BoardPlaylistLightNowTest {
             entry("e1", "climb-a"),
             entry("e2", "climb-x"),
             entry("e3", "climb-x"),
-            current = "e1",
+            selected = "e1",
         )
         val before = state.entries.map { it.entryId }
 
@@ -349,7 +362,7 @@ class BoardPlaylistLightNowTest {
         val state = playlist(
             entry("e1", "climb-a"),
             entry("e2", "climb-x"),
-            current = "e1",
+            selected = "e1",
         )
 
         val fromList = BoardPlaylistOps.lightNow(state, "climb-x", 40, fromEntryId = "e2")
@@ -368,7 +381,7 @@ class BoardPlaylistLightNowTest {
         val state = playlist(
             entry("e1", "climb-a"),
             entry("e2", "climb-x"),
-            current = "e1",
+            selected = "e1",
         )
 
         val plan = BoardPlaylistOps.lightNow(state, "climb-x", 40, fromEntryId = null) { "new-1" }
@@ -381,7 +394,7 @@ class BoardPlaylistLightNowTest {
     /** A retry after a failure lands on the occurrence that already exists. */
     @Test
     fun `retrying a failed light-now does not add a second occurrence`() {
-        val state = playlist(entry("e1", "climb-a"), current = "e1")
+        val state = playlist(entry("e1", "climb-a"), selected = "e1", confirmed = "e1")
         val plan = BoardPlaylistOps.lightNow(state, "climb-x", 40) { "new-1" }
         val afterFailure = failed(state, plan)
 

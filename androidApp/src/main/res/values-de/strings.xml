@@ -1383,6 +1383,7 @@
     <string name="board_playlist_failure_remove">Entfernen</string>
     <string name="board_playlist_send_retry">Erneut</string>
     <string name="board_playlist_row_not_sent">Nicht übertragen</string>
+    <string name="board_playlist_row_on_board">Am Board</string>
     <string name="board_detail_playlist_entry_removed">Aus Playlist entfernt — Senden legt einen neuen Eintrag am Board an</string>
     <string name="board_playlist_board_still_shows">Am Board bleibt %1$s</string>
     <string name="board_playlist_out_of_sync">Gerade nicht mit dem Board synchron — diese Liste kann veraltet sein.</string>
