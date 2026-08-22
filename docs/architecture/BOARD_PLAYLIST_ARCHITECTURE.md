@@ -355,6 +355,15 @@ halb geschriebener Climb ist ein Zustand, den das Board-Protokoll nicht zurueckn
 — und wird kanonisch festgehalten, weil die Wand ihn tatsaechlich zeigt. Der Gast sieht
 dann einen Fehler, und sein Retry erhaelt den Erfolg.
 
+Ein Erfolgs-ACK wird im Moment des Antwortens erneut geprueft, nicht nur beim Annehmen:
+gegen die aktuelle Board-Health und gegen eine Controller-Lease, die weiterhin diesem
+Geraet gehoert, `ACTIVE` ist, nicht mitten in einem Handover steht und noch auf demselben
+Board liegt. Jeder Schritt eines Relay-Vorgangs suspendiert — Intent-Barriere, Board-Write,
+terminaler Playlist-Commit —, und der Link kann in jedem davon ausfallen. Waehrend `GRACE`
+wird deshalb kein Erfolg gesendet, auch wenn der Vorgang gesund begonnen hat. Der Climb
+bleibt trotzdem kanonisch festgehalten, sodass der Retry nach Recovery denselben Erfolg
+ohne zweiten Write und ohne zweite Occurrence erhaelt.
+
 Der Erfolgsbeleg fuer diesen Retry ist das kanonische `landed`-Flag der Intention selbst,
 unabhaengig davon, was Playlist und Board gerade zeigen. Aus dem Wandzustand abgeleitet
 waere er eine andere Frage: die Gruppe zieht legitim weiter, und bei `Ans Ende` ist die
