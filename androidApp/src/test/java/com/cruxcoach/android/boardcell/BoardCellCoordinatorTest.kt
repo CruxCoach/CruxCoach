@@ -51,6 +51,61 @@ class BoardCellCoordinatorTest {
         assertNull(coordinator.snapshot(board)!!.projection)
     }
 
+    @Test fun `participant generic detail materializes and confirms in one projection commit`() = runTest {
+        val board = PhysicalBoardId("board-atomic-detail")
+        val (coordinator) = settled("controller", board, now = 100)
+        coordinator.applyPlaylistCommand(board, 101, "controller", playlistCommand(
+            "seed-atomic-detail", BoardPlaylistOp.Add("old", "old-climb", 40),
+            BoardPlaylistOp.SetCurrent("old"),
+        ))
+        val base = coordinator.snapshot(board)!!
+        val request = BoardProjectionRequest(
+            commandId = "participant-detail-command",
+            projection = BoardProjection("new-climb", 40),
+            baseSequence = base.sequence,
+            baseProjection = base.projection,
+            basePlaylistRevision = base.playlistRevision,
+            entryId = "minted-occurrence",
+            materializeEntry = true,
+            placeAfterCurrent = true,
+        )
+
+        val result = coordinator.projectSemantically(board, request, 102) { true }
+        val after = coordinator.snapshot(board)!!
+
+        assertTrue(result is ProjectionResult.Committed)
+        assertEquals(base.sequence + 1, after.sequence)
+        assertEquals(base.playlistRevision + 1, after.playlistRevision)
+        assertEquals(listOf("old", "minted-occurrence"), after.playlist.entries.map { it.entryId })
+        assertEquals("minted-occurrence", after.playlist.currentEntryId)
+        assertEquals(BoardProjection("new-climb", 40), after.projection)
+    }
+
+    @Test fun `failed participant generic detail leaves playlist and projection untouched`() = runTest {
+        val board = PhysicalBoardId("board-atomic-detail-failure")
+        val (coordinator) = settled("controller", board, now = 100)
+        val base = coordinator.snapshot(board)!!
+        val request = BoardProjectionRequest(
+            commandId = "participant-detail-failure",
+            projection = BoardProjection("new-climb", 40),
+            baseSequence = base.sequence,
+            baseProjection = base.projection,
+            basePlaylistRevision = base.playlistRevision,
+            entryId = "must-not-leak",
+            materializeEntry = true,
+            placeAfterCurrent = true,
+        )
+
+        val result = coordinator.projectSemantically(board, request, 102) { false }
+        val after = coordinator.snapshot(board)!!
+
+        assertTrue(result is ProjectionResult.BoardWriteFailed)
+        assertEquals(base.sequence, after.sequence)
+        assertEquals(base.playlistRevision, after.playlistRevision)
+        assertNull(after.playlist.entry("must-not-leak"))
+        assertEquals(base.projection, after.projection)
+    }
+
     @Test fun `durable ack from another cell cannot suppress a playlist command`() = runTest {
         val board = PhysicalBoardId("board-ack-scope")
         val store = MemoryStore()

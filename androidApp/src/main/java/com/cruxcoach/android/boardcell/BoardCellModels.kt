@@ -677,6 +677,13 @@ data class BoardProjectionRequest(
      * halves one operation instead of two messages that can drift apart.
      */
     val entryId: String? = null,
+    /**
+     * True when this request is allowed to create [entryId] if it is absent.
+     * Defaults keep projection requests from older peers projection-only.
+     */
+    val materializeEntry: Boolean = false,
+    /** Move an existing occurrence directly after the pre-write current one. */
+    val placeAfterCurrent: Boolean = false,
 )
 
 internal fun BoardProjectionRequest.semanticBaseSequence(current: BoardCellSnapshot): Long =
@@ -790,6 +797,8 @@ sealed interface BoardCellEvent {
          * belongs to no occurrence at all.
          */
         val entryId: String? = null,
+        val materializeEntry: Boolean = false,
+        val placeAfterCurrent: Boolean = false,
     ) : BoardCellEvent
     @Serializable data class ProjectUnknown(val commandId: String, val reason: String) : BoardCellEvent
     /**

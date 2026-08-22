@@ -119,13 +119,14 @@ data class MeshPlaylistView(
     val pendingProjection: BoardPlaylistPendingProjection? = null,
     /** False during a partition: the copy on screen may already be stale. */
     val synchronized: Boolean = true,
+    /** Occurrence identity parallel to the rendered queue. Local player focus uses this. */
+    val entryIds: List<String> = emptyList(),
+    /** The occurrence actually confirmed on the physical board. */
+    val currentEntryId: String? = null,
     /**
-     * The selected entry is the one the board last confirmed.
-     *
-     * Selecting an entry and putting it on the wall are separate decisions —
-     * stepping through the list must not take the wall from whoever is
-     * climbing on it — so these two facts are tracked separately and shown as
-     * two facts rather than collapsed into one.
+     * The locally presented occurrence matches the board's confirmed
+     * projection. In the occurrence-aware player this is derived from local
+     * focus plus [currentEntryId], never from a canonical browsing cursor.
      */
     val selectionOnBoard: Boolean = false,
     /**
@@ -293,6 +294,8 @@ class SessionQueueManager(
             activeRest = playlist.activeRest,
             pendingProjection = playlist.pendingProjection,
             synchronized = manager.isPlaylistSynchronized(),
+            entryIds = playlist.entries.map { it.entryId },
+            currentEntryId = playlist.currentEntryId,
             localIsController = snapshot.controllerId == localNodeId,
             selectionOnBoard = selectionOnBoard,
             confirmedProjection = snapshot.projection,

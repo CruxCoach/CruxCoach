@@ -1348,6 +1348,9 @@
     <string name="board_playlist_command_pending">Syncing changes (%1$d)…</string>
     <string name="board_playlist_command_conflict">The list changed at the same time. It is up to date now — please try your change again.</string>
     <string name="board_playlist_command_unavailable">Could not send the change. Check the nearby connection and try again.</string>
+    <string name="board_playlist_move_existing_title">Move queued climb?</string>
+    <string name="board_playlist_move_existing_body">This climb is already later in the playlist. Move that occurrence directly after the climb currently on the board and send it now?</string>
+    <string name="board_playlist_move_existing_confirm">Move and send</string>
     <string name="board_playlist_command_failed">The change could not be applied. The shared list was refreshed.</string>
     <!-- Clearing is open to everyone, so the way back is too. -->
     <string name="board_playlist_clear_title">Clear the board playlist?</string>

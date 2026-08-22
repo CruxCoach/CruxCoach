@@ -131,7 +131,16 @@ fun BleStatusArea(
     // not just FIPS board counts — so an occupied-board or nearby-playlist
     // count cannot recreate the same redundant banner through another field.
     val visibleOnBoard = effectiveOnBoard.takeIf { showNearbyBoards }
-    val visibleState = if (showNearbyBoards) state else state.copy(
+    val visibleDiscoveryExists = visibleOnBoard != null || visibleNearbyMeshes.isNotEmpty() ||
+        (showNearbyBoards && state.nearbySessions.isNotEmpty())
+    val visibleState = if (showNearbyBoards) state.copy(
+        // The scanner's occupied counter can outlive the discovery rows that
+        // explained it. Never keep a collapsed "Board occupied" claim when
+        // expanding Nearby has no board or joinable playlist to show.
+        boardOccupiedCount = visibleBoardOccupiedCount(
+            state.boardOccupiedCount, visibleDiscoveryExists,
+        ),
+    ) else state.copy(
         boardOccupiedCount = 0,
         nearbySessions = emptyList(),
     )
@@ -236,6 +245,10 @@ fun BleStatusArea(
         )
     }
 }
+
+/** Occupancy is a summary of visible discovery, never a stale independent row. */
+internal fun visibleBoardOccupiedCount(rawCount: Int, visibleDiscoveryExists: Boolean): Int =
+    rawCount.takeIf { visibleDiscoveryExists } ?: 0
 
 /** App-root host for admission prompts. It must not live in [BleStatusArea]:
  * several secondary screens intentionally have no BLE status row, while a

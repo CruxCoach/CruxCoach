@@ -54,9 +54,6 @@ data class BoardPlaylistRow(
     val name: String,
     val gradeLabel: String?,
     val restAfterSeconds: Int,
-    /** The occurrence the whole group is pointing at. */
-    /** The occurrence the group is looking at. Says nothing about the wall. */
-    val isSelected: Boolean,
     /** The occurrence the board is confirmed to be showing. */
     val isOnBoard: Boolean = false,
     /** Behind the current entry — done with, as far as the list is concerned. */
@@ -92,9 +89,9 @@ data class BoardPlaylistUiState(
     /** False during a partition: what is on screen may already be stale. */
     val synchronized: Boolean = true,
     val rows: List<BoardPlaylistRow> = emptyList(),
-    /** Where the group is looking — the cursor, for stepping and dimming. */
-    val selectedIndex: Int = -1,
-    /** The selected entry is the one the board last confirmed. */
+    /** Canonical occurrence confirmed current-on-board, for transport and dimming. */
+    val currentIndex: Int = -1,
+    /** The current occurrence matches the controller's known projection. */
     val selectionOnBoard: Boolean = false,
     /**
      * How well anybody here knows what the wall is showing.
@@ -127,8 +124,8 @@ data class BoardPlaylistUiState(
     val failedEntryId: String? get() = pendingProjection?.entryId
 
     val isEmpty: Boolean get() = rows.isEmpty()
-    val hasPrevious: Boolean get() = selectedIndex > 0
-    val hasNext: Boolean get() = selectedIndex >= 0 && selectedIndex < rows.size - 1
+    val hasPrevious: Boolean get() = currentIndex > 0
+    val hasNext: Boolean get() = currentIndex >= 0 && currentIndex < rows.size - 1
 }
 
 /**
@@ -264,8 +261,7 @@ class BoardPlaylistViewModel @Inject constructor(
         val playlist = snapshot.playlist
         resolveMissingNames(playlist)
         if (token != renderToken) return
-        val selected = playlist.selectedEntryId
-        val selectedIndex = playlist.selectedIndex
+        val currentIndex = playlist.currentIndex
         val confirmedCurrent = playlist.currentEntryId
         val status = projectionStatus(snapshot)
         val occurrences = HashMap<String, Int>()
@@ -282,12 +278,11 @@ class BoardPlaylistViewModel @Inject constructor(
                 name = info?.name ?: entry.climbUuid.take(8),
                 gradeLabel = info?.gradeLabel,
                 restAfterSeconds = entry.restAfterSeconds,
-                isSelected = entry.entryId == selected,
                 // Two different facts, so two different marks. The board can be
                 // showing an occurrence nobody is looking at, and the group can
                 // be looking at one that has never been sent.
                 isOnBoard = entry.entryId == confirmedCurrent && status.shows(entry),
-                isPast = selectedIndex >= 0 && index < selectedIndex,
+                isPast = currentIndex >= 0 && index < currentIndex,
                 mark = personalLogMarks[boardPlaylistLogKey(entry.climbUuid, entry.angle)]
                     ?: BoardPlaylistLogMark.UNATTEMPTED,
                 duplicateIndex = occurrence,
@@ -295,7 +290,7 @@ class BoardPlaylistViewModel @Inject constructor(
                 projection = status.confidenceFor(entry),
             )
         }
-        val selectedEntry = playlist.selectedEntry()
+        val selectedEntry = playlist.currentEntry()
         val selectionOnBoard = status.shows(selectedEntry)
         val failedEntry = playlist.pendingProjection?.let { playlist.entry(it.entryId) }
         // What the wall shows *instead*, and only where that is worth
@@ -321,7 +316,7 @@ class BoardPlaylistViewModel @Inject constructor(
             memberCount = snapshot.members.size,
             synchronized = boardCellManager.isPlaylistSynchronized(),
             rows = rows,
-            selectedIndex = selectedIndex,
+            currentIndex = currentIndex,
             selectionOnBoard = selectionOnBoard,
             projectionConfidence = status.confidence,
             boardClimbUnknown = status.confidence == BoardProjectionConfidence.UNKNOWN,
@@ -431,17 +426,16 @@ class BoardPlaylistViewModel @Inject constructor(
 
     // ── Editing — every member, every operation ────────────────────────────
 
-    /**
-     * Steps the group's selection, and nothing else.
-     *
-     * Deliberately does not touch the wall: somebody looking ahead through the
-     * list must not take the board from whoever is climbing on it. The lamp is
-     * the one control that changes what is projected.
-     */
-    fun next() = submit(BoardPlaylistEditKind.SELECT, "next") { BoardPlaylistOps.next(it) }
+    /** Transport arrows step from the occurrence actually on the board. */
+    fun next() {
+        val playlist = boardCellManager.playlist() ?: return
+        playlist.entries.getOrNull(playlist.currentIndex + 1)?.let { lightEntry(it.entryId) }
+    }
 
-    fun previous() =
-        submit(BoardPlaylistEditKind.SELECT, "previous") { BoardPlaylistOps.previous(it) }
+    fun previous() {
+        val playlist = boardCellManager.playlist() ?: return
+        playlist.entries.getOrNull(playlist.currentIndex - 1)?.let { lightEntry(it.entryId) }
+    }
 
     /**
      * Points the group at one occurrence. Says nothing about the wall.
@@ -568,15 +562,11 @@ class BoardPlaylistViewModel @Inject constructor(
     /** Re-adopt the canonical queue before navigating to its focused player. */
     fun resumePlayer() = queueManager.resumeFollowingSharedPlaylist()
 
-    /**
-     * The lamp: put the selected entry on the wall.
-     *
-     * The only control anywhere in the Board-Playlist that touches the
-     * physical board, and open to every member — whoever is standing at the
-     * wall is the one who notices it is dark. Pressing it when the selection
-     * is already confirmed is a deliberate resend.
-     */
-    fun projectSelectedEntry() = gattBridge.projectSelectedEntry()
+    /** The centre lamp resends canonical current (or starts at the first row). */
+    fun projectSelectedEntry() {
+        val playlist = boardCellManager.playlist() ?: return
+        (playlist.currentEntry() ?: playlist.entries.firstOrNull())?.let { lightEntry(it.entryId) }
+    }
 
     /**
      * Put this climb on the wall now.

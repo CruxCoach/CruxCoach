@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.board
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.scrollBy
@@ -349,7 +350,6 @@ fun BoardPlaylistScreen(
                     state = state,
                     modifier = Modifier.weight(1f),
                     onOpen = { entryId, climbUuid, angle ->
-                        viewModel.rememberOpenedEntry(entryId, climbUuid)
                         onOpenEntry(entryId, climbUuid, angle)
                     },
                     onLight = viewModel::lightEntry,
@@ -607,12 +607,10 @@ private fun BoardPlaylistUnavailable() {
 /**
  * Previous, the lamp, next.
  *
- * The lamp sits between them because that is the shape of the decision: the
- * two arrows move the group's selection and deliberately leave the wall alone,
- * and the one control in the middle is the whole of "and now put it up there".
- * It is the only thing in the Board-Playlist that writes the physical board,
- * on any screen, which is what makes an accidental projection impossible
- * rather than merely unlikely.
+ * The arrows and lamp are all explicit board transport. Arrows send the
+ * adjacent occurrence relative to canonical current; the lamp resends current.
+ * Browsing is row-to-player navigation and lives outside this control group,
+ * so no visually hidden selection is manipulated here.
  */
 @Composable
 private fun BoardPlaylistTransport(
@@ -881,7 +879,7 @@ private fun BoardPlaylistRowCard(
     // Lightly dimmed, not greyed out: an entry the group has gone past is
     // still there, still editable and still something somebody may want
     // another go at. It is behind you, not gone.
-    val dim = if (row.isPast && !row.isSelected) 0.62f else 1f
+    val dim = if (row.isPast && !row.isOnBoard) 0.62f else 1f
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -893,9 +891,10 @@ private fun BoardPlaylistRowCard(
             .clickable(onClick = onOpen)
             .testTag("board_playlist_row"),
         colors = CardDefaults.cardColors(
-            containerColor = if (row.isSelected) OrangeAccent.copy(alpha = 0.15f)
+            containerColor = if (row.isOnBoard) SuccessGreen.copy(alpha = 0.22f)
             else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
         ),
+        border = if (row.isOnBoard) BorderStroke(2.dp, SuccessGreen) else null,
         shape = RoundedCornerShape(12.dp),
     ) {
         Row(
@@ -936,7 +935,7 @@ private fun BoardPlaylistRowCard(
                     Text(
                         row.name,
                         style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = if (row.isSelected) FontWeight.Bold else FontWeight.Normal,
+                        fontWeight = if (row.isOnBoard) FontWeight.ExtraBold else FontWeight.Normal,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false),
@@ -1002,7 +1001,6 @@ private fun BoardPlaylistRowCard(
                     Icons.Default.Lightbulb,
                     contentDescription = stringResource(R.string.board_playlist_light_entry),
                     tint = if (row.isOnBoard) SuccessGreen
-                    else if (row.isSelected) OrangeAccent
                     else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(18.dp),
                 )

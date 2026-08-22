@@ -100,21 +100,6 @@ class BoardCellReplica(val localMemberId: String, initial: BoardCellSnapshot? = 
         const val RELAY_SLOT_CEILING = 7
 
         /**
-         * Retires a pending failure for the occurrence that was just written.
-         *
-         * By entry id, never by content: two occurrences of the same route are
-         * two separate requests, and letting the second one's success clear the
-         * first one's failure told somebody their climb had reached a wall it
-         * never got to. A commit that names no occurrence — an external write —
-         * clears nothing.
-         */
-        private fun BoardPlaylistState.clearingPendingFor(entryId: String?): BoardPlaylistState {
-            val pending = pendingProjection ?: return this
-            if (entryId == null || pending.entryId != entryId) return this
-            return copy(pendingProjection = null)
-        }
-
-        /**
          * Applies a playlist change and advances [BoardCellSnapshot.playlistRevision]
          * exactly when the playlist really moved, so heartbeats and membership
          * churn cannot stale a member's in-flight command.
@@ -151,7 +136,17 @@ class BoardCellReplica(val localMemberId: String, initial: BoardCellSnapshot? = 
                     availability = if (event.recoversUnknownProjection &&
                         current.availability == BoardCellAvailability.FROZEN_WRITE_RECOVERY)
                         BoardCellAvailability.ACTIVE else current.availability,
-                ).withPlaylist(current, current.playlist.clearingPendingFor(event.entryId))
+                ).withPlaylist(
+                    current,
+                    BoardPlaylistOps.commitProjection(
+                        state = current.playlist,
+                        entryId = event.entryId,
+                        climbUuid = event.projection.climbUuid,
+                        angle = event.projection.angle,
+                        materializeEntry = event.materializeEntry,
+                        placeAfterCurrent = event.placeAfterCurrent,
+                    ),
+                )
                 is BoardCellEvent.ProjectUnknown -> current.copy(projection = null, projectionKnown = false)
                 // The delta is replayed, not trusted: every replica applies the
                 // same pure reducer to the same predecessor, and the envelope's

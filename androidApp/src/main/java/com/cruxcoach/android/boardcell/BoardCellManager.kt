@@ -26,6 +26,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
@@ -186,6 +187,9 @@ class BoardCellManager @Inject constructor(
     private var recoveryAttempt = 0
     private val sponsoredAt = ConcurrentHashMap<String, Long>()
     private val pendingProjectionRequests = ConcurrentHashMap<String, PendingProjectionRequest>()
+    private val projectionAckWaiters =
+        ConcurrentHashMap<String, CompletableDeferred<BoardCommandAck>>()
+    private val lightNowMutex = Mutex()
 
     /**
      * A projection this device has out and unanswered.
@@ -260,6 +264,7 @@ class BoardCellManager @Inject constructor(
                 ack.status != BoardCommandStatus.NOT_CONTROLLER) {
                 pendingProjectionRequests.remove(ack.commandId)
                 refreshProjectionInFlight()
+                projectionAckWaiters.remove(ack.commandId)?.complete(ack)
             }
             commandAckChannel.send(ack)
         }
@@ -818,66 +823,42 @@ class BoardCellManager @Inject constructor(
     /**
      * Put a climb on the wall now and make it the group's current occurrence.
      *
-     * One logical transaction, sequenced by the controller. The two halves —
-     * the canonical list edit and the physical write — start together rather
-     * than one after the other, because waiting for a list round trip before
-     * anything lights is latency nobody asked for.
-     *
-     * They cannot disagree afterwards. On the controller both happen under the
-     * projection mutex, so the entry that becomes current is the entry that was
-     * written. On a member both messages go to the same controller, which
-     * serialises them with everybody else's; the projection names a climb and
-     * an angle rather than an entry id, so arriving in either order still puts
-     * the same climb on the same wall.
+     * One logical transaction, sequenced by the controller. Occurrence intent
+     * travels inside the projection request; after the physical write succeeds
+     * one reducer event materialises/moves and confirms that occurrence. There
+     * is no preceding Add whose playlist revision can stale the request.
      *
      * A write that fails or never answers does not become the confirmed
      * current: [projectInternal] only commits its event after the write
-     * succeeds, so the previously confirmed projection stays exactly where it
-     * was and the failure is recorded as a pending projection anybody can
-     * press again.
+     * succeeds, so the previously confirmed projection and playlist remain
+     * exactly where they were.
      */
-    suspend fun lightNow(climbUuid: String, angle: Int, fromEntryId: String? = null): Boolean {
+    fun lightNowRequiresConfirmation(
+        climbUuid: String,
+        angle: Int,
+        fromEntryId: String? = null,
+    ): Boolean = snapshot()?.playlist?.let {
+        BoardPlaylistOps.lightNow(it, climbUuid, angle, fromEntryId).requiresMoveConfirmation
+    } == true
+
+    suspend fun lightNow(
+        climbUuid: String,
+        angle: Int,
+        fromEntryId: String? = null,
+        confirmMove: Boolean = false,
+    ): Boolean = lightNowMutex.withLock {
         if (!::coordinator.isInitialized) return false
         val snapshot = snapshot() ?: return false
         if (activeNodeId !in snapshot.members) return false
         val plan = BoardPlaylistOps.lightNow(snapshot.playlist, climbUuid, angle, fromEntryId)
+        if (plan.requiresMoveConfirmation && !confirmMove) return false
         val resolved = playlistProjectionWriter?.resolve(climbUuid, angle)
             ?: BoardProjection(climbUuid, angle)
 
-        // Phase one: the occurrence exists and everybody can see it. It is not
-        // yet what the group is on — that waits for the wall.
-        if (plan.ops.isNotEmpty()) {
-            val added = composePlaylistCommand(plan.ops)?.let { command ->
-                if (snapshot.controllerId == activeNodeId) {
-                    commitPlaylistCommand(activeNodeId, command)?.status == BoardCommandStatus.COMMITTED
-                } else {
-                    meshTransport.sendPlaylistCommand(snapshot, command)
-                }
-            } == true
-            if (!added) return false
-        }
-
-        // Phase two: the write. Only what it says may move the current.
         val projected = if (snapshot.controllerId == activeNodeId) {
-            syncPlaylistProjectionFor(resolved, plan.entryId)
+            syncPlaylistProjectionFor(resolved, plan)
         } else {
-            sendProjectionRequest(resolved, entryId = plan.entryId) != null
-        }
-
-        // Phase three, and the whole reason the first two are separate. A
-        // controller knows the answer here and commits it; a member has asked
-        // the controller, which will set the current itself when its write
-        // lands, so there is nothing for this device to claim on its behalf.
-        if (snapshot.controllerId == activeNodeId) {
-            val after = snapshot() ?: return projected
-            val ops = if (projected) {
-                BoardPlaylistOps.confirmLit(after.playlist, plan.entryId)
-            } else {
-                BoardPlaylistOps.recordLightFailure(after.playlist, plan.entryId)
-            }
-            if (ops.isNotEmpty()) {
-                composePlaylistCommand(ops)?.let { commitPlaylistCommand(activeNodeId, it) }
-            }
+            sendProjectionRequestAndAwait(resolved, plan)
         }
         refreshSelected()
         return projected
@@ -886,7 +867,7 @@ class BoardCellManager @Inject constructor(
     /** The lamp, for one resolved projection and the occurrence it belongs to. */
     private suspend fun syncPlaylistProjectionFor(
         resolved: BoardProjection,
-        entryId: String,
+        plan: BoardPlaylistOps.LightNow,
     ): Boolean =
         playlistProjectionMutex.withLock {
             val board = writableBoard() ?: return@withLock false
@@ -901,7 +882,9 @@ class BoardCellManager @Inject constructor(
                 // Named, so the commit retires the pending failure of *this*
                 // occurrence rather than of whichever one happens to share its
                 // route and angle.
-                entryId = entryId,
+                entryId = plan.entryId,
+                materializeEntry = plan.materializeEntry,
+                placeAfterCurrent = plan.placeAfterCurrent,
             )
             val result = writingBoard(resolved) {
                 if (snapshot.availability == BoardCellAvailability.FROZEN_WRITE_RECOVERY) {
@@ -916,6 +899,48 @@ class BoardCellManager @Inject constructor(
             }
             result is ProjectionResult.Committed || result is ProjectionResult.Duplicate
         }
+
+    private suspend fun sendProjectionRequestAndAwait(
+        projection: BoardProjection,
+        plan: BoardPlaylistOps.LightNow,
+    ): Boolean {
+        val commandId = UUID.randomUUID().toString()
+        val waiter = CompletableDeferred<BoardCommandAck>()
+        projectionAckWaiters[commandId] = waiter
+        return try {
+            if (sendProjectionRequest(
+                    projection = projection,
+                    commandId = commandId,
+                    entryId = plan.entryId,
+                    materializeEntry = plan.materializeEntry,
+                    placeAfterCurrent = plan.placeAfterCurrent,
+                ) == null
+            ) return false
+            val ack = withTimeoutOrNull(PROJECTION_RESULT_TIMEOUT_MS) { waiter.await() }
+                ?: return false
+            if (ack.status != BoardCommandStatus.COMMITTED) return false
+            // ACK proves the controller committed. Success on this device is
+            // not shown until its own canonical replica has that exact result;
+            // an ACK may overtake the event during reconnect/outbox repair.
+            withTimeoutOrNull(CANONICAL_RESULT_TIMEOUT_MS) {
+                while (true) {
+                    val canonical = snapshot()
+                    val ackSequence = ack.resultingSequence ?: Long.MAX_VALUE
+                    if (canonical != null &&
+                        canonical.sequence >= ackSequence &&
+                        (canonical.sequence > ackSequence ||
+                            canonical.stateHash == ack.resultingHash) &&
+                        canonical.playlist.currentEntryId == plan.entryId &&
+                        canonical.projection == projection
+                    ) return@withTimeoutOrNull true
+                    delay(25)
+                }
+                @Suppress("UNREACHABLE_CODE") false
+            } == true
+        } finally {
+            projectionAckWaiters.remove(commandId)
+        }
+    }
 
     /**
      * Publishes this device's relay claim, if it is the controller.
@@ -1078,10 +1103,14 @@ class BoardCellManager @Inject constructor(
         projection: BoardProjection,
         commandId: String = UUID.randomUUID().toString(),
         entryId: String? = null,
+        materializeEntry: Boolean = false,
+        placeAfterCurrent: Boolean = false,
     ): String? {
         val snapshot = snapshot() ?: return null
-        val request = BoardProjectionRequest(commandId, projection, snapshot.sequence,
-            snapshot.projection, snapshot.playlistRevision, entryId)
+        val request = BoardProjectionRequest(
+            commandId, projection, snapshot.sequence, snapshot.projection,
+            snapshot.playlistRevision, entryId, materializeEntry, placeAfterCurrent,
+        )
         if (!meshTransport.sendProjectionRequest(snapshot, request)) return null
         if (pendingProjectionRequests.size >= MAX_PENDING_PROJECTIONS) {
             pendingProjectionRequests.entries.minByOrNull { it.value.retryAtMs }
@@ -1108,22 +1137,6 @@ class BoardCellManager @Inject constructor(
             coordinator.reprojectSemanticallyAfterRecovery(board, request, monotonicNow(), boardWrite)
         } else {
             coordinator.projectSemantically(board, request, monotonicNow(), boardWrite)
-        }
-        // The requester added the occurrence; only this device can say the
-        // wall took it. Confirm or record the failure here, in the same
-        // controller-sequenced step, so no member ever moves the current on
-        // the strength of a message it merely sent.
-        request.entryId?.let { entryId ->
-            val landed = result is ProjectionResult.Committed || result is ProjectionResult.Duplicate
-            val playlist = coordinator.snapshot(board)?.playlist
-            val ops = playlist?.let {
-                BoardPlaylistOps.completeLightNow(
-                    it, entryId, request.projection.climbUuid, request.projection.angle, landed,
-                )
-            }.orEmpty()
-            if (ops.isNotEmpty()) {
-                composePlaylistCommand(ops)?.let { commitPlaylistCommand(activeNodeId, it) }
-            }
         }
         return result.also {
             val ack = when (it) {
@@ -2569,6 +2582,8 @@ class BoardCellManager @Inject constructor(
         private const val MAX_RESOLVED_ADMISSIONS = 256
         private const val PROJECTION_RETRY_INITIAL_MS = 2_000L
         private const val PROJECTION_RETRY_MAX_MS = 15_000L
+        private const val PROJECTION_RESULT_TIMEOUT_MS = 30_000L
+        private const val CANONICAL_RESULT_TIMEOUT_MS = 5_000L
         private const val MAX_PENDING_PROJECTIONS = 128
         private const val JOIN_PHASE_POLL_MS = 100L
         private const val REJOIN_SPONSOR_GRACE_MS = 6_000L

@@ -80,6 +80,18 @@ class SharedPlaylistMeshTest {
                     board, network.monotonic, inbound.senderId, inbound.command)
                 if (ack != null) transport.publishCommandAck(inbound.senderId, ack)
             }
+            transport.onProjectionRequest = { inbound ->
+                val result = coordinator.projectSemantically(
+                    board, inbound.request, network.monotonic,
+                ) { true }
+                val ack = when (result) {
+                    is ProjectionResult.Committed -> result.ack
+                    is ProjectionResult.Duplicate -> result.ack
+                    is ProjectionResult.Refused -> result.ack
+                    is ProjectionResult.BoardWriteFailed -> result.ack
+                }
+                if (ack != null) transport.publishCommandAck(inbound.senderId, ack)
+            }
         }
 
         fun playlist(): BoardPlaylistState = coordinator.snapshot(board)!!.playlist
@@ -190,6 +202,40 @@ class SharedPlaylistMeshTest {
         // The controller serializes and nothing else: it holds no product role
         // in the result at all.
         assertEquals(nokia.playlist(), network.node("controller").playlist())
+    }
+
+    @Test fun `participant detail sends one atomic request without stale add ordering`() = runTest {
+        val network = mesh("controller", "nokia")
+        val host = network.node("controller")
+        val nokia = network.node("nokia")
+        host.commitLocally(host.compose(
+            "seed-detail-race",
+            BoardPlaylistOp.Add("old", "old-climb", 40),
+            BoardPlaylistOp.SetCurrent("old"),
+        ))
+        network.deliver()
+        val base = nokia.snapshot()
+        val request = BoardProjectionRequest(
+            commandId = "detail-atomic-request",
+            projection = BoardProjection("new-climb", 40),
+            baseSequence = base.sequence,
+            baseProjection = base.projection,
+            basePlaylistRevision = base.playlistRevision,
+            entryId = "nokia-occurrence",
+            materializeEntry = true,
+            placeAfterCurrent = true,
+        )
+
+        assertTrue(nokia.transport.sendProjectionRequest(base, request))
+        network.deliver()
+
+        network.assertConverged()
+        val after = nokia.snapshot()
+        assertEquals(base.playlistRevision + 1, after.playlistRevision)
+        assertEquals(listOf("old", "nokia-occurrence"),
+            after.playlist.entries.map { it.entryId })
+        assertEquals("nokia-occurrence", after.playlist.currentEntryId)
+        assertEquals(BoardProjection("new-climb", 40), after.projection)
     }
 
     @Test fun `a device admitted later receives the playlist in its welcome snapshot`() = runTest {

@@ -193,7 +193,7 @@ class BoardCellWireTest {
         val initial = BoardCellSnapshot(BoardCellId("cell"), PhysicalBoardId("board"), 1, 0,
             "controller", lineageId = "lineage", members = setOf("controller", "member")).withComputedHash()
         coordinator.restoreTrustedSnapshot(initial, 10); transport.rememberSnapshot(initial)
-        val event = BoardCellEvent.ProjectCommitted(BoardProjection("later", 40), "command")
+        val event = BoardCellEvent.ProjectCommitted(BoardProjection("later", 40), "command-1")
         val next = BoardCellReplica.reduce(initial, event, 2)
         val envelope = BoardCellEnvelope(initial.cellId, initial.physicalBoardId, initial.epoch,
             initial.controllerTerm, 2, initial.stateHash, event, next.stateHash)

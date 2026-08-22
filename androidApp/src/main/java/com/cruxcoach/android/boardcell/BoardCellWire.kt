@@ -127,7 +127,12 @@ object BoardCellWireCodec {
     // frame would take a cursor for a confirmed board state. Announcing the
     // same version for both shapes was the bug: two builds agreed on a number
     // and disagreed on what it meant.
-    const val VERSION = 14
+    // V15 makes participant light-now one occurrence-aware projection event.
+    // Request/event fields are defaulted so stored/default-shaped payloads
+    // retain projection-only semantics, but encodeDefaults means a live V14
+    // peer would reject the new shape. Bump explicitly and fail closed instead
+    // of letting two peers agree on a version while disagreeing on atomicity.
+    const val VERSION = 15
     private val json = Json { classDiscriminator = "type"; encodeDefaults = true; ignoreUnknownKeys = false }
     fun encode(frame: BoardCellWireFrame): ByteArray = json.encodeToString(frame).encodeToByteArray()
     fun decode(bytes: ByteArray): BoardCellWireFrame {
@@ -148,6 +153,16 @@ object BoardCellWireCodec {
                 }
                 is BoardCellWireMessage.Event -> when (val event = message.value.event) {
                     is BoardCellEvent.MemberLeft -> require(event.memberId.length in 1..256)
+                    is BoardCellEvent.ProjectCommitted -> {
+                        require(event.commandId.length in 8..128)
+                        require(event.projection.climbUuid.length in 1..64 &&
+                            event.projection.angle in 0..90)
+                        event.entryId?.let {
+                            require(it.length in 1..BoardPlaylistPolicy.MAX_ENTRY_ID_LENGTH)
+                        }
+                        require(!(event.materializeEntry || event.placeAfterCurrent) ||
+                            event.entryId != null)
+                    }
                     // A committed delta carries the controller's stamps, so it
                     // is held to the canonical form rather than the sender's.
                     is BoardCellEvent.PlaylistOpsCommitted -> {
@@ -199,8 +214,18 @@ object BoardCellWireCodec {
                 is BoardCellWireMessage.ControllerRecovery -> require(
                     message.value.claimantId.length in 1..256 &&
                         message.value.connectionProof.length in 8..256)
-                is BoardCellWireMessage.ProjectionRequest -> require(
-                    message.value.commandId.length in 8..128)
+                is BoardCellWireMessage.ProjectionRequest -> {
+                    val request = message.value
+                    require(request.commandId.length in 8..128 && request.baseSequence >= 0 &&
+                        request.basePlaylistRevision >= 0)
+                    require(request.projection.climbUuid.length in 1..64 &&
+                        request.projection.angle in 0..90)
+                    request.entryId?.let {
+                        require(it.length in 1..BoardPlaylistPolicy.MAX_ENTRY_ID_LENGTH)
+                    }
+                    require(!(request.materializeEntry || request.placeAfterCurrent) ||
+                        request.entryId != null)
+                }
                 else -> Unit
             }
         }

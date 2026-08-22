@@ -186,6 +186,28 @@ fun BoardClimbDetailScreen(
     }
 
     // Dialogs — driven by active-page state, only need one instance
+    if (state.showPlaylistMoveConfirmation) {
+        AlertDialog(
+            onDismissRequest = viewModel::dismissPlaylistMoveConfirmation,
+            title = {
+                Text(stringResource(R.string.board_playlist_move_existing_title),
+                    fontWeight = FontWeight.Bold)
+            },
+            text = { Text(stringResource(R.string.board_playlist_move_existing_body)) },
+            confirmButton = {
+                Button(
+                    onClick = viewModel::confirmPlaylistMoveAndDeliver,
+                    modifier = Modifier.testTag("boarddetail_move_existing_confirm"),
+                ) { Text(stringResource(R.string.board_playlist_move_existing_confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = viewModel::dismissPlaylistMoveConfirmation) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            },
+        )
+    }
+
     if (state.ascent.showDialog) {
         AscentLoggingDialog(
             isEditing = state.ascent.editingUuid != null,
@@ -1613,38 +1635,53 @@ private fun ClimbDetailPageContent(
                 // the real board image when one is bundled for the variant,
                 // falling back to a procedural 11x18 grid otherwise; Kilter
                 // climbs keep the photo-backed Aurora renderer.
-                Box(
+                androidx.compose.foundation.layout.BoxWithConstraints(
                     modifier = Modifier.fillMaxWidth().weight(1f),
                     contentAlignment = Alignment.Center,
                 ) {
-                    if (climb.brand == BoardBrand.MOONBOARD) {
-                        MoonBoardVisualization(
-                            frames = climb.frames,
-                            assetState = rememberMoonBoardAsset(climb.layoutId),
-                            variant = MoonBoardVariant.fromLayoutId(climb.layoutId),
-                            modifier = Modifier
-                                .testTag("boarddetail_visualization")
-                        )
-                    } else {
-                        KilterBoardVisualization(
-                            holds = state.holds,
-                            placements = state.placements,
-                            boardSize = state.boardSize,
-                            boardImages = state.boardImages,
-                            // FEAT-031: Aurora boards draw their own per-board
-                            // colours; Kilter keeps the user's configured palette.
-                            ledColors = if (climb.brand == BoardBrand.KILTER) state.ledColors
-                                        else LedHoldColors.standardFor(climb.brand),
-                            previewMode = state.playback.showPreview,
-                            currentFrameHolds = if (state.playback.showPreview && state.playback.isRoute) {
-                                state.playback.allFrames.getOrElse(state.playback.currentFrameIndex) { emptyList() }
-                            } else null,
-                            projectionLayers = if (climb.brand == BoardBrand.QUANTUM) {
-                                state.boardLayers.layers
-                            } else emptyList(),
-                            modifier = Modifier
-                                .testTag("boarddetail_visualization")
-                        )
+                    val moonAsset = if (climb.brand == BoardBrand.MOONBOARD) {
+                        rememberMoonBoardAsset(climb.layoutId)
+                    } else null
+                    val aspect = if (climb.brand == BoardBrand.MOONBOARD) {
+                        (moonAsset as? MoonBoardAssetState.Ready)?.asset?.imageAspect ?: 0.61f
+                    } else state.boardSize?.let { size ->
+                        val width = (size.edgeRight - size.edgeLeft).toFloat()
+                        val height = (size.edgeTop - size.edgeBottom).toFloat()
+                        if (width > 0f && height > 0f) width / height else 1f
+                    } ?: 1f
+                    // Width-only sizing made tall boards extend below this
+                    // weighted slot on the Nokia viewport. Cap width by both
+                    // constraints so the whole image and all holds remain in
+                    // the space between the information card and controls.
+                    val cappedWidth = minOf(maxWidth, maxHeight * aspect)
+                    Box(Modifier.width(cappedWidth), contentAlignment = Alignment.Center) {
+                        if (climb.brand == BoardBrand.MOONBOARD) {
+                            MoonBoardVisualization(
+                                frames = climb.frames,
+                                assetState = moonAsset ?: MoonBoardAssetState.Unavailable,
+                                variant = MoonBoardVariant.fromLayoutId(climb.layoutId),
+                                modifier = Modifier.fillMaxWidth()
+                                    .testTag("boarddetail_visualization"),
+                            )
+                        } else {
+                            KilterBoardVisualization(
+                                holds = state.holds,
+                                placements = state.placements,
+                                boardSize = state.boardSize,
+                                boardImages = state.boardImages,
+                                ledColors = if (climb.brand == BoardBrand.KILTER) state.ledColors
+                                            else LedHoldColors.standardFor(climb.brand),
+                                previewMode = state.playback.showPreview,
+                                currentFrameHolds = if (state.playback.showPreview && state.playback.isRoute) {
+                                    state.playback.allFrames.getOrElse(state.playback.currentFrameIndex) { emptyList() }
+                                } else null,
+                                projectionLayers = if (climb.brand == BoardBrand.QUANTUM) {
+                                    state.boardLayers.layers
+                                } else emptyList(),
+                                modifier = Modifier.fillMaxWidth()
+                                    .testTag("boarddetail_visualization"),
+                            )
+                        }
                     }
                     // Countdown overlay
                     if (state.playback.countdownSeconds > 0) {

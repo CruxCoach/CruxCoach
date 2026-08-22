@@ -736,7 +736,12 @@ object BoardPlaylistOps {
     }
 
     /** The ops and the occurrence "put this on the board now" resolves to. */
-    data class LightNow(val entryId: String, val ops: List<BoardPlaylistOp>)
+    data class LightNow(
+        val entryId: String,
+        val materializeEntry: Boolean,
+        val placeAfterCurrent: Boolean,
+        val requiresMoveConfirmation: Boolean,
+    )
 
     /**
      * Put one climb on the wall, as an occurrence the group can see.
@@ -745,12 +750,11 @@ object BoardPlaylistOps {
      * id, so a repeat of the same climb three rows down is not what moves and
      * the list does not reorder itself under anybody.
      *
-     * Opened from anywhere else — the browser, a search, a deep link — the
-     * climb is not on the list yet, so it becomes a new occurrence directly
-     * after the current one. Never an existing occurrence of the same climb
-     * found by searching: duplicates are legitimate (a 4x4 is four of them),
-     * and quietly reusing or moving one is how somebody's later go disappears
-     * from where they put it.
+     * Generic detail reuses occurrence identity. The confirmed occurrence and
+     * the one immediately after it are unambiguous; an occurrence elsewhere
+     * requires an explicit confirmation before it is moved. Only an absent
+     * climb mints a new occurrence. Explicit Repeat remains the way to create
+     * deliberate duplicates.
      */
     fun lightNow(
         state: BoardPlaylistState,
@@ -759,24 +763,53 @@ object BoardPlaylistOps {
         fromEntryId: String? = null,
         newEntryId: () -> String = BoardPlaylistEntryId::random,
     ): LightNow {
-        val existing = fromEntryId?.let(state::entry)
-        if (existing != null) return LightNow(existing.entryId, emptyList())
-        val entryId = newEntryId()
-        // Directly after the occurrence the board is confirmed to be showing —
-        // not after the cursor. The two are different fields for a reason, and
-        // this is the position the contract names: a climb sent from outside
-        // the list goes next to the one that is up there now, so the list still
-        // reads as the order the wall went through. Anchoring at the cursor put
-        // it wherever somebody happened to be scrolling, and on the failure
-        // path that is nowhere near the wall at all.
-        val anchor = state.currentEntryId
-            ?.let { BoardPlaylistAnchor.After(it) }
-            ?: BoardPlaylistAnchor.Tail
-        // The occurrence only. Making it current is the *second* phase and
-        // waits for the board — a current that moves before the write lands
-        // says the group is on a climb that never reached the wall, and leaves
-        // the previous confirmed one unrecoverable.
-        return LightNow(entryId, listOf(BoardPlaylistOp.Add(entryId, climbUuid, angle, anchor = anchor)))
+        val addressed = fromEntryId?.let(state::entry)
+            ?.takeIf { it.climbUuid.equals(climbUuid, ignoreCase = true) && it.angle == angle }
+        if (addressed != null) return LightNow(addressed.entryId, false, false, false)
+
+        val matching = state.entries.filter {
+            it.climbUuid.equals(climbUuid, ignoreCase = true) && it.angle == angle
+        }
+        val currentIndex = state.currentIndex
+        val current = matching.firstOrNull { it.entryId == state.currentEntryId }
+        if (current != null) return LightNow(current.entryId, false, false, false)
+        val next = matching.firstOrNull { state.indexOf(it.entryId) == currentIndex + 1 }
+        if (next != null) return LightNow(next.entryId, false, false, false)
+        val elsewhere = matching.firstOrNull()
+        if (elsewhere != null) return LightNow(elsewhere.entryId, false, true, true)
+        return LightNow(newEntryId(), true, true, false)
+    }
+
+    /** Playlist half of a successful physical write, reduced in the same event. */
+    fun commitProjection(
+        state: BoardPlaylistState,
+        entryId: String?,
+        climbUuid: String,
+        angle: Int,
+        materializeEntry: Boolean,
+        placeAfterCurrent: Boolean,
+    ): BoardPlaylistState {
+        if (entryId == null) return state
+        var next = state
+        if (next.entry(entryId) == null) {
+            if (!materializeEntry) return if (next.pendingProjection?.entryId == entryId) {
+                next.copy(pendingProjection = null)
+            } else next
+            next = BoardPlaylistPolicy.apply(next, listOf(BoardPlaylistOp.Add(
+                entryId = entryId,
+                climbUuid = climbUuid,
+                angle = angle,
+                anchor = next.currentEntryId?.let(BoardPlaylistAnchor::After)
+                    ?: BoardPlaylistAnchor.Tail,
+            )))
+        }
+        val oldCurrent = next.currentEntryId
+        if (placeAfterCurrent && oldCurrent != null && oldCurrent != entryId) {
+            next = BoardPlaylistPolicy.apply(next, listOf(
+                BoardPlaylistOp.Move(entryId, BoardPlaylistAnchor.After(oldCurrent)),
+            ))
+        }
+        return BoardPlaylistPolicy.apply(next, confirmLit(next, entryId))
     }
 
     /**

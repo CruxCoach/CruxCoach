@@ -144,6 +144,10 @@ object Routes {
     const val PLAYLIST_GENERATOR = "playlist_generator"
     const val PLAYLIST_IMPORT = "playlist_import/{payload}"
     const val PLAYLIST_PLAYER = "playlist_player"
+    const val PLAYLIST_PLAYER_ROUTE = "playlist_player?entryId={entryId}"
+    fun playlistPlayer(entryId: String? = null) = entryId?.let {
+        "playlist_player?entryId=${android.net.Uri.encode(it)}"
+    } ?: PLAYLIST_PLAYER
     const val BOARD_PLAYLIST = "board_playlist"
     const val BOARD_MAP = "board_map"
     const val BODY_STAT = "body_stat"
@@ -604,12 +608,10 @@ fun CruxCoachNavHost(
                                 launchSingleTop = true
                             }
                         },
-                        // Local on this device: it opens a climb page, it does
-                        // not move anybody's current. The occurrence id travels
-                        // with it so "on the board now" lights this entry
-                        // rather than minting a second one for the same climb.
-                        onOpenEntry = { _, climbUuid, angle ->
-                            navController.navigate(Routes.boardClimbDetail(climbUuid, angle))
+                        // Local on this device: open the exact occurrence in
+                        // the player without changing group current or board.
+                        onOpenEntry = { entryId, _, _ ->
+                            navController.navigate(Routes.playlistPlayer(entryId))
                         },
                     )
                 }
@@ -894,7 +896,14 @@ fun CruxCoachNavHost(
                 }
             }
 
-            composable(Routes.PLAYLIST_PLAYER) {
+            composable(
+                route = Routes.PLAYLIST_PLAYER_ROUTE,
+                arguments = listOf(navArgument("entryId") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }),
+            ) {
                 com.cruxcoach.android.ui.common.ScreenErrorBoundary(
                     screenName = "PlaylistPlayer",
                     onNavigateBack = { navController.popBackStack() },
@@ -926,6 +935,9 @@ fun CruxCoachNavHost(
                         onNavigateBack = { navController.popBackStack() },
                         onNavigateToClimb = { climbUuid, angle ->
                             navController.navigate(Routes.boardClimbDetail(climbUuid, angle))
+                        },
+                        onNavigateToSetter = { pubkey ->
+                            navController.navigate(Routes.setterDetail(pubkey))
                         },
                         onNavigateToBrowser = {
                             navController.navigate(Routes.BOARD_BROWSER) {

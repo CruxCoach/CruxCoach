@@ -248,6 +248,7 @@ data class ClimbDetailState(
      * new occurrence on purpose rather than quietly reviving a deleted id.
      */
     val playlistEntryRemoved: Boolean = false,
+    val showPlaylistMoveConfirmation: Boolean = false,
     /** Live physical-board layers. Quantum currently supplies four; other
      * boards remain a single projection through the same capability model. */
     val boardLayers: BoardLayerState = BoardLayerState(),
@@ -1425,7 +1426,17 @@ class BoardClimbDetailViewModel @Inject constructor(
      * same surface that lights a directly connected board adds to the shared
      * queue when this device is a host or participant.
      */
-    fun deliverClimb() {
+    fun deliverClimb() = deliverClimb(confirmPlaylistMove = false)
+
+    fun dismissPlaylistMoveConfirmation() =
+        _state.update { it.copy(showPlaylistMoveConfirmation = false) }
+
+    fun confirmPlaylistMoveAndDeliver() {
+        _state.update { it.copy(showPlaylistMoveConfirmation = false) }
+        deliverClimb(confirmPlaylistMove = true)
+    }
+
+    private fun deliverClimb(confirmPlaylistMove: Boolean) {
         val climbState = _state.value
         val climb = climbState.climb ?: return
         val decision = BoardDeliveryPolicy.resolve(
@@ -1463,7 +1474,26 @@ class BoardClimbDetailViewModel @Inject constructor(
                 val entryId = climbNavState.boardPlaylistEntryId
                     ?.takeIf { climbNavState.boardPlaylistEntryClimbUuid == climb.uuid }
                     ?.takeIf { !climbState.playlistEntryRemoved }
-                boardCellManager.lightNow(climb.uuid, climbState.angle, entryId)
+                if (entryId == null && !confirmPlaylistMove &&
+                    boardCellManager.lightNowRequiresConfirmation(climb.uuid, climbState.angle)
+                ) {
+                    _state.update { it.copy(showPlaylistMoveConfirmation = true) }
+                    return@launch
+                }
+                _state.update {
+                    it.copy(ble = it.ble.copy(isSending = true, success = false, error = null))
+                }
+                val committed = boardCellManager.lightNow(
+                    climb.uuid, climbState.angle, entryId,
+                    confirmMove = confirmPlaylistMove,
+                )
+                _state.update {
+                    it.copy(ble = it.ble.copy(
+                        isSending = false,
+                        success = committed,
+                        error = if (committed) null else R.string.board_send_error_send_failed,
+                    ))
+                }
             }
             BoardDeliveryTarget.NONE -> Unit
         }

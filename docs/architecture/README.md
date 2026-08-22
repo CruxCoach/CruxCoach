@@ -15,6 +15,10 @@ versionierte Wire-Format.
 
 Die Dokumente:
 
+0. [PLAYLIST_OCCURRENCE_FOCUS_AND_COMMIT.md](PLAYLIST_OCCURRENCE_FOCUS_AND_COMMIT.md) —
+   atomarer Teilnehmer-Send, lokale Occurrence-Fokussierung, Fehlergrenzen,
+   responsive UI und CI/Publish-Entscheidungen.
+
 1. [BOARD_PLAYLIST_ARCHITECTURE.md](BOARD_PLAYLIST_ARCHITECTURE.md) — kanonischer Zustand,
    Occurrence-Identitaet, Operationen, Single Writer, `lightNow`, Retry, Undo und
    Projektionskonfidenz.

@@ -133,8 +133,28 @@ class SharedPlaylistWireTest {
      * V13 reader cannot decode at all, and leaving the number at 13 meant two
      * builds agreed on it and disagreed on what it meant.
      */
-    @Test fun `the wire version marks the cursor split and the relay intent`() {
-        assertEquals(14, BoardCellWireCodec.VERSION)
+    @Test fun `the wire version marks occurrence-aware atomic projection`() {
+        assertEquals(15, BoardCellWireCodec.VERSION)
+    }
+
+    @Test fun `projection occurrence fields default for stored legacy-shaped request`() {
+        val request = BoardProjectionRequest(
+            "projection-defaults", BoardProjection("climb", 40), 1,
+            null, 0, entryId = "entry",
+        )
+        val encoded = BoardCellWireCodec.encode(
+            frame(BoardCellWireMessage.ProjectionRequest(request)),
+        ).decodeToString()
+        val legacyShape = encoded
+            .replace(",\"materializeEntry\":false", "")
+            .replace(",\"placeAfterCurrent\":false", "")
+
+        val decoded = BoardCellWireCodec.decode(legacyShape.encodeToByteArray())
+        val value = (decoded.message as BoardCellWireMessage.ProjectionRequest).value
+
+        assertFalse(value.materializeEntry)
+        assertFalse(value.placeAfterCurrent)
+        assertEquals("entry", value.entryId)
     }
 
     @Test fun `a V13 peer frame is refused rather than read under the new shape`() {
@@ -168,7 +188,7 @@ class SharedPlaylistWireTest {
                 )),
             )))))
 
-        val downgraded = newShape.decodeToString().replace("\"version\":14", "\"version\":13")
+        val downgraded = newShape.decodeToString().replace("\"version\":15", "\"version\":14")
 
         assertThrows(IllegalArgumentException::class.java) {
             BoardCellWireCodec.decode(downgraded.encodeToByteArray())
@@ -181,7 +201,7 @@ class SharedPlaylistWireTest {
             frame(BoardCellWireMessage.PlaylistCommand(command(
                 BoardPlaylistOp.SetSelection("e1")))))
 
-        val downgraded = newShape.decodeToString().replace("\"version\":14", "\"version\":13")
+        val downgraded = newShape.decodeToString().replace("\"version\":15", "\"version\":14")
 
         assertThrows(IllegalArgumentException::class.java) {
             BoardCellWireCodec.decode(downgraded.encodeToByteArray())

@@ -1392,6 +1392,9 @@
     <string name="board_playlist_command_pending">Änderungen werden synchronisiert (%1$d)…</string>
     <string name="board_playlist_command_conflict">Die Liste wurde gleichzeitig geändert. Sie ist jetzt aktuell – bitte versuche deine Änderung erneut.</string>
     <string name="board_playlist_command_unavailable">Die Änderung konnte nicht gesendet werden. Prüfe die Nearby-Verbindung und versuche es erneut.</string>
+    <string name="board_playlist_move_existing_title">Climb verschieben?</string>
+    <string name="board_playlist_move_existing_body">Dieser Climb steht bereits weiter hinten in der Playlist. Diesen Eintrag direkt hinter den aktuell am Board gesendeten Climb verschieben und jetzt senden?</string>
+    <string name="board_playlist_move_existing_confirm">Verschieben und senden</string>
     <string name="board_playlist_command_failed">Die Änderung konnte nicht übernommen werden. Die gemeinsame Liste wurde aktualisiert.</string>
     <!-- Leeren darf jede·r — also auch zurücknehmen. -->
     <string name="board_playlist_clear_title">Board-Playlist leeren?</string>

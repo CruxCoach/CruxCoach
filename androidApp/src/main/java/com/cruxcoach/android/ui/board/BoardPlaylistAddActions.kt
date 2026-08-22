@@ -96,6 +96,33 @@ fun BoardPlaylistAddActions(
     val addToEnd = stringResource(R.string.board_playlist_add_to_end)
     val moreOptions = stringResource(R.string.board_playlist_add_more_options)
 
+    if (queued > 0) {
+        Surface(
+            shape = RoundedCornerShape(10.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+            modifier = modifier.fillMaxWidth().testTag("boarddetail_already_queued"),
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Filled.PlaylistAdd,
+                    contentDescription = null,
+                    modifier = Modifier.size(17.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer6()
+                Text(
+                    pluralStringResource(R.plurals.board_playlist_already_queued, queued, queued),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        return
+    }
+
     Column(modifier.fillMaxWidth()) {
         Surface(
             shape = RoundedCornerShape(12.dp),
@@ -208,14 +235,6 @@ fun BoardPlaylistAddActions(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp).testTag("boarddetail_add_options_hint"),
-            )
-        }
-        if (queued > 0) {
-            Text(
-                pluralStringResource(R.plurals.board_playlist_already_queued, queued, queued),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 4.dp),
             )
         }
     }

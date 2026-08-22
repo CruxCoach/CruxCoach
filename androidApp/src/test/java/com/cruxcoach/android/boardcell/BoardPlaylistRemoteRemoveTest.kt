@@ -1,7 +1,6 @@
 package com.cruxcoach.android.boardcell
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -39,21 +38,21 @@ class BoardPlaylistRemoteRemoveTest {
     }
 
     /**
-     * The board tap afterwards. It must not revive the deleted id — that entry
-     * was removed on purpose by somebody — and it must not adopt the twin.
+     * The board tap afterwards must not revive the deleted id. Generic detail
+     * reuses the remaining occurrence instead of inflating the playlist.
      */
     @Test
-    fun `a board tap after a remote remove creates a new occurrence`() {
+    fun `a board tap after a remote remove reuses the remaining occurrence`() {
         val after = BoardPlaylistPolicy.apply(playlist(), listOf(BoardPlaylistOp.Remove("e3")))
 
         // What the detail screen does once it has observed the removal: the
         // stale entry id is not passed on.
         val plan = BoardPlaylistOps.lightNow(after, "climb-x", 40, fromEntryId = null) { "new-1" }
-        val lit = BoardPlaylistPolicy.apply(after, plan.ops)
+        val lit = BoardPlaylistOps.commitProjection(after, plan.entryId, "climb-x", 40,
+            plan.materializeEntry, plan.placeAfterCurrent)
 
-        assertNotEquals("e3", plan.entryId)
-        assertNotEquals("e2", plan.entryId)
-        assertEquals(listOf("e1", "new-1", "e2"), lit.entries.map { it.entryId })
+        assertEquals("e2", plan.entryId)
+        assertEquals(listOf("e1", "e2"), lit.entries.map { it.entryId })
     }
 
     /**
@@ -67,11 +66,12 @@ class BoardPlaylistRemoteRemoveTest {
         val after = BoardPlaylistPolicy.apply(playlist(), listOf(BoardPlaylistOp.Remove("e3")))
 
         val plan = BoardPlaylistOps.lightNow(after, "climb-x", 40, fromEntryId = "e3") { "new-1" }
-        val lit = BoardPlaylistPolicy.apply(after, plan.ops)
+        val lit = BoardPlaylistOps.commitProjection(after, plan.entryId, "climb-x", 40,
+            plan.materializeEntry, plan.placeAfterCurrent)
 
-        assertNotEquals("e3", plan.entryId)
+        assertEquals("e2", plan.entryId)
         assertNull(lit.entry("e3"))
-        assertEquals(3, lit.entries.size)
+        assertEquals(2, lit.entries.size)
     }
 
     /** Removing an occurrence takes any failure marker for it along. */

@@ -1,11 +1,13 @@
 package com.cruxcoach.android.ui.playlist
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.IntensityZoneManager
 import com.cruxcoach.android.data.PlaylistPlaybackCoordinator
 import com.cruxcoach.android.data.PlaylistPlaybackState
+import com.cruxcoach.android.boardcell.BoardCellManager
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.ui.board.ClimbRenderData
 import com.cruxcoach.android.ui.board.ClimbRenderLoader
@@ -42,6 +44,9 @@ data class PlaylistPlayerState(
     val lastLogged: Boolean? = null,
     /** Confirm dialog for the central stop button. */
     val showStopConfirm: Boolean = false,
+    /** Local occurrence focus. It never writes the shared playlist cursor/current. */
+    val focusedEntryId: String? = null,
+    val focusedIndex: Int = -1,
 )
 
 /**
@@ -51,7 +56,9 @@ data class PlaylistPlayerState(
  */
 @HiltViewModel
 class PlaylistPlayerViewModel @Inject constructor(
+    savedStateHandle: SavedStateHandle,
     val playback: PlaylistPlaybackCoordinator,
+    private val boardCellManager: BoardCellManager,
     private val renderLoader: ClimbRenderLoader,
     private val userPreferences: UserPreferences,
     private val personalBoardRepo: PersonalBoardRepository,
@@ -60,6 +67,8 @@ class PlaylistPlayerViewModel @Inject constructor(
     val climbNavState: ClimbNavigationState,
     private val randomClimbPicker: RandomBoardClimbPicker,
 ) : ViewModel() {
+
+    private val requestedEntryId: String? = savedStateHandle["entryId"]
 
     val playbackState: StateFlow<PlaylistPlaybackState> = playback.state
 
@@ -88,7 +97,14 @@ class PlaylistPlayerViewModel @Inject constructor(
         viewModelScope.safeLaunch(TAG) {
             var lastKey: String? = null
             playback.state.collect { s ->
-                val item = s.currentClimb
+                val mesh = s.mesh
+                val previousFocus = _state.value.focusedEntryId
+                val focusId = if (mesh != null) PlaylistOccurrenceFocus.resolve(
+                    mesh.entryIds, requestedEntryId, previousFocus, mesh.currentEntryId,
+                ) else null
+                val focusIndex = focusId?.let { id -> mesh?.entryIds?.indexOf(id) } ?: s.currentIndex
+                val item = s.queue.getOrNull(focusIndex)
+                _state.update { it.copy(focusedEntryId = focusId, focusedIndex = focusIndex) }
                 val key = item?.let { "${it.climbUuid}:${it.angle}" }
                 if (key == lastKey) return@collect
                 lastKey = key
@@ -116,7 +132,7 @@ class PlaylistPlayerViewModel @Inject constructor(
      */
     fun quickLog(isSend: Boolean) {
         val climb = _state.value.render?.climb ?: return
-        val angle = playback.state.value.currentClimb?.angle ?: return
+        val angle = focusedItem()?.angle ?: return
         viewModelScope.safeLaunch(TAG) {
             withContext(Dispatchers.IO) {
                 val uuid = java.util.UUID.randomUUID().toString()
@@ -179,6 +195,56 @@ class PlaylistPlayerViewModel @Inject constructor(
     }
 
     fun consumeLogFeedback() = _state.update { it.copy(lastLogged = null) }
+
+    fun previous() {
+        val s = playback.state.value
+        if (!s.isCanonicalPlaylist) return playback.previous()
+        focusEntry(PlaylistOccurrenceFocus.step(
+            s.mesh!!.entryIds, _state.value.focusedEntryId, -1,
+        ))
+    }
+
+    fun next() {
+        val s = playback.state.value
+        if (!s.isCanonicalPlaylist) return playback.next()
+        focusEntry(PlaylistOccurrenceFocus.step(
+            s.mesh!!.entryIds, _state.value.focusedEntryId, 1,
+        ))
+    }
+
+    fun resendFocused() {
+        val s = playback.state.value
+        val item = focusedItem() ?: return
+        val entryId = _state.value.focusedEntryId
+        if (!s.isCanonicalPlaylist || entryId == null) {
+            playback.resendCurrentClimb()
+            return
+        }
+        viewModelScope.safeLaunch(TAG) {
+            boardCellManager.lightNow(item.climbUuid, item.angle, entryId)
+        }
+    }
+
+    private fun focusEntry(entryId: String?) {
+        val playbackState = playback.state.value
+        val mesh = playbackState.mesh ?: return
+        val index = mesh.entryIds.indexOf(entryId).takeIf { it >= 0 } ?: return
+        _state.update { it.copy(focusedEntryId = entryId, focusedIndex = index) }
+        val item = playbackState.queue.getOrNull(index) ?: return
+        viewModelScope.safeLaunch(TAG) {
+            _state.update { it.copy(renderLoading = true) }
+            val render = withContext(Dispatchers.IO) {
+                renderLoader.load(item.climbUuid, item.angle)
+            }
+            if (_state.value.focusedEntryId == entryId) {
+                _state.update { it.copy(render = render, renderLoading = false) }
+            }
+        }
+    }
+
+    private fun focusedItem() = playback.state.value.let { s ->
+        s.queue.getOrNull(if (s.isCanonicalPlaylist) _state.value.focusedIndex else s.currentIndex)
+    }
 
     /** Retry publication after the host permission dialog completes.
      * BLE setup may involve a slow vendor stack during host handover, so it

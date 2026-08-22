@@ -59,7 +59,7 @@ fun BoardPlaylistBrowserCard(
     val state by viewModel.state.collectAsStateWithLifecycle()
     if (!state.available) return
 
-    val current = state.rows.getOrNull(state.selectedIndex)
+    val current = state.rows.getOrNull(state.currentIndex)
     val boardLabel = state.boardName ?: stringResource(R.string.fips_mesh_own_active)
     val peopleLabel = state.memberCount.takeIf { it > 0 }?.let { count ->
         pluralStringResource(R.plurals.board_people_count, count, count)
@@ -160,7 +160,7 @@ fun BoardPlaylistBrowserCard(
                             )
                             Spacer(Modifier.width(8.dp))
                             Text(
-                                "${state.selectedIndex + 1}/${state.rows.size}",
+                                "${state.currentIndex + 1}/${state.rows.size}",
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = OrangeAccent,

@@ -82,6 +82,7 @@ import com.cruxcoach.android.data.SessionVisibility
 import com.cruxcoach.android.ui.board.QueueDeliveryPolicy
 import com.cruxcoach.android.ui.board.BleConnectionSheet
 import com.cruxcoach.android.ui.board.BleConnectionViewModel
+import com.cruxcoach.android.ui.board.ClimbMetaLine
 import com.cruxcoach.android.ui.board.KilterBoardVisualization
 import com.cruxcoach.android.ui.board.MoonBoardAssetState
 import com.cruxcoach.android.ui.board.MoonBoardVisualization
@@ -119,6 +120,7 @@ import androidx.compose.ui.res.pluralStringResource
 fun PlaylistPlayerScreen(
     onNavigateBack: () -> Unit,
     onNavigateToClimb: (String, Int) -> Unit,
+    onNavigateToSetter: (String) -> Unit = {},
     /** "+"-Button: zum Browser, wo Long-Press Climbs hinzufügt. */
     onNavigateToBrowser: () -> Unit = {},
     /**
@@ -137,6 +139,27 @@ fun PlaylistPlayerScreen(
 ) {
     val playback by viewModel.playbackState.collectAsStateWithLifecycle()
     val state by viewModel.state.collectAsStateWithLifecycle()
+    // A row opens this player on one occurrence without moving shared state.
+    // Present that local focus as the player cursor; canonical current remains
+    // in mesh.currentEntryId and is changed only by the lamp.
+    val displayedPlayback = if (playback.isCanonicalPlaylist &&
+        state.focusedIndex in playback.queue.indices
+    ) {
+        val item = playback.queue[state.focusedIndex]
+        playback.copy(
+            currentIndex = state.focusedIndex,
+            currentClimb = item,
+            currentClimbName = state.render?.climb?.name,
+            currentClimbDifficulty = state.render?.climb?.difficultyAverage,
+            mesh = playback.mesh?.copy(
+                selectionOnBoard = state.focusedEntryId == playback.mesh?.currentEntryId &&
+                    playback.mesh?.confirmedProjection?.let {
+                        it.climbUuid.equals(item.climbUuid, ignoreCase = true) &&
+                            it.angle == item.angle
+                    } == true,
+            ),
+        )
+    } else playback
     var showQueueSheet by remember { mutableStateOf(false) }
     var showBleSheet by remember { mutableStateOf(false) }
     val bleConnectionViewModel: BleConnectionViewModel = hiltViewModel()
@@ -328,12 +351,12 @@ fun PlaylistPlayerScreen(
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                             )
-                            if (playback.queue.isNotEmpty()) {
+                            if (displayedPlayback.queue.isNotEmpty()) {
                                 Text(
                                     stringResource(
                                         R.string.playlist_player_progress,
-                                        playback.currentIndex + 1,
-                                        playback.queue.size,
+                                        displayedPlayback.currentIndex + 1,
+                                        displayedPlayback.queue.size,
                                         formatElapsed(playback.elapsedSeconds),
                                     ),
                                     style = MaterialTheme.typography.bodySmall,
@@ -410,9 +433,10 @@ fun PlaylistPlayerScreen(
                     },
                 )
                 // Spotify-style position track: how far through the playlist.
-                if (playback.queue.isNotEmpty()) {
+                if (displayedPlayback.queue.isNotEmpty()) {
                     val progress by animateFloatAsState(
-                        targetValue = (playback.currentIndex + 1f) / playback.queue.size,
+                        targetValue = (displayedPlayback.currentIndex + 1f) /
+                            displayedPlayback.queue.size,
                         animationSpec = tween(300),
                         label = "playlist_progress",
                     )
@@ -431,7 +455,7 @@ fun PlaylistPlayerScreen(
                 // climb render imply the second one. The lamp below is what
                 // closes the gap.
                 if (playback.isCanonicalPlaylist) {
-                    BoardStatusLine(playback)
+                    BoardStatusLine(displayedPlayback)
                 }
                 // Asked to share and unable to: the session repairs itself once
                 // Bluetooth returns, but until then nobody can join and nothing
@@ -537,10 +561,10 @@ fun PlaylistPlayerScreen(
         },
         bottomBar = {
             PlayerControls(
-                playback = playback,
-                onPrevious = { viewModel.playback.previous() },
-                onNext = { viewModel.playback.next() },
-                onLamp = { viewModel.playback.resendCurrentClimb() },
+                playback = displayedPlayback,
+                onPrevious = viewModel::previous,
+                onNext = viewModel::next,
+                onLamp = viewModel::resendFocused,
                 onOpenQueue = {
                     if (playback.isCanonicalPlaylist) onOpenBoardPlaylist()
                     else showQueueSheet = true
@@ -585,7 +609,10 @@ fun PlaylistPlayerScreen(
             // going back slides right, entering/leaving a rest crossfades.
             AnimatedContent(
                 modifier = Modifier.weight(1f),
-                targetState = PlayerContentKey(playback.currentIndex, playback.isResting),
+                targetState = PlayerContentKey(
+                    displayedPlayback.currentIndex,
+                    displayedPlayback.isResting,
+                ),
                 transitionSpec = {
                     when {
                         initialState.resting != targetState.resting ->
@@ -602,24 +629,29 @@ fun PlaylistPlayerScreen(
             ) { key ->
                 if (key.resting) {
                     RestingContent(
-                        playback = playback,
+                        playback = displayedPlayback,
                         gradeScale = state.gradeScale,
                         onSkip = { viewModel.playback.next() },
                     )
                 } else {
                     ClimbingContent(
                         state = state,
-                        playback = playback,
-                        onSwipeNext = { viewModel.playback.next() },
-                        onSwipePrevious = { viewModel.playback.previous() },
+                        playback = displayedPlayback,
+                        onSwipeNext = viewModel::next,
+                        onSwipePrevious = viewModel::previous,
                         onClimbTapped = { uuid, angle ->
                             viewModel.climbNavState.climbUuids =
                                 playback.queue.map { it.climbUuid }.distinct()
                             viewModel.climbNavState.angle = angle
                             viewModel.climbNavState.source = ClimbNavigationSource.QUEUE
+                            viewModel.climbNavState.boardPlaylistEntryId =
+                                state.focusedEntryId.takeIf { playback.isCanonicalPlaylist }
+                            viewModel.climbNavState.boardPlaylistEntryClimbUuid =
+                                uuid.takeIf { playback.isCanonicalPlaylist }
                             onNavigateToClimb(uuid, angle)
                         },
                         onQuickLog = { viewModel.quickLog(it) },
+                        onNavigateToSetter = onNavigateToSetter,
                     )
                 }
             }
@@ -691,6 +723,7 @@ private fun ClimbingContent(
     onSwipePrevious: () -> Unit,
     onClimbTapped: (String, Int) -> Unit,
     onQuickLog: (Boolean) -> Unit,
+    onNavigateToSetter: (String) -> Unit,
 ) {
     val render = state.render
     val density = LocalDensity.current
@@ -750,6 +783,19 @@ private fun ClimbingContent(
                         subtitle,
                         style = MaterialTheme.typography.titleSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                render?.climb?.let { climb ->
+                    val setterPubkey = climb.createdByPubkey?.takeIf { it.isNotBlank() }
+                    ClimbMetaLine(
+                        setter = climb.setterUsername,
+                        isRoute = climb.framesCount > 1,
+                        framesCount = climb.framesCount,
+                        moveCount = climb.moveCount,
+                        modifier = Modifier.fillMaxWidth(),
+                        onSetterClick = setterPubkey
+                            ?.takeIf { climb.origin == "cruxcoach" }
+                            ?.let { pubkey -> { onNavigateToSetter(pubkey) } },
                     )
                 }
             }
