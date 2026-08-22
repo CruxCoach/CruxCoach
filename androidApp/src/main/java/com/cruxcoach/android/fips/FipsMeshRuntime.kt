@@ -869,7 +869,40 @@ class FipsMeshRuntime @Inject constructor(
         prefix.indices.all { this[it] == prefix[it] }
 
     companion object {
-        const val MAX_DIRECT_CONNECTIONS = 7
+        /**
+         * Everything this app connects shares one Android BLE adapter.
+         *
+         * Not three budgets — one. The native transport says as much: seven
+         * links are "an admission ceiling, not a hardware promise", refusable
+         * "especially beside the physical board link".
+         */
+        const val RADIO_BUDGET = 7
+
+        /** The controller's link to the physical board. */
+        const val BOARD_LINK_RESERVE = 1
+
+        /**
+         * One guest slot, held open whether or not a relay is running.
+         *
+         * Reserved unconditionally, and that is the point: any member can
+         * become the controller through a handover, and the native budget is
+         * fixed when the mesh starts — renegotiating it would mean dropping
+         * every peer. A slot that only appears after the role changes is a
+         * slot that is not there when it is needed.
+         */
+        const val RELAY_GUEST_RESERVE = 1
+
+        /**
+         * Direct BLE peers this node will hold: five, not seven.
+         *
+         * Subtracting the board link and a guest afterwards left a busy cell
+         * with no relay at all. Reserving them up front means the relay slot is
+         * always real, at the cost of two direct links — and a cell is not
+         * limited to five members by this, only to five *direct* ones. Further
+         * members attach through the mesh, which is what the native layer
+         * already does for the eighth joiner today.
+         */
+        const val MAX_DIRECT_CONNECTIONS = RADIO_BUDGET - BOARD_LINK_RESERVE - RELAY_GUEST_RESERVE
         private const val PEER_REFRESH_MS = 2_000L
         private const val PEER_JOIN_REFRESH_MS = 100L
         private const val PEER_JOIN_ACCELERATION_MS = 10_000L

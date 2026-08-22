@@ -52,6 +52,56 @@ enum class BoardProjectionConfidence {
     FAILED,
 }
 
+/**
+ * The cell's CruxRelay, as everybody in it can verify.
+ *
+ * Only the controller may stamp this, and only for its own `(epoch, term)` —
+ * so a member cannot claim the role, and a resurrected old owner's claim is
+ * recognisable as belonging to a term that has passed. It travels inside the
+ * canonical snapshot and therefore inside its hash: a peer that alters a slot
+ * count invalidates the state it was trying to lie about.
+ *
+ * Small on purpose. Every field is one bounded number or flag that somebody
+ * actually needs to check the offer against — an unbounded advertisement book
+ * would be an attacker-shaped queue for no gain.
+ */
+@Serializable
+data class BoardCellRelayState(
+    /** A connectable relay is being advertised right now. */
+    val offered: Boolean = false,
+    /** Guest slots held open by admission, whether or not one is in use. */
+    val guaranteedSlots: Int = 0,
+    /** Guest slots free at the moment it was stamped. */
+    val freeSlots: Int = 0,
+    val health: BoardCellRelayHealth = BoardCellRelayHealth.UNKNOWN,
+    /** The lease this claim belongs to. A different one makes it stale. */
+    val epoch: Long = 0,
+    val controllerTerm: Long = 0,
+) {
+    /**
+     * Range-clamped on read, so a crafted snapshot cannot describe a device
+     * with more radio than exists. The upper bound is the cell's, not the
+     * sender's: a claim is only ever as large as the protocol allows.
+     */
+    fun sanitized(maxSlots: Int): BoardCellRelayState = copy(
+        guaranteedSlots = guaranteedSlots.coerceIn(0, maxSlots),
+        freeSlots = freeSlots.coerceIn(0, maxSlots),
+    )
+
+    /** A claim from another lease describes a cell that no longer exists. */
+    fun isCurrentFor(snapshot: BoardCellSnapshot): Boolean =
+        epoch == snapshot.epoch && controllerTerm == snapshot.controllerTerm
+
+    companion object {
+        /** Nothing offered, nothing claimed — and the default V9 stays valid. */
+        val NONE = BoardCellRelayState()
+    }
+}
+
+/** How well the relay owner can reach the board it fronts. */
+@Serializable
+enum class BoardCellRelayHealth { UNKNOWN, HEALTHY, RECOVERING, LOST }
+
 /** Why the canonical current climb is not on the wall. */
 @Serializable
 enum class BoardPlaylistProjectionPendingReason { BOARD_WRITE_FAILED, CLIMB_UNAVAILABLE }
@@ -523,6 +573,16 @@ data class BoardProjectionRequest(
     val baseSequence: Long,
     val baseProjection: BoardProjection?,
     val basePlaylistRevision: Long,
+    /**
+     * The occurrence this write is for, when the request is one half of a
+     * light-now.
+     *
+     * The member has already added the entry; what it cannot do is decide that
+     * the group is on it, because only the device holding the board knows
+     * whether the write landed. Carrying the id here is what keeps the two
+     * halves one operation instead of two messages that can drift apart.
+     */
+    val entryId: String? = null,
 )
 
 internal fun BoardProjectionRequest.semanticBaseSequence(current: BoardCellSnapshot): Long =
@@ -555,6 +615,14 @@ data class BoardCellSnapshot(
     val availability: BoardCellAvailability = BoardCellAvailability.ACTIVE,
     val handover: BoardCellHandover? = null,
     val lastControllerRecovery: BoardCellControllerRecoveryProof? = null,
+    /**
+     * The cell's relay, stamped by the controller and carried in the hash.
+     *
+     * Default [BoardCellRelayState.NONE] on purpose: a snapshot from a build
+     * that predates it hashes identically under V9, so a mixed-client cell
+     * keeps validating while nothing is being offered.
+     */
+    val relay: BoardCellRelayState = BoardCellRelayState.NONE,
     val stateHash: String = "",
 ) {
     fun withComputedHash(): BoardCellSnapshot = copy(stateHash = BoardCellHash.compute(this))
@@ -575,18 +643,23 @@ data class BoardCellSnapshot(
      * repaired from a canonical snapshot instead.
      */
     fun hasValidHash(): Boolean = stateHash == BoardCellHash.compute(copy(stateHash = "")) ||
-        (playlist.usesPreRestoreShapeOnly &&
+        // A build that predates the relay field wrote V9 bytes. That stays
+        // exact for as long as nothing is offered, which is every snapshot it
+        // could write — so an upgrade does not fork the cell.
+        (relay == BoardCellRelayState.NONE &&
+            stateHash == BoardCellHash.computeLegacyV9(copy(stateHash = ""))) ||
+        (relay == BoardCellRelayState.NONE && playlist.usesPreRestoreShapeOnly &&
             stateHash == BoardCellHash.computeLegacyV8(copy(stateHash = ""))) ||
-        (joinMode == BoardJoinMode.OPEN && playlist.usesLegacyShapeOnly &&
+        (relay == BoardCellRelayState.NONE && joinMode == BoardJoinMode.OPEN && playlist.usesLegacyShapeOnly &&
             stateHash == BoardCellHash.computeLegacyV6(copy(stateHash = ""))) ||
-        (joinMode == BoardJoinMode.OPEN && playlist.usesLegacyShapeOnly &&
+        (relay == BoardCellRelayState.NONE && joinMode == BoardJoinMode.OPEN && playlist.usesLegacyShapeOnly &&
             stateHash == BoardCellHash.computeLegacyV5(copy(stateHash = ""))) ||
-        (joinMode == BoardJoinMode.OPEN && playlist.usesLegacyShapeOnly && membershipRevision == 0L &&
+        (relay == BoardCellRelayState.NONE && joinMode == BoardJoinMode.OPEN && playlist.usesLegacyShapeOnly && membershipRevision == 0L &&
             stateHash == BoardCellHash.computeLegacyV4(copy(stateHash = ""))) ||
-        (joinMode == BoardJoinMode.OPEN && playlist.usesLegacyShapeOnly && membershipRevision == 0L &&
+        (relay == BoardCellRelayState.NONE && joinMode == BoardJoinMode.OPEN && playlist.usesLegacyShapeOnly && membershipRevision == 0L &&
             lastControllerRecovery == null &&
             stateHash == BoardCellHash.computeLegacyV3(copy(stateHash = ""))) ||
-        (joinMode == BoardJoinMode.OPEN && playlist.usesLegacyShapeOnly && membershipRevision == 0L &&
+        (relay == BoardCellRelayState.NONE && joinMode == BoardJoinMode.OPEN && playlist.usesLegacyShapeOnly && membershipRevision == 0L &&
             lastControllerRecovery == null && playlistRevision == 0L &&
             stateHash == BoardCellHash.computeLegacyV2(copy(stateHash = "")))
 }
@@ -619,6 +692,16 @@ sealed interface BoardCellEvent {
         val reason: BoardCellMemberLeaveReason,
     ) : BoardCellEvent
     @Serializable data class ControllerHeartbeat(val heartbeat: Long) : BoardCellEvent
+
+    /**
+     * The controller says what its relay is doing.
+     *
+     * Carried as canonical state rather than an advertisement so a member can
+     * check the offer against the same hash-bound snapshot it checks everything
+     * else against. The reducer refuses one from anybody who is not the
+     * controller, so this can never be the thing that decides who is.
+     */
+    @Serializable data class RelayStateChanged(val relay: BoardCellRelayState) : BoardCellEvent
     @Serializable data class HandoverPrepared(val value: BoardCellHandover) : BoardCellEvent
     @Serializable data class HandoverSourceReleased(val transferId: String) : BoardCellEvent
     @Serializable data class HandoverTargetReady(val transferId: String, val readinessProof: String) : BoardCellEvent
@@ -725,6 +808,12 @@ internal object BoardCellHash {
     /**
      * The current schema.
      *
+     * V10 adds the cell's relay: who is offering one, with how many slots and
+     * in what health, stamped by the controller for its own term. V9 stays
+     * exact for as long as nothing is offered, which is every snapshot a
+     * pre-V10 build could write and every V10 cell without a relay — so a
+     * mixed-client cell keeps validating rather than forking on an upgrade.
+     *
      * V9 adds the restorable clear: the list a clear emptied, with the
      * controller-stamped window in which anybody may bring it back. V8 was the
      * entry-addressed shared playlist: per-occurrence entry ids, a current
@@ -736,24 +825,27 @@ internal object BoardCellHash {
      * is restorable, which is every snapshot that build could write.
      */
     fun compute(snapshot: BoardCellSnapshot): String =
-        compute(snapshot, "board-cell-v9", true, true, true, true, true, true, true)
+        compute(snapshot, "board-cell-v10", true, true, true, true, true, true, true, true)
+    fun computeLegacyV9(snapshot: BoardCellSnapshot): String =
+        compute(snapshot, "board-cell-v9", true, true, true, true, true, true, true, false)
     fun computeLegacyV8(snapshot: BoardCellSnapshot): String =
-        compute(snapshot, "board-cell-v8", true, true, true, true, true, true, false)
+        compute(snapshot, "board-cell-v8", true, true, true, true, true, true, false, false)
     fun computeLegacyV6(snapshot: BoardCellSnapshot): String =
-        compute(snapshot, "board-cell-v6", true, true, true, true, false, false, false)
+        compute(snapshot, "board-cell-v6", true, true, true, true, false, false, false, false)
     fun computeLegacyV5(snapshot: BoardCellSnapshot): String =
-        compute(snapshot, "board-cell-v5", true, true, true, false, false, false, false)
+        compute(snapshot, "board-cell-v5", true, true, true, false, false, false, false, false)
     fun computeLegacyV4(snapshot: BoardCellSnapshot): String =
-        compute(snapshot, "board-cell-v4", true, true, false, false, false, false, false)
+        compute(snapshot, "board-cell-v4", true, true, false, false, false, false, false, false)
     fun computeLegacyV3(snapshot: BoardCellSnapshot): String =
-        compute(snapshot, "board-cell-v3", true, false, false, false, false, false, false)
+        compute(snapshot, "board-cell-v3", true, false, false, false, false, false, false, false)
     fun computeLegacyV2(snapshot: BoardCellSnapshot): String =
-        compute(snapshot, "board-cell-v2", false, false, false, false, false, false, false)
+        compute(snapshot, "board-cell-v2", false, false, false, false, false, false, false, false)
 
     private fun compute(snapshot: BoardCellSnapshot, schema: String, includePlaylistRevision: Boolean,
         includeControllerRecovery: Boolean, includeMembershipRevision: Boolean,
         includeLegacyPlaylistShape: Boolean, includeJoinMode: Boolean,
-        includeEntryPlaylist: Boolean, includeClearUndo: Boolean): String {
+        includeEntryPlaylist: Boolean, includeClearUndo: Boolean,
+        includeRelay: Boolean): String {
         val canonical = buildString {
             append(schema).append('\n').append(snapshot.cellId.value).append('\n')
             append(snapshot.physicalBoardId.value).append('\n').append(snapshot.epoch).append('\n')
@@ -814,6 +906,11 @@ internal object BoardCellHash {
                 append("cr:${it.claimantId}|${it.baseControllerId}|${it.baseControllerTerm}|")
                 append("${it.baseSequence}|${it.baseHash}|${it.connectionProof}\n")
             } ?: append("cr:-\n")
+            if (includeRelay) {
+                val relay = snapshot.relay
+                append("rl:${relay.offered}|${relay.guaranteedSlots}|${relay.freeSlots}")
+                append("|${relay.health.name}|${relay.epoch}|${relay.controllerTerm}\n")
+            }
         }
         return MessageDigest.getInstance("SHA-256").digest(canonical.toByteArray())
             .joinToString("") { "%02x".format(it) }

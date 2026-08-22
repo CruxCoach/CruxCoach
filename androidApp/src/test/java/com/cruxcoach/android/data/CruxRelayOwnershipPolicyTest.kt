@@ -8,6 +8,7 @@ import com.cruxcoach.android.boardcell.BoardCellSnapshot
 import com.cruxcoach.android.boardcell.HandoverPhase
 import com.cruxcoach.android.boardcell.PhysicalBoardId
 import com.cruxcoach.android.ble.RelayGattServer
+import com.cruxcoach.android.fips.FipsMeshRuntime
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -233,15 +234,50 @@ class CruxRelayOwnershipPolicyTest {
     // ── Capacity ──────────────────────────────────────────────────────────
 
     /**
-     * The real boundary, and it is one lower than the mesh ceiling suggests:
-     * the board link is a radio slot too. Five peers plus the board leaves one
-     * for a guest; six leaves none.
+     * The reserve is made at admission, not subtracted afterwards.
+     *
+     * Seven CoC links, one for the board, one held for a guest: five direct
+     * peers is what the mesh admits, and that is what leaves the guest slot
+     * standing when a handover makes this device the controller. Subtracting
+     * live peers from seven — what this policy did before — meant a busy cell
+     * had no relay at all, which is precisely the state a joining guest most
+     * needs one for.
      */
+    @Test
+    fun `the mesh admits five so the board and a guest still fit`() {
+        assertEquals(
+            FipsMeshRuntime.RADIO_BUDGET -
+                FipsMeshRuntime.BOARD_LINK_RESERVE - FipsMeshRuntime.RELAY_GUEST_RESERVE,
+            FipsMeshRuntime.MAX_DIRECT_CONNECTIONS,
+        )
+        assertEquals(5, FipsMeshRuntime.MAX_DIRECT_CONNECTIONS)
+    }
+
     @Test
     fun `five peers plus a board leave exactly one guest slot`() {
         assertEquals(RelayOffer.Offer(1), evaluate(meshPeers = 5))
     }
 
+    /** The guarantee holds at every peer count this device would admit. */
+    @Test
+    fun `a guest slot survives the whole admissible range`() {
+        (0..FipsMeshRuntime.MAX_DIRECT_CONNECTIONS).forEach { peers ->
+            assertTrue(
+                "peers=$peers must still leave a guest slot",
+                CruxRelayOwnershipPolicy.availableSlots(
+                    meshPeers = peers, boardLinkHeld = true, activeRelayClients = 0,
+                    serverCeiling = RelayGattServer.MAX_CONNECTED_DEVICES,
+                ) >= CruxRelayOwnershipPolicy.GUARANTEED_GUEST_SLOT,
+            )
+        }
+    }
+
+    /**
+     * Above the admission ceiling the arithmetic still refuses to promise what
+     * the radio does not have. This device does not create that state — it
+     * admits five — but a peer count it did not choose must not become an
+     * advertisement it cannot honour.
+     */
     @Test
     fun `six peers plus a board is already the whole radio`() {
         assertEquals(RelaySuppression.NO_CAPACITY, suppression(evaluate(meshPeers = 6)))
@@ -271,6 +307,18 @@ class CruxRelayOwnershipPolicyTest {
             0,
             CruxRelayOwnershipPolicy.availableSlots(
                 meshPeers = 19, boardLinkHeld = true, activeRelayClients = 0, serverCeiling = 4,
+            ),
+        )
+    }
+
+    /** A guest already in the reserved slot is holding it, not doubling it. */
+    @Test
+    fun `the guaranteed slot is not offered twice`() {
+        assertEquals(
+            0,
+            CruxRelayOwnershipPolicy.availableSlots(
+                meshPeers = FipsMeshRuntime.MAX_DIRECT_CONNECTIONS, boardLinkHeld = true,
+                activeRelayClients = 1, serverCeiling = RelayGattServer.MAX_CONNECTED_DEVICES,
             ),
         )
     }

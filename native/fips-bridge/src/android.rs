@@ -317,9 +317,13 @@ pub extern "system" fn Java_com_cruxcoach_android_fips_NativeFips_start(
         config.transports.ble = TransportInstances::Single(BleConfig {
             adapter: Some("ble0".into()),
             max_connections: Some(max_ble_connections),
-            // Every retained mobile link is backbone/relay capacity. The 8th
-            // and later join attempts must redirect to another advertising
-            // member, never evict one of this node's established seven.
+            // Every retained mobile link is backbone/relay capacity. A join
+            // beyond `max_ble_connections` must redirect to another
+            // advertising member, never evict one this node has established.
+            // Kotlin supplies that ceiling and holds it below the seven-link
+            // budget on purpose: the board link and one relay guest are
+            // reserved before the mesh starts, because the budget is fixed at
+            // start-up and a device can become the controller by handover.
             protected_discovered_connections: Some(max_ble_connections),
             // Kotlin cancels an OEM BluetoothSocket connect after 10 seconds.
             // Keep the native waiter slightly longer so it observes that

@@ -653,6 +653,27 @@ class BoardCellCoordinator(
         }
     }
 
+    /**
+     * Stamps this controller's own relay state into canonical state.
+     *
+     * Only the writable controller may, and only for the lease it is on — the
+     * claim carries `(epoch, term)` and the reducer drops it otherwise, so a
+     * superseded owner cannot describe a cell it no longer serves. Unchanged
+     * claims commit nothing: relay capacity moves with every guest and peer,
+     * and a heartbeat-rate event stream would replicate noise, not state.
+     */
+    suspend fun publishRelayState(
+        boardId: PhysicalBoardId,
+        relay: BoardCellRelayState,
+        nowMonotonicMs: Long,
+    ): BoardCellEnvelope? = mutex.withLock {
+        val current = writable(boardId, nowMonotonicMs, allowHandover = true) ?: return@withLock null
+        val claim = relay.copy(epoch = current.epoch, controllerTerm = current.controllerTerm)
+            .sanitized(BoardCellReplica.RELAY_SLOT_CEILING)
+        if (claim == current.relay) return@withLock null
+        commitCanonical(boardId, BoardCellEvent.RelayStateChanged(claim))
+    }
+
     suspend fun prepareHandover(
         boardId: PhysicalBoardId,
         targetId: String,

@@ -89,6 +89,16 @@ class BoardCellReplica(val localMemberId: String, initial: BoardCellSnapshot? = 
     }
 
     companion object {
+        /**
+         * The largest slot count a claim may describe.
+         *
+         * One Android BLE adapter, so nothing in a cell can honestly claim
+         * more. Clamping rather than rejecting keeps a crafted number from
+         * being believed without letting it invalidate an otherwise good
+         * snapshot.
+         */
+        const val RELAY_SLOT_CEILING = 7
+
         private fun BoardPlaylistState.clearingPendingFor(projection: BoardProjection):
             BoardPlaylistState {
             val pending = pendingProjection ?: return this
@@ -116,6 +126,17 @@ class BoardCellReplica(val localMemberId: String, initial: BoardCellSnapshot? = 
                 // A successful physical write is the canonical proof that the
                 // pending-send state is over; nothing has to remember to clear
                 // it, and a retry that lands twice clears it only once.
+                // Only the controller may describe the cell's relay, and only
+                // for the lease it is on. Anything else is dropped rather than
+                // merged: a member that could stamp this would be able to
+                // advertise capacity on somebody else's behalf.
+                is BoardCellEvent.RelayStateChanged -> {
+                    val claim = event.relay
+                    if (claim.epoch != current.epoch ||
+                        claim.controllerTerm != current.controllerTerm
+                    ) current
+                    else current.copy(relay = claim.sanitized(RELAY_SLOT_CEILING))
+                }
                 is BoardCellEvent.ProjectCommitted -> current.copy(
                     projection = event.projection,
                     projectionKnown = true,
