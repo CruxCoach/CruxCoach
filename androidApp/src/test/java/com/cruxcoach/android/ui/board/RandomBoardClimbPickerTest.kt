@@ -168,6 +168,22 @@ class RandomBoardClimbPickerTest {
     }
 
     @Test
+    fun `MoonBoard ignores a stale Aurora product size instead of emptying the dice roll`() = runTest {
+        val capture = Capture()
+        val pick = picker(
+            filter = snapshot(BoardBrand.MOONBOARD.wireValue),
+            capture = capture,
+            results = listOf(quantumClimb().copy(boardBrand = BoardBrand.MOONBOARD.wireValue)),
+        ).roll()
+
+        assertTrue(pick is RandomClimbRoll.Picked)
+        // The Nokia carried Kilter product-size id 10 while browsing MoonBoard.
+        // MoonBoard has no product_sizes rows, so forwarding any positive id
+        // makes SQLite reject every otherwise matching climb.
+        assertEquals(0, capture.productSizeId.captured)
+    }
+
+    @Test
     fun `Quantum rule filters reach the dice instead of being silently dropped`() = runTest {
         val capture = Capture()
         picker(
