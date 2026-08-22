@@ -120,6 +120,11 @@ detailliertes Log sind zwei Tiefen derselben persoenlichen Aufgabe.
 Die mittlere Aktion wird aus einem Board-Pfad abgeleitet, nicht nur aus lokaler BLE-
 Verbindung.
 
+Waehrend eine klassische Session verbindet, bleibt die Position besetzt: sichtbar,
+benannt (`Wird verbunden`), nicht sendbar, und der Tap oeffnet das Status-/Recovery-Sheet.
+Die Aktion zu verstecken verliert nicht nur den Status — es aendert mitten im Beitritt die
+Breite der beiden Aktionen daneben, unter dem Daumen der Person, die gerade tippt.
+
 ```mermaid
 flowchart TD
     A{Gueltiger Pfad<br/>zum physischen Board?}

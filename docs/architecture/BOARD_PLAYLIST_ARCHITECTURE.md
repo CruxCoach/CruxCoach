@@ -371,7 +371,16 @@ Occurrence ohnehin nie Current.
 
 Der terminale Uebergang (`landed = true`) wird **im selben Command wie die Occurrence**
 committet: Liste und „Anfrage erledigt“ sind ein controller-sequenzierter Schritt, beide
-oder keiner. Bleibt ein Record dennoch offen — abgelehntes Command, Stop, Handover —, ist
+oder keiner. **Das Erfolgs-ACK an den Gast gehoert zu diesem „beide“** — es wird erst nach
+dem bestaetigten gemeinsamen Commit gesendet, nicht schon nachdem die Bytes die Wand
+erreicht haben. Andernfalls entsteht genau die Kombination, aus der niemand mehr
+herausfindet: Board beschrieben, Gast erfolgreich quittiert, kanonische Playlist ohne
+Occurrence und ohne `landed` — und damit ohne Anlass fuer irgendeinen Retry.
+
+Wird der Commit abgelehnt, geht er bei einem Stop verloren oder trifft ein Handover, faellt
+die Antwort negativ aus. Die IDs bleiben retry-faehig: der Retry findet dieselbe Operation,
+der kanonische Serializer schreibt die Wand fuer sie kein zweites Mal, und die Liste
+gewinnt genau eine Occurrence. Bleibt ein Record dennoch offen — abgelehntes Command, Stop, Handover —, ist
 das unschaedlich und ausdruecklich nicht reparaturbeduerftig: ein offener Record erlaubt
 genau eines, naemlich dass ein Retry innerhalb des Zeitfensters dieselben IDs findet.
 Nach `INTENT_TTL_MS` ist ein Record ohnehin nicht mehr live, gelandet oder nicht, und ein
