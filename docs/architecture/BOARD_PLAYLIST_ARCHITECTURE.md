@@ -140,7 +140,7 @@ Normale Edits werden als kleine, typisierte Operationen versendet:
 | `SetCurrent(entryId)` | bestaetigten Board-Zustand festhalten | nur Controller; fehlende Entry-ID mutiert nichts |
 | `RecordRelayOperation(op)` | Ingress-Intention eines Gastes replizieren | nur Controller; idempotent je `(Fingerprint, Gast)` |
 | `SetRest(entryId, seconds)` | Pausenplan an Occurrence aendern | begrenzt und occurrence-adressiert |
-| `StartRest(nextEntryId, ...)` | Current-Wechsel und Pause koppeln | Controller stempelt Generation/Zeit |
+| `StartRest(nextEntryId, ...)` | Cursorwechsel und Pause koppeln (nie den bestaetigten Current) | Controller stempelt Generation/Zeit |
 | `Clear(generation)` | Liste atomar leeren | Generation verhindert Wiederholung |
 | `RestoreClear(generation)` | letzten Clear zuruecknehmen | gleiche IDs verhindern Duplikate |
 | `SetPendingProjection(...)` | physisches Problem sichtbar machen | nur Controller darf es kanonisieren |
