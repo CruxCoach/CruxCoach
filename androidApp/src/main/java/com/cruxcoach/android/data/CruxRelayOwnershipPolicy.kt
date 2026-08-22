@@ -49,6 +49,17 @@ sealed interface RelayOffer {
     /** Advertise, and accept up to [slots] guests. Always at least one. */
     data class Offer(val slots: Int) : RelayOffer
 
+    /**
+     * Keep serving the guests already here, but advertise nothing.
+     *
+     * The state that was missing, and its absence was destructive: with the
+     * one guaranteed slot in use there is no room for a *new* guest, which the
+     * policy reported as `NO_CAPACITY` — and the lifecycle then shut down the
+     * relay the connected guest was in the middle of using. Full and finished
+     * are not the same thing.
+     */
+    data class Serving(val guests: Int) : RelayOffer
+
     data class Suppressed(val reason: RelaySuppression) : RelayOffer
 }
 
@@ -205,8 +216,13 @@ object CruxRelayOwnershipPolicy {
             serverCeiling = serverCeiling,
             radioBudget = radioBudget,
         )
-        if (slots <= 0) return RelayOffer.Suppressed(RelaySuppression.NO_CAPACITY)
-        return RelayOffer.Offer(slots)
+        if (slots > 0) return RelayOffer.Offer(slots)
+        // No room for another guest. Whether that ends the relay depends on
+        // whether it is doing anything: a guest mid-session keeps it alive and
+        // merely un-advertised, and an empty relay with no room to grow has
+        // nothing to stay up for.
+        return if (activeRelayClients > 0) RelayOffer.Serving(activeRelayClients)
+        else RelayOffer.Suppressed(RelaySuppression.NO_CAPACITY)
     }
 
     /**
@@ -218,6 +234,9 @@ object CruxRelayOwnershipPolicy {
      */
     fun claimFor(snapshot: BoardCellSnapshot, offer: RelayOffer, health: RelayBoardLinkHealth):
         BoardCellRelayState = BoardCellRelayState(
+        // Only an advertised relay is one a member can reach right now. A
+        // serving-but-full one is running, and saying "offered" about it would
+        // send somebody at an advertisement that is not out.
         offered = offer is RelayOffer.Offer,
         guaranteedSlots = GUARANTEED_GUEST_SLOT,
         freeSlots = (offer as? RelayOffer.Offer)?.slots ?: 0,

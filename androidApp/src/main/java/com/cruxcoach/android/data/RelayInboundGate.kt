@@ -48,11 +48,11 @@ class RelayInboundGate(
     /**
      * One guest write, from arrival to wall.
      *
-     * Both ids are decided before the first byte goes out and are stable for
-     * as long as the operation is: the operation id is what the canonical
-     * serializer deduplicates writes by, and the entry id is the occurrence
-     * the shared playlist gains. Reusing them is what makes a retry a retry
-     * rather than a second climb.
+     * Both ids are decided before the first byte goes out, and they are not
+     * decided *here*: [RelayIngressIdentity] derives them from the write
+     * itself, so every controller in the cell computes the same pair. This
+     * class only tracks what has happened to the operation — which is state a
+     * device may lose without the operation losing its identity.
      */
     data class Operation(
         val operationId: String,
@@ -83,10 +83,13 @@ class RelayInboundGate(
      * Bounded, and deliberately not cleared when the relay restarts.
      *
      * The relay is torn down and rebuilt for reasons that have nothing to do
-     * with the guest — a peer joining the mesh, a moment of board recovery.
-     * Forgetting the operation across one of those is what let the same write
-     * come back as a second occurrence, so the ledger outlives the server and
-     * ages out on its own clock instead.
+     * with the guest — a peer joining the mesh, a moment of board recovery —
+     * so the ledger outlives the server and ages out on its own clock.
+     *
+     * It is an accelerator, not the identity: losing it (a process restart, a
+     * controller handover to a device that never saw the write) costs a
+     * duplicate board write at worst, because the ids are derived and the
+     * canonical playlist is consulted for what already landed.
      */
     private val ledger = object : LinkedHashMap<String, Record>(16, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Record>?) =
@@ -111,6 +114,16 @@ class RelayInboundGate(
      * the bytes were), which is what makes a retry recognisable as the same
      * operation. [newId] supplies fresh ids and is injectable for tests.
      */
+    /**
+     * @param operation the derived identity of this write; see
+     *   [RelayIngressIdentity]. Null only for a write that could not be
+     *   identified at all, which cannot become an occurrence anyway.
+     * @param canonicallyLanded the shared playlist already shows this
+     *   operation's occurrence on the wall. That is the ACK state a successor
+     *   after a handover has and its local ledger does not, and believing it
+     *   is what stops the wall being written a second time for a retry the
+     *   previous controller had already completed.
+     */
     fun evaluate(
         mode: RelayInboundClimbMode,
         climbUuid: String?,
@@ -118,16 +131,21 @@ class RelayInboundGate(
         climbBrand: BoardBrand?,
         connectedBrand: BoardBrand?,
         nowMs: Long,
-        fingerprint: String,
+        operation: Operation?,
         climbLayoutId: Long? = null,
         connectedLayoutId: Long? = null,
         connectedAngle: Int? = null,
-        newId: () -> String = { java.util.UUID.randomUUID().toString() },
+        canonicallyLanded: Boolean = false,
     ): Decision {
         evictExpired(nowMs)
-        if (climbUuid == null || angle == null) {
-            return Decision.ProjectNow(Operation(newId(), newId(), fingerprint))
+        if (climbUuid == null || angle == null || operation == null) {
+            return Decision.ProjectNow(
+                operation ?: Operation(
+                    "relay-op-unidentified-$nowMs", "rl-unidentified-$nowMs", "unidentified",
+                ),
+            )
         }
+        val fingerprint = operation.fingerprint
 
         // A climb the connected board cannot show is not a climb this board's
         // group should be told is on the wall. Brand is the coarsest of the
@@ -144,6 +162,13 @@ class RelayInboundGate(
             return Decision.Refused(Refusal.ANGLE_MISMATCH)
         }
 
+        // What the cell already knows outranks what this device happens to
+        // remember. A fresh gate — new process, new controller — would
+        // otherwise re-write a wall that is already showing this very climb.
+        if (canonicallyLanded && ledger[fingerprint]?.state != State.FAILED) {
+            ledger[fingerprint] = Record(operation, State.LANDED, nowMs)
+            return Decision.Refused(Refusal.DUPLICATE)
+        }
         ledger[fingerprint]?.let { record ->
             return when (record.state) {
                 // Still on its way, or it already failed: both are the same
@@ -161,9 +186,11 @@ class RelayInboundGate(
                         Decision.Refused(Refusal.DUPLICATE)
                     } else {
                         // Long enough after the fact to be somebody putting the
-                        // same climb up again on purpose. New intention, new
-                        // occurrence, new ids.
-                        start(mode, fingerprint, nowMs, newId)
+                        // same climb up again on purpose. The ids are the same
+                        // — they describe this write, and it is the same write
+                        // — so the occurrence it already has is re-lit rather
+                        // than duplicated.
+                        start(mode, operation, nowMs)
                     }
             }
         }
@@ -172,7 +199,7 @@ class RelayInboundGate(
         // wall can be used. Guest apps retry, and a retry storm would otherwise
         // be a stream of occurrences nobody put there.
         lastAcceptedAtMs?.let { if (nowMs - it < minIntervalMs) return Decision.Refused(Refusal.RATE_LIMITED) }
-        return start(mode, fingerprint, nowMs, newId)
+        return start(mode, operation, nowMs)
     }
 
     /** The write reached the wall. Anything identical for a while now is a re-send. */
@@ -198,12 +225,10 @@ class RelayInboundGate(
 
     private fun start(
         mode: RelayInboundClimbMode,
-        fingerprint: String,
+        operation: Operation,
         nowMs: Long,
-        newId: () -> String,
     ): Decision {
-        val operation = Operation(newId(), newId(), fingerprint)
-        ledger[fingerprint] = Record(operation, State.PENDING, nowMs)
+        ledger[operation.fingerprint] = Record(operation, State.PENDING, nowMs)
         lastAcceptedAtMs = nowMs
         return decisionFor(mode, operation)
     }

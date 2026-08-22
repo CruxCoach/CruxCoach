@@ -1366,13 +1366,26 @@ class SessionGattBridge(
     }
 
     /** Append one occurrence at the end, leaving the wall and selection alone. */
+    /**
+     * @param onTerminal the canonical verdict, once there is one: true only
+     *   when the controller committed the edit. Callers that need to know an
+     *   occurrence really exists — the relay, deciding whether a guest write
+     *   is done with — must wait for this rather than for the submit, which
+     *   only reports that a command went out.
+     */
     fun appendSharedPlaylistEntry(
         climbUuid: String,
         angle: Int,
         label: String = "add",
         entryId: String = BoardPlaylistEntryId.random(),
+        onTerminal: ((Boolean) -> Unit)? = null,
     ) {
-        submitPlaylistOps(label, BoardPlaylistOps.add(climbUuid, angle, entryId = entryId))
+        val started = submitPlaylistOps(
+            label,
+            BoardPlaylistOps.add(climbUuid, angle, entryId = entryId),
+            onTerminal = onTerminal?.let { callback -> { ack -> callback(ack.isCommitted()) } },
+        )
+        if (!started) onTerminal?.invoke(false)
     }
 
     /**
@@ -1388,16 +1401,33 @@ class SessionGattBridge(
         angle: Int,
         label: String = "adopt",
         entryId: String = BoardPlaylistEntryId.random(),
+        onTerminal: ((Boolean) -> Unit)? = null,
     ) {
-        val playlist = boardCellManager?.playlist() ?: return
+        val playlist = boardCellManager?.playlist()
+        if (playlist == null) {
+            onTerminal?.invoke(false)
+            return
+        }
         // Landed by construction: the guest's bytes are what lit the wall, and
         // the canonical write they caused has already been committed. The
         // caller's [entryId] is what makes a retry after a handover land on
         // the occurrence that exists instead of adding a second one.
         val ops = BoardPlaylistOps.completeLightNow(playlist, entryId, climbUuid, angle, landed = true)
-        if (ops.isEmpty()) return
-        submitPlaylistOps(label, ops)
+        if (ops.isEmpty()) {
+            // Nothing to change means it is already exactly as it should be.
+            onTerminal?.invoke(true)
+            return
+        }
+        val started = submitPlaylistOps(
+            label, ops,
+            onTerminal = onTerminal?.let { callback -> { ack -> callback(ack.isCommitted()) } },
+        )
+        if (!started) onTerminal?.invoke(false)
     }
+
+    /** A command the controller committed, and nothing weaker. */
+    private fun BoardCommandAck?.isCommitted(): Boolean =
+        this != null && status == BoardCommandStatus.COMMITTED
 
     /** The running rest is over — it ran out, or somebody skipped it. */
     fun endCanonicalRest() {

@@ -311,6 +311,17 @@ class CruxRelayOwnershipPolicyTest {
         )
     }
 
+    /** Only an advertised relay is one a member can reach; serving is not offered. */
+    @Test
+    fun `a full relay is not described as offered`() {
+        val claim = CruxRelayOwnershipPolicy.claimFor(
+            snapshot(), RelayOffer.Serving(1), RelayBoardLinkHealth.HEALTHY,
+        )
+
+        assertEquals(false, claim.offered)
+        assertEquals(0, claim.freeSlots)
+    }
+
     /** A guest already in the reserved slot is holding it, not doubling it. */
     @Test
     fun `the guaranteed slot is not offered twice`() {
@@ -326,7 +337,29 @@ class CruxRelayOwnershipPolicyTest {
     @Test
     fun `each guest that arrives shrinks the remaining offer`() {
         assertEquals(RelayOffer.Offer(2), evaluate(meshPeers = 2, relayClients = 2))
-        assertEquals(RelaySuppression.NO_CAPACITY, suppression(evaluate(meshPeers = 2, relayClients = 4)))
+    }
+
+    /**
+     * Full is not finished.
+     *
+     * With the last slot in use there is no room for a *new* guest — but the
+     * one already there is mid-session, and reporting this as a suppression is
+     * what made the lifecycle shut down the relay they were using. The
+     * advertisement goes; the relay stays.
+     */
+    @Test
+    fun `a full relay keeps serving the guests it has`() {
+        assertEquals(RelayOffer.Serving(4), evaluate(meshPeers = 2, relayClients = 4))
+        assertEquals(
+            RelayOffer.Serving(1),
+            evaluate(meshPeers = FipsMeshRuntime.MAX_DIRECT_CONNECTIONS, relayClients = 1),
+        )
+    }
+
+    /** An empty relay with no room to grow has nothing to stay up for. */
+    @Test
+    fun `a full radio with no guests is suppressed`() {
+        assertEquals(RelaySuppression.NO_CAPACITY, suppression(evaluate(meshPeers = 6)))
     }
 
     @Test

@@ -692,38 +692,69 @@ class SharedPlaylistMeshTest {
         return commitLocally(compose("adopt-${operation.operationId}", *ops.toTypedArray())) != null
     }
 
-    private fun guestGate() = com.cruxcoach.android.data.RelayInboundGate()
+    /**
+     * One relay host: its own gate, exactly as each device has its own
+     * `CruxRelayManager`. Nothing is shared between two of these but the cell.
+     */
+    private inner class RelayHost(val node: Node) {
+        val gate = com.cruxcoach.android.data.RelayInboundGate()
 
-    private fun com.cruxcoach.android.data.RelayInboundGate.operationFor(
-        nowMs: Long,
-        fingerprint: String = "guest-aa|4242",
-    ): com.cruxcoach.android.data.RelayInboundGate.Operation {
-        val decision = evaluate(
-            mode = com.cruxcoach.android.data.RelayInboundClimbMode.PROJECT_NOW,
-            climbUuid = "climb-guest",
-            angle = 40,
-            climbBrand = null,
-            connectedBrand = null,
-            nowMs = nowMs,
-            fingerprint = fingerprint,
-        )
-        return when (decision) {
-            is com.cruxcoach.android.data.RelayInboundGate.Decision.ProjectNow -> decision.operation
-            is com.cruxcoach.android.data.RelayInboundGate.Decision.AppendToEnd -> decision.operation
-            is com.cruxcoach.android.data.RelayInboundGate.Decision.Refused ->
-                fail("the guest write was refused: ${decision.reason}").let { error("unreachable") }
+        /**
+         * A guest write arriving at this host.
+         *
+         * [guestAddress] is passed and deliberately unused in the identity: a
+         * reconnecting guest gets a different BLE address, and the same person
+         * re-sending the same climb has to remain the same operation.
+         */
+        fun ingest(
+            climbUuid: String,
+            angle: Int,
+            framesHash: Long,
+            nowMs: Long,
+            guestAddress: String,
+        ): com.cruxcoach.android.data.RelayInboundGate.Decision {
+            val cellId = node.snapshot().cellId.value
+            val operation = com.cruxcoach.android.data.RelayIngressIdentity.of(
+                cellId = cellId, climbUuid = climbUuid, angle = angle, framesHash = framesHash,
+            )
+            require(guestAddress.isNotBlank())
+            val playlist = node.playlist()
+            val projection = node.snapshot().projection
+            val landed = playlist.currentEntryId == operation.entryId &&
+                playlist.entry(operation.entryId) != null &&
+                projection?.climbUuid == climbUuid && projection.angle == angle
+            return gate.evaluate(
+                mode = com.cruxcoach.android.data.RelayInboundClimbMode.PROJECT_NOW,
+                climbUuid = climbUuid,
+                angle = angle,
+                climbBrand = null,
+                connectedBrand = null,
+                nowMs = nowMs,
+                operation = operation,
+                canonicallyLanded = landed,
+            )
         }
+    }
+
+    private fun operationOf(
+        decision: com.cruxcoach.android.data.RelayInboundGate.Decision,
+    ): com.cruxcoach.android.data.RelayInboundGate.Operation = when (decision) {
+        is com.cruxcoach.android.data.RelayInboundGate.Decision.ProjectNow -> decision.operation
+        is com.cruxcoach.android.data.RelayInboundGate.Decision.AppendToEnd -> decision.operation
+        is com.cruxcoach.android.data.RelayInboundGate.Decision.Refused ->
+            fail("the guest write was refused: ${decision.reason}").let { error("unreachable") }
     }
 
     @Test fun `a guest write that lands is one occurrence for the whole cell`() = runTest {
         val network = mesh("controller", "nokia")
-        val host = network.node("controller")
-        val gate = guestGate()
+        val host = RelayHost(network.node("controller"))
         val writes = mutableListOf<String>()
 
-        val operation = gate.operationFor(nowMs = 1_000)
-        assertTrue(host.relayGuestWrite(operation, "climb-guest", 40, writes))
-        gate.markLanded(operation, 1_000)
+        val operation = operationOf(
+            host.ingest("climb-guest", 40, framesHash = 77L, nowMs = 1_000, guestAddress = "AA:01"),
+        )
+        assertTrue(host.node.relayGuestWrite(operation, "climb-guest", 40, writes))
+        host.gate.markLanded(operation, 1_000)
         network.deliver()
 
         network.assertConverged()
@@ -734,20 +765,25 @@ class SharedPlaylistMeshTest {
     }
 
     /**
-     * The case the ingress ledger exists for: the guest's app re-sends while
-     * the mesh is handing the board to somebody else, and the retry is served
-     * by a controller that never saw the first attempt.
+     * The case this whole mechanism exists for, with nothing lent between the
+     * two controllers: each has its own gate, the successor has never seen the
+     * write, and the guest reconnects from a different BLE address before
+     * re-sending. If the identity were minted locally — which it was — the
+     * successor would derive a second occurrence here.
      */
     @Test fun `a retry across a controller handover stays one occurrence`() = runTest {
         val network = mesh("controller", "nokia")
         val old = network.node("controller")
         val nokia = network.node("nokia")
-        val gate = guestGate()
+        val oldHost = RelayHost(old)
+        val newHost = RelayHost(nokia)
         val writes = mutableListOf<String>()
 
-        val operation = gate.operationFor(nowMs = 1_000)
+        val operation = operationOf(
+            oldHost.ingest("climb-guest", 40, framesHash = 77L, nowMs = 1_000, guestAddress = "AA:01"),
+        )
         assertTrue(old.relayGuestWrite(operation, "climb-guest", 40, writes))
-        gate.markLanded(operation, 1_000)
+        oldHost.gate.markLanded(operation, 1_000)
         network.deliver()
 
         old.coordinator.prepareHandover(board, "nokia", network.monotonic, "transfer-0001")
@@ -761,14 +797,21 @@ class SharedPlaylistMeshTest {
         network.deliver()
         assertEquals("nokia", nokia.snapshot().controllerId)
 
-        // The relay moved with the board, and the guest re-sent the same bytes.
-        // The ledger is not the controller's — it belongs to the write — so the
-        // new owner serves the retry under the ids the first one used.
-        gate.markFailed(operation, 2_000)
-        val retry = gate.operationFor(nowMs = 2_500)
-        assertEquals("a retry is the same operation", operation, retry)
-        assertTrue(nokia.relayGuestWrite(retry, "climb-guest", 40, writes))
-        network.deliver()
+        // The relay moved with the board. The guest reconnected — new address —
+        // and re-sent the same climb, and the successor's gate has never heard
+        // of any of it.
+        val retryDecision = newHost.ingest(
+            "climb-guest", 40, framesHash = 77L, nowMs = 2_500, guestAddress = "BB:02",
+        )
+        // The cell itself says it already landed, which is the ACK state the
+        // successor's own ledger cannot have: no second write to the wall.
+        assertEquals(
+            com.cruxcoach.android.data.RelayInboundGate.Decision.Refused(
+                com.cruxcoach.android.data.RelayInboundGate.Refusal.DUPLICATE,
+            ),
+            retryDecision,
+        )
+        assertEquals("the wall is written once, by one controller", 1, writes.size)
 
         network.assertConverged()
         network.nodes.values.forEach {
@@ -781,20 +824,65 @@ class SharedPlaylistMeshTest {
         }
     }
 
+    /**
+     * The same handover, but the first attempt never landed. Now the successor
+     * *must* act — and still under the identity the failed attempt had, so the
+     * result is one occurrence rather than one per controller.
+     */
+    @Test fun `a retry after a failed write is served by the new controller under the same ids`() = runTest {
+        val network = mesh("controller", "nokia")
+        val old = network.node("controller")
+        val nokia = network.node("nokia")
+        val oldHost = RelayHost(old)
+        val newHost = RelayHost(nokia)
+        val writes = mutableListOf<String>()
+
+        val first = operationOf(
+            oldHost.ingest("climb-guest", 40, framesHash = 77L, nowMs = 1_000, guestAddress = "AA:01"),
+        )
+        // The board refused it; nothing canonical happened.
+        oldHost.gate.markFailed(first, 1_100)
+
+        old.coordinator.prepareHandover(board, "nokia", network.monotonic, "transfer-0002")
+        network.deliver()
+        old.coordinator.sourceReleased(board, "transfer-0002", network.monotonic)
+        network.deliver()
+        nokia.coordinator.targetReady(board, "board-connection-proof")
+        network.deliver()
+        old.coordinator.completeHandover(board, "transfer-0002", network.monotonic)
+        nokia.coordinator.completeHandover(board, "transfer-0002", network.monotonic)
+        network.deliver()
+        assertEquals("nokia", nokia.snapshot().controllerId)
+
+        val retry = operationOf(
+            newHost.ingest("climb-guest", 40, framesHash = 77L, nowMs = 2_500, guestAddress = "BB:02"),
+        )
+        assertEquals("the successor derives the same identity", first, retry)
+        assertTrue(nokia.relayGuestWrite(retry, "climb-guest", 40, writes))
+        network.deliver()
+
+        network.assertConverged()
+        network.nodes.values.forEach {
+            assertEquals(listOf(first.entryId), it.playlist().entries.map { e -> e.entryId })
+            assertEquals(first.entryId, it.playlist().currentEntryId)
+        }
+    }
+
     /** Twice on the same controller is deduplicated before the wall is touched. */
     @Test fun `a retry on the same controller writes the board once`() = runTest {
         val network = mesh("controller", "nokia")
-        val host = network.node("controller")
-        val gate = guestGate()
+        val host = RelayHost(network.node("controller"))
         val writes = mutableListOf<String>()
 
-        val operation = gate.operationFor(nowMs = 1_000)
-        assertTrue(host.relayGuestWrite(operation, "climb-guest", 40, writes))
-        assertTrue(host.relayGuestWrite(operation, "climb-guest", 40, writes))
+        val operation = operationOf(
+            host.ingest("climb-guest", 40, framesHash = 77L, nowMs = 1_000, guestAddress = "AA:01"),
+        )
+        assertTrue(host.node.relayGuestWrite(operation, "climb-guest", 40, writes))
+        assertTrue(host.node.relayGuestWrite(operation, "climb-guest", 40, writes))
         network.deliver()
 
         assertEquals(1, writes.size)
         network.assertConverged()
-        assertEquals(listOf(operation.entryId), host.playlist().entries.map { it.entryId })
+        assertEquals(listOf(operation.entryId), host.node.playlist().entries.map { it.entryId })
     }
 }
