@@ -246,6 +246,7 @@ class CruxRelayManager(
         val offer = currentOffer()
         val required = offer is RelayOffer.Offer
         relayRequiredFlow.value = required
+        publishRelayClaim(offer)
         _state.update {
             it.copy(
                 enabled = required,
@@ -274,6 +275,9 @@ class CruxRelayManager(
                         )
                     }
                     relayServer.availableSlots = { currentRelaySlots() }
+                    // Answered on the GATT thread: only the board path, and
+                    // only what this device can know without asking anything.
+                    relayServer.admitWrite = { mayAcknowledgeInboundWrite() }
                     inboundGate.reset()
                     startRelay()
                 }
@@ -316,6 +320,22 @@ class CruxRelayManager(
                 }
             }
         }
+    }
+
+    /**
+     * Tells the cell what its relay is doing, so a member can say so too.
+     *
+     * Nothing here decides anything: canonical relay state is descriptive, the
+     * offer was already decided from `controllerId`, and a member reading it
+     * cannot become the owner by believing it. A device that is not the
+     * controller commits nothing — the coordinator refuses, and the reducer
+     * would refuse after it.
+     */
+    private suspend fun publishRelayClaim(offer: RelayOffer) {
+        val snapshot = boardCellManager.snapshot() ?: return
+        if (snapshot.controllerId != boardCellManager.localNodeId()) return
+        val claim = CruxRelayOwnershipPolicy.claimFor(snapshot, offer, boardHealth())
+        boardCellManager.publishRelayState(claim)
     }
 
     /** Slots the radio can actually spare right now, for the GATT server. */
@@ -399,27 +419,40 @@ class CruxRelayManager(
                     val climb = identified?.let {
                         runCatching { boardRepository.getClimbByUuid(it.climbUuid, it.angle) }.getOrNull()
                     }
+                    val now = System.currentTimeMillis()
                     val decision = inboundGate.evaluate(
                         mode = userPreferences.relayInboundClimbMode.first(),
                         climbUuid = identified?.climbUuid,
                         angle = identified?.angle,
                         climbBrand = climb?.let { BoardBrand.fromWire(it.boardBrand) },
                         connectedBrand = bleConnection.connectedBoardBrand.value,
-                        nowMs = System.currentTimeMillis(),
+                        nowMs = now,
+                        // Who sent it and what the bytes were. Re-chunking a
+                        // re-send does not change the hash, so a retry is
+                        // recognisable as the same operation.
+                        fingerprint = "${inbound.deviceAddress}|${inbound.climb.framesHash}",
+                        climbLayoutId = climb?.layoutId,
+                        connectedLayoutId = userPreferences.boardLayoutId.first().toLong(),
+                        connectedAngle = userPreferences.boardAngle.first(),
                     )
                     when (decision) {
                         is RelayInboundGate.Decision.Refused -> {
                             Log.i(TAG, "relayed climb refused: ${decision.reason}")
                             _state.update { it.copy(inboundRefusal = decision.reason) }
                         }
-                        RelayInboundGate.Decision.AppendToEnd -> {
+                        is RelayInboundGate.Decision.AppendToEnd -> {
                             // The wall keeps what it has; the climb joins the
-                            // end of the list like any other add.
+                            // end of the list like any other add — under the
+                            // occurrence id decided at ingress, so a repeat of
+                            // the same write finds it already there.
                             _state.update { it.copy(inboundRefusal = null) }
                             gattBridge.appendSharedPlaylistEntry(
-                                identified!!.climbUuid, identified.angle, "relay_append")
+                                identified!!.climbUuid, identified.angle, "relay_append",
+                                entryId = decision.operation.entryId,
+                            )
+                            inboundGate.markLanded(decision.operation, now)
                         }
-                        RelayInboundGate.Decision.ProjectNow -> {
+                        is RelayInboundGate.Decision.ProjectNow -> {
                             // The GATT layer has already told the guest's app
                             // the write succeeded. Without a usable path to the
                             // wall this is the last place that can decline to
@@ -427,12 +460,20 @@ class CruxRelayManager(
                             if (!mayAcknowledgeInboundWrite()) {
                                 Log.w(TAG, "relayed climb arrived without a usable board path")
                                 _state.update { it.copy(error = RelayError.BOARD_LOST) }
+                                // Not landed, so the guest's next attempt is a
+                                // retry of this operation rather than a climb
+                                // the list has never heard of.
+                                inboundGate.markFailed(decision.operation, now)
                                 return@collect
                             }
                             _state.update { it.copy(inboundRefusal = null) }
                             val result = boardCellManager.projectExternal(
                                 boardWrite = { bleConnection.sendRawChunks(inbound.climb.chunks) },
                                 identify = { identified },
+                                // The operation id decided at ingress. The
+                                // canonical serializer deduplicates by it, so a
+                                // repeat after a handover writes the wall once.
+                                commandId = decision.operation.operationId,
                             )
                             if (result is ProjectionResult.Committed || result is ProjectionResult.Duplicate) {
                                 advertiser.clearActiveClimb()
@@ -440,8 +481,12 @@ class CruxRelayManager(
                                 // the list records the occurrence rather than
                                 // re-encoding the climb a second time.
                                 identified?.let {
-                                    gattBridge.adoptProjectedEntry(it.climbUuid, it.angle, "relay_project")
+                                    gattBridge.adoptProjectedEntry(
+                                        it.climbUuid, it.angle, "relay_project",
+                                        entryId = decision.operation.entryId,
+                                    )
                                 }
+                                inboundGate.markLanded(decision.operation, now)
                                 identifyJob?.cancel()
                                 identifyJob = scope.launch {
                                     val projection = if (result is ProjectionResult.Committed) {
@@ -452,6 +497,7 @@ class CruxRelayManager(
                             } else {
                                 Log.w(TAG, "relayed climb was not canonically committed: $result")
                                 _state.update { it.copy(error = RelayError.FORWARD_FAILED) }
+                                inboundGate.markFailed(decision.operation, now)
                             }
                         }
                     }

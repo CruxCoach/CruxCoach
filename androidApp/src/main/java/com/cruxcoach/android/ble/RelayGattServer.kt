@@ -77,6 +77,18 @@ class RelayGattServer(private val context: Context) {
     private val _isRunning = MutableStateFlow(false)
     val isRunning: StateFlow<Boolean> = _isRunning.asStateFlow()
 
+    /**
+     * Whether a guest write can be delivered at all, answered synchronously.
+     *
+     * Called on the GATT callback thread, so it must not touch the database or
+     * suspend — it is the board-path question ("is there a wall on the other
+     * side of me right now"), not the catalogue question ("is this a climb
+     * this board can show"), which needs IO and happens after reassembly in
+     * [CruxRelayManager]. Null means admit, so a server nobody has configured
+     * behaves exactly as it did before.
+     */
+    var admitWrite: (() -> Boolean)? = null
+
     private val _climbs = MutableSharedFlow<RelayInboundClimb>(extraBufferCapacity = 64)
     val climbs: SharedFlow<RelayInboundClimb> = _climbs.asSharedFlow()
 
@@ -169,6 +181,25 @@ class RelayGattServer(private val context: Context) {
             preparedWrite: Boolean, responseNeeded: Boolean,
             offset: Int, value: ByteArray?
         ) {
+            // Truthfulness first, and the honest scope of it: an ATT write
+            // response says "received", never "the wall shows it". The board
+            // protocol the official app speaks has no application-level ACK at
+            // all — there is no frame to answer a climb with — so the delivery
+            // result cannot be reported here without holding the ATT queue open
+            // across a board round trip. What can be answered truthfully is
+            // whether this relay will deliver the write at all, and that is
+            // decided before the response rather than after it. A refusal is an
+            // ATT error, not a success the guest's app will believe.
+            val admitted = admitWrite?.invoke() ?: true
+            if (!admitted) {
+                Log.i(TAG, "refusing a write from ${device.address}: no usable board path")
+                synchronized(lock) { reassemblers[device.address]?.reset() }
+                if (responseNeeded) {
+                    gattServer?.sendResponse(
+                        device, requestId, BluetoothGatt.GATT_FAILURE, 0, null)
+                }
+                return
+            }
             if (characteristic.uuid == BoardBleUuids.DATA_TRANSFER_CHAR && value != null) {
                 // Preserve the exact write for protocols such as MoonBoard.
                 // CruxRelayManager selects this stream only when the physical
@@ -188,7 +219,9 @@ class RelayGattServer(private val context: Context) {
                 }
             }
             // The board char is write-only; the app usually writes WITHOUT
-            // response, but honour a with-response write too.
+            // response, but honour a with-response write too. Reassembly and
+            // admission are both above this, so a success here means the bytes
+            // were taken for delivery — no more, and no less.
             if (responseNeeded) {
                 gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null)
             }
