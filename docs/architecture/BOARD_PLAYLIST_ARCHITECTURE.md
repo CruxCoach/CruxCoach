@@ -340,6 +340,18 @@ ebenfalls.
 Board, Modell/Layout und Winkel sind gegen das reale Ziel zu pruefen. Dedupe wird erst
 terminal nach Erfolg, damit ein legitimer Retry nach Fehler moeglich bleibt.
 
+Eine Wiederholung eines bereits gelieferten Vorgangs ist ein **Erfolg**, keine Ablehnung:
+derselbe Gastvorgang erhaelt innerhalb des Retry-Fensters dieselben IDs und erneut ein
+Erfolgs-ACK — auch nach Adresswechsel und Controller-Handover, und ohne zweiten Board-Write
+oder zweite Occurrence. Ein Fehler an dieser Stelle laedt genau die widerspruechliche
+Zweithandlung ein, die Exactly-once ausschliessen soll.
+
+Board-Write und ATT-Transaktion teilen eine Frist. Laeuft sie ab, beginnt kein neuer
+Board-Write mehr; ein bereits laufender wird nicht abgebrochen — ein halb geschriebener
+Climb ist ein Zustand, den das Board-Protokoll nicht zuruecknehmen kann — und wird
+kanonisch festgehalten, weil die Wand ihn tatsaechlich zeigt. Der Gast sieht dann einen
+Fehler, und sein Retry erhaelt den Erfolg.
+
 Der terminale Uebergang (`landed = true`) wird **im selben Command wie die Occurrence**
 committet: Liste und „Anfrage erledigt“ sind ein controller-sequenzierter Schritt, beide
 oder keiner. Bleibt ein Record dennoch offen — abgelehntes Command, Stop, Handover —, ist
