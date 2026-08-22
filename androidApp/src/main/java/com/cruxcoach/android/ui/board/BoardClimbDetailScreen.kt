@@ -19,6 +19,7 @@ import androidx.compose.material.icons.automirrored.filled.CallSplit
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.BluetoothSearching
 import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.BluetoothConnected
 import androidx.compose.material.icons.filled.Check
@@ -1817,7 +1818,7 @@ private fun BoardDetailBottomActions(
  * They look different for that reason.
  */
 @Composable
-private fun BoardDetailActionDock(
+internal fun BoardDetailActionDock(
     loggingEnabled: Boolean,
     lamp: BoardDetailLampMode,
     reachability: BoardReachability,
@@ -1845,6 +1846,22 @@ private fun BoardDetailActionDock(
         )
         when (lamp) {
             BoardDetailLampMode.HIDDEN -> Unit
+            // Visible, in its place, and deliberately inert: the join is in
+            // progress and there is nothing to send yet. The tap still opens
+            // the status sheet, so somebody watching a join that is not
+            // finishing has somewhere to go.
+            BoardDetailLampMode.CONNECTING -> DockAction(
+                modifier = Modifier.weight(1.12f).testTag("boarddetail_connecting_board_button"),
+                onClick = onResolveBoard,
+                enabled = true,
+                icon = Icons.Default.BluetoothSearching,
+                label = stringResource(R.string.board_detail_dock_connecting),
+                description = stringResource(R.string.board_detail_dock_connecting_description),
+                container = MaterialTheme.colorScheme.surfaceVariant,
+                content = MaterialTheme.colorScheme.onSurfaceVariant,
+                border = MaterialTheme.colorScheme.outlineVariant,
+                busy = true,
+            )
             BoardDetailLampMode.CONNECT -> DockAction(
                 modifier = Modifier.weight(1.12f).testTag("boarddetail_connect_board_button"),
                 onClick = onResolveBoard,

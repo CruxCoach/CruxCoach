@@ -424,8 +424,36 @@ class BoardDeliveryPolicyTest {
         )
     }
 
+    /**
+     * A join in progress keeps the middle position and names what is going on.
+     *
+     * It used to hide the action outright, which loses the status *and* resizes
+     * the two actions beside it under the user's thumb mid-tap — the harm the
+     * disabled-not-removed rule elsewhere on this dock exists to prevent. The
+     * contract asks for a visible, non-sendable state whose tap opens the
+     * status sheet.
+     */
     @Test
-    fun `a joining session shows no board action at all`() {
+    fun `a joining session keeps a visible connecting action`() {
+        val decision = BoardDeliveryPolicy.resolve(
+            sendMode = BoardSendMode.EXPLICIT,
+            sessionRole = SessionRole.NONE,
+            sessionConnecting = true,
+            boardConnected = false,
+            hasDirectPayload = true,
+        )
+
+        assertFalse("nothing may be sent while joining", decision.showAction)
+        assertEquals(BoardDeliveryTarget.NONE, decision.target)
+        assertEquals(
+            BoardDetailLampMode.CONNECTING,
+            lamp(decision, reachability = BoardReachability.NO_BOARD, boardOwnedByOthers = true),
+        )
+    }
+
+    /** And it stays a connecting state whatever the board path looks like. */
+    @Test
+    fun `a joining session connects rather than offering to connect a board`() {
         val decision = BoardDeliveryPolicy.resolve(
             sendMode = BoardSendMode.EXPLICIT,
             sessionRole = SessionRole.NONE,
@@ -435,8 +463,9 @@ class BoardDeliveryPolicyTest {
         )
 
         assertEquals(
-            BoardDetailLampMode.HIDDEN,
-            lamp(decision, reachability = BoardReachability.NO_BOARD, boardOwnedByOthers = true),
+            "the session owns delivery; offering a direct connect would be a second route",
+            BoardDetailLampMode.CONNECTING,
+            lamp(decision, reachability = BoardReachability.CONNECTING, boardOwnedByOthers = true),
         )
     }
 }

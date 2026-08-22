@@ -39,6 +39,17 @@ internal enum class BoardDetailLampMode {
     SHARED_QUEUE,
     /** Nothing is connected yet, and this climb could go on a wall. */
     CONNECT,
+
+    /**
+     * A shared session is joining; delivery belongs to it in a moment.
+     *
+     * Visible and in the middle position, because that is where the answer to
+     * "can I put this on the wall" lives — and not sendable, because nothing
+     * can be sent yet. Hiding it left the dock a button short mid-join, which
+     * both loses the status and resizes the two actions beside it under the
+     * user's thumb.
+     */
+    CONNECTING,
 }
 
 /**
@@ -102,8 +113,10 @@ internal object BoardDeliveryPolicy {
         }
 
         // Joining has already handed ownership to the shared-session flow, but
-        // the participant GATT command channel is not ready yet. Hide both
-        // actions so a tap cannot become a local queue mutation or direct send.
+        // the participant GATT command channel is not ready yet. There is
+        // nothing to send — a tap must not become a local queue mutation or a
+        // direct send — but the position stays, occupied by the state itself;
+        // see [BoardDetailLampMode.CONNECTING].
         if (sessionConnecting) {
             return BoardDeliveryDecision(
                 target = BoardDeliveryTarget.NONE,
@@ -159,7 +172,10 @@ internal object BoardDeliveryPolicy {
         decision.showAction && decision.target == BoardDeliveryTarget.SHARED_QUEUE ->
             BoardDetailLampMode.SHARED_QUEUE
         decision.showAction -> BoardDetailLampMode.LIGHT
-        boardOwnedByOthers -> BoardDetailLampMode.HIDDEN
+        // Joining, so nothing is sendable — but the dock says so rather than
+        // going quiet. Its tap opens the status sheet, which is the matrix's
+        // "no valid board path → contextual recovery action".
+        boardOwnedByOthers -> BoardDetailLampMode.CONNECTING
         // Nothing to send is the one case with no useful button: connecting a
         // board would not help a climb that has no holds to put on it.
         !hasDirectPayload -> BoardDetailLampMode.HIDDEN
