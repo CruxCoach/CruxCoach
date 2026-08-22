@@ -13,3 +13,9 @@ Language-neutral assets such as diagrams and screenshots remain in shared direct
 
 - [Deutsch](de/FIPS_MESH_ARCHITECTURE_COMPARISON.md)
 - [English](en/FIPS_MESH_ARCHITECTURE_COMPARISON.md)
+
+## Technical architecture records
+
+- [Playlist, board projection and Quantum layers](architecture/README.md) — normative
+  German-language architecture record for the integrated playlist UX branch, including
+  the shared playlist domain, Quantum's local multi-layer model and UI/UX principles.
