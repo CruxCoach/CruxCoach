@@ -42,7 +42,10 @@ class BrowserOriginFilterTest {
         // source. Distinct provenance from both kilter and cruxcoach.
         uuid = "uuid-boardsesh", origin = "boardsesh", source = "boardsesh",
     )
-    private val all = listOf(nativeKilter, cruxcoachPublished, legacyDraft, freshDraft, boardSesh)
+    private val nativeQuantum = TestClimb.stats(
+        uuid = "uuid-quantum", origin = "quantum", source = "quantum",
+    )
+    private val all = listOf(nativeKilter, nativeQuantum, cruxcoachPublished, legacyDraft, freshDraft, boardSesh)
 
     @Test
     fun `ALL passes everything through`() {
@@ -78,9 +81,9 @@ class BrowserOriginFilterTest {
     }
 
     @Test
-    fun `KILTER bucket includes only native Kilter climbs`() {
+    fun `official bucket includes native Kilter and Quantum climbs`() {
         val out = BrowserOriginFilter.apply(all, OriginFilter.KILTER)
-        assertEquals(listOf(nativeKilter), out)
+        assertEquals(listOf(nativeKilter, nativeQuantum), out)
     }
 
     @Test

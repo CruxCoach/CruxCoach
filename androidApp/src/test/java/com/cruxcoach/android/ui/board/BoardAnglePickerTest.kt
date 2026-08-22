@@ -89,6 +89,18 @@ class BoardAnglePickerTest {
     }
 
     @Test
+    fun `Quantum uses only the selected model catalogue angles`() {
+        val supported = listOf(15, 25, 30, 35, 40, 45, 50, 55, 60)
+        assertEquals(
+            supported,
+            BoardAnglePicker.chipsFor(BoardBrand.QUANTUM, 9101, supported),
+        )
+        val index = BoardAnglePicker.sliderIndex(supported, 40)
+        assertEquals(4, index)
+        assertEquals(40, BoardAnglePicker.angleAtSliderIndex(supported, index))
+    }
+
+    @Test
     fun `Kilter has no chips so the slider is used`() {
         val chips = BoardAnglePicker.chipsFor(
             brand = BoardBrand.KILTER,

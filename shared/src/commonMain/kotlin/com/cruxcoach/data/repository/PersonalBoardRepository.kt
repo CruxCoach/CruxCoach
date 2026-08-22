@@ -88,6 +88,10 @@ interface PersonalBoardRepository {
     )
 
     fun deleteBid(uuid: String)
+    /** Atomically replaces one consolidated open quick-log bid with its send. */
+    fun promoteQuickBidToSend(send: QuickLogSendInput)
+    /** Atomically restores the open bid when the promoted send is undone. */
+    fun restoreQuickBidFromSend(bid: QuickLogBidInput)
     fun getUserBidDifficulties(since: String): List<Double>
 
     fun getUnsyncedBids(): List<RawBid>
@@ -148,6 +152,14 @@ interface PersonalBoardRepository {
     /** All ignored climb UUIDs — loaded once for the browser's client-side
      *  always-on ignore filter. */
     fun getIgnoredClimbUuids(): Set<String>
+
+    // ── Private climb notes ────────────────────────────────
+
+    /** Returns the user's encrypted, device-local note for this climb. */
+    fun getClimbNote(climbUuid: String): String?
+
+    /** Stores a trimmed note, or removes it when [note] is blank. */
+    fun saveClimbNote(climbUuid: String, note: String)
 
     fun getClimbListEntriesRaw(): List<RawClimbListEntry>
     fun getListPlaybackStepsRaw(): List<RawListPlaybackStep>
@@ -261,3 +273,32 @@ interface PersonalBoardRepository {
     fun deleteUserBoardDataForBrands(brands: Set<String>, listEntryClimbUuids: Collection<String>)
     fun runInTransaction(block: () -> Unit)
 }
+
+data class QuickLogBidInput(
+    val uuid: String,
+    val climbUuid: String,
+    val angle: Long,
+    val isMirror: Boolean,
+    val bidCount: Long,
+    val climbedAt: String,
+    val climbName: String,
+    val difficultyAverage: Double?,
+    val boardBrand: String,
+    val layoutId: Long?,
+)
+
+data class QuickLogSendInput(
+    val uuid: String,
+    val climbUuid: String,
+    val angle: Long,
+    val isMirror: Boolean,
+    val bidCount: Long,
+    val difficulty: Long?,
+    val climbedAt: String,
+    val climbName: String,
+    val difficultyAverage: Double?,
+    val climbFrames: String,
+    val framesCount: Long,
+    val boardBrand: String,
+    val layoutId: Long?,
+)

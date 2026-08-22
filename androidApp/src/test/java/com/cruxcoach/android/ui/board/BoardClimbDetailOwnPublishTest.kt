@@ -4,6 +4,9 @@ import android.content.Context
 import androidx.lifecycle.SavedStateHandle
 import app.cash.turbine.test
 import com.cruxcoach.android.ble.BoardBleConnection
+import com.cruxcoach.android.ble.BoardLayerManager
+import com.cruxcoach.android.ble.BoardLayerState
+import com.cruxcoach.android.ble.QuantumControllerState
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.community.OwnKilterClimbPublisher
@@ -58,6 +61,7 @@ class BoardClimbDetailOwnPublishTest {
     private val personalBoardRepo = mockk<PersonalBoardRepository>(relaxed = true)
     private val userPreferences = mockk<UserPreferences>(relaxed = true)
     private val bleConnection = mockk<BoardBleConnection>(relaxed = true)
+    private val boardLayerManager = mockk<BoardLayerManager>(relaxed = true)
     private val sessionManager = mockk<BoardSessionManager>(relaxed = true)
     private val zoneManager = mockk<IntensityZoneManager>(relaxed = true)
     private val climbAdvertiser = mockk<ClimbBleAdvertiser>(relaxed = true)
@@ -91,6 +95,8 @@ class BoardClimbDetailOwnPublishTest {
         every { bleConnection.connectionState } returns
             MutableStateFlow(ConnectionState.DISCONNECTED)
         every { bleConnection.connectedBoardDescriptor } returns MutableStateFlow(null)
+        every { bleConnection.quantumControllerState } returns MutableStateFlow(QuantumControllerState())
+        every { boardLayerManager.state } returns MutableStateFlow(BoardLayerState())
         every { sessionManager.restTimer } returns MutableStateFlow(RestTimerState())
         every { bleShareManager.uiState } returns MutableStateFlow(BleShareUiState())
         every { cruxRelayManager.state } returns MutableStateFlow(CruxRelayState())
@@ -135,6 +141,7 @@ class BoardClimbDetailOwnPublishTest {
             personalBoardRepo = personalBoardRepo,
             userPreferences = userPreferences,
             bleConnection = bleConnection,
+            boardLayerManager = boardLayerManager,
             sessionManager = sessionManager,
             zoneManager = zoneManager,
             climbAdvertiser = climbAdvertiser,

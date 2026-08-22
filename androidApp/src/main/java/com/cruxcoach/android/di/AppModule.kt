@@ -46,6 +46,7 @@ import com.cruxcoach.android.data.BoardSyncManager
 import com.cruxcoach.android.data.CatalogueRevisionSource
 import com.cruxcoach.android.data.AuroraCatalogueSync
 import com.cruxcoach.android.data.MoonBoardCatalogueSync
+import com.cruxcoach.android.data.QuantumCatalogueSync
 import com.cruxcoach.android.data.blossom.BlossomSyncManager
 import com.cruxcoach.android.data.NearbyPresenceManager
 import com.cruxcoach.android.data.PlaylistPlaybackCoordinator
@@ -323,6 +324,7 @@ object AppModule {
         boardLocationRepository: BoardLocationRepository,
         moonBoardCatalogueSync: MoonBoardCatalogueSync,
         auroraCatalogueSync: AuroraCatalogueSync,
+        quantumCatalogueSync: QuantumCatalogueSync,
         integrityVerifier: com.cruxcoach.android.updater.IntegrityVerifier,
     ): BoardSyncManager {
         return BoardSyncManager(
@@ -335,6 +337,7 @@ object AppModule {
             boardLocationRepository,
             moonBoardCatalogueSync,
             auroraCatalogueSync,
+            quantumCatalogueSync,
             integrityVerifier,
         )
     }

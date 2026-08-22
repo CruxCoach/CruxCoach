@@ -896,6 +896,17 @@ class BoardCellManager @Inject constructor(
 
     fun isLocalController(): Boolean = snapshot()?.controllerId == activeNodeId
 
+    /**
+     * Whether this device is in a board's group, and therefore whether that
+     * group's shared list owns the wall.
+     *
+     * Membership *is* participation (see [BoardCellPlatformPolicy]), so this
+     * is the same predicate the Board Playlist screen renders from — one
+     * answer, not two that can drift apart.
+     */
+    fun localParticipatesInSharedPlaylist(): Boolean =
+        snapshot()?.let { activeNodeId in it.members } == true
+
     fun sendProjectionRequest(
         projection: BoardProjection,
         commandId: String = UUID.randomUUID().toString(),

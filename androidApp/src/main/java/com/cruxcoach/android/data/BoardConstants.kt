@@ -223,6 +223,7 @@ object BoardConstants {
         BoardBrand.KILTER -> true
         BoardBrand.TOUCHSTONE,
         BoardBrand.MOONBOARD,
+        BoardBrand.QUANTUM,
         BoardBrand.AURORA,
         BoardBrand.TWELVECLIMB -> false
     }

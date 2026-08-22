@@ -317,12 +317,13 @@ class FakeBoardRepository : BoardRepository {
 
     override fun getAllFramesForHeatmap(
         angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double,
-        minAscensionists: Int, climbType: ClimbTypeFilter
+        minAscensionists: Int, climbType: ClimbTypeFilter, hsmExcludedMask: Long
     ): List<ClimbFrameRow> {
         return climbs.filter { climb ->
             val diff = climb.difficultyAverage ?: return@filter false
             diff in minDifficulty..maxDifficulty &&
                 (climb.ascensionistCount ?: 0) >= minAscensionists &&
+                (climb.hsm and hsmExcludedMask) == 0L &&
                 climb.frames.isNotEmpty()
         }.map { ClimbFrameRow(it.uuid, it.frames) }
     }
@@ -477,5 +478,10 @@ class FakeBoardRepository : BoardRepository {
         layoutId: Int, boardBrand: String, angle: Int, minDifficulty: Double, maxDifficulty: Double,
         minAscensionists: Int, climbType: com.cruxcoach.data.repository.ClimbTypeFilter,
         selProductSizeId: Int, hsmExcludedMask: Long, showUngraded: Boolean,
+    ): List<com.cruxcoach.data.repository.ClimbWithStats> = emptyList()
+    override fun getQuantumOfficialClimbs(
+        layoutId: Int, angle: Int, minDifficulty: Double, maxDifficulty: Double,
+        minAscensionists: Int, climbType: com.cruxcoach.data.repository.ClimbTypeFilter,
+        hsmExcludedMask: Long, showUngraded: Boolean,
     ): List<com.cruxcoach.data.repository.ClimbWithStats> = emptyList()
 }

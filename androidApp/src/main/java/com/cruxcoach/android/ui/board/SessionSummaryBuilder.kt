@@ -49,7 +49,7 @@ object SessionSummaryBuilder {
             hardestSendName = hardestSend?.climbName,
             flashCount = flashCount,
             totalSends = sends.size,
-            totalAttempts = ascents.count { !it.isSend },
+            totalAttempts = ascents.sumOf { it.bidCount.coerceAtLeast(1L) }.toInt(),
             uniqueClimbs = uniqueClimbs,
             gradeDistribution = gradePyramid
         )

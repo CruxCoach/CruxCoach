@@ -692,7 +692,9 @@ private fun BoardCatalogueStatusList(
 ) {
     val boards = remember {
         listOf(BoardBrand.KILTER, BoardBrand.MOONBOARD) +
-            BoardBrand.entries.filter { it.usesAuroraProtocol && it != BoardBrand.KILTER }
+            BoardBrand.entries.filter {
+                it.isInteractive && it != BoardBrand.KILTER && it != BoardBrand.MOONBOARD
+            }
     }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         val sharedPhasePending = localShareInProgress &&

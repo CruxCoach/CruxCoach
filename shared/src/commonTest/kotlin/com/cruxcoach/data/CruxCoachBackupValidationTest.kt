@@ -88,8 +88,14 @@ class CruxCoachBackupValidationTest {
     @Test
     fun rejects_ascent_with_out_of_range_layout_id() {
         assertFailsWith<IllegalArgumentException> {
-            CruxCoachBackup.preview(ascent(layoutId = 9_999))
+            CruxCoachBackup.preview(ascent(layoutId = 100_001))
         }
+    }
+
+    @Test
+    fun accepts_ascent_with_quantum_board_context() {
+        val preview = CruxCoachBackup.preview(ascent(boardBrand = "quantum", layoutId = 9_101))
+        assertEquals(1, preview.boardAscents)
     }
 
     @Test

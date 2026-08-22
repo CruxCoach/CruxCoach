@@ -17,11 +17,13 @@ import androidx.compose.material.icons.automirrored.filled.CallSplit
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Bluetooth
-import androidx.compose.material.icons.filled.BluetoothConnected
 import androidx.compose.material.icons.filled.CellTower
+import androidx.compose.material.icons.filled.BluetoothConnected
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.MoreVert
@@ -53,16 +55,17 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.cruxcoach.android.ble.BoardProjectionPolicy
 import com.cruxcoach.android.ble.ConnectionState
+import com.cruxcoach.android.ble.BoardLayerManager
+import com.cruxcoach.android.ble.BoardLayerStatus
+import com.cruxcoach.android.ble.BoardLayerConflictPolicy
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.LedHoldColors
-import com.cruxcoach.android.data.SessionRole
 import com.cruxcoach.android.ui.common.BleStatusArea
 import com.cruxcoach.android.ui.common.LocalSessionQueueManager
 import com.cruxcoach.android.ui.fips.FipsMeshViewModel
@@ -79,6 +82,7 @@ import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.util.ClimbShareLink
 import com.cruxcoach.android.util.PerfLogger
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 internal fun isBoardGroupActive(cellId: String?, localIsMember: Boolean): Boolean =
@@ -380,12 +384,98 @@ fun BoardClimbDetailScreen(
         viewModel.consumeOwnPublishFeedback()
     }
 
+    LaunchedEffect(state.quickLogFeedback?.eventId) {
+        val feedback = state.quickLogFeedback ?: return@LaunchedEffect
+        val result = snackbarHostState.showSnackbar(
+            resources.getString(
+                if (feedback.isSend) R.string.board_detail_quick_send_logged
+                else R.string.board_detail_quick_attempt_logged,
+            ),
+            actionLabel = resources.getString(R.string.climb_creator_undo),
+            withDismissAction = true,
+        )
+        if (result == SnackbarResult.ActionPerformed) viewModel.undoQuickLog()
+        else viewModel.consumeQuickLogFeedback()
+    }
+
+    LaunchedEffect(state.quickLogFailed) {
+        if (!state.quickLogFailed) return@LaunchedEffect
+        snackbarHostState.showSnackbar(resources.getString(R.string.board_detail_quick_log_failed))
+        viewModel.consumeQuickLogFailure()
+    }
+
+    LaunchedEffect(state.personalNoteSaveStatus, state.climb?.uuid) {
+        if (state.personalNoteSaveStatus != PersonalNoteSaveStatus.FAILED) return@LaunchedEffect
+        val result = snackbarHostState.showSnackbar(
+            resources.getString(R.string.board_detail_note_save_failed),
+            actionLabel = resources.getString(R.string.action_retry),
+            withDismissAction = true,
+        )
+        if (result == SnackbarResult.ActionPerformed) {
+            viewModel.savePersonalNote(state.personalNoteDraft)
+        }
+    }
+
     // Single Scaffold — shared across all pager pages
     val bleConnected = state.ble.connectionState.let {
         it == ConnectionState.CONNECTED || it == ConnectionState.SENDING
     } || bleConnState.activeBoardCellId != null
+
+    // One delivery decision for the whole screen, taken by the one thing
+    // allowed to take it. The dock renders it; it does not re-derive it from
+    // a connection flag, which is how a lamp ends up on a board a group is
+    // already using.
+    val hasDirectPayload = state.climb?.let { climb ->
+        BoardProjectionPolicy.hasSendablePayload(
+            brand = climb.brand,
+            holdCount = state.holds.size,
+            frames = climb.frames,
+        )
+    } == true
+    val deliveryDecision = BoardDeliveryPolicy.resolve(
+        sendMode = state.boardSendMode,
+        sessionRole = detailQueueState.role,
+        sessionConnecting = detailQueueState.isConnecting,
+        boardConnected = state.ble.connectionState == ConnectionState.CONNECTED ||
+            state.ble.connectionState == ConnectionState.SENDING,
+        hasDirectPayload = hasDirectPayload,
+        connectedViaRelay = state.ble.connectedViaRelay,
+        connectedViaMesh = state.ble.connectedViaMesh,
+        boardCellActive = boardGroupActive,
+    )
+    // A lamp that is not there is only diagnosable from the inputs — the
+    // decision itself says nothing about WHY it came out NONE.
+    LaunchedEffect(deliveryDecision, state.playback.countdownSeconds) {
+        Log.d(
+            "CruxBLE/Delivery",
+            "target=${deliveryDecision.target} show=${deliveryDecision.showAction} " +
+                "auto=${deliveryDecision.dispatchAutomatically} mode=${state.boardSendMode} " +
+                "role=${detailQueueState.role} connecting=${detailQueueState.isConnecting} " +
+                "conn=${state.ble.connectionState} group=$boardGroupActive " +
+                "holds=${state.holds.size} brand=${state.climb?.brand} " +
+                "relay=${state.ble.connectedViaRelay}/${state.ble.hostedRelayClientCount} " +
+                "countdown=${state.playback.countdownSeconds}"
+        )
+    }
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
+        bottomBar = {
+            // Same gate as the page body below: over an error card or a
+            // logbook-only stub there is no climb to act on, and a dock
+            // offering to light one would be offering nothing.
+            if (state.climb != null && state.error == null && state.logbookOnly == null) {
+                BoardDetailBottomActions(
+                    state = state,
+                    decision = deliveryDecision,
+                    hasDirectPayload = hasDirectPayload,
+                    boardOwnedByOthers = boardGroupActive || detailQueueState.isConnecting,
+                    onAttempt = { viewModel.quickLogAscent(isSend = false) },
+                    onLight = viewModel::deliverClimb,
+                    onConnectBoard = { showBleSheet = true },
+                    onSend = { viewModel.quickLogAscent(isSend = true) },
+                )
+            }
+        },
         topBar = {
             Column {
                 TopAppBar(
@@ -399,12 +489,6 @@ fun BoardClimbDetailScreen(
                         }
                     },
                     actions = {
-                        // Five primary actions stay direct: Favorite, Add-to-
-                        // list, Rest timer, BLE, Log-ascent (the orange
-                        // Check). Creator-side actions (Fork, Edit, Delete)
-                        // live in a single ⋮ overflow at the end so the
-                        // action row stops growing past six items + back-
-                        // arrow on narrow phones.
                         IconButton(
                             onClick = { viewModel.toggleFavorite() },
                             modifier = Modifier.testTag("boarddetail_favorite_button")
@@ -431,6 +515,18 @@ fun BoardClimbDetailScreen(
                             )
                         }
                         IconButton(
+                            onClick = { showBleSheet = true },
+                            modifier = Modifier.testTag("boarddetail_ble_connect_button"),
+                        ) {
+                            Icon(
+                                if (bleConnected) Icons.Default.BluetoothConnected else Icons.Default.Bluetooth,
+                                contentDescription = stringResource(
+                                    if (bleConnected) R.string.cd_board_connected else R.string.cd_board_connect,
+                                ),
+                                tint = if (bleConnected) SuccessGreen else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        IconButton(
                             onClick = { showRestTimerDialog = true },
                             modifier = Modifier.testTag("boarddetail_rest_timer_button")
                         ) {
@@ -439,43 +535,6 @@ fun BoardClimbDetailScreen(
                                 contentDescription = stringResource(R.string.cd_rest_timer),
                                 tint = if (isRestTimerRunning) OrangeAccent
                                        else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        IconButton(
-                            onClick = {
-                                // Always open the sheet — it handles permission +
-                                // BT-disabled flows and auto-connects to a single
-                                // board (the existing CONNECTED-collector auto-
-                                // fires the send). The idle-disconnect timer
-                                // (Settings → BLE) tears the connection down
-                                // afterwards, replacing the old Quick-Send macro.
-                                showBleSheet = true
-                            },
-                            modifier = Modifier.testTag("boarddetail_ble_connect_button")
-                        ) {
-                            Icon(
-                                if (bleConnected) Icons.Default.BluetoothConnected else Icons.Default.Bluetooth,
-                                contentDescription = stringResource(if (bleConnected) R.string.cd_board_connected else R.string.cd_board_connect),
-                                tint = if (bleConnected) SuccessGreen else MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                        // Logging needs the catalogue row: AscentLogger.save()
-                        // returns on a null climb. Left enabled, the dialog
-                        // opened, took the form and then ate "Save" without
-                        // closing — an app that looks frozen. Same gate as
-                        // Remix below; the body already says why the climb is
-                        // only half here.
-                        val canLogAscent = state.climb != null
-                        IconButton(
-                            onClick = { viewModel.showAscentDialog() },
-                            enabled = canLogAscent,
-                            modifier = Modifier.testTag("boarddetail_log_button")
-                        ) {
-                            Icon(
-                                Icons.Default.Check,
-                                contentDescription = stringResource(R.string.cd_log_ascent),
-                                tint = if (canLogAscent) OrangeAccent
-                                       else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
                             )
                         }
                         // Owner gate for Edit/Delete inside the overflow.
@@ -512,6 +571,33 @@ fun BoardClimbDetailScreen(
                                 expanded = moreExpanded,
                                 onDismissRequest = { moreExpanded = false },
                             ) {
+                                // The dock logs the two answers somebody has
+                                // while standing under the wall. Quality, a
+                                // grade opinion, a benchmark flag and a comment
+                                // are a different, slower act — but they are
+                                // still the same log, so they stay one tap away
+                                // instead of only being reachable by logging
+                                // first and then editing what you just logged.
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.board_detail_log_ascent_detailed)) },
+                                    leadingIcon = {
+                                        Icon(
+                                            Icons.Default.EditNote,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    },
+                                    // AscentLogger.save() returns on a null
+                                    // climb: the dialog would take the form and
+                                    // then eat Save without closing.
+                                    enabled = state.climb != null,
+                                    onClick = {
+                                        moreExpanded = false
+                                        viewModel.showAscentDialog()
+                                    },
+                                    modifier = Modifier.testTag("boarddetail_log_button"),
+                                )
+                                HorizontalDivider()
                                 // Mirror toggle — a display-only left/right flip
                                 // of the climb. Only shown for layouts that are
                                 // actually mirrorable (Aurora `is_mirrored`):
@@ -828,8 +914,6 @@ fun BoardClimbDetailScreen(
                 ClimbDetailPageContent(
                     state = pageState,
                     isSharingEnabled = isSharingEnabled,
-                    sessionRole = detailQueueState.role,
-                    sessionConnecting = detailQueueState.isConnecting,
                     boardGroupActive = boardGroupActive,
                     viewModel = viewModel,
                     onNavigateBack = onNavigateBack,
@@ -841,8 +925,6 @@ fun BoardClimbDetailScreen(
             ClimbDetailPageContent(
                 state = state,
                 isSharingEnabled = isSharingEnabled,
-                sessionRole = detailQueueState.role,
-                sessionConnecting = detailQueueState.isConnecting,
                 boardGroupActive = boardGroupActive,
                 viewModel = viewModel,
                 onNavigateBack = onNavigateBack,
@@ -854,13 +936,483 @@ fun BoardClimbDetailScreen(
     }
 }
 
+/**
+ * What is on a multi-layer wall right now, in one line, above the wall.
+ *
+ * A rack big enough to operate four projections does not fit on a screen whose
+ * whole point is that the climb gets the space, and it does not belong there
+ * either: most of the time the question is "which of these is mine", not
+ * "reassign a colour". So the answer stays visible and the controls open on
+ * demand, the same way the climb's own details do.
+ */
+@Composable
+private fun BoardLayerStrip(
+    state: ClimbDetailState,
+    boardGroupActive: Boolean,
+    onOpen: () -> Unit,
+) {
+    val maxLayers = state.climb?.brand?.maxSimultaneousClimbs ?: return
+    if (maxLayers <= 1) return
+    val bySlot = state.boardLayers.layers.associateBy { it.slot }
+    val currentUuid = state.climb?.uuid
+    Surface(
+        onClick = onOpen,
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("board_layer_strip"),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                stringResource(R.string.board_layers_title),
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            for (slot in 0 until maxLayers) {
+                val layer = bySlot[slot]
+                val onWall = layer?.confirmedRouteUuid != null
+                Surface(
+                    modifier = Modifier
+                        .size(width = 26.dp, height = 20.dp)
+                        .testTag("board_layer_strip_slot_${slot + 1}"),
+                    shape = RoundedCornerShape(6.dp),
+                    color = layer?.let {
+                        Color(it.color).copy(alpha = if (onWall) 1f else 0.35f)
+                    } ?: Color.Transparent,
+                    border = androidx.compose.foundation.BorderStroke(
+                        if (layer?.climbUuid != null && layer.climbUuid == currentUuid) 2.dp else 1.dp,
+                        if (layer?.climbUuid != null && layer.climbUuid == currentUuid) OrangeAccent
+                        else MaterialTheme.colorScheme.outlineVariant,
+                    ),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        // The number, not just the colour: two of the four
+                        // controller colours are a hard pair to tell apart.
+                        Text(
+                            "${slot + 1}",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = if (layer != null) DarkBackground
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.weight(1f))
+            if (boardGroupActive) {
+                Icon(
+                    Icons.Default.Groups,
+                    contentDescription = stringResource(R.string.board_layer_group_owns_board),
+                    tint = WarningYellow,
+                    modifier = Modifier.size(15.dp),
+                )
+            }
+            Text(
+                stringResource(
+                    R.string.board_layers_occupied,
+                    state.boardLayers.occupiedCount,
+                    maxLayers,
+                ),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Icon(
+                Icons.Default.ArrowDropDown,
+                contentDescription = stringResource(R.string.board_layers_open),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BoardLayerSheet(
+    state: ClimbDetailState,
+    boardGroupActive: Boolean,
+    onDismiss: () -> Unit,
+    onSelectSlot: (Int) -> Unit,
+    onSelectColor: (Int) -> Unit,
+    onAssignCurrent: () -> Unit,
+    onSendSlot: (Int) -> Unit,
+    onSendAll: () -> Unit,
+    onRemove: (Int) -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            BoardLayerRack(
+                state = state,
+                boardGroupActive = boardGroupActive,
+                onSelectSlot = onSelectSlot,
+                onSelectColor = onSelectColor,
+                onAssignCurrent = onAssignCurrent,
+                onSendSlot = onSendSlot,
+                onSendAll = onSendAll,
+                onRemove = onRemove,
+            )
+            Spacer(Modifier.height(24.dp))
+        }
+    }
+}
+
+@Composable
+private fun BoardLayerRack(
+    state: ClimbDetailState,
+    /**
+     * A BoardCell group owns this wall. Layers are a direct-controller
+     * feature: the mesh carries exactly one canonical projection, so a layer
+     * sent through it would arrive stripped of its identity and colour and
+     * still report success. Staging stays open; only the lamps close.
+     */
+    boardGroupActive: Boolean,
+    onSelectSlot: (Int) -> Unit,
+    onSelectColor: (Int) -> Unit,
+    onAssignCurrent: () -> Unit,
+    onSendSlot: (Int) -> Unit,
+    onSendAll: () -> Unit,
+    onRemove: (Int) -> Unit,
+) {
+    val maxLayers = BoardBrand.QUANTUM.maxSimultaneousClimbs
+    val ownBySlot = state.boardLayers.layers.associateBy { it.slot }
+    val currentLayer = state.climb?.uuid?.let { uuid ->
+        state.boardLayers.layers.firstOrNull { it.climbUuid == uuid }
+    }
+    val explicitSlot = state.selectedBoardLayerSlot?.takeIf { it in 0 until maxLayers }
+    val selectedSlot = explicitSlot
+        ?: currentLayer?.slot
+    val selectedLayer = selectedSlot?.let(ownBySlot::get)
+    val selectedColor = state.selectedBoardLayerColor
+        ?: selectedLayer?.color
+        ?: selectedSlot?.let { BoardLayerManager.LAYER_COLORS[it] }
+    val occupiedColors = state.boardLayers.layers.mapTo(mutableSetOf()) { it.color } +
+        state.boardLayers.externalLayers.map { it.color }
+    val sharedHoldCount = BoardLayerConflictPolicy.sharedHoldCount(
+        state.holds,
+        state.boardLayers.layers,
+        selectedSlot,
+    )
+    val colorsOnOtherLayers = state.boardLayers.layers
+        .filterNot { it.slot == selectedSlot }.mapTo(mutableSetOf()) { it.color } +
+        state.boardLayers.externalLayers.map { it.color }
+    val selectedColorConflict = selectedColor != null && selectedColor in colorsOnOtherLayers
+    val connected = state.ble.connectionState == ConnectionState.CONNECTED && !boardGroupActive
+    val duplicateHoldCount = state.boardLayers.layers
+        .flatMap { it.holds.map { hold -> hold.placementId } }
+        .groupingBy { it }.eachCount().count { it.value > 1 }
+    val newControllerIdentities = state.boardLayers.layers.count { it.confirmedRouteUuid == null }
+    val canSendAll = state.boardLayers.occupiedCount + newControllerIdentities <= maxLayers
+
+    Card(
+        modifier = Modifier.fillMaxWidth().testTag("board_layer_rack"),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+        ),
+        shape = RoundedCornerShape(16.dp),
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column {
+                    Text(
+                        stringResource(R.string.board_layers_title),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        stringResource(
+                            R.string.board_layers_occupied,
+                            state.boardLayers.occupiedCount,
+                            maxLayers,
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (state.boardLayers.externalLayers.isNotEmpty()) {
+                    AssistChip(
+                        onClick = {},
+                        enabled = false,
+                        label = {
+                            Text(stringResource(
+                                R.string.board_layers_external,
+                                state.boardLayers.externalLayers.size,
+                            ))
+                        },
+                    )
+                }
+            }
+
+            if (state.boardLayers.externalLayers.isNotEmpty()) {
+                Text(
+                    stringResource(R.string.board_layers_external_explanation),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                state.boardLayers.externalLayers.forEachIndexed { index, external ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(10.dp))
+                            .padding(horizontal = 10.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Box(Modifier.size(16.dp).background(Color(external.color), CircleShape))
+                        Text(
+                            stringResource(R.string.board_layer_external_player, index + 1),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Text(
+                            external.routeUuid.take(8),
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                for (rowStart in 0 until maxLayers step 2) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        for (slot in rowStart until minOf(rowStart + 2, maxLayers)) {
+                            val layer = ownBySlot[slot]
+                            val selected = slot == selectedSlot
+                            Surface(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("board_layer_slot_${slot + 1}")
+                                    .clickable { onSelectSlot(slot) },
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (selected) {
+                                    OrangeAccent.copy(alpha = 0.16f)
+                                } else MaterialTheme.colorScheme.surface,
+                                border = androidx.compose.foundation.BorderStroke(
+                                    if (selected) 2.dp else 1.dp,
+                                    if (selected) OrangeAccent else MaterialTheme.colorScheme.outlineVariant,
+                                ),
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Box(
+                                        Modifier.size(16.dp).background(
+                                            color = layer?.let { Color(it.color) }
+                                                ?: MaterialTheme.colorScheme.outlineVariant,
+                                            shape = CircleShape,
+                                        ),
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(
+                                            stringResource(R.string.board_layer_number, slot + 1),
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold,
+                                        )
+                                        Text(
+                                            layer?.climbName ?: stringResource(R.string.board_layer_empty),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            maxLines = 1,
+                                        )
+                                        if (layer != null) {
+                                            Text(
+                                                when (layer.status) {
+                                                    BoardLayerStatus.PREVIEW -> stringResource(R.string.board_layer_preview)
+                                                    BoardLayerStatus.SENDING -> stringResource(R.string.board_layer_sending)
+                                                    BoardLayerStatus.CONFIRMED -> stringResource(R.string.board_layer_confirmed)
+                                                    BoardLayerStatus.FAILED -> stringResource(R.string.board_layer_failed)
+                                                },
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = when (layer.status) {
+                                                    BoardLayerStatus.CONFIRMED -> SuccessGreen
+                                                    BoardLayerStatus.FAILED -> ErrorRed
+                                                    else -> OrangeAccent
+                                                },
+                                            )
+                                        }
+                                    }
+                                    if (layer != null) {
+                                        IconButton(
+                                            onClick = { onSendSlot(slot) },
+                                            enabled = connected && !state.ble.isSending &&
+                                                (layer.confirmedRouteUuid != null ||
+                                                    state.boardLayers.occupiedCount < maxLayers),
+                                            modifier = Modifier
+                                                .size(32.dp)
+                                                .testTag("board_layer_send_${slot + 1}"),
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Lightbulb,
+                                                contentDescription = stringResource(
+                                                    R.string.board_layer_send_one,
+                                                    slot + 1,
+                                                ),
+                                                tint = if (layer.status == BoardLayerStatus.CONFIRMED) {
+                                                    SuccessGreen
+                                                } else OrangeAccent,
+                                                modifier = Modifier.size(18.dp),
+                                            )
+                                        }
+                                        IconButton(
+                                            onClick = { onRemove(slot) },
+                                            // Dropping a preview is local.
+                                            // Dropping a live layer is a
+                                            // TURN_OFF_USER on the wall.
+                                            enabled = !state.ble.isSending &&
+                                                (layer.confirmedRouteUuid == null || !boardGroupActive),
+                                            modifier = Modifier
+                                                .size(28.dp)
+                                                .testTag("board_layer_remove_${slot + 1}"),
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Delete,
+                                                contentDescription = stringResource(R.string.board_layer_remove),
+                                                modifier = Modifier.size(17.dp),
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (boardGroupActive) {
+                Text(
+                    stringResource(R.string.board_layer_group_owns_board),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = WarningYellow,
+                    modifier = Modifier.testTag("board_layer_group_notice"),
+                )
+            }
+            if (selectedSlot == null) {
+                Text(
+                    stringResource(R.string.board_layer_select_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            selectedSlot?.let { slot ->
+                Text(
+                    stringResource(R.string.board_layer_color),
+                    style = MaterialTheme.typography.labelMedium,
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    BoardLayerManager.LAYER_COLORS.forEachIndexed { index, color ->
+                        val ownedBySelected = selectedLayer?.color == color
+                        val available = color !in occupiedColors || ownedBySelected
+                        Surface(
+                            onClick = { if (available) onSelectColor(color) },
+                            enabled = available,
+                            modifier = Modifier
+                                .size(34.dp)
+                                .testTag("board_layer_color_$index"),
+                            shape = CircleShape,
+                            color = Color(color).copy(alpha = if (available) 1f else 0.22f),
+                            border = if (selectedColor == color) {
+                                androidx.compose.foundation.BorderStroke(3.dp, MaterialTheme.colorScheme.onSurface)
+                            } else null,
+                        ) {}
+                    }
+                }
+                OutlinedButton(
+                    onClick = onAssignCurrent,
+                    enabled = !state.ble.isSending && !selectedColorConflict,
+                    modifier = Modifier.fillMaxWidth().testTag("board_layer_assign_current"),
+                ) {
+                    Icon(Icons.Default.Check, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        stringResource(
+                            if (selectedLayer?.climbUuid == state.climb?.uuid) {
+                                R.string.board_layer_update_current
+                            } else if (selectedLayer != null) {
+                                R.string.board_layer_replace_current
+                            } else {
+                                R.string.board_layer_add_current
+                            },
+                            slot + 1,
+                        ),
+                    )
+                }
+                if (sharedHoldCount > 0) {
+                    Text(
+                        stringResource(R.string.board_layer_preview_overlap_warning, sharedHoldCount),
+                        color = WarningYellow,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                if (selectedColorConflict) {
+                    Text(
+                        stringResource(R.string.board_layer_error_color_taken),
+                        color = ErrorRed,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+
+            Button(
+                onClick = onSendAll,
+                enabled = connected && !state.ble.isSending &&
+                    state.boardLayers.layers.isNotEmpty() && canSendAll && duplicateHoldCount == 0,
+                modifier = Modifier.fillMaxWidth().testTag("board_layer_send_all"),
+            ) {
+                Icon(Icons.Default.Lightbulb, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.board_layer_send_all))
+            }
+            if (boardGroupActive) {
+                // Already explained above; do not also claim a capacity or
+                // overlap problem that isn't the reason.
+            } else if (!canSendAll) {
+                Text(
+                    stringResource(R.string.board_layer_send_all_capacity),
+                    color = ErrorRed,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            } else if (duplicateHoldCount > 0) {
+                Text(
+                    stringResource(R.string.board_layer_send_all_overlap, duplicateHoldCount),
+                    color = ErrorRed,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
+    }
+}
+
 /** Lightweight per-page content — no Scaffold, no TopAppBar, no banners, no BleVM. */
 @Composable
 private fun ClimbDetailPageContent(
     state: ClimbDetailState,
     isSharingEnabled: Boolean,
-    sessionRole: SessionRole,
-    sessionConnecting: Boolean,
     /** A group is on this board, so its shared list owns the wall. */
     boardGroupActive: Boolean,
     viewModel: BoardClimbDetailViewModel,
@@ -871,6 +1423,58 @@ private fun ClimbDetailPageContent(
 ) {
     val climbBugReportTitle = stringResource(R.string.error_bug_report_climb_title)
     val bleBugReportTitle = stringResource(R.string.error_bug_report_ble_title)
+    var showDetails by remember { mutableStateOf(false) }
+    var showLayers by remember { mutableStateOf(false) }
+    LaunchedEffect(state.personalNoteDraft, showDetails, state.climb?.uuid) {
+        if (showDetails && state.personalNoteDraft.trim() != state.personalNote) {
+            delay(700)
+            viewModel.savePersonalNote(state.personalNoteDraft)
+        }
+    }
+    val closeDetails = {
+        if (state.personalNoteDraft.trim() != state.personalNote) {
+            viewModel.savePersonalNote(state.personalNoteDraft)
+        }
+        showDetails = false
+    }
+    state.climb?.takeIf { showDetails }?.let {
+        ClimbDetailInfoSheet(
+            state = state,
+            isSharingEnabled = isSharingEnabled,
+            onDismiss = closeDetails,
+            onAngleSelected = {
+                closeDetails()
+                viewModel.onAngleSelected(it)
+            },
+            onEditAscent = {
+                closeDetails()
+                viewModel.editAscent(it)
+            },
+            onDeleteAscent = {
+                closeDetails()
+                viewModel.requestDeleteAscent(it.uuid)
+            },
+            noteDraft = state.personalNoteDraft,
+            onNoteChanged = viewModel::updatePersonalNoteDraft,
+            onRetryNote = { viewModel.savePersonalNote(state.personalNoteDraft) },
+        )
+    }
+    // A board that holds four climbs at once needs four climbs' worth of
+    // controls, and the screen's whole point is that the wall gets the space.
+    // So the rack is a sheet, like the other two board surfaces on this screen.
+    if (showLayers && state.climb?.brand?.supportsIndependentClimbLayers == true) {
+        BoardLayerSheet(
+            state = state,
+            boardGroupActive = boardGroupActive,
+            onDismiss = { showLayers = false },
+            onSelectSlot = viewModel::selectBoardLayer,
+            onSelectColor = viewModel::selectBoardLayerColor,
+            onAssignCurrent = viewModel::assignCurrentToBoardLayer,
+            onSendSlot = viewModel::sendBoardLayer,
+            onSendAll = viewModel::sendAllBoardLayers,
+            onRemove = viewModel::removeBoardLayer,
+        )
+    }
     when {
         state.isLoading -> {
             Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -904,199 +1508,26 @@ private fun ClimbDetailPageContent(
             Column(
                 modifier = modifier
                     .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Grade + Stats card
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                    ),
-                    shape = RoundedCornerShape(16.dp)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(climb.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                                // Setter line. Click behaviour:
-                                //  - cruxcoach-origin + has pubkey → navigate
-                                //    to SetterDetailScreen (Plan 8)
-                                //  - else (Kilter-origin or pubkey missing) →
-                                //    no click (use the search bar to filter
-                                //    by setter name)
-                                val setterDisplay = state.setterProfile?.displayName
-                                    ?: climb.setterUsername
-                                val setterPubkey = climb.createdByPubkey?.takeIf { it.isNotBlank() }
-                                setterDisplay?.takeIf { it.isNotBlank() }?.let { setter ->
-                                    val isClickable = climb.origin == "cruxcoach" && setterPubkey != null
-                                    Text(
-                                        stringResource(R.string.board_detail_by_setter, setter),
-                                        style = MaterialTheme.typography.bodyMedium.copy(
-                                            textDecoration = if (isClickable) TextDecoration.Underline else TextDecoration.None
-                                        ),
-                                        color = if (isClickable) OrangeAccent else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = if (isClickable) {
-                                            Modifier.clickable {
-                                                onNavigateToSetter(setterPubkey!!)
-                                            }
-                                        } else Modifier
-                                    )
-                                }
-                                // Provenance + Kilter-mirror badge — only shown for
-                                // CruxCoach-authored climbs that actually have a
-                                // live Nostr publication (`nostr_event_id` is
-                                // set iff at least one publish has reached at
-                                // least one relay, either from this device via
-                                // markClimbPublishedNostr, or via the live-sub
-                                // upsert echoing back the user's own event).
-                                // For drafts and failed-publish rows the
-                                // previous "Nur CruxCoach-Community" copy was
-                                // misleading: an Aurora-imported draft
-                                // (origin='cruxcoach' + kilterStatus=NULL +
-                                // sync_status='draft') is *not* on the
-                                // CruxCoach community, just sitting locally,
-                                // and showing the same chip as a genuinely
-                                // community-published climb conflated the two.
-                                // sync_status alone wasn't a reliable
-                                // discriminator — a successful prior publish
-                                // can drift to 'failed' on a later attempt
-                                // and still have a live event on relays;
-                                // nostr_event_id is the deterministic signal.
-                                val hasLivePublication = !climb.nostrEventId.isNullOrBlank()
-                                if (climb.origin == "cruxcoach" && hasLivePublication) {
-                                    Spacer(Modifier.size(4.dp))
-                                    // Three states: synced = both Nostr +
-                                    // Kilter; diverged = local edit Kilter
-                                    // refused (older version still on
-                                    // Kilter); else (NULL/pending/failed)
-                                    // = community-only.
-                                    val badgeText = when (climb.kilterStatus) {
-                                        "synced" -> stringResource(R.string.climb_detail_badge_on_kilter)
-                                        "diverged" -> stringResource(R.string.climb_detail_badge_kilter_diverged)
-                                        else -> stringResource(R.string.climb_detail_badge_cruxcoach_only)
-                                    }
-                                    val badgeColor = when (climb.kilterStatus) {
-                                        "synced" -> OrangeAccent
-                                        "diverged" -> MaterialTheme.colorScheme.tertiary
-                                        else -> MaterialTheme.colorScheme.onSurfaceVariant
-                                    }
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = badgeColor.copy(alpha = 0.15f),
-                                    ) {
-                                        Text(
-                                            badgeText,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = badgeColor,
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                                        )
-                                    }
-                                } else if (climb.origin == "boardsesh") {
-                                    // BoardSesh-imported climb: attribute the
-                                    // source. No Kilter/Nostr state applies
-                                    // (it was never published to either), so a
-                                    // single static provenance badge.
-                                    Spacer(Modifier.size(4.dp))
-                                    val badgeColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = badgeColor.copy(alpha = 0.15f),
-                                    ) {
-                                        Text(
-                                            stringResource(R.string.climb_detail_badge_boardsesh),
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = badgeColor,
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                                        )
-                                    }
-                                }
-                            }
-                            Column(
-                                horizontalAlignment = Alignment.End,
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                climb.difficultyAverage?.let { diff ->
-                                    val fbGrade = GradeDisplayHelper.formatDifficulty(diff, GradeScale.FRENCH)
-                                    val vGrade = GradeDisplayHelper.formatDifficulty(diff, GradeScale.V_SCALE)
-                                    Surface(
-                                        color = zoneColorForDifficulty(diff, state.zones),
-                                        shape = RoundedCornerShape(12.dp)
-                                    ) {
-                                        Text(
-                                            "$fbGrade / $vGrade",
-                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                            style = MaterialTheme.typography.titleMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            color = DarkBackground
-                                        )
-                                    }
-                                }
-                                // No badge when the match state isn't ours to
-                                // know (community + BoardSesh climbs) — see
-                                // ClimbWithStats.isMatchStateKnown.
-                                if (climb.isMatchStateKnown) {
-                                    MatchBadge(isNomatch = climb.isNomatch)
-                                }
-                                climb.method?.let { MethodBadge(it) }
-                                if (climb.benchmarkDifficulty > 0.0) {
-                                    BenchmarkBadge()
-                                }
-                            }
-                        }
+                CompactClimbOverview(
+                    state = state,
+                    onShowDetails = { showDetails = true },
+                    onAngleSelected = viewModel::onAngleSelected,
+                    onNavigateToSetter = onNavigateToSetter,
+                    isSharingEnabled = isSharingEnabled,
+                )
 
-                        Spacer(modifier = Modifier.height(12.dp))
-                        HorizontalDivider()
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceEvenly
-                        ) {
-                            AngleDropdownStatItem(
-                                currentAngle = state.angle,
-                                availableAngles = state.availableAngles,
-                                gradeScale = state.gradeScale,
-                                zones = state.zones,
-                                onAngleSelected = viewModel::onAngleSelected
-                            )
-                            if (state.playback.isRoute) {
-                                StatItem(stringResource(R.string.board_detail_frames), "${state.playback.totalFrames}")
-                            } else {
-                                StatItem(stringResource(R.string.board_moves), "${climb.moveCount}")
-                            }
-                            StatItem(stringResource(R.string.board_quality), climb.qualityAverage?.let { "%.1f".format(it) } ?: "--")
-                            StatItem(stringResource(R.string.board_sends), "${climb.ascensionistCount ?: 0}")
-                        }
-
-                        // First ascent info
-                        if (climb.faUsername != null) {
-                            Spacer(modifier = Modifier.height(4.dp))
-                            val faDate = climb.faAt?.let { formatAscentDate(it) }
-                            Text(
-                                "FA: ${climb.faUsername}" + if (faDate != null) " ($faDate)" else "",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-
-                        // Description
-                        if (climb.description.isNotBlank()) {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            HorizontalDivider()
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                climb.description,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
+                // Boards that hold several climbs at once get a legend for
+                // what is on the wall right above the wall itself. It is the
+                // rack in one line; the rack proper opens from it.
+                if (climb.brand.supportsIndependentClimbLayers) {
+                    BoardLayerStrip(
+                        state = state,
+                        boardGroupActive = boardGroupActive,
+                        onOpen = { showLayers = true },
+                    )
                 }
 
                 // Board visualization (Climbdex-style) with countdown overlay.
@@ -1104,14 +1535,16 @@ private fun ClimbDetailPageContent(
                 // the real board image when one is bundled for the variant,
                 // falling back to a procedural 11x18 grid otherwise; Kilter
                 // climbs keep the photo-backed Aurora renderer.
-                Box(modifier = Modifier.fillMaxWidth()) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    contentAlignment = Alignment.Center,
+                ) {
                     if (climb.brand == BoardBrand.MOONBOARD) {
                         MoonBoardVisualization(
                             frames = climb.frames,
                             assetState = rememberMoonBoardAsset(climb.layoutId),
                             variant = MoonBoardVariant.fromLayoutId(climb.layoutId),
                             modifier = Modifier
-                                .fillMaxWidth()
                                 .testTag("boarddetail_visualization")
                         )
                     } else {
@@ -1128,8 +1561,10 @@ private fun ClimbDetailPageContent(
                             currentFrameHolds = if (state.playback.showPreview && state.playback.isRoute) {
                                 state.playback.allFrames.getOrElse(state.playback.currentFrameIndex) { emptyList() }
                             } else null,
+                            projectionLayers = if (climb.brand == BoardBrand.QUANTUM) {
+                                state.boardLayers.layers
+                            } else emptyList(),
                             modifier = Modifier
-                                .fillMaxWidth()
                                 .testTag("boarddetail_visualization")
                         )
                     }
@@ -1149,93 +1584,7 @@ private fun ClimbDetailPageContent(
                             )
                         }
                     }
-                    val boardConnected = state.ble.connectionState == ConnectionState.CONNECTED ||
-                        state.ble.connectionState == ConnectionState.SENDING
-                    val deliveryDecision = BoardDeliveryPolicy.resolve(
-                        sendMode = state.boardSendMode,
-                        sessionRole = sessionRole,
-                        sessionConnecting = sessionConnecting,
-                        boardConnected = boardConnected,
-                        hasDirectPayload = BoardProjectionPolicy.hasSendablePayload(
-                            brand = climb.brand,
-                            holdCount = state.holds.size,
-                            frames = climb.frames,
-                        ),
-                        connectedViaRelay = state.ble.connectedViaRelay,
-                        connectedViaMesh = state.ble.connectedViaMesh,
-                        boardCellActive = boardGroupActive,
-                    )
-                    // The action button vanishing after a swipe is only
-                    // diagnosable from the inputs — the decision itself says
-                    // nothing about WHY it came out NONE.
-                    LaunchedEffect(deliveryDecision, state.playback.countdownSeconds) {
-                        Log.d(
-                            "CruxBLE/Delivery",
-                            "target=${deliveryDecision.target} show=${deliveryDecision.showAction} " +
-                                "auto=${deliveryDecision.dispatchAutomatically} mode=${state.boardSendMode} " +
-                                "role=$sessionRole connecting=$sessionConnecting conn=${state.ble.connectionState} " +
-                                "holds=${state.holds.size} brand=${climb.brand} " +
-                                "relay=${state.ble.connectedViaRelay}/${state.ble.hostedRelayClientCount} " +
-                                "countdown=${state.playback.countdownSeconds}"
-                        )
-                    }
-                    if (deliveryDecision.showAction && state.playback.countdownSeconds == 0) {
-                        FilledTonalIconButton(
-                            onClick = viewModel::deliverClimb,
-                            enabled = deliveryDecision.target == BoardDeliveryTarget.SHARED_QUEUE ||
-                                deliveryDecision.target == BoardDeliveryTarget.MESH_BOARD ||
-                                !state.ble.isSending,
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(8.dp)
-                                .size(40.dp)
-                                .testTag(
-                                    if (deliveryDecision.target == BoardDeliveryTarget.SHARED_QUEUE) {
-                                        "boarddetail_add_to_shared_queue_button"
-                                    } else {
-                                        "boarddetail_light_climb_button"
-                                    },
-                                ),
-                        ) {
-                            if (deliveryDecision.target in setOf(BoardDeliveryTarget.DIRECT_BOARD,
-                                    BoardDeliveryTarget.MESH_BOARD) &&
-                                state.ble.isSending
-                            ) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(18.dp),
-                                    strokeWidth = 2.dp,
-                                )
-                            } else {
-                                Icon(
-                                    imageVector = if (
-                                        deliveryDecision.target == BoardDeliveryTarget.SHARED_QUEUE
-                                    ) {
-                                        Icons.AutoMirrored.Filled.PlaylistAdd
-                                    } else {
-                                        Icons.Default.Lightbulb
-                                    },
-                                    contentDescription = stringResource(
-                                        if (deliveryDecision.target == BoardDeliveryTarget.SHARED_QUEUE) {
-                                            R.string.cd_add_climb_to_shared_queue
-                                        } else {
-                                            R.string.cd_light_climb_on_board
-                                        },
-                                    ),
-                                    tint = OrangeAccent,
-                                )
-                            }
-                        }
-                    }
                 }
-
-                // The two things somebody actually wants from a climb page
-                // while a group is on the board, side by side and impossible
-                // to miss. Neither of them lights the wall.
-                BoardPlaylistAddActions(
-                    climbUuid = climb.uuid,
-                    angle = state.angle,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
 
                 // Route playback controls
                 if (state.playback.isRoute) {
@@ -1291,9 +1640,530 @@ private fun ClimbDetailPageContent(
                     }
                 }
 
-                // Climb sharing debug + indicator (only while connected)
-                if (state.ble.connectionState.let { it == ConnectionState.CONNECTED || it == ConnectionState.SENDING }) {
-                    val sharingDebug = buildString {
+            }
+        }
+    }
+}
+
+/**
+ * The whole bottom of a climb page, in the order somebody needs it.
+ *
+ * Two rows at most: the group's list first when there is one, then the three
+ * things this climber does with the climb in front of them. They are stacked
+ * rather than merged because they answer different questions — "put this in
+ * front of everybody" and "that burn just happened" — and a row that
+ * sometimes means one and sometimes the other is a row nobody can use fast.
+ */
+@Composable
+private fun BoardDetailBottomActions(
+    state: ClimbDetailState,
+    decision: BoardDeliveryDecision,
+    hasDirectPayload: Boolean,
+    /** A board group, or a shared session mid-join, owns delivery. */
+    boardOwnedByOthers: Boolean,
+    onAttempt: () -> Unit,
+    onLight: () -> Unit,
+    onConnectBoard: () -> Unit,
+    onSend: () -> Unit,
+) {
+    val climb = state.climb ?: return
+    Surface(
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 8.dp,
+        shadowElevation = 12.dp,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            // Draws nothing unless this device is actually in a board's group,
+            // so the dock keeps its usual height everywhere else.
+            BoardPlaylistAddActions(
+                climbUuid = climb.uuid,
+                angle = state.angle,
+                enabled = !state.isLoading,
+            )
+            BoardDetailActionDock(
+                loggingEnabled = !state.isLoading && !state.isQuickLogging,
+                lamp = BoardDeliveryPolicy.lampMode(
+                    decision = decision,
+                    hasDirectPayload = hasDirectPayload,
+                    boardConnected = state.ble.connectionState == ConnectionState.CONNECTED ||
+                        state.ble.connectionState == ConnectionState.SENDING ||
+                        state.ble.connectedViaMesh,
+                    boardOwnedByOthers = boardOwnedByOthers,
+                    countdownRunning = state.playback.countdownSeconds > 0,
+                ),
+                lightEnabled = !state.isLoading,
+                lightInProgress = state.ble.isSending,
+                onAttempt = onAttempt,
+                onLight = onLight,
+                onConnectBoard = onConnectBoard,
+                onSend = onSend,
+            )
+        }
+    }
+}
+
+@Composable
+private fun BoardDetailActionDock(
+    loggingEnabled: Boolean,
+    lamp: BoardDetailLampMode,
+    lightEnabled: Boolean,
+    lightInProgress: Boolean,
+    onAttempt: () -> Unit,
+    onLight: () -> Unit,
+    onConnectBoard: () -> Unit,
+    onSend: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Surface(
+            onClick = onAttempt,
+            enabled = loggingEnabled,
+            modifier = Modifier
+                .weight(1f)
+                .height(58.dp)
+                .testTag("boarddetail_quick_attempt"),
+            shape = RoundedCornerShape(18.dp),
+            color = ErrorRed.copy(alpha = 0.13f),
+            contentColor = ErrorRed,
+            border = androidx.compose.foundation.BorderStroke(1.dp, ErrorRed.copy(alpha = 0.42f)),
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    Icons.Default.Close,
+                    contentDescription = stringResource(R.string.board_ascent_attempt),
+                    modifier = Modifier.size(32.dp),
+                )
+            }
+        }
+        when (lamp) {
+            BoardDetailLampMode.HIDDEN -> Unit
+            BoardDetailLampMode.CONNECT -> Surface(
+                onClick = onConnectBoard,
+                enabled = lightEnabled,
+                modifier = Modifier
+                    .weight(1.12f)
+                    .height(58.dp)
+                    .testTag("boarddetail_connect_board_button"),
+                shape = RoundedCornerShape(18.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                border = androidx.compose.foundation.BorderStroke(
+                    1.dp,
+                    MaterialTheme.colorScheme.outlineVariant,
+                ),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.Default.Bluetooth,
+                        contentDescription = stringResource(R.string.cd_board_connect),
+                        modifier = Modifier.size(31.dp),
+                    )
+                }
+            }
+            BoardDetailLampMode.LIGHT,
+            BoardDetailLampMode.SHARED_QUEUE -> {
+                val sharedQueue = lamp == BoardDetailLampMode.SHARED_QUEUE
+                Surface(
+                    onClick = onLight,
+                    enabled = lightEnabled && !lightInProgress,
+                    modifier = Modifier
+                        .weight(1.12f)
+                        .height(58.dp)
+                        .testTag(
+                            if (sharedQueue) "boarddetail_add_to_shared_queue_button"
+                            else "boarddetail_light_climb_button",
+                        ),
+                    shape = RoundedCornerShape(18.dp),
+                    color = OrangeAccent,
+                    contentColor = DarkBackground,
+                    shadowElevation = 4.dp,
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        if (lightInProgress) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(25.dp),
+                                strokeWidth = 2.5.dp,
+                                color = DarkBackground,
+                            )
+                        } else {
+                            Box(Modifier.size(38.dp), contentAlignment = Alignment.Center) {
+                                Icon(
+                                    if (sharedQueue) Icons.AutoMirrored.Filled.PlaylistAdd
+                                    else Icons.Default.Lightbulb,
+                                    contentDescription = stringResource(
+                                        if (sharedQueue) R.string.cd_add_climb_to_shared_queue
+                                        else R.string.cd_light_climb_on_board,
+                                    ),
+                                    modifier = Modifier.size(31.dp),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Surface(
+            onClick = onSend,
+            enabled = loggingEnabled,
+            modifier = Modifier
+                .weight(1f)
+                .height(58.dp)
+                .testTag("boarddetail_quick_send"),
+            shape = RoundedCornerShape(18.dp),
+            color = SuccessGreen.copy(alpha = 0.16f),
+            contentColor = SuccessGreen,
+            border = androidx.compose.foundation.BorderStroke(1.dp, SuccessGreen.copy(alpha = 0.46f)),
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    Icons.Default.Check,
+                    contentDescription = stringResource(R.string.board_ascent_send),
+                    modifier = Modifier.size(32.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CompactClimbOverview(
+    state: ClimbDetailState,
+    onShowDetails: () -> Unit,
+    onAngleSelected: (Int) -> Unit,
+    onNavigateToSetter: (String) -> Unit,
+    isSharingEnabled: Boolean,
+) {
+    val climb = state.climb ?: return
+    val setter = state.setterProfile?.displayName ?: climb.setterUsername
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("boarddetail_compact_overview")
+            .clickable(onClick = onShowDetails),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+        ),
+        shape = RoundedCornerShape(14.dp),
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = climb.name,
+                        modifier = Modifier.weight(1f, fill = false),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    setter?.takeIf { it.isNotBlank() }?.let {
+                        val pubkey = climb.createdByPubkey?.takeIf(String::isNotBlank)
+                        Spacer(Modifier.width(7.dp))
+                        Text(
+                            text = it,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .widthIn(max = 112.dp)
+                                .then(
+                                    if (climb.origin == "cruxcoach" && pubkey != null) {
+                                        Modifier.clickable { onNavigateToSetter(pubkey) }
+                                    }
+                                    else Modifier,
+                                ),
+                        )
+                    }
+                }
+                Icon(
+                    Icons.Default.MoreVert,
+                    contentDescription = stringResource(R.string.board_detail_more_information),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+            ) {
+                climb.difficultyAverage?.let { difficulty ->
+                    val french = GradeDisplayHelper.formatDifficulty(difficulty, GradeScale.FRENCH)
+                    val vScale = GradeDisplayHelper.formatDifficulty(difficulty, GradeScale.V_SCALE)
+                    Surface(
+                        color = zoneColorForDifficulty(difficulty, state.zones),
+                        shape = RoundedCornerShape(8.dp),
+                    ) {
+                        Text(
+                            "$french / $vScale",
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = DarkBackground,
+                        )
+                    }
+                }
+                CompactAngleMenu(
+                    currentAngle = state.angle,
+                    availableAngles = state.availableAngles,
+                    onAngleSelected = onAngleSelected,
+                )
+                Text(
+                    text = if (state.playback.isRoute) "${state.playback.totalFrames}F" else "${climb.moveCount}M",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = "${climb.qualityAverage?.let { "%.1f".format(it) } ?: "–"}★",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                if (climb.benchmarkDifficulty > 0.0) {
+                    Icon(
+                        Icons.Default.Verified,
+                        contentDescription = stringResource(R.string.board_detail_benchmark),
+                        tint = OrangeAccent,
+                        modifier = Modifier.size(15.dp),
+                    )
+                }
+                if (climb.isMatchStateKnown) {
+                    MatchIcon(
+                        crossed = climb.isNomatch,
+                        tint = if (climb.isNomatch) ErrorRed else SuccessGreen,
+                        size = 15,
+                    )
+                }
+                // "This climb is going out over nearby-sharing right now" is
+                // ambient state somebody needs to be able to see without
+                // opening anything, so it sits with the other status icons.
+                val advertisingLive = isSharingEnabled && state.nearby.isAdvertising &&
+                    state.ble.connectionState.let {
+                        it == ConnectionState.CONNECTED || it == ConnectionState.SENDING
+                    }
+                if (advertisingLive) {
+                    Icon(
+                        Icons.Default.CellTower,
+                        contentDescription = stringResource(R.string.board_detail_climb_shared),
+                        tint = OrangeAccent,
+                        modifier = Modifier
+                            .size(15.dp)
+                            .testTag("boarddetail_climb_shared_icon"),
+                    )
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    Icon(
+                        Icons.Default.Groups,
+                        contentDescription = stringResource(R.string.board_sends),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(15.dp),
+                    )
+                    Text(
+                        text = "${climb.ascensionistCount ?: 0}",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CompactAngleMenu(
+    currentAngle: Int,
+    availableAngles: List<AngleOption>,
+    onAngleSelected: (Int) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        Row(
+            modifier = Modifier.clickable(enabled = availableAngles.size > 1) { expanded = true },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "$currentAngle°",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = OrangeAccent,
+            )
+            if (availableAngles.size > 1) {
+                Icon(
+                    Icons.Default.ArrowDropDown,
+                    contentDescription = stringResource(R.string.cd_change_angle),
+                    tint = OrangeAccent,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            availableAngles.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text("${option.angle}°") },
+                    onClick = {
+                        expanded = false
+                        onAngleSelected(option.angle)
+                    },
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ClimbDetailInfoSheet(
+    state: ClimbDetailState,
+    isSharingEnabled: Boolean,
+    onDismiss: () -> Unit,
+    onAngleSelected: (Int) -> Unit,
+    onEditAscent: (com.cruxcoach.data.repository.AscentWithClimb) -> Unit,
+    onDeleteAscent: (com.cruxcoach.data.repository.AscentWithClimb) -> Unit,
+    noteDraft: String,
+    onNoteChanged: (String) -> Unit,
+    onRetryNote: () -> Unit,
+) {
+    val climb = state.climb ?: return
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Text(climb.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text(
+                stringResource(
+                    R.string.board_detail_by_setter,
+                    state.setterProfile?.displayName ?: climb.setterUsername.orEmpty(),
+                ),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+            ) {
+                AngleDropdownStatItem(
+                    currentAngle = state.angle,
+                    availableAngles = state.availableAngles,
+                    gradeScale = state.gradeScale,
+                    zones = state.zones,
+                    onAngleSelected = onAngleSelected,
+                )
+                StatItem(
+                    stringResource(if (state.playback.isRoute) R.string.board_detail_frames else R.string.board_moves),
+                    "${if (state.playback.isRoute) state.playback.totalFrames else climb.moveCount}",
+                )
+                StatItem(
+                    stringResource(R.string.board_quality),
+                    climb.qualityAverage?.let { "%.1f".format(it) } ?: "–",
+                )
+                StatItem(stringResource(R.string.board_sends), "${climb.ascensionistCount ?: 0}")
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (climb.isMatchStateKnown) MatchBadge(climb.isNomatch)
+                climb.method?.let { MethodBadge(it) }
+                if (climb.benchmarkDifficulty > 0.0) BenchmarkBadge()
+            }
+            climb.faUsername?.let { username ->
+                val date = climb.faAt?.let(::formatAscentDate)
+                Text(
+                    "FA: $username" + if (date != null) " ($date)" else "",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            climb.description.takeIf(String::isNotBlank)?.let {
+                HorizontalDivider()
+                Text(it, style = MaterialTheme.typography.bodyMedium)
+            }
+            if (state.userAscents.isNotEmpty()) {
+                HorizontalDivider()
+                UserAscentHistory(
+                    ascents = state.userAscents,
+                    gradeScale = state.gradeScale,
+                    onEdit = onEditAscent,
+                    onDelete = onDeleteAscent,
+                )
+            }
+            HorizontalDivider()
+            Text(
+                stringResource(R.string.board_detail_personal_note),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+            )
+            OutlinedTextField(
+                value = noteDraft,
+                onValueChange = onNoteChanged,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("boarddetail_note_field"),
+                placeholder = { Text(stringResource(R.string.board_detail_personal_note_hint)) },
+                minLines = 2,
+                maxLines = 5,
+                supportingText = {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text("${noteDraft.length}/1000")
+                        val noteStatus = when {
+                            state.personalNoteSaveStatus == PersonalNoteSaveStatus.FAILED ->
+                                R.string.board_detail_note_not_saved
+                            noteDraft.trim() != state.personalNote ||
+                                state.personalNoteSaveStatus == PersonalNoteSaveStatus.SAVING ->
+                                R.string.board_detail_note_saving
+                            else -> R.string.board_detail_note_saved
+                        }
+                        Text(
+                            stringResource(noteStatus),
+                            color = if (state.personalNoteSaveStatus == PersonalNoteSaveStatus.FAILED) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                        )
+                    }
+                },
+            )
+            if (state.personalNoteSaveStatus == PersonalNoteSaveStatus.FAILED) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    TextButton(
+                        onClick = onRetryNote,
+                        modifier = Modifier.testTag("boarddetail_note_retry"),
+                    ) {
+                        Text(stringResource(R.string.action_retry))
+                    }
+                }
+            }
+            // Nearby-sharing diagnostics. Only while a board is connected,
+            // which is the only situation they describe, and down here rather
+            // than on the climb page, which now belongs to the climb.
+            if (state.ble.connectionState.let {
+                    it == ConnectionState.CONNECTED || it == ConnectionState.SENDING
+                }
+            ) {
+                HorizontalDivider()
+                Text(
+                    buildString {
                         append("S:")
                         append(if (isSharingEnabled) "ON" else "OFF")
                         append(" A:")
@@ -1302,46 +2172,13 @@ private fun ClimbDetailPageContent(
                             append(" | ")
                             append(state.nearby.debugInfo)
                         }
-                    }
-                    Text(
-                        sharingDebug,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                    )
-                }
-
-                if (state.nearby.isAdvertising && state.ble.connectionState.let { it == ConnectionState.CONNECTED || it == ConnectionState.SENDING }) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.CellTower,
-                            contentDescription = null,
-                            modifier = Modifier.size(14.dp),
-                            tint = OrangeAccent
-                        )
-                        Text(
-                            stringResource(R.string.board_detail_climb_shared),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = OrangeAccent
-                        )
-                    }
-                }
-
-                // User ascent history
-                if (state.userAscents.isNotEmpty()) {
-                    UserAscentHistory(
-                        ascents = state.userAscents,
-                        gradeScale = state.gradeScale,
-                        onEdit = { viewModel.editAscent(it) },
-                        onDelete = { viewModel.requestDeleteAscent(it.uuid) }
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    modifier = Modifier.testTag("boarddetail_sharing_debug"),
+                )
             }
+            Spacer(Modifier.height(24.dp))
         }
     }
 }
@@ -1550,7 +2387,10 @@ private fun MatchIcon(crossed: Boolean, tint: Color, size: Int = 16) {
     Box(modifier = Modifier.size(size.dp)) {
         Icon(
             Icons.Default.PanTool,
-            contentDescription = null,
+            contentDescription = stringResource(
+                if (crossed) R.string.board_detail_no_matching
+                else R.string.board_detail_matching,
+            ),
             tint = tint,
             modifier = Modifier.size(size.dp)
         )

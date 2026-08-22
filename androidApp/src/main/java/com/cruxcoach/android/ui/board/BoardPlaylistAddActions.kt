@@ -55,6 +55,13 @@ fun BoardPlaylistAddActions(
     climbUuid: String,
     angle: Int,
     modifier: Modifier = Modifier,
+    /**
+     * False while the page is still resolving which climb it is showing.
+     * Disabled rather than hidden: a swipe to an uncached climb keeps the
+     * previous climb in state for a beat, and a row that vanishes and comes
+     * back is both a layout jump and a tap that lands on the wrong climb.
+     */
+    enabled: Boolean = true,
     viewModel: BoardPlaylistViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -70,6 +77,7 @@ fun BoardPlaylistAddActions(
         ) {
             Button(
                 onClick = { viewModel.append(climbUuid, angle) },
+                enabled = enabled,
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
                 modifier = Modifier.weight(1f).testTag("boarddetail_add_to_board_playlist"),
@@ -82,6 +90,7 @@ fun BoardPlaylistAddActions(
             }
             OutlinedButton(
                 onClick = { viewModel.appendAsNext(climbUuid, angle) },
+                enabled = enabled,
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.weight(1f).testTag("boarddetail_add_next_board_playlist"),
             ) {

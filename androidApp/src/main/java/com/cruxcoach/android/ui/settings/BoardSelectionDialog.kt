@@ -20,6 +20,7 @@ import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.data.repository.BoardSize
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.MoonBoardVariant
+import com.cruxcoach.domain.board.QuantumBoardModel
 
 /**
  * Tier-0 board category of the unified picker (FEAT-027 follow-up).
@@ -29,7 +30,7 @@ import com.cruxcoach.domain.board.MoonBoardVariant
  * brand but physically distinct boards (own layout, own hold geometry),
  * so they are first-class categories rather than a buried sub-segment.
  */
-private enum class BoardCategory { KILTER_ORIGINAL, KILTER_HOMEWALL, MOONBOARD }
+private enum class BoardCategory { KILTER_ORIGINAL, KILTER_HOMEWALL, MOONBOARD, QUANTUM }
 
 /** The interactive Aurora-family boards offered as tier-0 picks alongside
  *  Kilter + MoonBoard (FEAT-031). Data-driven over [BoardBrand] so a board
@@ -78,6 +79,7 @@ internal fun BoardSelectionDialog(
     auroraBrandSizes: Map<String, List<BoardSize>> = emptyMap(),
     onConfirmKilter: (Int) -> Unit,
     onConfirmMoonBoard: (MoonBoardVariant) -> Unit,
+    onConfirmQuantum: (QuantumBoardModel) -> Unit = {},
     /** FEAT-031: confirm an Aurora-family board (Tension etc.) + the chosen
      *  variant (null for single-layout boards) + the chosen product size (null
      *  when no size tier is shown, i.e. pre-sync — the selector then uses the
@@ -109,6 +111,7 @@ internal fun BoardSelectionDialog(
     val initialCategory = remember(initialBrand, selectedKilterSizeId, productSizes) {
         when {
             activeBrand == BoardBrand.MOONBOARD -> BoardCategory.MOONBOARD
+            activeBrand == BoardBrand.QUANTUM -> BoardCategory.QUANTUM
             productSizes.firstOrNull { it.id.toInt() == seedKilterSizeId }
                 ?.productId?.toInt() == BoardConstants.KILTER_HOMEWALL_PRODUCT_ID ->
                 BoardCategory.KILTER_HOMEWALL
@@ -119,6 +122,12 @@ internal fun BoardSelectionDialog(
     var kilterSelection by remember { mutableIntStateOf(seedKilterSizeId) }
     var mbVariant by remember {
         mutableStateOf(selectedMoonBoardVariant ?: MoonBoardVariant.entries.first())
+    }
+    var quantumModel by remember {
+        mutableStateOf(
+            QuantumBoardModel.fromLayoutId(selectedAuroraLayoutId.toLong())
+                ?: QuantumBoardModel.XL
+        )
     }
     // FEAT-031: an Aurora-family board (Tension etc.) as the active pick. When
     // non-null it takes precedence over [category]; selecting a Kilter/MoonBoard
@@ -173,7 +182,8 @@ internal fun BoardSelectionDialog(
     }
 
     val isAurora = auroraBrand != null
-    val isKilter = !isAurora && category != BoardCategory.MOONBOARD
+    val isQuantum = !isAurora && category == BoardCategory.QUANTUM
+    val isKilter = !isAurora && category != BoardCategory.MOONBOARD && !isQuantum
     val kilterProductId = if (category == BoardCategory.KILTER_HOMEWALL) {
         BoardConstants.KILTER_HOMEWALL_PRODUCT_ID
     } else {
@@ -205,6 +215,7 @@ internal fun BoardSelectionDialog(
             (auroraSizeId ?: auroraVariant?.defaultSizeId ?: 0).toLong(),
             auroraVariant?.layoutId?.toLong(),
         )
+        isQuantum -> Triple(BoardBrand.QUANTUM, quantumModel.productSizeId, quantumModel.layoutId)
         category == BoardCategory.MOONBOARD ->
             Triple(BoardBrand.MOONBOARD, 0L, mbVariant.layoutId)
         else -> Triple(
@@ -282,6 +293,7 @@ internal fun BoardSelectionDialog(
                 val kilterOriginalLabel = stringResource(R.string.board_category_kilter_original)
                 val kilterHomewallLabel = stringResource(R.string.board_category_kilter_homewall)
                 val moonBoardLabel = stringResource(R.string.board_category_moonboard)
+                val quantumLabel = BoardBrand.QUANTUM.displayName
                 val boardOptions = buildList {
                     add(kilterOriginalLabel to {
                         category = BoardCategory.KILTER_ORIGINAL; auroraBrand = null
@@ -291,6 +303,9 @@ internal fun BoardSelectionDialog(
                     })
                     add(moonBoardLabel to {
                         category = BoardCategory.MOONBOARD; auroraBrand = null
+                    })
+                    add(quantumLabel to {
+                        category = BoardCategory.QUANTUM; auroraBrand = null
                     })
                     if (showAuroraBoards) {
                         AURORA_PICK_BRANDS.forEach { brand ->
@@ -304,6 +319,7 @@ internal fun BoardSelectionDialog(
                     isAurora -> auroraBrand!!.displayName
                     category == BoardCategory.KILTER_ORIGINAL -> kilterOriginalLabel
                     category == BoardCategory.KILTER_HOMEWALL -> kilterHomewallLabel
+                    category == BoardCategory.QUANTUM -> quantumLabel
                     else -> moonBoardLabel
                 }
                 var boardMenuExpanded by remember { mutableStateOf(false) }
@@ -423,6 +439,24 @@ internal fun BoardSelectionDialog(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+                } else if (isQuantum) {
+                    Text(
+                        stringResource(R.string.board_selection_quantum_model_label),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    QuantumBoardModel.entries.forEach { model ->
+                        RadioRow(
+                            label = model.displayName,
+                            selected = quantumModel == model,
+                            onSelect = { quantumModel = model },
+                        )
+                    }
+                    Text(
+                        stringResource(R.string.board_selection_quantum_schematic_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 } else {
                     Text(
                         stringResource(R.string.board_selection_moonboard_variant_label),
@@ -445,6 +479,7 @@ internal fun BoardSelectionDialog(
                     when {
                         isAurora -> onConfirmAurora(auroraBrand!!, auroraVariant, auroraSizeId)
                         isKilter -> onConfirmKilter(kilterSelection)
+                        isQuantum -> onConfirmQuantum(quantumModel)
                         else -> onConfirmMoonBoard(mbVariant)
                     }
                 },
