@@ -60,6 +60,18 @@ class RelayGattAckContractTest {
     private fun climbStream(): ByteArray =
         encoder.encodeClimb((10 until 15).map { it to 0x1C }).flatMap { it.toList() }.toByteArray()
 
+    /**
+     * Two complete climbs in a single ATT write.
+     *
+     * `RelayFrameReassembler.offer` returns every climb a feed completed and
+     * `RelayFrameReassemblerTest` proves this exact shape, so it is a write the
+     * relay has to be able to answer honestly — not a hypothetical.
+     */
+    private fun twoClimbStream(): ByteArray =
+        climbStream() +
+            encoder.encodeClimb((20 until 26).map { it to 0x1C })
+                .flatMap { it.toList() }.toByteArray()
+
     private class Answers {
         val statuses = mutableListOf<Pair<Int, Boolean>>()
         val last get() = statuses.lastOrNull()
@@ -302,6 +314,78 @@ class RelayGattAckContractTest {
         // And it is answered on its own merits when somebody decides it.
         server.settle(72, accepted = true)
         assertEquals(listOf(71 to false, 72 to true), answers.statuses)
+    }
+
+    // ── One write, one answer, about the whole write ──────────────────────
+
+    /**
+     * The gap this closes. The transaction used to be attached to element zero
+     * only, so a valid first climb could report `GATT_SUCCESS` while a second
+     * climb of the same write was still to be refused for layout, angle,
+     * pacing, a handover or a refused commit — and the guest had already been
+     * told the write was delivered.
+     */
+    @Test
+    fun `every climb of a write carries the transaction`() {
+        val answers = Answers()
+        val server = server(answers)
+        val seen = mutableListOf<RelayInboundClimb>()
+        server.emitClimb = { seen += it; true }
+
+        server.write(twoClimbStream(), requestId = 91)
+
+        assertEquals("both climbs answer for the same write", listOf(91, 91),
+            seen.map { it.pendingResponse })
+        server.settle(91, accepted = true)
+        assertTrue("the second climb has not been decided yet", answers.statuses.isEmpty())
+        server.settle(91, accepted = true)
+        assertEquals(91 to true, answers.last)
+    }
+
+    /** Delivered means all of it was. Anything else in the write failing is the answer. */
+    @Test
+    fun `a batch fails when anything in it fails`() {
+        val answers = Answers()
+        val server = server(answers)
+
+        server.write(twoClimbStream(), requestId = 92)
+        server.settle(92, accepted = true)
+        server.settle(92, accepted = false)
+
+        assertEquals(listOf(92 to false), answers.statuses)
+    }
+
+    /** A climb dropped on a full buffer reports itself, so the write still ends. */
+    @Test
+    fun `a climb dropped from a batch still answers the write once`() {
+        val answers = Answers()
+        val server = server(answers)
+        var emitted = 0
+        server.emitClimb = { emitted += 1; emitted == 1 }
+
+        server.write(twoClimbStream(), requestId = 93)
+
+        assertTrue("the surviving climb is still to be decided", answers.statuses.isEmpty())
+        server.settle(93, accepted = true)
+        assertEquals(1, answers.statuses.size)
+        assertEquals(93 to false, answers.last)
+    }
+
+    /** Time passing between the two verdicts changes nothing about either. */
+    @Test
+    fun `a batch decided late is answered once and not before`() = runTest(dispatcher) {
+        val answers = Answers()
+        val server = server(answers)
+
+        server.write(twoClimbStream(), requestId = 94)
+        advanceTimeBy(RelayGattServer.RELAY_OPERATION_DEADLINE_MS / 2)
+        server.settle(94, accepted = true)
+        assertTrue("one climb of the write is still undecided", answers.statuses.isEmpty())
+
+        advanceTimeBy(1_000)
+        server.settle(94, accepted = true)
+
+        assertEquals(listOf(94 to true), answers.statuses)
     }
 
     /** Which is to say: the second one is not swept away with the first. */

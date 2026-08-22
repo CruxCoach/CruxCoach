@@ -38,6 +38,11 @@ import kotlinx.coroutines.withTimeoutOrNull
  * guest asked for one. Whoever consumes this owes it exactly one
  * [RelayGattServer.settle] — the response is not sent until the relay knows
  * whether it will deliver the bytes.
+ *
+ * One write can complete more than one climb, and then every one of them
+ * carries the same transaction and owes it its own report. The guest is
+ * answered when the last of them has reported, and negative if any of them
+ * failed — see [RelayGattServer.settle].
  */
 data class RelayInboundClimb(
     val deviceAddress: String,
@@ -156,8 +161,22 @@ class RelayGattServer(private val context: Context) {
      * itself — is asynchronous and was previously reported as success before it
      * had run.
      */
-    /** One waiting ATT transaction, with a deadline of its own. */
-    private class PendingResponse(val device: BluetoothDevice?, val deadlineMs: Long)
+    /**
+     * One waiting ATT transaction, with a deadline and a verdict of its own.
+     *
+     * [outstanding] is how many commands of that one write have still to
+     * report. A feed can complete several climbs
+     * ([RelayFrameReassembler.offer]), and each of them is decided separately
+     * and asynchronously; the transaction belongs to the write, not to any one
+     * climb in it. [accepted] therefore accumulates: success is what is left
+     * when nothing in the write failed.
+     */
+    private class PendingResponse(
+        val device: BluetoothDevice?,
+        val deadlineMs: Long,
+        var outstanding: Int,
+        var accepted: Boolean = true,
+    )
 
     private val pendingResponses = HashMap<Int, PendingResponse>()
     private var responseTimeoutJob: Job? = null
@@ -286,13 +305,14 @@ class RelayGattServer(private val context: Context) {
             //  - A with-response write that completes nothing is answered at
             //    once with success, which means "received and buffered" and
             //    cannot mean more, because nothing is decidable yet.
-            //  - A with-response write that completes a climb is answered when
-            //    the relay knows whether it will deliver it — the board, layout
-            //    and angle checks, the rate limit, deduplication, the canonical
-            //    intent barrier and the board write itself all run first. A GATT
-            //    server may hold a response open; the previous claim that the
-            //    result "cannot ride in the GATT response" was a limit of the
-            //    shape I had built, not of the protocol.
+            //  - A with-response write that completes one or more climbs is
+            //    answered when the relay knows what happens to *all* of them —
+            //    the board, layout and angle checks, the rate limit,
+            //    deduplication, the canonical intent barrier and the board
+            //    write itself all run first, for each. A GATT server may hold a
+            //    response open; the previous claim that the result "cannot ride
+            //    in the GATT response" was a limit of the shape I had built,
+            //    not of the protocol.
             //  - Anything refused, dropped or unanswered is an ATT error.
             handleGuestWrite(
                 device = device,
@@ -356,43 +376,35 @@ class RelayGattServer(private val context: Context) {
                 return
             }
             // The last write of a climb carries the verdict for the whole of
-            // it. Only one transaction is outstanding per write, so a batch
-            // that completes several climbs defers on the first and answers
-            // the rest as ordinary emissions.
+            // it — and for everything else that write completed. One request
+            // has one answer, but that answer is about the whole write: a feed
+            // that finishes two climbs was previously answered after the
+            // first, so a valid climb could report `GATT_SUCCESS` while a
+            // second climb of the same write was still to be refused for
+            // layout, angle, pacing, a handover or a refused commit.
             // One instant for the whole write: the ATT sweep and everything
             // downstream measure from here.
             val deadlineAt = monotonicMs() + responseDeadlineMs
-            var answered = false
-            completed.forEachIndexed { index, climb ->
-                // Only the first climb of a batch carries the transaction:
-                // one write request has one answer, however many climbs its
-                // last fragment happened to complete.
-                val pending = if (responseNeeded && index == 0) requestId else null
-                if (pending != null) {
-                    // Registered *before* the emission, because the collector
-                    // may settle synchronously inside it. Registering after —
-                    // which is what this did — meant the verdict arrived to
-                    // find nothing waiting, was dropped, and the request was
-                    // then failed by the deadline despite having been handled.
-                    answered = true
-                    registerPending(requestId, device, deadlineAt)
-                }
+            val pending = if (responseNeeded) requestId else null
+            if (pending != null) {
+                // Registered *before* the first emission, because a collector
+                // may settle synchronously inside it. Registering after — which
+                // is what this did — meant the verdict arrived to find nothing
+                // waiting, was dropped, and the request was then failed by the
+                // deadline despite having been handled. And registered with the
+                // whole count, so an early settle cannot finish the transaction
+                // while later climbs of the same write are still to be emitted.
+                registerPending(requestId, device, deadlineAt, outstanding = completed.size)
+            }
+            completed.forEach { climb ->
                 if (!emitClimb(RelayInboundClimb(address, climb, pending, deadlineAt))) {
                     Log.w(TAG, "climbs buffer full — dropping a climb from $address")
-                    if (pending != null) {
-                        // Nothing is going to decide it, so take the
-                        // registration back and answer now. `settle` only acts
-                        // on a request that is still waiting, so a verdict that
-                        // raced this loses harmlessly.
-                        if (takePending(requestId) != null) {
-                            respond(device, requestId, responseNeeded, accepted = false)
-                        }
-                    }
-                    return@forEachIndexed
+                    // Nothing is going to decide this one, so it reports itself
+                    // — as the failure a dropped climb is. The write is still
+                    // answered exactly once, when its last command reports,
+                    // whether that report came from the relay or from here.
+                    settle(pending, accepted = false)
                 }
-            }
-            if (responseNeeded && !answered) {
-                respond(device, requestId, responseNeeded, accepted = true)
             }
     }
 
@@ -488,26 +500,41 @@ class RelayGattServer(private val context: Context) {
     }
 
     /**
-     * The verdict for a deferred write.
+     * One command of a deferred write has been decided.
      *
-     * Called exactly once per [RelayInboundClimb.pendingResponse]; a second
-     * call for the same transaction is ignored rather than sending a second
-     * ATT response for one request.
+     * Called once per command the write completed — which is once per
+     * [RelayInboundClimb] carrying this transaction. The ATT response goes out
+     * when the last of them has reported, and it is a success only if none of
+     * them failed: a write is delivered when everything in it was, and a guest
+     * told otherwise would have no way to know which half to send again.
+     *
+     * Reports beyond the last are ignored rather than sending a second ATT
+     * response for one request.
      */
     fun settle(requestId: Int?, accepted: Boolean) {
         if (requestId == null) return
-        val waiting = takePending(requestId) ?: return
-        sendVerdict(waiting.device, requestId, accepted)
+        val finished = synchronized(lock) {
+            val waiting = pendingResponses[requestId] ?: return
+            if (!accepted) waiting.accepted = false
+            waiting.outstanding -= 1
+            if (waiting.outstanding > 0) return
+            pendingResponses.remove(requestId)
+            waiting
+        }
+        sendVerdict(finished.device, requestId, finished.accepted)
     }
 
-    private fun registerPending(requestId: Int, device: BluetoothDevice?, deadlineAtMs: Long) {
-        synchronized(lock) { pendingResponses[requestId] = PendingResponse(device, deadlineAtMs) }
+    private fun registerPending(
+        requestId: Int,
+        device: BluetoothDevice?,
+        deadlineAtMs: Long,
+        outstanding: Int,
+    ) {
+        synchronized(lock) {
+            pendingResponses[requestId] = PendingResponse(device, deadlineAtMs, outstanding)
+        }
         scheduleResponseSweep()
     }
-
-    /** Claims the transaction, or null when somebody already answered it. */
-    private fun takePending(requestId: Int): PendingResponse? =
-        synchronized(lock) { pendingResponses.remove(requestId) }
 
     private fun respond(
         device: BluetoothDevice?,
