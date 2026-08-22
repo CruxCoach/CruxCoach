@@ -346,11 +346,19 @@ Erfolgs-ACK — auch nach Adresswechsel und Controller-Handover, und ohne zweite
 oder zweite Occurrence. Ein Fehler an dieser Stelle laedt genau die widerspruechliche
 Zweithandlung ein, die Exactly-once ausschliessen soll.
 
-Board-Write und ATT-Transaktion teilen eine Frist. Laeuft sie ab, beginnt kein neuer
-Board-Write mehr; ein bereits laufender wird nicht abgebrochen — ein halb geschriebener
-Climb ist ein Zustand, den das Board-Protokoll nicht zuruecknehmen kann — und wird
-kanonisch festgehalten, weil die Wand ihn tatsaechlich zeigt. Der Gast sieht dann einen
-Fehler, und sein Retry erhaelt den Erfolg.
+Board-Write und ATT-Transaktion teilen **eine** Frist, gesetzt beim GATT-Eingang und mit
+dem Write mitgefuehrt — nicht zwei Uhren mit demselben Wert. Sie gilt fuer beide
+Routing-Modi und wird vor jedem noch nicht begonnenen terminalen Seiteneffekt geprueft:
+vor der Intent-Barriere, danach, und vor Append beziehungsweise Projektion. Laeuft sie ab,
+beginnt nichts Neues mehr; ein bereits laufender Board-Write wird nicht abgebrochen — ein
+halb geschriebener Climb ist ein Zustand, den das Board-Protokoll nicht zuruecknehmen kann
+— und wird kanonisch festgehalten, weil die Wand ihn tatsaechlich zeigt. Der Gast sieht
+dann einen Fehler, und sein Retry erhaelt den Erfolg.
+
+Der Erfolgsbeleg fuer diesen Retry ist das kanonische `landed`-Flag der Intention selbst,
+unabhaengig davon, was Playlist und Board gerade zeigen. Aus dem Wandzustand abgeleitet
+waere er eine andere Frage: die Gruppe zieht legitim weiter, und bei `Ans Ende` ist die
+Occurrence ohnehin nie Current.
 
 Der terminale Uebergang (`landed = true`) wird **im selben Command wie die Occurrence**
 committet: Liste und „Anfrage erledigt“ sind ein controller-sequenzierter Schritt, beide
