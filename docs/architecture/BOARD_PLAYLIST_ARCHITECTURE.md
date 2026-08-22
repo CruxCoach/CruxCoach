@@ -368,6 +368,16 @@ Erfolgs-ACK — auch nach Adresswechsel und Controller-Handover, und ohne zweite
 oder zweite Occurrence. Ein Fehler an dieser Stelle laedt genau die widerspruechliche
 Zweithandlung ein, die Exactly-once ausschliessen soll.
 
+Das Retry-Fenster eines **erledigten** Vorgangs ist `DELIVERED_REPLAY_MS` (30 s) — fuer
+dieselbe Adresse wie fuer einen Reconnect, denn eine verlorene Antwort wird in Sekunden
+wiederholt, nicht in Minuten. Ein **offener** Vorgang bleibt die vollen `INTENT_TTL_MS`
+adoptierbar: das ist der Record, den ein Handover oder ein langsamer Controller finden
+muss, und ihn zu uebernehmen verhindert die zweite Occurrence. Die Asymmetrie ist
+wesentlich: die offiziellen Apps senden denselben Climb bei jedem Re-Light und jedem
+Winkelwechsel erneut, und ein bewusstes Re-Light Minuten spaeter ist eine neue Intention,
+kein Retry. Wuerde es als „bereits geliefert“ quittiert, bliebe die Wand auf dem Climb, zu
+dem die Gruppe inzwischen weitergezogen ist.
+
 Board-Write und ATT-Transaktion teilen **eine** Frist, gesetzt beim GATT-Eingang und mit
 dem Write mitgefuehrt — nicht zwei Uhren mit demselben Wert. Sie gilt fuer beide
 Routing-Modi und wird vor jedem noch nicht begonnenen terminalen Seiteneffekt geprueft:
@@ -411,8 +421,9 @@ der kanonische Serializer schreibt die Wand fuer sie kein zweites Mal, und die L
 gewinnt genau eine Occurrence. Bleibt ein Record dennoch offen — abgelehntes Command, Stop, Handover —, ist
 das unschaedlich und ausdruecklich nicht reparaturbeduerftig: ein offener Record erlaubt
 genau eines, naemlich dass ein Retry innerhalb des Zeitfensters dieselben IDs findet.
-Nach `INTENT_TTL_MS` ist ein Record ohnehin nicht mehr live, gelandet oder nicht, und ein
-spaeterer Send derselben Person ist eine neue Intention mit neuer Nonce.
+Nach `INTENT_TTL_MS` ist ein Record ohnehin nicht mehr live — ein erledigter schon nach
+`DELIVERED_REPLAY_MS` — und ein spaeterer Send derselben Person ist eine neue Intention mit
+neuer Nonce.
 
 ## 14. Grenzen und Nicht-Ziele
 
