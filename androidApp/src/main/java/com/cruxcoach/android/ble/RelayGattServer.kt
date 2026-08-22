@@ -338,6 +338,9 @@ class RelayGattServer(private val context: Context) {
             //    response open; the previous claim that the result "cannot ride
             //    in the GATT response" was a limit of the shape I had built,
             //    not of the protocol.
+            //  - On a transport with no framing nothing ever "completes", so
+            //    the write itself is the command and its own verdict is the
+            //    answer; see [rawWritesDecide].
             //  - Anything refused, dropped or unanswered is an ATT error.
             handleGuestWrite(
                 device = device,

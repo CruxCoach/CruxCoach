@@ -788,7 +788,7 @@ class CruxRelayManager(
                     )
                     when (decision) {
                         is RelayInboundGate.Decision.ProjectNow -> {
-                            val result = projectRelayedWrite(
+                            projectRelayedWrite(
                                 operation = decision.operation,
                                 pendingResponse = inbound.pendingResponse,
                                 deadlineAtMs = inbound.deadlineAtMs,
@@ -796,8 +796,6 @@ class CruxRelayManager(
                                 chunks = listOf(inbound.value),
                                 projection = null,
                             ) ?: return@collect
-                            check(result is ProjectionResult.Committed ||
-                                result is ProjectionResult.Duplicate)
                             advertiser.clearActiveClimb()
                             recordAnonymousDelivery(
                                 decision.operation, inbound.pendingResponse, now,
@@ -933,6 +931,21 @@ class CruxRelayManager(
                             settleDelivered(inbound.pendingResponse, delivered = true)
                         }
                         is RelayInboundGate.Decision.AppendToEnd -> {
+                            // Only a named write can be queued: there is no
+                            // occurrence to put on the list otherwise, and the
+                            // gate refuses those under this mode rather than
+                            // routing them here. Read from the identity rather
+                            // than asserted with `!!`, so the gate's rule and
+                            // this branch cannot quietly drift apart.
+                            val named = identified ?: run {
+                                Log.w(TAG, "a write with no climb identity cannot be queued")
+                                _state.update {
+                                    it.copy(inboundRefusal = RelayInboundGate.Refusal.NOT_QUEUEABLE)
+                                }
+                                inboundGate.markFailed(decision.operation, now)
+                                relayServer.settle(inbound.pendingResponse, accepted = false)
+                                return@collect
+                            }
                             // Fenced like the projection is: the guest may
                             // already have timed out while the barrier below
                             // was being committed, and adding an occurrence for
@@ -973,7 +986,7 @@ class CruxRelayManager(
                             // playlist commit into a duplicate that could
                             // never be retried.
                             gattBridge.appendSharedPlaylistEntry(
-                                identified!!.climbUuid, identified.angle, "relay_append",
+                                named.climbUuid, named.angle, "relay_append",
                                 entryId = decision.operation.entryId,
                                 // One command: the occurrence and "this request
                                 // is finished" commit together or not at all.
