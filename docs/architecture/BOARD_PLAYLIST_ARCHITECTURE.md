@@ -340,6 +340,28 @@ ebenfalls.
 Board, Modell/Layout und Winkel sind gegen das reale Ziel zu pruefen. Dedupe wird erst
 terminal nach Erfolg, damit ein legitimer Retry nach Fehler moeglich bleibt.
 
+Nicht jede Aufloesung gelingt, und „nicht aufgeloest“ ist kein einzelner Fall. Vier werden
+unterschieden, weil nur zwei davon eine Wand beschreiben duerfen:
+
+- **Benannt** — ein Katalog-Climb auf diesem Board: der vollstaendige Weg oben.
+- **Namenlos** — echte Bytes fuer genau dieses Board ohne Katalogtreffer (ungelisteter oder
+  gespiegelter Climb, zu wenige Holds, Board-Clear), ebenso der ungerahmte MoonBoard-
+  Bytestrom. Sie duerfen auf die Wand, aber nie in die Liste: es gibt nichts zu benennen.
+- **Fremdes Board** — LEDs, die dieses Board nicht hat: abgelehnt, bevor irgendetwas
+  geschrieben wird.
+- **Unlesbar** — kein Kommando, oder der Katalog kann nicht antworten: ebenfalls abgelehnt.
+
+Ein namenloser Write ist trotzdem ein Vorgang und bekommt alles, was daraus folgt: einen
+Fingerprint aus dem Inhalt, damit Retry und Nachfolger nach einem Handover auf dieselbe
+Operation konvergieren; dasselbe Gate mit Dedupe und Pacing; dieselbe Frist; und einen
+kanonischen `landed`-Record, der die fehlende Occurrence vertritt und **vor** dem ACK
+committet wird. Unter `Ans Ende` wird er abgelehnt: diese Einstellung heisst „eingehende
+Climbs nehmen die Wand nicht“, und ohne Occurrence gaebe es keine andere Art, ihn zu
+erfuellen — ihn trotzdem zu projizieren waere ihr genaues Gegenteil. Der MoonBoard-Bytestrom
+wird bewusst **nicht** gepaced: ein Kommando erstreckt sich dort ueber mehrere Writes, ein
+Rate-Limit pro Write wuerde also den eigenen Rest eines Kommandos verwerfen. Genau eine der
+beiden Ingress-Routen bearbeitet einen Write, und wer ihn bearbeitet, beantwortet ihn auch.
+
 Eine Wiederholung eines bereits gelieferten Vorgangs ist ein **Erfolg**, keine Ablehnung:
 derselbe Gastvorgang erhaelt innerhalb des Retry-Fensters dieselben IDs und erneut ein
 Erfolgs-ACK — auch nach Adresswechsel und Controller-Handover, und ohne zweiten Board-Write
@@ -354,6 +376,12 @@ beginnt nichts Neues mehr; ein bereits laufender Board-Write wird nicht abgebroc
 halb geschriebener Climb ist ein Zustand, den das Board-Protokoll nicht zuruecknehmen kann
 — und wird kanonisch festgehalten, weil die Wand ihn tatsaechlich zeigt. Der Gast sieht
 dann einen Fehler, und sein Retry erhaelt den Erfolg.
+
+Eine ATT-Transaktion gehoert dem **Write**, nicht einem einzelnen Climb darin. Ein Feed
+kann mehrere vollstaendige Climbs abschliessen; die Antwort geht erst raus, wenn jedes davon
+entschieden ist, und sie ist nur dann Erfolg, wenn nichts darin fehlgeschlagen ist. Sonst
+koennte ein gueltiger erster Climb quittiert werden, waehrend ein zweiter desselben Writes
+noch an Layout, Winkel, Pacing, Handover oder Commit scheitert.
 
 Ein Erfolgs-ACK wird im Moment des Antwortens erneut geprueft, nicht nur beim Annehmen:
 gegen die aktuelle Board-Health und gegen eine Controller-Lease, die weiterhin diesem
