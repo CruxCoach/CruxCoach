@@ -4,6 +4,14 @@ import android.app.Application
 import androidx.test.core.app.ApplicationProvider
 import com.cruxcoach.domain.board.BoardPacketEncoder
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.setMain
+import org.junit.After
+import org.junit.Before
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -34,6 +42,20 @@ class RelayGattAckContractTest {
     private val context: Application = ApplicationProvider.getApplicationContext()
     private val encoder = BoardPacketEncoder(apiLevel = 3)
 
+    /**
+     * The server's own scope runs on Main, so the sweeper only advances if the
+     * test drives it — and its monotonic clock is read from the same virtual
+     * time, so a `delay` inside the sweeper and the deadline it is comparing
+     * against cannot drift apart.
+     */
+    private val dispatcher = StandardTestDispatcher()
+
+    @Before
+    fun setUp() = Dispatchers.setMain(dispatcher)
+
+    @After
+    fun tearDown() = Dispatchers.resetMain()
+
     /** Exactly what the official app puts on the wire for one climb. */
     private fun climbStream(): ByteArray =
         encoder.encodeClimb((10 until 15).map { it to 0x1C }).flatMap { it.toList() }.toByteArray()
@@ -47,6 +69,7 @@ class RelayGattAckContractTest {
         RelayGattServer(context).apply {
             admitWrite = { admit }
             attResponder = { _, requestId, accepted -> answers.statuses += requestId to accepted }
+            monotonicMs = { 10_000L + dispatcher.scheduler.currentTime }
         }
 
     private fun RelayGattServer.write(
@@ -195,5 +218,106 @@ class RelayGattAckContractTest {
         assertTrue("deferred, so the climb was reassembled", answers.statuses.isEmpty())
         server.settle(13, accepted = true)
         assertEquals(13 to true, answers.last)
+    }
+
+    // ── The verdict may arrive before the emission returns ────────────────
+
+    /**
+     * The race this closes. The pending transaction used to be registered
+     * *after* the emission, so a collector that settles synchronously found
+     * nothing waiting, its verdict was dropped, and the request was then failed
+     * by the deadline — having been processed perfectly well.
+     */
+    @Test
+    fun `a verdict delivered inside the emission is not lost`() {
+        val answers = Answers()
+        val server = server(answers)
+        // Exactly what a synchronous collector does: decide during emit.
+        server.emitClimb = { inbound ->
+            server.settle(inbound.pendingResponse, accepted = true)
+            true
+        }
+
+        server.write(climbStream(), requestId = 61)
+
+        assertEquals(61 to true, answers.last)
+    }
+
+    /** And a refusal decided that fast is still the answer that goes out. */
+    @Test
+    fun `a refusal delivered inside the emission is the answer`() {
+        val answers = Answers()
+        val server = server(answers)
+        server.emitClimb = { inbound ->
+            server.settle(inbound.pendingResponse, accepted = false)
+            true
+        }
+
+        server.write(climbStream(), requestId = 62)
+
+        assertEquals(1, answers.statuses.size)
+        assertEquals(62 to false, answers.last)
+    }
+
+    /**
+     * A verdict that raced a failing emission loses harmlessly: whoever claims
+     * the transaction first answers it, and it is answered exactly once.
+     */
+    @Test
+    fun `a dropped climb settled during the drop is answered once`() {
+        val answers = Answers()
+        val server = server(answers)
+        server.emitClimb = { inbound ->
+            server.settle(inbound.pendingResponse, accepted = true)
+            false
+        }
+
+        server.write(climbStream(), requestId = 63)
+
+        assertEquals(1, answers.statuses.size)
+        assertEquals(63 to true, answers.last)
+    }
+
+    // ── Every request gets its own window ─────────────────────────────────
+
+    /**
+     * One shared timer gave a write that arrived five seconds into somebody
+     * else's window one second to be decided. Each transaction now carries its
+     * own monotonic deadline.
+     */
+    @Test
+    fun `a later request gets its own full window`() = runTest(dispatcher) {
+        val answers = Answers()
+        val server = server(answers)
+
+        server.write(climbStream(), requestId = 71)
+        advanceTimeBy(5_000)
+        server.write(climbStream(), requestId = 72, address = "BB:02")
+
+        // The first one is out of time; the second still has five seconds.
+        advanceTimeBy(1_100)
+        assertEquals(listOf(71 to false), answers.statuses)
+
+        // And it is answered on its own merits when somebody decides it.
+        server.settle(72, accepted = true)
+        assertEquals(listOf(71 to false, 72 to true), answers.statuses)
+    }
+
+    /** Which is to say: the second one is not swept away with the first. */
+    @Test
+    fun `an expired request is failed and a fresh one is left alone`() = runTest(dispatcher) {
+        val answers = Answers()
+        val server = server(answers)
+
+        server.write(climbStream(), requestId = 81)
+        advanceTimeBy(6_100)
+        assertEquals(listOf(81 to false), answers.statuses)
+
+        server.write(climbStream(), requestId = 82, address = "CC:03")
+        advanceTimeBy(5_000)
+        assertEquals("still inside its own window", 1, answers.statuses.size)
+
+        advanceTimeBy(1_100)
+        assertEquals(listOf(81 to false, 82 to false), answers.statuses)
     }
 }

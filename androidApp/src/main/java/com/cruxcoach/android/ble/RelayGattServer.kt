@@ -10,6 +10,7 @@ import android.bluetooth.BluetoothGattService
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
 import android.content.Context
+import android.os.SystemClock
 import android.util.Log
 import androidx.annotation.VisibleForTesting
 import com.cruxcoach.domain.relay.CompleteClimb
@@ -124,7 +125,10 @@ class RelayGattServer(private val context: Context) {
      * itself — is asynchronous and was previously reported as success before it
      * had run.
      */
-    private val pendingResponses = HashMap<Int, BluetoothDevice?>()
+    /** One waiting ATT transaction, with a deadline of its own. */
+    private class PendingResponse(val device: BluetoothDevice?, val deadlineMs: Long)
+
+    private val pendingResponses = HashMap<Int, PendingResponse>()
     private var responseTimeoutJob: Job? = null
 
     /**
@@ -157,8 +161,16 @@ class RelayGattServer(private val context: Context) {
      * beyond a board round trip. A verdict that has not arrived by then is
      * reported as a failure rather than left to time out, because a timeout
      * looks like a broken link and a failure looks like what it is.
+     *
+     * Per request, and measured on a monotonic clock. One shared timer meant a
+     * write that arrived five seconds into somebody else's window got one
+     * second, which is neither the documented six nor anything a guest could
+     * predict.
      */
     private val responseDeadlineMs = 6_000L
+
+    @VisibleForTesting
+    internal var monotonicMs: () -> Long = SystemClock::elapsedRealtime
 
     /**
      * How many guests the radio can still take, asked at accept time.
@@ -326,18 +338,27 @@ class RelayGattServer(private val context: Context) {
                 // one write request has one answer, however many climbs its
                 // last fragment happened to complete.
                 val pending = if (responseNeeded && index == 0) requestId else null
+                if (pending != null) {
+                    // Registered *before* the emission, because the collector
+                    // may settle synchronously inside it. Registering after —
+                    // which is what this did — meant the verdict arrived to
+                    // find nothing waiting, was dropped, and the request was
+                    // then failed by the deadline despite having been handled.
+                    answered = true
+                    registerPending(requestId, device)
+                }
                 if (!emitClimb(RelayInboundClimb(address, climb, pending))) {
                     Log.w(TAG, "climbs buffer full — dropping a climb from $address")
-                    if (pending != null && !answered) {
-                        answered = true
-                        respond(device, requestId, responseNeeded, accepted = false)
+                    if (pending != null) {
+                        // Nothing is going to decide it, so take the
+                        // registration back and answer now. `settle` only acts
+                        // on a request that is still waiting, so a verdict that
+                        // raced this loses harmlessly.
+                        if (takePending(requestId) != null) {
+                            respond(device, requestId, responseNeeded, accepted = false)
+                        }
                     }
                     return@forEachIndexed
-                }
-                if (pending != null) {
-                    answered = true
-                    synchronized(lock) { pendingResponses[requestId] = device }
-                    scheduleResponseTimeout()
                 }
             }
             if (responseNeeded && !answered) {
@@ -402,7 +423,7 @@ class RelayGattServer(private val context: Context) {
             pendingResponses.clear()
             entries
         }
-        unanswered.forEach { sendVerdict(it.value, it.key, accepted = false) }
+        unanswered.forEach { sendVerdict(it.value.device, it.key, accepted = false) }
         if (!_isRunning.value) return
         serviceRegistration?.cancel(); serviceRegistration = null
         livenessJob?.cancel(); livenessJob = null
@@ -445,14 +466,20 @@ class RelayGattServer(private val context: Context) {
      */
     fun settle(requestId: Int?, accepted: Boolean) {
         if (requestId == null) return
-        // Membership, not the value: the device may legitimately be absent, and
-        // treating that as "nothing was waiting" swallowed the verdict.
-        val waiting = synchronized(lock) {
-            if (!pendingResponses.containsKey(requestId)) return
-            pendingResponses.remove(requestId)
-        }
-        sendVerdict(waiting, requestId, accepted)
+        val waiting = takePending(requestId) ?: return
+        sendVerdict(waiting.device, requestId, accepted)
     }
+
+    private fun registerPending(requestId: Int, device: BluetoothDevice?) {
+        synchronized(lock) {
+            pendingResponses[requestId] = PendingResponse(device, monotonicMs() + responseDeadlineMs)
+        }
+        scheduleResponseSweep()
+    }
+
+    /** Claims the transaction, or null when somebody already answered it. */
+    private fun takePending(requestId: Int): PendingResponse? =
+        synchronized(lock) { pendingResponses.remove(requestId) }
 
     private fun respond(
         device: BluetoothDevice?,
@@ -476,19 +503,29 @@ class RelayGattServer(private val context: Context) {
      * still alive, rather than being left to time out and look like a broken
      * link.
      */
-    private fun scheduleResponseTimeout() {
+    private fun scheduleResponseSweep() {
         if (responseTimeoutJob?.isActive == true) return
         responseTimeoutJob = scope.launch {
             while (isActive) {
-                delay(responseDeadlineMs)
-                val stale = synchronized(lock) {
-                    val entries = pendingResponses.entries.toList()
-                    pendingResponses.clear()
-                    entries
+                // Sleep until the *earliest* deadline, then fail only what has
+                // genuinely run out. A single shared timer that cleared every
+                // pending request gave a late arrival whatever was left of
+                // somebody else's window.
+                val nextDeadline = synchronized(lock) {
+                    pendingResponses.values.minOfOrNull { it.deadlineMs }
+                } ?: return@launch
+                val wait = nextDeadline - monotonicMs()
+                if (wait > 0) delay(wait)
+                val now = monotonicMs()
+                val expired = synchronized(lock) {
+                    val due = pendingResponses.filterValues { it.deadlineMs <= now }
+                    due.keys.forEach { pendingResponses.remove(it) }
+                    due
                 }
-                if (stale.isEmpty()) return@launch
-                Log.w(TAG, "${stale.size} relay write(s) went unanswered; failing them closed")
-                stale.forEach { sendVerdict(it.value, it.key, accepted = false) }
+                if (expired.isNotEmpty()) {
+                    Log.w(TAG, "${expired.size} relay write(s) went unanswered; failing them closed")
+                    expired.forEach { sendVerdict(it.value.device, it.key, accepted = false) }
+                }
             }
         }
     }
