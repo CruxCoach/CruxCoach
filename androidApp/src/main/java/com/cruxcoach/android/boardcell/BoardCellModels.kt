@@ -456,6 +456,19 @@ data class BoardPlaylistState(
      * possibly have written.
      */
     internal val usesPreRestoreShapeOnly: Boolean get() = lastClear == null
+
+    /**
+     * Nothing the pre-V11 schema could not express is in use.
+     *
+     * Every legacy hash is computed *without* the fields added since, so a
+     * legacy branch that does not demand their defaults is an authentication
+     * hole: the bytes that are hashed say nothing about them, and anything not
+     * hashed can be altered while the hash still verifies. That is exactly how
+     * relay intent metadata could be added to a snapshot carrying a valid V10
+     * hash.
+     */
+    internal val usesPreSelectionShapeOnly: Boolean
+        get() = selectedEntryId == null && relayOperations.isEmpty()
 }
 
 /**
@@ -710,17 +723,28 @@ data class BoardCellSnapshot(
      * repaired from a canonical snapshot instead.
      */
     fun hasValidHash(): Boolean = stateHash == BoardCellHash.compute(copy(stateHash = "")) ||
-        // A build that predates the selection field had one field for the
-        // cursor and the confirmed current. Its bytes stay exact for as long as
-        // the two say the same thing, which is every snapshot it could write.
-        (playlist.selectedEntryId == playlist.currentEntryId &&
+        // Every legacy branch below is guarded by `usesPreSelectionShapeOnly`,
+        // and the reason is worth stating once: a legacy hash is computed over
+        // bytes that do not mention the fields added since it, so accepting one
+        // while such a field carries a non-default value authenticates nothing
+        // about that field. It is not "an old peer might not know about it" —
+        // it is "anybody may write whatever they like into it".
+        //
+        // A build that predates the selection field wrote nothing into it: the
+        // cursor and the confirmed current were one value, in `currentEntryId`.
+        // Its bytes are therefore exact exactly while the new fields are at
+        // their defaults, which is what the guard demands. (Normalisation
+        // adopts that single value as the selection the first time this build
+        // reduces the state, and from then on it is a V11 snapshot.)
+        (playlist.usesPreSelectionShapeOnly &&
             stateHash == BoardCellHash.computeLegacyV10(copy(stateHash = ""))) ||
         // A build that predates the relay field wrote V9 bytes. That stays
         // exact for as long as nothing is offered, which is every snapshot it
         // could write — so an upgrade does not fork the cell.
-        (relay == BoardCellRelayState.NONE && playlist.selectedEntryId == playlist.currentEntryId &&
+        (relay == BoardCellRelayState.NONE && playlist.usesPreSelectionShapeOnly &&
             stateHash == BoardCellHash.computeLegacyV9(copy(stateHash = ""))) ||
-        (relay == BoardCellRelayState.NONE && playlist.usesPreRestoreShapeOnly &&
+        (relay == BoardCellRelayState.NONE && playlist.usesPreSelectionShapeOnly &&
+            playlist.usesPreRestoreShapeOnly &&
             stateHash == BoardCellHash.computeLegacyV8(copy(stateHash = ""))) ||
         (relay == BoardCellRelayState.NONE && joinMode == BoardJoinMode.OPEN && playlist.usesLegacyShapeOnly &&
             stateHash == BoardCellHash.computeLegacyV6(copy(stateHash = ""))) ||
@@ -742,6 +766,16 @@ sealed interface BoardCellEvent {
         val projection: BoardProjection,
         val commandId: String,
         val recoversUnknownProjection: Boolean = false,
+        /**
+         * The occurrence this write was asked for, when it was asked for one.
+         *
+         * Carried so a pending failure can be retired for exactly that
+         * occurrence. Clearing by climb and angle — which is what this did —
+         * let the success of the second occurrence of a route erase the
+         * failure recorded against the first. Null for an external write that
+         * belongs to no occurrence at all.
+         */
+        val entryId: String? = null,
     ) : BoardCellEvent
     @Serializable data class ProjectUnknown(val commandId: String, val reason: String) : BoardCellEvent
     /**

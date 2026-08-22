@@ -147,6 +147,82 @@ class BoardPlaylistCurrentContractTest {
         assertNull("nothing was written to bring the list back", restored.currentEntryId)
     }
 
+    // ── Two occurrences of the same route ────────────────────────────────
+    //
+    // Everything below is a question the content cannot answer: "which one".
+
+    /** A pending failure belongs to an occurrence, not to a route. */
+    @Test
+    fun `the success of one occurrence does not clear another's failure`() {
+        val twice = BoardPlaylistPolicy.apply(
+            BoardPlaylistState(sessionId = 7),
+            listOf(
+                BoardPlaylistOp.Add("e1", "climb-x", 40),
+                BoardPlaylistOp.Add("e2", "climb-x", 40),
+            ),
+        )
+        val failedFirst = BoardPlaylistPolicy.apply(
+            twice, BoardPlaylistOps.recordLightFailure(twice, "e1"),
+        )
+        assertEquals("e1", failedFirst.pendingProjection?.entryId)
+
+        // The second occurrence of the identical route lands.
+        val afterSecond = BoardCellReplica.reduce(
+            BoardCellSnapshot(
+                BoardCellId("cell"), PhysicalBoardId("board"), epoch = 1, sequence = 1,
+                controllerId = "controller", lineageId = "lineage",
+                members = setOf("controller"), playlist = failedFirst,
+            ).withComputedHash(),
+            BoardCellEvent.ProjectCommitted(
+                BoardProjection("climb-x", 40), "command-0001", entryId = "e2",
+            ),
+            2,
+        )
+
+        assertEquals(
+            "the first occurrence's failure is still its own",
+            "e1", afterSecond.playlist.pendingProjection?.entryId,
+        )
+    }
+
+    /** And the occurrence that did land is the one that gets confirmed. */
+    @Test
+    fun `confirming names the occurrence, not the route`() {
+        val twice = BoardPlaylistPolicy.apply(
+            BoardPlaylistState(sessionId = 7),
+            listOf(
+                BoardPlaylistOp.Add("e1", "climb-x", 40),
+                BoardPlaylistOp.Add("e2", "climb-x", 40),
+            ),
+        )
+
+        val lit = BoardPlaylistPolicy.apply(twice, BoardPlaylistOps.confirmLit(twice, "e2"))
+
+        assertEquals("e2", lit.currentEntryId)
+        assertEquals("e2", lit.selectedEntryId)
+    }
+
+    /** A commit that belongs to no occurrence clears nobody's failure. */
+    @Test
+    fun `an external write does not clear a pending failure`() {
+        val one = BoardPlaylistPolicy.apply(
+            BoardPlaylistState(sessionId = 7), listOf(BoardPlaylistOp.Add("e1", "climb-x", 40)),
+        )
+        val failed = BoardPlaylistPolicy.apply(one, BoardPlaylistOps.recordLightFailure(one, "e1"))
+
+        val after = BoardCellReplica.reduce(
+            BoardCellSnapshot(
+                BoardCellId("cell"), PhysicalBoardId("board"), epoch = 1, sequence = 1,
+                controllerId = "controller", lineageId = "lineage",
+                members = setOf("controller"), playlist = failed,
+            ).withComputedHash(),
+            BoardCellEvent.ProjectCommitted(BoardProjection("climb-x", 40), "command-0002"),
+            2,
+        )
+
+        assertEquals("e1", after.playlist.pendingProjection?.entryId)
+    }
+
     /** Normalisation is where the invented current used to come from. */
     @Test
     fun `normalisation gives the cursor a fallback and the board none`() {

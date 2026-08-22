@@ -126,8 +126,21 @@ class SharedPlaylistWireTest {
 
     // ===== Version fencing =====
 
-    @Test fun `the wire version marks the restorable clear`() {
-        assertEquals(13, BoardCellWireCodec.VERSION)
+    /**
+     * The version is a promise about the *shape*, so a shape change has to
+     * change it. V13 announced the restorable clear; the cursor/current split
+     * and the canonical relay intent added snapshot fields and operations a
+     * V13 reader cannot decode at all, and leaving the number at 13 meant two
+     * builds agreed on it and disagreed on what it meant.
+     */
+    @Test fun `the wire version marks the cursor split and the relay intent`() {
+        assertEquals(14, BoardCellWireCodec.VERSION)
+    }
+
+    @Test fun `a V13 peer frame is refused rather than read under the new shape`() {
+        val bytes = BoardCellWireCodec.encode(
+            frame(BoardCellWireMessage.Snapshot(snapshot(playlist())), version = 13))
+        assertThrows(IllegalArgumentException::class.java) { BoardCellWireCodec.decode(bytes) }
     }
 
     @Test fun `a V12 peer frame is refused rather than read as an offer nobody made`() {
@@ -137,6 +150,42 @@ class SharedPlaylistWireTest {
         val bytes = BoardCellWireCodec.encode(
             frame(BoardCellWireMessage.Snapshot(snapshot(playlist())), version = 12))
         assertThrows(IllegalArgumentException::class.java) { BoardCellWireCodec.decode(bytes) }
+    }
+
+    /**
+     * The other direction, which is the one a version bump is actually for: a
+     * frame carrying the new shape must not be readable by a peer announcing
+     * the old number. `ignoreUnknownKeys = false` makes that structural rather
+     * than a matter of trust — the fields simply do not decode.
+     */
+    @Test fun `a new-shape frame cannot be read as the old version`() {
+        val newShape = BoardCellWireCodec.encode(
+            frame(BoardCellWireMessage.Snapshot(snapshot(playlist().copy(
+                relayOperations = listOf(BoardRelayOperation(
+                    fingerprint = "fp", guestKey = "gk",
+                    operationId = "relay-op-1", entryId = "rl1",
+                    stampedAtEpochMs = now,
+                )),
+            )))))
+
+        val downgraded = newShape.decodeToString().replace("\"version\":14", "\"version\":13")
+
+        assertThrows(IllegalArgumentException::class.java) {
+            BoardCellWireCodec.decode(downgraded.encodeToByteArray())
+        }
+    }
+
+    /** And an operation the old shape has no name for is refused outright. */
+    @Test fun `an operation from the new shape does not decode under the old version`() {
+        val newShape = BoardCellWireCodec.encode(
+            frame(BoardCellWireMessage.PlaylistCommand(command(
+                BoardPlaylistOp.SetSelection("e1")))))
+
+        val downgraded = newShape.decodeToString().replace("\"version\":14", "\"version\":13")
+
+        assertThrows(IllegalArgumentException::class.java) {
+            BoardCellWireCodec.decode(downgraded.encodeToByteArray())
+        }
     }
 
     @Test fun `a V11 peer frame is refused rather than read as an empty playlist`() {

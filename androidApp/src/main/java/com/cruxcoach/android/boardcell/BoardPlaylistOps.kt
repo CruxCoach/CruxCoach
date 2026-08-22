@@ -750,7 +750,14 @@ object BoardPlaylistOps {
         val existing = fromEntryId?.let(state::entry)
         if (existing != null) return LightNow(existing.entryId, emptyList())
         val entryId = newEntryId()
-        val anchor = state.selectedEntryId
+        // Directly after the occurrence the board is confirmed to be showing —
+        // not after the cursor. The two are different fields for a reason, and
+        // this is the position the contract names: a climb sent from outside
+        // the list goes next to the one that is up there now, so the list still
+        // reads as the order the wall went through. Anchoring at the cursor put
+        // it wherever somebody happened to be scrolling, and on the failure
+        // path that is nowhere near the wall at all.
+        val anchor = state.currentEntryId
             ?.let { BoardPlaylistAnchor.After(it) }
             ?: BoardPlaylistAnchor.Tail
         // The occurrence only. Making it current is the *second* phase and
@@ -779,7 +786,10 @@ object BoardPlaylistOps {
         val ensure = if (state.entry(entryId) != null) emptyList() else listOf(
             BoardPlaylistOp.Add(
                 entryId, climbUuid, angle,
-                anchor = state.selectedEntryId?.let { BoardPlaylistAnchor.After(it) }
+                // The same anchor the member used, so materialising the
+                // occurrence here and receiving their add later agree on where
+                // it goes as well as on which id it has.
+                anchor = state.currentEntryId?.let { BoardPlaylistAnchor.After(it) }
                     ?: BoardPlaylistAnchor.Tail,
             ),
         )

@@ -27,6 +27,7 @@ class BoardPlaylistRemoteRemoveTest {
             entry("e3", "climb-x"),
         ),
         selectedEntryId = "e1",
+        currentEntryId = "e1",
     )
 
     @Test

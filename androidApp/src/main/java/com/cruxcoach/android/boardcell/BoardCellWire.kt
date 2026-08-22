@@ -119,7 +119,15 @@ object BoardCellWireCodec {
     // command. V5 added permissionless, member-sponsored multi-hop BoardCell
     // admission. Older peers must fail closed instead of interpreting a newer
     // authority flow.
-    const val VERSION = 13
+    // V14 is the cursor/current split and the canonical relay intent: the
+    // snapshot gained `selectedEntryId` and `relayOperations`, and the
+    // operation set gained `SetSelection` and `RecordRelayOperation`. Neither
+    // is optional for a reader — `ignoreUnknownKeys` is false, so a V13 peer
+    // cannot decode a frame carrying any of them, and a V14 peer reading a V13
+    // frame would take a cursor for a confirmed board state. Announcing the
+    // same version for both shapes was the bug: two builds agreed on a number
+    // and disagreed on what it meant.
+    const val VERSION = 14
     private val json = Json { classDiscriminator = "type"; encodeDefaults = true; ignoreUnknownKeys = false }
     fun encode(frame: BoardCellWireFrame): ByteArray = json.encodeToString(frame).encodeToByteArray()
     fun decode(bytes: ByteArray): BoardCellWireFrame {

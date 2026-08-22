@@ -296,7 +296,11 @@ class BoardPlaylistClearRestoreTest {
             physicalBoardId = PhysicalBoardId("board-upgrade"),
             epoch = 1, sequence = 4, controllerId = "controller", lineageId = "lineage",
             members = setOf("controller", "member-a"),
-            playlist = playlist(entry("e1"), entry("e2")),
+            // Shaped as a pre-restore build really wrote one: a single value
+            // in `currentEntryId` and nothing in the fields added since.
+            playlist = playlist(entry("e1"), entry("e2")).copy(
+                selectedEntryId = null, currentEntryId = "e1",
+            ),
             playlistRevision = 3,
         )
         val v8 = snapshot.copy(stateHash = BoardCellHash.computeLegacyV8(snapshot))

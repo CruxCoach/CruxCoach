@@ -99,11 +99,19 @@ class BoardCellReplica(val localMemberId: String, initial: BoardCellSnapshot? = 
          */
         const val RELAY_SLOT_CEILING = 7
 
-        private fun BoardPlaylistState.clearingPendingFor(projection: BoardProjection):
-            BoardPlaylistState {
+        /**
+         * Retires a pending failure for the occurrence that was just written.
+         *
+         * By entry id, never by content: two occurrences of the same route are
+         * two separate requests, and letting the second one's success clear the
+         * first one's failure told somebody their climb had reached a wall it
+         * never got to. A commit that names no occurrence — an external write —
+         * clears nothing.
+         */
+        private fun BoardPlaylistState.clearingPendingFor(entryId: String?): BoardPlaylistState {
             val pending = pendingProjection ?: return this
-            return if (pending.climbUuid == projection.climbUuid && pending.angle == projection.angle)
-                copy(pendingProjection = null) else this
+            if (entryId == null || pending.entryId != entryId) return this
+            return copy(pendingProjection = null)
         }
 
         /**
@@ -143,7 +151,7 @@ class BoardCellReplica(val localMemberId: String, initial: BoardCellSnapshot? = 
                     availability = if (event.recoversUnknownProjection &&
                         current.availability == BoardCellAvailability.FROZEN_WRITE_RECOVERY)
                         BoardCellAvailability.ACTIVE else current.availability,
-                ).withPlaylist(current, current.playlist.clearingPendingFor(event.projection))
+                ).withPlaylist(current, current.playlist.clearingPendingFor(event.entryId))
                 is BoardCellEvent.ProjectUnknown -> current.copy(projection = null, projectionKnown = false)
                 // The delta is replayed, not trusted: every replica applies the
                 // same pure reducer to the same predecessor, and the envelope's

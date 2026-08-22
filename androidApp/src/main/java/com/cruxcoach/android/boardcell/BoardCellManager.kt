@@ -859,7 +859,7 @@ class BoardCellManager @Inject constructor(
 
         // Phase two: the write. Only what it says may move the current.
         val projected = if (snapshot.controllerId == activeNodeId) {
-            syncPlaylistProjectionFor(resolved)
+            syncPlaylistProjectionFor(resolved, plan.entryId)
         } else {
             sendProjectionRequest(resolved, entryId = plan.entryId) != null
         }
@@ -883,8 +883,11 @@ class BoardCellManager @Inject constructor(
         return projected
     }
 
-    /** The lamp, for one resolved projection rather than the current entry. */
-    private suspend fun syncPlaylistProjectionFor(resolved: BoardProjection): Boolean =
+    /** The lamp, for one resolved projection and the occurrence it belongs to. */
+    private suspend fun syncPlaylistProjectionFor(
+        resolved: BoardProjection,
+        entryId: String,
+    ): Boolean =
         playlistProjectionMutex.withLock {
             val board = writableBoard() ?: return@withLock false
             val snapshot = coordinator.snapshot(board) ?: return@withLock false
@@ -895,6 +898,10 @@ class BoardCellManager @Inject constructor(
                 baseSequence = snapshot.sequence,
                 baseProjection = snapshot.projection,
                 basePlaylistRevision = snapshot.playlistRevision,
+                // Named, so the commit retires the pending failure of *this*
+                // occurrence rather than of whichever one happens to share its
+                // route and angle.
+                entryId = entryId,
             )
             val result = writingBoard(resolved) {
                 if (snapshot.availability == BoardCellAvailability.FROZEN_WRITE_RECOVERY) {
@@ -932,7 +939,12 @@ class BoardCellManager @Inject constructor(
         if (snapshot.controllerId == activeNodeId) return syncPlaylistProjection()
         val resolved = playlistProjectionWriter?.resolve(entry.climbUuid, entry.angle)
             ?: BoardProjection(entry.climbUuid, entry.angle)
-        return sendProjectionRequest(resolved) != null
+        // The occurrence travels with the request. Without it the controller
+        // writes the wall and confirms nothing, so the board ends up showing a
+        // climb while the confirmed current still names the old one — or none.
+        // The id matters rather than the climb: the same route may be on the
+        // list several times and only one of them was asked for.
+        return sendProjectionRequest(resolved, entryId = entry.entryId) != null
     }
 
     /**
@@ -969,6 +981,10 @@ class BoardCellManager @Inject constructor(
                 baseSequence = snapshot.sequence,
                 baseProjection = snapshot.projection,
                 basePlaylistRevision = snapshot.playlistRevision,
+                // Named, so the commit retires the pending failure of *this*
+                // occurrence rather than of whichever one happens to share its
+                // route and angle.
+                entryId = entry.entryId,
             )
             val result = writingBoard(resolved) {
                 if (snapshot.availability == BoardCellAvailability.FROZEN_WRITE_RECOVERY) {
@@ -985,7 +1001,14 @@ class BoardCellManager @Inject constructor(
                 "climb" to FipsDebugLog.id(entry.climbUuid), "angle" to entry.angle,
                 "result" to result.javaClass.simpleName)
             val committed = result is ProjectionResult.Committed || result is ProjectionResult.Duplicate
-            if (!committed) {
+            if (committed) {
+                // The wall took this occurrence, so this occurrence is what the
+                // board is showing. Nothing else in the system will say it: the
+                // ordinary lamp used to write the board and confirm nothing at
+                // all, leaving the group looking at a new climb that canonical
+                // state still described as unsent.
+                confirmProjectedEntry(entry.entryId)
+            } else {
                 recordPendingProjection(BoardPlaylistPendingProjection(entry.entryId,
                     entry.climbUuid, entry.angle,
                     BoardPlaylistProjectionPendingReason.BOARD_WRITE_FAILED))
@@ -993,6 +1016,22 @@ class BoardCellManager @Inject constructor(
             refreshSelected()
             committed
         }
+
+    /**
+     * Confirms one occurrence as what the board is showing.
+     *
+     * Controller-only by construction, and addressed by entry id: with the same
+     * climb on the list twice, "the wall is showing this route" is not an
+     * answer to "which occurrence did somebody ask for".
+     */
+    private suspend fun confirmProjectedEntry(entryId: String) {
+        val board = BoardCellScopeRegistry.selected.value ?: return
+        val snapshot = coordinator.snapshot(board) ?: return
+        if (snapshot.controllerId != activeNodeId) return
+        val ops = BoardPlaylistOps.confirmLit(snapshot.playlist, entryId)
+        if (ops.isEmpty()) return
+        composePlaylistCommand(ops)?.let { commitPlaylistCommand(activeNodeId, it) }
+    }
 
     /**
      * Records the pending-send state canonically. A successful projection

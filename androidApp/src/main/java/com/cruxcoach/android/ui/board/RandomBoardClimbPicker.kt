@@ -82,7 +82,7 @@ class RandomBoardClimbPicker @Inject constructor(
         // the list. Any of the three was put there by somebody standing in
         // front of this board.
         val playlist = snapshot.playlist
-        val reference = playlist.entries.firstOrNull { it.entryId == playlist.currentEntryId }
+        val reference = playlist.entries.firstOrNull { it.entryId == playlist.selectedEntryId }
             ?.let { BoardPlaylistReference(it.climbUuid, it.angle) }
             ?: snapshot.projection?.let { BoardPlaylistReference(it.climbUuid, it.angle) }
             ?: playlist.entries.firstOrNull()

@@ -495,7 +495,10 @@ class BoardPlaylistViewModel @Inject constructor(
      */
     fun appendAsNext(climbUuid: String, angle: Int) =
         submit(BoardPlaylistEditKind.ADD, "add_next") { state ->
-            val anchor = state.currentEntryId
+            // "As next" means next from where the group is looking, which is
+            // the cursor. Reading the confirmed current here put a warm-up at
+            // the head of the list on any cell that had not sent anything yet.
+            val anchor = state.selectedEntryId
                 ?.let { BoardPlaylistAnchor.After(it) }
                 ?: BoardPlaylistAnchor.Head
             BoardPlaylistOps.add(climbUuid, angle, anchor = anchor)

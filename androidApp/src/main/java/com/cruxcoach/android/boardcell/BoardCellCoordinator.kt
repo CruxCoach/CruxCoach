@@ -541,7 +541,7 @@ class BoardCellCoordinator(
         baseSequence = request.baseSequence,
         boardWrite = boardWrite,
         semanticRequest = request,
-    ) { BoardCellEvent.ProjectCommitted(request.projection, request.commandId) }
+    ) { BoardCellEvent.ProjectCommitted(request.projection, request.commandId, entryId = request.entryId) }
 
     /** Explicit operator recovery when the board protocol has no semantic readback. */
     suspend fun reprojectAfterRecovery(
@@ -575,6 +575,7 @@ class BoardCellCoordinator(
             request.projection,
             request.commandId,
             recoversUnknownProjection = true,
+            entryId = request.entryId,
         )
     }
 

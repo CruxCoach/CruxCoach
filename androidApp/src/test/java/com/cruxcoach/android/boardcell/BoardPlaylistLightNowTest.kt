@@ -79,12 +79,13 @@ class BoardPlaylistLightNowTest {
     }
 
     @Test
-    fun `a climb from outside the list is added directly after the current one`() {
+    fun `a climb from outside the list is added directly after the confirmed current`() {
         val state = playlist(
             entry("e1", "climb-a"),
             entry("e2", "climb-b"),
             entry("e3", "climb-c"),
             selected = "e2",
+            confirmed = "e2",
         )
 
         val plan = BoardPlaylistOps.lightNow(state, "climb-x", 25) { "new-1" }
@@ -106,6 +107,86 @@ class BoardPlaylistLightNowTest {
             after.entries.map { it.entryId },
         )
         assertEquals("new-1", after.currentEntryId)
+    }
+
+    /**
+     * The case the anchor exists for, and the one the old code got wrong: the
+     * group has scrolled away from the wall. A climb sent from outside belongs
+     * next to the occurrence that is *up there*, so the list keeps reading as
+     * the order the board went through — not next to wherever somebody's
+     * finger happened to be.
+     */
+    @Test
+    fun `the anchor follows the board, not the cursor`() {
+        val state = playlist(
+            entry("e1", "climb-a"),
+            entry("e2", "climb-b"),
+            entry("e3", "climb-c"),
+            selected = "e3",
+            confirmed = "e1",
+        )
+
+        val plan = BoardPlaylistOps.lightNow(state, "climb-x", 40) { "new-1" }
+
+        assertEquals(
+            listOf(BoardPlaylistOp.Add("new-1", "climb-x", 40,
+                anchor = BoardPlaylistAnchor.After("e1"))),
+            plan.ops,
+        )
+        assertEquals(
+            listOf("e1", "new-1", "e2", "e3"),
+            BoardPlaylistPolicy.apply(state, plan.ops).entries.map { it.entryId },
+        )
+    }
+
+    /** Including when the write fails: the occurrence stays where it belongs. */
+    @Test
+    fun `a failed send leaves the occurrence beside the board's climb`() {
+        val state = playlist(
+            entry("e1", "climb-a"),
+            entry("e2", "climb-b"),
+            selected = "e2",
+            confirmed = "e1",
+        )
+
+        val plan = BoardPlaylistOps.lightNow(state, "climb-x", 40) { "new-1" }
+        val after = failed(state, plan)
+
+        assertEquals(listOf("e1", "new-1", "e2"), after.entries.map { it.entryId })
+        assertEquals("e1", after.currentEntryId)
+        assertEquals("e2", after.selectedEntryId)
+        assertEquals("new-1", after.pendingProjection?.entryId)
+    }
+
+    /** Nothing confirmed anywhere: the tail is the only honest position. */
+    @Test
+    fun `with no confirmed current the occurrence goes to the end`() {
+        val state = playlist(entry("e1", "climb-a"), entry("e2", "climb-b"), selected = "e1")
+
+        val plan = BoardPlaylistOps.lightNow(state, "climb-x", 40) { "new-1" }
+
+        assertEquals(
+            listOf(BoardPlaylistOp.Add("new-1", "climb-x", 40, anchor = BoardPlaylistAnchor.Tail)),
+            plan.ops,
+        )
+    }
+
+    /** The controller's half of a member's light-now uses the same anchor. */
+    @Test
+    fun `the controller materialises a member's occurrence beside the board's climb`() {
+        val state = playlist(
+            entry("e1", "climb-a"),
+            entry("e2", "climb-b"),
+            selected = "e2",
+            confirmed = "e1",
+        )
+
+        val after = BoardPlaylistPolicy.apply(
+            state,
+            BoardPlaylistOps.completeLightNow(state, "m-1", "climb-x", 40, landed = false),
+        )
+
+        assertEquals(listOf("e1", "m-1", "e2"), after.entries.map { it.entryId })
     }
 
     // ── The transaction ───────────────────────────────────────────────────
@@ -265,6 +346,7 @@ class BoardPlaylistLightNowTest {
             entry("e2", "climb-x"),
             entry("e3", "climb-b"),
             selected = "e1",
+            confirmed = "e1",
         )
 
         val plan = BoardPlaylistOps.lightNow(state, "climb-x", 40) { "new-1" }
@@ -382,6 +464,7 @@ class BoardPlaylistLightNowTest {
             entry("e1", "climb-a"),
             entry("e2", "climb-x"),
             selected = "e1",
+            confirmed = "e1",
         )
 
         val plan = BoardPlaylistOps.lightNow(state, "climb-x", 40, fromEntryId = null) { "new-1" }
