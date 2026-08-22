@@ -350,6 +350,29 @@ class SharedPlaylistWireTest {
                 BoardPlaylistProjectionPendingReason.BOARD_WRITE_FAILED)))))
     }
 
+    /** One intention is one record, and the wire refuses anything else. */
+    @Test fun `two relay records naming one operation are refused`() {
+        val record = BoardRelayOperation(
+            fingerprint = "fp", guestKey = "gk-a", operationId = "relay-op-1",
+            entryId = "rl1", stampedAtEpochMs = now,
+        )
+        refuses(BoardCellWireMessage.Snapshot(snapshot(playlist().copy(
+            relayOperations = listOf(record, record.copy(guestKey = "gk-b", entryId = "rl2")),
+        ))))
+    }
+
+    @Test fun `two relay records naming one occurrence are refused`() {
+        val record = BoardRelayOperation(
+            fingerprint = "fp", guestKey = "gk-a", operationId = "relay-op-1",
+            entryId = "rl1", stampedAtEpochMs = now,
+        )
+        refuses(BoardCellWireMessage.Snapshot(snapshot(playlist().copy(
+            relayOperations = listOf(
+                record, record.copy(guestKey = "gk-b", operationId = "relay-op-2"),
+            ),
+        ))))
+    }
+
     @Test fun `a pending send naming no occurrence at all is refused`() {
         refuses(BoardCellWireMessage.Snapshot(snapshot(playlist(
             entries = listOf(BoardPlaylistEntry("e1", "a", 40)),

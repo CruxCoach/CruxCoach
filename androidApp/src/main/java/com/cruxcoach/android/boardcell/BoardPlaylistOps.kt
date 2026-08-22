@@ -351,6 +351,10 @@ object BoardPlaylistPolicy {
         // Bounded, and the oldest goes first. A relay's ingress history is a
         // convenience for matching retries, not a log — an unbounded one would
         // be an attacker-shaped queue in canonical state.
+        // Canonical uniqueness is over the identity too, not only over who sent
+        // it: two records naming the same operation or the same occurrence are
+        // two answers to a question that has one. The later one wins, because
+        // it is the one a rebind or a landing just wrote.
         val relayOperations = playlist.relayOperations
             .filter { record ->
                 record.fingerprint.length in 1..MAX_ID_LENGTH &&
@@ -361,7 +365,11 @@ object BoardPlaylistPolicy {
                     // survives validation also survives normalisation.
                     BoardPlaylistInstant.isValid(record.stampedAtEpochMs)
             }
+            .reversed()
             .distinctBy { it.fingerprint to it.guestKey }
+            .distinctBy { it.operationId }
+            .distinctBy { it.entryId }
+            .reversed()
             .takeLast(MAX_RELAY_OPERATIONS)
         return playlist.copy(
             entries = entries,
@@ -407,12 +415,16 @@ object BoardPlaylistPolicy {
                 if (state.lastClear?.generation == op.generation) state.copy(lastClear = null)
                 else state
             is BoardPlaylistOp.SetPendingProjection -> state.copy(pendingProjection = op.pending)
+            // Replacing by identity as well as by `(fingerprint, guestKey)` is
+            // what makes a rebind a replacement rather than a copy. A guest
+            // that reconnects on a rotated address keeps the intention's ids
+            // and arrives under a new key; matching only on the key left the
+            // original record in place, open, and carrying the same operation
+            // and entry id — so the next guest with the same payload adopted it
+            // and was put on somebody else's occurrence.
             is BoardPlaylistOp.RecordRelayOperation -> state.copy(
                 relayOperations = state.relayOperations
-                    .filterNot {
-                        it.fingerprint == op.operation.fingerprint &&
-                            it.guestKey == op.operation.guestKey
-                    } + op.operation,
+                    .filterNot { it.describesSameIntentAs(op.operation) } + op.operation,
             )
         }
 

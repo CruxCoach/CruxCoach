@@ -354,7 +354,21 @@ data class BoardRelayOperation(
     val entryId: String,
     val stampedAtEpochMs: Long = 0,
     val landed: Boolean = false,
-)
+) {
+    /**
+     * The same request, however the guest is currently addressed.
+     *
+     * Three ways to be the same one, and any of them is enough: the same
+     * person asking for the same bytes, the same operation, or the same
+     * occurrence. A guest reconnecting on a rotated address matches on the
+     * last two and not the first, which is exactly the case that used to
+     * leave a second record behind.
+     */
+    fun describesSameIntentAs(other: BoardRelayOperation): Boolean =
+        (fingerprint == other.fingerprint && guestKey == other.guestKey) ||
+            operationId == other.operationId ||
+            entryId == other.entryId
+}
 
 @Serializable
 data class BoardPlaylistState(

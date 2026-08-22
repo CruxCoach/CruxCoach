@@ -343,12 +343,18 @@ object BoardCellWireCodec {
         playlist.currentEntryId?.let { current -> require(current in ids) }
         require(playlist.relayOperations.size <= BoardPlaylistPolicy.MAX_RELAY_OPERATIONS)
         val relayKeys = HashSet<Pair<String, String>>(playlist.relayOperations.size * 2)
+        val relayOperationIds = HashSet<String>(playlist.relayOperations.size * 2)
+        val relayEntryIds = HashSet<String>(playlist.relayOperations.size * 2)
         playlist.relayOperations.forEach {
             requireRelayOperationBounds(it)
             require(BoardPlaylistInstant.isValid(it.stampedAtEpochMs))
             // One record per intention, or a peer could pad canonical state
-            // with copies of the same one.
+            // with copies of the same one — and the identity counts as much as
+            // the sender: two records naming one operation or one occurrence
+            // leave a stale copy for the next guest to adopt.
             require(relayKeys.add(it.fingerprint to it.guestKey))
+            require(relayOperationIds.add(it.operationId))
+            require(relayEntryIds.add(it.entryId))
         }
         playlist.activeRest?.let {
             require(it.totalSeconds in 1..BoardPlaylistPolicy.MAX_REST_SECONDS)

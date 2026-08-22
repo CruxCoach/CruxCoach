@@ -242,4 +242,109 @@ class RelayIngressIdentityTest {
 
         assertTrue(state.relayOperations.isEmpty())
     }
+
+    // ── The whole sequence, in the order production runs it ───────────────
+
+    /**
+     * Reconnect, rebind, land, and then somebody else.
+     *
+     * The bug this pins: the rebind used to *add* a record under the new guest
+     * key while leaving the original open, both carrying the same operation and
+     * entry id. Marking the copy landed left the original adoptable, so the
+     * next guest with the same payload inherited an occurrence that was never
+     * theirs — and "two guests, two occurrences" quietly stopped holding.
+     */
+    @Test
+    fun `a rebind leaves one record, and the next guest gets their own`() {
+        // 1. The guest arrives and the intention is published.
+        val first = intent(guest = "AA:01")
+        var cell = playlistWith(first)
+
+        // 2. They drop and come back on a rotated address; the intention is
+        //    adopted and rebound, and the rebind is recorded.
+        val rebound = RelayIngressIdentity.openIntent(
+            cell, fingerprint(), RelayIngressIdentity.guestKey("BB:02"), now + 1_000,
+            connectedGuestKeys = emptySet(),
+        )!!
+        cell = BoardPlaylistPolicy.apply(cell, BoardPlaylistOps.recordRelayOperation(rebound))
+
+        assertEquals("one intention is one record", 1, cell.relayOperations.size)
+        assertEquals(first.entryId, cell.relayOperations.single().entryId)
+
+        // 3. It lands.
+        cell = BoardPlaylistPolicy.apply(
+            cell, BoardPlaylistOps.recordRelayOperation(rebound, landed = true),
+        )
+        assertEquals(1, cell.relayOperations.size)
+        assertTrue(cell.relayOperations.single().landed)
+
+        // 4. A different guest sends the identical payload. Nothing is open for
+        //    them to adopt, so they get their own nonce and occurrence.
+        val other = RelayIngressIdentity.openIntent(
+            cell, fingerprint(), RelayIngressIdentity.guestKey("CC:03"), now + 2_000,
+        )
+        assertNull("no orphan is left behind to adopt", other)
+
+        val theirs = RelayIngressIdentity.newIntent(
+            fingerprint(), RelayIngressIdentity.guestKey("CC:03"), now + 2_000,
+        )
+        assertNotEquals(first.entryId, theirs.entryId)
+        assertNotEquals(first.operationId, theirs.operationId)
+    }
+
+    /** However many times the address rotates, it stays one record. */
+    @Test
+    fun `repeatedly rotating addresses keep one record of one intention`() {
+        var cell = playlistWith(intent(guest = "AA:01"))
+        val originalEntryId = cell.relayOperations.single().entryId
+
+        listOf("BB:02", "CC:03", "DD:04").forEachIndexed { index, address ->
+            val rebound = RelayIngressIdentity.openIntent(
+                cell, fingerprint(), RelayIngressIdentity.guestKey(address),
+                now + 1_000L * (index + 1),
+            )!!
+            cell = BoardPlaylistPolicy.apply(cell, BoardPlaylistOps.recordRelayOperation(rebound))
+
+            assertEquals(1, cell.relayOperations.size)
+            assertEquals(originalEntryId, cell.relayOperations.single().entryId)
+            assertEquals(
+                RelayIngressIdentity.guestKey(address),
+                cell.relayOperations.single().guestKey,
+            )
+        }
+    }
+
+    /**
+     * The handover, as two managers see it: the successor reads the intention
+     * out of the cell and re-records it. That is a replacement too, not a copy.
+     */
+    @Test
+    fun `a successor re-recording the intention does not double it`() {
+        val onFirstController = intent(guest = "AA:01")
+        var cell = playlistWith(onFirstController)
+
+        val onSuccessor = RelayIngressIdentity.openIntent(
+            cell, fingerprint(), onFirstController.guestKey, now + 500,
+        )!!
+        cell = BoardPlaylistPolicy.apply(
+            cell, BoardPlaylistOps.recordRelayOperation(onSuccessor, landed = true),
+        )
+
+        assertEquals(1, cell.relayOperations.size)
+        assertEquals(onFirstController.operationId, cell.relayOperations.single().operationId)
+    }
+
+    /** Two records naming one occurrence cannot survive normalisation either. */
+    @Test
+    fun `a duplicated identity is normalised away`() {
+        val one = intent(guest = "AA:01")
+        val impostor = one.copy(guestKey = RelayIngressIdentity.guestKey("BB:02"))
+
+        val cell = BoardPlaylistPolicy.normalize(
+            BoardPlaylistState(sessionId = 7, relayOperations = listOf(one, impostor)),
+        )
+
+        assertEquals(1, cell.relayOperations.size)
+        assertEquals(impostor.guestKey, cell.relayOperations.single().guestKey)
+    }
 }
