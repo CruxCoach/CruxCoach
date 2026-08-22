@@ -43,6 +43,19 @@ data class RelayInboundClimb(
     val deviceAddress: String,
     val climb: CompleteClimb,
     val pendingResponse: Int? = null,
+    /**
+     * When this write runs out of time, on the monotonic clock, absolute.
+     *
+     * Set where the bytes arrived and carried from there, because the guest's
+     * answer is timed from the same instant. A consumer that started its own
+     * clock — which is what the manager did — measured from after the flow hop,
+     * the catalogue lookup and two preference reads, so it could still be
+     * inside "its" twenty seconds and about to write a board for somebody who
+     * had already been told the write failed.
+     *
+     * [Long.MAX_VALUE] means unbounded, which is only ever a test's choice.
+     */
+    val deadlineAtMs: Long = Long.MAX_VALUE,
 )
 
 /** One Nordic-UART write exactly as a guest sent it. MoonBoard uses an ASCII
@@ -346,6 +359,9 @@ class RelayGattServer(private val context: Context) {
             // it. Only one transaction is outstanding per write, so a batch
             // that completes several climbs defers on the first and answers
             // the rest as ordinary emissions.
+            // One instant for the whole write: the ATT sweep and everything
+            // downstream measure from here.
+            val deadlineAt = monotonicMs() + responseDeadlineMs
             var answered = false
             completed.forEachIndexed { index, climb ->
                 // Only the first climb of a batch carries the transaction:
@@ -359,9 +375,9 @@ class RelayGattServer(private val context: Context) {
                     // find nothing waiting, was dropped, and the request was
                     // then failed by the deadline despite having been handled.
                     answered = true
-                    registerPending(requestId, device)
+                    registerPending(requestId, device, deadlineAt)
                 }
-                if (!emitClimb(RelayInboundClimb(address, climb, pending))) {
+                if (!emitClimb(RelayInboundClimb(address, climb, pending, deadlineAt))) {
                     Log.w(TAG, "climbs buffer full — dropping a climb from $address")
                     if (pending != null) {
                         // Nothing is going to decide it, so take the
@@ -484,10 +500,8 @@ class RelayGattServer(private val context: Context) {
         sendVerdict(waiting.device, requestId, accepted)
     }
 
-    private fun registerPending(requestId: Int, device: BluetoothDevice?) {
-        synchronized(lock) {
-            pendingResponses[requestId] = PendingResponse(device, monotonicMs() + responseDeadlineMs)
-        }
+    private fun registerPending(requestId: Int, device: BluetoothDevice?, deadlineAtMs: Long) {
+        synchronized(lock) { pendingResponses[requestId] = PendingResponse(device, deadlineAtMs) }
         scheduleResponseSweep()
     }
 

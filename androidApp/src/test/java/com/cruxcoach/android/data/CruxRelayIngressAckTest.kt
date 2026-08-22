@@ -14,6 +14,8 @@ import com.cruxcoach.android.boardcell.BoardCellAvailability
 import com.cruxcoach.android.boardcell.BoardCellId
 import com.cruxcoach.android.boardcell.BoardCellManager
 import com.cruxcoach.android.boardcell.BoardCellSnapshot
+import kotlinx.coroutines.test.advanceTimeBy
+import com.cruxcoach.android.boardcell.BoardPlaylistOp
 import com.cruxcoach.android.boardcell.BoardPlaylistOps
 import com.cruxcoach.android.boardcell.BoardPlaylistPolicy
 import com.cruxcoach.android.boardcell.BoardRelayOperation
@@ -88,6 +90,7 @@ class CruxRelayIngressAckTest {
     /** What the catalogue says the guest's climb belongs to. */
     private var climbLayoutId = 1L
     private var boardAngle = 40
+    private var routingMode = RelayInboundClimbMode.PROJECT_NOW
     private var intentAccepted = true
     private var projectionSucceeds = true
     /** How long the board takes to answer, in virtual time. */
@@ -117,13 +120,24 @@ class CruxRelayIngressAckTest {
         playlist = BoardPlaylistState(sessionId = 7),
     ).withComputedHash()
 
-    private fun inbound(requestId: Int, framesHash: Long = 77L) = RelayInboundClimb(
-        deviceAddress = "GG:01",
+    /**
+     * A write as the GATT server hands it over — including the deadline it set
+     * when the bytes arrived, which is the one everything downstream is timed
+     * against.
+     */
+    private fun inbound(
+        requestId: Int,
+        framesHash: Long = 77L,
+        address: String = "GG:01",
+        deadlineAtMs: Long = monotonic + RelayGattServer.RELAY_OPERATION_DEADLINE_MS,
+    ) = RelayInboundClimb(
+        deviceAddress = address,
         climb = CompleteClimb(
             rawBytes = byteArrayOf(1, 2, 3), chunks = listOf(byteArrayOf(1, 2, 3)),
             framesHash = framesHash, holdCount = 5,
         ),
         pendingResponse = requestId,
+        deadlineAtMs = deadlineAtMs,
     )
 
     @Before
@@ -176,7 +190,9 @@ class CruxRelayIngressAckTest {
             }
         }
         val preferences = mockk<UserPreferences>(relaxed = true) {
-            every { relayInboundClimbMode } returns MutableStateFlow(RelayInboundClimbMode.PROJECT_NOW)
+            every { relayInboundClimbMode } answers {
+                MutableStateFlow(this@CruxRelayIngressAckTest.routingMode)
+            }
             every { boardLayoutId } returns
                 MutableStateFlow(this@CruxRelayIngressAckTest.layoutId)
             every { boardAngle } returns
@@ -195,6 +211,17 @@ class CruxRelayIngressAckTest {
             // The controller committed it, occurrence and terminal record
             // together — without this the terminal callback never fires and
             // nothing is ever recorded as landed.
+            every {
+                appendSharedPlaylistEntry(any(), any(), any(), any(), any(), any())
+            } answers {
+                arg<BoardRelayOperation?>(4)?.let { operation ->
+                    canonicalPlaylist = BoardPlaylistPolicy.apply(
+                        canonicalPlaylist,
+                        BoardPlaylistOps.recordRelayOperation(operation, landed = true),
+                    )
+                }
+                lastArg<((Boolean) -> Unit)?>()?.invoke(true)
+            }
             every {
                 adoptProjectedEntry(any(), any(), any(), any(), any(), any())
             } answers {
@@ -417,6 +444,126 @@ class CruxRelayIngressAckTest {
 
         coVerify { relayServer.settle(102, true) }
         // Exactly one board write for the two attempts.
+        coVerify(exactly = 1) { boardCellManager.projectExternal(any(), any(), any(), any()) }
+    }
+
+    // ── The deadline is the guest's, not this device's ────────────────────
+
+    /**
+     * The write waited in the flow before this device looked at it.
+     *
+     * The manager used to start its own twenty seconds *here*, after the hop,
+     * the catalogue lookup and the preference reads — so it could be inside
+     * "its" window while the guest had already been told the write failed, and
+     * write a board for somebody who had given up. The deadline now arrives
+     * with the write.
+     */
+    @Test
+    fun `a write delayed on its way to the collector is already out of time`() =
+        runTest(dispatcher) {
+            relayRunning()
+            // Set when the bytes arrived; the queue then held them too long.
+            val arrivedAt = monotonic
+            advanceTimeBy(RelayGattServer.RELAY_OPERATION_DEADLINE_MS + 1_000)
+
+            climbs.emit(
+                inbound(
+                    requestId = 111,
+                    deadlineAtMs = arrivedAt + RelayGattServer.RELAY_OPERATION_DEADLINE_MS,
+                ),
+            )
+            advanceUntilIdle()
+
+            coVerify(exactly = 0) { boardCellManager.projectExternal(any(), any(), any(), any()) }
+            coVerify { relayServer.settle(111, false) }
+        }
+
+    /**
+     * The same fence on the other routing branch. Adding an occurrence for
+     * somebody who has been told their write failed is the same lie in a
+     * quieter place — and this branch had no check at all.
+     */
+    @Test
+    fun `an append whose barrier outlives the deadline adds nothing`() = runTest(dispatcher) {
+        routingMode = RelayInboundClimbMode.APPEND_TO_END
+        relayRunning()
+        coEvery { bridge.recordRelayIntent(any()) } coAnswers {
+            kotlinx.coroutines.delay(RelayGattServer.RELAY_OPERATION_DEADLINE_MS + 1_000)
+            true
+        }
+
+        climbs.emit(inbound(requestId = 112))
+        advanceUntilIdle()
+
+        coVerify(exactly = 0) {
+            bridge.appendSharedPlaylistEntry(any(), any(), any(), any(), any(), any())
+        }
+        coVerify { relayServer.settle(112, false) }
+    }
+
+    // ── A landed request stays landed, whatever the wall does now ─────────
+
+    /**
+     * The group moved on, which is the ordinary thing for a group to do.
+     *
+     * The success path used to be derived from the wall — is this occurrence
+     * still the current one, is the projection still exactly it — so the next
+     * climb erased it. A retry then wrote the board again.
+     */
+    @Test
+    fun `a landed request is replayed after the group has moved on`() = runTest(dispatcher) {
+        relayRunning()
+        climbs.emit(inbound(requestId = 121))
+        advanceUntilIdle()
+
+        // Somebody sends the next climb: current and projection both move.
+        canonicalPlaylist = BoardPlaylistPolicy.apply(
+            canonicalPlaylist,
+            listOf(BoardPlaylistOp.Add("later", "climb-b", 40)),
+        )
+        snapshots.value = snapshots.value?.copy(
+            projection = BoardProjection("climb-b", 40), projectionKnown = true,
+        )?.withComputedHash()
+
+        clockMs += 5_000
+        climbs.emit(inbound(requestId = 122))
+        advanceUntilIdle()
+
+        coVerify { relayServer.settle(122, true) }
+        coVerify(exactly = 1) { boardCellManager.projectExternal(any(), any(), any(), any()) }
+    }
+
+    /** Under `APPEND_TO_END` the occurrence is never current, so this was the
+     *  branch where the replay never worked at all. */
+    @Test
+    fun `a landed append is replayed rather than queued twice`() = runTest(dispatcher) {
+        routingMode = RelayInboundClimbMode.APPEND_TO_END
+        relayRunning()
+        climbs.emit(inbound(requestId = 131))
+        advanceUntilIdle()
+
+        clockMs += 5_000
+        climbs.emit(inbound(requestId = 132))
+        advanceUntilIdle()
+
+        coVerify { relayServer.settle(132, true) }
+        coVerify(exactly = 1) {
+            bridge.appendSharedPlaylistEntry(any(), any(), any(), any(), any(), any())
+        }
+    }
+
+    /** And the same on a rotated address, which is how a lost ACK usually looks. */
+    @Test
+    fun `a landed request is replayed to a guest on a new address`() = runTest(dispatcher) {
+        relayRunning()
+        climbs.emit(inbound(requestId = 141, address = "GG:01"))
+        advanceUntilIdle()
+
+        clockMs += 5_000
+        climbs.emit(inbound(requestId = 142, address = "HH:02"))
+        advanceUntilIdle()
+
+        coVerify { relayServer.settle(142, true) }
         coVerify(exactly = 1) { boardCellManager.projectExternal(any(), any(), any(), any()) }
     }
 }

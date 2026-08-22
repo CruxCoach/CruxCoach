@@ -535,31 +535,14 @@ class CruxRelayManager(
     }
 
     /**
-     * The shared list already shows this occurrence on the wall.
-     *
-     * Canonical, so it is the same answer on every device — which is the point:
-     * a controller that has just taken over has no ledger entry for a guest
-     * write the previous one completed, and this is how it finds out anyway.
-     */
-    private fun alreadyOnTheWall(entryId: String, climbUuid: String, angle: Int): Boolean {
-        val snapshot = boardCellManager.snapshot() ?: return false
-        val playlist = snapshot.playlist
-        if (playlist.currentEntryId != entryId) return false
-        if (playlist.entry(entryId) == null) return false
-        val projection = snapshot.projection ?: return false
-        return snapshot.projectionKnown &&
-            projection.climbUuid.equals(climbUuid, ignoreCase = true) && projection.angle == angle
-    }
-
-    /**
      * Whether this operation has outlived the answer the guest was given.
      *
-     * The same window the GATT server uses for the ATT transaction, so the two
-     * cannot drift: the moment the guest has been told "failed", this device
-     * stops starting anything new on their behalf.
+     * The deadline is the server's own, carried on the write, so the two cannot
+     * drift: the moment the guest has been told "failed", this device stops
+     * starting anything new on their behalf — on either routing branch.
      */
-    private fun operationExpired(startedAtMonotonicMs: Long): Boolean =
-        monotonicMs() - startedAtMonotonicMs >= RelayGattServer.RELAY_OPERATION_DEADLINE_MS
+    private fun operationExpired(deadlineAtMonotonicMs: Long): Boolean =
+        monotonicMs() >= deadlineAtMonotonicMs
 
     /**
      * The canonical answer arrived: terminal on success, retryable otherwise.
@@ -658,9 +641,14 @@ class CruxRelayManager(
                         runCatching { boardRepository.getClimbByUuid(it.climbUuid, it.angle) }.getOrNull()
                     }
                     val now = nowMs()
-                    // One clock for the whole operation, started where the
-                    // bytes arrived rather than where each step begins.
-                    val startedAt = monotonicMs()
+                    // The deadline the guest is being timed against, set where
+                    // their bytes arrived. Starting a clock here instead —
+                    // after the flow hop, the catalogue lookup and the
+                    // preference reads — measured a different window from the
+                    // one the guest's answer is on, so this device could still
+                    // be inside "its" twenty seconds while the guest had
+                    // already been told the write failed.
+                    val deadlineAt = inbound.deadlineAtMs
                     // One intention, one nonce — and the intention is looked
                     // up in canonical state, not in this device's memory. A
                     // controller that has just taken the board over finds the
@@ -684,9 +672,16 @@ class CruxRelayManager(
                         climbLayoutId = climb?.layoutId,
                         connectedLayoutId = userPreferences.boardLayoutId.first().toLong(),
                         connectedAngle = userPreferences.boardAngle.first(),
-                        // The ACK state a successor has and its ledger does not.
-                        canonicallyLanded = operation != null && identified != null &&
-                            alreadyOnTheWall(operation.entryId, identified.climbUuid, identified.angle),
+                        // The record itself says whether this request was
+                        // finished, and that is the whole of it. Deriving it
+                        // from the wall — "is this occurrence still the current
+                        // one, and is the projection still exactly it" — asked
+                        // a different question: the group legitimately moves on,
+                        // and under `APPEND_TO_END` the occurrence is never the
+                        // current one at all, so the success path did not exist
+                        // there. A successor or a restarted process reads the
+                        // flag and replays the success.
+                        canonicallyLanded = operation?.landed == true,
                     )
                     when (decision) {
                         is RelayInboundGate.Decision.Refused -> {
@@ -707,6 +702,18 @@ class CruxRelayManager(
                             relayServer.settle(inbound.pendingResponse, accepted = true)
                         }
                         is RelayInboundGate.Decision.AppendToEnd -> {
+                            // Fenced like the projection is: the guest may
+                            // already have timed out while the barrier below
+                            // was being committed, and adding an occurrence for
+                            // somebody who has been told their write failed is
+                            // the same lie in a quieter place.
+                            if (operationExpired(deadlineAt)) {
+                                Log.w(TAG, "relayed climb passed its deadline before queueing")
+                                _state.update { it.copy(error = RelayError.FORWARD_FAILED) }
+                                inboundGate.markFailed(decision.operation, now)
+                                relayServer.settle(inbound.pendingResponse, accepted = false)
+                                return@collect
+                            }
                             // The barrier, before anything else happens.
                             if (!gattBridge.recordRelayIntent(decision.operation)) {
                                 Log.w(TAG, "relayed climb has no canonical intention; not queueing")
@@ -720,6 +727,15 @@ class CruxRelayManager(
                             // occurrence id decided at ingress, so a repeat of
                             // the same write finds it already there.
                             _state.update { it.copy(inboundRefusal = null) }
+                            // And again after it: the barrier suspends, so
+                            // the window can close while it is in flight.
+                            if (operationExpired(deadlineAt)) {
+                                Log.w(TAG, "relayed climb passed its deadline during the barrier")
+                                _state.update { it.copy(error = RelayError.FORWARD_FAILED) }
+                                inboundGate.markFailed(decision.operation, now)
+                                relayServer.settle(inbound.pendingResponse, accepted = false)
+                                return@collect
+                            }
                             // Terminal only when the controller says so. The
                             // submit is asynchronous, and marking it landed
                             // here — which is what this did — turned a refused
@@ -756,6 +772,13 @@ class CruxRelayManager(
                                 return@collect
                             }
                             _state.update { it.copy(inboundRefusal = null) }
+                            if (operationExpired(deadlineAt)) {
+                                Log.w(TAG, "relayed climb passed its deadline before the barrier")
+                                _state.update { it.copy(error = RelayError.FORWARD_FAILED) }
+                                inboundGate.markFailed(decision.operation, now)
+                                relayServer.settle(inbound.pendingResponse, accepted = false)
+                                return@collect
+                            }
                             // Before the wall is touched, and *waited for*: a
                             // handover in the middle of this write must find
                             // the intention already in canonical state, or the
@@ -778,7 +801,7 @@ class CruxRelayManager(
                             // way is a different matter and is never cancelled
                             // — half a climb is a state the board protocol has
                             // no way to undo.
-                            if (operationExpired(startedAt)) {
+                            if (operationExpired(deadlineAt)) {
                                 Log.w(TAG, "relayed climb passed its deadline before the board write")
                                 _state.update { it.copy(error = RelayError.FORWARD_FAILED) }
                                 inboundGate.markFailed(decision.operation, now)
