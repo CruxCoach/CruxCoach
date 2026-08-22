@@ -687,6 +687,10 @@ class CruxRelayManager(
                         is RelayInboundGate.Decision.Refused -> {
                             Log.i(TAG, "relayed climb refused: ${decision.reason}")
                             _state.update { it.copy(inboundRefusal = decision.reason) }
+                            // A refusal the guest's app can see: board, layout
+                            // or angle against the wrong board, too fast, or
+                            // the same write twice.
+                            relayServer.settle(inbound.pendingResponse, accepted = false)
                         }
                         is RelayInboundGate.Decision.AppendToEnd -> {
                             // The barrier, before anything else happens.
@@ -694,6 +698,7 @@ class CruxRelayManager(
                                 Log.w(TAG, "relayed climb has no canonical intention; not queueing")
                                 _state.update { it.copy(error = RelayError.FORWARD_FAILED) }
                                 inboundGate.markFailed(decision.operation, now)
+                                relayServer.settle(inbound.pendingResponse, accepted = false)
                                 return@collect
                             }
                             // The wall keeps what it has; the climb joins the
@@ -711,14 +716,18 @@ class CruxRelayManager(
                                 entryId = decision.operation.entryId,
                                 onTerminal = { committed ->
                                     settleOperation(decision.operation, committed)
+                                    // Queued means queued: the guest's write is
+                                    // on the shared list, which is what
+                                    // "Ans Ende" promised them.
+                                    relayServer.settle(inbound.pendingResponse, committed)
                                 },
                             )
                         }
                         is RelayInboundGate.Decision.ProjectNow -> {
-                            // The GATT layer has already told the guest's app
-                            // the write succeeded. Without a usable path to the
-                            // wall this is the last place that can decline to
-                            // make a dark board look like a delivered climb.
+                            // Without a usable path to the wall there is
+                            // nothing to deliver, and the guest is told so
+                            // rather than being handed a success for a write
+                            // that reached a dark board.
                             if (!mayAcknowledgeInboundWrite()) {
                                 Log.w(TAG, "relayed climb arrived without a usable board path")
                                 _state.update { it.copy(error = RelayError.BOARD_LOST) }
@@ -726,6 +735,7 @@ class CruxRelayManager(
                                 // retry of this operation rather than a climb
                                 // the list has never heard of.
                                 inboundGate.markFailed(decision.operation, now)
+                                relayServer.settle(inbound.pendingResponse, accepted = false)
                                 return@collect
                             }
                             _state.update { it.copy(inboundRefusal = null) }
@@ -740,6 +750,7 @@ class CruxRelayManager(
                                 Log.w(TAG, "relayed climb has no canonical intention; not writing the board")
                                 _state.update { it.copy(error = RelayError.FORWARD_FAILED) }
                                 inboundGate.markFailed(decision.operation, now)
+                                relayServer.settle(inbound.pendingResponse, accepted = false)
                                 return@collect
                             }
                             val result = boardCellManager.projectExternal(
@@ -759,6 +770,13 @@ class CruxRelayManager(
                                 // be canonical before this counts as landed,
                                 // or a refused commit would leave a lit wall
                                 // with no occurrence and no way to retry.
+                                // The wall has it, so the guest is told so now:
+                                // the occurrence still has to become canonical,
+                                // but the bytes they sent are on the board and
+                                // holding their ATT transaction open for a
+                                // playlist commit would answer a question they
+                                // did not ask.
+                                relayServer.settle(inbound.pendingResponse, accepted = true)
                                 if (identified != null) {
                                     gattBridge.adoptProjectedEntry(
                                         identified.climbUuid, identified.angle, "relay_project",
@@ -781,6 +799,7 @@ class CruxRelayManager(
                                 Log.w(TAG, "relayed climb was not canonically committed: $result")
                                 _state.update { it.copy(error = RelayError.FORWARD_FAILED) }
                                 inboundGate.markFailed(decision.operation, now)
+                                relayServer.settle(inbound.pendingResponse, accepted = false)
                             }
                         }
                     }

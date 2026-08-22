@@ -11,6 +11,7 @@ import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
 import android.content.Context
 import android.util.Log
+import androidx.annotation.VisibleForTesting
 import com.cruxcoach.domain.relay.CompleteClimb
 import com.cruxcoach.domain.relay.RelayFrameReassembler
 import kotlinx.coroutines.CompletableDeferred
@@ -29,8 +30,19 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
-/** A complete climb an official-app client wrote to the emulated board char. */
-data class RelayInboundClimb(val deviceAddress: String, val climb: CompleteClimb)
+/**
+ * A complete climb an official-app client wrote to the emulated board char.
+ *
+ * [pendingResponse] is the ATT transaction still waiting on a verdict, when the
+ * guest asked for one. Whoever consumes this owes it exactly one
+ * [RelayGattServer.settle] — the response is not sent until the relay knows
+ * whether it will deliver the bytes.
+ */
+data class RelayInboundClimb(
+    val deviceAddress: String,
+    val climb: CompleteClimb,
+    val pendingResponse: Int? = null,
+)
 
 /** One Nordic-UART write exactly as a guest sent it. MoonBoard uses an ASCII
  * stream instead of Aurora's framed packets, so these writes are forwarded
@@ -101,6 +113,52 @@ class RelayGattServer(private val context: Context) {
     // All BLE callbacks run on the binder thread — guard shared state on [lock].
     private val lock = Any()
     private val connectedDevices = mutableSetOf<String>()
+
+    /**
+     * ATT transactions whose verdict is not in yet.
+     *
+     * A with-response write that completes a climb is answered when the relay
+     * has decided what happens to it, not when the bytes arrive. Everything
+     * that decides — board, layout and angle against the connected board, the
+     * rate limit, deduplication, the canonical intent barrier, the board write
+     * itself — is asynchronous and was previously reported as success before it
+     * had run.
+     */
+    private val pendingResponses = HashMap<Int, BluetoothDevice?>()
+    private var responseTimeoutJob: Job? = null
+
+    /**
+     * How an ATT verdict actually leaves this process.
+     *
+     * A seam rather than a direct call, because the contract this class now
+     * carries — which write gets which status, and when — is the part worth
+     * testing, and a real `BluetoothGattServer` cannot be asked what it
+     * answered.
+     */
+    @VisibleForTesting
+    internal var attResponder: (BluetoothDevice?, Int, Boolean) -> Unit =
+        { device, requestId, accepted ->
+            val status = if (accepted) BluetoothGatt.GATT_SUCCESS else BluetoothGatt.GATT_FAILURE
+            runCatching { gattServer?.sendResponse(device, requestId, status, 0, null) }
+                .onFailure { Log.w(TAG, "could not answer ATT request $requestId", it) }
+        }
+
+    /** Emission seams, so "the buffer was full" is a branch a test can reach. */
+    @VisibleForTesting
+    internal var emitClimb: (RelayInboundClimb) -> Boolean = { _climbs.tryEmit(it) }
+
+    @VisibleForTesting
+    internal var emitWrite: (RelayInboundWrite) -> Boolean = { _writes.tryEmit(it) }
+
+    /**
+     * How long a guest's write may wait for a verdict.
+     *
+     * Comfortably inside the ATT transaction timeout (30 s) and comfortably
+     * beyond a board round trip. A verdict that has not arrived by then is
+     * reported as a failure rather than left to time out, because a timeout
+     * looks like a broken link and a failure looks like what it is.
+     */
+    private val responseDeadlineMs = 6_000L
 
     /**
      * How many guests the radio can still take, asked at accept time.
@@ -181,51 +239,110 @@ class RelayGattServer(private val context: Context) {
             preparedWrite: Boolean, responseNeeded: Boolean,
             offset: Int, value: ByteArray?
         ) {
-            // Truthfulness first, and the honest scope of it: an ATT write
-            // response says "received", never "the wall shows it". The board
-            // protocol the official app speaks has no application-level ACK at
-            // all — there is no frame to answer a climb with — so the delivery
-            // result cannot be reported here without holding the ATT queue open
-            // across a board round trip. What can be answered truthfully is
-            // whether this relay will deliver the write at all, and that is
-            // decided before the response rather than after it. A refusal is an
-            // ATT error, not a success the guest's app will believe.
+            // What an ATT answer means here, in full, because the previous
+            // version documented a weaker contract than the protocol allows and
+            // then failed to keep even that one:
+            //
+            //  - WRITE_NO_RESPONSE promises nothing; there is no answer to give.
+            //  - A with-response write that completes nothing is answered at
+            //    once with success, which means "received and buffered" and
+            //    cannot mean more, because nothing is decidable yet.
+            //  - A with-response write that completes a climb is answered when
+            //    the relay knows whether it will deliver it — the board, layout
+            //    and angle checks, the rate limit, deduplication, the canonical
+            //    intent barrier and the board write itself all run first. A GATT
+            //    server may hold a response open; the previous claim that the
+            //    result "cannot ride in the GATT response" was a limit of the
+            //    shape I had built, not of the protocol.
+            //  - Anything refused, dropped or unanswered is an ATT error.
+            handleGuestWrite(
+                device = device,
+                address = device.address,
+                requestId = requestId,
+                responseNeeded = responseNeeded,
+                isBoardCharacteristic = characteristic.uuid == BoardBleUuids.DATA_TRANSFER_CHAR,
+                value = value,
+            )
+        }
+    }
+
+    /**
+     * One guest write, and the ATT answer it earns.
+     *
+     * Separated from the callback so the contract can be driven directly: the
+     * decision of which write gets which status, and when, is the part that
+     * went wrong, and it is not reachable through a real GATT stack.
+     */
+    @VisibleForTesting
+    internal fun handleGuestWrite(
+        device: BluetoothDevice?,
+        address: String,
+        requestId: Int,
+        responseNeeded: Boolean,
+        isBoardCharacteristic: Boolean,
+        value: ByteArray?,
+    ) {
             val admitted = admitWrite?.invoke() ?: true
             if (!admitted) {
-                Log.i(TAG, "refusing a write from ${device.address}: no usable board path")
-                synchronized(lock) { reassemblers[device.address]?.reset() }
-                if (responseNeeded) {
-                    gattServer?.sendResponse(
-                        device, requestId, BluetoothGatt.GATT_FAILURE, 0, null)
-                }
+                Log.i(TAG, "refusing a write from $address: no usable board path")
+                synchronized(lock) { reassemblers[address]?.reset() }
+                respond(device, requestId, responseNeeded, accepted = false)
                 return
             }
-            if (characteristic.uuid == BoardBleUuids.DATA_TRANSFER_CHAR && value != null) {
-                // Preserve the exact write for protocols such as MoonBoard.
-                // CruxRelayManager selects this stream only when the physical
-                // board is not using Aurora packet framing.
-                if (!_writes.tryEmit(RelayInboundWrite(device.address, value.copyOf()))) {
-                    Log.w(TAG, "writes buffer full — dropping a write from ${device.address}")
-                }
-                // Reassemble per client; a complete climb (ONLY / FIRST..LAST)
-                // may span many writes. Never act on a partial write.
-                val completed = synchronized(lock) {
-                    reassemblers[device.address]?.offer(value) ?: emptyList()
-                }
-                for (climb in completed) {
-                    if (!_climbs.tryEmit(RelayInboundClimb(device.address, climb))) {
-                        Log.w(TAG, "climbs buffer full — dropping a climb from ${device.address}")
+            if (!isBoardCharacteristic || value == null) {
+                respond(device, requestId, responseNeeded, accepted = true)
+                return
+            }
+            // Preserve the exact write for protocols such as MoonBoard.
+            // CruxRelayManager selects this stream only when the physical
+            // board is not using Aurora packet framing.
+            if (!emitWrite(RelayInboundWrite(address, value.copyOf()))) {
+                // Dropped on the floor. Reporting that as a delivered write is
+                // the plainest lie this server could tell.
+                Log.w(TAG, "writes buffer full — dropping a write from $address")
+                respond(device, requestId, responseNeeded, accepted = false)
+                return
+            }
+            // Reassemble per client; a complete climb (ONLY / FIRST..LAST)
+            // may span many writes. Never act on a partial write.
+            // `getOrPut` rather than a lookup: a write from a device whose
+            // connect event this server never saw used to reassemble into
+            // nothing at all, silently, for as long as the link lasted.
+            val completed = synchronized(lock) {
+                reassemblers.getOrPut(address) { RelayFrameReassembler() }.offer(value)
+            }
+            if (completed.isEmpty()) {
+                // A fragment. "Received" is the whole of what it can mean.
+                respond(device, requestId, responseNeeded, accepted = true)
+                return
+            }
+            // The last write of a climb carries the verdict for the whole of
+            // it. Only one transaction is outstanding per write, so a batch
+            // that completes several climbs defers on the first and answers
+            // the rest as ordinary emissions.
+            var answered = false
+            completed.forEachIndexed { index, climb ->
+                // Only the first climb of a batch carries the transaction:
+                // one write request has one answer, however many climbs its
+                // last fragment happened to complete.
+                val pending = if (responseNeeded && index == 0) requestId else null
+                if (!emitClimb(RelayInboundClimb(address, climb, pending))) {
+                    Log.w(TAG, "climbs buffer full — dropping a climb from $address")
+                    if (pending != null && !answered) {
+                        answered = true
+                        respond(device, requestId, responseNeeded, accepted = false)
                     }
+                    return@forEachIndexed
+                }
+                if (pending != null) {
+                    answered = true
+                    synchronized(lock) { pendingResponses[requestId] = device }
+                    scheduleResponseTimeout()
                 }
             }
-            // The board char is write-only; the app usually writes WITHOUT
-            // response, but honour a with-response write too. Reassembly and
-            // admission are both above this, so a success here means the bytes
-            // were taken for delivery — no more, and no less.
-            if (responseNeeded) {
-                gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null)
+            if (responseNeeded && !answered) {
+                respond(device, requestId, responseNeeded, accepted = true)
             }
-        }
     }
 
     @SuppressLint("MissingPermission")
@@ -276,6 +393,16 @@ class RelayGattServer(private val context: Context) {
 
     @SuppressLint("MissingPermission")
     suspend fun stop() {
+        // Before the running guard: whatever is waiting on a verdict is not
+        // going to get one, and saying so beats letting the guest's ATT
+        // transaction expire — whichever state this server is in.
+        responseTimeoutJob?.cancel(); responseTimeoutJob = null
+        val unanswered = synchronized(lock) {
+            val entries = pendingResponses.entries.toList()
+            pendingResponses.clear()
+            entries
+        }
+        unanswered.forEach { sendVerdict(it.value, it.key, accepted = false) }
         if (!_isRunning.value) return
         serviceRegistration?.cancel(); serviceRegistration = null
         livenessJob?.cancel(); livenessJob = null
@@ -307,6 +434,63 @@ class RelayGattServer(private val context: Context) {
         server?.close(); gattServer = null
         _isRunning.value = false
         Log.d(TAG, "Relay GATT server stopped")
+    }
+
+    /**
+     * The verdict for a deferred write.
+     *
+     * Called exactly once per [RelayInboundClimb.pendingResponse]; a second
+     * call for the same transaction is ignored rather than sending a second
+     * ATT response for one request.
+     */
+    fun settle(requestId: Int?, accepted: Boolean) {
+        if (requestId == null) return
+        // Membership, not the value: the device may legitimately be absent, and
+        // treating that as "nothing was waiting" swallowed the verdict.
+        val waiting = synchronized(lock) {
+            if (!pendingResponses.containsKey(requestId)) return
+            pendingResponses.remove(requestId)
+        }
+        sendVerdict(waiting, requestId, accepted)
+    }
+
+    private fun respond(
+        device: BluetoothDevice?,
+        requestId: Int,
+        responseNeeded: Boolean,
+        accepted: Boolean,
+    ) {
+        if (!responseNeeded) return
+        sendVerdict(device, requestId, accepted)
+    }
+
+    private fun sendVerdict(device: BluetoothDevice?, requestId: Int, accepted: Boolean) {
+        attResponder(device, requestId, accepted)
+    }
+
+    /**
+     * Nothing waits forever.
+     *
+     * A verdict that never arrives — a collector that died, a board that went
+     * away mid-decision — is reported as a failure while the ATT transaction is
+     * still alive, rather than being left to time out and look like a broken
+     * link.
+     */
+    private fun scheduleResponseTimeout() {
+        if (responseTimeoutJob?.isActive == true) return
+        responseTimeoutJob = scope.launch {
+            while (isActive) {
+                delay(responseDeadlineMs)
+                val stale = synchronized(lock) {
+                    val entries = pendingResponses.entries.toList()
+                    pendingResponses.clear()
+                    entries
+                }
+                if (stale.isEmpty()) return@launch
+                Log.w(TAG, "${stale.size} relay write(s) went unanswered; failing them closed")
+                stale.forEach { sendVerdict(it.value, it.key, accepted = false) }
+            }
+        }
     }
 
     fun getConnectedCount(): Int = synchronized(lock) { connectedDevices.size }
