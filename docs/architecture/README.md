@@ -1,8 +1,10 @@
 # Playlist, Board-Projektion und Quantum-Layer: Architekturueberblick
 
-> **Status:** Normative Zielarchitektur fuer `feat/fips-board-playlist-ux`  
+> **Status:** Normative Zielarchitektur fuer `feat/fips-board-playlist-ux`
+>
 > **Scope:** gemeinsame Board-Playlist, physische Board-Projektion, Quantum-Layer und die
-> dazugehoerige Android-UI/UX  
+> dazugehoerige Android-UI/UX
+>
 > **Nicht im Scope:** allgemeines FIPS-Routing, Kryptografie, Katalog-Synchronisation und
 > CruxRelay-Transportdetails, soweit sie die Playlist-Semantik nicht veraendern
 
