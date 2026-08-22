@@ -79,7 +79,10 @@ Eine Entry-ID:
 enthaelt:
 
 - `entries`: geordnete, occurrence-adressierte Eintraege,
-- `currentEntryId`: bestaetigter gemeinsamer Current,
+- `selectedEntryId`: gemeinsamer Auswahlcursor — wohin die Gruppe schaut; von Add, Remove,
+  Next, Previous, Rest und Restore bewegt und ohne jede physische Bedeutung,
+- `currentEntryId`: bestaetigter gemeinsamer Current — ausschliesslich nach terminal
+  erfolgreichem Transport gesetzt, und zwar nur vom Controller,
 - `activeRest`: kanonisches Zeitfenster mit stabiler Ziel-Occurrence,
 - `pendingProjection`: fehlgeschlagene oder nicht aufloesbare Projektion fuer eine Entry-ID,
 - `clearGeneration`: Fence gegen alte Edits nach einem Clear,
@@ -91,7 +94,7 @@ stateDiagram-v2
     Empty --> Populated: Add(entryId)
     Populated --> Populated: Add / Move / Remove / SetRest
     Populated --> Resting: Next + StartRest
-    Resting --> Populated: EndRest / SetCurrent / Ziel entfernt
+    Resting --> Populated: EndRest / SetSelection / Ziel entfernt
     Populated --> Cleared: Clear(generation)
     Cleared --> Populated: RestoreClear(generation)
     Cleared --> Empty: Restore-Fenster abgelaufen
@@ -108,7 +111,12 @@ UI-Cleanup, sondern erzwingt, dass jede Replica dieselben Bytes ableitet:
 - begrenzte ID-Laengen,
 - eindeutige, nichtleere Entry-IDs,
 - begrenzte Pausendauer,
-- gueltiger Current oder deterministischer Fallback,
+- gueltiger Auswahlcursor oder deterministischer Fallback (der Cursor zeigt immer auf
+  etwas, solange es etwas gibt),
+- **kein** Fallback fuer den bestaetigten Current: er benennt die Occurrence, deren
+  Transport gelang, also waere ein erfundener Current die Behauptung eines Board-Writes,
+  den es nie gab. Verschwindet seine Occurrence, wird er geloescht — die Wand selbst steht
+  unveraendert in `BoardCellSnapshot.projection`,
 - Pending nur fuer eine existierende Occurrence, gebunden an deren eigenen Climb und
   Winkel (nicht an den Current: ein fehlgeschlagener Send laesst den bestaetigten Current
   unveraendert, die Markierung gehoert also der Occurrence dahinter),
@@ -128,7 +136,9 @@ Normale Edits werden als kleine, typisierte Operationen versendet:
 | `Add(entryId, ..., anchor)` | eine Occurrence einfuegen | existierende Entry-ID = No-op |
 | `Remove(entryId)` | genau eine Occurrence entfernen | bereits entfernt = No-op |
 | `Move(entryId, anchor)` | dieselbe Occurrence repositionieren | verschwundener Anchor mutiert nichts |
-| `SetCurrent(entryId)` | bestaetigten gemeinsamen Fokus setzen | fehlende Entry-ID mutiert nichts |
+| `SetSelection(entryId)` | gemeinsamen Auswahlcursor setzen | fehlende Entry-ID mutiert nichts |
+| `SetCurrent(entryId)` | bestaetigten Board-Zustand festhalten | nur Controller; fehlende Entry-ID mutiert nichts |
+| `RecordRelayOperation(op)` | Ingress-Intention eines Gastes replizieren | nur Controller; idempotent je `(Fingerprint, Gast)` |
 | `SetRest(entryId, seconds)` | Pausenplan an Occurrence aendern | begrenzt und occurrence-adressiert |
 | `StartRest(nextEntryId, ...)` | Current-Wechsel und Pause koppeln | Controller stempelt Generation/Zeit |
 | `Clear(generation)` | Liste atomar leeren | Generation verhindert Wiederholung |
@@ -320,7 +330,13 @@ Nach Aufloesung und Validierung gilt dieselbe Semantik:
   Transport, Current erst nach Erfolg.
 - `Ans Ende`: nur Add am Tail, kein Board-Overwrite.
 
-Operation-ID und Entry-ID muessen Retry, Relay-Restart und Controller-Handover ueberleben.
+Operation-ID und Entry-ID muessen Retry, Relay-Restart und Controller-Handover ueberleben —
+und gleichzeitig **eine neue Benutzerintention von einer Wiederholung unterscheiden**. Die
+Identitaet ist daher weder lokal gemintet noch dauerhaft aus dem Inhalt abgeleitet: der
+Nonce entsteht einmal pro Intention, und der Datensatz darueber liegt in
+`relayOperations` im kanonischen Zustand, wo ihn jeder Controller lesen kann. Zwei Gaeste
+mit identischem Payload sind zwei Intentionen; ein spaeterer bewusster Zweitversuch
+ebenfalls.
 Board, Modell/Layout und Winkel sind gegen das reale Ziel zu pruefen. Dedupe wird erst
 terminal nach Erfolg, damit ein legitimer Retry nach Fehler moeglich bleibt.
 

@@ -158,7 +158,7 @@ Eine Row hat zwei getrennte Intentionen:
        ^ lokales Oeffnen                       ^ gemeinsame Aktion
 ```
 
-Der fruehere Row-Tap auf `SetCurrent` war konzeptionell falsch: Information lesen wurde zu
+Der fruehere Row-Tap auf `SetSelection` war konzeptionell falsch: Information lesen wurde zu
 einer Gruppenmutation. Die explizite Lampe macht den Seiteneffekt auffindbar und pruefbar.
 
 ### 6.1 Lokal geoeffneter, remote geloeschter Entry

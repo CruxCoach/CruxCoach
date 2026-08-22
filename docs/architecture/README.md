@@ -90,6 +90,12 @@ bezeichnet die Occurrence, deren Projektion nach dem bestmoeglichen Protokollnac
 erfolgreich gilt. Ein Fehler oder unbekanntes Resultat darf den letzten bestaetigten
 Current nicht ueberschreiben.
 
+Deshalb sind Auswahlcursor und Current **zwei Felder**: `selectedEntryId` bewegt sich mit
+Add, Remove, Next, Previous, Rest und Restore, `currentEntryId` ausschliesslich nach
+terminal erfolgreichem Transport. Ein einziges gemeinsames Feld hat genau das verletzt,
+was dieser Abschnitt fordert — es wurde beim Normalisieren, beim Loeschen und beim
+Weiterblaettern gesetzt, ohne dass je etwas geschrieben worden waere.
+
 ### 2.5 Lokale Optimistik darf kanonische Wahrheit nicht verdecken
 
 Drag-and-drop darf sofort fluessig reagieren; ein Layer darf lokal als Preview sichtbar
@@ -190,7 +196,7 @@ sequenceDiagram
     S->>B: physische Projektion
     alt Transport nach Protokoll erfolgreich
         B-->>S: Erfolg / ggf. Readback
-        S->>C: SetCurrent(entryId), Pending loeschen
+        S->>C: SetCurrent(entryId) + SetSelection(entryId), Pending loeschen
     else fehlgeschlagen oder unklar
         B-->>S: Fehler / kein belastbarer Nachweis
         S->>C: Failure an entryId, alten Current behalten
@@ -206,7 +212,7 @@ Undo muessen dieselbe Nutzerhandlung beschreiben.
 
 | Entscheidung | Verworfenes Modell | Grund |
 |---|---|---|
-| Row-Tap oeffnet lokal | Row-Tap setzt gemeinsamen Current | Lesen darf die Gruppe nicht steuern |
+| Row-Tap oeffnet lokal | Row-Tap setzt gemeinsamen Cursor | Lesen darf die Gruppe nicht steuern |
 | explizite Lampe setzt die Wand | Navigation sendet automatisch | verhindert unbeabsichtigte Seiteneffekte |
 | Occurrence-ID | Climb-ID oder Listenindex | Duplikate und konkurrierende Edits bleiben eindeutig |
 | Current nach Erfolg | Current vor Transport | verhindert sichtbaren Split Brain |
