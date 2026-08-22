@@ -551,27 +551,19 @@ class CruxRelayManager(
             projection.climbUuid.equals(climbUuid, ignoreCase = true) && projection.angle == angle
     }
 
-    /** The canonical answer arrived: terminal on success, retryable otherwise. */
+    /**
+     * The canonical answer arrived: terminal on success, retryable otherwise.
+     *
+     * The canonical half of "finished" is not published from here. It rides in
+     * the same command as the occurrence, so a refused commit leaves neither
+     * behind — publishing it separately meant a refusal (or a stop, or a
+     * handover) left the record open, and an open record is one a later send by
+     * the same guest is put back onto.
+     */
     private fun settleOperation(operation: RelayInboundGate.Operation, committed: Boolean) {
         val at = nowMs()
-        if (committed) {
-            inboundGate.markLanded(operation, at)
-            // Landed is canonical as well: it is what tells a later controller
-            // that this request is finished, so an identical write after the
-            // window is a new intention rather than a retry of a live one.
-            // Unlike the opening barrier this one is not load-bearing — the
-            // occurrence is already on the list — so a refusal is logged and
-            // the next reconcile's record wins.
-            scope.launch {
-                if (!gattBridge.recordRelayIntent(
-                        operation.copy(stampedAtEpochMs = at, landed = true))
-                ) {
-                    Log.w(TAG, "could not record the relayed write as landed")
-                }
-            }
-        } else {
-            inboundGate.markFailed(operation, at)
-        }
+        if (committed) inboundGate.markLanded(operation, at)
+        else inboundGate.markFailed(operation, at)
     }
 
     /** Slots the radio can actually spare right now, for the GATT server. */
@@ -714,6 +706,9 @@ class CruxRelayManager(
                             gattBridge.appendSharedPlaylistEntry(
                                 identified!!.climbUuid, identified.angle, "relay_append",
                                 entryId = decision.operation.entryId,
+                                // One command: the occurrence and "this request
+                                // is finished" commit together or not at all.
+                                completing = decision.operation.copy(stampedAtEpochMs = now),
                                 onTerminal = { committed ->
                                     settleOperation(decision.operation, committed)
                                     // Queued means queued: the guest's write is
@@ -781,6 +776,7 @@ class CruxRelayManager(
                                     gattBridge.adoptProjectedEntry(
                                         identified.climbUuid, identified.angle, "relay_project",
                                         entryId = decision.operation.entryId,
+                                        completing = decision.operation.copy(stampedAtEpochMs = now),
                                         onTerminal = { committed ->
                                             settleOperation(decision.operation, committed)
                                         },

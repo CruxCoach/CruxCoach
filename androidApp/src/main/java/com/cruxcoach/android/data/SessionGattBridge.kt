@@ -1374,20 +1374,33 @@ class SessionGattBridge(
      *   is done with — must wait for this rather than for the submit, which
      *   only reports that a command went out.
      */
+    /**
+     * @param completing a relayed guest write this add finishes. It is recorded
+     *   as landed **in the same command**, so the occurrence and "this request
+     *   is finished" commit together or not at all. Publishing it separately
+     *   afterwards left the record open whenever that second commit was refused
+     *   — and an open record is one a later send by the same guest is put back
+     *   onto.
+     */
     fun appendSharedPlaylistEntry(
         climbUuid: String,
         angle: Int,
         label: String = "add",
         entryId: String = BoardPlaylistEntryId.random(),
+        completing: BoardRelayOperation? = null,
         onTerminal: ((Boolean) -> Unit)? = null,
     ) {
         val started = submitPlaylistOps(
             label,
-            BoardPlaylistOps.add(climbUuid, angle, entryId = entryId),
+            BoardPlaylistOps.add(climbUuid, angle, entryId = entryId) + terminalRecordFor(completing),
             onTerminal = onTerminal?.let { callback -> { ack -> callback(ack.isCommitted()) } },
         )
         if (!started) onTerminal?.invoke(false)
     }
+
+    /** The "this guest write is finished" half of a terminal commit. */
+    private fun terminalRecordFor(operation: BoardRelayOperation?): List<BoardPlaylistOp> =
+        operation?.let { BoardPlaylistOps.recordRelayOperation(it, landed = true) }.orEmpty()
 
     /**
      * Record a climb that is already on the wall as the group's current
@@ -1402,6 +1415,7 @@ class SessionGattBridge(
         angle: Int,
         label: String = "adopt",
         entryId: String = BoardPlaylistEntryId.random(),
+        completing: BoardRelayOperation? = null,
         onTerminal: ((Boolean) -> Unit)? = null,
     ) {
         val playlist = boardCellManager?.playlist()
@@ -1413,7 +1427,8 @@ class SessionGattBridge(
         // the canonical write they caused has already been committed. The
         // caller's [entryId] is what makes a retry after a handover land on
         // the occurrence that exists instead of adding a second one.
-        val ops = BoardPlaylistOps.completeLightNow(playlist, entryId, climbUuid, angle, landed = true)
+        val ops = BoardPlaylistOps.completeLightNow(playlist, entryId, climbUuid, angle, landed = true) +
+            terminalRecordFor(completing)
         if (ops.isEmpty()) {
             // Nothing to change means it is already exactly as it should be.
             onTerminal?.invoke(true)

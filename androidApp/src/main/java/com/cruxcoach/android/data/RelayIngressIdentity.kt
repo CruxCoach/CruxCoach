@@ -35,11 +35,15 @@ import java.util.Locale
 object RelayIngressIdentity {
 
     /**
-     * How long an intention stays open for a retry.
+     * How long an intention stays open, landed or not.
      *
      * Past this, a write that looks identical is somebody asking again rather
      * than the same request arriving twice, and guessing wrong in that
      * direction is the harmless one: an occurrence somebody wanted.
+     *
+     * It bounds an *unlanded* record too, which is the case that matters when
+     * a terminal commit does not make it: without the bound the request stays
+     * open forever and every later send by that guest is folded back into it.
      */
     const val INTENT_TTL_MS = 10 * 60_000L
 
@@ -81,16 +85,22 @@ object RelayIngressIdentity {
         nowEpochMs: Long,
         connectedGuestKeys: Set<String> = emptySet(),
     ): BoardRelayOperation? {
+        // Age bounds an unlanded record exactly as it bounds a landed one.
+        // Treating "not finished" as "still live, forever" meant a terminal
+        // commit that never landed — refused, or interrupted by a stop or a
+        // handover — kept the request open indefinitely, and the same guest's
+        // deliberate send an hour later was put back on the old operation's
+        // ids. A request nobody has completed within the window is not a
+        // request somebody is still making.
         fun live(record: BoardRelayOperation) =
             record.fingerprint == fingerprint &&
-                (!record.landed || nowEpochMs - record.stampedAtEpochMs < INTENT_TTL_MS)
+                nowEpochMs - record.stampedAtEpochMs < INTENT_TTL_MS
 
         playlist.relayOperations.firstOrNull { live(it) && it.guestKey == guestKey }
             ?.let { return it }
 
         val orphaned = playlist.relayOperations.filter {
-            live(it) && !it.landed && it.guestKey !in connectedGuestKeys &&
-                nowEpochMs - it.stampedAtEpochMs < INTENT_TTL_MS
+            live(it) && !it.landed && it.guestKey !in connectedGuestKeys
         }
         // Exactly one, or it is a guess rather than a deduction.
         return orphaned.singleOrNull()?.copy(guestKey = guestKey)

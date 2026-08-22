@@ -88,6 +88,7 @@ class CruxRelayIngressAckTest {
     private var projectionSucceeds = true
 
     private lateinit var relayServer: RelayGattServer
+    private lateinit var bridge: SessionGattBridge
     private lateinit var manager: CruxRelayManager
 
     private fun snapshot() = BoardCellSnapshot(
@@ -134,7 +135,10 @@ class CruxRelayIngressAckTest {
             every { localNodeId() } returns me
             every { membershipTransition } returns MutableStateFlow(MeshMembershipTransition.IDLE)
             coEvery { projectExternal(any(), any(), any(), any()) } answers {
-                if (projectionSucceeds) ProjectionResult.Refused("committed-stub")
+                // Duplicate counts as delivered — the wall already shows it —
+                // and needs only an ack, so the success path is reachable
+                // without standing up a whole envelope.
+                if (projectionSucceeds) ProjectionResult.Duplicate(mockk(relaxed = true))
                 else ProjectionResult.Refused("board refused")
             }
         }
@@ -157,7 +161,7 @@ class CruxRelayIngressAckTest {
             every { boardAngle } returns
                 MutableStateFlow(this@CruxRelayIngressAckTest.boardAngle)
         }
-        val bridge = mockk<SessionGattBridge>(relaxed = true) {
+        bridge = mockk(relaxed = true) {
             coEvery { recordRelayIntent(any()) } answers { intentAccepted }
         }
         manager = CruxRelayManager(
@@ -258,5 +262,41 @@ class CruxRelayIngressAckTest {
         advanceUntilIdle()
 
         coVerify { relayServer.settle(51, false) }
+    }
+
+    /**
+     * The terminal record rides in the same command as the occurrence.
+     *
+     * Publishing it separately afterwards meant a refusal — or a stop, or a
+     * handover — left the request open in canonical state, and an open request
+     * is one a later send by the same guest is folded back onto.
+     */
+    @Test
+    fun `the append carries the terminal record with it`() = runTest(dispatcher) {
+        relayRunning()
+
+        climbs.emit(inbound(requestId = 61))
+        advanceUntilIdle()
+
+        coVerify {
+            bridge.adoptProjectedEntry(
+                any(), any(), any(), any(),
+                completing = match { it != null && it.entryId.isNotBlank() },
+                onTerminal = any(),
+            )
+        }
+    }
+
+    /** And nothing publishes it on its own any more. */
+    @Test
+    fun `no separate terminal publication is made`() = runTest(dispatcher) {
+        relayRunning()
+
+        climbs.emit(inbound(requestId = 62))
+        advanceUntilIdle()
+
+        // Exactly one intent publication: the opening barrier. The terminal
+        // half is part of the occurrence command.
+        coVerify(exactly = 1) { bridge.recordRelayIntent(any()) }
     }
 }

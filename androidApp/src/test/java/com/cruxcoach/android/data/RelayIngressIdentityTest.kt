@@ -5,7 +5,9 @@ import com.cruxcoach.android.boardcell.BoardPlaylistOps
 import com.cruxcoach.android.boardcell.BoardPlaylistPolicy
 import com.cruxcoach.android.boardcell.BoardPlaylistState
 import com.cruxcoach.android.boardcell.BoardRelayOperation
+import com.cruxcoach.android.data.RelayIngressIdentity.INTENT_TTL_MS
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -111,7 +113,7 @@ class RelayIngressIdentityTest {
 
         val later = RelayIngressIdentity.openIntent(
             cellState, fingerprint(), landed.guestKey,
-            now + RelayIngressIdentity.INTENT_TTL_MS + 1,
+            now + INTENT_TTL_MS + 1,
         )
 
         assertNull("the request it recorded is finished", later)
@@ -346,5 +348,93 @@ class RelayIngressIdentityTest {
 
         assertEquals(1, cell.relayOperations.size)
         assertEquals(impostor.guestKey, cell.relayOperations.single().guestKey)
+    }
+
+    // ── When the terminal commit does not make it ─────────────────────────
+
+    /**
+     * The sequence review 10 asked for, end to end.
+     *
+     * The board write succeeded and the occurrence exists, but the command that
+     * would have marked the request finished was refused — a revision conflict,
+     * a stop, a handover. The record stays `landed = false`. What must *not*
+     * follow is that the same guest's deliberate send an hour later is folded
+     * back onto the finished operation's ids, which is what an unbounded
+     * "unlanded means still live" gave them.
+     */
+    @Test
+    fun `a request whose terminal commit was refused still ages out`() {
+        // 1. The barrier was published; the write then succeeded, but the
+        //    terminal commit that would have set landed=true was refused, so
+        //    canonical state still carries the open record.
+        val open = intent(guest = "AA:01")
+        val cell = playlistWith(open)
+        assertFalse(cell.relayOperations.single().landed)
+
+        // 2. Inside the window it is still the same request: a retry finds it.
+        assertEquals(
+            open,
+            RelayIngressIdentity.openIntent(cell, fingerprint(), open.guestKey, now + 1_000),
+        )
+
+        // 3. Past the window it is not. Nobody completed it, and a request
+        //    nobody completed within the window is not one somebody is still
+        //    making.
+        assertNull(
+            RelayIngressIdentity.openIntent(
+                cell, fingerprint(), open.guestKey, now + INTENT_TTL_MS + 1,
+            ),
+        )
+
+        // 4. So the same guest's identical send later is a new intention.
+        val later = RelayIngressIdentity.newIntent(
+            fingerprint(), open.guestKey, now + INTENT_TTL_MS + 1,
+        )
+        assertNotEquals(open.entryId, later.entryId)
+        assertNotEquals(open.operationId, later.operationId)
+    }
+
+    /** Nor may a stale open record be adopted by somebody else after the window. */
+    @Test
+    fun `an aged-out open record is not adoptable either`() {
+        val cell = playlistWith(intent(guest = "AA:01"))
+
+        assertNull(
+            RelayIngressIdentity.openIntent(
+                cell, fingerprint(), RelayIngressIdentity.guestKey("BB:02"),
+                now + INTENT_TTL_MS + 1,
+            ),
+        )
+    }
+
+    /**
+     * And the terminal transition itself: it arrives in the same command as
+     * the occurrence, so the two are one canonical step.
+     */
+    @Test
+    fun `the terminal record and the occurrence commit together`() {
+        val open = intent(guest = "AA:01")
+        val cell = playlistWith(open)
+
+        val ops = BoardPlaylistOps.add("climb-x", 40, entryId = open.entryId) +
+            BoardPlaylistOps.recordRelayOperation(open, landed = true)
+        val after = BoardPlaylistPolicy.apply(cell, ops)
+
+        assertTrue("the occurrence is there", after.entry(open.entryId) != null)
+        assertTrue("and the request is finished", after.relayOperations.single().landed)
+        assertEquals(1, after.relayOperations.size)
+    }
+
+    /** A refused command changes neither of them — that is the point of one command. */
+    @Test
+    fun `a refused terminal command leaves no half state`() {
+        val open = intent(guest = "AA:01")
+        val cell = playlistWith(open)
+
+        // Nothing applied: the controller refused the batch.
+        val after = BoardPlaylistPolicy.apply(cell, emptyList())
+
+        assertNull(after.entry(open.entryId))
+        assertFalse(after.relayOperations.single().landed)
     }
 }
