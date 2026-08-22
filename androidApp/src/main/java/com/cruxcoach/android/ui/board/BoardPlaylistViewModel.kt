@@ -14,6 +14,8 @@ import com.cruxcoach.android.boardcell.BoardPlaylistOp
 import com.cruxcoach.android.boardcell.BoardPlaylistOps
 import com.cruxcoach.android.boardcell.BoardPlaylistPendingProjection
 import com.cruxcoach.android.boardcell.BoardPlaylistState
+import com.cruxcoach.android.boardcell.BoardProjectionConfidence
+import com.cruxcoach.android.boardcell.BoardProjectionConfidencePolicy
 import com.cruxcoach.android.boardcell.BoardPlaylistUndo
 import com.cruxcoach.android.data.BoardPlaylistLogMark
 import com.cruxcoach.android.data.boardPlaylistLogKey
@@ -79,6 +81,14 @@ data class BoardPlaylistUiState(
     val currentIndex: Int = -1,
     /** The selected entry is the one the board last confirmed. */
     val selectionOnBoard: Boolean = false,
+    /**
+     * How well anybody here knows what the wall is showing.
+     *
+     * "Sent" and "the controller says so" are different claims and only one of
+     * them is available on a write-only board, so the screen says which it is
+     * rather than flattening both into "on the board".
+     */
+    val projectionConfidence: BoardProjectionConfidence = BoardProjectionConfidence.UNKNOWN,
     /** Nobody knows what is on the wall — not the same as "not yours". */
     val boardClimbUnknown: Boolean = false,
     /** What the board is showing instead, when that is known and different. */
@@ -172,6 +182,14 @@ class BoardPlaylistViewModel @Inject constructor(
                 }
             }
         }
+        // Confidence has two live inputs the snapshot does not carry: a write
+        // this device has out, and what the controller says it holds.
+        viewModelScope.launch {
+            boardCellManager.projectionInFlight.collect { render(boardCellManager.snapshot()) }
+        }
+        viewModelScope.launch {
+            bleConnection.quantumControllerState.collect { render(boardCellManager.snapshot()) }
+        }
         viewModelScope.launch {
             gattBridge.pendingPlaylistCommandCount.collect { pending ->
                 _state.update { it.copy(pendingCommands = pending) }
@@ -244,11 +262,14 @@ class BoardPlaylistViewModel @Inject constructor(
             )
         }
         val currentEntry = playlist.currentEntry()
-        val selectionOnBoard = snapshot.projectionKnown && currentEntry != null &&
-            snapshot.projection?.let {
-                it.climbUuid == currentEntry.climbUuid && it.angle == currentEntry.angle
-            } == true
-        val confirmed = snapshot.projection?.takeIf { snapshot.projectionKnown && !selectionOnBoard }
+        val status = projectionStatus(snapshot)
+        val selectionOnBoard = status.shows(currentEntry)
+        // What the wall shows *instead*, and only where that is worth
+        // saying: an in-flight or failed send is already its own answer.
+        val confirmed = status.projection?.takeIf {
+            !selectionOnBoard && status.confidence != BoardProjectionConfidence.PENDING &&
+                status.confidence != BoardProjectionConfidence.FAILED
+        }
         confirmed?.let { resolveName(it.climbUuid, it.angle) }
         if (token != renderToken) return
         val now = System.currentTimeMillis()
@@ -265,7 +286,8 @@ class BoardPlaylistViewModel @Inject constructor(
             rows = rows,
             currentIndex = currentIndex,
             selectionOnBoard = selectionOnBoard,
-            boardClimbUnknown = !snapshot.projectionKnown,
+            projectionConfidence = status.confidence,
+            boardClimbUnknown = status.confidence == BoardProjectionConfidence.UNKNOWN,
             confirmedClimbName = confirmed?.let {
                 climbInfos[climbInfoKey(it.climbUuid, it.angle)]?.name
             },
@@ -275,6 +297,29 @@ class BoardPlaylistViewModel @Inject constructor(
             undo = lastEdit?.takeIf { it.canUndo },
         )
     }
+
+    /**
+     * What the wall is showing, and what that claim is worth here.
+     *
+     * The readback half is deliberately narrow: a Quantum controller naming
+     * the canonical climb is a confirmation, and every other board gets the
+     * strongest honest answer its protocol allows, which is that the transport
+     * completed.
+     */
+    private fun projectionStatus(snapshot: BoardCellSnapshot) =
+        BoardProjectionConfidencePolicy.evaluate(
+            snapshot = snapshot,
+            inFlight = boardCellManager.projectionInFlight.value,
+            readbackNamesProjection = bleConnection.quantumControllerState.value.let { controller ->
+                BoardProjectionConfidencePolicy.readbackNames(
+                    projection = snapshot.projection,
+                    authoritative = controller.authoritative,
+                    heldRouteIds = controller.players.map { it.routeId },
+                )
+            },
+            brandConfirmsByReadback =
+                bleConnection.connectedBoardBrand.value?.confirmsProjectionByControllerReadback == true,
+        )
 
     /**
      * Occurrences of the same climb at the same angle are what a duplicate

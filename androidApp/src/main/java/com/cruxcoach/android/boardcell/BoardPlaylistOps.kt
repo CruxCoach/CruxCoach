@@ -642,23 +642,87 @@ object BoardPlaylistOps {
         newEntryId: () -> String = BoardPlaylistEntryId::random,
     ): LightNow {
         val existing = fromEntryId?.let(state::entry)
-        if (existing != null) {
-            val ops = if (state.currentEntryId == existing.entryId) emptyList()
-            else listOf(BoardPlaylistOp.SetCurrent(existing.entryId))
-            return LightNow(existing.entryId, ops)
-        }
+        if (existing != null) return LightNow(existing.entryId, emptyList())
         val entryId = newEntryId()
         val anchor = state.currentEntryId
             ?.let { BoardPlaylistAnchor.After(it) }
             ?: BoardPlaylistAnchor.Tail
-        return LightNow(
-            entryId,
-            listOf(
-                BoardPlaylistOp.Add(entryId, climbUuid, angle, anchor = anchor),
-                BoardPlaylistOp.SetCurrent(entryId),
+        // The occurrence only. Making it current is the *second* phase and
+        // waits for the board — a current that moves before the write lands
+        // says the group is on a climb that never reached the wall, and leaves
+        // the previous confirmed one unrecoverable.
+        return LightNow(entryId, listOf(BoardPlaylistOp.Add(entryId, climbUuid, angle, anchor = anchor)))
+    }
+
+    /**
+     * The controller's half of somebody else's light-now.
+     *
+     * The occurrence may not have arrived yet — the member's add and its
+     * projection request are two messages and the mesh does not promise an
+     * order. Materialising it here is safe precisely because the member chose
+     * the id: its own add merges into this one rather than producing a second
+     * entry for the same tap.
+     */
+    fun completeLightNow(
+        state: BoardPlaylistState,
+        entryId: String,
+        climbUuid: String,
+        angle: Int,
+        landed: Boolean,
+    ): List<BoardPlaylistOp> {
+        val ensure = if (state.entry(entryId) != null) emptyList() else listOf(
+            BoardPlaylistOp.Add(
+                entryId, climbUuid, angle,
+                anchor = state.currentEntryId?.let { BoardPlaylistAnchor.After(it) }
+                    ?: BoardPlaylistAnchor.Tail,
             ),
         )
+        val settled = BoardPlaylistPolicy.apply(state, ensure)
+        return ensure + if (landed) confirmLit(settled, entryId)
+        else recordLightFailure(settled, entryId)
     }
+
+    /**
+     * Phase two: the write landed, so this occurrence is what the group is on.
+     *
+     * A failure marker for the same occurrence is taken back here as well. It
+     * was the record of an attempt that has now succeeded, and leaving it would
+     * tell everybody the wall is dark while the climb is on it. (The projection
+     * commit clears it too, for external writes that never went through a
+     * light-now; this makes the retry path answer for itself.)
+     */
+    fun confirmLit(state: BoardPlaylistState, entryId: String): List<BoardPlaylistOp> {
+        if (state.entry(entryId) == null) return emptyList()
+        val clear = BoardPlaylistOp.SetPendingProjection(null)
+            .takeIf { state.pendingProjection?.entryId == entryId }
+        val current = BoardPlaylistOp.SetCurrent(entryId)
+            .takeIf { state.currentEntryId != entryId }
+        return listOfNotNull(current, clear)
+    }
+
+    /**
+     * Phase two, the other way: the write did not land, and everybody sees why.
+     *
+     * The group still moves to the occurrence somebody asked for — that is what
+     * the tap meant, and the retry every member can press belongs to it — but
+     * it arrives carrying the reason the wall is dark rather than as a silent
+     * claim that the climb is up there. A current with no marker is the state
+     * this pass exists to make impossible; the marker and the current travel in
+     * one command so no replica can ever see one without the other.
+     */
+    fun recordLightFailure(state: BoardPlaylistState, entryId: String): List<BoardPlaylistOp> =
+        state.entry(entryId)?.let { entry ->
+            listOfNotNull(
+                BoardPlaylistOp.SetCurrent(entry.entryId)
+                    .takeIf { state.currentEntryId != entry.entryId },
+                BoardPlaylistOp.SetPendingProjection(
+                    BoardPlaylistPendingProjection(
+                        entry.entryId, entry.climbUuid, entry.angle,
+                        BoardPlaylistProjectionPendingReason.BOARD_WRITE_FAILED,
+                    ),
+                ),
+            )
+        }.orEmpty()
 
     fun removeAt(state: BoardPlaylistState, index: Int): List<BoardPlaylistOp> =
         state.entryIdAt(index)?.let { listOf(BoardPlaylistOp.Remove(it)) }.orEmpty()

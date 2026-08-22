@@ -84,6 +84,7 @@ import com.cruxcoach.android.R
 import com.cruxcoach.android.boardcell.BoardPlaylistAnchor
 import com.cruxcoach.android.boardcell.BoardPlaylistEditKind
 import com.cruxcoach.android.boardcell.BoardPlaylistProjectionPendingReason
+import com.cruxcoach.android.boardcell.BoardProjectionConfidence
 import com.cruxcoach.android.data.BoardPlaylistLogMark
 import com.cruxcoach.android.data.PlaylistCommandFeedbackKind
 import com.cruxcoach.android.ui.theme.DarkBackground
@@ -370,7 +371,7 @@ fun BoardPlaylistScreen(
  * collapsing them into one is how somebody ends up climbing the wrong problem.
  */
 @Composable
-private fun BoardPlaylistStatus(state: BoardPlaylistUiState) {
+internal fun BoardPlaylistStatus(state: BoardPlaylistUiState) {
     val pending = state.pendingProjection
     val status = when {
         pending != null -> stringResource(
@@ -382,6 +383,18 @@ private fun BoardPlaylistStatus(state: BoardPlaylistUiState) {
             },
         ) to MaterialTheme.colorScheme.error
         state.isEmpty -> null
+        // Sending is its own answer. Somebody standing at the wall waiting for
+        // holds to light up is not looking at the same situation as somebody
+        // whose send never went out.
+        state.projectionConfidence == BoardProjectionConfidence.PENDING ->
+            stringResource(R.string.board_playlist_sending) to
+                MaterialTheme.colorScheme.onSurfaceVariant
+        // Two different claims, and the difference is the whole point: only a
+        // Quantum controller can be asked what it holds. Everywhere else the
+        // strongest honest statement is that the write went out.
+        state.selectionOnBoard &&
+            state.projectionConfidence == BoardProjectionConfidence.CONTROLLER_CONFIRMED ->
+            stringResource(R.string.board_playlist_on_board_confirmed) to SuccessGreen
         state.selectionOnBoard ->
             stringResource(R.string.board_playlist_on_board) to SuccessGreen
         state.boardClimbUnknown ->

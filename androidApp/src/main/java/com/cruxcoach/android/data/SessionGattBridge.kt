@@ -43,6 +43,7 @@ import com.cruxcoach.android.boardcell.BoardCommandStatus
 import com.cruxcoach.android.boardcell.BoardPlaylistState
 import com.cruxcoach.android.boardcell.BoardPlaylistCommand
 import com.cruxcoach.android.boardcell.BoardPlaylistOp
+import com.cruxcoach.android.boardcell.BoardPlaylistEntryId
 import com.cruxcoach.android.boardcell.BoardPlaylistOps
 import com.cruxcoach.android.boardcell.BoardPlaylistPolicy
 import com.cruxcoach.android.boardcell.BoardProjection
@@ -1365,8 +1366,13 @@ class SessionGattBridge(
     }
 
     /** Append one occurrence at the end, leaving the wall and selection alone. */
-    fun appendSharedPlaylistEntry(climbUuid: String, angle: Int, label: String = "add") {
-        submitPlaylistOps(label, BoardPlaylistOps.add(climbUuid, angle))
+    fun appendSharedPlaylistEntry(
+        climbUuid: String,
+        angle: Int,
+        label: String = "add",
+        entryId: String = BoardPlaylistEntryId.random(),
+    ) {
+        submitPlaylistOps(label, BoardPlaylistOps.add(climbUuid, angle, entryId = entryId))
     }
 
     /**
@@ -1377,11 +1383,20 @@ class SessionGattBridge(
      * the climb would be a second write of the same thing. This only makes the
      * shared list agree with what everybody can already see.
      */
-    fun adoptProjectedEntry(climbUuid: String, angle: Int, label: String = "adopt") {
+    fun adoptProjectedEntry(
+        climbUuid: String,
+        angle: Int,
+        label: String = "adopt",
+        entryId: String = BoardPlaylistEntryId.random(),
+    ) {
         val playlist = boardCellManager?.playlist() ?: return
-        val plan = BoardPlaylistOps.lightNow(playlist, climbUuid, angle)
-        if (plan.ops.isEmpty()) return
-        submitPlaylistOps(label, plan.ops)
+        // Landed by construction: the guest's bytes are what lit the wall, and
+        // the canonical write they caused has already been committed. The
+        // caller's [entryId] is what makes a retry after a handover land on
+        // the occurrence that exists instead of adding a second one.
+        val ops = BoardPlaylistOps.completeLightNow(playlist, entryId, climbUuid, angle, landed = true)
+        if (ops.isEmpty()) return
+        submitPlaylistOps(label, ops)
     }
 
     /** The running rest is over — it ran out, or somebody skipped it. */

@@ -1327,7 +1327,9 @@
     <string name="board_playlist_rest_after">%1$d s rest</string>
     <!-- The one control that writes the physical board, on any screen. -->
     <string name="board_playlist_lamp">Put the selected climb on the board</string>
-    <string name="board_playlist_on_board">Selected climb is on the board</string>
+    <string name="board_playlist_on_board">Selected climb was sent to the board</string>
+    <string name="board_playlist_on_board_confirmed">Selected climb is on the board — the controller says so</string>
+    <string name="board_playlist_sending">Sending the selected climb to the board…</string>
     <string name="board_playlist_not_on_board">Selected — not on the board yet</string>
     <string name="board_playlist_board_unknown">Nobody knows what is on the board right now</string>
     <string name="board_playlist_board_shows">The board is showing %1$s</string>

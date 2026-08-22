@@ -1371,7 +1371,9 @@
     <string name="board_playlist_rest_after">%1$d s Pause</string>
     <!-- Das einzige Bedienelement, das überhaupt auf das Board schreibt. -->
     <string name="board_playlist_lamp">Ausgewählten Climb auf das Board legen</string>
-    <string name="board_playlist_on_board">Ausgewählter Climb ist auf dem Board</string>
+    <string name="board_playlist_on_board">Ausgewählter Climb wurde ans Board gesendet</string>
+    <string name="board_playlist_on_board_confirmed">Ausgewählter Climb liegt auf dem Board — der Controller bestätigt es</string>
+    <string name="board_playlist_sending">Ausgewählter Climb wird ans Board gesendet …</string>
     <string name="board_playlist_not_on_board">Ausgewählt — noch nicht auf dem Board</string>
     <string name="board_playlist_board_unknown">Gerade weiß niemand, was auf dem Board liegt</string>
     <string name="board_playlist_board_shows">Auf dem Board liegt %1$s</string>

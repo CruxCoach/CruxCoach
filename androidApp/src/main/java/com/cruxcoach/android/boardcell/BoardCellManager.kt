@@ -33,6 +33,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.filterNotNull
@@ -185,6 +186,18 @@ class BoardCellManager @Inject constructor(
     private var recoveryAttempt = 0
     private val sponsoredAt = ConcurrentHashMap<String, Long>()
     private val pendingProjectionRequests = ConcurrentHashMap<String, PendingProjectionRequest>()
+
+    /**
+     * A projection this device has out and unanswered.
+     *
+     * Local by construction and never replicated: the controller's own write
+     * and a member's unanswered request are the two things a peer cannot
+     * observe, and showing somebody else a "sending" it cannot see end would
+     * be inventing progress. See [BoardProjectionConfidencePolicy].
+     */
+    private val localBoardWriteInFlight = java.util.concurrent.atomic.AtomicReference<BoardProjection?>()
+    private val _projectionInFlight = MutableStateFlow<BoardProjection?>(null)
+    val projectionInFlight: StateFlow<BoardProjection?> = _projectionInFlight.asStateFlow()
     private val admissionMutex = Mutex()
     private val pendingAdmissions = ConcurrentHashMap<String, BoardCellAdmissionPrompt>()
     private val admissionCooldowns = ConcurrentHashMap<String, Long>()
@@ -246,6 +259,7 @@ class BoardCellManager @Inject constructor(
             if (ack.status != BoardCommandStatus.ACCEPTED &&
                 ack.status != BoardCommandStatus.NOT_CONTROLLER) {
                 pendingProjectionRequests.remove(ack.commandId)
+                refreshProjectionInFlight()
             }
             commandAckChannel.send(ack)
         }
@@ -830,22 +844,84 @@ class BoardCellManager @Inject constructor(
         val resolved = playlistProjectionWriter?.resolve(climbUuid, angle)
             ?: BoardProjection(climbUuid, angle)
 
-        if (snapshot.controllerId == activeNodeId) {
-            if (plan.ops.isNotEmpty()) {
-                val command = composePlaylistCommand(plan.ops) ?: return false
-                val ack = commitPlaylistCommand(activeNodeId, command)
-                if (ack?.status != BoardCommandStatus.COMMITTED) return false
-            }
-            return syncPlaylistProjection()
+        // Phase one: the occurrence exists and everybody can see it. It is not
+        // yet what the group is on — that waits for the wall.
+        if (plan.ops.isNotEmpty()) {
+            val added = composePlaylistCommand(plan.ops)?.let { command ->
+                if (snapshot.controllerId == activeNodeId) {
+                    commitPlaylistCommand(activeNodeId, command)?.status == BoardCommandStatus.COMMITTED
+                } else {
+                    meshTransport.sendPlaylistCommand(snapshot, command)
+                }
+            } == true
+            if (!added) return false
         }
 
-        // Member: both halves leave now, and the controller orders them.
-        val command = composePlaylistCommand(plan.ops)
-        val listSent = plan.ops.isEmpty() ||
-            (command != null && meshTransport.sendPlaylistCommand(snapshot, command))
-        val projected = sendProjectionRequest(resolved) != null
+        // Phase two: the write. Only what it says may move the current.
+        val projected = if (snapshot.controllerId == activeNodeId) {
+            syncPlaylistProjectionFor(resolved)
+        } else {
+            sendProjectionRequest(resolved, entryId = plan.entryId) != null
+        }
+
+        // Phase three, and the whole reason the first two are separate. A
+        // controller knows the answer here and commits it; a member has asked
+        // the controller, which will set the current itself when its write
+        // lands, so there is nothing for this device to claim on its behalf.
+        if (snapshot.controllerId == activeNodeId) {
+            val after = snapshot() ?: return projected
+            val ops = if (projected) {
+                BoardPlaylistOps.confirmLit(after.playlist, plan.entryId)
+            } else {
+                BoardPlaylistOps.recordLightFailure(after.playlist, plan.entryId)
+            }
+            if (ops.isNotEmpty()) {
+                composePlaylistCommand(ops)?.let { commitPlaylistCommand(activeNodeId, it) }
+            }
+        }
         refreshSelected()
-        return listSent && projected
+        return projected
+    }
+
+    /** The lamp, for one resolved projection rather than the current entry. */
+    private suspend fun syncPlaylistProjectionFor(resolved: BoardProjection): Boolean =
+        playlistProjectionMutex.withLock {
+            val board = writableBoard() ?: return@withLock false
+            val snapshot = coordinator.snapshot(board) ?: return@withLock false
+            val writer = playlistProjectionWriter ?: return@withLock false
+            val request = BoardProjectionRequest(
+                commandId = UUID.randomUUID().toString(),
+                projection = resolved,
+                baseSequence = snapshot.sequence,
+                baseProjection = snapshot.projection,
+                basePlaylistRevision = snapshot.playlistRevision,
+            )
+            val result = writingBoard(resolved) {
+                if (snapshot.availability == BoardCellAvailability.FROZEN_WRITE_RECOVERY) {
+                    coordinator.reprojectSemanticallyAfterRecovery(board, request, monotonicNow()) {
+                        writer.write(resolved)
+                    }
+                } else {
+                    coordinator.projectSemantically(board, request, monotonicNow()) {
+                        writer.write(resolved)
+                    }
+                }
+            }
+            result is ProjectionResult.Committed || result is ProjectionResult.Duplicate
+        }
+
+    /**
+     * Publishes this device's relay claim, if it is the controller.
+     *
+     * Members never call this and could not make it stick if they did: the
+     * reducer only accepts a claim on the current lease, and the lease belongs
+     * to whoever `controllerId` says it does.
+     */
+    suspend fun publishRelayState(relay: BoardCellRelayState): Boolean {
+        val board = writableBoard() ?: return false
+        val published = coordinator.publishRelayState(board, relay, monotonicNow()) != null
+        if (published) refreshSelected()
+        return published
     }
 
     suspend fun projectSelectedEntry(): Boolean {
@@ -891,13 +967,15 @@ class BoardCellManager @Inject constructor(
                 baseProjection = snapshot.projection,
                 basePlaylistRevision = snapshot.playlistRevision,
             )
-            val result = if (snapshot.availability == BoardCellAvailability.FROZEN_WRITE_RECOVERY) {
-                coordinator.reprojectSemanticallyAfterRecovery(board, request, monotonicNow()) {
-                    writer.write(resolved)
-                }
-            } else {
-                coordinator.projectSemantically(board, request, monotonicNow()) {
-                    writer.write(resolved)
+            val result = writingBoard(resolved) {
+                if (snapshot.availability == BoardCellAvailability.FROZEN_WRITE_RECOVERY) {
+                    coordinator.reprojectSemanticallyAfterRecovery(board, request, monotonicNow()) {
+                        writer.write(resolved)
+                    }
+                } else {
+                    coordinator.projectSemantically(board, request, monotonicNow()) {
+                        writer.write(resolved)
+                    }
                 }
             }
             FipsDebugLog.event("playlist", "projection_attempted",
@@ -957,10 +1035,11 @@ class BoardCellManager @Inject constructor(
     fun sendProjectionRequest(
         projection: BoardProjection,
         commandId: String = UUID.randomUUID().toString(),
+        entryId: String? = null,
     ): String? {
         val snapshot = snapshot() ?: return null
         val request = BoardProjectionRequest(commandId, projection, snapshot.sequence,
-            snapshot.projection, snapshot.playlistRevision)
+            snapshot.projection, snapshot.playlistRevision, entryId)
         if (!meshTransport.sendProjectionRequest(snapshot, request)) return null
         if (pendingProjectionRequests.size >= MAX_PENDING_PROJECTIONS) {
             pendingProjectionRequests.entries.minByOrNull { it.value.retryAtMs }
@@ -968,6 +1047,7 @@ class BoardCellManager @Inject constructor(
         }
         pendingProjectionRequests[commandId] = PendingProjectionRequest(
             request, monotonicNow() + PROJECTION_RETRY_INITIAL_MS)
+        refreshProjectionInFlight()
         return commandId
     }
 
@@ -986,6 +1066,22 @@ class BoardCellManager @Inject constructor(
             coordinator.reprojectSemanticallyAfterRecovery(board, request, monotonicNow(), boardWrite)
         } else {
             coordinator.projectSemantically(board, request, monotonicNow(), boardWrite)
+        }
+        // The requester added the occurrence; only this device can say the
+        // wall took it. Confirm or record the failure here, in the same
+        // controller-sequenced step, so no member ever moves the current on
+        // the strength of a message it merely sent.
+        request.entryId?.let { entryId ->
+            val landed = result is ProjectionResult.Committed || result is ProjectionResult.Duplicate
+            val playlist = coordinator.snapshot(board)?.playlist
+            val ops = playlist?.let {
+                BoardPlaylistOps.completeLightNow(
+                    it, entryId, request.projection.climbUuid, request.projection.angle, landed,
+                )
+            }.orEmpty()
+            if (ops.isNotEmpty()) {
+                composePlaylistCommand(ops)?.let { commitPlaylistCommand(activeNodeId, it) }
+            }
         }
         return result.also {
             val ack = when (it) {
@@ -2344,9 +2440,27 @@ class BoardCellManager @Inject constructor(
         return BoardCellScopeRegistry.selected.value
     }
 
+    private fun refreshProjectionInFlight() {
+        _projectionInFlight.value = localBoardWriteInFlight.get()
+            ?: pendingProjectionRequests.values.minByOrNull { it.retryAtMs }?.request?.projection
+    }
+
+    /** Runs [block] while the wall is being written, so the UI can say so. */
+    private suspend fun <T> writingBoard(projection: BoardProjection, block: suspend () -> T): T {
+        localBoardWriteInFlight.set(projection)
+        refreshProjectionInFlight()
+        return try {
+            block()
+        } finally {
+            localBoardWriteInFlight.set(null)
+            refreshProjectionInFlight()
+        }
+    }
+
     private fun refreshSelected() {
         val next = snapshot()
         _snapshots.value = next
+        refreshProjectionInFlight()
         if (next != null && activeNodeId in next.members) {
             meshLink.session?.settleMembership()
         }
