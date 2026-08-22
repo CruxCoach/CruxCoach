@@ -310,12 +310,42 @@ class BoardPlaylistPolicyTest {
         assertTrue(accepted is BoardPlaylistPolicy.Outcome.Commit)
     }
 
-    @Test fun `a pending send that names some other entry is dropped by normalization`() {
+    /**
+     * A marker on an occurrence that is not the current one is the normal case:
+     * a failed send leaves the confirmed current alone, so what did not reach
+     * the wall is by definition something else. Normalisation used to delete
+     * exactly that, which is why the failure had to be hidden behind a current
+     * that lied.
+     */
+    @Test fun `a pending send may name an occurrence that is not current`() {
         val base = playlist(entry("e1"), entry("e2"))
 
         val state = BoardPlaylistPolicy.apply(base, listOf(
             BoardPlaylistOp.SetPendingProjection(BoardPlaylistPendingProjection(
                 "e2", "climb-e2", 40, BoardPlaylistProjectionPendingReason.CLIMB_UNAVAILABLE))))
+
+        assertEquals("e2", state.pendingProjection?.entryId)
+        assertEquals("e1", state.currentEntryId)
+    }
+
+    @Test fun `a pending send naming no occurrence at all is dropped`() {
+        val base = playlist(entry("e1"), entry("e2"))
+
+        val state = BoardPlaylistPolicy.apply(base, listOf(
+            BoardPlaylistOp.SetPendingProjection(BoardPlaylistPendingProjection(
+                "gone", "climb-e2", 40, BoardPlaylistProjectionPendingReason.CLIMB_UNAVAILABLE))))
+
+        assertNull(state.pendingProjection)
+    }
+
+    /** Still bound to its own occurrence's climb and angle, or it is stale. */
+    @Test fun `a pending send that disagrees with its occurrence is dropped`() {
+        val base = playlist(entry("e1"), entry("e2"))
+
+        val state = BoardPlaylistPolicy.apply(base, listOf(
+            BoardPlaylistOp.SetPendingProjection(BoardPlaylistPendingProjection(
+                "e2", "some-other-climb", 40,
+                BoardPlaylistProjectionPendingReason.CLIMB_UNAVAILABLE))))
 
         assertNull(state.pendingProjection)
     }

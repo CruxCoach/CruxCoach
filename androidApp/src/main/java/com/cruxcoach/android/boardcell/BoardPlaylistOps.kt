@@ -257,14 +257,19 @@ object BoardPlaylistPolicy {
                 BoardPlaylistInstant.isWindow(active.startedAtEpochMs, active.endsAtEpochMs,
                     active.totalSeconds * 1_000L)
         }
-        // The pending-send state describes the entry the wall is supposed to
-        // be showing. Keeping one that named some other queued entry let a
-        // stale "send pending" survive a next/remove and misreport a climb
-        // that had since been projected perfectly well.
+        // The pending-send state describes one occurrence that was asked for
+        // and did not reach the wall. It is deliberately *not* tied to the
+        // current: a failed send must leave the confirmed current alone, so the
+        // marker usually names the occurrence sitting directly behind it.
+        //
+        // What it must still be is honest. Bound to an occurrence that exists,
+        // and to that occurrence's own climb and angle — a marker whose entry
+        // was removed, or whose entry now describes a different climb, is a
+        // stale "not sent" that would misreport a wall nobody has touched.
         val pending = playlist.pendingProjection?.takeIf { candidate ->
-            val entry = entries.firstOrNull { it.entryId == current }
-            entry != null && entry.entryId == candidate.entryId &&
-                entry.climbUuid == candidate.climbUuid && entry.angle == candidate.angle
+            val entry = entries.firstOrNull { it.entryId == candidate.entryId }
+            entry != null && entry.climbUuid == candidate.climbUuid &&
+                entry.angle == candidate.angle
         }
         // The offer to undo a clear has to be an offer about *this* clear and
         // has to name a window it could really have been made in. Anything
@@ -703,18 +708,16 @@ object BoardPlaylistOps {
     /**
      * Phase two, the other way: the write did not land, and everybody sees why.
      *
-     * The group still moves to the occurrence somebody asked for — that is what
-     * the tap meant, and the retry every member can press belongs to it — but
-     * it arrives carrying the reason the wall is dark rather than as a silent
-     * claim that the climb is up there. A current with no marker is the state
-     * this pass exists to make impossible; the marker and the current travel in
-     * one command so no replica can ever see one without the other.
+     * The current does not move. It names the occurrence whose transport
+     * actually succeeded, and the wall is still showing that one — saying
+     * otherwise would be the single lie this whole transaction exists to
+     * prevent. The new occurrence stays where it was inserted, directly after
+     * the current, carrying the reason it is not on the wall and a retry that
+     * uses its own id.
      */
     fun recordLightFailure(state: BoardPlaylistState, entryId: String): List<BoardPlaylistOp> =
         state.entry(entryId)?.let { entry ->
-            listOfNotNull(
-                BoardPlaylistOp.SetCurrent(entry.entryId)
-                    .takeIf { state.currentEntryId != entry.entryId },
+            listOf(
                 BoardPlaylistOp.SetPendingProjection(
                     BoardPlaylistPendingProjection(
                         entry.entryId, entry.climbUuid, entry.angle,

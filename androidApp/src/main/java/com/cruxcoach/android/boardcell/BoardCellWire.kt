@@ -325,7 +325,10 @@ object BoardCellWireCodec {
         }
         playlist.pendingProjection?.let {
             requireEntryBounds(it.entryId, it.climbUuid, it.angle)
-            require(it.entryId == playlist.currentEntryId)
+            // Any existing occurrence, not only the current one: a send that
+            // failed leaves the confirmed current where it was, so the marker
+            // names the occurrence behind it. It still has to name a real one,
+            // with that occurrence's own climb and angle.
             val entry = playlist.entry(it.entryId)
             require(entry != null && entry.climbUuid == it.climbUuid && entry.angle == it.angle)
         }

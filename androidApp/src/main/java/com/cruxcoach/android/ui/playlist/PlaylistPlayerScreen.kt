@@ -641,6 +641,9 @@ private fun BoardStatusLine(playback: PlaylistPlaybackState) {
     val mesh = playback.mesh ?: return
     val pending = playback.pendingProjection
     val (text, color) = when {
+        // Unnamed on purpose, as everywhere in the player: resolving a climb
+        // name here would mean a lookup on every snapshot, and the list screen
+        // — where somebody is actually looking at the occurrences — names it.
         pending != null -> stringResource(
             when (pending.reason) {
                 com.cruxcoach.android.boardcell.BoardPlaylistProjectionPendingReason
@@ -648,6 +651,7 @@ private fun BoardStatusLine(playback: PlaylistPlaybackState) {
                 com.cruxcoach.android.boardcell.BoardPlaylistProjectionPendingReason
                     .CLIMB_UNAVAILABLE -> R.string.board_playlist_send_unavailable
             },
+            stringResource(R.string.board_playlist_failure_this_climb),
         ) to MaterialTheme.colorScheme.error
         mesh.selectionOnBoard ->
             stringResource(R.string.board_playlist_on_board) to SuccessGreen

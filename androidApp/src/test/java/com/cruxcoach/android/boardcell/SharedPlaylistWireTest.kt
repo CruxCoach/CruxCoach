@@ -60,6 +60,11 @@ class SharedPlaylistWireTest {
         assertThrows(IllegalArgumentException::class.java) { BoardCellWireCodec.decode(bytes) }
     }
 
+    private fun accepts(message: BoardCellWireMessage) {
+        val bytes = BoardCellWireCodec.encode(frame(message))
+        assertEquals(message, BoardCellWireCodec.decode(bytes).message)
+    }
+
     // ===== Round trips =====
 
     @Test fun `a snapshot carrying the full shared playlist round trips`() {
@@ -281,15 +286,29 @@ class SharedPlaylistWireTest {
             playlist(rest = rest(nextEntryId = "not-here")))))
     }
 
-    @Test fun `a pending send that names some other entry is refused`() {
-        refuses(BoardCellWireMessage.Snapshot(snapshot(playlist(
+    /**
+     * The wire follows the domain: a failed send marks the occurrence it
+     * happened to and leaves the confirmed current alone, so a marker on a
+     * non-current entry is a legitimate state and refusing it on the wire
+     * would drop every honest failure report.
+     */
+    @Test fun `a pending send may name an occurrence that is not current`() {
+        accepts(BoardCellWireMessage.Snapshot(snapshot(playlist(
             entries = listOf(BoardPlaylistEntry("e1", "a", 40), BoardPlaylistEntry("e2", "b", 40)),
             current = "e1",
             pending = BoardPlaylistPendingProjection("e2", "b", 40,
                 BoardPlaylistProjectionPendingReason.BOARD_WRITE_FAILED)))))
     }
 
-    @Test fun `a pending send must match the selected occurrence exactly`() {
+    @Test fun `a pending send naming no occurrence at all is refused`() {
+        refuses(BoardCellWireMessage.Snapshot(snapshot(playlist(
+            entries = listOf(BoardPlaylistEntry("e1", "a", 40)),
+            current = "e1",
+            pending = BoardPlaylistPendingProjection("gone", "a", 40,
+                BoardPlaylistProjectionPendingReason.BOARD_WRITE_FAILED)))))
+    }
+
+    @Test fun `a pending send must match its own occurrence exactly`() {
         refuses(BoardCellWireMessage.Snapshot(snapshot(playlist(
             pending = BoardPlaylistPendingProjection("e1", "different-climb", 40,
                 BoardPlaylistProjectionPendingReason.BOARD_WRITE_FAILED)))))

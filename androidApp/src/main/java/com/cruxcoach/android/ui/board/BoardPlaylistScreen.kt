@@ -308,7 +308,13 @@ fun BoardPlaylistScreen(
                 BoardPlaylistUnavailable()
                 return@Column
             }
-            BoardPlaylistStatus(state)
+            BoardPlaylistStatus(
+                state = state,
+                // Retry is the same occurrence, not a new one: lightEntry
+                // carries the entry id the failed operation already had.
+                onRetryFailed = viewModel::lightEntry,
+                onRemoveFailed = viewModel::remove,
+            )
             state.restore?.let { offer ->
                 RestoreOfferCard(offer = offer, onRestore = viewModel::restore)
             }
@@ -371,17 +377,13 @@ fun BoardPlaylistScreen(
  * collapsing them into one is how somebody ends up climbing the wrong problem.
  */
 @Composable
-internal fun BoardPlaylistStatus(state: BoardPlaylistUiState) {
+internal fun BoardPlaylistStatus(
+    state: BoardPlaylistUiState,
+    onRetryFailed: (String) -> Unit = {},
+    onRemoveFailed: (String) -> Unit = {},
+) {
     val pending = state.pendingProjection
     val status = when {
-        pending != null -> stringResource(
-            when (pending.reason) {
-                BoardPlaylistProjectionPendingReason.BOARD_WRITE_FAILED ->
-                    R.string.board_playlist_send_write_failed
-                BoardPlaylistProjectionPendingReason.CLIMB_UNAVAILABLE ->
-                    R.string.board_playlist_send_unavailable
-            },
-        ) to MaterialTheme.colorScheme.error
         state.isEmpty -> null
         // Sending is its own answer. Somebody standing at the wall waiting for
         // holds to light up is not looking at the same situation as somebody
@@ -406,8 +408,21 @@ internal fun BoardPlaylistStatus(state: BoardPlaylistUiState) {
         else -> stringResource(R.string.board_playlist_not_on_board) to
             MaterialTheme.colorScheme.onSurfaceVariant
     }
-    if (status == null && state.synchronized && state.pendingCommands == 0) return
+    if (status == null && pending == null && state.synchronized && state.pendingCommands == 0) return
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
+        // A failed send is a fact about one occurrence, and what the wall is
+        // showing is a fact about another. Saying only the first would hide the
+        // wall; saying only the second would hide the failure. So: both, with
+        // the recovery attached to the one it belongs to.
+        pending?.let { failure ->
+            BoardPlaylistFailureNotice(
+                climbName = state.failedClimbName,
+                reason = failure.reason,
+                boardStillShows = state.boardClimbName,
+                onRetry = { onRetryFailed(failure.entryId) },
+                onRemove = { onRemoveFailed(failure.entryId) },
+            )
+        }
         // Having a copy of the list and being up to date with the group are
         // different things, and only one of them is safe to act on.
         if (!state.synchronized) {
@@ -426,6 +441,61 @@ internal fun BoardPlaylistStatus(state: BoardPlaylistUiState) {
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+    }
+}
+
+/**
+ * "It did not go", said about the occurrence it happened to.
+ *
+ * Recovery sits next to the statement rather than in a menu: the two things
+ * somebody wants after a failed send are to try it again — under the same
+ * identity, so the list does not grow a second copy — or to take it back off
+ * the list. Never colour alone: the reason is written out, because a red row
+ * is not a message.
+ */
+@Composable
+private fun BoardPlaylistFailureNotice(
+    climbName: String?,
+    reason: BoardPlaylistProjectionPendingReason,
+    boardStillShows: String?,
+    onRetry: () -> Unit,
+    onRemove: () -> Unit,
+) {
+    val name = climbName ?: stringResource(R.string.board_playlist_failure_this_climb)
+    Column(Modifier.fillMaxWidth().testTag("board_playlist_failure")) {
+        Text(
+            stringResource(
+                when (reason) {
+                    BoardPlaylistProjectionPendingReason.BOARD_WRITE_FAILED ->
+                        R.string.board_playlist_send_write_failed
+                    BoardPlaylistProjectionPendingReason.CLIMB_UNAVAILABLE ->
+                        R.string.board_playlist_send_unavailable
+                },
+                name,
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+        )
+        // The other half of the truth: the wall did not go dark, it kept the
+        // climb whose transport actually succeeded.
+        boardStillShows?.let {
+            Text(
+                stringResource(R.string.board_playlist_board_still_shows, it),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = onRetry, modifier = Modifier.testTag("board_playlist_retry")) {
+                Text(stringResource(R.string.board_playlist_send_retry))
+            }
+            TextButton(
+                onClick = onRemove,
+                modifier = Modifier.testTag("board_playlist_remove_failed"),
+            ) {
+                Text(stringResource(R.string.board_playlist_failure_remove))
+            }
         }
     }
 }
@@ -890,6 +960,14 @@ private fun BoardPlaylistRowCard(
                             )
                         }
                     }
+                }
+                if (row.hasFailed) {
+                    Text(
+                        stringResource(R.string.board_playlist_row_not_sent),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.testTag("board_playlist_row_failed"),
+                    )
                 }
                 Text(
                     buildString {

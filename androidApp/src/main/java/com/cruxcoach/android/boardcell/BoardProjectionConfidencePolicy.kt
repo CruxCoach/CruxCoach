@@ -12,12 +12,32 @@ data class BoardProjectionStatus(
     val confidence: BoardProjectionConfidence,
     val projection: BoardProjection?,
     val pending: BoardPlaylistPendingProjection? = null,
+    val inFlight: BoardProjection? = null,
 ) {
     /** The wall is showing this occurrence's climb, whoever put it there. */
     fun shows(entry: BoardPlaylistEntry?): Boolean =
         entry != null && projection?.climbUuid == entry.climbUuid &&
             projection.angle == entry.angle &&
             confidence != BoardProjectionConfidence.UNKNOWN
+
+    /**
+     * What is claimed about one occurrence, or null when nothing is.
+     *
+     * Deliberately separate from [confidence], which is about the wall. After a
+     * failed send those are two different facts about two different
+     * occurrences — the wall still shows the confirmed current, and the one
+     * behind it did not get there — and a UI that collapses them either
+     * misreports the wall or hides the failure.
+     */
+    fun confidenceFor(entry: BoardPlaylistEntry?): BoardProjectionConfidence? {
+        if (entry == null) return null
+        if (pending?.entryId == entry.entryId) return BoardProjectionConfidence.FAILED
+        if (inFlight?.climbUuid == entry.climbUuid && inFlight.angle == entry.angle) {
+            return BoardProjectionConfidence.PENDING
+        }
+        if (!shows(entry)) return null
+        return confidence
+    }
 
     companion object {
         val UNKNOWN = BoardProjectionStatus(BoardProjectionConfidence.UNKNOWN, null)
@@ -69,21 +89,22 @@ object BoardProjectionConfidencePolicy {
         brandConfirmsByReadback: Boolean = false,
     ): BoardProjectionStatus {
         val cell = snapshot ?: return BoardProjectionStatus.UNKNOWN
+        // The occurrence somebody asked for and did not get. It travels beside
+        // the wall's own answer rather than replacing it: after a failed send
+        // the wall is still showing the confirmed current, and reporting the
+        // wall as "failed" would be as wrong as hiding the failure.
         val pending = cell.playlist.pendingProjection
-        // A fresh attempt outranks the record of the last failed one: somebody
-        // pressed the lamp again and that is what is happening now.
+        // A write on its way is about the wall, so it does outrank what the
+        // wall last confirmed — that is the one claim genuinely in doubt.
         if (inFlight != null) {
-            return BoardProjectionStatus(BoardProjectionConfidence.PENDING, inFlight, pending)
-        }
-        if (pending != null) {
             return BoardProjectionStatus(
-                BoardProjectionConfidence.FAILED,
-                cell.projection.takeIf { cell.projectionKnown },
-                pending,
+                BoardProjectionConfidence.PENDING, inFlight, pending, inFlight,
             )
         }
         val projection = cell.projection
-        if (!cell.projectionKnown || projection == null) return BoardProjectionStatus.UNKNOWN
+        if (!cell.projectionKnown || projection == null) {
+            return BoardProjectionStatus(BoardProjectionConfidence.UNKNOWN, null, pending)
+        }
         // Only a board that answers may be believed to have answered. On every
         // write-only board a completed transport is the strongest honest claim
         // there is, and calling it confirmation would be inventing a readback
@@ -92,6 +113,6 @@ object BoardProjectionConfidencePolicy {
             if (brandConfirmsByReadback && readbackNamesProjection)
                 BoardProjectionConfidence.CONTROLLER_CONFIRMED
             else BoardProjectionConfidence.TRANSPORTED
-        return BoardProjectionStatus(confidence, projection)
+        return BoardProjectionStatus(confidence, projection, pending)
     }
 }

@@ -102,16 +102,15 @@ class BoardPlaylistLightNowTest {
     // ── The transaction ───────────────────────────────────────────────────
 
     /**
-     * The split-brain this exists to prevent: a current that says the group is
-     * on a climb, with nothing anywhere saying the wall never took it.
+     * The invariant, stated as a test: a new current means the transport for
+     * *that* occurrence succeeded.
      *
-     * Adding the occurrence and moving to it are still what the tap meant, so
-     * both happen — but only once the wall has answered, and the failure
-     * travels in the same command as the move, so no replica can see one
-     * without the other.
+     * So a failed send moves nobody. The wall is still showing the occurrence
+     * whose write did land, the current keeps naming it, and the one that did
+     * not get there sits directly behind it carrying the reason.
      */
     @Test
-    fun `a write that does not land moves the group with the reason attached`() {
+    fun `a write that does not land leaves the confirmed current alone`() {
         val state = playlist(
             entry("e1", "climb-a"),
             entry("e2", "climb-b"),
@@ -124,7 +123,11 @@ class BoardPlaylistLightNowTest {
         assertEquals("e1", BoardPlaylistPolicy.apply(state, plan.ops).currentEntryId)
 
         val after = failed(state, plan)
-        assertEquals("new-1", after.currentEntryId)
+        assertEquals("the wall did not change, so neither does the current", "e1", after.currentEntryId)
+        assertEquals(
+            listOf("e1", "new-1", "e2"),
+            after.entries.map { it.entryId },
+        )
         assertEquals(
             BoardPlaylistPendingProjection(
                 "new-1", "climb-x", 40,
@@ -132,6 +135,35 @@ class BoardPlaylistLightNowTest {
             ),
             after.pendingProjection,
         )
+    }
+
+    /**
+     * The normalisation that used to drop it. A marker on an occurrence that is
+     * not the current one is the *normal* case now, so it has to survive being
+     * applied — the previous rule silently deleted every failure record.
+     */
+    @Test
+    fun `a failure marker survives on an occurrence that is not current`() {
+        val state = playlist(entry("e1", "climb-a"), entry("e2", "climb-b"), current = "e1")
+
+        val marked = BoardPlaylistPolicy.apply(
+            state,
+            BoardPlaylistOps.recordLightFailure(state, "e2"),
+        )
+
+        assertEquals("e2", marked.pendingProjection?.entryId)
+        assertEquals("e1", marked.currentEntryId)
+    }
+
+    /** What it must not survive: the occurrence it names being taken off the list. */
+    @Test
+    fun `removing the failed occurrence takes its marker with it`() {
+        val state = playlist(entry("e1", "climb-a"), entry("e2", "climb-b"), current = "e1")
+        val marked = BoardPlaylistPolicy.apply(state, BoardPlaylistOps.recordLightFailure(state, "e2"))
+
+        val after = BoardPlaylistPolicy.apply(marked, listOf(BoardPlaylistOp.Remove("e2")))
+
+        assertNull(after.pendingProjection)
     }
 
     /** Nothing at all is claimed until the wall has answered, either way. */
@@ -200,7 +232,7 @@ class BoardPlaylistLightNowTest {
             BoardPlaylistOps.completeLightNow(state, "m-1", "climb-x", 40, landed = false),
         )
 
-        assertEquals("m-1", after.currentEntryId)
+        assertEquals("somebody else's failed send moves nobody either", "e1", after.currentEntryId)
         assertEquals("m-1", after.pendingProjection?.entryId)
         assertEquals(
             BoardPlaylistProjectionPendingReason.BOARD_WRITE_FAILED,
@@ -353,11 +385,13 @@ class BoardPlaylistLightNowTest {
         val plan = BoardPlaylistOps.lightNow(state, "climb-x", 40) { "new-1" }
         val afterFailure = failed(state, plan)
 
+        assertEquals("e1", afterFailure.currentEntryId)
+
         val retry = BoardPlaylistOps.lightNow(afterFailure, "climb-x", 40, fromEntryId = "new-1")
         val afterRetry = lit(afterFailure, retry)
 
         assertEquals(listOf("e1", "new-1"), afterRetry.entries.map { it.entryId })
-        assertEquals("new-1", afterRetry.currentEntryId)
+        assertEquals("only now, because only now did the wall take it", "new-1", afterRetry.currentEntryId)
         assertNull("a landed retry clears the failure", afterRetry.pendingProjection)
     }
 }

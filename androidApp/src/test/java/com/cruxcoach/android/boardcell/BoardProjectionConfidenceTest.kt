@@ -94,14 +94,57 @@ class BoardProjectionConfidenceTest {
         assertEquals(BoardProjectionConfidence.PENDING, status.confidence)
     }
 
+    /**
+     * A failed send is a fact about the occurrence it happened to, not about
+     * the wall — the wall is still showing whatever it was showing, and its
+     * own confidence is unchanged. Collapsing the two is how a screen ends up
+     * reporting a board as "failed" while it is lit and correct.
+     */
     @Test
-    fun `a write that did not land is failed`() {
+    fun `a write that did not land is failed for its occurrence, not for the wall`() {
         val status = BoardProjectionConfidencePolicy.evaluate(
             cell(playlist = playlistWithPendingFailure()),
         )
 
-        assertEquals(BoardProjectionConfidence.FAILED, status.confidence)
+        assertEquals(BoardProjectionConfidence.TRANSPORTED, status.confidence)
         assertEquals("e1", status.pending?.entryId)
+        assertEquals(
+            BoardProjectionConfidence.FAILED,
+            status.confidenceFor(BoardPlaylistEntry("e1", "climb-b", 40)),
+        )
+    }
+
+    /** And the occurrence the wall really has keeps its own answer. */
+    @Test
+    fun `the occurrence on the wall is still transported while another failed`() {
+        val status = BoardProjectionConfidencePolicy.evaluate(
+            cell(playlist = playlistWithPendingFailure()),
+        )
+
+        assertEquals(
+            BoardProjectionConfidence.TRANSPORTED,
+            status.confidenceFor(BoardPlaylistEntry("e9", "climb-a", 40)),
+        )
+    }
+
+    /** A queued occurrence nobody has asked for claims nothing at all. */
+    @Test
+    fun `an occurrence nobody has sent has no claim`() {
+        val status = BoardProjectionConfidencePolicy.evaluate(cell())
+
+        assertNull(status.confidenceFor(BoardPlaylistEntry("e5", "climb-z", 40)))
+    }
+
+    @Test
+    fun `the occurrence being sent right now is pending`() {
+        val status = BoardProjectionConfidencePolicy.evaluate(
+            cell(), inFlight = BoardProjection("climb-b", 40),
+        )
+
+        assertEquals(
+            BoardProjectionConfidence.PENDING,
+            status.confidenceFor(BoardPlaylistEntry("e2", "climb-b", 40)),
+        )
     }
 
     @Test

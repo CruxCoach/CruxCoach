@@ -238,6 +238,16 @@ data class ClimbDetailState(
     val playback: PlaybackState = PlaybackState(),
     val ble: BoardSendState = BoardSendState(),
     val boardSendMode: BoardSendMode = BoardSendMode.AUTOMATIC,
+    /**
+     * This screen was opened from a playlist occurrence that somebody has since
+     * removed.
+     *
+     * The screen stays open — losing the climb somebody is reading about would
+     * be a worse answer than saying so — but it stops presenting itself as a
+     * view of an entry that no longer exists. A later board tap then creates a
+     * new occurrence on purpose rather than quietly reviving a deleted id.
+     */
+    val playlistEntryRemoved: Boolean = false,
     /** Live physical-board layers. Quantum currently supplies four; other
      * boards remain a single projection through the same capability model. */
     val boardLayers: BoardLayerState = BoardLayerState(),
@@ -592,6 +602,38 @@ class BoardClimbDetailViewModel @Inject constructor(
         // on the board — and a group is the case where a frame does not fail
         // loudly, it arrives as a whole-climb projection and leaves the wall
         // on frame 1.
+        // The occurrence this screen was opened from can be removed by anybody
+        // in the group while it is open. Watching it is the only way the screen
+        // can stop claiming to be a view of an entry that is gone — and the
+        // only way the board tap knows to make a new one.
+        viewModelScope.launch {
+            try {
+                // Both inputs matter: the list changes under the screen, and
+                // the screen changes climb under the list (a swipe). Either one
+                // alone would leave a stale answer on the other's last value.
+                kotlinx.coroutines.flow.combine(
+                    boardCellManager.snapshots,
+                    _state.map { it.climb?.uuid }.distinctUntilChanged(),
+                ) { snapshot, shownClimb ->
+                    val entryId = climbNavState.boardPlaylistEntryId ?: return@combine false
+                    if (climbNavState.boardPlaylistEntryClimbUuid != shownClimb) return@combine false
+                    // Not a member: this device cannot see the list at all, so
+                    // it knows nothing about the occurrence either way.
+                    if (snapshot == null || !boardCellManager.localParticipatesInSharedPlaylist()) {
+                        return@combine false
+                    }
+                    snapshot.playlist.entry(entryId) == null
+                }
+                    .distinctUntilChanged()
+                    .collect { removed ->
+                        _state.update { it.copy(playlistEntryRemoved = removed) }
+                    }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "playlist occurrence watch terminated", e)
+            }
+        }
         viewModelScope.launch {
             try {
                 kotlinx.coroutines.flow.combine(
@@ -1414,8 +1456,13 @@ class BoardClimbDetailViewModel @Inject constructor(
             // through the controller instead of this screen writing behind the
             // list's back.
             BoardDeliveryTarget.BOARD_PLAYLIST -> viewModelScope.launch {
+                // A removed occurrence is not lit again from here: the id is
+                // gone from the shared list, and reusing it would resurrect an
+                // entry somebody deleted. The tap means "put this climb on the
+                // wall", so it becomes a new occurrence after the current one.
                 val entryId = climbNavState.boardPlaylistEntryId
                     ?.takeIf { climbNavState.boardPlaylistEntryClimbUuid == climb.uuid }
+                    ?.takeIf { !climbState.playlistEntryRemoved }
                 boardCellManager.lightNow(climb.uuid, climbState.angle, entryId)
             }
             BoardDeliveryTarget.NONE -> Unit

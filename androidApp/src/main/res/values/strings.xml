@@ -1333,8 +1333,14 @@
     <string name="board_playlist_not_on_board">Selected — not on the board yet</string>
     <string name="board_playlist_board_unknown">Nobody knows what is on the board right now</string>
     <string name="board_playlist_board_shows">The board is showing %1$s</string>
-    <string name="board_playlist_send_write_failed">The board did not accept the climb.</string>
-    <string name="board_playlist_send_unavailable">This climb is not available on the sending device.</string>
+    <string name="board_playlist_send_write_failed">%1$s was not sent — the board did not take it.</string>
+    <string name="board_playlist_send_unavailable">%1$s is not available on the sending device.</string>
+    <string name="board_playlist_failure_this_climb">This climb</string>
+    <string name="board_playlist_failure_remove">Remove</string>
+    <string name="board_playlist_send_retry">Retry</string>
+    <string name="board_playlist_row_not_sent">Not sent</string>
+    <string name="board_detail_playlist_entry_removed">Removed from the playlist — sending puts it on the board as a new entry</string>
+    <string name="board_playlist_board_still_shows">The board still shows %1$s</string>
     <string name="board_playlist_out_of_sync">Not in sync with the board right now — this list may be out of date.</string>
     <string name="board_playlist_command_pending">Syncing changes (%1$d)…</string>
     <string name="board_playlist_command_conflict">The list changed at the same time. It is up to date now — please try your change again.</string>

@@ -62,7 +62,18 @@ data class BoardPlaylistRow(
     /** Which repeat of this climb this is, and how many there are in total. */
     val duplicateIndex: Int,
     val duplicateCount: Int,
-)
+    /**
+     * What is claimed about *this* occurrence, or null when nothing is.
+     *
+     * Per-row rather than per-screen because after a failed send two
+     * occurrences have different answers at once: the confirmed current is on
+     * the wall, and the one behind it never got there.
+     */
+    val projection: BoardProjectionConfidence? = null,
+) {
+    /** Asked for, and it did not reach the wall. Retryable under this same id. */
+    val hasFailed: Boolean get() = projection == BoardProjectionConfidence.FAILED
+}
 
 /** The canonical clear offer, counted down against this device's own clock. */
 data class BoardPlaylistRestoreOffer(
@@ -93,12 +104,24 @@ data class BoardPlaylistUiState(
     val boardClimbUnknown: Boolean = false,
     /** What the board is showing instead, when that is known and different. */
     val confirmedClimbName: String? = null,
+    /**
+     * What the board is showing, whether or not it is the selected occurrence.
+     *
+     * The failure line needs it precisely when the two are the same: "X was not
+     * sent" is only half the truth without "the board still shows Y".
+     */
+    val boardClimbName: String? = null,
     val pendingProjection: BoardPlaylistPendingProjection? = null,
+    /** The name of the occurrence that was not sent, for the recovery line. */
+    val failedClimbName: String? = null,
     val pendingCommands: Int = 0,
     val restore: BoardPlaylistRestoreOffer? = null,
     /** The last edit *this device* made, while it can still be taken back. */
     val undo: BoardPlaylistEdit? = null,
 ) {
+    /** The occurrence a `Retry` acts on — its own id, never a matching climb. */
+    val failedEntryId: String? get() = pendingProjection?.entryId
+
     val isEmpty: Boolean get() = rows.isEmpty()
     val hasPrevious: Boolean get() = currentIndex > 0
     val hasNext: Boolean get() = currentIndex >= 0 && currentIndex < rows.size - 1
@@ -239,6 +262,7 @@ class BoardPlaylistViewModel @Inject constructor(
         if (token != renderToken) return
         val current = playlist.currentEntryId
         val currentIndex = playlist.currentIndex
+        val status = projectionStatus(snapshot)
         val occurrences = HashMap<String, Int>()
         val totals = playlist.entries.groupingBy { duplicateKey(it) }.eachCount()
         val rows = playlist.entries.mapIndexed { index, entry ->
@@ -259,18 +283,22 @@ class BoardPlaylistViewModel @Inject constructor(
                     ?: BoardPlaylistLogMark.UNATTEMPTED,
                 duplicateIndex = occurrence,
                 duplicateCount = totals[key] ?: 1,
+                projection = status.confidenceFor(entry),
             )
         }
         val currentEntry = playlist.currentEntry()
-        val status = projectionStatus(snapshot)
         val selectionOnBoard = status.shows(currentEntry)
+        val failedEntry = playlist.pendingProjection?.let { playlist.entry(it.entryId) }
         // What the wall shows *instead*, and only where that is worth
         // saying: an in-flight or failed send is already its own answer.
         val confirmed = status.projection?.takeIf {
-            !selectionOnBoard && status.confidence != BoardProjectionConfidence.PENDING &&
-                status.confidence != BoardProjectionConfidence.FAILED
+            !selectionOnBoard && status.confidence != BoardProjectionConfidence.PENDING
         }
         confirmed?.let { resolveName(it.climbUuid, it.angle) }
+        // Resolved even when it is the current occurrence: after a failed send
+        // that is exactly the climb the group needs named.
+        status.projection?.takeIf { status.confidence != BoardProjectionConfidence.PENDING }
+            ?.let { resolveName(it.climbUuid, it.angle) }
         if (token != renderToken) return
         val now = System.currentTimeMillis()
         val restore = playlist.lastClear
@@ -291,7 +319,13 @@ class BoardPlaylistViewModel @Inject constructor(
             confirmedClimbName = confirmed?.let {
                 climbInfos[climbInfoKey(it.climbUuid, it.angle)]?.name
             },
+            boardClimbName = status.projection
+                ?.takeIf { status.confidence != BoardProjectionConfidence.PENDING }
+                ?.let { climbInfos[climbInfoKey(it.climbUuid, it.angle)]?.name },
             pendingProjection = playlist.pendingProjection,
+            failedClimbName = failedEntry?.let {
+                climbInfos[climbInfoKey(it.climbUuid, it.angle)]?.name
+            },
             pendingCommands = _state.value.pendingCommands,
             restore = restore,
             undo = lastEdit?.takeIf { it.canUndo },

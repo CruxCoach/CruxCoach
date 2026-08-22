@@ -2,7 +2,9 @@ package com.cruxcoach.android.ui.board
 
 import android.app.Application
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.test.core.app.ApplicationProvider
 import com.cruxcoach.android.R
@@ -10,6 +12,7 @@ import com.cruxcoach.android.boardcell.BoardPlaylistPendingProjection
 import com.cruxcoach.android.boardcell.BoardPlaylistProjectionPendingReason
 import com.cruxcoach.android.boardcell.BoardProjectionConfidence
 import com.cruxcoach.android.data.BoardPlaylistLogMark
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -40,8 +43,15 @@ class BoardPlaylistConfidenceUiTest {
         mark = BoardPlaylistLogMark.UNATTEMPTED, duplicateIndex = 1, duplicateCount = 1,
     )
 
+    private val retried = mutableListOf<String>()
+    private val removed = mutableListOf<String>()
+
     private fun show(state: BoardPlaylistUiState) = compose.setContent {
-        BoardPlaylistStatus(state = state)
+        BoardPlaylistStatus(
+            state = state,
+            onRetryFailed = { retried += it },
+            onRemoveFailed = { removed += it },
+        )
     }
 
     private fun state(
@@ -92,21 +102,53 @@ class BoardPlaylistConfidenceUiTest {
             .assertIsDisplayed()
     }
 
+    /**
+     * The two facts a failed send leaves behind, and the contract says both
+     * out loud: the occurrence that did not get there, and the climb the wall
+     * is still showing instead.
+     */
     @Test
-    fun `a write that did not land keeps its own reason`() {
-        show(
-            state(
-                BoardProjectionConfidence.FAILED,
-                pending = BoardPlaylistPendingProjection(
-                    "e1", "climb-a", 40,
-                    BoardPlaylistProjectionPendingReason.BOARD_WRITE_FAILED,
-                ),
-            ),
-        )
+    fun `a write that did not land names it and says what the board still shows`() {
+        show(failedState())
 
-        compose.onNodeWithText(context.getString(R.string.board_playlist_send_write_failed))
+        compose.onNodeWithText(
+            context.getString(R.string.board_playlist_send_write_failed, "Test climb"),
+        ).assertIsDisplayed()
+        compose.onNodeWithText(
+            context.getString(R.string.board_playlist_board_still_shows, "Black Pearl"),
+        ).assertIsDisplayed()
+    }
+
+    /** Recovery sits next to the statement, and retry keeps the same identity. */
+    @Test
+    fun `a failed send offers retry and remove for that occurrence`() {
+        show(failedState())
+
+        compose.onNodeWithTag("board_playlist_retry").performClick()
+        compose.onNodeWithTag("board_playlist_remove_failed").performClick()
+
+        assertEquals(listOf("e1"), retried)
+        assertEquals(listOf("e1"), removed)
+    }
+
+    /** A red row is not a message: the state is written out either way. */
+    @Test
+    fun `the failure is stated in words, not only in colour`() {
+        show(failedState())
+
+        compose.onNodeWithTag("board_playlist_failure").assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.board_playlist_send_retry))
             .assertIsDisplayed()
     }
+
+    private fun failedState() = state(
+        BoardProjectionConfidence.TRANSPORTED,
+        selectionOnBoard = true,
+        pending = BoardPlaylistPendingProjection(
+            "e1", "climb-a", 40,
+            BoardPlaylistProjectionPendingReason.BOARD_WRITE_FAILED,
+        ),
+    ).copy(failedClimbName = "Test climb", boardClimbName = "Black Pearl")
 
     /** The board is showing something, and it is not the selected occurrence. */
     @Test

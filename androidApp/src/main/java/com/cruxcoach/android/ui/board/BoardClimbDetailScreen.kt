@@ -56,7 +56,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
@@ -1756,6 +1758,21 @@ private fun BoardDetailBottomActions(
                 .padding(horizontal = 14.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
+            // The occurrence this screen was opened from is gone. The screen
+            // stays — losing the climb somebody is reading about would be the
+            // worse answer — but it says so, because the lamp below now means
+            // something different: a new occurrence, not this one again.
+            if (state.playlistEntryRemoved) {
+                Text(
+                    stringResource(R.string.board_detail_playlist_entry_removed),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("boarddetail_playlist_entry_removed")
+                        .semantics { liveRegion = LiveRegionMode.Polite },
+                )
+            }
             // Draws nothing at all unless this device is in a board's group,
             // so every other board keeps the dock at its usual height.
             BoardPlaylistAddActions(
