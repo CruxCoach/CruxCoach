@@ -138,7 +138,7 @@ Normale Edits werden als kleine, typisierte Operationen versendet:
 | `Move(entryId, anchor)` | dieselbe Occurrence repositionieren | verschwundener Anchor mutiert nichts |
 | `SetSelection(entryId)` | gemeinsamen Auswahlcursor setzen | fehlende Entry-ID mutiert nichts |
 | `SetCurrent(entryId)` | bestaetigten Board-Zustand festhalten | nur Controller; fehlende Entry-ID mutiert nichts |
-| `RecordRelayOperation(op)` | Ingress-Intention eines Gastes replizieren | nur Controller; idempotent je `(Fingerprint, Gast)` |
+| `RecordRelayOperation(op)` | Ingress-Intention eines Gastes replizieren | nur Controller; ersetzt denselben Intent (Fingerprint+Gast, Operation-ID oder Entry-ID) |
 | `SetRest(entryId, seconds)` | Pausenplan an Occurrence aendern | begrenzt und occurrence-adressiert |
 | `StartRest(nextEntryId, ...)` | Cursorwechsel und Pause koppeln (nie den bestaetigten Current) | Controller stempelt Generation/Zeit |
 | `Clear(generation)` | Liste atomar leeren | Generation verhindert Wiederholung |
@@ -339,6 +339,14 @@ mit identischem Payload sind zwei Intentionen; ein spaeterer bewusster Zweitvers
 ebenfalls.
 Board, Modell/Layout und Winkel sind gegen das reale Ziel zu pruefen. Dedupe wird erst
 terminal nach Erfolg, damit ein legitimer Retry nach Fehler moeglich bleibt.
+
+Der terminale Uebergang (`landed = true`) wird **im selben Command wie die Occurrence**
+committet: Liste und „Anfrage erledigt“ sind ein controller-sequenzierter Schritt, beide
+oder keiner. Bleibt ein Record dennoch offen — abgelehntes Command, Stop, Handover —, ist
+das unschaedlich und ausdruecklich nicht reparaturbeduerftig: ein offener Record erlaubt
+genau eines, naemlich dass ein Retry innerhalb des Zeitfensters dieselben IDs findet.
+Nach `INTENT_TTL_MS` ist ein Record ohnehin nicht mehr live, gelandet oder nicht, und ein
+spaeterer Send derselben Person ist eine neue Intention mit neuer Nonce.
 
 ## 14. Grenzen und Nicht-Ziele
 
