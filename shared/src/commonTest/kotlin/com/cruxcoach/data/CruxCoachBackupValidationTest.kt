@@ -201,4 +201,63 @@ class CruxCoachBackupValidationTest {
         }"""
         assertFailsWith<IllegalArgumentException> { CruxCoachBackup.preview(json) }
     }
+
+    // ── Private climb notes ──────────────────────────────────────
+
+    @Test
+    fun accepts_climb_note() {
+        val json = """{
+            "exportedAt":"2026-04-21",
+            "climbNotes":[{"climbUuid":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","note":"beta","updatedAt":"2026-04-21T10:00:00Z"}]
+        }"""
+        assertEquals(1, CruxCoachBackup.preview(json).climbNotes)
+    }
+
+    /** Kilter-logbook-imported climbs carry no-dash uuids; a note on one of
+     *  them must not fail the whole restore. */
+    @Test
+    fun accepts_climb_note_on_a_plain_hex_uuid() {
+        val json = """{
+            "exportedAt":"2026-04-21",
+            "climbNotes":[{"climbUuid":"AAAAAAAABBBBCCCCDDDDEEEEEEEEEEEE","note":"beta","updatedAt":"2026-04-21"}]
+        }"""
+        assertEquals(1, CruxCoachBackup.preview(json).climbNotes)
+    }
+
+    @Test
+    fun rejects_climb_note_with_non_uuid_climb() {
+        val json = """{
+            "exportedAt":"2026-04-21",
+            "climbNotes":[{"climbUuid":"../../etc/passwd","note":"beta","updatedAt":"2026-04-21"}]
+        }"""
+        assertFailsWith<IllegalArgumentException> { CruxCoachBackup.preview(json) }
+    }
+
+    @Test
+    fun rejects_overlong_climb_note() {
+        val note = "x".repeat(9_000)
+        val json = """{
+            "exportedAt":"2026-04-21",
+            "climbNotes":[{"climbUuid":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","note":"$note","updatedAt":"2026-04-21"}]
+        }"""
+        assertFailsWith<IllegalArgumentException> { CruxCoachBackup.preview(json) }
+    }
+
+    @Test
+    fun rejects_climb_note_with_overlong_timestamp() {
+        val stamp = "2".repeat(200)
+        val json = """{
+            "exportedAt":"2026-04-21",
+            "climbNotes":[{"climbUuid":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","note":"beta","updatedAt":"$stamp"}]
+        }"""
+        assertFailsWith<IllegalArgumentException> { CruxCoachBackup.preview(json) }
+    }
+
+    /** Notes are additive inside version 3, so an older envelope that never
+     *  carried the field must still preview cleanly. */
+    @Test
+    fun accepts_version_3_envelope_without_climb_notes() {
+        val json = """{"version":3,"exportedAt":"2026-04-21"}"""
+        assertEquals(0, CruxCoachBackup.preview(json).climbNotes)
+    }
 }

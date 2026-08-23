@@ -336,6 +336,7 @@ class DataExchangeViewModel @Inject constructor(
                 if (result.boardSessions > 0) parts.add(context.getString(R.string.import_result_board_sessions, result.boardSessions))
                 if (result.climbLists > 0) parts.add(context.getString(R.string.import_result_lists, result.climbLists))
                 if (result.ownClimbs > 0) parts.add(context.getString(R.string.import_result_own_climbs, result.ownClimbs))
+                if (result.climbNotes > 0) parts.add(context.getString(R.string.import_result_notes, result.climbNotes))
 
                 val summary = if (parts.isNotEmpty()) parts.joinToString(", ") else context.getString(R.string.import_result_no_data)
                 val dupNote = if (result.skippedDuplicates > 0)
