@@ -82,6 +82,7 @@ class BoardBrandTest {
         assertEquals(false, BoardBrand.QUANTUM.supportsBenchmarkFilter)
         assertEquals(false, BoardBrand.QUANTUM.supportsBoardSeshOrigin)
         assertEquals(false, BoardBrand.QUANTUM.usesProductSizeEdgeFit)
+        assertEquals(false, BoardBrand.MOONBOARD.usesProductSizeEdgeFit)
         assertEquals(false, BoardBrand.KILTER.usesCatalogueAngles)
         assertEquals(true, BoardBrand.KILTER.supportsClimbTypeFilter)
         assertEquals(true, BoardBrand.KILTER.supportsBenchmarkFilter)

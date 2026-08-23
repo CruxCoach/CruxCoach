@@ -104,10 +104,12 @@ enum class BoardBrand(val wireValue: String) {
     /** BoardSesh is a Kilter-side provenance and has no Quantum catalogue. */
     val supportsBoardSeshOrigin: Boolean get() = this != QUANTUM
 
-    /** The product-size edge predicate is a Kilter/Aurora compatibility rule.
-     *  Quantum model membership is authoritative in quantum_route_models and
-     *  is materialised as a unique layout id for every model. */
-    val usesProductSizeEdgeFit: Boolean get() = this != QUANTUM
+    /** The product-size edge predicate is an Aurora compatibility rule.
+     *  MoonBoard variants are represented by layouts and hold-set masks and
+     *  have no `product_sizes` rows. Quantum model membership is authoritative
+     *  in quantum_route_models and is materialised as a unique layout id for
+     *  every model. Persisted Aurora size ids must therefore be inert on both. */
+    val usesProductSizeEdgeFit: Boolean get() = usesAuroraProtocol
 
     /**
      * Number of independent climb projections the physical controller can
