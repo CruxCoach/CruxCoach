@@ -129,7 +129,7 @@ SELECT COUNT(*) FROM bids WHERE external_id LIKE ?;
 -- See ascents.countImportedAscentsByDate.
 -- See ascents.selectImportedAscentsForDate.
 selectImportedBidsForDate:
-SELECT climb_uuid, external_id
+SELECT climb_uuid, external_id, comment
 FROM bids
 WHERE climbed_at = :climbedAt AND external_id LIKE :prefix;
 

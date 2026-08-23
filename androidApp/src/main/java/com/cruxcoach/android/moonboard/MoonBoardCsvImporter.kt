@@ -31,6 +31,16 @@ class MoonBoardCsvImporter @Inject constructor(
      */
     private val screenIndex = HashMap<Long, Map<String, Any>>()
 
+    /**
+     * How many training days were resolved with a targeted name lookup so far.
+     * A delta run usually re-reads one or two days; paying a full catalogue
+     * scan (~28 s on a 226k-problem MoonBoard catalogue) to resolve a handful
+     * of entries is the difference between "instant" and "looks frozen". Once a
+     * run turns out to be large, the full index is cheaper overall and takes
+     * over.
+     */
+    private var targetedLookups = 0
+
     private data class ScreenIndexRow(val uuid: String, val setter: String?)
 
     /**
@@ -40,6 +50,7 @@ class MoonBoardCsvImporter @Inject constructor(
      */
     suspend fun beginScreenImport(): Map<String, MoonBoardImportedDay> = withContext(Dispatchers.IO) {
         screenIndex.clear()
+        targetedLookups = 0
         val days = HashMap<String, MoonBoardImportedDay>()
         fun merge(date: String, entries: Int, sends: Int, tries: Int) {
             val previous = days[date]
@@ -68,7 +79,11 @@ class MoonBoardCsvImporter @Inject constructor(
      * durable: an interrupted scan leaves the days it managed to read in the
      * logbook, and the next run skips them.
      */
-    suspend fun importScreenSession(entries: List<MoonBoardScreenEntry>): MoonBoardCsvImportResult =
+    suspend fun importScreenSession(
+        entries: List<MoonBoardScreenEntry>,
+        complete: Boolean = false,
+        onCatalogueScan: () -> Unit = {},
+    ): MoonBoardCsvImportResult =
         withContext(Dispatchers.IO) {
             if (entries.isEmpty()) return@withContext MoonBoardCsvImportResult()
             var ascents = 0
@@ -77,13 +92,14 @@ class MoonBoardCsvImporter @Inject constructor(
             var notImported = 0
             var snapshotOnly = 0
             var replaced = 0
+            var kept = 0
             val unresolved = linkedSetOf<String>()
             val occurrence = HashMap<String, Int>()
 
             // Resolve against the catalogue *before* opening the write
             // transaction. Catalogue lookups inside it held the secure database
             // for the entire import and froze every other screen with it.
-            val catalogue = resolveScreenEntries(entries)
+            val catalogue = resolveScreenEntries(entries, onCatalogueScan)
 
             val prepared = entries.map { entry ->
                 val resolved = catalogue[screenKey(entry)]
@@ -102,7 +118,9 @@ class MoonBoardCsvImporter @Inject constructor(
             }
 
             secureDb.transaction {
-                replaced = retireSupersededRows(prepared)
+                val retired = retireSupersededRows(prepared, complete)
+                replaced = retired.first
+                kept = retired.second
                 prepared.forEach { row ->
                     val entry = row.entry
                     try {
@@ -134,6 +152,7 @@ class MoonBoardCsvImporter @Inject constructor(
                 notImported = notImported,
                 snapshotOnly = snapshotOnly,
                 replacedEntries = replaced,
+                keptOrphans = kept,
                 unresolvedLabels = unresolved.take(100),
             )
         }
@@ -207,35 +226,73 @@ class MoonBoardCsvImporter @Inject constructor(
      * own, and a send even moves from `bids` to `ascents`.
      *
      * Deliberately narrow: only rows this importer wrote (`moon-screen:`
-     * prefix), only on this training day, and only for climbs the current
-     * reading actually covers. A climb Moon no longer lists is left alone and
-     * surfaces as a reported deviation instead — deleting it is the user's call.
+     * prefix), and only on this training day.
+     *
+     * A climb Moon no longer lists at all is a weaker signal than a climb whose
+     * outcome changed, so it is retired only when both of the following hold:
+     * the day was read to its end (`complete`), because a scan cut short half
+     * way looks exactly like a day whose second half was deleted; and the row
+     * carries no comment or quality rating, because those can only have been
+     * added in CruxCoach and are not this importer's to throw away. Rows kept
+     * for that reason are counted and reported rather than silently left.
      */
-    private fun retireSupersededRows(prepared: List<PreparedEntry>): Int {
-        if (prepared.isEmpty()) return 0
+    private fun retireSupersededRows(
+        prepared: List<PreparedEntry>,
+        complete: Boolean,
+    ): Pair<Int, Int> {
+        if (prepared.isEmpty()) return 0 to 0
         val wantedIds = prepared.mapTo(HashSet()) { it.externalId }
         val wantedClimbs = prepared.mapTo(HashSet()) { it.climb.uuid }
         var removed = 0
+        var kept = 0
+
+        /**
+         * A row this importer wrote for this day that the current reading does
+         * not produce again. Retiring it is right when the day is accounted for
+         * in full; keeping it is right when the row carries something a person
+         * added in CruxCoach, or when the reading itself was incomplete.
+         */
+        fun shouldRetire(sameClimb: Boolean, untouched: Boolean): Boolean = when {
+            // Same climb, different outcome: Moon replaced it, so do we.
+            sameClimb -> true
+            // Gone from Moon entirely — only safe once the day is fully read …
+            !complete -> false
+            // … and only while nobody has put their own notes on the row.
+            else -> untouched
+        }
+
         prepared.map { it.entry.climbedAt }.distinct().forEach { climbedAt ->
             secureDb.ascentsQueries.selectImportedAscentsForDate(climbedAt, SCREEN_PREFIX)
                 .executeAsList()
                 .forEach { row ->
                     val id = row.external_id ?: return@forEach
-                    if (row.climb_uuid !in wantedClimbs || id in wantedIds) return@forEach
-                    secureDb.ascentsQueries.deleteAscentByExternalId(id)
-                    removed++
+                    if (id in wantedIds) return@forEach
+                    val untouched = row.comment.isNullOrBlank() && row.quality == null
+                    if (shouldRetire(row.climb_uuid in wantedClimbs, untouched)) {
+                        secureDb.ascentsQueries.deleteAscentByExternalId(id)
+                        removed++
+                    } else {
+                        kept++
+                    }
                 }
             secureDb.bidsQueries.selectImportedBidsForDate(climbedAt, SCREEN_PREFIX)
                 .executeAsList()
                 .forEach { row ->
                     val id = row.external_id ?: return@forEach
-                    if (row.climb_uuid !in wantedClimbs || id in wantedIds) return@forEach
-                    secureDb.bidsQueries.deleteBidByExternalId(id)
-                    removed++
+                    if (id in wantedIds) return@forEach
+                    val untouched = row.comment.isNullOrBlank()
+                    if (shouldRetire(row.climb_uuid in wantedClimbs, untouched)) {
+                        secureDb.bidsQueries.deleteBidByExternalId(id)
+                        removed++
+                    } else {
+                        kept++
+                    }
                 }
         }
-        if (removed > 0) Log.i(TAG, "retired $removed superseded MoonBoard row(s)")
-        return removed
+        if (removed > 0 || kept > 0) {
+            Log.i(TAG, "retired $removed superseded MoonBoard row(s), kept $kept")
+        }
+        return removed to kept
     }
 
     private data class Resolved(
@@ -248,12 +305,32 @@ class MoonBoardCsvImporter @Inject constructor(
         val difficulty: Double?,
     )
 
+    /** Candidates for just the names of one training day. */
+    private fun lookupByNames(
+        entries: List<MoonBoardScreenEntry>,
+        angles: List<Long>,
+    ): Map<String, List<ScreenIndexRow>> {
+        val names = entries.map { it.name.lowercase(Locale.ROOT) }.distinct()
+        val startedAt = SystemClock.elapsedRealtime()
+        val rows = boardDb.boardQueries.lookupMoonScreenByNames(angles, names).executeAsList()
+        Log.i(
+            TAG,
+            "catalogue lookup: ${names.size} name(s) -> ${rows.size} row(s) in " +
+                "${SystemClock.elapsedRealtime() - startedAt} ms",
+        )
+        return rows.groupBy({ "${it.name.lowercase(Locale.ROOT)}|${it.angle}" }) {
+            ScreenIndexRow(it.uuid, it.setter_username)
+        }
+    }
+
     /**
      * Name -> candidate(s) for one board angle. A name with a single candidate
      * stores that row directly instead of a one-element list: at six figures of
      * names the per-list object overhead alone is tens of megabytes.
      */
-    private fun indexForAngle(angle: Long): Map<String, Any> = screenIndex.getOrPut(angle) {
+    private fun indexForAngle(angle: Long, onCatalogueScan: () -> Unit): Map<String, Any> =
+        screenIndex.getOrPut(angle) {
+        onCatalogueScan()
         val startedAt = SystemClock.elapsedRealtime()
         val index = HashMap<String, Any>()
         boardDb.boardQueries.listMoonScreenIndex(listOf(angle)).executeAsList().forEach { row ->
@@ -288,19 +365,34 @@ class MoonBoardCsvImporter @Inject constructor(
      */
     private fun resolveScreenEntries(
         entries: List<MoonBoardScreenEntry>,
+        onCatalogueScan: () -> Unit,
     ): Map<String, Resolved> {
         val wanted = entries.associateBy(::screenKey)
         if (wanted.isEmpty()) return emptyMap()
 
+        val angles = entries.map { it.angle.toLong() }.distinct()
+        val targeted = if (screenIndex.keys.containsAll(angles) ||
+            targetedLookups >= TARGETED_LOOKUP_LIMIT
+        ) {
+            null
+        } else {
+            targetedLookups++
+            lookupByNames(entries, angles)
+        }
+
         val chosen = LinkedHashMap<String, String>()
         wanted.forEach { (key, entry) ->
-            val index = indexForAngle(entry.angle.toLong())
-            val rows = when (val hit = index[entry.name.lowercase(Locale.ROOT)]) {
-                null -> emptyList()
-                is ScreenIndexRow -> listOf(hit)
-                else -> {
-                    @Suppress("UNCHECKED_CAST")
-                    hit as List<ScreenIndexRow>
+            val name = entry.name.lowercase(Locale.ROOT)
+            val rows = if (targeted != null) {
+                targeted["$name|${entry.angle}"].orEmpty()
+            } else {
+                when (val hit = indexForAngle(entry.angle.toLong(), onCatalogueScan)[name]) {
+                    null -> emptyList()
+                    is ScreenIndexRow -> listOf(hit)
+                    else -> {
+                        @Suppress("UNCHECKED_CAST")
+                        hit as List<ScreenIndexRow>
+                    }
                 }
             }
             val exact = rows.filter { it.setter?.equals(entry.setter, ignoreCase = true) == true }
@@ -421,5 +513,6 @@ class MoonBoardCsvImporter @Inject constructor(
     private companion object {
         const val TAG = "MoonBoardCsvImporter"
         const val SCREEN_PREFIX = "moon-screen:%"
+        const val TARGETED_LOOKUP_LIMIT = 4
     }
 }

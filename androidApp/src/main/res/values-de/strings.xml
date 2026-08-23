@@ -2436,7 +2436,7 @@
     <string name="moon_scan_status_preparing">Wird vorbereitet…</string>
     <string name="moon_scan_status_opening">Moon wird geöffnet…</string>
     <string name="moon_scan_status_logbook">Logbuch wird gelesen…</string>
-    <string name="moon_scan_status_session">Trainingstag %1$d von %2$d wird gelesen…</string>
+    <string name="moon_scan_status_session">%1$s wird gelesen…</string>
     <string name="moon_scan_error_missing_app">Die offizielle Moon-App ist nicht installiert.</string>
     <string name="moon_scan_error_timeout">Der Moon-Import hat nach %1$d Trainingstag(en) die Zeit überschritten.</string>
     <string name="moon_scan_error_stalled">Moon hat nach %1$d Trainingstag(en) nicht mehr reagiert.</string>
@@ -2454,6 +2454,12 @@
     <string name="moon_device_progress">Trainingstag %1$d von %2$d</string>
     <string name="moon_device_cancel">Übertragung stoppen</string>
     <string name="moon_device_cancelling">Wird gestoppt…</string>
-    <string name="moon_scan_deviation_stale">%1$s: CruxCoach hat %2$d Einträge, Moon nennt %3$d — vermutlich nach dem Import in Moon geändert</string>
     <string name="moon_import_result_replaced">Wegen Änderungen in Moon aktualisierte Einträge: %1$d</string>
+    <string name="moon_scan_status_catalogue">Lokaler MoonBoard-Katalog wird durchsucht…</string>
+    <string name="moon_scan_deviation_kept">%1$s: %2$d Eintrag/Einträge behalten, die Moon nicht mehr listet — sie tragen in CruxCoach ergänzte Notizen</string>
+    <string name="moon_import_result_kept">Behalten, weil du sie in CruxCoach bearbeitet hast: %1$d</string>
+    <string name="moon_scan_deviation_unrecognised">CruxCoach hat in der Moon-App nichts wiedererkannt. Das hat Moon angezeigt:</string>
+    <string name="moon_device_not_installed">Die offizielle Moon-App ist auf diesem Gerät nicht installiert — es gibt also nichts zu übernehmen. Der CSV-Weg unten funktioniert auch ohne sie.</string>
+    <string name="moon_device_unavailable">Moon-App nicht installiert</string>
+    <string name="moon_scan_error_interrupted">Die Übertragung wurde nach %1$d Trainingstag(en) unterbrochen. Alles bis dahin Gelesene ist gespeichert; ein neuer Start macht dort weiter.</string>
 </resources>
