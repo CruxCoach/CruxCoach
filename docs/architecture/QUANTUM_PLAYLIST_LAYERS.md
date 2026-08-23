@@ -212,12 +212,13 @@ Deshalb:
 | Rolle | Planen | Kompatibilitaet lesen | Lane senden |
 |---|---|---|---|
 | Geraet am Controller (BoardCell-Controller) | ja | ja | ja |
-| Mesh-Mitglied | ja¹ | ja | nein, mit Begruendung |
+| Mesh-Mitglied | nein¹ | ja | nein, mit Begruendung |
 
 ¹ Die Zuweisung eines Mitglieds haette heute keine Wirkung auf den Write, weil der
-Controller seinen eigenen lokalen Plan liest. Deshalb ist die Zuweisung fuer Mitglieder
-deaktiviert statt wirkungslos angeboten. Eine wirkungslose Schaltflaeche ist eine
-Behauptung.
+Controller seinen eigenen lokalen Plan liest. Deshalb sind die Chips fuer Mitglieder
+deaktiviert statt wirkungslos anklickbar — eine wirkungslose Schaltflaeche ist eine
+Behauptung. Gelesen wird trotzdem alles: welche Lane leuchtet, was sie zeigt und ob der
+eigene Climb daneben passt.
 
 Die kanonische Projektion der Playlist bleibt fuer Mitglieder unveraendert erreichbar: die
 normale Lampe geht wie bisher durch den Controller und landet in der kanonischen Lane.
@@ -346,6 +347,26 @@ Fehlertext, der garantiert nicht hilft.
 | Timeout / Exception | `FAILED`, niemals `CONFIRMED`; die vorherige Lane bleibt wie sie war |
 | Controller voll | kein Verdraengen, kein `TURN_OFF_ALL` |
 | Bekannte Ueberlappung | vor BLE abgelehnt, mit der Lane im Text |
+| App-Neustart | Rack rekonstruiert, Lane→Occurrence-Zuordnung verloren |
+
+### 13.1 Nach einem App-Neustart weiss keine Lane mehr, fuer wen sie leuchtet
+
+`QuantumLanePlan.committed` — welche Occurrence eine Lane zuletzt geschrieben
+bekam — lebt nur im Prozess. Nach einem Neustart rekonstruiert der Controller-
+Readback das Rack vollstaendig (Lane, Route, Farbe, Climbname), aber die
+Verbindung zur Zeile in der Liste ist weg: eine Zeile, die physisch leuchtet,
+zeigt dann `✓` statt `●`.
+
+Das ist bewusst so. Die Alternative waere, ueber die Climb-UUID zurueckzuraten —
+und genau dort steht ein 4x4 mit vier identischen Climbs. Eine Heuristik haette
+in dem Fall eine von vier Occurrences ausgewaehlt und behauptet, es sei *die*.
+Der kanonische `currentEntryId` markiert die Gruppenzeile weiterhin gruen, der
+Streifen nennt Lane und Climbnamen, und die Chips rechnen unveraendert; verloren
+ist ausschliesslich die Aussage „diese Zeile ist Lane 2“, und die wird lieber
+nicht getroffen als geraten.
+
+Eine kanonische, replizierte Rack-State (Abschnitt 9) wuerde das nebenbei
+loesen, weil die Zuordnung dann nicht geraeteintern waere.
 
 ## 14. Testvertraege
 
