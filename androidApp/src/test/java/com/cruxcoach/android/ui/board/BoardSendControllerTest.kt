@@ -306,6 +306,84 @@ class BoardSendControllerTest {
             }
         }
     /**
+     * Review 2, finding 1. The pass-2 fence identified a variant by climb and
+     * angle, and a mirror flip changes neither — so an unmirrored send came
+     * back and reported the mirrored view as lit. The fence now identifies a
+     * variant by the holds that actually go to the wall, which is what mirror,
+     * frame stepping and anything else that swaps the hold set all change.
+     */
+    @Test
+    fun `a mirror flip during the write cannot be reported as a mirrored send`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val climb = moonClimb.copy(
+                uuid = "11111111-2222-3333-4444-555555555555",
+                boardBrand = BoardBrand.KILTER.wireValue,
+                layoutId = 1,
+            )
+            val unmirrored = listOf(BoardHold(10, 12))
+            val mirrored = listOf(BoardHold(90, 12))
+            val detailState = MutableStateFlow(ClimbDetailState(
+                isLoading = false,
+                climb = climb,
+                holds = unmirrored,
+                angle = 40,
+                isMirrored = false,
+                ble = BoardSendState(connectionState = ConnectionState.CONNECTED),
+            ))
+            val personal = mockk<PersonalBoardRepository>(relaxed = true)
+            val repository = mockk<BoardRepository>(relaxed = true) {
+                every { getPlacementLedMap(any(), BoardBrand.KILTER.wireValue) } returns
+                    mapOf(10 to 100, 90 to 900)
+                every { getRoleColorMapForBrand(BoardBrand.KILTER.wireValue) } returns mapOf(12 to 1)
+            }
+            val ble = mockk<BoardBleConnection>(relaxed = true) {
+                every { connectedBoardBrand } returns MutableStateFlow(BoardBrand.KILTER)
+                every { connectionState } returns MutableStateFlow(ConnectionState.CONNECTED)
+                // The user flips the mirror while the controller is still
+                // answering — exactly what toggleMirror() writes, reset included.
+                coEvery { sendClimb(any(), any(), any(), any(), any(), any()) } answers {
+                    detailState.update { current ->
+                        current.copy(
+                            isMirrored = true,
+                            holds = mirrored,
+                            ble = current.ble.copy(isSending = false, success = false, error = null),
+                        )
+                    }
+                    true
+                }
+            }
+            val preferences = mockk<UserPreferences>(relaxed = true) {
+                every { boardBrand } returns flowOf(BoardBrand.KILTER.wireValue)
+                every { boardProductSizeId } returns flowOf(10)
+            }
+            val queue = mockk<SessionQueueManager>(relaxed = true)
+            every { queue.state } returns MutableStateFlow(SessionQueueState())
+            val controller = BoardSendController(
+                scope = this,
+                state = detailState,
+                boardRepository = repository,
+                personalBoardRepo = personal,
+                bleConnection = ble,
+                userPreferences = preferences,
+                climbAdvertiser = mockk(relaxed = true),
+                sessionQueueManager = queue,
+                isSharingEnabled = { false },
+                boardLayerManager = mockk(relaxed = true),
+                ioDispatcher = UnconfinedTestDispatcher(testScheduler),
+            )
+
+            controller.sendToBoard()
+            advanceUntilIdle()
+
+            assertTrue(detailState.value.isMirrored)
+            assertFalse(
+                "the unmirrored holds are on the wall; the mirrored view was never sent",
+                detailState.value.ble.success,
+            )
+            assertFalse("and the spinner still has to come down", detailState.value.ble.isSending)
+        }
+
+    /**
      * The window cancellation cannot close.
      *
      * A send is a chain of suspensions — preference reads, an LED-map query,

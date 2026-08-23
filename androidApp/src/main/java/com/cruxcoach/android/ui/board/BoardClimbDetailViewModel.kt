@@ -1472,6 +1472,13 @@ class BoardClimbDetailViewModel @Inject constructor(
 
     fun toggleMirror() {
         ascentLogger.finishQuickSequence()
+        // A mirror flip replaces every hold that would go to the wall, which
+        // makes it the same kind of change as a climb or an angle: whatever is
+        // in flight was computed for the other side of the board. Tearing it
+        // down here is also what lets the send controller identify a variant by
+        // its holds at all — a dropped result is only safe once nothing is
+        // still running that could have produced it.
+        stopWorkForPreviousVariant()
         val s = _state.value
         val newMirrored = !s.isMirrored
         val frames = if (newMirrored) {
@@ -1487,7 +1494,8 @@ class BoardClimbDetailViewModel @Inject constructor(
         _state.update { it.copy(
             isMirrored = newMirrored,
             holds = holds,
-            playback = it.playback.copy(allFrames = frames)
+            playback = it.playback.copy(allFrames = frames),
+            ble = it.ble.copy(isSending = false, success = false, error = null, warning = null),
         ) }
         viewModelScope.launch { sendAutomaticallyIfEnabled() }
     }
