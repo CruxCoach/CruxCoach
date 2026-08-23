@@ -45,8 +45,23 @@ data class ExternalBoardLayer(
     val remainingSeconds: Int,
 )
 
+/**
+ * The physical board a rack belongs to.
+ *
+ * A layer is a diode plan for one controller. Carrying the model as well as the
+ * identity matters because the addresses are only meaningful within a model:
+ * the same preview on the next size up is not a smaller version of the climb,
+ * it is a different set of holds.
+ */
+data class BoardLayerBoardIdentity(
+    val physicalBoardId: String,
+    val productSizeId: Long,
+)
+
 data class BoardLayerState(
     val brand: BoardBrand? = null,
+    /** Null before the first connection: nothing is staged for anything yet. */
+    val board: BoardLayerBoardIdentity? = null,
     val layers: List<BoardClimbLayer> = emptyList(),
     val externalLayers: List<ExternalBoardLayer> = emptyList(),
 ) {
@@ -167,8 +182,36 @@ class BoardLayerManager @Inject constructor(
     }
 
     fun clearLocalState() {
-        _state.value = BoardLayerState(brand = _state.value.brand)
+        _state.value = BoardLayerState(brand = _state.value.brand, board = _state.value.board)
     }
+
+    /**
+     * Attach the rack to the board it is for.
+     *
+     * The rack is process-wide because the controller retains projections
+     * across a disconnect, and a reconnect has to be able to recognise and
+     * remove this installation's own slots. That is only true of the *same*
+     * board. Carry the previews to a different controller and they are a plan
+     * for holds that are not there — and on the same model they would happily
+     * send, which is worse than showing nothing.
+     *
+     * So: same board, keep everything. No board at all — a disconnect, or a
+     * connection that has not resolved its size yet — keep it too, because
+     * that is a reconnect in progress and not a board change. A different
+     * board drops the local previews and the reconciled foreign layers, which
+     * describe a controller this device is no longer talking to.
+     */
+    fun bindBoard(identity: BoardLayerBoardIdentity?) {
+        if (identity == null) return
+        _state.update { current ->
+            if (current.board == identity) current
+            else BoardLayerState(brand = current.brand, board = identity)
+        }
+    }
+
+    /** Whether the rack's contents were staged for [identity]. */
+    fun isBoundTo(identity: BoardLayerBoardIdentity?): Boolean =
+        identity != null && _state.value.board == identity
 
     /** Merge an authoritative Quantum snapshot without claiming foreign slots. */
     fun reconcile(players: List<QuantumActivePlayer>) {
