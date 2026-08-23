@@ -277,6 +277,11 @@ android {
         // <intent-filter><data android:host=…> entry stays in lockstep
         // with what BuildConfig.APP_LINK_HOST tells the runtime parser.
         manifestPlaceholders["appLinkHost"] = appLinkHost
+        // Launcher label. A feature build overrides this below with its own
+        // identity; a localized @string/app_name cannot do that job, because it
+        // resolves per device language and would make every side-by-side
+        // feature install read the same.
+        manifestPlaceholders["appLabel"] = "@string/app_name"
     }
 
     externalNativeBuild {
@@ -372,6 +377,7 @@ android {
             } else {
                 applicationIdSuffix = developmentAppIdSuffix
                 versionNameSuffix = "-dev"
+                manifestPlaceholders["appLabel"] = "CruxCoach Dev · $developmentLabelBranch"
                 resValue("string", "app_name", "CruxCoach Dev · $developmentLabelBranch")
                 buildConfigField("String", "APKTRACK_FEATURE_TRACK", "\"\"")
                 buildConfigField("String", "APKTRACK_SOURCE_BRANCH", "\"\"")
