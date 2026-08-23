@@ -182,6 +182,14 @@ fun BoardPlaylistScreen(
             )
         }
     }
+    // A lane refusal names the rule that refused. "It didn't work" is the one
+    // error message guaranteed not to help somebody standing at a wall.
+    val laneMessages = boardPlaylistLaneMessages()
+    LaunchedEffect(viewModel) {
+        viewModel.laneFeedback.collect { feedback ->
+            snackbarHostState.showSnackbar(laneMessages(feedback))
+        }
+    }
 
     if (showClearConfirm) {
         // One confirmation, not two. What makes emptying a shared list safe
@@ -324,6 +332,29 @@ fun BoardPlaylistScreen(
             state.restore?.let { offer ->
                 RestoreOfferCard(offer = offer, onRestore = viewModel::restore)
             }
+            // What is happening at once, above the list of what happens in
+            // order. Inert on every board that shows one climb at a time.
+            BoardPlaylistLaneStrip(
+                laneState = state.laneState,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
+            )
+            state.laneState.blocked?.let { reason ->
+                Text(
+                    stringResource(
+                        when (reason) {
+                            BoardPlaylistLaneBlock.MESH_CANNOT_CARRY_LAYERS ->
+                                R.string.board_lane_blocked_mesh
+                            BoardPlaylistLaneBlock.NOT_CONNECTED ->
+                                R.string.board_lane_blocked_disconnected
+                        },
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .padding(horizontal = 12.dp)
+                        .testTag("board_playlist_lane_blocked"),
+                )
+            }
             if (state.rows.isEmpty()) {
                 Box(
                     modifier = Modifier.fillMaxWidth().weight(1f),
@@ -360,8 +391,12 @@ fun BoardPlaylistScreen(
                     },
                     onLight = { entryId ->
                         viewModel.select(entryId)
-                        viewModel.lightEntry(entryId)
+                        // On a four-lane wall the lamp still commits exactly
+                        // one occurrence; it just has an address now. On every
+                        // other board this is the same call it always was.
+                        viewModel.lightEntryInLane(entryId)
                     },
+                    onAssignLane = viewModel::assignLane,
                     onConnect = { showBleSheet = true },
                     onRemove = viewModel::remove,
                     onRepeat = viewModel::repeatAfter,
@@ -726,6 +761,8 @@ private fun BoardPlaylistRows(
     modifier: Modifier,
     onOpen: (entryId: String, climbUuid: String, angle: Int) -> Unit,
     onLight: (String) -> Unit,
+    /** Planning only: choose the lane a later lamp would commit to. */
+    onAssignLane: (String, Int) -> Unit = { _, _ -> },
     onConnect: () -> Unit,
     onRemove: (String) -> Unit,
     onRepeat: (String) -> Unit,
@@ -829,6 +866,8 @@ private fun BoardPlaylistRows(
                 onLight = {
                     if (state.boardReady) onLight(row.entryId) else onConnect()
                 },
+                laneInteractive = state.laneState.commitAllowed,
+                onAssignLane = { lane -> onAssignLane(row.entryId, lane) },
                 onRemove = { onRemove(row.entryId) },
                 onRepeat = { onRepeat(row.entryId) },
                 onMoveUp = moveUp,
@@ -904,6 +943,9 @@ private fun BoardPlaylistRowCard(
     boardConnecting: Boolean,
     onOpen: () -> Unit,
     onLight: () -> Unit,
+    /** False on a device that may read the rack but not write to it. */
+    laneInteractive: Boolean = false,
+    onAssignLane: (Int) -> Unit = {},
     onRemove: () -> Unit,
     onRepeat: () -> Unit,
     onMoveUp: (() -> Unit)?,
@@ -1033,6 +1075,13 @@ private fun BoardPlaylistRowCard(
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                // Four chips, or nothing at all on a single-projection board.
+                BoardPlaylistLaneChips(
+                    lanes = row.lanes,
+                    interactive = laneInteractive,
+                    onAssign = onAssignLane,
+                    modifier = Modifier.padding(top = 3.dp),
                 )
             }
             IconButton(

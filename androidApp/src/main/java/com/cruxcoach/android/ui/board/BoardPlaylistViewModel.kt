@@ -3,7 +3,11 @@ package com.cruxcoach.android.ui.board
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.ble.BoardBleConnection
+import com.cruxcoach.android.ble.BoardLayerManager
+import com.cruxcoach.android.ble.BoardLayerState
 import com.cruxcoach.android.ble.ConnectionState
+import com.cruxcoach.android.ble.QuantumLanePlanner
+import com.cruxcoach.android.ble.QuantumLaneRackAdapter
 import com.cruxcoach.android.boardcell.BoardCellManager
 import com.cruxcoach.android.boardcell.BoardCellSnapshot
 import com.cruxcoach.android.boardcell.BoardPlaylistAnchor
@@ -29,6 +33,9 @@ import com.cruxcoach.android.fips.FipsMeshRuntime
 import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.PersonalBoardRepository
+import com.cruxcoach.domain.board.BoardClimbParser
+import com.cruxcoach.domain.board.QuantumLaneEligibility
+import com.cruxcoach.domain.board.QuantumLaneOccupancy
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
@@ -73,6 +80,14 @@ data class BoardPlaylistRow(
      * the wall, and the one behind it never got there.
      */
     val projection: BoardProjectionConfidence? = null,
+    /**
+     * What this occurrence would do to a four-lane wall.
+     *
+     * Empty on every board that shows one climb at a time, which is what keeps
+     * the row identical everywhere else. Derived per render — see
+     * [BoardPlaylistLanePolicy] for why it is never stored.
+     */
+    val lanes: BoardPlaylistRowLanes = BoardPlaylistRowLanes(),
 ) {
     /** Asked for, and it did not reach the wall. Retryable under this same id. */
     val hasFailed: Boolean get() = projection == BoardProjectionConfidence.FAILED
@@ -128,6 +143,15 @@ data class BoardPlaylistUiState(
     val restore: BoardPlaylistRestoreOffer? = null,
     /** The last edit *this device* made, while it can still be taken back. */
     val undo: BoardPlaylistEdit? = null,
+    /**
+     * The simultaneous rack, on a board that has one.
+     *
+     * The list stays a backlog in time; this is what is happening at once.
+     * They are separate collections on purpose: one entry can be on the wall
+     * while three others also are, and the list must not start pretending it
+     * has four currents.
+     */
+    val laneState: BoardPlaylistLaneState = BoardPlaylistLaneState(),
 ) {
     /** The occurrence a `Retry` acts on — its own id, never a matching climb. */
     val failedEntryId: String? get() = pendingProjection?.entryId
@@ -157,6 +181,8 @@ class BoardPlaylistViewModel @Inject constructor(
     private val personalBoardRepository: PersonalBoardRepository,
     private val userPreferences: UserPreferences,
     private val bleConnection: BoardBleConnection,
+    private val boardLayerManager: BoardLayerManager,
+    private val lanePlanner: QuantumLanePlanner,
     private val fipsMeshRuntime: FipsMeshRuntime,
     private val randomClimbPicker: RandomBoardClimbPicker,
     private val climbNavState: com.cruxcoach.android.ui.navigation.ClimbNavigationState,
@@ -178,12 +204,28 @@ class BoardPlaylistViewModel @Inject constructor(
     private val _randomAddUnavailable = MutableSharedFlow<RandomClimbRoll>(extraBufferCapacity = 1)
     val randomAddUnavailable: SharedFlow<RandomClimbRoll> = _randomAddUnavailable
 
+    /**
+     * Why a lane commit did not happen.
+     *
+     * A refusal with a reason, rather than a lamp that quietly does nothing or
+     * a write the controller rejects a second later. Each case has a different
+     * remedy, so each one says which it is.
+     */
+    private val _laneFeedback = MutableSharedFlow<BoardPlaylistLaneFeedback>(extraBufferCapacity = 4)
+    val laneFeedback: SharedFlow<BoardPlaylistLaneFeedback> = _laneFeedback
+
     private val climbInfos = HashMap<String, QueueRowInfo>()
     private var personalLogMarks = emptyMap<String, BoardPlaylistLogMark>()
     private var retainedBoardName: String? = null
     private var retainedBoardCellId: String? = null
     /** Never replicated: browsing the shared list is local until the lamp is pressed. */
     private var localSelectedEntryId: String? = null
+    /** Placement ids per (climb, angle), for the lane compatibility matrix. */
+    private val climbPlacements = HashMap<String, Set<Int>>()
+    /** Holds recovered for controller-reported routes this device had to look up. */
+    private val hydratedRoutes = HashMap<String, Set<Int>>()
+    /** Routes already looked up and genuinely absent; do not ask again per render. */
+    private val unresolvableRoutes = HashSet<String>()
     private var gradeScale: GradeScale? = null
     private var renderToken = 0L
     private var personalLogRefreshToken = 0L
@@ -224,6 +266,12 @@ class BoardPlaylistViewModel @Inject constructor(
         }
         viewModelScope.launch {
             bleConnection.quantumControllerState.collect { render(boardCellManager.snapshot()) }
+        }
+        // The rack changes when anybody at the wall presses a lamp, including
+        // people who are not in this group. Compatibility is a fact about
+        // right now, so the list redraws with it.
+        viewModelScope.launch {
+            boardLayerManager.state.collect { render(boardCellManager.snapshot()) }
         }
         viewModelScope.launch {
             bleConnection.connectionState.collect { render(boardCellManager.snapshot()) }
@@ -337,6 +385,18 @@ class BoardPlaylistViewModel @Inject constructor(
         status.projection?.takeIf { status.confidence != BoardProjectionConfidence.PENDING }
             ?.let { resolveName(it.climbUuid, it.angle) }
         if (token != renderToken) return
+        // The list decides which occurrences still exist; the rack decides
+        // what is lit. Only the first is followed here — a removed entry loses
+        // its lane *preference* and never its light.
+        lanePlanner.syncBoard()
+        lanePlanner.retainEntries(playlist.entries.mapTo(HashSet()) { it.entryId })
+        val lanes = deriveLanes(
+            playlist = playlist,
+            rows = rows,
+            controllerIsLocal = snapshot.controllerId == localNodeId,
+            directBoardReady = directBoardReady,
+        )
+        if (token != renderToken) return
         val now = System.currentTimeMillis()
         val restore = playlist.lastClear
             ?.takeIf { !it.hasExpired(now) }
@@ -351,7 +411,7 @@ class BoardPlaylistViewModel @Inject constructor(
             boardReady = boardReady,
             boardConnecting = snapshot.controllerId == localNodeId &&
                 bleConnection.connectionState.value == ConnectionState.CONNECTING,
-            rows = rows,
+            rows = lanes.second,
             currentIndex = currentIndex,
             selectedIndex = selectedIndex,
             selectedEntryId = selectedEntryId,
@@ -371,7 +431,111 @@ class BoardPlaylistViewModel @Inject constructor(
             pendingCommands = _state.value.pendingCommands,
             restore = restore,
             undo = lastEdit?.takeIf { it.canUndo },
+            laneState = lanes.first,
         )
+    }
+
+    /**
+     * The rack, and what each backlog row would do to it.
+     *
+     * Returns an inert state on every board that shows one climb at a time.
+     * That is the capability gate: while it is inert nothing downstream draws
+     * a chip, offers a lane or changes a single existing behaviour.
+     */
+    private suspend fun deriveLanes(
+        playlist: BoardPlaylistState,
+        rows: List<BoardPlaylistRow>,
+        controllerIsLocal: Boolean,
+        directBoardReady: Boolean,
+    ): Pair<BoardPlaylistLaneState, List<BoardPlaylistRow>> {
+        val brand = bleConnection.connectedBoardBrand.value
+        val maxLanes = brand?.maxSimultaneousClimbs ?: 1
+        if (brand?.supportsIndependentClimbLayers != true || maxLanes <= 1) {
+            return BoardPlaylistLaneState() to rows
+        }
+        val layerState = boardLayerManager.state.value
+        hydrateRackRoutes(layerState, maxLanes)
+        val plan = lanePlanner.state.value
+        val rack = QuantumLaneRackAdapter.occupancies(
+            layerState = layerState,
+            maxLanes = maxLanes,
+            plan = plan,
+            hydrated = hydratedRoutes,
+        )
+        val palette = BoardLayerManager.LAYER_COLORS
+        val liveEntryIds = playlist.entries.mapTo(HashSet()) { it.entryId }
+        // Only the device on the controller can preserve a layer's identity,
+        // colour and readback. Everybody else plans and reads.
+        val commitAllowed = controllerIsLocal && directBoardReady
+        val blocked = when {
+            commitAllowed -> null
+            !controllerIsLocal -> BoardPlaylistLaneBlock.MESH_CANNOT_CARRY_LAYERS
+            else -> BoardPlaylistLaneBlock.NOT_CONNECTED
+        }
+        val laneNames = HashMap<Int, String?>()
+        layerState.layers.forEach { layer ->
+            laneNames[layer.slot] = layer.climbName.takeIf { it.isNotBlank() }
+        }
+        val laneState = BoardPlaylistLaneState(
+            available = true,
+            maxLanes = maxLanes,
+            lanes = BoardPlaylistLanePolicy.laneCards(
+                rack = rack,
+                maxLanes = maxLanes,
+                liveEntryIds = liveEntryIds,
+                nameForLane = { lane ->
+                    laneNames[lane]
+                        ?: rack.firstOrNull { it.lane == lane }?.entryId
+                            ?.let(playlist::entry)
+                            ?.let { climbInfos[climbInfoKey(it.climbUuid, it.angle)]?.name }
+                },
+            ),
+            externalLayers = layerState.externalLayers.size,
+            unknownLayers = rack.count { it.unknownHolds },
+            orphanedLanes = lanePlanner.orphanedLanes(liveEntryIds),
+            commitAllowed = commitAllowed,
+            blocked = blocked,
+        )
+        val laneRows = rows.map { row ->
+            row.copy(
+                lanes = BoardPlaylistLanePolicy.rowLanes(
+                    rack = rack,
+                    maxLanes = maxLanes,
+                    entryId = row.entryId,
+                    placements = climbPlacements[climbInfoKey(row.climbUuid, row.angle)],
+                    assignedLane = plan.rack.laneFor(row.entryId),
+                    palette = palette,
+                ),
+            )
+        }
+        return laneState to laneRows
+    }
+
+    /**
+     * Give the rack's layers their holds back, where that is possible.
+     *
+     * A controller names its players by route id, not by diode list, so a
+     * layer reconstructed after a reconnect — and every foreign player —
+     * arrives without holds. Resolving the route locally turns an honest
+     * "unknown" into an honest number. A route this device does not have stays
+     * unknown, and is remembered as such so the lookup is not repeated on
+     * every redraw.
+     */
+    private suspend fun hydrateRackRoutes(layerState: BoardLayerState, maxLanes: Int) {
+        val wanted = QuantumLaneRackAdapter.unresolvedRoutes(layerState, maxLanes)
+            .filterNot { it in hydratedRoutes || it in unresolvableRoutes }
+        if (wanted.isEmpty()) return
+        val resolved = withContext(Dispatchers.IO) {
+            wanted.associateWith { route ->
+                boardRepository.getQuantumFramesForRoute(route)
+                    ?.let { frames -> BoardClimbParser.parseFrames(frames) }
+                    ?.takeIf { it.isNotEmpty() }
+                    ?.mapTo(HashSet()) { it.placementId }
+            }
+        }
+        resolved.forEach { (route, placements) ->
+            if (placements == null) unresolvableRoutes += route else hydratedRoutes[route] = placements
+        }
     }
 
     /**
@@ -423,14 +587,24 @@ class BoardPlaylistViewModel @Inject constructor(
             val climb = boardRepository.getClimbByUuid(climbUuid, angle)
                 ?: boardRepository.getClimbByUuid(climbUuid.lowercase(), angle)
                 ?: boardRepository.getClimbByUuid(climbUuid.uppercase(), angle)
+            // The holds ride along with the name because they are read from the
+            // same row, and a rack that has to ask the database once per row
+            // per redraw would make the list stutter at the wall. A climb this
+            // device does not have contributes no entry at all, so the matrix
+            // reports unknown rather than "lights nothing".
+            val placements = climb?.frames
+                ?.let(BoardClimbParser::parseFrames)
+                ?.takeIf { it.isNotEmpty() }
+                ?.mapTo(HashSet()) { it.placementId }
             QueueRowInfo(
                 name = climb?.name ?: climbUuid.take(8),
                 gradeLabel = climb?.difficultyAverage?.let {
                     GradeDisplayHelper.formatDifficulty(it, scale)
                 },
-            )
+            ) to placements
         }
-        climbInfos[key] = resolved
+        climbInfos[key] = resolved.first
+        resolved.second?.let { climbPlacements[key] = it }
     }
 
     /** Refresh after returning from the climb logger; these colours are local-only log facts. */
@@ -658,6 +832,99 @@ class BoardPlaylistViewModel @Inject constructor(
         val entry = boardCellManager.playlist()?.entry(entryId) ?: return
         gattBridge.lightNow(entry.climbUuid, entry.angle, entryId)
     }
+
+    // ── Lanes — the simultaneous half of the same list ─────────────────────
+
+    /**
+     * Say which lane an occurrence is meant for. Nothing reaches the wall.
+     *
+     * Separate from lighting it on purpose. Choosing a lane is planning, and
+     * planning is the part somebody does while looking at a busy wall and
+     * deciding what can still go on it. The light only moves when the lamp is
+     * pressed.
+     */
+    fun assignLane(entryId: String, lane: Int) {
+        val laneState = _state.value.laneState
+        if (!laneState.available || lane !in 0 until laneState.maxLanes) return
+        if (_state.value.rows.none { it.entryId == entryId }) return
+        // A preference this device could never act on would be a control that
+        // does nothing — the lane is read from the writing device's own plan.
+        if (!laneState.commitAllowed) {
+            _laneFeedback.tryEmit(
+                BoardPlaylistLaneFeedback.Blocked(
+                    laneState.blocked ?: BoardPlaylistLaneBlock.NOT_CONNECTED,
+                ),
+            )
+            return
+        }
+        lanePlanner.assign(entryId, lane)
+        viewModelScope.launch { render(boardCellManager.snapshot()) }
+    }
+
+    /** Take the preference back. The lane keeps whatever it is showing. */
+    fun clearLane(entryId: String) {
+        if (!_state.value.laneState.available) return
+        lanePlanner.release(entryId)
+        viewModelScope.launch { render(boardCellManager.snapshot()) }
+    }
+
+    /**
+     * Put one occurrence on the wall, in a lane.
+     *
+     * The only action in the lane model that changes a diode. It refuses
+     * rather than guesses: an ineligible lane is reported with its reason, and
+     * an occurrence with no eligible lane at all stays in the backlog exactly
+     * where it is — unassigned, not rejected and not duplicated.
+     */
+    fun lightEntryInLane(entryId: String, lane: Int? = null) {
+        val state = _state.value
+        val laneState = state.laneState
+        val row = state.rows.firstOrNull { it.entryId == entryId }
+        // Nobody named a lane. That is the ordinary case and it keeps the
+        // behaviour it has always had: the group's canonical current goes to
+        // its stable address, the write goes out, and the controller answers.
+        // Refusing here on the strength of an unresolvable foreign layer would
+        // break a lamp that used to work — and attempting a write is not the
+        // same as claiming the wall is free, which is what the chips are for.
+        val target = lane ?: row?.lanes?.assignedLane
+        if (!laneState.available || row == null || target == null) {
+            lightEntry(entryId)
+            return
+        }
+        if (!laneState.commitAllowed) {
+            _laneFeedback.tryEmit(
+                BoardPlaylistLaneFeedback.Blocked(
+                    laneState.blocked ?: BoardPlaylistLaneBlock.NOT_CONNECTED,
+                ),
+            )
+            return
+        }
+        // A named lane is a promise about a specific slot, so it is checked
+        // against the rack rather than handed to the controller to refuse.
+        if (target !in row.lanes.eligibleLanes) {
+            _laneFeedback.tryEmit(
+                if (row.lanes.eligibleLanes.isEmpty() && lane == null) {
+                    BoardPlaylistLaneFeedback.NoEligibleLane(entryId)
+                } else {
+                    BoardPlaylistLaneFeedback.LaneRefused(target, eligibilityOf(row))
+                },
+            )
+            return
+        }
+        lanePlanner.assign(entryId, target)
+        lightEntry(entryId)
+    }
+
+    /**
+     * The reason a target lane is not eligible, in the terms of the message.
+     *
+     * Unknown outranks conflict: a layer nobody can resolve is a different
+     * situation from a hold somebody can move, and only one of them is fixed
+     * by choosing another climb.
+     */
+    private fun eligibilityOf(row: BoardPlaylistRow): QuantumLaneEligibility =
+        if (row.lanes.unknown) QuantumLaneEligibility.UNKNOWN_LAYER
+        else QuantumLaneEligibility.HOLD_CONFLICT
 
     private fun submit(
         kind: BoardPlaylistEditKind,

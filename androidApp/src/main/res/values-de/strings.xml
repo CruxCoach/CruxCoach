@@ -3031,4 +3031,53 @@
     <string name="settings_relay_inbound_project_now">Direkt aufs Board</string>
     <string name="settings_relay_inbound_append_end">Ans Ende der Playlist</string>
     <string name="board_playlist_light_entry">Diesen aufs Board legen</string>
+    <!-- Quantum-Lanes in der geteilten Playlist. Eine Lane ist ein neutraler Platz an
+         einer Wand, die vier Climbs gleichzeitig zeigen kann — keine Person, keine Liste. -->
+    <string name="board_lane_title">Lanes</string>
+    <string name="board_lane_short">L%1$d</string>
+    <string name="board_lane_free">Frei</string>
+    <string name="board_lane_cd_on_board">Lane %1$d: dieser Eintrag liegt auf dem Board</string>
+    <string name="board_lane_cd_planned">Lane %1$d: für diesen Eintrag geplant, noch nichts gesendet</string>
+    <string name="board_lane_cd_sending">Lane %1$d: wird gesendet</string>
+    <string name="board_lane_cd_compatible">Lane %1$d: passt, kein gemeinsames Hold mit den anderen Ebenen</string>
+    <string name="board_lane_cd_unknown">Lane %1$d: unbekannt — eine Ebene an der Wand konnte nicht aufgelöst werden, eine Überlappung ist damit nicht auszuschließen</string>
+    <string name="board_lane_cd_blocked">Lane %1$d: derzeit nicht verfügbar</string>
+    <string name="board_lane_conflict_with">Überlappt mit %1$s</string>
+    <string name="board_lane_conflict_external">Überlappt mit der Ebene einer anderen Person</string>
+    <string name="board_lane_send">Diesen Eintrag auf Lane %1$d legen</string>
+    <string name="board_lane_assign">Diesen Eintrag für Lane %1$d vormerken</string>
+    <string name="board_lane_unassign">Lane-Vormerkung aufheben</string>
+    <string name="board_lane_no_eligible">Derzeit ist keine Lane konfliktfrei. Der Eintrag bleibt auf der Liste — an der Wand wurde nichts verändert.</string>
+    <string name="board_lane_refused_conflict">Lane %1$d teilt mindestens ein Hold mit einer anderen Ebene. Eine Diode kann nicht zwei Farben tragen.</string>
+    <string name="board_lane_refused_unknown">Lane %1$d lässt sich nicht als frei bestätigen: eine Ebene an der Wand konnte nicht aufgelöst werden.</string>
+    <string name="board_lane_refused_busy">Lane %1$d sendet noch.</string>
+    <string name="board_lane_refused_capacity">Der Controller hat keinen freien Platz. Ersetze stattdessen eine eigene Lane.</string>
+    <string name="board_lane_refused_color">Alle Controllerfarben sind auf dem Board bereits vergeben.</string>
+    <string name="board_lane_refused_claimed">Lane %1$d ist gerade von jemand anderem belegt.</string>
+    <string name="board_lane_blocked_mesh">Nur das Gerät am Board kann eine Ebene setzen. Hier kannst du Lanes planen und sehen, was passt.</string>
+    <string name="board_lane_blocked_disconnected">Keine Verbindung zum Board.</string>
+    <string name="board_lane_orphaned">Lane %1$s leuchtet noch für einen Eintrag, den die Liste nicht mehr hat. Sie bleibt an, bis jemand sie ersetzt oder entfernt.</string>
+    <string name="board_lane_assignment_conflict">Lane %1$d passt für diesen Eintrag nicht mehr. Wähle eine andere Lane oder mach zuerst die Wand frei — es wurde nichts für dich verschoben.</string>
+    <!-- Quantum-only Browse-Filter: was noch neben die bestätigten Ebenen passt. -->
+    <string name="board_filter_quantum_overlap_title">Passt an die Wand</string>
+    <string name="board_filter_quantum_overlap_off">Aus</string>
+    <string name="board_filter_quantum_overlap_none">Ohne Überlappung</string>
+    <string name="board_filter_quantum_overlap_one">Höchstens 1</string>
+    <string name="board_filter_quantum_overlap_hint">Gemessen an den Ebenen, die der Controller gerade bestätigt. „Ohne Überlappung“ ist so sendbar; „höchstens 1“ ist ein Hold entfernt und wird vom Board weiterhin abgelehnt.</string>
+    <string name="board_filter_quantum_overlap_inert">Es liegt nichts an der Wand, also passt jeder Climb.</string>
+    <string name="board_filter_quantum_overlap_incomplete">Eine Ebene an der Wand konnte nicht aufgelöst werden. Die Liste filtert weiter nach Bekanntem, ein freier Send ist aber nicht garantiert.</string>
+    <string name="board_filter_quantum_overlap_count">%1$d Climbs passen</string>
+    <plurals name="board_lane_cd_overlap">
+        <item quantity="one">Lane %1$d: ein Hold im Weg — das Board lehnt das weiterhin ab</item>
+        <item quantity="other">Lane %1$d: %2$d Holds im Weg</item>
+    </plurals>
+    <plurals name="board_lane_unknown_layers">
+        <item quantity="one">Eine Ebene an der Wand konnte nicht aufgelöst werden</item>
+        <item quantity="other">%1$d Ebenen an der Wand konnten nicht aufgelöst werden</item>
+    </plurals>
+    <plurals name="board_lane_external_layers">
+        <item quantity="one">%1$d Platz von einer anderen Person belegt</item>
+        <item quantity="other">%1$d Plätze von anderen Personen belegt</item>
+    </plurals>
+    <string name="board_lane_cd_suggested">Vorgeschlagene Lane</string>
 </resources>

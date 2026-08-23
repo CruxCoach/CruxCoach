@@ -3031,4 +3031,53 @@
     <string name="settings_relay_inbound_project_now">Straight to the board</string>
     <string name="settings_relay_inbound_append_end">End of the playlist</string>
     <string name="board_playlist_light_entry">Put this one on the board</string>
+    <!-- Quantum lanes in the shared playlist. A lane is a neutral slot on a wall
+         that can show four climbs at once; it is not a person and not a list. -->
+    <string name="board_lane_title">Lanes</string>
+    <string name="board_lane_short">L%1$d</string>
+    <string name="board_lane_free">Free</string>
+    <string name="board_lane_cd_on_board">Lane %1$d: this entry is on the board</string>
+    <string name="board_lane_cd_planned">Lane %1$d: planned for this entry, nothing sent yet</string>
+    <string name="board_lane_cd_sending">Lane %1$d: sending</string>
+    <string name="board_lane_cd_compatible">Lane %1$d: fits, no hold in common with the other layers</string>
+    <string name="board_lane_cd_unknown">Lane %1$d: unknown — a layer on the wall could not be resolved, so no overlap can be ruled out</string>
+    <string name="board_lane_cd_blocked">Lane %1$d: not available right now</string>
+    <string name="board_lane_conflict_with">Overlaps with %1$s</string>
+    <string name="board_lane_conflict_external">Overlaps with another climber\'s layer</string>
+    <string name="board_lane_send">Put this entry on lane %1$d</string>
+    <string name="board_lane_assign">Plan this entry for lane %1$d</string>
+    <string name="board_lane_unassign">Drop the lane preference</string>
+    <string name="board_lane_no_eligible">No lane is free of conflicts right now. The entry stays on the list — nothing was changed on the wall.</string>
+    <string name="board_lane_refused_conflict">Lane %1$d shares at least one hold with another layer. One diode cannot carry two colours.</string>
+    <string name="board_lane_refused_unknown">Lane %1$d cannot be confirmed as free: a layer on the wall could not be resolved.</string>
+    <string name="board_lane_refused_busy">Lane %1$d is still sending.</string>
+    <string name="board_lane_refused_capacity">The controller has no free place. Replace one of your own lanes instead.</string>
+    <string name="board_lane_refused_color">Every controller colour is already in use on the board.</string>
+    <string name="board_lane_refused_claimed">Somebody else is holding lane %1$d.</string>
+    <string name="board_lane_blocked_mesh">Only the device connected to the board can place a layer. You can plan lanes here and see what fits.</string>
+    <string name="board_lane_blocked_disconnected">No connection to the board.</string>
+    <string name="board_lane_orphaned">Lane %1$s is still lit for an entry the list no longer has. It stays on until somebody replaces or removes it.</string>
+    <string name="board_lane_assignment_conflict">Lane %1$d no longer fits this entry. Choose another lane or clear the wall first — nothing was moved for you.</string>
+    <!-- Quantum-only browse filter: what still fits next to the confirmed layers. -->
+    <string name="board_filter_quantum_overlap_title">Fits the wall</string>
+    <string name="board_filter_quantum_overlap_off">Off</string>
+    <string name="board_filter_quantum_overlap_none">No overlap</string>
+    <string name="board_filter_quantum_overlap_one">At most 1</string>
+    <string name="board_filter_quantum_overlap_hint">Measured against the layers the controller confirms right now. “No overlap” can be sent as it is; “at most 1” is one hold away and the board will still refuse it.</string>
+    <string name="board_filter_quantum_overlap_inert">Nothing is on the wall, so every climb fits.</string>
+    <string name="board_filter_quantum_overlap_incomplete">A layer on the wall could not be resolved. The list still narrows on what is known, but a free send is not guaranteed.</string>
+    <string name="board_filter_quantum_overlap_count">%1$d climbs fit</string>
+    <plurals name="board_lane_cd_overlap">
+        <item quantity="one">Lane %1$d: one hold in the way — the board will still refuse this</item>
+        <item quantity="other">Lane %1$d: %2$d holds in the way</item>
+    </plurals>
+    <plurals name="board_lane_unknown_layers">
+        <item quantity="one">One layer on the wall could not be resolved</item>
+        <item quantity="other">%1$d layers on the wall could not be resolved</item>
+    </plurals>
+    <plurals name="board_lane_external_layers">
+        <item quantity="one">%1$d place taken by another climber</item>
+        <item quantity="other">%1$d places taken by other climbers</item>
+    </plurals>
+    <string name="board_lane_cd_suggested">Suggested lane</string>
 </resources>
