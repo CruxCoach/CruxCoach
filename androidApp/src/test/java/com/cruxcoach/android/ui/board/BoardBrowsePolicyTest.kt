@@ -7,13 +7,17 @@ import kotlin.test.assertEquals
 
 class BoardBrowsePolicyTest {
     @Test
-    fun `Quantum model layout bypasses only the incompatible edge-fit predicate`() {
+    fun `only Aurora protocol boards apply the product-size edge predicate`() {
         assertEquals(0, BoardBrowsePolicy.productSizeId(BoardBrand.QUANTUM, 9201))
+        assertEquals(0, BoardBrowsePolicy.productSizeId(BoardBrand.MOONBOARD, 10))
 
-        // Regression guard: all established boards retain their selected size
-        // and therefore the existing strict Kilter/Aurora containment rule.
-        BoardBrand.entries.filter { it != BoardBrand.QUANTUM }.forEach { brand ->
-            assertEquals(123, BoardBrowsePolicy.productSizeId(brand, 123), brand.name)
+        // The predicate is an Aurora containment rule and belongs to exactly
+        // the brands that speak that protocol. MoonBoard and Quantum have no
+        // product_sizes rows at all, so a size carried over from an Aurora
+        // board would filter their climbs against a number meaning nothing.
+        BoardBrand.entries.forEach { brand ->
+            val expected = if (brand.usesAuroraProtocol) 123 else 0
+            assertEquals(expected, BoardBrowsePolicy.productSizeId(brand, 123), brand.name)
         }
     }
 
