@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DeveloperBoard
-import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -29,7 +28,7 @@ import com.cruxcoach.android.R
  * from the browser's action bar stays exactly where it was: this drawer adds a
  * level above the app, it does not reorganise it.
  */
-enum class MainDestination { BOARD_CATALOG, FIPS_MESH, COMPETITIONS }
+enum class MainDestination { BOARD_CATALOG, FIPS_MESH }
 
 @Composable
 fun MainDrawerSheet(
@@ -63,15 +62,6 @@ fun MainDrawerSheet(
             modifier = Modifier
                 .padding(NavigationDrawerItemDefaults.ItemPadding)
                 .testTag("menu_fips_mesh"),
-        )
-        NavigationDrawerItem(
-            icon = { Icon(Icons.Default.EmojiEvents, contentDescription = null) },
-            label = { Text(stringResource(R.string.main_menu_competitions)) },
-            selected = selected == MainDestination.COMPETITIONS,
-            onClick = { onSelect(MainDestination.COMPETITIONS) },
-            modifier = Modifier
-                .padding(NavigationDrawerItemDefaults.ItemPadding)
-                .testTag("menu_competitions"),
         )
     }
 }

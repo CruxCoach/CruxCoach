@@ -67,10 +67,6 @@ object WhatsNewItems {
     /** 0.2.2 highlights: playable lists, unified board delivery and optional OTA. */
     val RELEASE_022 = WhatsNewItem(id = "release-0.2.2", sinceVersionCode = 8)
 
-    /** 0.2.3 — competitions (FEAT-058). The feature is reached from the logo
-     *  menu in the board browser, which is a place nobody would look without
-     *  being told, so it needs a discovery surface of its own. */
-    val RELEASE_023 = WhatsNewItem(id = "release-0.2.3", sinceVersionCode = 1000013)
 
     /** FEAT-015 — Board Locations Map (0.2.0). Headline feature; users
      *  upgrading from 0.1.4 have no other entry point to discover the
@@ -103,7 +99,6 @@ object WhatsNewItems {
         AURORA_JSON_IMPORT,
         RELEASE_021,
         RELEASE_022,
-        RELEASE_023,
     )
 }
 
@@ -186,7 +181,6 @@ fun WhatsNewHost(
     onNavigateToAuroraMigration: () -> Unit = {},
     onNavigateToBoardMap: () -> Unit = {},
     onNavigateToSettings: () -> Unit = {},
-    onNavigateToCompetitions: () -> Unit = {},
     vm: WhatsNewViewModel = hiltViewModel(),
 ) {
     val pending by vm.pending.collectAsState()
@@ -202,11 +196,6 @@ fun WhatsNewHost(
             Release022WhatsNewDialog(
                 onDismiss = { vm.dismissCurrent() },
                 onNavigateToSettings = onNavigateToSettings,
-            )
-        WhatsNewItems.RELEASE_023.id ->
-            Release023WhatsNewDialog(
-                onDismiss = { vm.dismissCurrent() },
-                onNavigateToCompetitions = onNavigateToCompetitions,
             )
         WhatsNewItems.MOONBOARD_SUPPORT.id ->
             MoonBoardWhatsNewDialog(
