@@ -201,5 +201,39 @@ INSERT OR IGNORE INTO ascents(uuid, climb_uuid, angle, is_mirror,
     external_id)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
+-- Official MoonBoard CSV import. Keep brand/layout explicit: the Aurora
+-- compatibility query above predates multi-board support and therefore lets
+-- both columns fall back to Kilter defaults.
+insertMoonCsvAscent:
+INSERT OR IGNORE INTO ascents(uuid, climb_uuid, angle, is_mirror,
+    attempt_id, bid_count, quality, difficulty, is_benchmark, comment, climbed_at, synced,
+    gym_uuid, wall_uuid, product_layout_uuid,
+    climb_name, difficulty_average, climb_frames, frames_count,
+    external_id, board_brand, layout_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'moonboard', ?);
+
 countAscentsWithExternalIdPrefix:
 SELECT COUNT(*) FROM ascents WHERE external_id LIKE ?;
+
+-- Delta import: what each Moon training day already holds in the logbook.
+-- Read once per scan so the walk over the date list can skip a day outright.
+-- Row count AND attempt sum are returned because Moon's own date row states
+-- both ("4 problems (1 completed, 17 tries)"); comparing all three is what
+-- makes a skip safe against a day that was edited in Moon after the import.
+-- Re-reading a training day has to be able to retire what an earlier import
+-- of that same day wrote. Scoped to this importer's own rows (external_id
+-- prefix) and to one date, so user-created and CSV-imported entries are never
+-- in range.
+selectImportedAscentsForDate:
+SELECT climb_uuid, external_id
+FROM ascents
+WHERE climbed_at = :climbedAt AND external_id LIKE :prefix;
+
+deleteAscentByExternalId:
+DELETE FROM ascents WHERE external_id = :externalId;
+
+countImportedAscentsByDate:
+SELECT climbed_at, COUNT(*) AS entries, COALESCE(SUM(bid_count), 0) AS tries
+FROM ascents
+WHERE external_id LIKE :prefix
+GROUP BY climbed_at;

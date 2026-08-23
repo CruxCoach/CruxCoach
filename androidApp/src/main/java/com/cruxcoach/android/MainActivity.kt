@@ -381,6 +381,12 @@ class MainActivity : AppCompatActivity() {
             raw == "dev_chat" -> raw
             raw == "settings" -> raw
             raw == "app_share" -> raw
+            // Carries no parameters and reaches no import sink of its own: the
+            // MoonBoard screen only offers a file picker and the opt-in
+            // accessibility transfer, both of which need a further user tap.
+            // The accessibility service uses it to land the user back on this
+            // screen when a transfer finishes.
+            raw == "moonboard_csv_import" -> raw
             raw.startsWith("message_thread/") &&
                 raw.removePrefix("message_thread/")
                     .matches(Regex("^[0-9a-fA-F]{1,128}$")) -> raw
