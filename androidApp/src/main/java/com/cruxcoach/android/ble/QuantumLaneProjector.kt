@@ -66,6 +66,11 @@ class QuantumLaneProjector @Inject constructor(
      * showed.
      */
     suspend fun write(climb: ClimbWithStats, angle: Int, entryId: String?): Boolean {
+        // The rack empties itself when the board changes; the plan has to
+        // follow the same rule, and here is the moment it matters. A screen
+        // that happened not to be open must not leave a lane preference from
+        // another wall standing in front of a write.
+        lanePlanner.syncBoard()
         val lane = laneFor(entryId)
         val holds = BoardClimbParser.parseFrames(climb.frames)
         if (holds.isEmpty()) return false

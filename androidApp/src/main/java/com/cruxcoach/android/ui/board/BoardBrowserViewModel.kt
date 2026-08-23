@@ -1336,18 +1336,30 @@ class BoardBrowserViewModel @Inject constructor(
         }
         val layerState = boardLayerManager.state.value
         val maxLanes = BoardBrand.QUANTUM.maxSimultaneousClimbs
-        val hydrated = withContext(Dispatchers.IO) {
-            QuantumLaneRackAdapter.unresolvedRoutes(layerState, maxLanes).associateWith { route ->
-                boardRepository.getQuantumFramesForRoute(route)
-                    ?.let(BoardClimbParser::parseFrames)
-                    ?.takeIf { it.isNotEmpty() }
-                    ?.mapTo(HashSet<Int>()) { it.placementId }
-            }.filterValues { it != null }.mapValues { (_, value) -> value!! as Set<Int> }
+        val wanted = QuantumLaneRackAdapter.unresolvedRoutes(layerState, maxLanes)
+            .filterNot { it in hydratedRoutes || it in unresolvableRoutes }
+        if (wanted.isNotEmpty()) {
+            val resolved = withContext(Dispatchers.IO) {
+                wanted.associateWith { route ->
+                    boardRepository.getQuantumFramesForRoute(route)
+                        ?.let(BoardClimbParser::parseFrames)
+                        ?.takeIf { it.isNotEmpty() }
+                        ?.mapTo(HashSet<Int>()) { it.placementId }
+                }
+            }
+            // A route this device does not have stays unresolved, and is
+            // remembered as such: the rack is re-read on every controller
+            // change, and asking the same unanswerable question each time is
+            // a query per redraw for an answer that will not change.
+            resolved.forEach { (route, placements) ->
+                if (placements == null) unresolvableRoutes += route
+                else hydratedRoutes[route] = placements
+            }
         }
         val rack: List<QuantumLaneOccupancy> = QuantumLaneRackAdapter.occupancies(
             layerState = layerState,
             maxLanes = maxLanes,
-            hydrated = hydrated,
+            hydrated = hydratedRoutes,
         )
         val index = QuantumOverlapIndex.of(rack)
         val physical = rack.count { it.physical }
@@ -1380,6 +1392,10 @@ class BoardBrowserViewModel @Inject constructor(
      */
     private var overlapCountKey: String? = null
     private var overlapCountValue: Long = -1
+
+    /** Holds recovered for controller-reported routes, and the ones that are absent. */
+    private val hydratedRoutes = HashMap<String, Set<Int>>()
+    private val unresolvableRoutes = HashSet<String>()
 
     private suspend fun quantumOverlapCount(
         f: BrowserFilterState,
