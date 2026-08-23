@@ -145,6 +145,7 @@ object Routes {
     const val DATA_IMPORT = "data_import"
     const val DATA_EXPORT = "data_export"
     const val AURORA_MIGRATION = "aurora_migration"
+    const val MOONBOARD_CSV_IMPORT = "moonboard_csv_import"
     const val SETTINGS = "settings"
     const val PROFILE_ASSESSMENT = "profile_assessment"
     const val APP_SHARE = "app_share"
@@ -267,6 +268,7 @@ fun CruxCoachNavHost(
             route == Routes.DEV_CHAT ||
             route == Routes.SETTINGS ||
             route == Routes.APP_SHARE ||
+            route == Routes.MOONBOARD_CSV_IMPORT ||
             route.startsWith("message_thread/") ||
             route.startsWith("playlist_import/") ->
                 navController.navigate(route) { launchSingleTop = true }
@@ -474,6 +476,17 @@ fun CruxCoachNavHost(
                     onNavigateBack = { navController.popBackStack() },
                 ) {
                     com.cruxcoach.android.ui.aurora.AuroraMigrationScreen(
+                        onNavigateBack = { navController.popBackStack() },
+                    )
+                }
+            }
+
+            composable(Routes.MOONBOARD_CSV_IMPORT) {
+                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
+                    screenName = "MoonBoardCsvImport",
+                    onNavigateBack = { navController.popBackStack() },
+                ) {
+                    com.cruxcoach.android.ui.moonboard.MoonBoardCsvImportScreen(
                         onNavigateBack = { navController.popBackStack() },
                     )
                 }
@@ -908,6 +921,7 @@ fun CruxCoachNavHost(
                     onNavigateToImport = { navController.navigate(Routes.DATA_IMPORT) },
                     onNavigateToExport = { navController.navigate(Routes.DATA_EXPORT) },
                     onNavigateToAuroraMigration = { navController.navigate(Routes.AURORA_MIGRATION) },
+                    onNavigateToMoonBoardCsvImport = { navController.navigate(Routes.MOONBOARD_CSV_IMPORT) },
                     onNavigateToChat = { navController.navigate(Routes.DEV_CHAT) },
                     onNavigateToAnnouncements = { navController.navigate(Routes.ANNOUNCEMENTS) },
                     onNavigateToBugReports = { navController.navigate(Routes.BUG_REPORT_LIST) },

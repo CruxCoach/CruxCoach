@@ -47,6 +47,7 @@ fun SettingsScreen(
     onNavigateToImport: () -> Unit = {},
     onNavigateToExport: () -> Unit = {},
     onNavigateToAuroraMigration: () -> Unit = {},
+    onNavigateToMoonBoardCsvImport: () -> Unit = {},
     onNavigateToChat: () -> Unit = {},
     onNavigateToAnnouncements: () -> Unit = {},
     onNavigateToBugReports: () -> Unit = {},
@@ -330,6 +331,7 @@ fun SettingsScreen(
                         onNavigateToImport = onNavigateToImport,
                         onNavigateToExport = onNavigateToExport,
                         onNavigateToAuroraMigration = onNavigateToAuroraMigration,
+                        onNavigateToMoonBoardCsvImport = onNavigateToMoonBoardCsvImport,
                         onDismissDeleteSuccess = { viewModel.dismissDeleteSuccess() },
                     )
                     HorizontalDivider()

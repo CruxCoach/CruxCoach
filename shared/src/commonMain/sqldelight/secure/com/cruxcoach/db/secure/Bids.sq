@@ -114,5 +114,30 @@ INSERT OR IGNORE INTO bids(uuid, climb_uuid, angle, is_mirror,
     external_id)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
+-- See Ascents.sq: Moon rows must never inherit board_brand='kilter'.
+insertMoonCsvBid:
+INSERT OR IGNORE INTO bids(uuid, climb_uuid, angle, is_mirror,
+    bid_count, comment, climbed_at, synced,
+    gym_uuid, wall_uuid, product_layout_uuid,
+    climb_name, difficulty_average,
+    external_id, board_brand, layout_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'moonboard', ?);
+
 countBidsWithExternalIdPrefix:
 SELECT COUNT(*) FROM bids WHERE external_id LIKE ?;
+
+-- See ascents.countImportedAscentsByDate.
+-- See ascents.selectImportedAscentsForDate.
+selectImportedBidsForDate:
+SELECT climb_uuid, external_id
+FROM bids
+WHERE climbed_at = :climbedAt AND external_id LIKE :prefix;
+
+deleteBidByExternalId:
+DELETE FROM bids WHERE external_id = :externalId;
+
+countImportedBidsByDate:
+SELECT climbed_at, COUNT(*) AS entries, COALESCE(SUM(bid_count), 0) AS tries
+FROM bids
+WHERE external_id LIKE :prefix
+GROUP BY climbed_at;

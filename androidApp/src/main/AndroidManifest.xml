@@ -72,6 +72,9 @@
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
 
     <queries>
+        <!-- Optional local MoonBoard migration. Used only after the user taps
+             the migration action; no Moon credentials are requested. -->
+        <package android:name="com.trainingboard.moon" />
         <package android:name="com.greenart7c3.nostrsigner" />
         <package android:name="dev.zapstore.app" />
         <package android:name="org.fdroid.fdroid" />
@@ -164,6 +167,22 @@
             android:enabled="false"
             android:exported="false">
             <meta-data android:name="autoStoreLocales" android:value="true" />
+        </service>
+
+        <!-- User-enabled, one-shot MoonBoard logbook migration. The service is
+             package-filtered to the official Moon app and never observes text
+             from other applications. -->
+        <service
+            android:name=".moonboard.MoonBoardAccessibilityService"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true"
+            android:label="@string/moon_device_service_label">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/moonboard_accessibility_service" />
         </service>
 
         <!-- FileProvider for APK sharing -->

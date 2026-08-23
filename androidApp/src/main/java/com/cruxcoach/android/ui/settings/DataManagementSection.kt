@@ -43,6 +43,7 @@ internal fun DataImportExportSection(
     onNavigateToImport: () -> Unit,
     onNavigateToExport: () -> Unit,
     onNavigateToAuroraMigration: () -> Unit,
+    onNavigateToMoonBoardCsvImport: () -> Unit,
     onDismissDeleteSuccess: () -> Unit,
 ) {
     // Import banner
@@ -101,6 +102,26 @@ internal fun DataImportExportSection(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+        }
+    }
+
+    Spacer(modifier = Modifier.height(8.dp))
+
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable { onNavigateToMoonBoardCsvImport() },
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = OrangeAccent.copy(alpha = 0.08f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(Icons.Default.FileDownload, contentDescription = null, tint = OrangeAccent)
+            Column {
+                Text(stringResource(R.string.settings_moon_csv_title), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.settings_moon_csv_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }

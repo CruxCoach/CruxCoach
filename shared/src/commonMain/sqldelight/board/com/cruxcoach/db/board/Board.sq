@@ -2429,6 +2429,35 @@ WHERE LOWER(c.name) LIKE :pattern
   AND c.board_brand = :boardBrand
 LIMIT 5;
 
+-- Official MoonBoard exports carry only the numeric ProblemId. Catalogue
+-- snapshots encode that id as one of three deterministic UUIDv5 aliases;
+-- the importer computes the small candidate set and resolves it locally.
+lookupMoonCsvCandidates:
+SELECT c.uuid, c.layout_id, c.name, c.frames, c.frames_count,
+       cs.angle, cs.difficulty_average
+FROM climbs c
+INNER JOIN climb_stats cs ON cs.climb_uuid = c.uuid
+WHERE c.uuid IN :uuids
+  AND c.board_brand = 'moonboard'
+  AND c.is_deleted = 0;
+
+-- Accessibility migration fallback. The official app exposes no ProblemId,
+-- but does expose exact problem name, setter and angle in its semantic tree.
+--
+-- Deliberately one narrow projection for the whole import instead of a lookup
+-- per entry: `c.name = ? COLLATE NOCASE` matches no index, so a per-entry
+-- lookup is a full scan of climbs ⋈ climb_stats — measured at ~2.3 s each on a
+-- real catalogue, i.e. a quarter of an hour for one 382-entry logbook. The
+-- importer reads this once, matches name/setter in memory, and then fetches the
+-- full rows for the handful of resolved uuids via lookupMoonCsvCandidates.
+listMoonScreenIndex:
+SELECT c.uuid, c.name, c.setter_username, cs.angle
+FROM climbs c
+INNER JOIN climb_stats cs ON cs.climb_uuid = c.uuid
+WHERE c.board_brand = 'moonboard'
+  AND c.is_deleted = 0
+  AND cs.angle IN :angles;
+
 
 -- ─── Community-Climb Dead-Letter Queue ────────────────────────────
 -- Captures Kind-30078 events whose `upsertCommunityClimb` raised at
