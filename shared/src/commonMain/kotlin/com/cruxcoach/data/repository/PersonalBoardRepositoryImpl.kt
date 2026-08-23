@@ -630,6 +630,22 @@ class PersonalBoardRepositoryImpl(
         }
     }
 
+    override fun getClimbNote(climbUuid: String): String? =
+        database.climbNotesQueries.selectByClimbUuid(climbUuid).executeAsOneOrNull()
+
+    override fun saveClimbNote(climbUuid: String, note: String) {
+        val normalized = note.trim().take(1000)
+        if (normalized.isEmpty()) {
+            database.climbNotesQueries.deleteByClimbUuid(climbUuid)
+        } else {
+            database.climbNotesQueries.upsert(
+                climbUuid = climbUuid,
+                note = normalized,
+                updatedAt = DateTimeUtil.nowIso(),
+            )
+        }
+    }
+
     override fun getClimbListEntriesRaw(): List<RawClimbListEntry> {
         return database.climbListsQueries.getClimbListEntriesRaw().executeAsList().map { row ->
             RawClimbListEntry(
