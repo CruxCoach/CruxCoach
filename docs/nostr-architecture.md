@@ -126,12 +126,19 @@ wss://relay.damus.io
 wss://nostr-pub.wellorder.net
 wss://nos.lol
 wss://nostr.oxtr.dev
+wss://blossom.cruxcoach.org/nostr
 ```
 
 Diese Liste ist nicht beliebig erweiterbar. Das Kilter-Manifest ist ~108 KB und
 damit über dem 64-KB-Limit der meisten Relays — von neun am 2026-08-05 mit dem
 echten Event getesteten Kandidaten nahm es genau einer an. **Jeder neue Eintrag
 muss mit einem echten Publish verifiziert werden**, nicht nach Popularität gewählt.
+
+Der sechste Endpoint ab 0.2.2 ist ein öffentlich lesbarer, von CruxCoach
+betriebener Manifest-Relay. Seine Write-Policy akzeptiert ausschließlich Kind
+30078 vom dedizierten Manifest-Pubkey und die bekannten Board-`d`-Tags. Die
+fünf externen Relays bleiben erhalten, damit Betreiberkontrolle nicht mit
+Ausfallzonen-Unabhängigkeit verwechselt wird.
 
 Die Pipeline-Seite (`blossom_upload.py:DEFAULT_RELAYS`) **muss eine Obermenge
 davon sein**. Auf ein Relay zu publizieren, das keine ausgelieferte App liest,

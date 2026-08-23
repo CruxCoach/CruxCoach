@@ -61,6 +61,12 @@ object NostrConfig {
      * compiled in, so installs on 0.2.1 and older keep querying the old
      * three. That is the same one-way constraint the release-source list has,
      * and the reason both are worth widening now rather than later.
+     *
+     * 0.2.2 adds the operator-controlled manifest-only relay. It is public
+     * for reads but accepts writes exclusively from the dedicated manifest
+     * signer for the known board d-tags. Keeping the independent public
+     * relays preserves failure-domain diversity while guaranteeing that one
+     * compatible endpoint remains under CruxCoach operational control.
      */
     val MANIFEST_RELAYS = listOf(
         "wss://relay.primal.net",
@@ -68,6 +74,7 @@ object NostrConfig {
         "wss://nostr-pub.wellorder.net",
         "wss://nos.lol",
         "wss://nostr.oxtr.dev",
+        "wss://blossom.cruxcoach.org/nostr",
     )
 
     /**
