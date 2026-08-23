@@ -13,9 +13,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.People
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -53,6 +56,9 @@ import com.cruxcoach.android.ui.theme.SuccessGreen
 @Composable
 fun BoardPlaylistBrowserCard(
     onOpen: () -> Unit,
+    /** Detail screens may offer the current climb as an explicit append-only action. */
+    onAddToEnd: (() -> Unit)? = null,
+    addToEndEnabled: Boolean = true,
     modifier: Modifier = Modifier,
     viewModel: BoardPlaylistViewModel = hiltViewModel(),
 ) {
@@ -61,12 +67,6 @@ fun BoardPlaylistBrowserCard(
 
     val current = state.rows.getOrNull(state.currentIndex)
     val boardLabel = state.boardName ?: stringResource(R.string.fips_mesh_own_active)
-    val peopleLabel = state.memberCount.takeIf { it > 0 }?.let { count ->
-        pluralStringResource(R.plurals.board_people_count, count, count)
-    }
-    val climbCountLabel = state.rows.size.takeIf { it > 0 }?.let { count ->
-        pluralStringResource(R.plurals.board_playlist_climb_count, count, count)
-    }
     val statusTint = when {
         state.pendingProjection != null -> MaterialTheme.colorScheme.error
         !state.synchronized || state.pendingCommands > 0 -> OrangeAccent
@@ -116,10 +116,21 @@ fun BoardPlaylistBrowserCard(
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f),
                         )
-                        peopleLabel?.let {
+                        if (state.memberCount > 0) {
                             Spacer(Modifier.width(8.dp))
+                            Icon(
+                                Icons.Default.People,
+                                contentDescription = pluralStringResource(
+                                    R.plurals.board_people_count,
+                                    state.memberCount,
+                                    state.memberCount,
+                                ),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp),
+                            )
+                            Spacer(Modifier.width(3.dp))
                             Text(
-                                it,
+                                "${state.memberCount}",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -128,11 +139,7 @@ fun BoardPlaylistBrowserCard(
                     Spacer(Modifier.size(2.dp))
                     if (current == null) {
                         Text(
-                            buildString {
-                                append(stringResource(R.string.board_playlist_title))
-                                append(" · ")
-                                append(stringResource(R.string.board_playlist_card_empty))
-                            },
+                            stringResource(R.string.board_playlist_card_empty),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
@@ -140,16 +147,6 @@ fun BoardPlaylistBrowserCard(
                         )
                     } else {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                buildString {
-                                    append(stringResource(R.string.board_playlist_title))
-                                    climbCountLabel?.let { append(" · "); append(it) }
-                                    append(" · ")
-                                },
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                            )
                             Text(
                                 current.name,
                                 style = MaterialTheme.typography.bodyMedium,
@@ -168,12 +165,29 @@ fun BoardPlaylistBrowserCard(
                         }
                     }
                 }
-                Icon(
-                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = stringResource(R.string.cd_open),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(22.dp),
-                )
+                if (onAddToEnd != null) {
+                    IconButton(
+                        onClick = onAddToEnd,
+                        enabled = addToEndEnabled,
+                        modifier = Modifier
+                            .size(42.dp)
+                            .testTag("board_playlist_banner_add_end"),
+                    ) {
+                        Icon(
+                            Icons.Default.Add,
+                            contentDescription = stringResource(R.string.board_playlist_add_to_end),
+                            tint = OrangeAccent,
+                            modifier = Modifier.size(28.dp),
+                        )
+                    }
+                } else {
+                    Icon(
+                        Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = stringResource(R.string.cd_open),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
             }
             if (!state.synchronized || state.pendingCommands > 0) {
                 Spacer(Modifier.size(6.dp))

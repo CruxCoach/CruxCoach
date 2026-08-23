@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -38,8 +39,10 @@ import androidx.compose.material.icons.filled.StopCircle
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -71,6 +74,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -84,7 +89,7 @@ import com.cruxcoach.android.ui.board.BoardActionVisual
 import com.cruxcoach.android.ui.board.BoardActionVisualPolicy
 import com.cruxcoach.android.ui.board.BleConnectionSheet
 import com.cruxcoach.android.ui.board.BleConnectionViewModel
-import com.cruxcoach.android.ui.board.ClimbMetaLine
+import com.cruxcoach.android.ui.board.ClimbRenderData
 import com.cruxcoach.android.ui.board.KilterBoardVisualization
 import com.cruxcoach.android.ui.board.MoonBoardAssetState
 import com.cruxcoach.android.ui.board.MoonBoardVisualization
@@ -97,6 +102,7 @@ import com.cruxcoach.android.ui.theme.InfoBlue
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.SuccessGreen
 import com.cruxcoach.android.ui.theme.WarningYellow
+import com.cruxcoach.android.ui.theme.zoneColorForDifficulty
 import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.data.repository.brand
 import com.cruxcoach.domain.board.BoardBrand
@@ -758,8 +764,16 @@ private fun ClimbingContent(
             },
     ) {
         Spacer(Modifier.height(8.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(modifier = Modifier.weight(1f)) {
+        if (render != null && playback.currentClimb != null) {
+            PlaylistClimbOverview(
+                render = render,
+                angle = playback.currentClimb.angle,
+                zones = state.zones,
+                attemptInfo = playback.attemptInfo,
+                onNavigateToSetter = onNavigateToSetter,
+            )
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     // Empty queue: no title — the empty-state message below
                     // explains the situation; "Unbekannter Climb" would
@@ -771,54 +785,8 @@ private fun ClimbingContent(
                     },
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
-                    modifier = Modifier.testTag("player_climb_name"),
+                    modifier = Modifier.weight(1f).testTag("player_climb_name"),
                 )
-                val subtitle = buildString {
-                    (playback.currentClimbDifficulty ?: render?.climb?.difficultyAverage)?.let {
-                        append(GradeDisplayHelper.formatDifficulty(it, state.gradeScale))
-                    }
-                    playback.currentClimb?.let {
-                        if (isNotEmpty()) append(" · ")
-                        append("${it.angle}°")
-                    }
-                }
-                if (subtitle.isNotEmpty()) {
-                    Text(
-                        subtitle,
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                render?.climb?.let { climb ->
-                    val setterPubkey = climb.createdByPubkey?.takeIf { it.isNotBlank() }
-                    ClimbMetaLine(
-                        setter = climb.setterUsername,
-                        isRoute = climb.framesCount > 1,
-                        framesCount = climb.framesCount,
-                        moveCount = climb.moveCount,
-                        modifier = Modifier.fillMaxWidth(),
-                        onSetterClick = setterPubkey
-                            ?.takeIf { climb.origin == "cruxcoach" }
-                            ?.let { pubkey -> { onNavigateToSetter(pubkey) } },
-                    )
-                }
-            }
-            // Attempt chip for limit/projecting runs ("Versuch 2 von 5").
-            playback.attemptInfo?.let { (attempt, total) ->
-                Surface(
-                    color = OrangeAccent.copy(alpha = 0.15f),
-                    shape = RoundedCornerShape(10.dp),
-                ) {
-                    Text(
-                        stringResource(R.string.playlist_player_attempt, attempt, total),
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = OrangeAccent,
-                        modifier = Modifier
-                            .padding(horizontal = 10.dp, vertical = 6.dp)
-                            .testTag("player_attempt_chip"),
-                    )
-                }
             }
         }
         Spacer(Modifier.height(12.dp))
@@ -938,6 +906,155 @@ private fun ClimbingContent(
             }
         }
         Spacer(Modifier.height(12.dp))
+    }
+}
+
+/**
+ * The playlist player's climb identity uses the same compact information
+ * hierarchy as the climb detail screen: name and setter first, then the
+ * scannable grade/angle/moves/rating/status row. Playlist transport remains
+ * outside this card because local focus and board projection are distinct.
+ */
+@Composable
+private fun PlaylistClimbOverview(
+    render: ClimbRenderData,
+    angle: Int,
+    zones: com.cruxcoach.domain.board.IntensityZones?,
+    attemptInfo: Pair<Int, Int>?,
+    onNavigateToSetter: (String) -> Unit,
+) {
+    val climb = render.climb
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("player_climb_overview"),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+        ),
+        shape = RoundedCornerShape(14.dp),
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = climb.name,
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .testTag("player_climb_name"),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                climb.setterUsername?.takeIf(String::isNotBlank)?.let { setter ->
+                    val pubkey = climb.createdByPubkey?.takeIf(String::isNotBlank)
+                    val isClickable = climb.origin == "cruxcoach" && pubkey != null
+                    Spacer(Modifier.width(7.dp))
+                    Text(
+                        text = setter,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            textDecoration = if (isClickable) TextDecoration.Underline
+                            else TextDecoration.None,
+                        ),
+                        color = if (isClickable) OrangeAccent
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .widthIn(max = 112.dp)
+                            .then(
+                                if (isClickable) Modifier.clickable {
+                                    onNavigateToSetter(pubkey)
+                                } else Modifier,
+                            ),
+                    )
+                }
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+            ) {
+                climb.difficultyAverage?.let { difficulty ->
+                    val french = GradeDisplayHelper.formatDifficulty(
+                        difficulty,
+                        com.cruxcoach.android.data.GradeScale.FRENCH,
+                    )
+                    val vScale = GradeDisplayHelper.formatDifficulty(
+                        difficulty,
+                        com.cruxcoach.android.data.GradeScale.V_SCALE,
+                    )
+                    Surface(
+                        color = zoneColorForDifficulty(difficulty, zones),
+                        shape = RoundedCornerShape(8.dp),
+                    ) {
+                        Text(
+                            "$french / $vScale",
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = DarkBackground,
+                        )
+                    }
+                }
+                Text(
+                    "$angle°",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = OrangeAccent,
+                )
+                Text(
+                    if (climb.framesCount > 1) "${climb.framesCount}F" else "${climb.moveCount}M",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    "${climb.qualityAverage?.let { "%.1f".format(it) } ?: "–"}★",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                if (climb.benchmarkDifficulty > 0.0) {
+                    Icon(
+                        Icons.Default.Verified,
+                        contentDescription = stringResource(R.string.board_detail_benchmark),
+                        tint = OrangeAccent,
+                        modifier = Modifier.size(15.dp),
+                    )
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    Icon(
+                        Icons.Default.Groups,
+                        contentDescription = stringResource(R.string.board_sends),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(15.dp),
+                    )
+                    Text(
+                        "${climb.ascensionistCount ?: 0}",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            attemptInfo?.let { (attempt, total) ->
+                Spacer(Modifier.height(5.dp))
+                Surface(
+                    color = OrangeAccent.copy(alpha = 0.15f),
+                    shape = RoundedCornerShape(8.dp),
+                ) {
+                    Text(
+                        stringResource(R.string.playlist_player_attempt, attempt, total),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = OrangeAccent,
+                        modifier = Modifier
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                            .testTag("player_attempt_chip"),
+                    )
+                }
+            }
+        }
     }
 }
 

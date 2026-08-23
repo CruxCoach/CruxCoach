@@ -79,6 +79,8 @@ val LocalPlaylistPlayback = staticCompositionLocalOf<PlaylistPlaybackCoordinator
 @Composable
 fun BleStatusArea(
     currentClimbUuid: String? = null,
+    currentClimbAngle: Int? = null,
+    boardPlaylistAddEnabled: Boolean = true,
     onClimbTapped: ((uuid: String, angle: Int) -> Unit)? = null,
     onAddToQueue: (() -> Unit)? = null,
     onRandomToQueue: (() -> Unit)? = null,
@@ -181,6 +183,12 @@ fun BleStatusArea(
     if (boardPlaylistState.available) {
         BoardPlaylistBrowserCard(
             onOpen = openBoardPlaylist,
+            onAddToEnd = currentClimbUuid?.let { uuid ->
+                currentClimbAngle?.let { angle ->
+                    { boardPlaylistViewModel.append(uuid, angle) }
+                }
+            },
+            addToEndEnabled = boardPlaylistAddEnabled,
             viewModel = boardPlaylistViewModel,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
         )

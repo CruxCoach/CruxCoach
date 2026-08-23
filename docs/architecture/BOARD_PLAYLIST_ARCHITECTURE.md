@@ -469,6 +469,9 @@ Mindestens folgende Eigenschaften muessen als Tests existieren:
 ### UI-Vertrag
 
 - Row-Tap mutiert weder Current noch Projection,
+- Listenpfeile bewegen nur den lokalen UI-Cursor und senden keinen Command,
+- Gruen markiert bestaetigten Current; Orange nur abweichenden lokalen Fokus,
+- bei identischem Fokus und Current gewinnt ausschliesslich Gruen,
 - Row-Lampe tut dies explizit,
 - Detail-Navigation traegt Entry-ID,
 - remote geloeschter Entry bleibt als lokaler Kontext sichtbar,

@@ -62,7 +62,7 @@ fachlicher Rolle gruppiert.
 
 ```text
 TopAppBar   Favorit · persoenliche Liste · BLE · Resttimer · Mehr
-banners     Resttimer · Sync/Fehler · BLE-Status
+banners     Resttimer · Sync/Fehler · Playlist-Kontext (+ ans Ende)
 --------------------------------------------------------------
 content     kompakte Climb-Info-Caption       -> Info-Sheet
             Quantum Layer Strip              -> Layer-Sheet
@@ -70,8 +70,7 @@ content     kompakte Climb-Info-Caption       -> Info-Sheet
             Route-Playback (nur wenn fachlich passend)
             Sendestatus
 --------------------------------------------------------------
-bottomBar   Playlist Split Button (nur BoardCell)
-            Versuch · Board · Top
+bottomBar   Versuch · Board · Top
 ```
 
 ### 3.1 Warum kein grosser alter Detail-Block
@@ -128,7 +127,7 @@ Breite der beiden Aktionen daneben, unter dem Daumen der Person, die gerade tipp
 ```mermaid
 flowchart TD
     A{Gueltiger Pfad<br/>zum physischen Board?}
-    B[Board-Lampe<br/>optional Mesh/Relay-Badge]
+    B[Board-Lampe]
     C{Was blockiert?}
     D[Bluetooth erlauben]
     E[Bluetooth einschalten]
@@ -172,43 +171,40 @@ Der Detail-Screen bleibt offen und zeigt `Aus Playlist entfernt`. Der Nutzer ver
 nicht abrupt Kontext, aber die UI behauptet auch nicht, die Occurrence existiere noch.
 `Board` erzeugt anschliessend eine neue Occurrence; es restauriert die alte nicht heimlich.
 
-## 7. Hinzufuegen als Split Button
+## 7. Hinzufuegen aus dem Climb-Detail
 
 ```text
-[ + Ans Ende                              ][ v ]
-                                             |
-                                             +-- Ans Ende
-                                             +-- Als Naechstes
+[ Board · Current 3/6                         + ]
 ```
 
 ### 7.1 Default
 
-Ein Tap auf die grosse Flaeche fuegt ausschliesslich ans Ende hinzu. Das ist der haeufige,
-konfliktarme Fall: Nichts springt vor den aktuellen Ablauf.
+Das Plus sitzt im sichtbaren Playlist-Banner und fuegt ausschliesslich ans Ende hinzu.
+Das ist der haeufige, konfliktarme Fall: Nichts springt vor den aktuellen Ablauf. Ein
+zweiter breiter Add-Block unter dem Boardbild ist redundant, vergroessert den Action-Dock
+und trennt die Aktion optisch von ihrem Ziel; deshalb existiert er nicht.
 
 ### 7.2 Alternative
 
-Der Pfeil oeffnet ein Menue mit `Ans Ende` und `Als Naechstes`. Long-Press auf die grosse
-Flaeche oeffnet dasselbe Menue mit Haptik. Long-Press mutiert nie direkt.
+Weitere Einfuegepositionen sind vorerst nicht Teil dieses Banners. Falls sie spaeter
+hinzukommen, duerfen sie die klare Plain-Tap-Semantik des Plus nicht veraendern.
 
 ### 7.3 Warum zwei gleichwertige Buttons verworfen wurden
 
-Zwei breite Buttons sahen symmetrisch aus, obwohl die Risiken asymmetrisch sind. Beide
-veraendern eine gemeinsame Reihenfolge, und beide mussten vor jedem Tap gelesen werden.
-Der Split Button macht den sicheren Default motorisch leicht und die staerkere Mutation
-bewusst.
+Ein einzelnes Plus nutzt den durch das Entfernen redundanter Bannertexte gewonnenen Raum.
+Es ist schneller erfassbar als ein beschrifteter Split Button und behaelt trotzdem eine
+eindeutige Mutation: append-only.
 
 ### 7.4 Discoverability
 
-Ein dezenter Hinweis auf das Pfeilmenue darf genau einmal erscheinen. Ein dauerhaft
-wiederholter Hinweis konkurriert mit dem Inhalt und wird nicht hilfreicher. Der Pfeil
-bleibt selbst ein vollwertiges, semantisch benanntes Ziel.
+Das Plus ist ein eigenes semantisch benanntes Tap-Ziel. Der Rest des Banners oeffnet die
+Playlist; beide Ziele duerfen ihre Gesten nicht gegenseitig ausloesen.
 
 ### 7.5 Ladezustand
 
 Beim Swipen kann fuer einen Moment noch der vorherige Climb im State stehen. Deshalb wird
-die Add-Zeile waehrend der Aufloesung deaktiviert, nicht ausgeblendet. Ausblenden wuerde
-Layout springen lassen; Aktivlassen koennte den falschen Climb einreihen.
+das Banner-Plus waehrend der gemeinsamen Aufloesung von UUID und Winkel deaktiviert, aber
+nicht ausgeblendet. Ein Tap darf niemals noch den vorherigen Pager-Eintrag einreihen.
 
 ## 8. Playlist-Transportsteuerung
 
@@ -216,12 +212,14 @@ Layout springen lassen; Aktivlassen koennte den falschen Climb einreihen.
 [ Zufall ]       [ Zurueck ] [  Lampe  ] [ Weiter ]       [ Hinzufuegen ]
 ```
 
-Zurueck und Weiter sind explizite Progressionsaktionen, keine Detail-Navigation. Im
-manuellen Modus bestimmen sie den naechsten Kandidaten, ohne vorzeitig einen erfolgreichen
-Wandwechsel zu behaupten; nur eine bewusst aktivierte Progressionsautomatik darf daraus
-eine Sendetransaktion starten. Die Lampe in der Mitte ist die explizite manuelle Bruecke.
+Zurueck und Weiter bewegen ausschliesslich den lokalen, orange markierten Kandidaten. Sie
+erzeugen weder einen Playlist-Command noch einen Board-Write. Die Lampe in der Mitte ist
+die einzige explizite manuelle Bruecke zur Wand.
 Sie bleibt aktiv, wenn derselbe Climb schon am Board ist, weil Resend nach externer
 Aenderung oder verpasstem Write legitim ist.
+
+Der bestaetigte Board-Current bleibt gruen umrandet. Weicht der lokale Kandidat ab, erhaelt
+er eine orange Umrandung; stimmen beide ueberein, wird ausschliesslich Gruen gezeigt.
 
 Zufall und Hinzufuegen stehen ausserhalb der zentrierten Dreiergruppe, weil sie andere
 Aufgaben sind. Die Lampe darf nicht durch Zusatzaktionen optisch aus der Mitte gezogen
@@ -403,9 +401,8 @@ Die UI muss auch waehrend schneller Zustandswechsel ehrlich bleiben:
 |---|---|
 | `Board` | „Climb jetzt auf dem Board anzeigen“ |
 | Lampenicon in Playlistrow | „Diesen Playlist-Eintrag auf dem Board anzeigen“ |
-| Pfeil im Split Button | „Weitere Einfuegeoptionen“ |
+| Plus im Playlist-Banner | „Ans Ende der Board-Playlist hinzufügen“ |
 | Cyan-Swatch | „Cyan, Layerfarbe, verfuegbar/ausgewaehlt“ |
-| Mesh-Badge | Teil des Status: „Board ueber Mesh erreichbar“ |
 
 ## 16. Internationalisierung und Textprinzipien
 

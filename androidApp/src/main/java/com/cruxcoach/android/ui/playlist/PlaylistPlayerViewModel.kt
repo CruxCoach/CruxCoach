@@ -93,6 +93,11 @@ class PlaylistPlayerViewModel @Inject constructor(
         viewModelScope.safeLaunch(TAG) {
             _state.update { it.copy(gradeScale = userPreferences.getBoardFilterSnapshot().gradeScale) }
         }
+        viewModelScope.safeLaunch(TAG) {
+            zoneManager.zones.collect { zones ->
+                _state.update { it.copy(zones = zones) }
+            }
+        }
         // Re-load the board render whenever the current climb changes.
         viewModelScope.safeLaunch(TAG) {
             var lastKey: String? = null

@@ -46,10 +46,6 @@ enum class BoardReachability {
     /** True when a climb can be put on the wall right now. */
     val canReachBoard: Boolean
         get() = this == DIRECT || this == MESH || this == RELAY
-
-    /** Mesh and relay are worth naming; a direct link is the unremarkable case. */
-    val carriesBadge: Boolean
-        get() = this == MESH || this == RELAY
 }
 
 internal object BoardReachabilityPolicy {

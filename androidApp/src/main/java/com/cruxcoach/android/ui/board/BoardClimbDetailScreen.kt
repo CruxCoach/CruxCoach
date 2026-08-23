@@ -910,6 +910,8 @@ fun BoardClimbDetailScreen(
                     val qm = LocalSessionQueueManager.current
                     BleStatusArea(
                         currentClimbUuid = state.climb?.uuid,
+                        currentClimbAngle = state.angle,
+                        boardPlaylistAddEnabled = !state.isLoading,
                         onClimbTapped = { uuid, angle -> viewModel.switchClimb(uuid, angle) },
                         onAddToQueue = if (state.climb != null) {
                             { qm.addClimb(state.climb!!.uuid, state.angle) }
@@ -1807,12 +1809,9 @@ private fun ClimbDetailPageContent(
 /**
  * The whole bottom of a climb page, in the order somebody needs it.
  *
- * Two rows at most. The group's list first when there is one — a split button
- * whose plain tap has exactly one meaning — then the three things this climber
- * does with the climb in front of them. They are stacked rather than merged
- * because they answer different questions: one changes what everybody sees,
- * the other records what just happened to you. With no list on the board the
- * first row is not there at all, rather than sitting empty.
+ * The three actions this climber performs on the climb in front of them.
+ * Adding to an active Board-Playlist lives in its banner above the content,
+ * keeping this dock stable and dedicated to board/logging actions.
  */
 @Composable
 private fun BoardDetailBottomActions(
@@ -1827,7 +1826,7 @@ private fun BoardDetailBottomActions(
     onResolveBoard: () -> Unit,
     onSend: () -> Unit,
 ) {
-    val climb = state.climb ?: return
+    if (state.climb == null) return
     Surface(
         color = MaterialTheme.colorScheme.surface,
         tonalElevation = 8.dp,
@@ -1855,13 +1854,6 @@ private fun BoardDetailBottomActions(
                         .semantics { liveRegion = LiveRegionMode.Polite },
                 )
             }
-            // Draws nothing at all unless this device is in a board's group,
-            // so every other board keeps the dock at its usual height.
-            BoardPlaylistAddActions(
-                climbUuid = climb.uuid,
-                angle = state.angle,
-                enabled = !state.isLoading,
-            )
             BoardDetailActionDock(
                 loggingEnabled = !state.isLoading && !state.isQuickLogging,
                 lamp = BoardDeliveryPolicy.lampMode(
@@ -1980,9 +1972,6 @@ internal fun BoardDetailActionDock(
                     border = null,
                     elevated = true,
                     busy = busy,
-                    // Mesh and relay are worth naming; a direct link is the
-                    // unremarkable case and gets no decoration.
-                    badge = if (reachability.carriesBadge) reachability.dockIcon() else null,
                 )
             }
         }
@@ -2014,7 +2003,6 @@ private fun DockAction(
     border: Color?,
     elevated: Boolean = false,
     busy: Boolean = false,
-    badge: androidx.compose.ui.graphics.vector.ImageVector? = null,
 ) {
     Surface(
         onClick = onClick,
@@ -2040,24 +2028,13 @@ private fun DockAction(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(1.dp),
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            icon,
-                            // The word underneath says it; repeating it here
-                            // would make TalkBack read the seat twice.
-                            contentDescription = null,
-                            modifier = Modifier.size(22.dp),
-                        )
-                        badge?.let {
-                            Icon(
-                                it,
-                                contentDescription = null,
-                                modifier = Modifier
-                                    .align(Alignment.BottomEnd)
-                                    .size(11.dp),
-                            )
-                        }
-                    }
+                    Icon(
+                        icon,
+                        // The word underneath says it; repeating it here
+                        // would make TalkBack read the seat twice.
+                        contentDescription = null,
+                        modifier = Modifier.size(22.dp),
+                    )
                     Text(
                         label,
                         style = MaterialTheme.typography.labelMedium,

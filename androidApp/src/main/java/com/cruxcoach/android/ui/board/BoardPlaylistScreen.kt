@@ -228,14 +228,7 @@ fun BoardPlaylistScreen(
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                             )
-                            val subtitle = buildString {
-                                state.boardName?.let { append(it) }
-                                if (state.memberCount > 0) {
-                                    if (isNotEmpty()) append(" · ")
-                                    append(pluralStringResource(R.plurals.board_people_count,
-                                        state.memberCount, state.memberCount))
-                                }
-                            }
+                            val subtitle = state.boardName.orEmpty()
                             if (subtitle.isNotEmpty()) {
                                 Text(
                                     subtitle,
@@ -254,8 +247,12 @@ fun BoardPlaylistScreen(
                         }
                     },
                     actions = {
-                        if (state.memberCount > 1) {
-                            Icon(Icons.Default.People, contentDescription = null,
+                        if (state.memberCount > 0) {
+                            Icon(Icons.Default.People, contentDescription = pluralStringResource(
+                                R.plurals.board_people_count,
+                                state.memberCount,
+                                state.memberCount,
+                            ),
                                 tint = OrangeAccent, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(3.dp))
                             Text("${state.memberCount}", color = OrangeAccent,
@@ -358,9 +355,13 @@ fun BoardPlaylistScreen(
                     state = state,
                     modifier = Modifier.weight(1f),
                     onOpen = { entryId, climbUuid, angle ->
+                        viewModel.select(entryId)
                         onOpenEntry(entryId, climbUuid, angle)
                     },
-                    onLight = viewModel::lightEntry,
+                    onLight = { entryId ->
+                        viewModel.select(entryId)
+                        viewModel.lightEntry(entryId)
+                    },
                     onConnect = { showBleSheet = true },
                     onRemove = viewModel::remove,
                     onRepeat = viewModel::repeatAfter,
@@ -616,10 +617,8 @@ private fun BoardPlaylistUnavailable() {
 /**
  * Previous, the lamp, next.
  *
- * The arrows and lamp are all explicit board transport. Arrows send the
- * adjacent occurrence relative to canonical current; the lamp resends current.
- * Browsing is row-to-player navigation and lives outside this control group,
- * so no visually hidden selection is manipulated here.
+ * Arrows move only this device's orange cursor. The lamp is the sole explicit
+ * board transport and promotes that cursor to the green board current.
  */
 @Composable
 internal fun BoardPlaylistTransport(
@@ -659,10 +658,8 @@ internal fun BoardPlaylistTransport(
                     modifier = Modifier.size(36.dp))
             }
             // A lit wall is not a disabled action: pressing the lamp again is
-            // the explicit resend for a board that was changed or missed the
-            // previous write. Keep the control visibly active whenever there
-            // is a selected climb instead of turning it into a grey status
-            // indicator after the first successful send.
+            // an explicit resend. It is also the only action in this group
+            // that changes the physical board.
             FilledIconButton(
                 onClick = withHaptic(if (visual == BoardActionVisual.LAMP) onLamp else onConnect),
                 enabled = !state.isEmpty,
@@ -917,7 +914,7 @@ private fun BoardPlaylistRowCard(
     // Lightly dimmed, not greyed out: an entry the group has gone past is
     // still there, still editable and still something somebody may want
     // another go at. It is behind you, not gone.
-    val dim = if (row.isPast && !row.isOnBoard) 0.62f else 1f
+    val dim = if (row.isPast && !row.isOnBoard && !row.isSelected) 0.62f else 1f
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -929,10 +926,17 @@ private fun BoardPlaylistRowCard(
             .clickable(onClick = onOpen)
             .testTag("board_playlist_row"),
         colors = CardDefaults.cardColors(
-            containerColor = if (row.isOnBoard) SuccessGreen.copy(alpha = 0.22f)
-            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+            containerColor = when {
+                row.isOnBoard -> SuccessGreen.copy(alpha = 0.22f)
+                row.isSelected -> OrangeAccent.copy(alpha = 0.14f)
+                else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+            },
         ),
-        border = if (row.isOnBoard) BorderStroke(2.dp, SuccessGreen) else null,
+        border = when {
+            row.isOnBoard -> BorderStroke(2.dp, SuccessGreen)
+            row.isSelected -> BorderStroke(2.dp, OrangeAccent)
+            else -> null
+        },
         shape = RoundedCornerShape(12.dp),
     ) {
         Row(

@@ -36,7 +36,6 @@ class BoardReachabilityPolicyTest {
     fun `a direct link is the plain case`() {
         assertEquals(BoardReachability.DIRECT, resolve(connectionState = ConnectionState.CONNECTED))
         assertTrue(BoardReachability.DIRECT.canReachBoard)
-        assertFalse("nothing worth badging", BoardReachability.DIRECT.carriesBadge)
     }
 
     @Test
@@ -56,16 +55,14 @@ class BoardReachabilityPolicyTest {
 
         assertEquals(BoardReachability.MESH, reachability)
         assertTrue(reachability.canReachBoard)
-        assertTrue("worth naming, so the lamp carries a badge", reachability.carriesBadge)
     }
 
     @Test
-    fun `a relay path is a path, and says so`() {
+    fun `a relay path is a reachable path`() {
         val reachability = resolve(connectionState = ConnectionState.CONNECTED, relay = true)
 
         assertEquals(BoardReachability.RELAY, reachability)
         assertTrue(reachability.canReachBoard)
-        assertTrue(reachability.carriesBadge)
     }
 
     @Test

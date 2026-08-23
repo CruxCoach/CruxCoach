@@ -111,8 +111,16 @@ Pending transport may drive a spinner, never a success checkmark.
 ## Current-on-board and local player focus
 
 `currentEntryId` is the only canonical occurrence confirmed on the wall and is
-by far the strongest list highlight. The list does not expose a second selected
-highlight that could compete with it.
+by far the strongest list highlight. The list may additionally expose one
+device-local cursor: green always means confirmed on-board, while orange means
+locally focused but not on-board. If both identities match, only green is drawn;
+orange must never compete with or dilute confirmed board truth.
+
+List previous/next changes only this local cursor. It emits no playlist command
+and performs no board write. The centre lamp promotes the local cursor through
+the normal occurrence-addressed transport transaction. A row tap adopts that
+same local focus before opening the player, so returning to the list preserves
+the user's place without changing anybody else's view.
 
 A row opens `playlist_player?entryId=…`. `PlaylistOccurrenceFocus` stores that
 ID locally and emits no playlist operation. Back returns to the list. Player
@@ -170,7 +178,7 @@ The repository-wide audit applied this rule as follows:
 
 | Surface | Disconnected or unavailable | Board-ready |
 |---|---|---|
-| Generic climb-detail dock | Orange Connect action with Bluetooth icon | Orange Board action with lamp; mesh/relay may carry a small path badge |
+| Generic climb-detail dock | Orange Connect action with Bluetooth icon | Orange Board action with a plain lamp |
 | Quantum Layers | Bluetooth/searching icon and Connect label; group ownership remains disabled | Lamp per layer and for “send all”; confirmed layers may be green |
 | Shared playlist list and row actions | Bluetooth icon opening connection recovery | Lamp that projects the addressed occurrence |
 | Playlist player transport | Bluetooth icon opening connection recovery | Lamp that projects the locally focused occurrence |

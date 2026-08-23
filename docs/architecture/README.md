@@ -224,7 +224,7 @@ Undo muessen dieselbe Nutzerhandlung beschreiben.
 | Current nach Erfolg | Current vor Transport | verhindert sichtbaren Split Brain |
 | Quantum-Readback ist staerker | jeder erfolgreiche Write ist „bestaetigt“ | Protokolle liefern unterschiedliche Evidenz |
 | Layer lokal und controllergebunden | Layer ungeprueft durchs Mesh routen | Wire verliert User-, Farb- und Slot-Identitaet |
-| Split Button | zwei gleichgewichtete Add-Buttons | haeufiger, sicherer Default wird eindeutig |
+| Banner-Plus mit Append-only-Semantik | breiter Add-Block im Detail-Dock | Playlist-Aktion bleibt beim Playlist-Kontext und der Boardbereich gewinnt Platz |
 | kompakter Strip + Sheet | kompletter Rack inline | Board-Visualisierung bleibt primaer |
 
 ## 7. Konsistenz ueber Schichten

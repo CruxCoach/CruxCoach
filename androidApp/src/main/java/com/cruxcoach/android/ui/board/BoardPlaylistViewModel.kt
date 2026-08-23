@@ -57,6 +57,8 @@ data class BoardPlaylistRow(
     val restAfterSeconds: Int,
     /** The occurrence the board is confirmed to be showing. */
     val isOnBoard: Boolean = false,
+    /** This device's local cursor, shown in orange only when it differs from the board. */
+    val isSelected: Boolean = false,
     /** Behind the current entry — done with, as far as the list is concerned. */
     val isPast: Boolean,
     val mark: BoardPlaylistLogMark,
@@ -95,6 +97,9 @@ data class BoardPlaylistUiState(
     val rows: List<BoardPlaylistRow> = emptyList(),
     /** Canonical occurrence confirmed current-on-board, for transport and dimming. */
     val currentIndex: Int = -1,
+    /** This device's local list cursor. Arrows move this; only the lamp projects it. */
+    val selectedIndex: Int = -1,
+    val selectedEntryId: String? = null,
     /** The current occurrence matches the controller's known projection. */
     val selectionOnBoard: Boolean = false,
     /**
@@ -128,8 +133,8 @@ data class BoardPlaylistUiState(
     val failedEntryId: String? get() = pendingProjection?.entryId
 
     val isEmpty: Boolean get() = rows.isEmpty()
-    val hasPrevious: Boolean get() = currentIndex > 0
-    val hasNext: Boolean get() = currentIndex >= 0 && currentIndex < rows.size - 1
+    val hasPrevious: Boolean get() = selectedIndex > 0
+    val hasNext: Boolean get() = selectedIndex >= 0 && selectedIndex < rows.size - 1
 }
 
 /**
@@ -177,6 +182,8 @@ class BoardPlaylistViewModel @Inject constructor(
     private var personalLogMarks = emptyMap<String, BoardPlaylistLogMark>()
     private var retainedBoardName: String? = null
     private var retainedBoardCellId: String? = null
+    /** Never replicated: browsing the shared list is local until the lamp is pressed. */
+    private var localSelectedEntryId: String? = null
     private var gradeScale: GradeScale? = null
     private var renderToken = 0L
     private var personalLogRefreshToken = 0L
@@ -255,6 +262,7 @@ class BoardPlaylistViewModel @Inject constructor(
             lastEdit = null
             retainedBoardCellId = null
             retainedBoardName = null
+            localSelectedEntryId = null
             _state.value = BoardPlaylistUiState(
                 available = false,
                 pendingCommands = _state.value.pendingCommands,
@@ -264,6 +272,7 @@ class BoardPlaylistViewModel @Inject constructor(
         if (retainedBoardCellId != snapshot.cellId.value) {
             retainedBoardCellId = snapshot.cellId.value
             retainedBoardName = null
+            localSelectedEntryId = null
         }
         val playlist = snapshot.playlist
         val localNodeId = boardCellManager.localNodeId()
@@ -279,6 +288,13 @@ class BoardPlaylistViewModel @Inject constructor(
         if (token != renderToken) return
         val currentIndex = playlist.currentIndex
         val confirmedCurrent = playlist.currentEntryId
+        val selectedEntryId = localSelectedEntryId
+            ?.takeIf { playlist.entry(it) != null }
+            ?: playlist.currentEntryId
+            ?: playlist.selectedEntryId
+            ?: playlist.entries.firstOrNull()?.entryId
+        localSelectedEntryId = selectedEntryId
+        val selectedIndex = selectedEntryId?.let(playlist::indexOf) ?: -1
         val status = projectionStatus(snapshot)
         val occurrences = HashMap<String, Int>()
         val totals = playlist.entries.groupingBy { duplicateKey(it) }.eachCount()
@@ -298,6 +314,7 @@ class BoardPlaylistViewModel @Inject constructor(
                 // showing an occurrence nobody is looking at, and the group can
                 // be looking at one that has never been sent.
                 isOnBoard = entry.entryId == confirmedCurrent && status.shows(entry),
+                isSelected = entry.entryId == selectedEntryId,
                 isPast = currentIndex >= 0 && index < currentIndex,
                 mark = personalLogMarks[boardPlaylistLogKey(entry.climbUuid, entry.angle)]
                     ?: BoardPlaylistLogMark.UNATTEMPTED,
@@ -306,7 +323,7 @@ class BoardPlaylistViewModel @Inject constructor(
                 projection = status.confidenceFor(entry),
             )
         }
-        val selectedEntry = playlist.currentEntry()
+        val selectedEntry = selectedEntryId?.let(playlist::entry)
         val selectionOnBoard = status.shows(selectedEntry)
         val failedEntry = playlist.pendingProjection?.let { playlist.entry(it.entryId) }
         // What the wall shows *instead*, and only where that is worth
@@ -336,6 +353,8 @@ class BoardPlaylistViewModel @Inject constructor(
                 bleConnection.connectionState.value == ConnectionState.CONNECTING,
             rows = rows,
             currentIndex = currentIndex,
+            selectedIndex = selectedIndex,
+            selectedEntryId = selectedEntryId,
             selectionOnBoard = selectionOnBoard,
             projectionConfidence = status.confidence,
             boardClimbUnknown = status.confidence == BoardProjectionConfidence.UNKNOWN,
@@ -445,15 +464,15 @@ class BoardPlaylistViewModel @Inject constructor(
 
     // ── Editing — every member, every operation ────────────────────────────
 
-    /** Transport arrows step from the occurrence actually on the board. */
+    /** Transport arrows browse locally. They never submit a command or touch the board. */
     fun next() {
-        val playlist = boardCellManager.playlist() ?: return
-        playlist.entries.getOrNull(playlist.currentIndex + 1)?.let { lightEntry(it.entryId) }
+        val next = _state.value.rows.getOrNull(_state.value.selectedIndex + 1) ?: return
+        select(next.entryId)
     }
 
     fun previous() {
-        val playlist = boardCellManager.playlist() ?: return
-        playlist.entries.getOrNull(playlist.currentIndex - 1)?.let { lightEntry(it.entryId) }
+        val previous = _state.value.rows.getOrNull(_state.value.selectedIndex - 1) ?: return
+        select(previous.entryId)
     }
 
     /**
@@ -465,11 +484,21 @@ class BoardPlaylistViewModel @Inject constructor(
      * command the controller-only policy refuses outright. The documentation
      * above it has said "selection, and nothing else" since the two were split.
      */
-    fun select(entryId: String) =
-        submit(BoardPlaylistEditKind.SELECT, "select") {
-            if (it.entry(entryId) == null) emptyList()
-            else listOf(BoardPlaylistOp.SetSelection(entryId))
+    fun select(entryId: String) {
+        if (_state.value.rows.none { it.entryId == entryId }) return
+        localSelectedEntryId = entryId
+        _state.update { state ->
+            val index = state.rows.indexOfFirst { it.entryId == entryId }
+            val selectionOnBoard = state.rows.getOrNull(index)?.isOnBoard == true
+            state.copy(
+                selectedIndex = index,
+                selectedEntryId = entryId,
+                rows = state.rows.map { it.copy(isSelected = it.entryId == entryId) },
+                selectionOnBoard = selectionOnBoard,
+                confirmedClimbName = if (selectionOnBoard) null else state.boardClimbName,
+            )
         }
+    }
 
     fun remove(entryId: String) =
         submit(BoardPlaylistEditKind.REMOVE, "remove") {
@@ -581,10 +610,13 @@ class BoardPlaylistViewModel @Inject constructor(
     /** Re-adopt the canonical queue before navigating to its focused player. */
     fun resumePlayer() = queueManager.resumeFollowingSharedPlaylist()
 
-    /** The centre lamp resends canonical current (or starts at the first row). */
+    /** The centre lamp is the only transport action: it projects the local cursor. */
     fun projectSelectedEntry() {
         val playlist = boardCellManager.playlist() ?: return
-        (playlist.currentEntry() ?: playlist.entries.firstOrNull())?.let { lightEntry(it.entryId) }
+        val entry = localSelectedEntryId?.let(playlist::entry)
+            ?: playlist.currentEntry()
+            ?: playlist.entries.firstOrNull()
+        entry?.let { lightEntry(it.entryId) }
     }
 
     /**
