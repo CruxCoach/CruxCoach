@@ -10,11 +10,11 @@ import kotlin.test.assertTrue
 /**
  * The build has to say which release it is.
  *
- * This branch *is* 0.2.3, and the first two attempts at it shipped an APK that
- * identified as 0.2.2 — which nothing caught, because nothing looked. A wrong
+ * This branch *is* 0.2.2. An earlier attempt shipped an APK identifying as the
+ * wrong release, which nothing caught because nothing looked. A wrong
  * versionName is not cosmetic: the in-app updater compares it to decide whether
- * an update is available, so a 0.2.3 build calling itself 0.2.2 would offer
- * itself an update forever.
+ * an update is available, so a build calling itself the wrong version would
+ * offer itself an update forever.
  */
 class ReleaseMetadataTest {
 
@@ -44,32 +44,33 @@ class ReleaseMetadataTest {
     @Test
     fun `the build identifies as this release`() {
         requireProductionReleaseMetadata()
-        assertEquals("0.2.3", stringField("versionName"))
-        assertEquals(1000013, intField("versionCode"))
+        assertEquals("0.2.2", stringField("versionName"))
+        assertEquals(8, intField("versionCode"))
         assertEquals(
-            "0.2.3",
+            "0.2.2",
             BuildConfig.VERSION_NAME.removeSuffix("-dev"),
             "debug builds may carry the configured -dev suffix",
         )
-        assertEquals(1000013, BuildConfig.VERSION_CODE)
+        assertEquals(8, BuildConfig.VERSION_CODE)
     }
 
     @Test
-    fun `0_2_3 carries out the minSdk rise that 0_2_2 warned about`() {
-        // 0.2.2 shipped MIN_SDK_NEXT_RELEASE = 28 to tell Android 8.0/8.1 that
-        // its update path ended. This is the release that acts on it: v3
-        // signing, and with it the certificate lineage a key rotation needs,
-        // does not exist before API 28.
-        assertEquals(28, intField("minSdk"))
+    fun `0_2_2 warns about the minSdk rise it does not yet carry out`() {
+        // 0.2.2 still runs on Android 8.0/8.1 and ships
+        // MIN_SDK_NEXT_RELEASE = 28 to tell those devices their update path
+        // ends here. 0.2.3 is the release that acts on it: v3 signing, and
+        // with it the certificate lineage a key rotation needs, does not
+        // exist before API 28. Raising minSdk in the same release that
+        // announces the rise would drop the devices before warning them.
+        assertEquals(26, intField("minSdk"))
         assertEquals(28, BuildConfig.MIN_SDK_NEXT_RELEASE)
     }
 
     @Test
     fun `the end-of-support warning never claims a device is being dropped when it is not`() {
         // The invariant is "raise it one release BEFORE the minSdk rise", not
-        // "never equal". Equal means nothing is being dropped next, which is
-        // exactly the situation now, and every device that can run this build
-        // must be told it still receives updates.
+        // "never equal". Here it is genuinely greater: Android 8.0/8.1 can run
+        // this build and must be told that the next one leaves them behind.
         assertTrue(
             BuildConfig.MIN_SDK_NEXT_RELEASE >= intField("minSdk"),
             "the next release cannot require less than this one",
@@ -84,7 +85,7 @@ class ReleaseMetadataTest {
             item != null,
             "a release with no What's New entry is invisible to everyone upgrading into it",
         )
-        assertEquals("release-0.2.3", item.id)
+        assertEquals("release-0.2.2", item.id)
     }
 
     @Test

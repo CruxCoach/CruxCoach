@@ -77,8 +77,8 @@ spec file so other branches see the reservation.
 | FEAT-049 | MoonBoard Hold-Set Selection (issue #9) | v0.2.2 | shipped | `0.2.2/FEAT-049-moonboard-hold-set-selection.md` |
 | FEAT-050 | Survivable Database Downgrade | backlog | backlog | `backlog/FEAT-050-database-downgrade-safety.md` |
 | FEAT-051 | Blossom Manifest Rollback Guard | v0.2.3 | planned | `0.2.3/FEAT-051-blossom-manifest-rollback-guard.md` |
-| FEAT-058 | CruxCoach Competitions (app + web + protocol) | v0.2.3 | implementation | `0.2.3/FEAT-058-competitions.md` |
-| FEAT-059 | Offline BoardCell over FIPS | v0.2.3 | implementation | `0.2.3/FEAT-059-offline-board-cell-fips-mesh.md` |
+| FEAT-058 | CruxCoach Competitions (app + web + protocol) | v0.2.3 | planned | `0.2.3/FEAT-058-competitions.md` |
+| FEAT-059 | Offline BoardCell over FIPS | v0.2.3 | planned | `0.2.3/FEAT-059-offline-board-cell-fips-mesh.md` |
 
 The architecture guide for FEAT-059 is
 [`0.2.3/OFFLINE-BOARDCELL-FIPS-ARCHITECTURE.md`](0.2.3/OFFLINE-BOARDCELL-FIPS-ARCHITECTURE.md).
@@ -103,6 +103,13 @@ something it does not contain. FEAT-043 has its algorithm (`bd169ac8`) but not
 the save-time wiring or the filter; FEAT-046 has no commits at all and its own
 spec calls it a follow-up to FEAT-045. Their files stay under `0.2.2/` so
 existing cross-references keep resolving.
+
+FEAT-058 and FEAT-059 returned to `planned` on 2026-08-23. Both were carried
+as `implementation` on the branch this release line was cut from, and their
+code is not in this build: 0.2.2 ships neither competitions nor the
+BoardCell/FIPS mesh, and a table that says `implementation` would claim the
+release contains something it does not. The specs stay under `0.2.3/` — they
+are what 0.2.3 is built from, and nothing about them was decided wrong.
 
 FEAT-044/045/047/049 marked shipped on 2026-08-12, ahead of the 0.2.2 release.
 All four are in the build and described in the changelog for the version, so
