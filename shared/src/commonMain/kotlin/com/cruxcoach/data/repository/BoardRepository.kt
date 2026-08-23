@@ -400,6 +400,8 @@ interface BoardClimbQueries {
     fun searchClimbsByName(query: String, angle: Int, layoutId: Int, boardBrand: String, sortField: ClimbSortField = ClimbSortField.QUALITY, sortDirection: SortDirection = SortDirection.DESC, limit: Int = 50, offset: Int = 0, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER, selProductSizeId: Int = 0, hsmExcludedMask: Long = 0): List<ClimbWithStats>
     fun searchClimbsSorted(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, sortField: ClimbSortField, sortDirection: SortDirection, limit: Int = 50, offset: Int = 0, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER, selProductSizeId: Int = 0, hsmExcludedMask: Long = 0, showUngraded: Boolean = false): List<ClimbWithStats>
     fun getClimbByUuid(uuid: String, angle: Int): ClimbWithStats?
+    /** Upstream route UUID used by the Quantum 2.0.14 BLE protocol. */
+    fun getQuantumExternalRouteUuid(appUuid: String): String? = null
     /** Defensive fallback for [getClimbByUuid]: resolves a stored row whose
      *  uuid matches [uuid] only after normalization (strip hyphens +
      *  lowercase on both sides). The board DB mixes uuid formats (legacy
@@ -510,7 +512,7 @@ interface BoardClimbQueries {
     /** Find climb UUIDs whose frames contain ALL given hold patterns (single DB pass). */
     fun searchClimbUuidsByAllHolds(holdPatterns: List<String>, angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): Set<String>
     /** Get all frames for heatmap computation within current browse filters (brand-scoped). */
-    fun getAllFramesForHeatmap(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): List<ClimbFrameRow>
+    fun getAllFramesForHeatmap(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter, hsmExcludedMask: Long = 0): List<ClimbFrameRow>
     /** Angle-agnostic frames for the logbook stats heatmap: one row per climb
      *  with stats at ANY angle of (layout, brand). Hold usage doesn't depend
      *  on the angle, so the stats sheet must not pin one. */
@@ -599,6 +601,12 @@ interface BoardLayoutQueries {
         layoutId: Int, boardBrand: String, angle: Int, minDifficulty: Double, maxDifficulty: Double,
         minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int = 0,
         hsmExcludedMask: Long = 0, showUngraded: Boolean = false,
+    ): List<ClimbWithStats>
+    /** Full official eWalls/Quantum set for exact origin-filter counts. */
+    fun getQuantumOfficialClimbs(
+        layoutId: Int, angle: Int, minDifficulty: Double, maxDifficulty: Double,
+        minAscensionists: Int, climbType: ClimbTypeFilter, hsmExcludedMask: Long = 0,
+        showUngraded: Boolean = false,
     ): List<ClimbWithStats>
     /** Find the smallest product_size whose four edges *contain* the
      *  climb's bounding box AND has board_images for the climb's

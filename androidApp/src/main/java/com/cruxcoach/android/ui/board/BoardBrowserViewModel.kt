@@ -109,6 +109,19 @@ internal fun serializeStatusFilter(statuses: Set<ClimbStatusFilter>): String =
  *  Kilter catalogue and CruxCoach-community climbs. */
 enum class OriginFilter { ALL, CRUXCOACH, KILTER, BOARDSESH }
 
+/** Positive route rules published by eWalls. The bit values deliberately
+ * reuse the existing hsm exclusion-mask transport only for Quantum: imported
+ * Quantum climbs store a bit when a rule is missing, so the established
+ * `(hsm & excludedMask) = 0` predicate applies the rule before COUNT, LIMIT,
+ * pagination and RANDOM without changing any other board's query contract. */
+enum class QuantumRuleFilter(val bit: Long) {
+    CAMPUSING(1L),
+    EDGE(2L),
+    KICKPLATE(4L),
+    MATCHING(8L),
+    STANDARD(16L),
+}
+
 /** Pure-logic origin-bucketing extracted from [BoardBrowserViewModel] so it
  *  can be unit-tested without spinning up the full Hilt-injected ViewModel.
  *
@@ -125,7 +138,14 @@ internal object BrowserOriginFilter {
         return when (filter) {
             OriginFilter.ALL -> climbs
             OriginFilter.CRUXCOACH -> climbs.filter { it.origin == "cruxcoach" || it.source == "local" }
-            OriginFilter.KILTER -> climbs.filter { it.origin == "kilter" && it.source != "local" }
+            // KILTER is the persisted legacy enum name for the board vendor's
+            // official catalogue. Quantum rows use an honest `quantum`
+            // provenance on new imports; accepting both keeps old preferences
+            // and pre-fix Quantum rows compatible without showing "Kilter" in
+            // the Quantum UI.
+            OriginFilter.KILTER -> climbs.filter {
+                it.origin in setOf("kilter", "quantum") && it.source != "local"
+            }
             // BoardSesh-imported climbs are their own provenance — never folded
             // into the cruxcoach or kilter buckets (both filters above exclude
             // origin=='boardsesh' already), so they surface only here and under ALL.
@@ -199,6 +219,9 @@ data class BrowserFilterState(
     val climbTypeFilter: ClimbTypeFilter = ClimbTypeFilter.BOULDER,
     val benchmarkOnly: Boolean = false,
     val originFilter: OriginFilter = OriginFilter.ALL,
+    /** Required positive eWalls rules. Meaningful only for Quantum; ignored
+     * and reset on every other board so invisible state cannot leak. */
+    val quantumRuleMask: Long = 0L,
     /** When true, restrict the browser list to climbs authored by the local
      *  user's Nostr pubkey (drafts + published). Bypasses angle/grade/asc
      *  filters at fetch time so drafts saved at any angle remain visible. */
@@ -232,7 +255,7 @@ object BoardAnglePicker {
         when {
             brand == BoardBrand.MOONBOARD ->
                 MoonBoardVariant.fromLayoutId(layoutId.toLong())?.angles.orEmpty()
-            brand.usesAuroraProtocol && brand != BoardBrand.KILTER -> supportedAngles
+            brand.usesCatalogueAngles -> supportedAngles
             else -> emptyList()
         }
 
@@ -242,6 +265,38 @@ object BoardAnglePicker {
     fun clampAngle(angle: Int, chips: List<Int>): Int =
         if (chips.isEmpty() || angle in chips) angle
         else chips.minBy { kotlin.math.abs(it - angle) }
+
+    fun sliderIndex(chips: List<Int>, angle: Int): Int {
+        require(chips.isNotEmpty())
+        val exact = chips.indexOf(angle)
+        return if (exact >= 0) exact else chips.indices.minBy { kotlin.math.abs(chips[it] - angle) }
+    }
+
+    fun angleAtSliderIndex(chips: List<Int>, index: Int): Int {
+        require(chips.isNotEmpty())
+        return chips[index.coerceIn(chips.indices)]
+    }
+}
+
+/** Board-specific browse policy kept independent from Compose and IO so a
+ * stale filter persisted on one board cannot invisibly empty another board. */
+internal object BoardBrowsePolicy {
+    fun climbType(brand: BoardBrand, requested: ClimbTypeFilter): ClimbTypeFilter =
+        if (brand.supportsClimbTypeFilter) requested else ClimbTypeFilter.BOULDER
+
+    fun benchmarkOnly(brand: BoardBrand, requested: Boolean): Boolean =
+        brand.supportsBenchmarkFilter && requested
+
+    fun origin(brand: BoardBrand, requested: OriginFilter): OriginFilter =
+        if (!brand.supportsBoardSeshOrigin && requested == OriginFilter.BOARDSESH) {
+            OriginFilter.ALL
+        } else requested
+
+    fun productSizeId(brand: BoardBrand, selectedId: Int): Int =
+        if (brand.usesProductSizeEdgeFit) selectedId else 0
+
+    fun exclusionMask(brand: BoardBrand, holdSetMask: Long, quantumRuleMask: Long): Long =
+        if (brand == BoardBrand.QUANTUM) quantumRuleMask else holdSetMask
 }
 
 data class BrowserBleState(
@@ -329,15 +384,22 @@ internal fun BoardBrowserState.onBoardSwitch(
     layoutId: Int,
     boardBrand: String,
     angleChips: List<Int>,
-): BoardBrowserState = copy(
+): BoardBrowserState {
+    val brand = BoardBrand.fromWire(boardBrand)
+    return copy(
     hsmExcludedMask = 0L,
     filter = filter.copy(
         angle = angle,
         layoutId = layoutId,
         boardBrand = boardBrand,
         angleChips = angleChips,
+        climbTypeFilter = BoardBrowsePolicy.climbType(brand, filter.climbTypeFilter),
+        benchmarkOnly = BoardBrowsePolicy.benchmarkOnly(brand, filter.benchmarkOnly),
+        originFilter = BoardBrowsePolicy.origin(brand, filter.originFilter),
+        quantumRuleMask = if (brand == BoardBrand.QUANTUM) filter.quantumRuleMask else 0L,
     ),
 )
+}
 
 @HiltViewModel
 class BoardBrowserViewModel @Inject constructor(
@@ -495,7 +557,7 @@ class BoardBrowserViewModel @Inject constructor(
                 // the nearest chip so the browse query isn't stuck on an angle
                 // with zero climbs.
                 val snapBrand = BoardBrand.fromWire(snap.boardBrand)
-                val supported = if (snapBrand.usesAuroraProtocol && snapBrand != BoardBrand.KILTER) {
+                val supported = if (snapBrand.usesCatalogueAngles) {
                     withContext(Dispatchers.IO) {
                         boardRepository.getSupportedAnglesForLayout(snap.layoutId, snap.boardBrand)
                     }
@@ -510,9 +572,11 @@ class BoardBrowserViewModel @Inject constructor(
                         angleChips = angleChips,
                         minGradeIndex = snap.minGrade, maxGradeIndex = snap.maxGrade,
                         minAscensionists = snap.minAscensionists, sortField = sortField, sortDirection = sortDir,
-                        statusFilter = statusFilter, climbTypeFilter = climbType,
-                        benchmarkOnly = snap.benchmarkOnly,
-                        originFilter = originFilter,
+                        statusFilter = statusFilter,
+                        climbTypeFilter = BoardBrowsePolicy.climbType(snapBrand, climbType),
+                        benchmarkOnly = BoardBrowsePolicy.benchmarkOnly(snapBrand, snap.benchmarkOnly),
+                        originFilter = BoardBrowsePolicy.origin(snapBrand, originFilter),
+                        quantumRuleMask = if (snapBrand == BoardBrand.QUANTUM) snap.quantumRuleMask else 0L,
                         myClimbsOnly = snap.myClimbsOnly,
                         ungradedOnly = snap.ungradedOnly,
                     )
@@ -795,7 +859,7 @@ class BoardBrowserViewModel @Inject constructor(
                         // switch (already on Dispatchers.IO here). Aurora-family
                         // boards read their real angle set; MoonBoard its variant
                         // configs; Kilter stays empty (slider).
-                        val supported = if (prefBrand.usesAuroraProtocol && prefBrand != BoardBrand.KILTER) {
+                        val supported = if (prefBrand.usesCatalogueAngles) {
                             boardRepository.getSupportedAnglesForLayout(prefLayoutId, prefBoardBrand)
                         } else emptyList()
                         val angleChips = BoardAnglePicker.chipsFor(prefBrand, prefLayoutId, supported)
@@ -889,6 +953,7 @@ class BoardBrowserViewModel @Inject constructor(
                 originFilter = f.originFilter.name,
                 myClimbsOnly = f.myClimbsOnly,
                 ungradedOnly = f.ungradedOnly,
+                quantumRuleMask = f.quantumRuleMask,
             )
         }
     }
@@ -986,6 +1051,7 @@ class BoardBrowserViewModel @Inject constructor(
                 originFilter = OriginFilter.ALL,
                 myClimbsOnly = false,
                 ungradedOnly = false,
+                quantumRuleMask = 0L,
             ))
         }
         persistFilters()
@@ -1021,6 +1087,17 @@ class BoardBrowserViewModel @Inject constructor(
 
     fun updateOriginFilter(filter: OriginFilter) {
         _state.update { it.copy(filter = it.filter.copy(originFilter = filter)) }
+        persistFilters()
+        searchClimbs()
+    }
+
+    fun toggleQuantumRuleFilter(rule: QuantumRuleFilter) {
+        if (BoardBrand.fromWire(_state.value.filter.boardBrand) != BoardBrand.QUANTUM) return
+        invalidateRandomCache()
+        _state.update { state ->
+            val current = state.filter.quantumRuleMask
+            state.copy(filter = state.filter.copy(quantumRuleMask = current xor rule.bit))
+        }
         persistFilters()
         searchClimbs()
     }
@@ -1112,6 +1189,11 @@ class BoardBrowserViewModel @Inject constructor(
     private fun applyOriginFilter(climbs: List<ClimbWithStats>, filter: OriginFilter): List<ClimbWithStats> =
         BrowserOriginFilter.apply(climbs, filter)
 
+    private fun applyQuantumRuleFilter(climbs: List<ClimbWithStats>, f: BrowserFilterState): List<ClimbWithStats> {
+        val mask = if (BoardBrand.fromWire(f.boardBrand) == BoardBrand.QUANTUM) f.quantumRuleMask else 0L
+        return if (mask == 0L) climbs else climbs.filter { (it.hsm and mask) == 0L }
+    }
+
     private var firstContentReported = false
 
     /** Re-runs the browse query from page 0. [preserveDepth] is set by the
@@ -1193,7 +1275,9 @@ class BoardBrowserViewModel @Inject constructor(
         // unconstrained DB count below (~190K) instead of the handful of
         // origin-scoped rows actually shown.
         if (filter.originFilter == OriginFilter.CRUXCOACH ||
-            filter.originFilter == OriginFilter.BOARDSESH) {
+            filter.originFilter == OriginFilter.BOARDSESH ||
+            (filter.originFilter == OriginFilter.KILTER &&
+                BoardBrand.fromWire(filter.boardBrand) == BoardBrand.QUANTUM)) {
             return directCount.toLong()
         }
 
@@ -1207,7 +1291,7 @@ class BoardBrowserViewModel @Inject constructor(
         // ungradedOnly swaps the whole grade predicate (impossible range +
         // IS NULL leg), so it changes the count even at identical indices.
         val countKey = "${filter.angle}|${filter.minGradeIndex}|${filter.maxGradeIndex}|${filter.ungradedOnly}|" +
-            "${filter.minAscensionists}|${filter.searchQuery}|${filter.climbTypeFilter}|${filter.benchmarkOnly}"
+            "${filter.minAscensionists}|${filter.searchQuery}|${filter.climbTypeFilter}|${filter.benchmarkOnly}|${filter.quantumRuleMask}"
 
         // Fetch DB count only if count-affecting filters changed
         if (countKey != cachedCountKey) {
@@ -1275,7 +1359,7 @@ class BoardBrowserViewModel @Inject constructor(
                 else all.filter { it.name.contains(f.searchQuery, ignoreCase = true) }
             val statusFiltered = applyStatusFilter(nameFiltered, f.statusFilter)
             val benchFiltered = applyBenchmarkFilter(statusFiltered, f.benchmarkOnly)
-            val originFiltered = applyOriginFilter(benchFiltered, f.originFilter)
+            val originFiltered = applyQuantumRuleFilter(applyOriginFilter(benchFiltered, f.originFilter), f)
             val sorted = sortInKotlin(applyHiddenFilter(originFiltered), f.sortField, f.sortDirection)
             return Triple(sorted.take(PAGE_SIZE), sorted.size, sorted.size <= PAGE_SIZE)
         }
@@ -1300,7 +1384,7 @@ class BoardBrowserViewModel @Inject constructor(
                 else all.filter { it.name.contains(f.searchQuery, ignoreCase = true) }
             val statusFiltered = applyStatusFilter(nameFiltered, f.statusFilter)
             val benchFiltered = applyBenchmarkFilter(statusFiltered, f.benchmarkOnly)
-            val sorted = sortInKotlin(applyHiddenFilter(benchFiltered), f.sortField, f.sortDirection)
+            val sorted = sortInKotlin(applyHiddenFilter(applyQuantumRuleFilter(benchFiltered, f)), f.sortField, f.sortDirection)
             return Triple(sorted.take(PAGE_SIZE), sorted.size, sorted.size <= PAGE_SIZE)
         }
 
@@ -1325,8 +1409,36 @@ class BoardBrowserViewModel @Inject constructor(
                 else all.filter { it.name.contains(f.searchQuery, ignoreCase = true) }
             val statusFiltered = applyStatusFilter(nameFiltered, f.statusFilter)
             val benchFiltered = applyBenchmarkFilter(statusFiltered, f.benchmarkOnly)
-            val sorted = sortInKotlin(applyHiddenFilter(benchFiltered), f.sortField, f.sortDirection)
+            val sorted = sortInKotlin(applyHiddenFilter(applyQuantumRuleFilter(benchFiltered, f)), f.sortField, f.sortDirection)
             return Triple(sorted.take(PAGE_SIZE), sorted.size, sorted.size <= PAGE_SIZE)
+        }
+
+        // Exact eWalls/Quantum provenance filtering must happen before
+        // pagination. This whole-set is small (~5.7k) and prevents future
+        // community climbs from inflating the visible official count.
+        if (f.originFilter == OriginFilter.KILTER &&
+            BoardBrand.fromWire(f.boardBrand) == BoardBrand.QUANTUM
+        ) {
+            if (dbOffset > 0) return Triple(emptyList(), dbOffset, true)
+            val gb = gradeBounds(f)
+            val all = boardRepository.getQuantumOfficialClimbs(
+                f.layoutId, f.angle, gb.minDiff, gb.maxDiff, f.minAscensionists,
+                f.climbTypeFilter, hsmExcludedMask = hsmMask(), showUngraded = gb.showUngraded,
+            )
+            val nameFiltered = if (f.searchQuery.isBlank()) all else all.filter {
+                it.name.contains(f.searchQuery, ignoreCase = true) ||
+                    it.setterUsername?.contains(f.searchQuery, ignoreCase = true) == true
+            }
+            val hs = _state.value.holdSearch
+            val holdFiltered = if (hs.holdFilterActive) {
+                nameFiltered.filter { it.uuid in hs.holdFilterUuids }
+            } else nameFiltered
+            val statusFiltered = applyStatusFilter(holdFiltered, f.statusFilter)
+            val sorted = sortInKotlin(applyHiddenFilter(statusFiltered), f.sortField, f.sortDirection)
+            // The query intentionally returned the complete official set; do
+            // not truncate it and then advertise a continuation that cannot
+            // page the already-consumed Kotlin list.
+            return Triple(sorted, sorted.size, true)
         }
 
         // HOLD FILTER: direct UUID query with hold-matched UUIDs
@@ -1341,7 +1453,7 @@ class BoardBrowserViewModel @Inject constructor(
             val all = boardRepository.getClimbsByUuids(
                 hs.holdFilterUuids, f.angle, f.layoutId, f.boardBrand, gb.minDiff, gb.maxDiff, f.minAscensionists, f.climbTypeFilter
             )
-            val filtered = applyOriginFilter(applyBenchmarkFilter(applyStatusFilter(all, f.statusFilter), f.benchmarkOnly), f.originFilter)
+            val filtered = applyQuantumRuleFilter(applyOriginFilter(applyBenchmarkFilter(applyStatusFilter(all, f.statusFilter), f.benchmarkOnly), f.originFilter), f)
             val sorted = sortInKotlin(applyHiddenFilter(filtered), f.sortField, f.sortDirection)
             return Triple(sorted.take(PAGE_SIZE), sorted.size, sorted.size <= PAGE_SIZE)
         }
@@ -1358,7 +1470,7 @@ class BoardBrowserViewModel @Inject constructor(
             val all = boardRepository.getClimbsByUuids(
                 uuids, f.angle, f.layoutId, f.boardBrand, gb.minDiff, gb.maxDiff, f.minAscensionists, f.climbTypeFilter
             )
-            val filtered = applyOriginFilter(applyBenchmarkFilter(all, f.benchmarkOnly), f.originFilter)
+            val filtered = applyQuantumRuleFilter(applyOriginFilter(applyBenchmarkFilter(all, f.benchmarkOnly), f.originFilter), f)
             val sorted = sortInKotlin(applyHiddenFilter(filtered), f.sortField, f.sortDirection)
             return Triple(sorted.take(PAGE_SIZE), sorted.size, sorted.size <= PAGE_SIZE)
         }
@@ -1366,7 +1478,7 @@ class BoardBrowserViewModel @Inject constructor(
         // ALLE (empty selection): no client-side status filtering (benchmark/origin only)
         if (f.statusFilter.isEmpty()) {
             val rawPage = fetchPage(f, dbOffset)
-            val filtered = applyHiddenFilter(applyOriginFilter(applyBenchmarkFilter(rawPage, f.benchmarkOnly), f.originFilter))
+            val filtered = applyHiddenFilter(applyQuantumRuleFilter(applyOriginFilter(applyBenchmarkFilter(rawPage, f.benchmarkOnly), f.originFilter), f))
             return Triple(filtered, dbOffset + rawPage.size, rawPage.size < PAGE_SIZE)
         }
 
@@ -1378,7 +1490,7 @@ class BoardBrowserViewModel @Inject constructor(
             val page = fetchPage(f, currentOffset)
             if (page.isEmpty()) return Triple(collected, currentOffset, true)
             currentOffset += page.size
-            collected.addAll(applyHiddenFilter(applyOriginFilter(applyBenchmarkFilter(applyStatusFilter(page, f.statusFilter), f.benchmarkOnly), f.originFilter)))
+            collected.addAll(applyHiddenFilter(applyQuantumRuleFilter(applyOriginFilter(applyBenchmarkFilter(applyStatusFilter(page, f.statusFilter), f.benchmarkOnly), f.originFilter), f)))
             // Return EVERYTHING collected, not collected.take(PAGE_SIZE):
             // currentOffset has already advanced past the source rows of any
             // overflow, so truncating here would drop those climbs forever
@@ -1401,11 +1513,21 @@ class BoardBrowserViewModel @Inject constructor(
     // Selected board's product_size_id (0 = none configured → the
     // "fits my board" SQL predicate is inert). Same edge-box rule the
     // map / canRenderClimbOnSize use, so browser ⇄ map stay consistent.
-    private fun selSizeId(): Int = _state.value.boardSize?.id?.toInt() ?: 0
+    private fun selSizeId(): Int {
+        val brand = BoardBrand.fromWire(_state.value.filter.boardBrand)
+        return BoardBrowsePolicy.productSizeId(brand, _state.value.boardSize?.id?.toInt() ?: 0)
+    }
 
     // Hold-set leg of the same always-on filter (hsm bitmask, see
     // HoldSetMask). 0 = inert, exactly like selSizeId()'s 0 sentinel.
-    private fun hsmMask(): Long = _state.value.hsmExcludedMask
+    private fun hsmMask(): Long {
+        val state = _state.value
+        return BoardBrowsePolicy.exclusionMask(
+            BoardBrand.fromWire(state.filter.boardBrand),
+            state.hsmExcludedMask,
+            state.filter.quantumRuleMask,
+        )
+    }
 
     // FEAT-049 hold-set mask for the active MoonBoard variant. Memoised — see
     // MoonBoardMaskCache for why that is not an optimisation but a
@@ -1743,7 +1865,8 @@ class BoardBrowserViewModel @Inject constructor(
             _state.value.placements.mapValues { it.value.x to it.value.y }
         } else emptyMap()
         val result = boardRepository.getAllFramesForHeatmap(
-            f.angle, f.layoutId, f.boardBrand, gb.minDiff, gb.maxDiff, f.minAscensionists, f.climbTypeFilter
+            f.angle, f.layoutId, f.boardBrand, gb.minDiff, gb.maxDiff, f.minAscensionists,
+            f.climbTypeFilter, hsmExcludedMask = hsmMask()
         ).asSequence()
             .filter { row -> patterns.all { pattern -> row.frames.contains(pattern) } }
             .filter { row -> zone == null || BoardZoneFilter.climbInZone(row.frames, xyByPlacement, zone) }
@@ -1775,7 +1898,8 @@ class BoardBrowserViewModel @Inject constructor(
             }
             else -> {
                 boardRepository.getAllFramesForHeatmap(
-                    f.angle, f.layoutId, f.boardBrand, minDiff, maxDiff, f.minAscensionists, f.climbTypeFilter
+                    f.angle, f.layoutId, f.boardBrand, minDiff, maxDiff, f.minAscensionists,
+                    f.climbTypeFilter, hsmExcludedMask = hsmMask()
                 ).map { it.frames }
             }
         }

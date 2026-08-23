@@ -127,7 +127,18 @@ class BoardBleScanner(private val context: Context) {
 
             val isRelay = RelayBoardName.isRelayName(name)
             val boardName = RelayBoardName.unwrap(name)
-            val board = if (isMoonBoardName(boardName)) {
+            val quantumSerial = quantumSerialOrNull(boardName)
+            val board = if (quantumSerial != null) {
+                DiscoveredBoard(
+                    displayName = boardName,
+                    serial = quantumSerial,
+                    apiLevel = 1,
+                    address = device.address,
+                    rssi = result.rssi,
+                    boardBrand = BoardBrand.QUANTUM,
+                    isCruxRelay = isRelay,
+                )
+            } else if (isMoonBoardName(boardName)) {
                 // MoonBoard advertises a bare "MoonBoard…" name with no
                 // Aurora #serial@apiLevel suffix. apiLevel is an Aurora
                 // concept and stays 0 for MoonBoard.
@@ -187,6 +198,17 @@ class BoardBleScanner(private val context: Context) {
                     "Toggling Bluetooth off/on should fix this.")
             }
         }
+    }
+
+    internal fun quantumSerialOrNull(name: String): String? {
+        // eWalls 2.0.14's explicit local-name prefixes are eWalls_, QB_
+        // and QBB_. The final segment is the 12-hex controller MAC identity;
+        // reject lookalike advertisements instead of opening an arbitrary
+        // fff2 peripheral as a climbing board.
+        if (!(name.startsWith("eWalls_") || name.startsWith("QB_") || name.startsWith("QBB_"))) {
+            return null
+        }
+        return name.substringAfterLast('_').takeIf { it.matches(Regex("[0-9A-Fa-f]{12}")) }
     }
 
     @SuppressLint("MissingPermission")

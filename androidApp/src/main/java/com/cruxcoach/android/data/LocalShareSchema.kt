@@ -69,6 +69,22 @@ object LocalShareSchema {
      * images recoverable from free pages.
      */
     val SNAPSHOT_SCRUB: List<String> = listOf(
+        // The peer wire format predates quantum_route_refs. Until its version
+        // is bumped, remove Quantum catalogue + geometry from the served copy
+        // so pre-0.2.2 peers never receive an unknown/inoperable board. The
+        // live DB is untouched and Quantum re-downloads from its isolated
+        // Blossom d-tag.
+        """DELETE FROM climb_stats WHERE climb_uuid IN
+           (SELECT uuid FROM climbs WHERE board_brand = 'quantum')""",
+        """DELETE FROM climbs WHERE board_brand = 'quantum'""",
+        """DELETE FROM placements WHERE board_brand = 'quantum'""",
+        """DELETE FROM holes WHERE board_brand = 'quantum'""",
+        """DELETE FROM product_sizes WHERE board_brand = 'quantum'""",
+        """DELETE FROM board_images WHERE board_brand = 'quantum'""",
+        """DELETE FROM leds WHERE board_brand = 'quantum'""",
+        """DELETE FROM placement_roles WHERE board_brand = 'quantum'""",
+        """DELETE FROM quantum_route_refs""",
+        """DELETE FROM quantum_route_metadata""",
         """DELETE FROM climb_stats WHERE climb_uuid IN
            (SELECT uuid FROM climbs WHERE COALESCE(source, 'kilter') = 'local')""",
         """DELETE FROM climbs WHERE COALESCE(source, 'kilter') = 'local'""",
@@ -248,6 +264,16 @@ object LocalShareSchema {
             false,
             "the sender's per-account Kilter publish audit trail — DELETEd " +
                 "from the served snapshot by [SNAPSHOT_SCRUB], never imported."
+        ),
+        "quantum_route_refs" to PeerTableRule(
+            false,
+            "external controller UUID bridge; local-share v1 cannot carry it atomically, " +
+                "so Quantum rows are scrubbed and re-downloaded from their isolated catalogue"
+        ),
+        "quantum_route_metadata" to PeerTableRule(
+            false,
+            "Quantum vendor grade/rules metadata; scrubbed with Quantum rows and rebuilt " +
+                "from the isolated catalogue rather than copied through local-share v1"
         ),
         "ExerciseLibrary" to PeerTableRule(false, "training content, not board catalogue"),
     )

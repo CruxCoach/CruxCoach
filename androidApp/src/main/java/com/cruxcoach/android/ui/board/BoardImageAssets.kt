@@ -15,9 +15,15 @@ import com.cruxcoach.domain.board.BoardBrand
  * Compose/Android runtime. A path whose asset is absent decodes to null in
  * [BoardImageCache], degrading to a placements-only view (never a crash).
  */
-internal fun boardImageAssetPath(brand: BoardBrand, sizeId: Long): String =
-    if (brand == BoardBrand.KILTER) "board_images/board_${sizeId}.webp"
-    else "board_images/${brand.wireValue}/board_${sizeId}.webp"
+internal fun boardImageAssetPath(brand: BoardBrand, sizeId: Long): String = when {
+    brand == BoardBrand.KILTER -> "board_images/board_${sizeId}.webp"
+    brand == BoardBrand.QUANTUM -> when (sizeId) {
+        9201L, 9202L, 9203L -> "board_images/quantum/board_${sizeId}.png"
+        9204L, 9205L -> "board_images/quantum/board_${sizeId}.jpg"
+        else -> "board_images/quantum/board_${sizeId}.png"
+    }
+    else -> "board_images/${brand.wireValue}/board_${sizeId}.webp"
+}
 
 /**
  * Candidate background-image asset paths, most specific first.
@@ -35,9 +41,15 @@ internal fun boardImageCandidatePaths(
     layoutId: Long?,
 ): List<String> {
     val sizePath = boardImageAssetPath(brand, sizeId)
-    return if (layoutId != null && layoutId > 0L) {
+    return if (brand != BoardBrand.QUANTUM && layoutId != null && layoutId > 0L) {
         listOf(sizePath.removeSuffix(".webp") + "_$layoutId.webp", sizePath)
     } else {
         listOf(sizePath)
     }
 }
+
+internal fun boardMarkerScale(
+    @Suppress("UNUSED_PARAMETER") brand: BoardBrand,
+    xScale: Float,
+    @Suppress("UNUSED_PARAMETER") boardWidth: Float,
+): Float = xScale

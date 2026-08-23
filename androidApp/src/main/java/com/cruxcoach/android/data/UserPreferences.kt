@@ -397,6 +397,7 @@ object PreferenceKeys {
     // "Nur unbewertete (Projekte)" browse mode — list shows ONLY ungraded
     // climbs while set; persisted like every other browse filter.
     val BOARD_UNGRADED_ONLY = booleanPreferencesKey("board_ungraded_only")
+    val BOARD_QUANTUM_RULE_MASK = longPreferencesKey("board_quantum_rule_mask")
     val ROUTE_FRAME_SPEED = floatPreferencesKey("route_frame_speed_f")
     // Auto-Note: when true, publishing a Kind-30078 climb also sends a
     // public Kind-1 note linking to it. Default false; the editor exposes
@@ -475,6 +476,8 @@ data class BoardFilterSnapshot(
     /** Ungraded-only ("Projekte") browse mode. Defaults to false so fresh
      *  installs and pre-existing prefs open on the normal catalogue view. */
     val ungradedOnly: Boolean = false,
+    /** Required positive Quantum/eWalls route rules; ignored by every other board. */
+    val quantumRuleMask: Long = 0L,
     /** Active board brand — "kilter" | "moonboard" (FEAT-027). */
     val boardBrand: String = "kilter",
 )
@@ -503,6 +506,7 @@ class UserPreferences(
             originFilter = prefs[PreferenceKeys.BOARD_ORIGIN_FILTER] ?: "ALL",
             myClimbsOnly = prefs[PreferenceKeys.BOARD_MY_CLIMBS_ONLY] ?: false,
             ungradedOnly = prefs[PreferenceKeys.BOARD_UNGRADED_ONLY] ?: false,
+            quantumRuleMask = prefs[PreferenceKeys.BOARD_QUANTUM_RULE_MASK] ?: 0L,
         )
     }
 
@@ -1278,6 +1282,7 @@ class UserPreferences(
         originFilter: String = "ALL",
         myClimbsOnly: Boolean = false,
         ungradedOnly: Boolean = false,
+        quantumRuleMask: Long = 0L,
     ) {
         dataStore.edit { prefs ->
             prefs[PreferenceKeys.BOARD_ANGLE] = angle
@@ -1292,6 +1297,7 @@ class UserPreferences(
             prefs[PreferenceKeys.BOARD_ORIGIN_FILTER] = originFilter
             prefs[PreferenceKeys.BOARD_MY_CLIMBS_ONLY] = myClimbsOnly
             prefs[PreferenceKeys.BOARD_UNGRADED_ONLY] = ungradedOnly
+            prefs[PreferenceKeys.BOARD_QUANTUM_RULE_MASK] = quantumRuleMask
         }
     }
 

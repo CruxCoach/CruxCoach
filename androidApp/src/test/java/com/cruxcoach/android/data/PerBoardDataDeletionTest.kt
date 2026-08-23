@@ -182,12 +182,30 @@ class PerBoardDataDeletionTest {
         assertEquals(setOf("k-cat"), repo.getAllClimbUuids())
     }
 
+    @Test
+    fun `Quantum deletion removes official source and isolated metadata but keeps community`() {
+        climb("q-cat", "quantum", source = "quantum")
+        climb("q-local", "quantum", source = "local")
+        climb("k-cat", "kilter", source = "kilter")
+        driver.execute(null, "INSERT INTO quantum_route_refs(app_uuid,route_uuid,model) VALUES ('q-cat','route-q','xl')", 0)
+        driver.execute(null, "INSERT INTO quantum_route_metadata(app_uuid,source_grade,standard) VALUES ('q-cat','[14]',1)", 0)
+
+        repo.deleteBoardDataForBrands(setOf("quantum"))
+
+        assertEquals(setOf("q-local", "k-cat"), repo.getAllClimbUuids())
+        assertFalse(hasStat("q-cat"))
+        assertTrue(hasStat("q-local") && hasStat("k-cat"))
+        assertEquals(0L, count("SELECT COUNT(*) FROM quantum_route_refs"))
+        assertEquals(0L, count("SELECT COUNT(*) FROM quantum_route_metadata"))
+    }
+
     // ── All-boards fast path ────────────────────────────────────────
 
     @Test
     fun `deleteAllBoardData wipes every brand but protects local and nostr climbs`() {
         climb("k-cat", "kilter", source = "kilter")
         climb("m-cat", "moonboard", source = "kilter")
+        climb("q-cat", "quantum", source = "quantum")
         climb("k-local", "kilter", source = "local")
         climb("m-nostr", "moonboard", source = "nostr")
         geometry("kilter", 1L)
@@ -202,7 +220,7 @@ class PerBoardDataDeletionTest {
         // the catalogue rows go, own/community climbs + their stats stay.
         assertEquals(setOf("k-local", "m-nostr"), repo.getAllClimbUuids())
         assertTrue(hasStat("k-local") && hasStat("m-nostr"))
-        assertFalse(hasStat("k-cat") || hasStat("m-cat"))
+        assertFalse(hasStat("k-cat") || hasStat("m-cat") || hasStat("q-cat"))
         assertEquals(0L, count("SELECT COUNT(*) FROM beta_links"))
         for (table in listOf("placements", "product_sizes", "board_images", "leds", "holes", "board_hold_positions")) {
             assertEquals(0L, count("SELECT COUNT(*) FROM $table"), "$table must be empty")

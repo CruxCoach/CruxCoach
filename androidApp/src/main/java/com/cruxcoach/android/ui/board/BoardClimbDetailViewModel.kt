@@ -8,6 +8,8 @@ import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.BoardConnectionCapacity
 import com.cruxcoach.android.ble.BoardControllerProfiles
 import com.cruxcoach.android.ble.BoardProjectionPolicy
+import com.cruxcoach.android.ble.BoardLayerManager
+import com.cruxcoach.android.ble.BoardLayerState
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.data.BleShareManager
@@ -185,6 +187,9 @@ internal fun ClimbDetailState.withLiveDeviceState(live: ClimbDetailState): Climb
         restTimerAutoStart = live.restTimerAutoStart,
         zones = live.zones,
         currentUserPubkey = live.currentUserPubkey,
+        boardLayers = live.boardLayers,
+        selectedBoardLayerSlot = live.selectedBoardLayerSlot,
+        selectedBoardLayerColor = live.selectedBoardLayerColor,
     )
 
 data class ClimbDetailState(
@@ -229,6 +234,11 @@ data class ClimbDetailState(
     val playback: PlaybackState = PlaybackState(),
     val ble: BoardSendState = BoardSendState(),
     val boardSendMode: BoardSendMode = BoardSendMode.AUTOMATIC,
+    /** Live physical-board layers. Quantum currently supplies four; other
+     * boards remain a single projection through the same capability model. */
+    val boardLayers: BoardLayerState = BoardLayerState(),
+    val selectedBoardLayerSlot: Int? = null,
+    val selectedBoardLayerColor: Int? = null,
     val listDialog: ListDialogState = ListDialogState(),
     val nearby: NearbySharingState = NearbySharingState(),
     /** Hex pubkey of the local NostrSigner. Used by the UI to gate
@@ -316,6 +326,7 @@ class BoardClimbDetailViewModel @Inject constructor(
     private val personalBoardRepo: PersonalBoardRepository,
     private val userPreferences: UserPreferences,
     private val bleConnection: BoardBleConnection,
+    private val boardLayerManager: BoardLayerManager,
     private val sessionManager: BoardSessionManager,
     private val zoneManager: IntensityZoneManager,
     private val climbAdvertiser: ClimbBleAdvertiser,
@@ -395,7 +406,7 @@ class BoardClimbDetailViewModel @Inject constructor(
             // saved climb-selection send mode — but only when a send can get
             // there at all. Asking isConnected() alone let the animation run
             // through while a session queue swallowed every single frame.
-            if (sendController.canSendToBoard()) sendController.sendToBoard()
+            if (sendController.canSendToBoard()) sendController.sendToBoard(automaticLayer = true)
         }
     )
 
@@ -408,11 +419,24 @@ class BoardClimbDetailViewModel @Inject constructor(
         userPreferences = userPreferences,
         climbAdvertiser = climbAdvertiser,
         sessionQueueManager = sessionQueueManager,
-        isSharingEnabled = { bleShareManager.uiState.value.sharingEnabled }
+        isSharingEnabled = { bleShareManager.uiState.value.sharingEnabled },
+        boardLayerManager = boardLayerManager,
     )
 
     init {
         PerfLogger.navMilestone("BoardClimbDetailVM.init start")
+        viewModelScope.launch {
+            boardLayerManager.state.collect { layers ->
+                _state.update { current -> current.copy(boardLayers = layers) }
+            }
+        }
+        viewModelScope.launch {
+            bleConnection.quantumControllerState.collect { controller ->
+                if (controller.authoritative) {
+                    boardLayerManager.reconcile(controller.players)
+                }
+            }
+        }
         // Re-load the displayed climb whenever a creator-side mutation happens
         // (e.g. an edit/publish from the editor opened on top of this screen).
         // The nav entry can stay RESUMED behind the editor, so a lifecycle
@@ -1254,6 +1278,25 @@ class BoardClimbDetailViewModel @Inject constructor(
 
     fun sendToBoard() = sendController.sendToBoard()
 
+    fun selectBoardLayer(slot: Int) {
+        val existing = _state.value.boardLayers.layers.firstOrNull { it.slot == slot }
+        _state.update {
+            it.copy(
+                selectedBoardLayerSlot = slot,
+                selectedBoardLayerColor = existing?.color ?: boardLayerManager.defaultColor(slot),
+            )
+        }
+    }
+
+    fun selectBoardLayerColor(color: Int) {
+        _state.update { it.copy(selectedBoardLayerColor = color) }
+    }
+
+    fun assignCurrentToBoardLayer() = sendController.assignCurrentToBoardLayer()
+    fun sendBoardLayer(slot: Int) = sendController.sendBoardLayer(slot)
+    fun sendAllBoardLayers() = sendController.sendAllBoardLayers()
+    fun removeBoardLayer(slot: Int) = sendController.removeBoardLayer(slot)
+
     /**
      * Primary detail action. A shared session owns board delivery, so the
      * same surface that lights a directly connected board adds to the shared
@@ -1460,7 +1503,7 @@ class BoardClimbDetailViewModel @Inject constructor(
             connectedViaRelay = climbState.ble.connectedViaRelay,
         )
         if (decision.dispatchAutomatically) {
-            sendController.sendToBoard()
+            sendController.sendToBoard(automaticLayer = true)
         }
     }
 

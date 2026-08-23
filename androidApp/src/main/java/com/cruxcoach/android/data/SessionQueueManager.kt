@@ -716,7 +716,12 @@ class SessionQueueManager(
                     (if (climb.brand == BoardBrand.KILTER) userPreferences.ledHoldColors.first()
                      else LedHoldColors.standardFor(climb.brand)).toRoleColorMap()
                 }
-                val sent = bleConnection.sendClimb(holds, ledMap, roleColors)
+                val sent = bleConnection.sendClimb(
+                    holds, ledMap, roleColors,
+                    routeId = if (climb.brand == BoardBrand.QUANTUM) {
+                        boardRepository.getQuantumExternalRouteUuid(item.climbUuid) ?: item.climbUuid
+                    } else null,
+                )
                 if (sent) {
                     markCurrentClimbProjected(key)
                     Log.d(TAG, "sendCurrentClimbToBoard: sent ${item.climbUuid.take(8)} angle=${item.angle}")

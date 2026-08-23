@@ -18,6 +18,18 @@ internal data class BoardDeliveryDecision(
     val showAction: Boolean,
 )
 
+/** What the middle seat of the climb detail's action dock is, right now. */
+internal enum class BoardDetailLampMode {
+    /** No board action belongs on this climb page at all. */
+    HIDDEN,
+    /** Light the climb on the board this device drives. */
+    LIGHT,
+    /** Put the climb on the shared session queue that drives the board. */
+    SHARED_QUEUE,
+    /** Nothing is connected yet, and this climb could go on a wall. */
+    CONNECT,
+}
+
 /**
  * Keeps direct board control and shared-session control mutually exclusive.
  * A session always owns delivery: opening a climb must never add it implicitly,
@@ -79,20 +91,42 @@ internal object BoardDeliveryPolicy {
             )
         }
 
-        // Both sides of a relay are multi-connection situations and both are
-        // already expressed in [sendMode]: a relay endpoint is classified as
-        // MULTIPLE by [BoardControllerProfiles], and hosting resolves to the
-        // multi-connection preference in [BoardSendModePolicy]. So the
-        // preference decides here, full stop.
-        //
-        // No second override. The "don't grab a shared wall by swiping" rule
-        // lives in that preference's default (EXPLICIT); re-applying it here
-        // meant a climber who deliberately switched to AUTOMATIC still got a
-        // button, which is not a default any more — it is ignoring them.
+        // Detail browsing is never a board command. The user can swipe, open a
+        // deep link or reconnect without replacing what somebody is climbing.
+        // Every directly projected climb now starts at the visible lamp. The
+        // legacy preference is still consumed by explicit playlist/playback
+        // flows, but it no longer hides this action or dispatches page changes.
         return BoardDeliveryDecision(
             target = BoardDeliveryTarget.DIRECT_BOARD,
-            dispatchAutomatically = sendMode == BoardSendMode.AUTOMATIC,
-            showAction = sendMode == BoardSendMode.EXPLICIT,
+            dispatchAutomatically = false,
+            showAction = true,
         )
+    }
+
+    /**
+     * Turns a delivery decision into the one control the detail dock shows.
+     *
+     * The distinction that matters is between the two ways [resolve] says no.
+     * "Nothing is connected" is an invitation — the wall is free, the climb
+     * would fit on it, connect one. "Somebody else owns this board" is not:
+     * offering to connect there would be offering to take a wall a group is
+     * climbing on, one tap away from a page that never showed their list.
+     */
+    fun lampMode(
+        decision: BoardDeliveryDecision,
+        hasDirectPayload: Boolean,
+        boardConnected: Boolean,
+        /** A BoardCell group or a joining shared session owns delivery. */
+        boardOwnedByOthers: Boolean,
+        countdownRunning: Boolean,
+    ): BoardDetailLampMode = when {
+        // Mid-countdown the climb is already on its way to the wall.
+        countdownRunning -> BoardDetailLampMode.HIDDEN
+        decision.showAction && decision.target == BoardDeliveryTarget.SHARED_QUEUE ->
+            BoardDetailLampMode.SHARED_QUEUE
+        decision.showAction -> BoardDetailLampMode.LIGHT
+        boardOwnedByOthers -> BoardDetailLampMode.HIDDEN
+        hasDirectPayload && !boardConnected -> BoardDetailLampMode.CONNECT
+        else -> BoardDetailLampMode.HIDDEN
     }
 }

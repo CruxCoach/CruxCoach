@@ -633,6 +633,201 @@ class BoardDatabaseImporter(
     }
 
     /**
+     * Import the dedicated Quantum v1 snapshot. The source schema is kept
+     * intentionally separate from the historical Aurora schema; this method
+     * adapts it into CruxCoach's brand-namespaced catalogue and coordinate
+     * tables without changing any old manifest or migration contract.
+     */
+    @Synchronized
+    fun importQuantumSnapshot(
+        snapshotFile: File,
+        onProgress: ((step: ImportStep) -> Unit)? = null,
+    ) {
+        val db = openTargetDb()
+        try {
+            db.execSQL("ATTACH DATABASE ? AS qb", arrayOf(snapshotFile.absolutePath))
+            val schema = queryLong(db, "PRAGMA qb.user_version")
+            require(schema == 1L) { "Unsupported Quantum snapshot schema: $schema" }
+            val required = setOf(
+                "quantum_models", "quantum_diodes", "quantum_routes",
+                "quantum_route_models", "quantum_route_lights",
+            )
+            val present = mutableSetOf<String>()
+            db.rawQuery("SELECT name FROM qb.sqlite_master WHERE type='table'", null).use { c ->
+                while (c.moveToNext()) present += c.getString(0)
+            }
+            require(present.containsAll(required)) { "Quantum snapshot is missing required tables" }
+
+            db.beginTransaction()
+            try {
+                // Refresh only Quantum catalogue rows. Personal/log/list rows
+                // reference the stable synthetic climb ids and stay untouched.
+                db.execSQL("DELETE FROM climb_stats WHERE climb_uuid IN (SELECT uuid FROM climbs WHERE board_brand='quantum' AND origin IN ('kilter','quantum'))")
+                db.execSQL("DELETE FROM climbs WHERE board_brand='quantum' AND origin IN ('kilter','quantum')")
+                db.execSQL("DELETE FROM placements WHERE board_brand='quantum'")
+                db.execSQL("DELETE FROM leds WHERE board_brand='quantum'")
+                db.execSQL("DELETE FROM product_sizes WHERE board_brand='quantum'")
+                db.execSQL("DELETE FROM placement_roles WHERE board_brand='quantum'")
+                db.execSQL("DELETE FROM quantum_route_refs")
+                db.execSQL("DELETE FROM quantum_route_metadata")
+
+                db.execSQL(
+                    """
+                    INSERT INTO product_sizes(board_brand,id,product_id,name,edge_left,edge_right,edge_bottom,edge_top,image_filename)
+                    SELECT 'quantum', product_size_id, 91, name,
+                           CAST(edge_left*1000 AS INTEGER), CAST(edge_right*1000 AS INTEGER),
+                           CAST(edge_bottom*1000 AS INTEGER), CAST(edge_top*1000 AS INTEGER), NULL
+                    FROM qb.quantum_models
+                    """.trimIndent()
+                )
+                // Prefix model-local placement ids with the stable model slot
+                // (layout_id - 9100). This
+                // keeps the shared (brand,placement_id) PK collision-free while
+                // preserving a stable reversible mapping AND staying within
+                // BoardHold's Int identity range.
+                db.execSQL(
+                    """
+                    INSERT INTO placements(board_brand,placement_id,hole_id,set_id,x,y)
+                    SELECT 'quantum', (m.layout_id-9100)*1000000+d.placement_id,
+                           (m.layout_id-9100)*1000000+d.placement_id, 1,
+                           CAST(d.x*1000 AS INTEGER), CAST(d.y*1000 AS INTEGER)
+                    FROM qb.quantum_diodes d JOIN qb.quantum_models m USING(model)
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    INSERT INTO leds(board_brand,hole_id,product_size_id,position)
+                    SELECT 'quantum', (m.layout_id-9100)*1000000+d.placement_id,
+                           m.product_size_id, CAST(d.autocad_id AS INTEGER)
+                    FROM qb.quantum_diodes d JOIN qb.quantum_models m USING(model)
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    INSERT INTO placement_roles(board_brand,id,name,led_color,screen_color) VALUES
+                    ('quantum',12,'Start','#00ff00','#00ff00'),
+                    ('quantum',13,'Step','#00ffff','#00ffff'),
+                    ('quantum',14,'Finish','#ff00ff','#ff00ff')
+                    """.trimIndent()
+                )
+
+                val routeCount = queryLong(db, "SELECT COUNT(*) FROM qb.quantum_route_models").toInt()
+                onProgress?.invoke(ImportStep.ImportClimbs(0, 0, routeCount))
+                db.execSQL(
+                    """
+                    INSERT INTO quantum_route_refs(app_uuid,route_uuid,model)
+                    SELECT LOWER(app_uuid), LOWER(route_uuid), model
+                    FROM qb.quantum_route_models
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    INSERT INTO quantum_route_metadata(
+                        app_uuid,source_grade,campusing,edge,kickplate,matching,standard,tags)
+                    SELECT LOWER(rm.app_uuid),COALESCE(r.grade,''),
+                           r.campusing,r.edge,r.kickplate,r.matching,r.standard,COALESCE(r.tags,'')
+                    FROM qb.quantum_route_models rm
+                    JOIN qb.quantum_routes r ON r.uuid=rm.route_uuid
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    INSERT OR REPLACE INTO climbs(
+                        uuid,layout_id,setter_username,name,frames_count,is_listed,
+                        edge_left,edge_right,edge_bottom,edge_top,created_at,description,
+                        frames,is_nomatch,hsm,move_count,board_brand,origin,source,sync_status)
+                    SELECT LOWER(rm.app_uuid), m.layout_id,
+                           NULLIF(r.setter,''), r.name, 1, CASE WHEN r.disabled=0 THEN 1 ELSE 0 END,
+                           CAST((SELECT MIN(d.x) FROM qb.quantum_route_lights l
+                                 JOIN qb.quantum_diodes d ON d.model=l.model AND d.diode_uuid=l.diode_uuid
+                                 WHERE l.route_uuid=r.uuid AND l.model=rm.model)*1000 AS INTEGER),
+                           CAST((SELECT MAX(d.x) FROM qb.quantum_route_lights l
+                                 JOIN qb.quantum_diodes d ON d.model=l.model AND d.diode_uuid=l.diode_uuid
+                                 WHERE l.route_uuid=r.uuid AND l.model=rm.model)*1000 AS INTEGER),
+                           CAST((SELECT MIN(d.y) FROM qb.quantum_route_lights l
+                                 JOIN qb.quantum_diodes d ON d.model=l.model AND d.diode_uuid=l.diode_uuid
+                                 WHERE l.route_uuid=r.uuid AND l.model=rm.model)*1000 AS INTEGER),
+                           CAST((SELECT MAX(d.y) FROM qb.quantum_route_lights l
+                                 JOIN qb.quantum_diodes d ON d.model=l.model AND d.diode_uuid=l.diode_uuid
+                                 WHERE l.route_uuid=r.uuid AND l.model=rm.model)*1000 AS INTEGER),
+                           CAST(r.created_at AS TEXT), COALESCE(r.tips,''),
+                           COALESCE((
+                             SELECT group_concat('p'||q.placement||'r'||q.role,'') FROM (
+                               SELECT (m2.layout_id-9100)*1000000+d.placement_id AS placement,
+                                      CASE l.step WHEN 1 THEN 12 WHEN 3 THEN 14 ELSE 13 END AS role
+                               FROM qb.quantum_route_lights l
+                               JOIN qb.quantum_diodes d ON d.model=l.model AND d.diode_uuid=l.diode_uuid
+                               JOIN qb.quantum_models m2 ON m2.model=l.model
+                               WHERE l.route_uuid=r.uuid AND l.model=rm.model
+                               ORDER BY l.step,d.placement_id
+                             ) q
+                           ),''), 0,
+                           (CASE WHEN COALESCE(r.campusing,0)=0 THEN 1 ELSE 0 END) +
+                           (CASE WHEN COALESCE(r.edge,0)=0 THEN 2 ELSE 0 END) +
+                           (CASE WHEN COALESCE(r.kickplate,0)=0 THEN 4 ELSE 0 END) +
+                           (CASE WHEN COALESCE(r.matching,0)=0 THEN 8 ELSE 0 END) +
+                           (CASE WHEN COALESCE(r.standard,0)=0 THEN 16 ELSE 0 END),
+                           MAX((SELECT COUNT(*) FROM qb.quantum_route_lights l WHERE l.route_uuid=r.uuid AND l.model=rm.model)-2,0),
+                           'quantum','quantum','quantum','synced'
+                    FROM qb.quantum_route_models rm
+                    JOIN qb.quantum_routes r ON r.uuid=rm.route_uuid
+                    JOIN qb.quantum_models m ON m.model=rm.model
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    WITH route_grades AS (
+                      SELECT rm.app_uuid,rm.route_uuid,rm.model,m.layout_id,r.angle,r.rating,r.ascents,
+                             REPLACE(TRIM(r.grade),' ','') AS source_bucket
+                      FROM qb.quantum_route_models rm
+                      JOIN qb.quantum_routes r ON r.uuid=rm.route_uuid
+                      JOIN qb.quantum_models m ON m.model=rm.model
+                    ), mapped_grades AS (
+                      SELECT *, CASE
+                        WHEN source_bucket IN ('[6]','[7]') THEN 10
+                        WHEN source_bucket IN ('[7,8]','[8]') THEN 11
+                        WHEN source_bucket='[9]' THEN 12
+                        WHEN source_bucket IN ('[9,10]','[10]') THEN 13
+                        WHEN source_bucket='[11]' THEN 14
+                        WHEN source_bucket IN ('[11,12]','[12]','[12,13]','[13]') THEN 15
+                        WHEN source_bucket IN (
+                          '[14]','[15]','[16]','[17]','[18]','[19]','[20]','[21]','[22]',
+                          '[23]','[24]','[25]','[26]','[27]','[28]','[29]','[30]','[31]','[32]'
+                        ) THEN CAST(SUBSTR(source_bucket,2,LENGTH(source_bucket)-2) AS INTEGER)+2
+                        WHEN source_bucket='[15,16]' THEN 18
+                        WHEN source_bucket='[19,20]' THEN 22
+                        WHEN source_bucket='[20,21]' THEN 23
+                        WHEN source_bucket='[21,22]' THEN 24
+                        WHEN source_bucket='[22,23]' THEN 25
+                        ELSE NULL
+                      END AS crux_grade
+                      FROM route_grades
+                    )
+                    INSERT OR REPLACE INTO climb_stats(
+                        climb_uuid,angle,display_difficulty,difficulty_average,quality_average,
+                        ascensionist_count,benchmark_difficulty,fa_username,fa_at,
+                        official_kilter_difficulty,layout_id)
+                    SELECT LOWER(app_uuid),angle,crux_grade,crux_grade,
+                           rating,ascents,NULL,NULL,NULL,NULL,layout_id
+                    FROM mapped_grades
+                    """.trimIndent()
+                )
+                db.setTransactionSuccessful()
+                onProgress?.invoke(ImportStep.ImportClimbs(routeCount, routeCount, routeCount))
+            } finally {
+                db.endTransaction()
+            }
+        } finally {
+            runCatching { db.execSQL("DETACH DATABASE qb") }
+            db.close()
+        }
+        backfillMoveCounts()
+        val count = boardRepository.getClimbCountsByBrand()["quantum"] ?: 0L
+        onProgress?.invoke(ImportStep.Done(count.toInt(), count.toInt(), 0, 0))
+        Log.i(TAG, "importQuantumSnapshot done: climbs=$count")
+    }
+
+    /**
      * Merge a snapshot's `climbs` (attached as [alias]) into the target —
      * the snapshot analogue of the Kilter chunk path's two-step merge in
      * [importClimbs]. A blanket INSERT OR REPLACE is forbidden here: the
