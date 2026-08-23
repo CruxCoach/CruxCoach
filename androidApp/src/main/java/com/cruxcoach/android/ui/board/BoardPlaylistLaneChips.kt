@@ -29,8 +29,8 @@ import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.SuccessGreen
 import com.cruxcoach.android.ui.theme.WarningYellow
 import com.cruxcoach.domain.board.QuantumLaneBadge
-import com.cruxcoach.domain.board.QuantumLaneEligibility
 import com.cruxcoach.domain.board.QuantumLaneBadgeKind
+import com.cruxcoach.domain.board.QuantumLaneEligibility
 import com.cruxcoach.domain.board.QuantumLaneSource
 
 /**
@@ -91,7 +91,7 @@ private fun LaneChip(
         // group's current belongs"; without saying so it is an invisible door.
         assigned -> ". " + unassignSuffix
         suggested -> ". " + suggestedSuffix
-        else -> EMPTY_SUFFIX
+        else -> ""
     }
     val label = badge.label
     Surface(
@@ -134,8 +134,6 @@ private fun LaneChip(
         )
     }
 }
-
-private const val EMPTY_SUFFIX = ""
 
 private fun laneChipTint(kind: QuantumLaneBadgeKind): Color = when (kind) {
     QuantumLaneBadgeKind.ON_BOARD -> SuccessGreen
