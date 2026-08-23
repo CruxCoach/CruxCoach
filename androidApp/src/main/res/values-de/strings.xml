@@ -1332,6 +1332,9 @@
     <string name="board_climb_frames">%d Frames</string>
     <string name="board_climb_sends_count">%d sends</string>
     <string name="board_detail_benchmark">Benchmark</string>
+    <string name="board_detail_more_information">Climb-Details und Log-Verlauf</string>
+    <string name="board_detail_quick_send_logged">Send geloggt</string>
+    <string name="board_detail_quick_attempt_logged">Versuch geloggt</string>
     <string name="board_detail_frames">Frames</string>
     <string name="board_detail_matching">Matchen erlaubt</string>
     <string name="board_detail_no_matching">Kein Matchen</string>

@@ -228,6 +228,20 @@ class BoardSessionManager(
         persistSessionUpdate()
     }
 
+    /** Reverses an accidental one-tap log while its undo snackbar is visible. */
+    fun undoRecordedAscent() {
+        if (!_state.value.isActive || _state.value.ascentCount == 0) return
+        _state.update { it.copy(ascentCount = it.ascentCount - 1) }
+        persistSessionUpdate()
+    }
+
+    /** Reverses an accidental one-tap attempt while its undo snackbar is visible. */
+    fun undoRecordedBid() {
+        if (!_state.value.isActive || _state.value.bidCount == 0) return
+        _state.update { it.copy(bidCount = it.bidCount - 1) }
+        persistSessionUpdate()
+    }
+
     // --- Rest timer controls ---
 
     fun startRestTimer(durationSeconds: Int) {
