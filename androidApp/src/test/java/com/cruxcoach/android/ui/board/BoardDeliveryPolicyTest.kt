@@ -37,18 +37,6 @@ class BoardDeliveryPolicyTest {
     }
 
     @Test
-    fun `playlist host inside BoardCell never competes with technical controller`() {
-        assertFalse(
-            BoardDeliveryPolicy.shouldAutoConnectSessionHost(
-                SessionRole.HOST,
-                SessionRole.NONE,
-                ConnectionState.DISCONNECTED,
-                boardRoutedByMesh = true,
-            )
-        )
-    }
-
-    @Test
     fun `a newly joined participant releases any local physical board connection`() {
         assertTrue(
             BoardDeliveryPolicy.shouldReleaseBoardForSessionParticipant(
@@ -233,20 +221,5 @@ class BoardDeliveryPolicyTest {
             assertEquals(BoardDeliveryTarget.NONE, decision.target)
             assertFalse(decision.showAction)
         }
-    }
-
-    @Test
-    fun `mesh participant uses multi mode without a direct board connection`() {
-        val decision = BoardDeliveryPolicy.resolve(
-            sendMode = BoardSendMode.EXPLICIT,
-            sessionRole = SessionRole.NONE,
-            boardConnected = false,
-            hasDirectPayload = true,
-            connectedViaMesh = true,
-        )
-
-        assertEquals(BoardDeliveryTarget.MESH_BOARD, decision.target)
-        assertTrue(decision.showAction)
-        assertFalse(decision.dispatchAutomatically)
     }
 }

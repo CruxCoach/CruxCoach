@@ -96,7 +96,6 @@ data class PlaybackState(
 data class BoardSendState(
     val connectionState: ConnectionState = ConnectionState.DISCONNECTED,
     val connectedViaRelay: Boolean = false,
-    val connectedViaMesh: Boolean = false,
     val hostedRelayClientCount: Int = 0,
     val isSending: Boolean = false,
     val success: Boolean = false,
@@ -439,22 +438,6 @@ class BoardClimbDetailViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
-            var previouslyViaMesh = false
-            com.cruxcoach.android.boardcell.BoardCellManager.current?.snapshots?.collect { snapshot ->
-                val viaMesh = com.cruxcoach.android.boardcell.BoardCellManager.current?.canSendViaMesh() == true
-                val sharedMesh = (snapshot?.members?.size ?: 0) > 1
-                val meshMode = if (sharedMesh) runCatching {
-                    userPreferences.multiConnectionBoardSendMode.first()
-                }.getOrNull() else null
-                _state.update { state -> state.copy(
-                    boardSendMode = meshMode ?: state.boardSendMode,
-                    ble = state.ble.copy(connectedViaMesh = viaMesh),
-                ) }
-                if (viaMesh && !previouslyViaMesh) sendAutomaticallyIfEnabled()
-                previouslyViaMesh = viaMesh
-            }
-        }
-        viewModelScope.launch {
             try {
                 userPreferences.gradeScale.collect { scale ->
                     _state.update { it.copy(gradeScale = scale) }
@@ -487,16 +470,13 @@ class BoardClimbDetailViewModel @Inject constructor(
                     userPreferences.multiConnectionBoardSendMode,
                     bleConnection.connectedBoardDescriptor,
                     cruxRelayManager.state,
-                    com.cruxcoach.android.boardcell.BoardCellManager.current?.snapshots
-                        ?: kotlinx.coroutines.flow.flowOf(null),
-                ) { singleMode, multiMode, board, relayState, meshSnapshot ->
+                ) { singleMode, multiMode, board, relayState ->
                     val capacity = BoardControllerProfiles.forBoard(board).connectionCapacity
                     BoardSendModePolicy.resolve(
                         connectionCapacity = capacity,
                         singleConnectionMode = singleMode,
                         multiConnectionMode = multiMode,
                         hostingForOthers = relayState.clientCount > 0,
-                        meshParticipant = (meshSnapshot?.members?.size ?: 0) > 1,
                     ) to capacity
                 }.distinctUntilChanged().collect { (mode, capacity) ->
                     val shouldAutoSend = BoardSendModePolicy
@@ -1248,11 +1228,9 @@ class BoardClimbDetailViewModel @Inject constructor(
                 frames = climb.frames,
             ),
             connectedViaRelay = climbState.ble.connectedViaRelay,
-            connectedViaMesh = sendController.isConnectedViaMesh(),
         )
         when (decision.target) {
             BoardDeliveryTarget.DIRECT_BOARD -> sendController.sendToBoard()
-            BoardDeliveryTarget.MESH_BOARD -> sendController.sendToBoard()
             BoardDeliveryTarget.SHARED_QUEUE ->
                 sessionQueueManager.addClimb(climb.uuid, climbState.angle)
             BoardDeliveryTarget.NONE -> Unit
@@ -1335,8 +1313,6 @@ class BoardClimbDetailViewModel @Inject constructor(
                     singleConnectionMode = singleMode,
                     multiConnectionMode = multiMode,
                     hostingForOthers = _state.value.ble.hostedRelayClientCount > 0,
-                    meshParticipant = (com.cruxcoach.android.boardcell.BoardCellManager.current
-                        ?.snapshot()?.members?.size ?: 0) > 1,
                 )
             }.first()
         } catch (e: CancellationException) {
@@ -1357,7 +1333,6 @@ class BoardClimbDetailViewModel @Inject constructor(
                 frames = climbState.climb?.frames,
             ),
             connectedViaRelay = climbState.ble.connectedViaRelay,
-            connectedViaMesh = sendController.isConnectedViaMesh(),
         )
         if (decision.dispatchAutomatically) {
             sendController.sendToBoard()

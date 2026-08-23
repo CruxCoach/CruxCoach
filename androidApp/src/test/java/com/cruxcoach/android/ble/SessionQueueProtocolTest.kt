@@ -4,16 +4,6 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SessionQueueProtocolTest {
-    @Test
-    fun `command result round trips for GATT feedback`() {
-        SessionCommandResult.entries.forEach { result ->
-            val decoded = SessionQueueProtocol.decodeEvent(
-                SessionQueueProtocol.encodeEventCommandResult(42L, result),
-            ) as SessionEvent.CommandResult
-            assertEquals(42L, decoded.requestId)
-            assertEquals(result, decoded.result)
-        }
-    }
 
     // ===== Command roundtrip tests =====
 
@@ -27,14 +17,6 @@ class SessionQueueProtocolTest {
         // Protocol normalizes UUIDs to uppercase, no hyphens
         assertEquals(uuid.replace("-", "").uppercase(), add.climbUuid)
         assertEquals(40, add.angle)
-    }
-
-    @Test
-    fun `join optionally carries FIPS member identity`() {
-        val command = SessionQueueProtocol.decodeCommand(
-            SessionQueueProtocol.encodeJoin("Alice", "npub1example")) as SessionCommand.Join
-        assertEquals("Alice", command.displayName)
-        assertEquals("npub1example", command.memberNpub)
     }
 
     @Test
@@ -189,18 +171,6 @@ class SessionQueueProtocolTest {
         assertEquals("OldHost", info.hostName)
         assertEquals(2, info.participantCount)
         assertFalse(info.awaitingExplicitSend)
-    }
-
-    @Test
-    fun `session info carries board cell scope while legacy remains readable`() {
-        val scoped = SessionQueueProtocol.decodeSessionInfo(SessionQueueProtocol.encodeSessionInfo(
-            "Host", 4, "kilter:serial:abc", "cell-1", awaitingExplicitSend = true))!!
-        assertEquals("kilter:serial:abc", scoped.physicalBoardId)
-        assertEquals("cell-1", scoped.boardCellId)
-        assertTrue(scoped.awaitingExplicitSend)
-        val legacy = SessionQueueProtocol.decodeSessionInfo(SessionQueueProtocol.encodeSessionInfo("Host", 4))!!
-        assertNull(legacy.physicalBoardId)
-        assertNull(legacy.boardCellId)
     }
 
     // ===== Participant list roundtrip =====

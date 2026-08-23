@@ -3,7 +3,6 @@ package com.cruxcoach.android.data
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ble.QueueItem
-import com.cruxcoach.android.boardcell.BoardCellWriteGateway
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.ClimbWithStats
 import com.cruxcoach.domain.board.BoardBrand
@@ -62,8 +61,7 @@ class SessionQueueManagerTest {
         every { bleConnection.connectionState } returns MutableStateFlow(ConnectionState.DISCONNECTED)
         managerScope = CoroutineScope(SupervisorJob() + testDispatcher)
         queueManager = SessionQueueManager(
-            bleConnection, boardRepository, climbNameResolver, userPreferences, managerScope,
-            boardCellWriteGateway = BoardCellWriteGateway { _, write -> write() },
+            bleConnection, boardRepository, climbNameResolver, userPreferences, managerScope
         )
     }
 
@@ -777,19 +775,14 @@ class SessionQueueManagerTest {
     }
 
     @Test
-    fun `endQueue clears playlist flag but keeps the rest hook installed`() {
+    fun `endQueue clears playlist flag and rest hook`() {
         queueManager.loadPlaylist("Host", listOf(QueueItem("a", 40)))
-        val hook = { _: Int -> }
-        queueManager.onRestRequested = hook
+        queueManager.onRestRequested = { }
 
         queueManager.endQueue()
 
         assertFalse(queueManager.isPlaylistQueue)
-        // The rest hooks deliberately survive. A canonical joinable playlist
-        // is adopted from a BoardCell snapshot — a join, a process restart or
-        // a playlist-host handover — without anybody calling play(), and a
-        // cleared hook would leave that session counting its pauses in silence.
-        assertSame(hook, queueManager.onRestRequested)
+        assertNull(queueManager.onRestRequested)
     }
 
     @Test

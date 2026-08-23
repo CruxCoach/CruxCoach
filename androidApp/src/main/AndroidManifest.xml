@@ -194,11 +194,6 @@
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
 
-        <service
-            android:name=".fips.FipsMeshService"
-            android:exported="false"
-            android:foregroundServiceType="connectedDevice" />
-
         <!-- Keeps the sender-side Wi-Fi hotspot and local HTTP server alive
              while the share screen is backgrounded. -->
         <service

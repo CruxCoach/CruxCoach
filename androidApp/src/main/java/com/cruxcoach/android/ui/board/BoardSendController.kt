@@ -6,9 +6,6 @@ import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.BoardProjectionPolicy
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.ConnectionState
-import com.cruxcoach.android.boardcell.BoardProjection
-import com.cruxcoach.android.boardcell.ActiveBoardCellWriteGateway
-import com.cruxcoach.android.boardcell.BoardCellWriteGateway
 import com.cruxcoach.android.data.LedHoldColors
 import com.cruxcoach.android.data.SessionQueueManager
 import com.cruxcoach.android.data.UserPreferences
@@ -42,8 +39,7 @@ internal class BoardSendController(
     private val userPreferences: UserPreferences,
     private val climbAdvertiser: ClimbBleAdvertiser,
     private val sessionQueueManager: SessionQueueManager,
-    private val isSharingEnabled: () -> Boolean,
-    private val boardCellWriteGateway: BoardCellWriteGateway = ActiveBoardCellWriteGateway,
+    private val isSharingEnabled: () -> Boolean
 ) {
 
     private var sendJob: Job? = null
@@ -84,27 +80,6 @@ internal class BoardSendController(
         // Individual climb sends from detail views are suppressed.
         if (isBoardOwnedBySession()) {
             Log.d(TAG, "sendToBoard: suppressed (session queue active)")
-            return
-        }
-        val meshManager = com.cruxcoach.android.boardcell.BoardCellManager.current
-        if (meshManager?.canSendViaMesh() == true) {
-            val s = state.value
-            val climb = s.climb ?: return
-            val commandId = meshManager.sendProjectionRequest(BoardProjection(
-                climb.uuid,
-                s.angle,
-                BoardProjectionPolicy.projectionSurvivesDisconnect(climb.brand),
-            ))
-            state.update { current -> current.copy(
-                ble = current.ble.copy(
-                    isSending = false,
-                    success = commandId != null,
-                    error = if (commandId == null) R.string.board_send_error_send_failed else null,
-                ),
-                nearby = current.nearby.copy(
-                    debugInfo = if (commandId != null) "sent via board mesh" else "mesh send failed")
-            ) }
-            if (commandId != null) scope.launch { recordSentToHistory(s) }
             return
         }
         // FEAT-027: a MoonBoard climb sends an ASCII `frames` payload — it has
@@ -220,11 +195,7 @@ internal class BoardSendController(
                     ) }
                     return@launch
                 }
-                val success = boardCellWriteGateway.project(
-                    BoardProjection(s.climb!!.uuid, s.angle,
-                        BoardProjectionPolicy.projectionSurvivesDisconnect(s.climb.brand))) {
-                        bleConnection.sendClimb(s.holds, placementToLed, roleColorMap)
-                    }
+                val success = bleConnection.sendClimb(s.holds, placementToLed, roleColorMap)
                 Log.i(TAG, "sendToBoard: writes done success=$success unmapped=$unmappedHolds")
                 state.update { it.copy(
                     ble = it.ble.copy(
@@ -339,15 +310,12 @@ internal class BoardSendController(
                 val variant = com.cruxcoach.domain.board.MoonBoardVariant
                     .fromLayoutId(layoutId)
                     ?: com.cruxcoach.domain.board.MoonBoardVariant.MOONBOARD_2016
-                val success = boardCellWriteGateway.project(
-                    BoardProjection(climb.uuid, s.angle,
-                        BoardProjectionPolicy.projectionSurvivesDisconnect(climb.brand))) {
-                        bleConnection.sendMoonBoardClimb(
-                            frames,
-                            variant,
-                            userPreferences.moonBoardLedMode.first(),
-                        )
-                    }
+                val ledMode = userPreferences.moonBoardLedMode.first()
+                val success = bleConnection.sendMoonBoardClimb(
+                    frames,
+                    variant,
+                    ledMode,
+                )
                 Log.i(TAG, "sendMoonBoardToBoard: writes done success=$success variant=$variant")
                 state.update { it.copy(
                     ble = it.ble.copy(
@@ -384,11 +352,7 @@ internal class BoardSendController(
 
     /** Whether the BLE board is currently connected. */
     fun isConnected(): Boolean =
-        bleConnection.connectionState.value == ConnectionState.CONNECTED ||
-            com.cruxcoach.android.boardcell.BoardCellManager.current?.canSendViaMesh() == true
-
-    fun isConnectedViaMesh(): Boolean =
-        com.cruxcoach.android.boardcell.BoardCellManager.current?.canSendViaMesh() == true
+        bleConnection.connectionState.value == ConnectionState.CONNECTED
 
     /**
      * Whether a send from this screen would actually reach the wall.

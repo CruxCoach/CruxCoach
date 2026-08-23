@@ -15,9 +15,6 @@ import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ble.GattConnectionEvent
 import com.cruxcoach.android.ble.RelayGattServer
-import com.cruxcoach.android.boardcell.BoardCellEvent
-import com.cruxcoach.android.boardcell.BoardCellManager
-import com.cruxcoach.android.boardcell.ProjectionResult
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.relay.RelayBoardName
 import kotlinx.coroutines.CoroutineScope
@@ -85,8 +82,6 @@ class CruxRelayManager(
     private val advertiser: ClimbBleAdvertiser,
     private val bleConnection: BoardBleConnection,
     private val projectionCoordinator: BoardProjectionCoordinator,
-    private val boardCellManager: BoardCellManager,
-    private val userPreferences: UserPreferences,
 ) {
     companion object {
         private const val TAG = "CruxRelay/Manager"
@@ -110,7 +105,6 @@ class CruxRelayManager(
     // — a fresh user tap — turns it on, and a lost board turns it back off so
     // a later reconnect never silently re-fronts the board.
     private val enabledFlow = MutableStateFlow(false)
-    @Volatile private var meshControllerRelayRequired = false
 
     private var running = false
     private var forwardJob: Job? = null
@@ -131,28 +125,13 @@ class CruxRelayManager(
                 enabled to st
             }.collect { (enabled, st) -> reconcile(enabled, st) }
         }
-        // Once the global Bluetooth-name disclosure has been accepted, the
-        // canonical controller is also the single CruxRelay owner. A handover
-        // stops the source relay through its board disconnect and starts it on
-        // the committed target; members can never advertise a competing relay.
-        scope.launch {
-            combine(userPreferences.relayDisclosureSeen, boardCellManager.snapshots) { consent, snapshot ->
-                consent && snapshot != null && boardCellManager.isLocalController()
-            }.collect { required ->
-                meshControllerRelayRequired = required
-                enabledFlow.value = required || enabledFlow.value
-                if (!required && boardCellManager.snapshot()?.controllerId != null) {
-                    enabledFlow.value = false
-                }
-            }
-        }
     }
 
     /** UI entry point — a deliberate user action; [init]'s collector does the rest. */
     fun enable() = setEnabled(true)
 
     fun setEnabled(enabled: Boolean) {
-        enabledFlow.value = enabled || meshControllerRelayRequired
+        enabledFlow.value = enabled
         if (enabled) _state.update { it.copy(error = null, errorDetail = null) }
     }
 
@@ -250,21 +229,18 @@ class CruxRelayManager(
                 }
             } else {
                 relayServer.climbs.collect { inbound ->
-                    val result = boardCellManager.projectExternal(
-                        boardWrite = { bleConnection.sendRawChunks(inbound.climb.chunks) },
-                        identify = { projectionCoordinator.identifyExternal(inbound.climb) },
-                    )
-                    if (result is ProjectionResult.Committed || result is ProjectionResult.Duplicate) {
+                    val ok = bleConnection.sendRawChunks(inbound.climb.chunks)
+                    if (ok) {
                         advertiser.clearActiveClimb()
+                        // Hand the raw climb along: it is the only thing that can
+                        // still name what an official app just put on the wall.
+                        // Identification stays off the forwarding path.
                         identifyJob?.cancel()
                         identifyJob = scope.launch {
-                            val projection = if (result is ProjectionResult.Committed) {
-                                (result.envelope.event as? BoardCellEvent.ProjectCommitted)?.projection
-                            } else boardCellManager.snapshot()?.projection
-                            projectionCoordinator.onCanonicalExternalBoardWrite(projection)
+                            projectionCoordinator.onExternalBoardWrite(inbound.climb)
                         }
                     } else {
-                        Log.w(TAG, "relayed climb was not canonically committed: $result")
+                        Log.w(TAG, "sendRawChunks failed for a relayed climb")
                         _state.update { it.copy(error = RelayError.FORWARD_FAILED) }
                     }
                 }

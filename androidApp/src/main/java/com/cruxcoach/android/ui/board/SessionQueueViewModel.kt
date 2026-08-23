@@ -29,54 +29,12 @@ class SessionQueueViewModel @Inject constructor(
     private val boardRepository: BoardRepository,
     private val playback: com.cruxcoach.android.data.PlaylistPlaybackCoordinator,
     private val userPreferences: com.cruxcoach.android.data.UserPreferences,
-    private val boardCellManager: com.cruxcoach.android.boardcell.BoardCellManager,
     val climbNavState: ClimbNavigationState
 ) : ViewModel() {
 
     val state: StateFlow<SessionQueueState> = queueManager.state
     val pendingCommandCount = gattBridge.pendingCommandCount
     val commandFeedback = gattBridge.commandFeedback
-
-    /** Status of this device's own request to start a joinable playlist. */
-    val playlistStartState = gattBridge.playlistStartState
-
-    /**
-     * A local-only playlist is about to take the wall from the joinable one.
-     *
-     * Read from the injected manager rather than mirrored into this view
-     * model: the question is about shared board state, and a copy here would
-     * be a second truth about whether it is still open.
-     *
-     * Injected rather than read from `BoardCellManager.current`, which is only
-     * set once that singleton has been constructed. Resolving it here would
-     * freeze whatever was true at view-model construction — and if this screen
-     * happened to come first, the dialog would never appear again for the rest
-     * of the process.
-     */
-    val localOverwriteRequest: StateFlow<com.cruxcoach.android.boardcell.LocalOverwriteRequest?> =
-        boardCellManager.localOverwriteRequest
-
-    fun confirmLocalOverwrite() {
-        boardCellManager.confirmLocalOverwrite()
-        // The send that raised the question was refused, so repeat it now that
-        // the answer is in; nothing about the queue moved in between.
-        playback.resendCurrentClimb()
-    }
-
-    fun dismissLocalOverwrite() = boardCellManager.dismissLocalOverwrite()
-
-    /** Any playlist member may ask the controller to try the send again. */
-    fun retryPlaylistProjection() = playback.retryPlaylistProjection()
-
-    /** The playlist host answers somebody else's request to start a playlist. */
-    fun decidePlaylistRequest(
-        requestId: String,
-        decision: com.cruxcoach.android.boardcell.BoardPlaylistProposalDecision,
-    ) = playback.decidePlaylistRequest(requestId, decision)
-
-    fun acknowledgePlaylistStartState() = gattBridge.acknowledgePlaylistStartState()
-
-    fun joinPlaylist() = playback.joinCanonicalPlaylist()
 
     private val _climbInfos = MutableStateFlow<Map<String, QueueRowInfo>>(emptyMap())
     /** uuid → (name, formatted grade) for the queue rows. */
@@ -111,30 +69,44 @@ class SessionQueueViewModel @Inject constructor(
         }
     }
 
-    /**
-     * In a joinable playlist there is no local shortcut for anybody, host
-     * included: the queue on screen is a projection of canonical mesh state,
-     * so an edit applied locally would be overwritten by the next snapshot and
-     * would never reach the other members. [sendsCommand] is therefore about
-     * where the truth lives, not about which role this device happens to hold.
-     */
-    private val sendsCommand: Boolean
-        get() = state.value.mesh != null || state.value.role == SessionRole.PARTICIPANT
+    fun next() {
+        if (state.value.role == SessionRole.PARTICIPANT) {
+            gattBridge.sendNext()
+        } else {
+            queueManager.nextClimb()
+        }
+    }
 
-    // Transport goes through the coordinator, which owns the phase-aware rules
-    // (advancing versus skipping a running rest) for local and remote alike.
-    fun next() = playback.next()
+    fun prev() {
+        if (state.value.role == SessionRole.PARTICIPANT) {
+            gattBridge.sendPrev()
+        } else {
+            queueManager.previousClimb()
+        }
+    }
 
-    fun prev() = playback.previous()
-
-    fun setCurrent(index: Int) = playback.setCurrent(index)
+    fun setCurrent(index: Int) {
+        if (state.value.role == SessionRole.PARTICIPANT) {
+            gattBridge.sendSetCurrent(index)
+        } else {
+            queueManager.setCurrentClimb(index)
+        }
+    }
 
     fun removeClimb(index: Int) {
-        if (sendsCommand) gattBridge.sendRemoveClimb(index) else queueManager.removeClimb(index)
+        if (state.value.role == SessionRole.PARTICIPANT) {
+            gattBridge.sendRemoveClimb(index)
+        } else {
+            queueManager.removeClimb(index)
+        }
     }
 
     fun moveClimb(from: Int, to: Int) {
-        if (sendsCommand) gattBridge.sendMove(from, to) else queueManager.moveClimb(from, to)
+        if (state.value.role == SessionRole.PARTICIPANT) {
+            gattBridge.sendMove(from, to)
+        } else {
+            queueManager.moveClimb(from, to)
+        }
     }
 
     fun endOrLeave() {

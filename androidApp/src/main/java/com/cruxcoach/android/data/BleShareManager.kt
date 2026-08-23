@@ -5,9 +5,6 @@ import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.NearbyClimb
 import com.cruxcoach.android.ble.NearbyClimbScanner
 import com.cruxcoach.android.ble.NearbySession
-import com.cruxcoach.android.boardcell.BoardCellScopeRegistry
-import com.cruxcoach.android.boardcell.BoardCellManager
-import com.cruxcoach.android.boardcell.BoardProjection
 import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.android.util.PerfLogger
 import kotlinx.coroutines.CoroutineScope
@@ -41,8 +38,7 @@ class BleShareManager @Inject constructor(
     private val climbAdvertiser: ClimbBleAdvertiser,
     private val sessionQueueManager: SessionQueueManager,
     private val boardSessionManager: BoardSessionManager,
-    private val userPreferences: UserPreferences,
-    private val boardCellManager: BoardCellManager,
+    private val userPreferences: UserPreferences
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -95,8 +91,7 @@ class BleShareManager @Inject constructor(
                 nearbyClimbScanner.nearbySessions,
                 sharingConfig.sharingEnabled,
                 sessionQueueManager.state,
-                userPreferences.gradeScale,
-                boardCellManager.snapshots,
+                userPreferences.gradeScale
             ) { values ->
                 @Suppress("UNCHECKED_CAST")
                 val lastClimb = values[0] as BoardStateManager.LastBoardClimb?
@@ -106,35 +101,20 @@ class BleShareManager @Inject constructor(
                 val sharingEnabled = values[4] as Boolean
                 // values[5] = SessionQueueState — triggers re-emit on queue changes
                 val gradeScale = values[6] as GradeScale
-                val meshSnapshot = values[7] as com.cruxcoach.android.boardcell.BoardCellSnapshot?
-                val meshProjection = meshSnapshot?.projection?.takeIf {
-                    meshSnapshot.projectionKnown
-                }
-                meshProjection?.let {
-                    nearbyPresenceManager.resolveMeshProjection(it.climbUuid, it.angle)
-                }
-
-                // v1 Nearby payloads contain no physical-board/cell scope. Preserve
-                // compatibility at a single wall, but never let them choose between
-                // two observed boards or overwrite the selected BoardCell.
-                val legacyUnscopedSafe = BoardCellScopeRegistry.acceptsLegacyUnscoped()
-                val scopedClimbs = if (legacyUnscopedSafe) nearbyClimbs else emptyList()
-                val scopedSessions = if (legacyUnscopedSafe) sessions else emptyList()
 
                 // Bridge remote climbs FIRST (side-effect: updates boardStateManager),
                 // then build UI state. No removeEntry() — filter locally instead.
-                bridgeRemoteClimbs(scopedClimbs)
+                bridgeRemoteClimbs(nearbyClimbs)
 
                 // Check disconnect request resolution inline (was a separate collector)
                 if (_uiState.value.isRequestingDisconnect) {
-                    val noActiveRemote = scopedClimbs.none { !it.isLastClimb && !it.connectedOnly }
+                    val noActiveRemote = nearbyClimbs.none { !it.isLastClimb && !it.connectedOnly }
                     if (noActiveRemote) {
                         cancelDisconnectRequest()
                     }
                 }
 
-                buildUiState(lastClimb, scopedClimbs, climbInfos, scopedSessions, sharingEnabled,
-                    gradeScale, meshProjection, meshSnapshot != null)
+                buildUiState(lastClimb, nearbyClimbs, climbInfos, sessions, sharingEnabled, gradeScale)
             }.distinctUntilChanged { old, new ->
                 // Structural comparison ignoring RSSI fluctuations that don't affect the UI.
                 // data class equals includes rssi fields in OnBoardClimbEntry and NearbySessionEntry,
@@ -337,13 +317,10 @@ class BleShareManager @Inject constructor(
         climbInfos: Map<String, ClimbDisplayInfo>,
         sessions: List<NearbySession>,
         sharingEnabled: Boolean,
-        gradeScale: GradeScale,
-        meshProjection: BoardProjection? = null,
-        meshActive: Boolean = false,
+        gradeScale: GradeScale
     ): BleShareUiState {
         // Determine on-board climb entry
-        val rawOnBoard = resolveOnBoardClimb(lastClimb, nearbyClimbs, climbInfos, sessions,
-            gradeScale, meshProjection, meshActive)
+        val rawOnBoard = resolveOnBoardClimb(lastClimb, nearbyClimbs, climbInfos, sessions, gradeScale)
         // Suppress on-board when the session queue already shows the same information.
         // SESSION_REMOTE from our own queue is redundant with the queue banner — and because
         // currentClimbName resolves asynchronously in a separate collector, showing it in
@@ -439,9 +416,7 @@ class BleShareManager @Inject constructor(
         nearbyClimbs: List<NearbyClimb>,
         climbInfos: Map<String, ClimbDisplayInfo>,
         sessions: List<NearbySession> = emptyList(),
-        gradeScale: GradeScale,
-        meshProjection: BoardProjection? = null,
-        meshActive: Boolean = false,
+        gradeScale: GradeScale
     ): OnBoardClimbEntry? {
         fun ClimbDisplayInfo?.grade(): String? = this?.difficultyAverage?.let {
             GradeDisplayHelper.formatDifficulty(it, gradeScale)
@@ -451,22 +426,6 @@ class BleShareManager @Inject constructor(
         val memberSessionUuid = queueState.currentClimb?.climbUuid
         val nearbySessionUuid = sessions.firstOrNull { it.currentClimbUuid != null }?.currentClimbUuid
         val anySessionClimbUuid = memberSessionUuid ?: nearbySessionUuid
-
-        // The signed BoardCell projection is the canonical state of a shared
-        // board. In particular this updates the controller's Nearby banner
-        // when a participant requested the climb; relying on that participant's
-        // separate legacy BLE advertisement left the controller stale.
-        meshProjection?.let { projection ->
-            val info = climbInfos[projection.climbUuid]
-            return OnBoardClimbEntry(
-                climbUuid = projection.climbUuid,
-                angle = projection.angle,
-                name = info?.name,
-                grade = info.grade(),
-                source = OnBoardSource.MESH_ACTIVE,
-                isStillProjected = projection.projectionSurvivesDisconnect,
-            )
-        }
 
         // Session-advance detection for non-participants:
         // Sessions send climbs via GATT and advertise via session advertisements (not ClimbData).
@@ -551,9 +510,7 @@ class BleShareManager @Inject constructor(
         // overwriteSessionUuid is cleared when: (a) session advances, (b) session ends.
 
         // 3. Session remote climb for session members — use GATT-synced queue data
-        if (!meshActive &&
-            (queueState.role == SessionRole.PARTICIPANT || queueState.role == SessionRole.HOST)
-        ) {
+        if (queueState.role == SessionRole.PARTICIPANT || queueState.role == SessionRole.HOST) {
             val currentItem = queueState.currentClimb
             if (currentItem != null) {
                 val info = climbInfos[currentItem.climbUuid]
@@ -604,7 +561,6 @@ class BleShareManager @Inject constructor(
         // have; that is a design change, not a fix.
         val ownSessionId = queueState.sessionId.takeIf { it != 0 }
         val sessionClimb = sessions.firstOrNull {
-            !meshActive &&
             it.currentClimbUuid != null &&
                 (queueState.role == SessionRole.NONE ||
                     ownSessionId == null ||
@@ -656,11 +612,6 @@ class BleShareManager @Inject constructor(
     fun requestDisconnect() {
         if (_uiState.value.isRequestingDisconnect) return
         if (!sharingConfig.sharingEnabled.value) return
-        // A BoardCell has one explicit controller and routes playlist commands
-        // through it. Asking that controller to surrender the physical board is
-        // a legacy single-owner operation and would tear down the very path the
-        // requester needs.
-        if (boardCellManager.snapshot() != null) return
         _uiState.update { it.copy(isRequestingDisconnect = true, disconnectRequestNoResponse = false) }
         climbAdvertiser.advertiseDisconnectRequest()
         disconnectTimeoutJob?.cancel()

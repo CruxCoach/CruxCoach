@@ -1244,17 +1244,11 @@ class ClimbEditorViewModel @Inject constructor(
             val variant = MoonBoardVariant.fromLayoutId(cur.layoutId) ?: return
             val frames = cur.editor.encodeFrames()
             val result = runCatching {
-                com.cruxcoach.android.boardcell.BoardCellManager.current?.projectExternal(
-                    boardWrite = {
-                        bleConnection.sendMoonBoardClimb(
-                            frames,
-                            variant,
-                            userPreferences.moonBoardLedMode.first(),
-                        )
-                    },
-                    identify = { null },
-                ).let { it is com.cruxcoach.android.boardcell.ProjectionResult.Committed ||
-                    it is com.cruxcoach.android.boardcell.ProjectionResult.Duplicate }
+                bleConnection.sendMoonBoardClimb(
+                    frames,
+                    variant,
+                    userPreferences.moonBoardLedMode.first(),
+                )
             }
             result.fold(
                 onSuccess = { Log.i(TAG, "syncLeds(moonboard): sendMoonBoardClimb ok=$it holds=${cur.editor.selectedHolds.size}") },
@@ -1279,13 +1273,7 @@ class ClimbEditorViewModel @Inject constructor(
         // the unchanged factory palette. Same pattern as
         // BoardSendController.kt:83.
         val roleColors = cur.ledColors.toRoleColorMap()
-        val result = runCatching {
-            com.cruxcoach.android.boardcell.BoardCellManager.current?.projectExternal(
-                boardWrite = { bleConnection.sendClimb(holds, ledMap, roleColors) },
-                identify = { null },
-            ).let { it is com.cruxcoach.android.boardcell.ProjectionResult.Committed ||
-                it is com.cruxcoach.android.boardcell.ProjectionResult.Duplicate }
-        }
+        val result = runCatching { bleConnection.sendClimb(holds, ledMap, roleColors) }
         result.fold(
             onSuccess = { Log.i(TAG, "syncLeds: sendClimb returned ok=$it holds=${holds.size}") },
             onFailure = { Log.w(TAG, "syncLeds: sendClimb threw holds=${holds.size}", it) },

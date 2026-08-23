@@ -300,7 +300,6 @@ private fun BoardSendModePicker(
 internal fun BleAutoDisconnectSection(
     bleAutoDisconnectSeconds: Int,
     boardBrand: BoardBrand,
-    unavailableInMultiMode: Boolean = false,
     onAutoDisconnectChange: (Int) -> Unit,
 ) {
     Text(
@@ -308,15 +307,6 @@ internal fun BleAutoDisconnectSection(
         style = MaterialTheme.typography.titleMedium,
         fontWeight = FontWeight.Bold
     )
-
-    if (unavailableInMultiMode) {
-        Text(
-            stringResource(R.string.settings_ble_auto_disconnect_multi_mode),
-            style = MaterialTheme.typography.bodySmall,
-            color = InfoBlue,
-            modifier = Modifier.testTag("ble_auto_disconnect_multi_mode"),
-        )
-    }
 
     if (boardBrand == BoardBrand.MOONBOARD) {
         Surface(
@@ -391,7 +381,6 @@ internal fun BleAutoDisconnectSection(
         }
         Switch(
             checked = autoDisconnectEnabled,
-            enabled = !unavailableInMultiMode,
             onCheckedChange = { on ->
                 onAutoDisconnectChange(if (on) lastEnabledSeconds else 0)
             },
@@ -408,7 +397,7 @@ internal fun BleAutoDisconnectSection(
     // switch's job, and leaving it reachable here would let the stepper
     // silently contradict the switch. Max 60 min matches the longest old
     // preset × 2 — any larger value is almost certainly a typo.
-    if (autoDisconnectEnabled && !unavailableInMultiMode) {
+    if (autoDisconnectEnabled) {
         DurationStepper(
             seconds = bleAutoDisconnectSeconds,
             onChange = onAutoDisconnectChange,

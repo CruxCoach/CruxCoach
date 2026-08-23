@@ -8,9 +8,6 @@ import com.cruxcoach.android.data.kilter.formatKilterImportSummary
 import com.cruxcoach.android.data.kilter.localized
 import com.cruxcoach.android.data.kilter.localizeKilterImportError
 import com.cruxcoach.android.ble.BoardBleConnection
-import com.cruxcoach.android.ble.BoardControllerProfiles
-import com.cruxcoach.android.ble.BoardProjectionPolicy
-import com.cruxcoach.android.boardcell.BoardCellManager
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.data.AnnouncementRepository
 import com.cruxcoach.android.data.DarkModeSetting
@@ -105,7 +102,6 @@ data class SettingsState(
     val hasAssessment: Boolean = false,
     val ledColors: LedHoldColors = LedHoldColors(),
     val bleAutoDisconnectSeconds: Int = 60,
-    val bleAutoDisconnectUnavailable: Boolean = false,
     val singleConnectionBoardSendMode: BoardSendMode = BoardSendMode.AUTOMATIC,
     /** Mirrors UserPreferences.multiConnectionBoardSendMode's default — a
      *  shared board is not swiped onto by accident. */
@@ -153,7 +149,6 @@ class SettingsViewModel @Inject constructor(
     private val syncManager: BoardSyncManager,
     private val userPreferences: UserPreferences,
     private val bleConnection: BoardBleConnection,
-    private val boardCellManager: BoardCellManager,
     private val climbAdvertiser: ClimbBleAdvertiser,
     private val auroraBoardSelector: AuroraBoardSelector,
     private val announcementRepository: AnnouncementRepository,
@@ -174,21 +169,6 @@ class SettingsViewModel @Inject constructor(
             val freq = withContext(Dispatchers.IO) { boardLocationRepository.productSizeFrequency() }
             val enabled = withContext(Dispatchers.IO) { boardLocationRepository.countWalls() > 0L }
             _state.update { it.copy(boardSizeFrequency = freq, boardSearchEnabled = enabled) }
-        }
-        viewModelScope.safeLaunch("SettingsViewModel") {
-            combine(
-                boardCellManager.snapshots,
-                bleConnection.connectedBoardDescriptor,
-                bleConnection.keepAliveActive,
-            ) { snapshot, board, keepAlive ->
-                BoardProjectionPolicy.autoDisconnectUnavailable(
-                    activeMesh = snapshot != null,
-                    featureKeepAlive = keepAlive,
-                    connectionCapacity = BoardControllerProfiles.forBoard(board).connectionCapacity,
-                )
-            }.distinctUntilChanged().collect { unavailable ->
-                _state.update { it.copy(bleAutoDisconnectUnavailable = unavailable) }
-            }
         }
         // Board-data deletion runs app-scoped in BoardSyncManager (it takes
         // ~20s and must survive leaving this screen) — mirror its progress
@@ -328,15 +308,7 @@ class SettingsViewModel @Inject constructor(
                     )
                 )
             }
-            // The multi-mode collector starts immediately and may have
-            // already observed an active mesh while disk-backed settings are
-            // loading. Do not overwrite that live safety state with the data
-            // class default when the initial batch completes.
-            _state.update { current ->
-                initialState.copy(
-                    bleAutoDisconnectUnavailable = current.bleAutoDisconnectUnavailable,
-                )
-            }
+            _state.update { initialState }
 
             // Start collectors for live updates after initial load
             launch { userPreferences.ledHoldColors.collect { colors -> _state.update { it.copy(ledColors = colors) } } }
@@ -581,10 +553,7 @@ class SettingsViewModel @Inject constructor(
                     finish = if (roleId == HoldRole.FINISH) colorByte else current.finish,
                     foot = if (roleId == HoldRole.FOOT) colorByte else current.foot
                 )
-                com.cruxcoach.android.boardcell.BoardCellManager.current?.projectExternal(
-                    boardWrite = { bleConnection.resendWithColors(updated.toRoleColorMap()) },
-                    identify = { com.cruxcoach.android.boardcell.BoardCellManager.current?.snapshot()?.projection },
-                )
+                bleConnection.resendWithColors(updated.toRoleColorMap())
             }
         }
     }
@@ -593,10 +562,7 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             userPreferences.resetLedColors()
             if (bleConnection.isConnected()) {
-                com.cruxcoach.android.boardcell.BoardCellManager.current?.projectExternal(
-                    boardWrite = { bleConnection.resendWithColors(LedHoldColors().toRoleColorMap()) },
-                    identify = { com.cruxcoach.android.boardcell.BoardCellManager.current?.snapshot()?.projection },
-                )
+                bleConnection.resendWithColors(LedHoldColors().toRoleColorMap())
             }
         }
     }
@@ -605,10 +571,7 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             userPreferences.setKilterColors()
             if (bleConnection.isConnected()) {
-                com.cruxcoach.android.boardcell.BoardCellManager.current?.projectExternal(
-                    boardWrite = { bleConnection.resendWithColors(LedHoldColors.kilterStandard().toRoleColorMap()) },
-                    identify = { com.cruxcoach.android.boardcell.BoardCellManager.current?.snapshot()?.projection },
-                )
+                bleConnection.resendWithColors(LedHoldColors.kilterStandard().toRoleColorMap())
             }
         }
     }
@@ -741,18 +704,15 @@ class SettingsViewModel @Inject constructor(
                 if (grid.isEmpty()) return@launch
                 val frames = BoardEasterAnimations.easterEgg(grid)
                 if (frames.isEmpty() || frames.all { it.leds.isEmpty() }) return@launch
-                com.cruxcoach.android.boardcell.BoardCellManager.current?.projectExternal(
-                    boardWrite = {
-                        repeat(3) {
-                            for (frame in frames) {
-                                if (!bleConnection.sendRawLeds(frame.leds)) return@projectExternal false
-                                delay(250)
-                            }
-                        }
-                        bleConnection.clearBoard()
-                    },
-                    identify = { null },
-                ) ?: return@launch
+                repeat(3) {
+                    for (frame in frames) {
+                        // sendRawLeds encodes with the CONNECTED board's
+                        // encoder (correct apiLevel), not a hardcoded @3 one.
+                        bleConnection.sendRawLeds(frame.leds)
+                        delay(250)
+                    }
+                }
+                bleConnection.clearBoard()
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -770,10 +730,7 @@ class SettingsViewModel @Inject constructor(
         animationJob?.cancel()
         animationJob = null
         _state.update { it.copy(isAnimating = false) }
-        viewModelScope.launch {
-            com.cruxcoach.android.boardcell.BoardCellManager.current?.projectExternal(
-                boardWrite = { bleConnection.clearBoard() }, identify = { null })
-        }
+        viewModelScope.launch { bleConnection.clearBoard() }
     }
 
     // ── Data management ──────────────────────────────────────────

@@ -8,7 +8,6 @@ import com.cruxcoach.android.ble.QueueItem
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.coVerify
-import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -82,11 +81,6 @@ class BleShareManagerTest {
     private val userPreferences = mockk<UserPreferences>(relaxed = true) {
         every { gradeScale } returns gradeScaleFlow
     }
-    private val boardCellSnapshots = MutableStateFlow<com.cruxcoach.android.boardcell.BoardCellSnapshot?>(null)
-    private val boardCellManager = mockk<com.cruxcoach.android.boardcell.BoardCellManager>(relaxed = true) {
-        every { snapshots } returns boardCellSnapshots
-        every { snapshot() } answers { boardCellSnapshots.value }
-    }
 
     private lateinit var manager: BleShareManager
 
@@ -96,7 +90,7 @@ class BleShareManagerTest {
         manager = BleShareManager(
             boardStateManager, nearbyPresenceManager, nearbyClimbScanner,
             sharingConfig, climbAdvertiser, sessionQueueManager, boardSessionManager,
-            userPreferences, boardCellManager,
+            userPreferences
         )
     }
 
@@ -126,84 +120,7 @@ class BleShareManagerTest {
     ) = NearbySession(sessionId, 1, hostName, -50, System.currentTimeMillis(),
         "11:22:33:44:55:66", null, currentClimbUuid, currentClimbAngle)
 
-    // ===== 1. Canonical shared-mesh projection is highest =====
-
-    @Test
-    fun `shared mesh projection immediately updates nearby board state`() = runTest {
-        climbInfosFlow.value = mapOf(UUID_C to ClimbDisplayInfo("Mesh Climb", 5.0))
-        boardCellSnapshots.value = com.cruxcoach.android.boardcell.BoardCellSnapshot(
-            cellId = com.cruxcoach.android.boardcell.BoardCellId("cell"),
-            physicalBoardId = com.cruxcoach.android.boardcell.PhysicalBoardId("board"),
-            epoch = 1,
-            sequence = 2,
-            controllerId = "controller",
-            lineageId = "lineage",
-            members = setOf("controller", "participant"),
-            projection = com.cruxcoach.android.boardcell.BoardProjection(UUID_C, 45),
-        )
-        advanceUntilIdle()
-
-        val onBoard = manager.uiState.value.onBoardClimb
-        assertEquals(OnBoardSource.MESH_ACTIVE, onBoard?.source)
-        assertEquals(UUID_C, onBoard?.climbUuid)
-        assertEquals("Mesh Climb", onBoard?.name)
-        verify { nearbyPresenceManager.resolveMeshProjection(UUID_C, 45) }
-    }
-
-    @Test
-    fun `controller keeps canonical mesh projection when last remote member is transiently absent`() = runTest {
-        boardCellSnapshots.value = com.cruxcoach.android.boardcell.BoardCellSnapshot(
-            cellId = com.cruxcoach.android.boardcell.BoardCellId("cell"),
-            physicalBoardId = com.cruxcoach.android.boardcell.PhysicalBoardId("board"),
-            epoch = 1,
-            sequence = 3,
-            controllerId = "controller",
-            lineageId = "lineage",
-            members = setOf("controller"),
-            projection = com.cruxcoach.android.boardcell.BoardProjection(UUID_C, 40),
-        )
-        nearbySessionsFlow.value = listOf(session(currentClimbUuid = UUID_A))
-        advanceUntilIdle()
-
-        assertEquals(OnBoardSource.MESH_ACTIVE, manager.uiState.value.onBoardClimb?.source)
-        assertEquals(UUID_C, manager.uiState.value.onBoardClimb?.climbUuid)
-    }
-
-    @Test
-    fun `playlist advertisement is never treated as board proof inside active mesh`() = runTest {
-        boardCellSnapshots.value = com.cruxcoach.android.boardcell.BoardCellSnapshot(
-            cellId = com.cruxcoach.android.boardcell.BoardCellId("cell"),
-            physicalBoardId = com.cruxcoach.android.boardcell.PhysicalBoardId("board"),
-            epoch = 1,
-            sequence = 1,
-            controllerId = "controller",
-            lineageId = "lineage",
-            members = setOf("controller", "participant"),
-        )
-        nearbySessionsFlow.value = listOf(session(currentClimbUuid = UUID_A))
-        advanceUntilIdle()
-
-        assertNull(manager.uiState.value.onBoardClimb)
-    }
-
-    @Test
-    fun `legacy disconnect request is not advertised while BoardCell owns board`() = runTest {
-        sharingEnabledFlow.value = true
-        boardCellSnapshots.value = com.cruxcoach.android.boardcell.BoardCellSnapshot(
-            cellId = com.cruxcoach.android.boardcell.BoardCellId("cell"),
-            physicalBoardId = com.cruxcoach.android.boardcell.PhysicalBoardId("board"),
-            epoch = 1,
-            sequence = 1,
-            controllerId = "controller",
-            lineageId = "lineage",
-            members = setOf("controller", "participant"),
-        )
-
-        manager.requestDisconnect()
-
-        assertFalse(manager.uiState.value.isRequestingDisconnect)
-        verify(exactly = 0) { climbAdvertiser.advertiseDisconnectRequest() }
-    }
+    // ===== 1. Priority: REMOTE_ACTIVE is highest =====
 
     @Test
     fun `resolve - REMOTE_ACTIVE beats everything`() = runTest {

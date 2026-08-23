@@ -40,10 +40,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.compose.foundation.clickable
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -90,7 +86,6 @@ fun BoardBrowserScreen(
     onNavigateToClimbCreator: () -> Unit = {},
     onNavigateToSetter: (pubkey: String) -> Unit = {},
     onNavigateToMap: () -> Unit = {},
-    onOpenMenu: () -> Unit = {},
     viewModel: BoardBrowserViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -100,7 +95,6 @@ fun BoardBrowserScreen(
     var showEndSessionDialog by remember { mutableStateOf(false) }
     var showSessionVisibilityDialog by rememberSaveable { mutableStateOf(false) }
     var searchVisible by remember { mutableStateOf(false) }
-    val openMenuLabel = stringResource(R.string.cd_open_menu)
     val queueManager = LocalSessionQueueManager.current
     val playbackCoordinator = LocalPlaylistPlayback.current
     val queueState by queueManager.state.collectAsStateWithLifecycle()
@@ -342,31 +336,20 @@ fun BoardBrowserScreen(
                 // is the flat themed-icon variant and loses the gradient.
                 //
                 // Placed in a plain Box rather than an IconButton so it can sit
-                // close to the edge and fill the bar. It is now the drawer
-                // handle the comment above anticipated: FEAT-058 hangs the
-                // top-level menu here, so the logo keeps its position and picks
-                // up a job rather than being pushed aside by a hamburger.
+                // close to the edge and fill the bar; a drawer click target can
+                // be added here later without moving it.
                 Box(
                     modifier = Modifier
                         .padding(start = 10.dp)
                         .size(36.dp)
                         .clip(CircleShape)
                         .background(Color.Black)
-                        .clickable(
-                            onClickLabel = stringResource(R.string.cd_open_menu),
-                            role = Role.Button,
-                            onClick = onOpenMenu,
-                        )
-                        .semantics { contentDescription = openMenuLabel }
                         .testTag("board_browser_home"),
                     contentAlignment = Alignment.Center,
                 ) {
                     Image(
                         painter = painterResource(R.mipmap.ic_launcher_foreground),
-                        // The image is decorative: the clickable Box above
-                        // carries the label, so a screen reader announces one
-                        // button rather than an unlabelled image inside one.
-                        contentDescription = null,
+                        contentDescription = stringResource(R.string.board_browser_title),
                         modifier = Modifier.fillMaxSize(),
                     )
                 }

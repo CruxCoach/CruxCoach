@@ -85,13 +85,6 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 object AppModule {
-    /** The single realm-scoped entry point to the mesh for every feature. */
-    @Provides
-    @Singleton
-    fun provideMeshRealmManager(
-        impl: com.cruxcoach.android.mesh.FipsMeshRealmManager,
-    ): com.cruxcoach.android.mesh.MeshRealmManager = impl
-
 
     @Provides
     @Singleton
@@ -438,13 +431,12 @@ object AppModule {
         sessionQueueManager: SessionQueueManager,
         boardSessionManager: BoardSessionManager,
         userPreferences: UserPreferences,
-        boardCellManager: com.cruxcoach.android.boardcell.BoardCellManager,
     ): BleShareManager {
         return PerfLogger.trace("DI: BleShareManager") {
             BleShareManager(
                 boardStateManager, nearbyPresenceManager, nearbyClimbScanner,
                 sharingConfig, climbBleAdvertiser, sessionQueueManager, boardSessionManager,
-                userPreferences, boardCellManager,
+                userPreferences,
             )
         }
     }
@@ -505,8 +497,6 @@ object AppModule {
         advertiser: ClimbBleAdvertiser,
         bleConnection: BoardBleConnection,
         projectionCoordinator: BoardProjectionCoordinator,
-        boardCellManager: com.cruxcoach.android.boardcell.BoardCellManager,
-        userPreferences: UserPreferences,
     ): CruxRelayManager {
         return CruxRelayManager(
             context,
@@ -514,8 +504,6 @@ object AppModule {
             advertiser,
             bleConnection,
             projectionCoordinator,
-            boardCellManager,
-            userPreferences,
         )
     }
 
@@ -535,13 +523,9 @@ object AppModule {
         boardRepository: BoardRepository,
         climbNameResolver: ClimbNameResolver,
         userPreferences: UserPreferences,
-        fipsMeshRuntime: com.cruxcoach.android.fips.FipsMeshRuntime,
-        boardCellManager: com.cruxcoach.android.boardcell.BoardCellManager,
     ): SessionQueueManager {
         return SessionQueueManager(
             bleConnection, boardRepository, climbNameResolver, userPreferences,
-            fipsMeshRuntime = fipsMeshRuntime,
-            boardCellManager = boardCellManager,
         )
     }
 
@@ -558,9 +542,6 @@ object AppModule {
         boardStateManager: BoardStateManager,
         boardSessionManager: BoardSessionManager,
         sharingConfig: SharingConfig,
-        fipsMeshRuntime: com.cruxcoach.android.fips.FipsMeshRuntime,
-        boardCellManager: com.cruxcoach.android.boardcell.BoardCellManager,
-        boardScanner: BoardBleScanner,
     ): SessionGattBridge {
         return PerfLogger.trace("DI: SessionGattBridge") {
             SessionGattBridge(
@@ -574,10 +555,7 @@ object AppModule {
                 boardStateManager,
                 boardSessionManager,
                 shouldAdvertiseIndividualClimbs = { sharingConfig.sharingEnabled.value },
-                fipsMeshRuntime = fipsMeshRuntime,
-                boardCellManager = boardCellManager,
-                boardScanner = boardScanner,
-            )
+                    )
         }
     }
 

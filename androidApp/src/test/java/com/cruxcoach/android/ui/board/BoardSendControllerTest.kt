@@ -3,7 +3,6 @@ package com.cruxcoach.android.ui.board
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.ConnectionState
-import com.cruxcoach.android.boardcell.BoardCellWriteGateway
 import com.cruxcoach.android.data.SessionQueueManager
 import com.cruxcoach.android.data.SessionQueueState
 import com.cruxcoach.android.data.UserPreferences
@@ -77,7 +76,6 @@ class BoardSendControllerTest {
             climbAdvertiser = advertiser,
             sessionQueueManager = queueManager,
             isSharingEnabled = { true },
-            boardCellWriteGateway = BoardCellWriteGateway { _, write -> write() },
         )
 
         controller.sendToBoard()
@@ -132,7 +130,6 @@ class BoardSendControllerTest {
             climbAdvertiser = advertiser,
             sessionQueueManager = queueManager,
             isSharingEnabled = { true },
-            boardCellWriteGateway = BoardCellWriteGateway { _, write -> write() },
         )
 
         controller.sendToBoard()
