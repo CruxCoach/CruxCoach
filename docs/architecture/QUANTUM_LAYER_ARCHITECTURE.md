@@ -314,6 +314,16 @@ eine explizite Protokollversion, gemischten Client-Rollout, deterministische Mer
 Layer-Ownership und Handover-Semantik. Es darf nicht als zusaetzliches optionales Feld
 „hineingeschoben“ werden.
 
+### 13.1 Was seither dazugekommen ist
+
+Die Playlist selbst schreibt auf einem Quantum-Board inzwischen ueber eine Lane: das Geraet
+am Controller adressiert die kanonische Projektion mit einer stabilen Slot-Identitaet statt
+mit der Null-UUID, kann sie dadurch nach einem Reconnect wiedererkennen und gezielt
+entfernen. Mesh-Mitglieder planen und lesen, schreiben aber keine Lane — genau aus dem
+Grund, den die Tabelle oben nennt. Die vollstaendige Semantik, die Kompatibilitaetsmatrix
+und die entworfene, noch nicht transportierte Rack-/Claim-Schemaversion stehen in
+[QUANTUM_PLAYLIST_LAYERS.md](QUANTUM_PLAYLIST_LAYERS.md).
+
 ## 14. UI-Informationsarchitektur
 
 Der Detail-Screen zeigt nicht das volle Rack inline:

@@ -346,6 +346,51 @@ Auf dem Boardbild werden mehrere Layer durch benachbarte Ringsegmente gezeigt. B
 sind ungeeignet, weil die Ursprungsidentitaeten nicht mehr ablesbar waeren. Slotnummern und
 Legende stellen die Verbindung zum Rack her.
 
+### 12.5 Lanes in der geteilten Liste
+
+Die Playlist bleibt eine Liste in der Zeit. Auf einem Vier-Lane-Board bekommt jede Zeile
+zusaetzlich vier schmale Chips und der Screen einen Rack-Streifen ueber der Liste. Auf
+jedem anderen Board existiert beides nicht — nicht „leer“, sondern gar nicht, damit die
+Zeilenhoehe unveraendert bleibt.
+
+```text
+◉  Zombie Hands              2/4        L1 ●  L2 ·1  L3 ✓  L4 ?     💡  ⟳  🗑
+   6B · 40°
+```
+
+Ein Chip ist **Nummer plus Symbol**. Farbe ist redundant und niemals allein tragend:
+
+| Symbol | Zustand |
+|---|---|
+| `●` | diese Occurrence leuchtet in dieser Lane |
+| `◐` | fuer diese Lane geplant, nichts geschrieben |
+| `…` | Write laeuft |
+| `✓` | konfliktfrei, sendbar |
+| `·N` | N Holds im Weg; `·1` ist „ein Hold entfernt“, nicht sendbar |
+| `?` | eine Ebene an der Wand ist unbekannt |
+| `✕` | Kapazitaet, Farbe oder fremder Claim |
+
+Ein Tap auf einen Chip **plant** eine Lane. Er sendet nicht. Die Lampe der Zeile bleibt die
+einzige Aktion des Screens, die eine Diode veraendert; sie schreibt in die vorgemerkte oder
+vorgeschlagene Lane. Ohne konfliktfreie Lane bleibt der Eintrag unveraendert in der Liste
+und die Absage nennt ihren Grund.
+
+Geraete, die keine Lane schreiben koennen — jedes Mesh-Mitglied, das nicht am Controller
+haengt —, sehen dieselbe Kompatibilitaet, aber deaktivierte Chips und eine Zeile, die
+erklaert warum. Eine Schaltflaeche, die nichts tut, ist eine Behauptung.
+
+Eine Lane, deren Occurrence die Liste verlassen hat, bleibt an und wird im Streifen
+markiert. Die vollstaendige Semantik steht in
+[QUANTUM_PLAYLIST_LAYERS.md](QUANTUM_PLAYLIST_LAYERS.md).
+
+### 12.6 Browser-Filter „Passt an die Wand“
+
+Drei Zustaende: `Aus`, `Ohne Ueberlappung`, `Hoechstens 1`. Nur auf Quantum sichtbar, beim
+Boardwechsel auf `Aus` zurueckgesetzt, und deaktiviert solange nichts leuchtet — mit einem
+Satz, der das sagt, statt eines Chips, der wirkungslos klickt. Unter den Chips steht die
+exakte Trefferzahl; kann eine Ebene nicht aufgeloest werden, steht dort stattdessen, dass
+ein freier Send nicht garantiert ist.
+
 ## 13. Automatic versus explizites Senden
 
 Der Default ist `Per Taste`. Bestehende Installationen werden genau einmal auf diesen
@@ -402,6 +447,8 @@ Die UI muss auch waehrend schneller Zustandswechsel ehrlich bleiben:
 | `Board` | „Climb jetzt auf dem Board anzeigen“ |
 | Lampenicon in Playlistrow | „Diesen Playlist-Eintrag auf dem Board anzeigen“ |
 | Plus im Playlist-Banner | „Ans Ende der Board-Playlist hinzufügen“ |
+| Lane-Chip `L2 ·1` | „Lane 2: ein Hold im Weg — das Board lehnt das weiterhin ab“ |
+| Lane-Chip `L3 ?` | „Lane 3: unbekannt — eine Ebene an der Wand konnte nicht aufgeloest werden“ |
 | Cyan-Swatch | „Cyan, Layerfarbe, verfuegbar/ausgewaehlt“ |
 
 ## 16. Internationalisierung und Textprinzipien

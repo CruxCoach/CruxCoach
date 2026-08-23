@@ -28,6 +28,9 @@ Die Dokumente:
 3. [PLAYLIST_UI_UX_PRINCIPLES.md](PLAYLIST_UI_UX_PRINCIPLES.md) — Informationsarchitektur,
    Interaktionsgrammatik, Detail-Screen, Playlist, Aktionsdock, Layer-Sheet,
    Accessibility und Fehlersprache.
+4. [QUANTUM_PLAYLIST_LAYERS.md](QUANTUM_PLAYLIST_LAYERS.md) — die Verbindung der beiden:
+   zeitlicher Backlog gegen gleichzeitiges Rack, neutrale Lanes, Kompatibilitaetsmatrix,
+   Claims als Leases, Browser-Filter und die bewusst gezogene Protokollgrenze.
 
 ## 1. Die zentrale Unterscheidung
 
@@ -225,6 +228,9 @@ Undo muessen dieselbe Nutzerhandlung beschreiben.
 | Quantum-Readback ist staerker | jeder erfolgreiche Write ist „bestaetigt“ | Protokolle liefern unterschiedliche Evidenz |
 | Layer lokal und controllergebunden | Layer ungeprueft durchs Mesh routen | Wire verliert User-, Farb- und Slot-Identitaet |
 | Banner-Plus mit Append-only-Semantik | breiter Add-Block im Detail-Dock | Playlist-Aktion bleibt beim Playlist-Kontext und der Boardbereich gewinnt Platz |
+| eine Playlist + neutrales Rack | eine Playlist pro Layer | vier Listen haetten vier Historien, vier Resttimer und keine Antwort auf „wo steht der Warm-up“ |
+| Eligibility abgeleitet | Eligibility gespeichert | die Wand aendert jemand anderes; ein Cache faellt still hinter die Realitaet zurueck |
+| unbekannte Holds bleiben unbekannt | leere Holdmenge als „leuchtet nichts“ | genau so sieht ein unsicherer Send sicher aus |
 | kompakter Strip + Sheet | kompletter Rack inline | Board-Visualisierung bleibt primaer |
 
 ## 7. Konsistenz ueber Schichten

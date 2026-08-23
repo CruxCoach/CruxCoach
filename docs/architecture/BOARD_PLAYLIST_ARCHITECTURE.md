@@ -466,12 +466,26 @@ Mindestens folgende Eigenschaften muessen als Tests existieren:
 - Restore ist idempotent und bewahrt post-Clear Adds,
 - Snapshot-Reparatur konvergiert auf denselben Hash.
 
+### Lanes
+
+Auf einem Board mit mehreren gleichzeitigen Projektionen bleibt diese Playlist genau eine
+geordnete Liste. Das Rack ist eine zweite, kleinere Struktur daneben; welche Occurrence in
+welche Lane soll, ist eine optionale Praeferenz an der Entry-ID. Semantik, Grenzen und
+Tests dazu:
+[QUANTUM_PLAYLIST_LAYERS.md](QUANTUM_PLAYLIST_LAYERS.md).
+
+`currentEntryId` und `pendingProjection` behalten ihre Bedeutung unveraendert. Es gibt kein
+zweites Current und keine vier Currents.
+
 ### UI-Vertrag
 
 - Row-Tap mutiert weder Current noch Projection,
 - Listenpfeile bewegen nur den lokalen UI-Cursor und senden keinen Command,
 - Gruen markiert bestaetigten Current; Orange nur abweichenden lokalen Fokus,
 - bei identischem Fokus und Current gewinnt ausschliesslich Gruen,
+- Lane-Chips sind auf Nicht-Layer-Boards nicht vorhanden, nicht nur leer,
+- eine Lane-Zuweisung erzeugt keinen Command und keinen Write,
+- das Entfernen einer Occurrence entfernt nie einen physischen Layer,
 - Row-Lampe tut dies explizit,
 - Detail-Navigation traegt Entry-ID,
 - remote geloeschter Entry bleibt als lokaler Kontext sichtbar,
