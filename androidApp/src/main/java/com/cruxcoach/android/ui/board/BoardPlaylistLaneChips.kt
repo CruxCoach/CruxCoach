@@ -85,8 +85,14 @@ private fun LaneChip(
 ) {
     val tint = laneChipTint(badge.kind)
     val suggestedSuffix = stringResource(R.string.board_lane_cd_suggested)
-    val description = laneChipDescription(badge) +
-        if (suggested) ". " + suggestedSuffix else EMPTY_SUFFIX
+    val unassignSuffix = stringResource(R.string.board_lane_unassign)
+    val description = laneChipDescription(badge) + when {
+        // Tapping the chosen lane again is the way back to "wherever the
+        // group's current belongs"; without saying so it is an invisible door.
+        assigned -> ". " + unassignSuffix
+        suggested -> ". " + suggestedSuffix
+        else -> EMPTY_SUFFIX
+    }
     val label = badge.label
     Surface(
         onClick = onAssign,

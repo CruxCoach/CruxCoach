@@ -370,7 +370,9 @@ Ein Chip ist **Nummer plus Symbol**. Farbe ist redundant und niemals allein trag
 | `?` | eine Ebene an der Wand ist unbekannt |
 | `✕` | Kapazitaet, Farbe oder fremder Claim |
 
-Ein Tap auf einen Chip **plant** eine Lane. Er sendet nicht. Die Lampe der Zeile bleibt die
+Ein Tap auf einen Chip **plant** eine Lane. Ein zweiter Tap auf dieselbe Lane nimmt die
+Vormerkung zurueck — sonst gaebe es keinen Weg zurueck zu „die Lampe legt es dorthin, wo
+der Gruppen-Current hingehoert“. Er sendet nicht. Die Lampe der Zeile bleibt die
 einzige Aktion des Screens, die eine Diode veraendert; sie schreibt in die vorgemerkte oder
 vorgeschlagene Lane. Ohne konfliktfreie Lane bleibt der Eintrag unveraendert in der Liste
 und die Absage nennt ihren Grund.

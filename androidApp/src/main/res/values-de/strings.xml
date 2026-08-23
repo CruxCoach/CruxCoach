@@ -3043,9 +3043,6 @@
     <string name="board_lane_cd_unknown">Lane %1$d: unbekannt — eine Ebene an der Wand konnte nicht aufgelöst werden, eine Überlappung ist damit nicht auszuschließen</string>
     <string name="board_lane_cd_blocked">Lane %1$d: derzeit nicht verfügbar</string>
     <string name="board_lane_conflict_with">Überlappt mit %1$s</string>
-    <string name="board_lane_conflict_external">Überlappt mit der Ebene einer anderen Person</string>
-    <string name="board_lane_send">Diesen Eintrag auf Lane %1$d legen</string>
-    <string name="board_lane_assign">Diesen Eintrag für Lane %1$d vormerken</string>
     <string name="board_lane_unassign">Lane-Vormerkung aufheben</string>
     <string name="board_lane_no_eligible">Derzeit ist keine Lane konfliktfrei. Der Eintrag bleibt auf der Liste — an der Wand wurde nichts verändert.</string>
     <string name="board_lane_refused_conflict">Lane %1$d teilt mindestens ein Hold mit einer anderen Ebene. Eine Diode kann nicht zwei Farben tragen.</string>
@@ -3057,7 +3054,6 @@
     <string name="board_lane_blocked_mesh">Nur das Gerät am Board kann eine Ebene setzen. Hier kannst du Lanes planen und sehen, was passt.</string>
     <string name="board_lane_blocked_disconnected">Keine Verbindung zum Board.</string>
     <string name="board_lane_orphaned">Lane %1$s leuchtet noch für einen Eintrag, den die Liste nicht mehr hat. Sie bleibt an, bis jemand sie ersetzt oder entfernt.</string>
-    <string name="board_lane_assignment_conflict">Lane %1$d passt für diesen Eintrag nicht mehr. Wähle eine andere Lane oder mach zuerst die Wand frei — es wurde nichts für dich verschoben.</string>
     <!-- Quantum-only Browse-Filter: was noch neben die bestätigten Ebenen passt. -->
     <string name="board_filter_quantum_overlap_title">Passt an die Wand</string>
     <string name="board_filter_quantum_overlap_off">Aus</string>

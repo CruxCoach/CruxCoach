@@ -842,11 +842,16 @@ class BoardPlaylistViewModel @Inject constructor(
      * planning is the part somebody does while looking at a busy wall and
      * deciding what can still go on it. The light only moves when the lamp is
      * pressed.
+     *
+     * Naming the lane an occurrence already has takes the preference back. A
+     * plan needs a way out that is not "pick a different one": the whole point
+     * of an unassigned occurrence is that the lamp puts it wherever the group's
+     * current belongs, and there was otherwise no way back to that.
      */
     fun assignLane(entryId: String, lane: Int) {
         val laneState = _state.value.laneState
         if (!laneState.available || lane !in 0 until laneState.maxLanes) return
-        if (_state.value.rows.none { it.entryId == entryId }) return
+        val row = _state.value.rows.firstOrNull { it.entryId == entryId } ?: return
         // A preference this device could never act on would be a control that
         // does nothing — the lane is read from the writing device's own plan.
         if (!laneState.commitAllowed) {
@@ -857,14 +862,8 @@ class BoardPlaylistViewModel @Inject constructor(
             )
             return
         }
-        lanePlanner.assign(entryId, lane)
-        viewModelScope.launch { render(boardCellManager.snapshot()) }
-    }
-
-    /** Take the preference back. The lane keeps whatever it is showing. */
-    fun clearLane(entryId: String) {
-        if (!_state.value.laneState.available) return
-        lanePlanner.release(entryId)
+        if (row.lanes.assignedLane == lane) lanePlanner.release(entryId)
+        else lanePlanner.assign(entryId, lane)
         viewModelScope.launch { render(boardCellManager.snapshot()) }
     }
 

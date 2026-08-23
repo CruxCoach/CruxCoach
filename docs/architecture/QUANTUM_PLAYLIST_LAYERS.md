@@ -146,6 +146,9 @@ Grund, an dem jemand etwas aendern kann.
 - **Eine bestehende Praeferenz wird ungueltig:** sie wird **nicht** still auf eine andere
   Lane umgebogen. Der Konflikt wird angezeigt. Eine heimliche Umbuchung ist, wie jemand
   Lane 4 beleuchtet, waehrend er auf Lane 2 schaut.
+- **Zuruecknehmen:** dieselbe Lane erneut waehlen loescht die Vormerkung. Eine
+  unzugewiesene Occurrence ist ein sinnvoller Zustand — die Lampe adressiert dann die
+  kanonische Lane —, also braucht es einen Weg dorthin zurueck.
 
 ### 5.1 Warum die Lampe ohne Zuweisung nicht selbst eine Lane sucht
 

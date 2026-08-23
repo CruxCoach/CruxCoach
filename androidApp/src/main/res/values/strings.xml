@@ -3043,9 +3043,6 @@
     <string name="board_lane_cd_unknown">Lane %1$d: unknown — a layer on the wall could not be resolved, so no overlap can be ruled out</string>
     <string name="board_lane_cd_blocked">Lane %1$d: not available right now</string>
     <string name="board_lane_conflict_with">Overlaps with %1$s</string>
-    <string name="board_lane_conflict_external">Overlaps with another climber\'s layer</string>
-    <string name="board_lane_send">Put this entry on lane %1$d</string>
-    <string name="board_lane_assign">Plan this entry for lane %1$d</string>
     <string name="board_lane_unassign">Drop the lane preference</string>
     <string name="board_lane_no_eligible">No lane is free of conflicts right now. The entry stays on the list — nothing was changed on the wall.</string>
     <string name="board_lane_refused_conflict">Lane %1$d shares at least one hold with another layer. One diode cannot carry two colours.</string>
@@ -3057,7 +3054,6 @@
     <string name="board_lane_blocked_mesh">Only the device connected to the board can place a layer. You can plan lanes here and see what fits.</string>
     <string name="board_lane_blocked_disconnected">No connection to the board.</string>
     <string name="board_lane_orphaned">Lane %1$s is still lit for an entry the list no longer has. It stays on until somebody replaces or removes it.</string>
-    <string name="board_lane_assignment_conflict">Lane %1$d no longer fits this entry. Choose another lane or clear the wall first — nothing was moved for you.</string>
     <!-- Quantum-only browse filter: what still fits next to the confirmed layers. -->
     <string name="board_filter_quantum_overlap_title">Fits the wall</string>
     <string name="board_filter_quantum_overlap_off">Off</string>
