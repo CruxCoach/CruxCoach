@@ -28,7 +28,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -325,7 +324,7 @@ class RandomBoardClimbPickerTest {
     }
 
     @Test
-    fun `an empty list on an unfamiliar board declines instead of guessing`() = runTest {
+    fun `an empty list is seeded from the current browser filters`() = runTest {
         val capture = Capture()
 
         val roll = picker(
@@ -335,11 +334,10 @@ class RandomBoardClimbPickerTest {
             cell = cell(BoardBrand.QUANTUM.wireValue),
         ).roll()
 
-        assertTrue(
-            "brand=quantum with Kilter's layout would return nothing forever",
-            roll is RandomClimbRoll.BoardUnknown,
-        )
-        assertFalse("the impossible query is never issued", capture.boardBrand.isCaptured)
+        assertTrue(roll is RandomClimbRoll.Picked)
+        assertEquals(BoardBrand.KILTER.wireValue, capture.boardBrand.captured)
+        assertEquals(9101, capture.layoutId.captured)
+        assertEquals(40, capture.angle.captured)
     }
 
     /**
@@ -349,7 +347,7 @@ class RandomBoardClimbPickerTest {
      * Homewall are the same brand and different layouts.
      */
     @Test
-    fun `an empty same-brand group is not an excuse to use the local layout`() = runTest {
+    fun `an empty same-brand group uses the current browser layout`() = runTest {
         val capture = Capture()
 
         val roll = picker(
@@ -362,11 +360,9 @@ class RandomBoardClimbPickerTest {
             connectedToCellBoard = false,
         ).roll()
 
-        assertTrue(
-            "same brand says nothing about the layout",
-            roll is RandomClimbRoll.BoardUnknown,
-        )
-        assertFalse(capture.boardBrand.isCaptured)
+        assertTrue(roll is RandomClimbRoll.Picked)
+        assertEquals(BoardBrand.KILTER.wireValue, capture.boardBrand.captured)
+        assertEquals(9101, capture.layoutId.captured)
     }
 
     /**
@@ -441,7 +437,7 @@ class RandomBoardClimbPickerTest {
     }
 
     @Test
-    fun `a climb the catalogue does not know cannot characterise the board`() = runTest {
+    fun `an unresolved playlist reference falls back to browser filters`() = runTest {
         val capture = Capture()
         val unknown = "88888888-8888-8888-8888-888888888888"
 
@@ -455,6 +451,9 @@ class RandomBoardClimbPickerTest {
             ),
         ).roll()
 
-        assertTrue(roll is RandomClimbRoll.BoardUnknown)
+        assertTrue(roll is RandomClimbRoll.Picked)
+        assertEquals(BoardBrand.KILTER.wireValue, capture.boardBrand.captured)
+        assertEquals(9101, capture.layoutId.captured)
+        assertEquals(40, capture.angle.captured)
     }
 }

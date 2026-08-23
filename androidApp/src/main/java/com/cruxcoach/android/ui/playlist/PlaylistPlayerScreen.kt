@@ -181,7 +181,6 @@ fun PlaylistPlayerScreen(
     val loggedSendMsg = stringResource(R.string.playlist_logged_send)
     val loggedAttemptMsg = stringResource(R.string.playlist_logged_attempt)
     val noRandomMatchMsg = stringResource(R.string.board_playlist_random_unavailable)
-    val unknownBoardMsg = stringResource(R.string.board_playlist_random_board_unknown)
 
     // Quick-log feedback: snackbar + reset the one-shot flag.
     LaunchedEffect(state.lastLogged) {
@@ -191,11 +190,8 @@ fun PlaylistPlayerScreen(
         }
     }
     LaunchedEffect(viewModel) {
-        viewModel.randomAddUnavailable.collect { roll ->
-            snackbarHostState.showSnackbar(
-                if (roll is com.cruxcoach.android.ui.board.RandomClimbRoll.BoardUnknown) unknownBoardMsg
-                else noRandomMatchMsg,
-            )
+        viewModel.randomAddUnavailable.collect {
+            snackbarHostState.showSnackbar(noRandomMatchMsg)
         }
     }
 

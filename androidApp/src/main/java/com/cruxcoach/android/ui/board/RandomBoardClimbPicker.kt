@@ -29,19 +29,6 @@ sealed interface RandomClimbRoll {
 
     /** The catalogue holds nothing that fits the filters on that board. */
     data object NoMatch : RandomClimbRoll
-
-    /**
-     * A group is on a board this device has never browsed and its list is
-     * still empty, so nothing here knows which layout or angle would fit.
-     *
-     * Kept apart from [NoMatch] because the two need different answers: one
-     * is "loosen your filters", the other is "nobody has put a climb on this
-     * board yet". Guessing instead — which is what querying the group's brand
-     * with the previously browsed board's layout amounted to — produces an
-     * impossible combination that returns nothing for as long as the group
-     * lasts, under a message blaming filters the user cannot even see.
-     */
-    data object BoardUnknown : RandomClimbRoll
 }
 
 /** Board, layout and angle a dice roll must actually fit. */
@@ -61,15 +48,13 @@ class RandomBoardClimbPicker @Inject constructor(
     /**
      * Which board a roll is for.
      *
-     * The persisted browser filters describe the board this device was last
-     * looking at, which is not necessarily the board it is standing in front
-     * of. A BoardCell's physical identity settles the family; the layout and
-     * the angle have to come from the group as well, because the identity
-     * carries neither — so they are read off a climb the group already put on
-     * its list. Only when the group has no climbs yet and its family differs
-     * from the local filter is there genuinely nothing to go on.
+     * The persisted browser filters are the source for an empty playlist: the
+     * dice means "pick from the browser with my current filters", not "compare
+     * with a climb that must already exist". Once the group has a resolvable
+     * occurrence or projection, that established board context still wins so
+     * a member cannot accidentally mix layouts into an existing playlist.
      */
-    private fun resolveBoard(filter: com.cruxcoach.android.data.BoardFilterSnapshot): RandomClimbBoard? {
+    private fun resolveBoard(filter: com.cruxcoach.android.data.BoardFilterSnapshot): RandomClimbBoard {
         val local = RandomClimbBoard(filter.boardBrand, filter.layoutId, filter.angle)
         val snapshot = boardCellManager.snapshot() ?: return local
         val cellBrand = snapshot.physicalBoardId.value
@@ -112,12 +97,15 @@ class RandomBoardClimbPicker @Inject constructor(
         ) {
             return local.copy(boardBrand = cellBrand)
         }
-        return null
+        // An empty (or not-yet-resolvable) playlist is seeded from the Board
+        // Browser. No climb on the wall is the trivial zero-overlap case, not
+        // an unknown-board error and not a reason to disable the dice.
+        return local
     }
 
     suspend fun roll(): RandomClimbRoll {
         val filter = userPreferences.getBoardFilterSnapshot()
-        val board = resolveBoard(filter) ?: return RandomClimbRoll.BoardUnknown
+        val board = resolveBoard(filter)
         val boardBrand = board.boardBrand
         val french = filter.gradeScale == GradeScale.FRENCH
         val minDifficulty: Double
