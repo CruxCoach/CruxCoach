@@ -700,6 +700,27 @@ class PersonalBoardRepositoryImpl(
         }
     }
 
+    override fun getClimbNotesForBackup(): List<ClimbNoteBackupRow> =
+        database.climbNotesQueries.selectAllForBackup().executeAsList().map { row ->
+            ClimbNoteBackupRow(
+                climbUuid = row.climb_uuid,
+                note = row.note,
+                updatedAt = row.updated_at,
+            )
+        }
+
+    override fun restoreClimbNote(row: ClimbNoteBackupRow) {
+        val normalized = row.note.trim().take(1000)
+        // An empty note is not a note. Restoring one as a row would recreate
+        // something [saveClimbNote] deliberately deletes.
+        if (normalized.isEmpty()) return
+        database.climbNotesQueries.upsert(
+            climbUuid = row.climbUuid,
+            note = normalized,
+            updatedAt = row.updatedAt,
+        )
+    }
+
     override fun getClimbListEntriesRaw(): List<RawClimbListEntry> {
         return database.climbListsQueries.getClimbListEntriesRaw().executeAsList().map { row ->
             RawClimbListEntry(
