@@ -9,6 +9,7 @@ import com.cruxcoach.util.DateTimeUtil
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -30,6 +31,16 @@ internal class AscentLogger(
     private val currentClimbUuid: () -> String,
     private val onAscentSaved: (isSend: Boolean) -> Unit
 ) {
+
+    private data class PendingQuickLog(
+        val entryUuid: String,
+        val climbUuid: String,
+        val angle: Long,
+        val isSend: Boolean,
+        val previousHistory: com.cruxcoach.data.repository.ClimbHistoryEntry?,
+    )
+
+    private var pendingQuickLog: PendingQuickLog? = null
 
     fun showDialog() {
         state.update { it.copy(ascent = AscentFormState(showDialog = true)) }
@@ -55,7 +66,73 @@ internal class AscentLogger(
         state.update { it.copy(ascent = it.ascent.copy(comment = comment)) }
     }
 
-    fun save() {
+    fun save() = save(isQuickLog = false)
+
+    /** Log the common case without opening the detail form. */
+    fun quickLog(isSend: Boolean) {
+        finalizePendingQuickLog()
+        state.update {
+            it.copy(
+                ascent = AscentFormState(isSend = isSend),
+                isQuickLogging = true,
+                quickLogFeedback = null,
+            )
+        }
+        save(isQuickLog = true)
+    }
+
+    fun consumeQuickLogFeedback() {
+        finalizePendingQuickLog()
+        state.update { it.copy(quickLogFeedback = null) }
+    }
+
+    fun undoQuickLog() {
+        val pending = pendingQuickLog ?: return
+        pendingQuickLog = null
+        scope.launch {
+            withContext(Dispatchers.IO) {
+                if (pending.isSend) {
+                    personalBoardRepo.deleteAscent(pending.entryUuid)
+                    val currentHistory = personalBoardRepo.observeClimbHistory().first()
+                        .firstOrNull { it.climbUuid == pending.climbUuid && it.angle.toLong() == pending.angle }
+                    currentHistory?.let { personalBoardRepo.deleteClimbHistory(listOf(it.id)) }
+                    pending.previousHistory?.let { previous ->
+                        personalBoardRepo.recordClimbHistory(
+                            climbUuid = previous.climbUuid,
+                            climbName = previous.climbName,
+                            angle = previous.angle.toLong(),
+                            difficultyAverage = previous.difficultyAverage,
+                            boardBrand = previous.boardBrand,
+                            layoutId = previous.layoutId,
+                            climbedAt = previous.climbedAt,
+                            recordedAt = previous.recordedAt,
+                        )
+                    }
+                } else {
+                    personalBoardRepo.deleteBid(pending.entryUuid)
+                }
+                val updated = personalBoardRepo.getUserHistoryForClimb(pending.climbUuid)
+                state.update {
+                    it.copy(
+                        userAscents = updated,
+                        isQuickLogging = false,
+                        quickLogFeedback = null,
+                    )
+                }
+            }
+            if (pending.isSend) sessionManager.undoRecordedAscent()
+            else sessionManager.undoRecordedBid()
+            zoneManager.recompute()
+        }
+    }
+
+    private fun finalizePendingQuickLog() {
+        val pending = pendingQuickLog ?: return
+        pendingQuickLog = null
+        onAscentSaved(pending.isSend)
+    }
+
+    private fun save(isQuickLog: Boolean) {
         val s = state.value
         // Close on the way out. The bare `return` left the dialog standing and
         // every further tap did the same nothing, which reads as a hang rather
@@ -67,10 +144,17 @@ internal class AscentLogger(
         }
         val form = s.ascent
         val editUuid = form.editingUuid
+        val entryUuid = editUuid ?: UUID.randomUUID().toString()
         val climbUuid = currentClimbUuid()
 
         scope.launch {
             withContext(Dispatchers.IO) {
+                val previousHistory = if (isQuickLog && form.isSend) {
+                    personalBoardRepo.observeClimbHistory().first()
+                        .firstOrNull { it.climbUuid == climb.uuid && it.angle.toLong() == s.angle.toLong() }
+                } else {
+                    null
+                }
                 if (editUuid != null) {
                     // Route by entry type: a bid lives in the bids table, so
                     // updateAscent (ascents table) would match zero rows and
@@ -90,11 +174,10 @@ internal class AscentLogger(
                         )
                     }
                 } else {
-                    val uuid = UUID.randomUUID().toString()
                     val now = DateTimeUtil.nowIso()
                     if (form.isSend) {
                         personalBoardRepo.insertAscent(
-                            uuid = uuid,
+                            uuid = entryUuid,
                             climbUuid = climb.uuid,
                             angle = s.angle.toLong(),
                             isMirror = s.isMirrored,
@@ -127,7 +210,7 @@ internal class AscentLogger(
                         )
                     } else {
                         personalBoardRepo.insertBid(
-                            uuid = uuid,
+                            uuid = entryUuid,
                             climbUuid = climb.uuid,
                             angle = s.angle.toLong(),
                             isMirror = s.isMirrored,
@@ -143,17 +226,34 @@ internal class AscentLogger(
                     }
                 }
                 val updatedAscents = personalBoardRepo.getUserHistoryForClimb(climbUuid)
-                state.update { it.copy(
-                    ascent = AscentFormState(),
-                    userAscents = updatedAscents
-                ) }
+                if (isQuickLog && editUuid == null) {
+                    pendingQuickLog = PendingQuickLog(
+                        entryUuid = entryUuid,
+                        climbUuid = climbUuid,
+                        angle = s.angle.toLong(),
+                        isSend = form.isSend,
+                        previousHistory = previousHistory,
+                    )
+                }
+                state.update { current ->
+                    current.copy(
+                        ascent = AscentFormState(),
+                        userAscents = updatedAscents,
+                        isQuickLogging = false,
+                        quickLogFeedback = if (isQuickLog && editUuid == null) {
+                            QuickLogFeedback(entryUuid = entryUuid, isSend = form.isSend)
+                        } else {
+                            current.quickLogFeedback
+                        },
+                    )
+                }
             }
             if (editUuid == null) {
                 climbNavState.statusDataChanged = true
                 climbNavState.changedClimbUuids.add(climbUuid)
                 if (form.isSend) sessionManager.recordAscent()
                 else sessionManager.recordBid()
-                onAscentSaved(form.isSend)
+                if (!isQuickLog) onAscentSaved(form.isSend)
                 zoneManager.recompute()
             }
         }

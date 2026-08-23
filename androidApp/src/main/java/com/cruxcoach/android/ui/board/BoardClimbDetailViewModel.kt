@@ -73,6 +73,12 @@ data class AscentFormState(
     val deleteConfirmUuid: String? = null
 )
 
+/** One-shot confirmation for an icon-dock quick log. */
+data class QuickLogFeedback(
+    val entryUuid: String,
+    val isSend: Boolean,
+)
+
 /** Route/multi-frame playback state. */
 data class PlaybackState(
     val allFrames: List<List<BoardHold>> = emptyList(),
@@ -209,6 +215,8 @@ data class ClimbDetailState(
     val availableAngles: List<AngleOption> = emptyList(),
     val error: String? = null,
     val ascent: AscentFormState = AscentFormState(),
+    val isQuickLogging: Boolean = false,
+    val quickLogFeedback: QuickLogFeedback? = null,
     val playback: PlaybackState = PlaybackState(),
     val ble: BoardSendState = BoardSendState(),
     val boardSendMode: BoardSendMode = BoardSendMode.AUTOMATIC,
@@ -1180,6 +1188,9 @@ class BoardClimbDetailViewModel @Inject constructor(
     // --- Ascent delegation ---
 
     fun showAscentDialog() = ascentLogger.showDialog()
+    fun quickLogAscent(isSend: Boolean) = ascentLogger.quickLog(isSend)
+    fun consumeQuickLogFeedback() = ascentLogger.consumeQuickLogFeedback()
+    fun undoQuickLog() = ascentLogger.undoQuickLog()
     fun dismissAscentDialog() = ascentLogger.dismissDialog()
     fun updateAscentIsSend(isSend: Boolean) = ascentLogger.updateIsSend(isSend)
     fun updateAscentBidCount(count: Int) = ascentLogger.updateBidCount(count)
