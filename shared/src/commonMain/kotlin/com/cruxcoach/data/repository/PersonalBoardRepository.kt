@@ -149,6 +149,14 @@ interface PersonalBoardRepository {
      *  always-on ignore filter. */
     fun getIgnoredClimbUuids(): Set<String>
 
+    // ── Private climb notes ────────────────────────────────
+
+    /** Returns the user's encrypted, device-local note for this climb. */
+    fun getClimbNote(climbUuid: String): String?
+
+    /** Stores a trimmed note, or removes it when [note] is blank. */
+    fun saveClimbNote(climbUuid: String, note: String)
+
     fun getClimbListEntriesRaw(): List<RawClimbListEntry>
     fun getListPlaybackStepsRaw(): List<RawListPlaybackStep>
 

@@ -438,15 +438,7 @@ fun BoardClimbDetailScreen(
         topBar = {
             Column {
                 TopAppBar(
-                    title = {
-                        Text(
-                            text = state.climb?.name.orEmpty(),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                        )
-                    },
+                    title = {},
                     navigationIcon = {
                         IconButton(
                             onClick = onNavigateBack,
@@ -456,10 +448,6 @@ fun BoardClimbDetailScreen(
                         }
                     },
                     actions = {
-                        // Keep the chrome deliberately quiet: planning,
-                        // connection and detailed logging live in overflow;
-                        // the three wall-time actions are anchored at the
-                        // bottom where the thumb already is.
                         IconButton(
                             onClick = { viewModel.toggleFavorite() },
                             modifier = Modifier.testTag("boarddetail_favorite_button")
@@ -468,6 +456,28 @@ fun BoardClimbDetailScreen(
                                 if (state.isFavorited) Icons.Default.Star else Icons.Outlined.Star,
                                 contentDescription = stringResource(if (state.isFavorited) R.string.cd_remove_favorite else R.string.cd_add_favorite),
                                 tint = if (state.isFavorited) WarningYellow else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        IconButton(
+                            onClick = { viewModel.showAddToListDialog() },
+                            modifier = Modifier.testTag("boarddetail_add_to_list_button"),
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.PlaylistAdd,
+                                contentDescription = stringResource(R.string.board_addtolist_title),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        IconButton(
+                            onClick = { showBleSheet = true },
+                            modifier = Modifier.testTag("boarddetail_ble_connect_button"),
+                        ) {
+                            Icon(
+                                if (bleConnected) Icons.Default.BluetoothConnected else Icons.Default.Bluetooth,
+                                contentDescription = stringResource(
+                                    if (bleConnected) R.string.cd_board_connected else R.string.cd_board_connect,
+                                ),
+                                tint = if (bleConnected) SuccessGreen else MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                         IconButton(
@@ -481,7 +491,6 @@ fun BoardClimbDetailScreen(
                                        else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        val canLogAscent = state.climb != null
                         // Owner gate for Edit/Delete inside the overflow.
                         // origin must be 'cruxcoach' (we can re-publish those
                         // via Replaceable Kind 30078) AND the climb's
@@ -516,46 +525,6 @@ fun BoardClimbDetailScreen(
                                 expanded = moreExpanded,
                                 onDismissRequest = { moreExpanded = false },
                             ) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.board_addtolist_title)) },
-                                    leadingIcon = {
-                                        Icon(
-                                            Icons.AutoMirrored.Filled.PlaylistAdd,
-                                            contentDescription = null,
-                                        )
-                                    },
-                                    onClick = {
-                                        moreExpanded = false
-                                        viewModel.showAddToListDialog()
-                                    },
-                                    modifier = Modifier.testTag("boarddetail_add_to_list_button"),
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(if (bleConnected) R.string.cd_board_connected else R.string.cd_board_connect)) },
-                                    leadingIcon = {
-                                        Icon(
-                                            if (bleConnected) Icons.Default.BluetoothConnected else Icons.Default.Bluetooth,
-                                            contentDescription = null,
-                                            tint = if (bleConnected) SuccessGreen else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
-                                    },
-                                    onClick = {
-                                        moreExpanded = false
-                                        showBleSheet = true
-                                    },
-                                    modifier = Modifier.testTag("boarddetail_ble_connect_button"),
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.cd_log_ascent)) },
-                                    leadingIcon = { Icon(Icons.Default.Check, contentDescription = null) },
-                                    enabled = canLogAscent,
-                                    onClick = {
-                                        moreExpanded = false
-                                        viewModel.showAscentDialog()
-                                    },
-                                    modifier = Modifier.testTag("boarddetail_log_button"),
-                                )
-                                HorizontalDivider()
                                 // Mirror toggle — a display-only left/right flip
                                 // of the climb. Only shown for layouts that are
                                 // actually mirrorable (Aurora `is_mirrored`):
@@ -903,6 +872,44 @@ private fun ClimbDetailPageContent(
     val climbBugReportTitle = stringResource(R.string.error_bug_report_climb_title)
     val bleBugReportTitle = stringResource(R.string.error_bug_report_ble_title)
     var showDetails by remember { mutableStateOf(false) }
+    var showNoteEditor by remember(state.climb?.uuid) { mutableStateOf(false) }
+    var noteDraft by remember(state.climb?.uuid) { mutableStateOf(state.personalNote) }
+    LaunchedEffect(state.personalNote, showNoteEditor) {
+        if (!showNoteEditor) noteDraft = state.personalNote
+    }
+    if (showNoteEditor) {
+        AlertDialog(
+            onDismissRequest = { showNoteEditor = false },
+            title = { Text(stringResource(R.string.board_detail_personal_note)) },
+            text = {
+                OutlinedTextField(
+                    value = noteDraft,
+                    onValueChange = { noteDraft = it.take(1000) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("boarddetail_note_field"),
+                    placeholder = { Text(stringResource(R.string.board_detail_personal_note_hint)) },
+                    minLines = 3,
+                    maxLines = 6,
+                    supportingText = { Text("${noteDraft.length}/1000") },
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.savePersonalNote(noteDraft)
+                        showNoteEditor = false
+                    },
+                    modifier = Modifier.testTag("boarddetail_note_save"),
+                ) { Text(stringResource(R.string.action_save)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showNoteEditor = false }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            },
+        )
+    }
     state.climb?.takeIf { showDetails }?.let { climb ->
         ClimbDetailInfoSheet(
             state = state,
@@ -957,6 +964,10 @@ private fun ClimbDetailPageContent(
                 CompactClimbOverview(
                     state = state,
                     onShowDetails = { showDetails = true },
+                    onEditNote = {
+                        noteDraft = state.personalNote
+                        showNoteEditor = true
+                    },
                     onAngleSelected = viewModel::onAngleSelected,
                     onNavigateToSetter = onNavigateToSetter,
                 )
@@ -1174,6 +1185,7 @@ private fun BoardDetailActionDock(
 private fun CompactClimbOverview(
     state: ClimbDetailState,
     onShowDetails: () -> Unit,
+    onEditNote: () -> Unit,
     onAngleSelected: (Int) -> Unit,
     onNavigateToSetter: (String) -> Unit,
 ) {
@@ -1189,28 +1201,58 @@ private fun CompactClimbOverview(
         ),
         shape = RoundedCornerShape(14.dp),
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            climb.difficultyAverage?.let { difficulty ->
-                val french = GradeDisplayHelper.formatDifficulty(difficulty, GradeScale.FRENCH)
-                val vScale = GradeDisplayHelper.formatDifficulty(difficulty, GradeScale.V_SCALE)
-                Surface(
-                    color = zoneColorForDifficulty(difficulty, state.zones),
-                    shape = RoundedCornerShape(10.dp),
+        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = climb.name,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                IconButton(
+                    onClick = onEditNote,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .testTag("boarddetail_note_button"),
                 ) {
-                    Text(
-                        "$french / $vScale",
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = DarkBackground,
+                    Icon(
+                        Icons.Default.Edit,
+                        contentDescription = stringResource(R.string.board_detail_edit_personal_note),
+                        tint = if (state.personalNote.isBlank()) {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        } else OrangeAccent,
+                        modifier = Modifier.size(19.dp),
                     )
                 }
+                Icon(
+                    Icons.Default.MoreVert,
+                    contentDescription = stringResource(R.string.board_detail_more_information),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp),
+                )
             }
-            Column(modifier = Modifier.weight(1f)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+            ) {
+                climb.difficultyAverage?.let { difficulty ->
+                    val french = GradeDisplayHelper.formatDifficulty(difficulty, GradeScale.FRENCH)
+                    val vScale = GradeDisplayHelper.formatDifficulty(difficulty, GradeScale.V_SCALE)
+                    Surface(
+                        color = zoneColorForDifficulty(difficulty, state.zones),
+                        shape = RoundedCornerShape(8.dp),
+                    ) {
+                        Text(
+                            "$french / $vScale",
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = DarkBackground,
+                        )
+                    }
+                }
                 setter?.takeIf { it.isNotBlank() }?.let {
                     val pubkey = climb.createdByPubkey?.takeIf(String::isNotBlank)
                     val canOpenSetter = climb.origin == "cruxcoach" && pubkey != null
@@ -1220,53 +1262,41 @@ private fun CompactClimbOverview(
                         overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = if (canOpenSetter) {
-                            Modifier.clickable { onNavigateToSetter(pubkey!!) }
-                        } else Modifier,
+                        modifier = Modifier
+                            .weight(1f, fill = false)
+                            .then(if (canOpenSetter) Modifier.clickable { onNavigateToSetter(pubkey!!) } else Modifier),
                     )
                 }
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    CompactAngleMenu(
-                        currentAngle = state.angle,
-                        availableAngles = state.availableAngles,
-                        onAngleSelected = onAngleSelected,
+                CompactAngleMenu(
+                    currentAngle = state.angle,
+                    availableAngles = state.availableAngles,
+                    onAngleSelected = onAngleSelected,
+                )
+                Text(
+                    text = if (state.playback.isRoute) "${state.playback.totalFrames}F" else "${climb.moveCount}M",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = "${climb.qualityAverage?.let { "%.1f".format(it) } ?: "–"}★",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                if (climb.benchmarkDifficulty > 0.0) {
+                    Icon(
+                        Icons.Default.Verified,
+                        contentDescription = stringResource(R.string.board_detail_benchmark),
+                        tint = OrangeAccent,
+                        modifier = Modifier.size(15.dp),
                     )
-                    Text(
-                        text = if (state.playback.isRoute) {
-                            "${state.playback.totalFrames} ${stringResource(R.string.board_detail_frames)}"
-                        } else {
-                            "${climb.moveCount} ${stringResource(R.string.board_moves)}"
-                        },
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text("·", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(
-                        text = "${climb.qualityAverage?.let { "%.1f".format(it) } ?: "–"}★",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    if (climb.benchmarkDifficulty > 0.0) {
-                        Icon(
-                            Icons.Default.Verified,
-                            contentDescription = stringResource(R.string.board_detail_benchmark),
-                            tint = OrangeAccent,
-                            modifier = Modifier.size(16.dp),
-                        )
-                    }
-                    if (climb.isMatchStateKnown) {
-                        MatchIcon(
-                            crossed = climb.isNomatch,
-                            tint = if (climb.isNomatch) ErrorRed else SuccessGreen,
-                            size = 16,
-                        )
-                    }
                 }
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (climb.isMatchStateKnown) {
+                    MatchIcon(
+                        crossed = climb.isNomatch,
+                        tint = if (climb.isNomatch) ErrorRed else SuccessGreen,
+                        size = 15,
+                    )
+                }
                 Icon(
                     Icons.Default.Groups,
                     contentDescription = stringResource(R.string.board_sends),
@@ -1281,12 +1311,16 @@ private fun CompactClimbOverview(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Icon(
-                Icons.Default.MoreVert,
-                contentDescription = stringResource(R.string.board_detail_more_information),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(20.dp),
-            )
+            state.personalNote.takeIf(String::isNotBlank)?.let { note ->
+                Text(
+                    text = note,
+                    modifier = Modifier.padding(top = 3.dp),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }

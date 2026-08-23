@@ -24,6 +24,7 @@ class FakePersonalBoardRepository : PersonalBoardRepository {
     val sentUuids = mutableSetOf<String>()
     val attemptedUuids = mutableSetOf<String>()
     val ignoredUuids = mutableSetOf<String>()
+    val climbNotes = mutableMapOf<String, String>()
     /** Log uuids (ascent + bid PKs) recorded by inserts, so dedup-counting in
      *  the Kilter import can be exercised. */
     val insertedLogUuids = mutableSetOf<String>()
@@ -121,6 +122,12 @@ class FakePersonalBoardRepository : PersonalBoardRepository {
         else { ignoredUuids.add(climbUuid); true }
     }
     override fun getIgnoredClimbUuids(): Set<String> = ignoredUuids
+    override fun getClimbNote(climbUuid: String): String? = climbNotes[climbUuid]
+    override fun saveClimbNote(climbUuid: String, note: String) {
+        val normalized = note.trim()
+        if (normalized.isEmpty()) climbNotes.remove(climbUuid)
+        else climbNotes[climbUuid] = normalized
+    }
     override fun getClimbListEntriesRaw(): List<RawClimbListEntry> = emptyList()
     override fun getListPlaybackStepsRaw(): List<RawListPlaybackStep> = emptyList()
     override fun getClimbListsForBackup(): List<com.cruxcoach.data.repository.ClimbListBackupRow> = emptyList()

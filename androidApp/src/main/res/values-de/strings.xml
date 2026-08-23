@@ -1335,6 +1335,9 @@
     <string name="board_detail_more_information">Climb-Details und Log-Verlauf</string>
     <string name="board_detail_quick_send_logged">Send geloggt</string>
     <string name="board_detail_quick_attempt_logged">Versuch geloggt</string>
+    <string name="board_detail_personal_note">Persönliche Notiz</string>
+    <string name="board_detail_personal_note_hint">Beta, Zugfolge, Bedingungen…</string>
+    <string name="board_detail_edit_personal_note">Persönliche Notiz bearbeiten</string>
     <string name="board_detail_frames">Frames</string>
     <string name="board_detail_matching">Matchen erlaubt</string>
     <string name="board_detail_no_matching">Kein Matchen</string>
