@@ -53,7 +53,9 @@ def identity_for(branch: str) -> FeatureIdentity:
     else:
         track = f"feat-{slug[:43].rstrip('-')}-{digest[:8]}"
         package = f"com.cruxcoach.android.dev.f_{digest[:12]}"
-        label = f"CruxCoach Dev · {display[:40]}"
+        # Put the feature name first and omit generic branding so side-by-side
+        # installs remain distinguishable even when a launcher truncates them.
+        label = display[:40]
     if not TRACK_RE.fullmatch(track):
         raise ValueError("derived feature track is not a valid APKTrack slug")
     if not PACKAGE_RE.fullmatch(package):

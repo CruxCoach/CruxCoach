@@ -6,4 +6,4 @@ schema_version = 1
 [overrides."feat/board-cell-mesh-mvp-20260814"]
 track = "fips"
 package = "com.cruxcoach.android.dev.feat.board_cell_mesh_mvp"
-label = "CruxCoach Dev · Fips"
+label = "FIPS"
