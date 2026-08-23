@@ -7,7 +7,6 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import com.cruxcoach.android.boardcell.BoardCellScopeRegistry
 import com.cruxcoach.android.R
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardPacketEncoder
@@ -50,10 +49,6 @@ enum class ConnectionState {
  *  5. Always use TRANSPORT_LE, never TRANSPORT_AUTO
  */
 class BoardBleConnection(private val context: Context) {
-    /** Process-wide safety gate installed by BoardCellManager. This sits at the
-     * connection boundary so auto-connect and non-UI callers cannot bypass the
-     * single-controller rule. */
-    @Volatile var connectionGuard: ((DiscoveredBoard) -> Boolean)? = null
 
     private companion object {
         const val TAG = "BoardBleConnection"
@@ -142,7 +137,7 @@ class BoardBleConnection(private val context: Context) {
     private val keepAliveOwners = mutableSetOf<String>()
     private val keepAliveLock = Any()
     private val _keepAliveActive = MutableStateFlow(false)
-    /** True while a mesh/session/relay owns the physical board connection. */
+    /** True while a session or the relay owns the physical board connection. */
     val keepAliveActive: StateFlow<Boolean> = _keepAliveActive.asStateFlow()
     /** Diagnostic truth: whether the current idle countdown can disconnect GATT. */
     val idleDisconnectArmed: Boolean get() = disconnectJob?.isActive == true
@@ -491,11 +486,6 @@ class BoardBleConnection(private val context: Context) {
      */
     @SuppressLint("MissingPermission")
     fun connect(board: DiscoveredBoard, maxAttempts: Int = MAX_CONNECT_ATTEMPTS) {
-        if (connectionGuard?.invoke(board) == false) {
-            Log.w(TAG, "Board connection blocked by active mesh controller policy")
-            return
-        }
-        BoardCellScopeRegistry.select(board)
         if (_connectionState.value != ConnectionState.DISCONNECTED) return
 
         attemptBudget = maxAttempts.coerceIn(1, MAX_CONNECT_ATTEMPTS)
@@ -887,7 +877,6 @@ class BoardBleConnection(private val context: Context) {
         writeCharacteristic = null
         currentBoard = null
         _connectedBoardDescriptor.value = null
-        BoardCellScopeRegistry.clearSelection()
         _connectionState.value = ConnectionState.DISCONNECTED
         _connectedBoardName.value = null
         _connectedBoardBrand.value = null

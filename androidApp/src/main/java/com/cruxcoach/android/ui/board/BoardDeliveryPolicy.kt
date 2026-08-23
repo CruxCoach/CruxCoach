@@ -9,7 +9,6 @@ import com.cruxcoach.android.data.SessionRole
 internal enum class BoardDeliveryTarget {
     NONE,
     DIRECT_BOARD,
-    MESH_BOARD,
     SHARED_QUEUE,
 }
 
@@ -29,11 +28,9 @@ internal object BoardDeliveryPolicy {
         newRole: SessionRole,
         previousRole: SessionRole,
         connectionState: ConnectionState,
-        boardRoutedByMesh: Boolean = false,
     ): Boolean = newRole == SessionRole.HOST &&
         previousRole != SessionRole.HOST &&
-        connectionState == ConnectionState.DISCONNECTED &&
-        !boardRoutedByMesh
+        connectionState == ConnectionState.DISCONNECTED
 
     fun shouldReleaseBoardForSessionParticipant(
         newRole: SessionRole,
@@ -54,7 +51,6 @@ internal object BoardDeliveryPolicy {
         boardConnected: Boolean,
         hasDirectPayload: Boolean,
         connectedViaRelay: Boolean = false,
-        connectedViaMesh: Boolean = false,
     ): BoardDeliveryDecision {
         // Joining has already handed ownership to the shared-session flow, but
         // the participant GATT command channel is not ready yet. Hide both
@@ -75,7 +71,7 @@ internal object BoardDeliveryPolicy {
             )
         }
 
-        if ((!boardConnected && !connectedViaMesh) || !hasDirectPayload) {
+        if (!boardConnected || !hasDirectPayload) {
             return BoardDeliveryDecision(
                 target = BoardDeliveryTarget.NONE,
                 dispatchAutomatically = false,
@@ -94,7 +90,7 @@ internal object BoardDeliveryPolicy {
         // meant a climber who deliberately switched to AUTOMATIC still got a
         // button, which is not a default any more — it is ignoring them.
         return BoardDeliveryDecision(
-            target = if (connectedViaMesh) BoardDeliveryTarget.MESH_BOARD else BoardDeliveryTarget.DIRECT_BOARD,
+            target = BoardDeliveryTarget.DIRECT_BOARD,
             dispatchAutomatically = sendMode == BoardSendMode.AUTOMATIC,
             showAction = sendMode == BoardSendMode.EXPLICIT,
         )

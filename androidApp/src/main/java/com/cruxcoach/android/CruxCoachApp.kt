@@ -66,12 +66,6 @@ class CruxCoachApp : Application(), Configuration.Provider {
     @Inject
     lateinit var communityClimbSubscriber: dagger.Lazy<com.cruxcoach.android.community.CommunityClimbSubscriber>
 
-    @Inject
-    lateinit var fipsMeshRuntime: dagger.Lazy<com.cruxcoach.android.fips.FipsMeshRuntime>
-
-    @Inject
-    lateinit var boardCellManager: dagger.Lazy<com.cruxcoach.android.boardcell.BoardCellManager>
-
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override val workManagerConfiguration: Configuration
@@ -140,13 +134,6 @@ class CruxCoachApp : Application(), Configuration.Provider {
         // network regain, and a 24 h WorkManager backstop. Hard-disabled
         // when installed via Zapstore (§6.6).
         PerfLogger.trace("UpdaterCoordinator.start") { updaterCoordinator.get().start() }
-
-        // Foreground mesh path: API 29+ uses authenticated FIPS/L2CAP. A
-        // session or cell promotes it to a foreground service through
-        // FipsMeshRuntime.acquire(); API 28 keeps the established GATT path.
-        appScope.launch {
-            boardCellManager.get() // installs board/FIPS lifecycle binding
-        }
 
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
             private var lastForegroundPoll = 0L

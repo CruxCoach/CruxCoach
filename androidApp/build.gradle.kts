@@ -414,8 +414,6 @@ android {
         checkReleaseBuilds = true
     }
 
-    sourceSets["main"].jniLibs.srcDir(layout.buildDirectory.dir("generated/fipsJniLibs"))
-
     packaging {
         dex {
             // minSdk 28 makes AGP store DEX files uncompressed by default so
@@ -430,39 +428,6 @@ android {
 
 }
 
-val fipsCrateDir = rootProject.layout.projectDirectory.dir("native/fips-bridge")
-val fipsSo = layout.buildDirectory.file("generated/fipsJniLibs/arm64-v8a/libcruxcoach_fips.so")
-val buildFipsNative by tasks.registering(Exec::class) {
-    group = "build"
-    description = "Build the pinned FIPS Rust bridge for arm64 Android"
-    workingDir(fipsCrateDir)
-    val ndkRoot = android.ndkDirectory.absolutePath
-    val toolBin = "$ndkRoot/toolchains/llvm/prebuilt/linux-x86_64/bin"
-    environment("PATH", "${System.getProperty("user.home")}/.cargo/bin:$toolBin:${System.getenv("PATH")}")
-    environment("CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER", "$toolBin/aarch64-linux-android28-clang")
-    environment("CC_aarch64_linux_android", "$toolBin/aarch64-linux-android28-clang")
-    // The developer workstation may have an unrelated `cc` helper earlier in
-    // PATH; build scripts themselves are host binaries and require the real C compiler.
-    environment("CC", "/usr/bin/cc")
-    environment("CXX", "/usr/bin/c++")
-    environment("CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER", "/usr/bin/cc")
-    commandLine("${System.getProperty("user.home")}/.cargo/bin/cargo", "+1.94.1", "build",
-        "--locked", "--release", "--target", "aarch64-linux-android")
-    inputs.files(fileTree(fipsCrateDir) { include("Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "src/**") })
-    outputs.file(fipsSo)
-    doLast {
-        copy {
-            from(fipsCrateDir.file("target/aarch64-linux-android/release/libcruxcoach_fips.so"))
-            into(fipsSo.get().asFile.parentFile)
-        }
-    }
-}
-
-tasks.matching {
-    it.name == "mergeDebugNativeLibs" || it.name == "mergeReleaseNativeLibs" ||
-        it.name == "mergeDebugJniLibFolders" || it.name == "mergeReleaseJniLibFolders"
-}
-    .configureEach { dependsOn(buildFipsNative) }
 
 composeCompiler {
     metricsDestination = project.layout.buildDirectory.dir("compose_metrics")

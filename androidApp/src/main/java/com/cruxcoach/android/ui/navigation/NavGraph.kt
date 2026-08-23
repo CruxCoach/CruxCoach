@@ -56,9 +56,6 @@ import com.cruxcoach.android.ui.stats.StatsScreen
 import com.cruxcoach.android.ui.bodystat.BodyStatScreen
 import com.cruxcoach.android.ui.bodystat.DataExportScreen
 import com.cruxcoach.android.ui.bodystat.DataImportScreen
-import androidx.compose.material3.DrawerValue
-import androidx.compose.material3.ModalNavigationDrawer
-import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
@@ -109,7 +106,6 @@ object Routes {
     const val STATS = "stats"
     const val EXERCISE_LIBRARY = "exercise_library"
     const val BOARD_BROWSER = "board_browser"
-    const val FIPS_MESH = "fips_mesh"
     const val BOARD_FILTER = "board_filter"
     const val BOARD_CLIMB_DETAIL = "board_climb_detail/{climbUuid}/{angle}"
     const val CLIMB_CREATOR = "climb_creator?forkUuid={forkUuid}&editUuid={editUuid}"
@@ -488,29 +484,7 @@ fun CruxCoachNavHost(
             }
 
             composable(Routes.BOARD_BROWSER) {
-                // The drawer wraps only this screen because this is the only
-                // place its handle lives — the logo in the browser's app bar.
-                // Wrapping the whole NavHost would put an invisible edge-swipe
-                // on every detail screen, which competes with back gestures.
-                val drawerState = rememberDrawerState(DrawerValue.Closed)
-                val drawerScope = rememberCoroutineScope()
-                ModalNavigationDrawer(
-                    drawerState = drawerState,
-                    drawerContent = {
-                        MainDrawerSheet(
-                            selected = MainDestination.BOARD_CATALOG,
-                            onSelect = { destination ->
-                                drawerScope.launch { drawerState.close() }
-                                when (destination) {
-                                    MainDestination.BOARD_CATALOG -> Unit
-                                    MainDestination.FIPS_MESH -> navController.navigate(Routes.FIPS_MESH)
-                                }
-                            },
-                        )
-                    },
-                ) {
                 BoardBrowserScreen(
-                    onOpenMenu = { drawerScope.launch { drawerState.open() } },
                     onNavigateToClimb = { climbUuid, angle ->
                         navController.navigate(Routes.boardClimbDetail(climbUuid, angle))
                     },
@@ -525,18 +499,6 @@ fun CruxCoachNavHost(
                     },
                     onNavigateToMap = { navController.navigate(Routes.BOARD_MAP) }
                 )
-                }
-            }
-
-            composable(Routes.FIPS_MESH) {
-                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
-                    screenName = "FipsMesh",
-                    onNavigateBack = { navController.popBackStack() },
-                ) {
-                    com.cruxcoach.android.ui.fips.FipsMeshScreen(
-                        onNavigateBack = { navController.popBackStack() },
-                    )
-                }
             }
 
             composable(Routes.BOARD_MAP) {

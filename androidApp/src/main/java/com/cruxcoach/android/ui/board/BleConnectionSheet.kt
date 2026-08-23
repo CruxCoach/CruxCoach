@@ -11,7 +11,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.BluetoothConnected
 import androidx.compose.material.icons.filled.BluetoothDisabled
@@ -46,10 +45,6 @@ import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.android.ui.common.LocalBleShareManager
 import com.cruxcoach.android.data.RememberedBoardController
 import com.cruxcoach.android.data.SessionRole
-import com.cruxcoach.android.boardcell.ControllerRequestState
-import com.cruxcoach.android.boardcell.BoardCellId
-import com.cruxcoach.android.boardcell.PhysicalBoardIdentity
-import com.cruxcoach.android.fips.FipsNearbyMesh
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.*
@@ -71,52 +66,6 @@ fun BleConnectionSheet(
     var discoveryRequested by remember(state.activeBoardBrand) { mutableStateOf(false) }
     var pendingScanStart by remember(state.activeBoardBrand) {
         mutableStateOf<PendingScanStart?>(null)
-    }
-
-    state.controllerRequestBoard?.let { board ->
-        AlertDialog(
-            onDismissRequest = viewModel::dismissControllerRequest,
-            title = { Text(stringResource(R.string.mesh_controller_required_title)) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(stringResource(R.string.mesh_controller_required_text, board.displayName))
-                    when (state.controllerRequestState) {
-                        ControllerRequestState.WAITING -> Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                            Text(stringResource(R.string.mesh_controller_request_waiting))
-                        }
-                        ControllerRequestState.ACCEPTED ->
-                            Text(stringResource(R.string.mesh_controller_request_accepted))
-                        ControllerRequestState.DENIED ->
-                            Text(stringResource(R.string.mesh_controller_request_denied))
-                        ControllerRequestState.TIMED_OUT ->
-                            Text(stringResource(R.string.mesh_controller_request_timed_out))
-                        ControllerRequestState.FAILED ->
-                            Text(stringResource(R.string.mesh_controller_request_failed))
-                        ControllerRequestState.IDLE -> Unit
-                    }
-                }
-            },
-            confirmButton = {
-                if (state.controllerRequestState == ControllerRequestState.IDLE ||
-                    state.controllerRequestState == ControllerRequestState.DENIED ||
-                    state.controllerRequestState == ControllerRequestState.TIMED_OUT ||
-                    state.controllerRequestState == ControllerRequestState.FAILED
-                ) {
-                    TextButton(onClick = viewModel::requestControllerTransfer) {
-                        Text(stringResource(R.string.mesh_controller_request_action))
-                    }
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = viewModel::dismissControllerRequest) {
-                    Text(stringResource(R.string.action_cancel))
-                }
-            },
-        )
     }
 
     // Where scanning is free (Android 12+, BLUETOOTH_SCAN/neverForLocation)
@@ -351,10 +300,6 @@ fun BleConnectionSheet(
                         boardName = state.connectedBoardName ?: "Board",
                         board = state.connectedBoard,
                         isSending = state.connectionState == ConnectionState.SENDING,
-                        activeMeshName = if (state.activeBoardCellId != null) {
-                            state.activeMeshBoardName ?: state.connectedBoardName ?: "Board"
-                        } else null,
-                        activeMeshMemberCount = state.activeMeshMemberCount,
                         onDisconnect = { viewModel.disconnect() }
                     )
                     // FEAT-044 §12: "share this board" (party mode) — only
@@ -376,20 +321,6 @@ fun BleConnectionSheet(
                                 pendingScanStart = PendingScanStart.AUTO_CONNECT
                             }
                         } else null,
-                    )
-                }
-
-                // A mesh participant has a real logical board connection even
-                // though it deliberately owns no physical GATT link. Render it
-                // as that one board here, before the legacy session branch.
-                state.activeBoardCellId != null -> {
-                    ConnectedContent(
-                        boardName = state.activeMeshBoardName ?: "Board",
-                        board = null,
-                        isSending = false,
-                        activeMeshName = state.activeMeshBoardName ?: "Board",
-                        activeMeshMemberCount = state.activeMeshMemberCount,
-                        onDisconnect = { viewModel.disconnect() },
                     )
                 }
 
@@ -467,12 +398,6 @@ fun BleConnectionSheet(
                     ScanContent(
                         isScanning = state.isScanning,
                         boards = state.discoveredBoards,
-                        nearbyMeshes = state.nearbyMeshes,
-                        activeBoardCellId = state.activeBoardCellId,
-                        activeMeshBoardName = state.activeMeshBoardName,
-                        activeMeshMemberCount = state.activeMeshMemberCount,
-                        joiningBoardCellId = state.joiningBoardCellId,
-                        meshJoinFailed = state.meshJoinFailed,
                         nearbySessions = state.nearbySessions,
                         lastUsedBoardAddresses = state.lastUsedBoardAddresses,
                         bleShareState = bleShareState,
@@ -483,7 +408,6 @@ fun BleConnectionSheet(
                         },
                         onStopScan = { viewModel.stopScan() },
                         onConnectBoard = { viewModel.connectToBoard(it) },
-                        onJoinMesh = { viewModel.joinBoardMesh(it) },
                         onReconnectRemembered = rememberedBoard?.let {
                             {
                                 viewModel.stopScan()
@@ -774,8 +698,6 @@ private fun ConnectedContent(
     boardName: String,
     board: DiscoveredBoard?,
     isSending: Boolean,
-    activeMeshName: String? = null,
-    activeMeshMemberCount: Int = 0,
     onDisconnect: () -> Unit
 ) {
     Row(
@@ -783,17 +705,14 @@ private fun ConnectedContent(
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Icon(
-            if (activeMeshName != null) Icons.Default.Hub else Icons.Default.BluetoothConnected,
+            Icons.Default.BluetoothConnected,
             contentDescription = null,
             modifier = Modifier.size(32.dp),
             tint = SuccessGreen
         )
         Column {
             Text(
-                stringResource(
-                    if (activeMeshName != null) R.string.fips_mesh_own_active
-                    else R.string.board_ble_connected,
-                ),
+                stringResource(R.string.board_ble_connected),
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Bold,
                 color = SuccessGreen
@@ -804,32 +723,24 @@ private fun ConnectedContent(
             // MoonBoard-else-Kilter check that mislabeled every Aurora board
             // (e.g. Tension) as "Kilter Board".
             Text(
-                activeMeshName ?: boardName,
+                boardName,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             // Two answers, never a third: physical controllers are treated as
             // exclusive; CruxRelay is multi-client by construction.
-            if (activeMeshName != null) {
-                Text(
-                    "${stringResource(R.string.fips_mesh_members)}: $activeMeshMemberCount",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            } else {
-                val connectionMode = when {
-                    board?.isCruxRelay == true -> R.string.board_ble_connection_via_relay
-                    BoardControllerProfiles.forBoard(board).connectionCapacity ==
-                        BoardConnectionCapacity.MULTIPLE ->
-                        R.string.board_ble_connection_multi
-                    else -> R.string.board_ble_connection_single
-                }
-                Text(
-                    stringResource(connectionMode),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            val connectionMode = when {
+                board?.isCruxRelay == true -> R.string.board_ble_connection_via_relay
+                BoardControllerProfiles.forBoard(board).connectionCapacity ==
+                    BoardConnectionCapacity.MULTIPLE ->
+                    R.string.board_ble_connection_multi
+                else -> R.string.board_ble_connection_single
             }
+            Text(
+                stringResource(connectionMode),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 
@@ -858,10 +769,7 @@ private fun ConnectedContent(
             .testTag("ble_disconnect"),
         shape = RoundedCornerShape(12.dp)
     ) {
-        Text(stringResource(
-            if (activeMeshName != null) R.string.fips_mesh_leave_action
-            else R.string.board_ble_disconnect,
-        ))
+        Text(stringResource(R.string.board_ble_disconnect))
     }
 }
 
@@ -903,12 +811,6 @@ private fun ConnectingContent(
 private fun ScanContent(
     isScanning: Boolean,
     boards: List<DiscoveredBoard>,
-    nearbyMeshes: List<FipsNearbyMesh>,
-    activeBoardCellId: String?,
-    activeMeshBoardName: String?,
-    activeMeshMemberCount: Int,
-    joiningBoardCellId: String?,
-    meshJoinFailed: Boolean,
     nearbySessions: List<NearbySession>,
     lastUsedBoardAddresses: Map<BoardBrand, String>,
     bleShareState: com.cruxcoach.android.data.BleShareUiState,
@@ -917,7 +819,6 @@ private fun ScanContent(
     onStartScan: () -> Unit,
     onStopScan: () -> Unit,
     onConnectBoard: (DiscoveredBoard) -> Unit,
-    onJoinMesh: (FipsNearbyMesh) -> Unit,
     onReconnectRemembered: (() -> Unit)?,
     onSessionTapped: (NearbySession) -> Unit,
     onRequestDisconnect: () -> Unit,
@@ -965,36 +866,12 @@ private fun ScanContent(
         }
     }
 
-    if (meshJoinFailed) {
-        Text(stringResource(R.string.fips_mesh_join_failed),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.error)
-    }
-
-    if (activeBoardCellId != null) {
-        ActiveMeshBoardItem(activeMeshBoardName, activeMeshMemberCount)
-    }
-
-    val meshCells = nearbyMeshes.mapNotNull { it.joinableBoardCellId }.toSet()
-    val standaloneBoards = boards.filter { board ->
-        val cell = runCatching {
-            BoardCellId.forPhysical(PhysicalBoardIdentity.resolve(board)).value
-        }.getOrNull()
-        cell != activeBoardCellId && cell !in meshCells
-    }
-    if (standaloneBoards.isNotEmpty() || nearbyMeshes.isNotEmpty() || nearbySessions.isNotEmpty()) {
+    if (boards.isNotEmpty() || nearbySessions.isNotEmpty()) {
         LazyColumn(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.heightIn(max = 300.dp)
         ) {
-            items(nearbyMeshes, key = { "mesh:${it.realmTag}:${it.cellTag}" }) { mesh ->
-                MeshBoardItem(mesh = mesh,
-                    joined = mesh.joinableBoardCellId == activeBoardCellId,
-                    joining = mesh.joinableBoardCellId == joiningBoardCellId,
-                    joinEnabled = joiningBoardCellId == null,
-                    onClick = { onJoinMesh(mesh) })
-            }
-            items(standaloneBoards, key = { it.address }) { board ->
+            items(boards, key = { it.address }) { board ->
                 BoardItem(
                     board = board,
                     isLastUsed = lastUsedBoardAddresses[board.boardBrand] == board.address,
@@ -1008,7 +885,7 @@ private fun ScanContent(
                 )
             }
         }
-    } else if (!isScanning && activeBoardCellId == null) {
+    } else if (!isScanning) {
         Text(
             stringResource(R.string.board_ble_no_boards),
             style = MaterialTheme.typography.bodyMedium,
@@ -1052,75 +929,6 @@ private fun ScanContent(
             stringResource(if (isScanning) R.string.board_ble_stop_scan else R.string.board_ble_start_scan),
             fontWeight = FontWeight.Bold
         )
-    }
-}
-
-@Composable
-private fun ActiveMeshBoardItem(boardName: String?, memberCount: Int) {
-    Card(
-        modifier = Modifier.fillMaxWidth().testTag("active_mesh_board_item"),
-        colors = CardDefaults.cardColors(
-            containerColor = SuccessGreen.copy(alpha = 0.12f),
-        ),
-        shape = RoundedCornerShape(12.dp),
-    ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(Icons.Default.Hub, contentDescription = null, tint = SuccessGreen)
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    boardName ?: stringResource(R.string.fips_mesh_nearby_own),
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Bold,
-                )
-                Text(
-                    "${stringResource(R.string.fips_mesh_own_active)} · " +
-                        "${stringResource(R.string.fips_mesh_members)}: $memberCount",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = SuccessGreen,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun MeshBoardItem(
-    mesh: FipsNearbyMesh,
-    joined: Boolean,
-    joining: Boolean,
-    joinEnabled: Boolean,
-    onClick: () -> Unit,
-) {
-    Card(
-        onClick = onClick,
-        enabled = mesh.joinableBoardCellId != null && !joined && joinEnabled,
-        modifier = Modifier.fillMaxWidth().testTag("mesh_board_item"),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)),
-        shape = RoundedCornerShape(12.dp),
-    ) {
-        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.CellTower, contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(mesh.boardName ?: stringResource(R.string.fips_mesh_nearby_other),
-                    style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
-                Text(if (joining) stringResource(R.string.fips_mesh_joining,
-                    mesh.boardName ?: stringResource(R.string.fips_mesh_nearby_other))
-                else if (joined)
-                    stringResource(R.string.fips_mesh_nearby_own)
-                else stringResource(R.string.fips_mesh_nearby_other),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary)
-            }
-            Text("${mesh.rssi} dBm", style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
     }
 }
 

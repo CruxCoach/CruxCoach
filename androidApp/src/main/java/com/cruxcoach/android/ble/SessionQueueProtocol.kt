@@ -97,19 +97,14 @@ object SessionQueueProtocol {
 
     fun encodePrev(): ByteArray = byteArrayOf(CMD_PREV)
 
-    fun encodeJoin(displayName: String, memberNpub: String? = null): ByteArray {
+    fun encodeJoin(displayName: String): ByteArray {
         val nameBytes = displayName.toByteArray(Charsets.UTF_8).let {
             if (it.size > 20) it.copyOf(20) else it
         }
-        val npub = memberNpub?.encodeToByteArray()?.take(100)?.toByteArray()
-        val buf = ByteArray(2 + nameBytes.size + if (npub == null) 0 else 1 + npub.size)
+        val buf = ByteArray(2 + nameBytes.size)
         buf[0] = CMD_JOIN
         buf[1] = nameBytes.size.toByte()
         nameBytes.copyInto(buf, 2)
-        if (npub != null) {
-            buf[2 + nameBytes.size] = npub.size.toByte()
-            npub.copyInto(buf, 3 + nameBytes.size)
-        }
         return buf
     }
 
@@ -125,7 +120,7 @@ object SessionQueueProtocol {
         is SessionCommand.SetCurrent -> encodeSetCurrent(command.index)
         SessionCommand.Next -> encodeNext()
         SessionCommand.Prev -> encodePrev()
-        is SessionCommand.Join -> encodeJoin(command.displayName, command.memberNpub)
+        is SessionCommand.Join -> encodeJoin(command.displayName)
         SessionCommand.Leave -> encodeLeave()
         is SessionCommand.Move -> encodeMove(command.from, command.to)
         SessionCommand.Resend -> encodeResend()
@@ -185,13 +180,7 @@ object SessionQueueProtocol {
                 if (data.size < 2) return null
                 val nameLen = (data[1].toInt() and 0xFF).coerceAtMost(data.size - 2)
                 val name = String(data, 2, nameLen, Charsets.UTF_8)
-                val offset = 2 + nameLen
-                val npub = if (data.size > offset && data[offset] != COMMAND_CONTEXT_MARKER) {
-                    val length = data[offset].toInt() and 0xff
-                    if (length > 0 && data.size >= offset + 1 + length)
-                        String(data, offset + 1, length, Charsets.UTF_8) else null
-                } else null
-                SessionCommand.Join(name, npub)
+                SessionCommand.Join(name)
             }
             CMD_LEAVE -> SessionCommand.Leave
             CMD_MOVE -> {
@@ -232,13 +221,7 @@ object SessionQueueProtocol {
         SessionCommand.Next, SessionCommand.Prev, SessionCommand.Leave,
         SessionCommand.Resend -> 1
         is SessionCommand.Move -> 3
-        is SessionCommand.Join -> if (data.size >= 2) {
-            var size = 2 + (data[1].toInt() and 0xff)
-            if (data.size > size && data[size] != COMMAND_CONTEXT_MARKER) {
-                size += 1 + (data[size].toInt() and 0xff)
-            }
-            size
-        } else null
+        is SessionCommand.Join -> if (data.size >= 2) 2 + (data[1].toInt() and 0xff) else null
     }
 
     // ===== Event encoding (Host → Client, via notifications) =====
@@ -416,32 +399,22 @@ object SessionQueueProtocol {
 
     // ===== Session info (for GATT Read) =====
 
-    fun encodeSessionInfo(hostName: String, participantCount: Int,
-        physicalBoardId: String? = null, boardCellId: String? = null,
-        awaitingExplicitSend: Boolean = false): ByteArray {
+    fun encodeSessionInfo(
+        hostName: String,
+        participantCount: Int,
+        awaitingExplicitSend: Boolean = false,
+    ): ByteArray {
         val nameBytes = hostName.toByteArray(Charsets.UTF_8).let {
             if (it.size > 20) it.copyOf(20) else it
         }
         // The trailing state byte is backwards-compatible: older clients read
         // only count + name and ignore it. Bit 0 makes the host's send-mode
         // decision authoritative on every participant UI.
-        val physical = physicalBoardId?.encodeToByteArray()?.take(255)?.toByteArray()
-        val cell = boardCellId?.encodeToByteArray()?.take(255)?.toByteArray()
-        val extension = if (physical != null && cell != null) 3 + physical.size + cell.size else 0
-        val buf = ByteArray(3 + nameBytes.size + extension)
+        val buf = ByteArray(3 + nameBytes.size)
         buf[0] = participantCount.toByte()
         buf[1] = nameBytes.size.toByte()
         nameBytes.copyInto(buf, 2)
-        var offset = 2 + nameBytes.size
-        buf[offset++] = if (awaitingExplicitSend) 1 else 0
-        if (physical != null && cell != null) {
-            buf[offset++] = SESSION_SCOPE_MARKER
-            buf[offset++] = physical.size.toByte()
-            physical.copyInto(buf, offset)
-            offset += physical.size
-            buf[offset++] = cell.size.toByte()
-            cell.copyInto(buf, offset)
-        }
+        buf[2 + nameBytes.size] = if (awaitingExplicitSend) 1 else 0
         return buf
     }
 
@@ -464,29 +437,14 @@ object SessionQueueProtocol {
         data.size >= 3 && data[0].toInt() == 0 && data[2] == SESSION_END_FINAL_FLAG
 
     private const val SESSION_END_FINAL_FLAG: Byte = 1
-    private const val SESSION_SCOPE_MARKER: Byte = -68 // 0xBC
 
     fun decodeSessionInfo(data: ByteArray): SessionInfo? {
         if (data.size < 2) return null
         val count = data[0].toInt() and 0xFF
         val nameLen = (data[1].toInt() and 0xFF).coerceAtMost(data.size - 2)
         val name = String(data, 2, nameLen, Charsets.UTF_8)
-        var physical: String? = null
-        var cell: String? = null
-        var offset = 2 + nameLen
-        val legacyScoped = data.getOrNull(offset) == SESSION_SCOPE_MARKER
-        val flags = if (legacyScoped) 0 else data.getOrNull(offset++)?.toInt() ?: 0
-        if ((legacyScoped || data.getOrNull(offset) == SESSION_SCOPE_MARKER) && data.size > offset + 1) {
-            offset++
-            val physicalLen = data[offset++].toInt() and 0xff
-            if (data.size >= offset + physicalLen + 1) {
-                physical = String(data, offset, physicalLen, Charsets.UTF_8)
-                offset += physicalLen
-                val cellLen = data[offset++].toInt() and 0xff
-                if (data.size >= offset + cellLen) cell = String(data, offset, cellLen, Charsets.UTF_8)
-            }
-        }
-        return SessionInfo(name, count, physical, cell, flags and 1 != 0)
+        val flags = data.getOrNull(2 + nameLen)?.toInt() ?: 0
+        return SessionInfo(name, count, awaitingExplicitSend = flags and 1 != 0)
     }
 
     // ===== Participant list (for GATT Read) =====
@@ -551,7 +509,7 @@ sealed class SessionCommand {
     data class SetCurrent(val index: Int) : SessionCommand()
     data object Next : SessionCommand()
     data object Prev : SessionCommand()
-    data class Join(val displayName: String, val memberNpub: String? = null) : SessionCommand()
+    data class Join(val displayName: String) : SessionCommand()
     data object Leave : SessionCommand()
     data class Move(val from: Int, val to: Int) : SessionCommand()
     data object Resend : SessionCommand()
@@ -621,7 +579,5 @@ data class QueueItem(
 data class SessionInfo(
     val hostName: String,
     val participantCount: Int,
-    val physicalBoardId: String? = null,
-    val boardCellId: String? = null,
     val awaitingExplicitSend: Boolean = false,
 )

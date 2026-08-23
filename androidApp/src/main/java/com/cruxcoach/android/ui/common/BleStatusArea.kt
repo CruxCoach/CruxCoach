@@ -1,12 +1,7 @@
 package com.cruxcoach.android.ui.common
 
 import androidx.compose.runtime.*
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.hilt.navigation.compose.hiltViewModel
 import android.util.Log
 import com.cruxcoach.android.data.BleShareManager
 import com.cruxcoach.android.data.CruxRelayManager
@@ -18,7 +13,6 @@ import com.cruxcoach.android.data.SessionQueueManager
 import com.cruxcoach.android.data.SessionRole
 import com.cruxcoach.android.ui.board.SessionQueueSheet
 import com.cruxcoach.android.ui.board.relayErrorText
-import com.cruxcoach.android.ui.fips.FipsMeshViewModel
 
 private const val TAG = "CruxBLE/UI"
 
@@ -69,37 +63,6 @@ fun BleStatusArea(
 ) {
     val bleShareManager = LocalBleShareManager.current
     val state by bleShareManager.uiState.collectAsStateWithLifecycle()
-    val meshViewModel: FipsMeshViewModel = hiltViewModel()
-    val meshState by meshViewModel.state.collectAsStateWithLifecycle()
-    val joiningBoardCellId by meshViewModel.joiningBoardCellId.collectAsStateWithLifecycle()
-    val meshJoinFailed by meshViewModel.joinFailed.collectAsStateWithLifecycle()
-    val incomingControllerRequest by meshViewModel.incomingControllerRequest.collectAsStateWithLifecycle()
-    val nearbyMeshes = meshState.nearbyMeshes.filterNot { it.currentMesh }
-    val joiningMeshName = joiningBoardCellId?.let { cellId ->
-        meshState.nearbyMeshes.firstOrNull { it.joinableBoardCellId == cellId }?.boardName
-            ?: stringResource(com.cruxcoach.android.R.string.fips_mesh_nearby_other)
-    }
-    LaunchedEffect(meshState.running) {
-        if (!meshState.running) meshViewModel.ensureDiscovery()
-    }
-
-    incomingControllerRequest?.let { request ->
-        AlertDialog(
-            onDismissRequest = { meshViewModel.denyControllerTransfer(request) },
-            title = { Text(stringResource(com.cruxcoach.android.R.string.mesh_controller_request_title)) },
-            text = { Text(stringResource(com.cruxcoach.android.R.string.mesh_controller_request_text)) },
-            confirmButton = {
-                TextButton(onClick = { meshViewModel.approveControllerTransfer(request) }) {
-                    Text(stringResource(com.cruxcoach.android.R.string.mesh_controller_request_approve))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { meshViewModel.denyControllerTransfer(request) }) {
-                    Text(stringResource(com.cruxcoach.android.R.string.mesh_controller_request_deny))
-                }
-            },
-        )
-    }
 
     // Bug 3: Session join handled internally via CompositionLocals — works on every screen
     val sessionQueueManager = LocalSessionQueueManager.current
@@ -137,8 +100,7 @@ fun BleStatusArea(
     // the regular chip instead.
     val hasContent = effectiveOnBoard != null || state.boardOccupiedCount > 0 ||
         state.nearbySessions.isNotEmpty() || state.ownSession != null ||
-        relayState.enabled || nearbyMeshes.isNotEmpty() || joiningMeshName != null ||
-        meshState.cellId != null || meshJoinFailed
+        relayState.enabled
 
     // Terminal relay errors (BOARD_LOST, a failed start) land AFTER the
     // sharing sheet's error surface is gone — show them here so the stop
@@ -151,12 +113,6 @@ fun BleStatusArea(
                 onDismiss = { relayManager.clearError() }
             )
         }
-    }
-    if (meshJoinFailed) {
-        RelayErrorRow(
-            text = stringResource(com.cruxcoach.android.R.string.fips_mesh_join_failed),
-            onDismiss = meshViewModel::dismissJoinError,
-        )
     }
 
     if (!hasContent) return
@@ -190,19 +146,6 @@ fun BleStatusArea(
             onOpenQueueSheet = { showQueueSheet = true },
             relayClientCount = relayClientCount,
             onStopRelay = stopRelay,
-            activeMesh = meshState.takeIf { it.cellId != null },
-            nearbyMeshes = nearbyMeshes,
-            onJoinMesh = if (joiningBoardCellId == null) meshViewModel::join else null,
-            joiningMeshName = joiningMeshName,
-            // Explicit and user-driven, which is the whole rule: mesh
-            // membership only made the playlist visible above. Opening the
-            // queue straight away means the button has a visible consequence
-            // rather than silently changing state somewhere off screen.
-            onJoinPlaylist = {
-                playback.joinCanonicalPlaylist()
-                expanded = false
-                showQueueSheet = true
-            },
         )
     } else {
         BleStatusChip(
@@ -212,18 +155,7 @@ fun BleStatusArea(
             onAddToQueue = onAddToQueue,
             onRandomToQueue = onRandomToQueue,
             relayClientCount = relayClientCount,
-            onStopRelay = stopRelay,
-            nearbyMeshCount = nearbyMeshes.size,
-            joiningMeshName = joiningMeshName,
-            // Membership, not transient advertisement metadata, decides
-            // whether this is an active mesh. The fallback prevents the chip
-            // becoming an empty/disconnected-looking card after the nearby
-            // advertisement expires while the realm remains healthy.
-            activeMeshName = meshState.takeIf { it.cellId != null }?.boardName
-                ?: meshState.cellId?.let { stringResource(com.cruxcoach.android.R.string.fips_mesh_nearby_own) },
-            meshControllerAvailable = meshState.availability == "ACTIVE",
-            localMeshController = meshState.controllerNpub != null &&
-                meshState.controllerNpub == meshState.localNpub,
+            onStopRelay = stopRelay
         )
     }
 }

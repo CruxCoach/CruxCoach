@@ -23,7 +23,6 @@ import androidx.compose.material.icons.filled.SignalCellularAlt1Bar
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -57,11 +56,6 @@ internal fun BleStatusChip(
     /** Client count while the board is shared, or null when it is not. */
     relayClientCount: Int? = null,
     onStopRelay: (() -> Unit)? = null,
-    nearbyMeshCount: Int = 0,
-    joiningMeshName: String? = null,
-    activeMeshName: String? = null,
-    meshControllerAvailable: Boolean = true,
-    localMeshController: Boolean = false,
 ) {
     val session = state.ownSession
 
@@ -70,9 +64,6 @@ internal fun BleStatusChip(
         SessionChipContent(
             session = session,
             effectiveOnBoard = effectiveOnBoard,
-            activeMeshName = activeMeshName,
-            meshControllerAvailable = meshControllerAvailable,
-            localMeshController = localMeshController,
             onExpand = onExpand,
             onAddToQueue = onAddToQueue,
             onRandomToQueue = onRandomToQueue
@@ -108,21 +99,7 @@ internal fun BleStatusChip(
         // Sharing alone is enough to show this block, but it has nothing to
         // say in the summary line — rendering the row anyway left a bare
         // icon + chevron above the sharing line.
-        val meshSummary = activeMeshName?.let { name ->
-            when {
-                !meshControllerAvailable -> stringResource(R.string.mesh_status_recovering, name)
-                localMeshController -> stringResource(R.string.mesh_status_direct_controller, name)
-                else -> stringResource(R.string.mesh_status_via_controller, name)
-            }
-        }
-        val nearbySummary = buildChipSummary(effectiveOnBoard, state, nearbyMeshCount)
-        // A climb/session the user can act on is more important than repeating
-        // connection state in the banner. The icon below remains the persistent
-        // mesh/board connectivity indicator.
-        val summary = joiningMeshName?.let { stringResource(R.string.fips_mesh_joining, it) }
-            ?: nearbySummary.takeIf(String::isNotBlank)
-            ?: meshSummary
-            ?: ""
+        val summary = buildChipSummary(effectiveOnBoard, state)
         if (summary.isNotBlank()) {
         Row(
             modifier = Modifier
@@ -131,10 +108,9 @@ internal fun BleStatusChip(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                if (activeMeshName != null && !localMeshController) Icons.Default.Hub
-                else Icons.Default.CellTower,
+                Icons.Default.CellTower,
                 contentDescription = null,
-                tint = if (activeMeshName != null && meshControllerAvailable) SuccessGreen else OrangeAccent,
+                tint = OrangeAccent,
                 modifier = Modifier
                     .size(18.dp)
                     .alpha(if (effectiveOnBoard?.source == OnBoardSource.REMOTE_ACTIVE) iconAlpha else 1f)
@@ -184,9 +160,6 @@ internal fun BleStatusChip(
 internal fun SessionChipContent(
     session: OwnSessionState,
     effectiveOnBoard: OnBoardClimbEntry?,
-    activeMeshName: String? = null,
-    meshControllerAvailable: Boolean = true,
-    localMeshController: Boolean = false,
     onExpand: () -> Unit,
     onAddToQueue: (() -> Unit)?,
     onRandomToQueue: (() -> Unit)? = null
@@ -242,20 +215,7 @@ internal fun SessionChipContent(
                 // unrelated climb read as "this is what you are playing". What
                 // the wall shows is a statement about the wall; it belongs in
                 // the line below, and only when the two disagree.
-                Icon(
-                    when {
-                        activeMeshName == null -> Icons.AutoMirrored.Filled.QueueMusic
-                        localMeshController -> Icons.Default.CellTower
-                        else -> Icons.Default.Hub
-                    },
-                    contentDescription = activeMeshName,
-                    tint = when {
-                        activeMeshName == null -> OrangeAccent
-                        meshControllerAvailable -> SuccessGreen
-                        else -> WarningYellow
-                    },
-                    modifier = Modifier.size(18.dp),
-                )
+                Icon(Icons.AutoMirrored.Filled.QueueMusic, null, tint = OrangeAccent, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(5.dp))
                 if (session.queue.isEmpty()) {
                     Text(stringResource(R.string.common_empty), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -406,8 +366,7 @@ internal fun SignalIndicator(rssi: Int) {
 @Composable
 internal fun buildChipSummary(
     onBoard: OnBoardClimbEntry?,
-    state: BleShareUiState,
-    nearbyMeshCount: Int = 0,
+    state: BleShareUiState
 ): String = buildString {
     if (onBoard != null) {
         val name = onBoard.name ?: stringResource(R.string.ble_unknown_climb)
@@ -420,7 +379,6 @@ internal fun buildChipSummary(
                 " · ${stringResource(if (onBoard.isStillProjected) R.string.ble_still_visible else R.string.ble_last_climb)}"
             )
             OnBoardSource.LOCAL_ACTIVE -> append(" · ${stringResource(R.string.ble_your_climb)}")
-            OnBoardSource.MESH_ACTIVE -> append(" · ${stringResource(R.string.ble_mesh_climb)}")
             OnBoardSource.SESSION_REMOTE -> append(" · ${stringResource(R.string.ble_session_climb)}")
         }
         // On-board climb is the primary info — skip secondary session/occupied counts
@@ -438,10 +396,6 @@ internal fun buildChipSummary(
                 state.nearbySessions.size,
             )
         )
-    }
-    if (nearbyMeshCount > 0) {
-        if (isNotEmpty()) append(" · ")
-        append(stringResource(R.string.fips_nearby_meshes_count, nearbyMeshCount))
     }
 }
 

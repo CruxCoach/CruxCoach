@@ -18,10 +18,7 @@ import androidx.core.app.ServiceCompat
 import com.cruxcoach.android.BuildConfig
 import com.cruxcoach.android.MainActivity
 import com.cruxcoach.android.R
-import com.cruxcoach.android.fips.FipsMeshRuntime
-import dagger.hilt.android.AndroidEntryPoint
 import java.io.File
-import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -34,10 +31,7 @@ import kotlinx.coroutines.flow.asStateFlow
  * is deliberately non-sticky: creating a new hotspot after process death
  * would change its credentials and make the QR code the user scanned stale.
  */
-@AndroidEntryPoint
 class LocalShareService : Service() {
-
-    @Inject lateinit var fipsMeshRuntime: FipsMeshRuntime
 
     sealed interface State {
         data object Idle : State
@@ -105,12 +99,6 @@ class LocalShareService : Service() {
                             stopSharing()
                         }
                     }
-                    localServer.onBulkTransferStarted = {
-                        // The user explicitly requested this foreground share:
-                        // once a receiver asks for a large file, dedicate the
-                        // radios and CPU to APK first and board DB second.
-                        fipsMeshRuntime.suspendForBulkTransfer()
-                    }
                     localServer.onReceiverComplete = {
                         mainHandler.post {
                             // A completion belongs to one receiver, not to the
@@ -176,9 +164,6 @@ class LocalShareService : Service() {
         server = null
         hotspot?.stop()
         hotspot = null
-        if (::fipsMeshRuntime.isInitialized) {
-            fipsMeshRuntime.resumeAfterBulkTransfer()
-        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null

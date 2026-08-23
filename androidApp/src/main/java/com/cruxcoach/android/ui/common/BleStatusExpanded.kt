@@ -25,9 +25,6 @@ import com.cruxcoach.android.data.OnBoardClimbEntry
 import com.cruxcoach.android.data.OnBoardSource
 import com.cruxcoach.android.data.OwnSessionState
 import com.cruxcoach.android.ui.theme.OrangeAccent
-import com.cruxcoach.android.ui.fips.FipsMeshUiState
-import com.cruxcoach.android.ui.fips.NearbyFipsMeshUi
-import com.cruxcoach.android.ui.fips.canJoinPlaylist
 
 @Composable
 internal fun BleStatusExpanded(
@@ -42,12 +39,6 @@ internal fun BleStatusExpanded(
     /** Non-null while this phone is relaying for other apps. */
     relayClientCount: Int? = null,
     onStopRelay: (() -> Unit)? = null,
-    activeMesh: FipsMeshUiState? = null,
-    nearbyMeshes: List<NearbyFipsMeshUi> = emptyList(),
-    onJoinMesh: ((NearbyFipsMeshUi) -> Unit)? = null,
-    joiningMeshName: String? = null,
-    /** Explicit join of the BoardCell's running joinable playlist. */
-    onJoinPlaylist: (() -> Unit)? = null,
 ) {
     Card(
         modifier = Modifier
@@ -132,24 +123,6 @@ internal fun BleStatusExpanded(
                 Spacer(Modifier.height(8.dp))
             }
 
-            if (activeMesh != null) {
-                ActiveMeshSection(activeMesh, onJoinPlaylist)
-                Spacer(Modifier.height(8.dp))
-            }
-
-            if (nearbyMeshes.isNotEmpty()) {
-                NearbyMeshesSection(nearbyMeshes, onJoinMesh)
-                Spacer(Modifier.height(8.dp))
-            }
-            joiningMeshName?.let { name ->
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                    Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.fips_mesh_joining, name))
-                }
-                Spacer(Modifier.height(8.dp))
-            }
-
             // Disconnect request section
             if (state.canRequestDisconnect && onRequestDisconnect != null) {
                 DisconnectRequestSection(
@@ -165,112 +138,6 @@ internal fun BleStatusExpanded(
         // one strip that belonged to neither container.
         if (relayClientCount != null && onStopRelay != null) {
             RelaySharingLine(clientCount = relayClientCount, onStop = onStopRelay)
-        }
-    }
-}
-
-@Composable
-private fun ActiveMeshSection(mesh: FipsMeshUiState, onJoinPlaylist: (() -> Unit)?) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(Icons.Default.CellTower, null, tint = OrangeAccent, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.width(8.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                mesh.boardName ?: stringResource(R.string.fips_mesh_nearby_own),
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium,
-            )
-            Text(
-                buildString {
-                    append(stringResource(
-                        if (mesh.controllerNpub != null && mesh.controllerNpub == mesh.localNpub) {
-                            R.string.fips_mesh_peer_controller
-                        } else {
-                            R.string.fips_mesh_peer_member
-                        },
-                    ))
-                    append(" · ")
-                    append(stringResource(R.string.fips_mesh_members))
-                    append(": ")
-                    append(mesh.memberCount)
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                stringResource(
-                    if (mesh.availability == "ACTIVE") R.string.fips_mesh_own_active
-                    else R.string.fips_mesh_own_inactive,
-                ),
-                style = MaterialTheme.typography.labelSmall,
-                color = if (mesh.availability == "ACTIVE") OrangeAccent
-                else MaterialTheme.colorScheme.error,
-            )
-            // Being in the mesh makes the playlist visible; it never joins it.
-            // Without this line there was no way to find out a playlist was
-            // running, let alone take part in one.
-            mesh.playlist?.let { playlist ->
-                Text(
-                    buildString {
-                        append(stringResource(R.string.mesh_playlist_running, playlist.itemCount))
-                        append(" · ")
-                        append(stringResource(R.string.mesh_playlist_members, playlist.memberCount))
-                        if (playlist.localIsHost) {
-                            append(" · ")
-                            append(stringResource(R.string.mesh_playlist_you_host))
-                        }
-                    },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-        if (mesh.canJoinPlaylist && onJoinPlaylist != null) {
-            TextButton(onClick = onJoinPlaylist) {
-                Text(stringResource(R.string.mesh_playlist_join))
-            }
-        }
-    }
-}
-
-@Composable
-private fun NearbyMeshesSection(
-    meshes: List<NearbyFipsMeshUi>,
-    onJoinMesh: ((NearbyFipsMeshUi) -> Unit)?,
-) {
-    meshes.forEach { mesh ->
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(Icons.Default.CellTower, null, tint = OrangeAccent, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    mesh.boardName ?: stringResource(R.string.fips_mesh_nearby_other),
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium,
-                )
-                Text(
-                    stringResource(R.string.fips_mesh_signal) + " · ${mesh.rssi} dBm",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            if (onJoinMesh != null && mesh.joinableBoardCellId != null) {
-                FilledTonalButton(
-                    onClick = { onJoinMesh(mesh) },
-                    colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = OrangeAccent.copy(alpha = 0.3f),
-                    ),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                ) {
-                    Text(stringResource(R.string.common_join), style = MaterialTheme.typography.labelSmall)
-                }
-            }
         }
     }
 }
@@ -356,7 +223,6 @@ private fun OnBoardClimbSection(
             if (climb.isStillProjected) R.string.ble_still_visible else R.string.ble_ready_to_resend
         )
         OnBoardSource.LOCAL_ACTIVE -> stringResource(R.string.ble_your_climb)
-        OnBoardSource.MESH_ACTIVE -> stringResource(R.string.ble_mesh_climb)
         OnBoardSource.LOCAL_MANAGER -> stringResource(
             if (climb.isStillProjected) R.string.ble_still_visible else R.string.ble_ready_to_resend
         )
