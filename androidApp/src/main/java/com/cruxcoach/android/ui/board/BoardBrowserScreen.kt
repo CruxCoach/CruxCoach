@@ -51,9 +51,7 @@ import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.data.SessionQueueState
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.android.ui.common.LocalSessionQueueManager
-import com.cruxcoach.android.ui.common.LocalPlaylistPlayback
 import com.cruxcoach.android.ui.common.RestTimerBannerSlot
-import com.cruxcoach.android.ui.common.SessionVisibilityDialog
 import com.cruxcoach.android.ui.common.BleStatusArea
 import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
 import com.cruxcoach.android.ui.board.sync.BoardSyncInlineCard
@@ -93,44 +91,11 @@ fun BoardBrowserScreen(
     val randomClimbEvent by viewModel.randomClimbEvent.collectAsStateWithLifecycle()
     var showBleSheet by remember { mutableStateOf(false) }
     var showEndSessionDialog by remember { mutableStateOf(false) }
-    var showSessionVisibilityDialog by rememberSaveable { mutableStateOf(false) }
     var searchVisible by remember { mutableStateOf(false) }
     val queueManager = LocalSessionQueueManager.current
-    val playbackCoordinator = LocalPlaylistPlayback.current
     val queueState by queueManager.state.collectAsStateWithLifecycle()
     var lastEndedSession by remember { mutableStateOf<com.cruxcoach.data.repository.Board_sessions?>(null) }
-    val queueLabel = stringResource(R.string.board_queue_title)
-
-    // Notification permission request (Android 13+)
-    val notificationPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { _ -> /* Result doesn't matter -- timer works regardless via vibration */ }
-
-    // Request notification permission once when session starts
     val context = LocalContext.current
-    fun requestNotificationPermissionIfNeeded() {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            val granted = androidx.core.content.ContextCompat.checkSelfPermission(
-                context, android.Manifest.permission.POST_NOTIFICATIONS
-            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-            if (!granted) {
-                notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-            }
-        }
-    }
-
-    if (showSessionVisibilityDialog) {
-        SessionVisibilityDialog(
-            onDismiss = { showSessionVisibilityDialog = false },
-            onSelect = { visibility ->
-                showSessionVisibilityDialog = false
-                requestNotificationPermissionIfNeeded()
-                // Ad-hoc playlist: stay in the browser so climbs can be
-                // added while the mini-player links to the player.
-                playbackCoordinator.startEmpty(queueLabel, visibility)
-            },
-        )
-    }
 
     // Safety guard: end orphaned BoardSessionManager if queue is not active.
     // This can happen when a session ends via BLE (host migration, disconnect) and
@@ -446,7 +411,6 @@ fun BoardBrowserScreen(
             // 2-button action bar (Playlist + Zufall) — only visible when no playlist is running
             if (!isSessionActive && !queueState.isActive && !queueState.isConnecting) {
                 SessionTimerBar(
-                    onStart = { showSessionVisibilityDialog = true },
                     onRandomClimb = { viewModel.pickRandomClimb() }
                 )
             }

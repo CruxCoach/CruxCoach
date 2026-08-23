@@ -3,7 +3,6 @@ package com.cruxcoach.android.ui.board
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Shuffle
-import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -16,12 +15,11 @@ import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.*
 
 /**
- * 2-button action bar shown when no session is active: Session + Zufall.
- * Hidden when a session is active (the [BleStatusArea] handles that).
+ * Action bar shown while nothing is running: Zufall.
+ * Hidden once a playlist is running (the [BleStatusArea] handles that).
  */
 @Composable
 internal fun SessionTimerBar(
-    onStart: () -> Unit,
     onRandomClimb: () -> Unit = {}
 ) {
     Row(
@@ -30,33 +28,6 @@ internal fun SessionTimerBar(
             .padding(horizontal = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        // Re-enabled with the playlist feature: playlists share the session
-        // queue, so the multi-user BLE session surface is live again.
-        Surface(
-            onClick = onStart,
-            color = OrangeAccent.copy(alpha = 0.06f),
-            modifier = Modifier.weight(1f).testTag("board_start_session")
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    Icons.Default.Timer,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp),
-                    tint = OrangeAccent
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    stringResource(R.string.board_session_label),
-                    color = OrangeAccent,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        }
         Surface(
             onClick = onRandomClimb,
             color = OrangeAccent.copy(alpha = 0.06f),
