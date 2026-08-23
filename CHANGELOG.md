@@ -4,74 +4,6 @@ All notable changes to CruxCoach will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [0.2.3] - Unreleased
-
-### Fixed
-- **Stable mesh membership UI and multi-mode board lifetime** — a joined
-  BoardCell no longer looks disconnected when its short-lived discovery
-  advertisement expires. The active mesh remains explicit in the status chip
-  and board picker. Board auto-disconnect is now unavailable while a mesh,
-  shared session, relay or known multi-client connection is active, while the
-  user's configured duration is preserved for later solo use. Authenticated
-  mesh traffic now renews membership even while a peer's dedicated heartbeat
-  role is catching up, preventing the observed six-second evict/rejoin loop.
-  A playlist hosted by a mesh participant stays routed through the BoardCell
-  controller instead of asking that controller to disconnect or trying to
-  claim the physical board itself. Playlist advertisements are no longer
-  presented as proof of what reached a mesh-controlled board; the canonical
-  committed projection remains authoritative. The connection picker also
-  collapses the active mesh and its physical BLE advertisement into one board
-  entry, and session participants see the mesh hub/controller icon.
-- **Two-phone mesh diagnostics from one logcat** — bounded operational health
-  now rides on authenticated liveness traffic in both directions. A controller
-  log records each peer's app build, Bluetooth/runtime state, mesh role,
-  physical-board connection, keep-alive and idle timer, playlist role/index,
-  canonical routing state and pending commands. Values are emitted immediately
-  when they change and checkpointed sparsely, without board addresses, serials
-  or user identity and without entering canonical BoardCell state.
-- **Mesh host recovery while the board is still connected** — a controller
-  whose heartbeat loop resumes after a background scheduling pause now treats
-  its existing, identity-matched GATT connection as the physical fencing proof.
-  Recovery no longer depends on an optional session screen having initialized
-  its handover lifecycle, so the host cannot expire its own membership while
-  it still controls the exact board.
-- **Realm-safe BoardCell and Competition mesh traffic** — every feature now
-  acquires a reference-counted, realm-scoped session and sends only named
-  protocol envelopes. Frames from another realm or an unknown protocol are
-  dropped before a feature decoder sees them, and an incompatible realm can no
-  longer evict the active board controller. Reconnects retain one lifecycle
-  lease and stale protocol subscriptions are removed on rebinding. A board
-  first created through the local fallback now migrates its singleton
-  `local-*` identity to the FIPS npub instead of waiting for a nonexistent
-  foreign controller.
-- **FIPS BoardCell rejoin after both phones restart** — the previous canonical
-  controller can now resume its exact verified cell lineage and send the
-  membership snapshot that admits a directly authenticated peer. Ordinary
-  members, frozen replicas, ambiguous board bindings and in-progress handovers
-  still fail closed instead of creating a competing controller.
-
-### Added
-- **Competitions** — run a comp on your board, or take part in one, with no
-  account and no server. The whole competition lives on Nostr: a signed
-  document, then an append-only linked record of every decision the organiser
-  makes, which every client replays to the same standings.
-  - The CruxCoach logo in the browser's top bar now opens a menu with two
-    entries: **Board Catalog** and **Competitions**. Nothing else moved.
-  - Join by pointing your camera at the organiser's QR code, by opening their
-    link, or by pasting it. `cruxcoach.org/comp/…` opens the app when it is
-    installed and the website when it is not.
-  - The live view answers, in this order: whose turn it is, how many climbers
-    are ahead of you, how many attempts you have left, and where you stand.
-  - **Defer my turn** when you need a minute. It moves you back two places in
-    the round — not to the end — and gives you no extra attempts. The screen
-    says that before you press it, and the button is simply absent once you
-    have used your deferral.
-  - Organising happens on **cruxcoach.org/competitions/**, which also has the
-    participant view for iPhones and a read-only live screen for a projector.
-  - If an entry is missing from the record, no standings are shown and the
-    screen says which entry it is waiting for. A confident wrong result is
-    worse than an honest wait.
-
 ## [0.2.2] - 2026-08-15
 
 Training playlists you can actually play — climb by climb, with rests,
@@ -86,6 +18,12 @@ a single board, and app updates that no longer depend on one download
 server.
 
 ### Added
+- **Import your MoonBoard logbook** — bring the ascents and attempts you
+  already logged in the official MoonBoard app across, either from its CSV
+  export or, if you have no export, through a one-shot on-device transfer
+  you switch on yourself and switch off again afterwards. Entries land on
+  the right MoonBoard problem, at the right angle, on the day you climbed
+  them, and re-running a day updates it instead of duplicating it.
 - **Training playlists** — a playlist is a session you can play. One climb
   at a time on a full-screen player, sent to the wall as it comes up, a
   rest countdown that already shows what's next, *Sent it* / *Attempt*

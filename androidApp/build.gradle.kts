@@ -109,15 +109,15 @@ android {
 
     defaultConfig {
         applicationId = "com.cruxcoach.android"
-        minSdk = 28
+        minSdk = 26
         targetSdk = 35
-        versionCode = featureVersionCode ?: 1000013
-        versionName = "0.2.3"
+        versionCode = featureVersionCode ?: 8
+        versionName = "0.2.2"
 
         // Only bundle arm64 native libs. armeabi-v7a alone added ~10.7 MB
         // to the APK (libmaplibre 8 MB + sqlcipher + secp256k1 + sodium +
-        // a few small libs). minSdk=28 (Android 9+) already targets the
-        // 64-bit ARM era; 32-bit-only Android 9+ devices are <1% in DE
+        // a few small libs). minSdk=26 (Android 8.0+) already targets the
+        // 64-bit ARM era; 32-bit-only Android 8+ devices are <1% in DE
         // (mostly Android Go on entry-level SoCs, almost absent here).
         // Affected devices simply can't install (clean "incompatible"
         // message), no partial breakage. x86/MIPS were never targeted.
@@ -229,19 +229,15 @@ android {
         // minSdk of the NEXT release, so this build can tell a device that it
         // is about to fall out of support and say so while it still can.
         //
-        // 0.2.3 is the release that carries out the rise from 26 to 28 that
-        // 0.2.2 warned about: v3 signing — and with it the certificate lineage
-        // that makes a key rotation installable — does not exist before API 28,
-        // and a rotation that leaves the old key valid on 26/27 would not
-        // actually retire a compromised key. Android 8.0/8.1 stopped at 0.2.2,
-        // which is where the warning shipped.
+        // 0.2.3 raises minSdk from 26 to 28: v3 signing — and with it the
+        // certificate lineage that makes a key rotation installable — does not
+        // exist before API 28, and a rotation that leaves the old key valid on
+        // 26/27 would not actually retire a compromised key.
         //
-        // It is equal to this build's own minSdk now, and that is correct
-        // rather than an oversight: no device that can run 0.2.3 is being
-        // dropped by 0.2.4, so `receivesFutureUpdates()` is true for every
-        // device that can see this build and nobody is told a falsehood. Raise
-        // it again one release BEFORE the next minSdk rise, never in the same
-        // one — that is the invariant, not "never equal".
+        // Deliberately NOT equal to this build's own minSdk: the warning has to
+        // reach the devices that can still run this release but not the next,
+        // which is exactly the ones the next minSdk excludes. Bump this in the
+        // release BEFORE bumping minSdk, never in the same one.
         buildConfigField("int", "MIN_SDK_NEXT_RELEASE",
             localProps.getProperty("MIN_SDK_NEXT_RELEASE", "28"))
 
