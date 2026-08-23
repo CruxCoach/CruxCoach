@@ -546,11 +546,13 @@ object AppModule {
         userPreferences: UserPreferences,
         fipsMeshRuntime: com.cruxcoach.android.fips.FipsMeshRuntime,
         boardCellManager: com.cruxcoach.android.boardcell.BoardCellManager,
+        quantumLaneProjector: com.cruxcoach.android.ble.QuantumLaneProjector,
     ): SessionQueueManager {
         return SessionQueueManager(
             bleConnection, boardRepository, climbNameResolver, userPreferences,
             fipsMeshRuntime = fipsMeshRuntime,
             boardCellManager = boardCellManager,
+            quantumLaneProjector = quantumLaneProjector,
         )
     }
 

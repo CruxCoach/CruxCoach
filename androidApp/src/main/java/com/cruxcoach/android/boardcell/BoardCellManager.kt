@@ -83,7 +83,15 @@ data class IncomingBoardJoinRequest(
 interface BoardPlaylistProjectionWriter {
     /** Null when this device cannot resolve the climb at all. */
     fun resolve(climbUuid: String, angle: Int): BoardProjection?
-    suspend fun write(projection: BoardProjection): Boolean
+
+    /**
+     * @param entryId the occurrence this write is for, when the caller knows
+     *   it. Local addressing only — it never reaches the wire. A board that
+     *   holds several climbs at once needs it to place the write in the lane
+     *   the occurrence was assigned to; every other board ignores it and keeps
+     *   the single-projection path byte for byte.
+     */
+    suspend fun write(projection: BoardProjection, entryId: String? = null): Boolean
 }
 
 private data class PendingProjectionRequest(
@@ -889,11 +897,11 @@ class BoardCellManager @Inject constructor(
             val result = writingBoard(resolved) {
                 if (snapshot.availability == BoardCellAvailability.FROZEN_WRITE_RECOVERY) {
                     coordinator.reprojectSemanticallyAfterRecovery(board, request, monotonicNow()) {
-                        writer.write(resolved)
+                        writer.write(resolved, request.entryId)
                     }
                 } else {
                     coordinator.projectSemantically(board, request, monotonicNow()) {
-                        writer.write(resolved)
+                        writer.write(resolved, request.entryId)
                     }
                 }
             }
@@ -1014,11 +1022,11 @@ class BoardCellManager @Inject constructor(
             val result = writingBoard(resolved) {
                 if (snapshot.availability == BoardCellAvailability.FROZEN_WRITE_RECOVERY) {
                     coordinator.reprojectSemanticallyAfterRecovery(board, request, monotonicNow()) {
-                        writer.write(resolved)
+                        writer.write(resolved, request.entryId)
                     }
                 } else {
                     coordinator.projectSemantically(board, request, monotonicNow()) {
-                        writer.write(resolved)
+                        writer.write(resolved, request.entryId)
                     }
                 }
             }

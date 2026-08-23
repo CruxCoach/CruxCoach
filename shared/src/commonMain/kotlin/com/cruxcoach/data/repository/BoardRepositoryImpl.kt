@@ -118,6 +118,9 @@ class BoardRepositoryImpl(
     override fun getQuantumExternalRouteUuid(appUuid: String): String? =
         q.getQuantumExternalRouteUuid(appUuid).executeAsOneOrNull()
 
+    override fun getQuantumFramesForRoute(routeUuid: String): String? =
+        q.getQuantumFramesForRoute(routeUuid).executeAsOneOrNull()
+
     override fun getClimbByUuidNormalized(uuid: String, angle: Int): ClimbWithStats? {
         return q.getClimbByUuidNormalized(angle.toLong(), uuid).executeAsOneOrNull()?.let {
             mapClimb(

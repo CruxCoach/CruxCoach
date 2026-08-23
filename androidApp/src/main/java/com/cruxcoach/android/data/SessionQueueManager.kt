@@ -175,6 +175,16 @@ class SessionQueueManager(
     private val boardCellManager: BoardCellManager? = null,
     private val boardCellWriteGateway: BoardCellWriteGateway = ActiveBoardCellWriteGateway,
     /**
+     * The layer path, on boards that have one.
+     *
+     * Null everywhere else, including in tests that never reach a Quantum
+     * controller — the single-projection branch below is then exactly the code
+     * it has always been. Adding a lane sender in front of every board would
+     * have been abstraction for its own sake and a way to break four working
+     * transports at once.
+     */
+    private val quantumLaneProjector: com.cruxcoach.android.ble.QuantumLaneProjector? = null,
+    /**
      * UTC wall clock, injectable so rest-synchronisation tests are exact
      * rather than sleeping and hoping.
      */
@@ -1295,11 +1305,24 @@ class SessionQueueManager(
 
     /** Resolve and encode a mesh participant's abstract projection on the
      * controller. Raw board frames never need to cross the mesh. */
-    suspend fun writeProjectionToPhysical(projection: BoardProjection): Boolean {
+    suspend fun writeProjectionToPhysical(
+        projection: BoardProjection,
+        /**
+         * The occurrence this write belongs to, when the caller knows it.
+         *
+         * Local addressing; it never crosses the wire. A layer-capable board
+         * needs it to place the write in the lane the occurrence was assigned
+         * to. Null keeps the historical behaviour exactly.
+         */
+        entryId: String? = null,
+    ): Boolean {
         if (bleConnection.connectionState.value != ConnectionState.CONNECTED) return false
         val climb = resolveClimb(projection.climbUuid, projection.angle) ?: return false
         val connectedBrand = bleConnection.connectedBoardBrand.value
         if (connectedBrand != null && connectedBrand != climb.brand) return false
+        quantumLaneProjector?.takeIf { it.handles(climb) }?.let { projector ->
+            return projector.write(climb, projection.angle, entryId)
+        }
         return if (climb.brand == BoardBrand.MOONBOARD) {
             if (climb.frames.isBlank()) false else {
                 val variant = com.cruxcoach.domain.board.MoonBoardVariant.fromLayoutId(climb.layoutId)

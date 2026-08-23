@@ -402,6 +402,16 @@ interface BoardClimbQueries {
     fun getClimbByUuid(uuid: String, angle: Int): ClimbWithStats?
     /** Upstream route UUID used by the Quantum 2.0.14 BLE protocol. */
     fun getQuantumExternalRouteUuid(appUuid: String): String? = null
+
+    /**
+     * The frames of the climb a controller-reported Quantum route names.
+     *
+     * Null when this device does not have the route, which is a real and
+     * common state on a shared wall: another app's layer is still lighting
+     * holds, and the honest answer to "does my climb overlap it" is then
+     * "unknown", not "no".
+     */
+    fun getQuantumFramesForRoute(routeUuid: String): String? = null
     /** Defensive fallback for [getClimbByUuid]: resolves a stored row whose
      *  uuid matches [uuid] only after normalization (strip hyphens +
      *  lowercase on both sides). The board DB mixes uuid formats (legacy

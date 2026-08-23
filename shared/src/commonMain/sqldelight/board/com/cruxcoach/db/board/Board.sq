@@ -124,6 +124,19 @@ DELETE FROM quantum_route_metadata;
 getQuantumExternalRouteUuid:
 SELECT route_uuid FROM quantum_route_refs WHERE app_uuid = ?;
 
+-- The inverse of getQuantumExternalRouteUuid, for layer reconciliation: a
+-- controller names its players by vendor route UUID, and the only honest way
+-- to say whether a foreign layer overlaps a candidate is to resolve its holds
+-- locally. A route with no local row stays unresolved on purpose -- the caller
+-- reports compatibility as unknown rather than assuming an empty hold set.
+-- Indexed by idx_quantum_route_refs_external.
+getQuantumFramesForRoute:
+SELECT c.frames
+FROM quantum_route_refs r
+JOIN climbs c ON c.uuid = r.app_uuid
+WHERE r.route_uuid = ? COLLATE NOCASE
+LIMIT 1;
+
 deleteAllQuantumRouteRefs:
 DELETE FROM quantum_route_refs;
 

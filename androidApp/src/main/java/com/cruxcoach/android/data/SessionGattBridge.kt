@@ -329,8 +329,8 @@ class SessionGattBridge(
                 override fun resolve(climbUuid: String, angle: Int) =
                     queueManager.resolveProjection(climbUuid, angle)
 
-                override suspend fun write(projection: BoardProjection): Boolean =
-                    queueManager.writeProjectionToPhysical(projection)
+                override suspend fun write(projection: BoardProjection, entryId: String?): Boolean =
+                    queueManager.writeProjectionToPhysical(projection, entryId)
             })
         boardCellManager?.let { manager ->
             manager.installPeerDiagnosticsProvider {
@@ -363,7 +363,10 @@ class SessionGattBridge(
             scope.launch {
                 manager.projectionRequests.collect { inbound ->
                     manager.commitProjectionRequest(inbound) {
-                        queueManager.writeProjectionToPhysical(inbound.request.projection)
+                        queueManager.writeProjectionToPhysical(
+                            inbound.request.projection,
+                            inbound.request.entryId,
+                        )
                     }
                 }
             }
