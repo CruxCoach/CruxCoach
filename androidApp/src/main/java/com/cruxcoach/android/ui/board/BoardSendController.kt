@@ -57,6 +57,41 @@ internal class BoardSendController(
         sendJob?.cancel()
     }
 
+    /**
+     * Which climb variant a send belongs to.
+     *
+     * A send outlives the screen state it started from: the job suspends on
+     * preference reads, an LED-map query and the BLE write itself, and an
+     * angle change in between replaces the climb underneath it. Cancelling
+     * covers the suspended case — a cancelled coroutine never resumes past its
+     * suspension point. It does not cover the rest of the window, where the
+     * job is already past its last suspension and would report the previous
+     * variant's result as the new one's: "sent", a layer selection, a history
+     * entry, all for a climb the user has already navigated away from.
+     */
+    private data class SendVariant(val climbUuid: String?, val angle: Int)
+
+    /**
+     * Climb and angle only, deliberately.
+     *
+     * Those are the two the screen resets `isSending` for when it changes them
+     * ([BoardClimbDetailViewModel.switchClimb] and `onAngleSelected`), so a
+     * dropped result can never leave a spinner running with nothing behind it.
+     * The mirror toggle changes neither, and adding it here would trade this
+     * bug for a stuck one.
+     */
+    private fun ClimbDetailState.variant() = SendVariant(climb?.uuid, angle)
+
+    private fun currentVariant(): SendVariant = state.value.variant()
+
+    /** A state write that a superseded send silently drops. */
+    private fun updateForVariant(
+        variant: SendVariant,
+        transform: (ClimbDetailState) -> ClimbDetailState,
+    ) {
+        state.update { current -> if (current.variant() == variant) transform(current) else current }
+    }
+
     /** Record a successful board-send into the local "Verlauf" history.
      *
      * The Verlauf is "climbs you SENT to the board" — the engagement event the
@@ -126,6 +161,7 @@ internal class BoardSendController(
             nearby = it.nearby.copy(debugInfo = "sending...")
         ) }
         Log.i(TAG, "sendToBoard: start frames=${s.holds.size}")
+        val variant = s.variant()
         sendJob = scope.launch {
             try {
                 // Board-match guard, part 1: the CONNECTED board's brand wins.
@@ -135,7 +171,7 @@ internal class BoardSendController(
                 // a still-connected Kilter board, lighting the wrong holds.
                 val connectedBrand = bleConnection.connectedBoardBrand.value
                 if (connectedBrand != null && s.climb != null && s.climb.brand != connectedBrand) {
-                    state.update { it.copy(
+                    updateForVariant(variant) { it.copy(
                         ble = it.ble.copy(isSending = false, error = R.string.board_send_error_connected_board_mismatch),
                         nearby = it.nearby.copy(debugInfo = "connected-board brand mismatch")
                     ) }
@@ -149,13 +185,13 @@ internal class BoardSendController(
                 // check catches the "active board is a MoonBoard" mismatch.)
                 val activeBrand = userPreferences.boardBrand.first()
                 if (s.climb != null && s.climb.brand != BoardBrand.fromWire(activeBrand)) {
-                    state.update { it.copy(
+                    updateForVariant(variant) { it.copy(
                         ble = it.ble.copy(isSending = false, error = R.string.board_send_error_brand_mismatch),
                         nearby = it.nearby.copy(debugInfo = "board-brand mismatch")
                     ) }
                     return@launch
                 }
-                state.update { it.copy(nearby = it.nearby.copy(debugInfo = "loading LED map...")) }
+                updateForVariant(variant) { it.copy(nearby = it.nearby.copy(debugInfo = "loading LED map...")) }
                 val productSizeId = userPreferences.boardProductSizeId.first()
                 val placementToLed = withContext(ioDispatcher) {
                     // FEAT-031: scope the LED map to the active board's brand so an
@@ -165,13 +201,13 @@ internal class BoardSendController(
                     boardRepository.getPlacementLedMap(productSizeId, activeBrand)
                 }
                 if (placementToLed.isEmpty()) {
-                    state.update { it.copy(
+                    updateForVariant(variant) { it.copy(
                         ble = it.ble.copy(isSending = false, error = R.string.board_send_error_no_led_data),
                         nearby = it.nearby.copy(debugInfo = "no LED data")
                     ) }
                     return@launch
                 }
-                state.update { it.copy(nearby = it.nearby.copy(debugInfo = "BLE sending...")) }
+                updateForVariant(variant) { it.copy(nearby = it.nearby.copy(debugInfo = "BLE sending...")) }
                 // FEAT-031 colours, in priority order:
                 //  1. the board's OWN catalogue colours (placement_roles.led_color),
                 //     keyed by the real frame role-id — once the board's chunk ships
@@ -204,7 +240,7 @@ internal class BoardSendController(
                 // Refuse with a clear message instead of firing an empty frame
                 // + a vague "some holds not lit" warning.
                 if (unmappedHolds == s.holds.size) {
-                    state.update { it.copy(
+                    updateForVariant(variant) { it.copy(
                         ble = it.ble.copy(isSending = false, error = R.string.board_send_error_climb_off_board),
                         nearby = it.nearby.copy(debugInfo = "all holds unmapped — wrong board/size")
                     ) }
@@ -212,7 +248,7 @@ internal class BoardSendController(
                 }
                 val success = bleConnection.sendClimb(s.holds, placementToLed, roleColorMap)
                 Log.i(TAG, "sendToBoard: writes done success=$success unmapped=$unmappedHolds")
-                state.update { it.copy(
+                updateForVariant(variant) { it.copy(
                     ble = it.ble.copy(
                         isSending = false,
                         success = success,
@@ -233,12 +269,12 @@ internal class BoardSendController(
                         "adv: $result"
                     }
                 }
-                state.update { it.copy(nearby = it.nearby.copy(debugInfo = debugMsg)) }
+                updateForVariant(variant) { it.copy(nearby = it.nearby.copy(debugInfo = debugMsg)) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Log.e(TAG, "sendToBoard failed", e)
-                state.update { it.copy(
+                updateForVariant(variant) { it.copy(
                     ble = it.ble.copy(isSending = false, error = R.string.board_send_error_generic),
                     nearby = it.nearby.copy(debugInfo = "exception: ${e.message?.take(50)}")
                 ) }
@@ -256,10 +292,11 @@ internal class BoardSendController(
             state.update { it.copy(ble = it.ble.copy(error = R.string.board_layer_error_all_assigned)) }
             return
         }
+        val variant = snapshot.variant()
         scope.launch {
             val layer = buildQuantumLayer(snapshot, slot) ?: return@launch
             boardLayerManager.assignPreview(layer)
-            state.update {
+            updateForVariant(variant) {
                 it.copy(
                     selectedBoardLayerSlot = slot,
                     selectedBoardLayerColor = layer.color,
@@ -295,29 +332,30 @@ internal class BoardSendController(
             return
         }
         sendJob?.cancel()
+        val variant = snapshot.variant()
         sendJob = scope.launch {
             val connectedBrand = bleConnection.connectedBoardBrand.value
             if (connectedBrand != null && connectedBrand != BoardBrand.QUANTUM) {
-                state.update { it.copy(
+                updateForVariant(variant) { it.copy(
                     ble = it.ble.copy(error = R.string.board_send_error_connected_board_mismatch),
                 ) }
                 return@launch
             }
             if (BoardBrand.fromWire(userPreferences.boardBrand.first()) != BoardBrand.QUANTUM) {
-                state.update { it.copy(
+                updateForVariant(variant) { it.copy(
                     ble = it.ble.copy(error = R.string.board_send_error_brand_mismatch),
                 ) }
                 return@launch
             }
             val layer = buildQuantumLayer(snapshot, slot) ?: return@launch
             boardLayerManager.assignPreview(layer)
-            state.update {
+            updateForVariant(variant) {
                 it.copy(
                     selectedBoardLayerSlot = slot,
                     selectedBoardLayerColor = layer.color,
                 )
             }
-            sendQuantumLayers(listOf(slot))
+            sendQuantumLayers(listOf(slot), variant)
         }
     }
 
@@ -369,17 +407,18 @@ internal class BoardSendController(
             return
         }
         sendJob?.cancel()
-        sendJob = scope.launch { sendQuantumLayers(slots) }
+        val variant = currentVariant()
+        sendJob = scope.launch { sendQuantumLayers(slots, variant) }
     }
 
-    private suspend fun sendQuantumLayers(slots: List<Int>) {
+    private suspend fun sendQuantumLayers(slots: List<Int>, variant: SendVariant) {
         if (BoardBrand.fromWire(userPreferences.boardBrand.first()) != BoardBrand.QUANTUM) {
-            state.update { it.copy(
+            updateForVariant(variant) { it.copy(
                 ble = it.ble.copy(error = R.string.board_send_error_brand_mismatch),
             ) }
             return
         }
-        state.update {
+        updateForVariant(variant) {
             it.copy(
                 ble = it.ble.copy(isSending = true, success = false, error = null, warning = null),
                 nearby = it.nearby.copy(debugInfo = "sending Quantum layers ${slots.map { slot -> slot + 1 }}"),
@@ -388,7 +427,7 @@ internal class BoardSendController(
         var success = true
         for (slot in slots) {
             val layer = boardLayerManager.state.value.layers.firstOrNull { it.slot == slot }
-            if (layer == null || !sendQuantumLayer(layer)) {
+            if (layer == null || !sendQuantumLayer(layer, variant)) {
                 success = false
                 break
             }
@@ -396,7 +435,7 @@ internal class BoardSendController(
         val failure = runCatching {
             bleConnection.quantumControllerState.value.lastFailure
         }.getOrNull()
-        state.update {
+        updateForVariant(variant) {
             it.copy(
                 ble = it.ble.copy(
                     isSending = false,
@@ -412,10 +451,10 @@ internal class BoardSendController(
         }
     }
 
-    private suspend fun sendQuantumLayer(layer: BoardClimbLayer): Boolean {
+    private suspend fun sendQuantumLayer(layer: BoardClimbLayer, variant: SendVariant): Boolean {
         if (!boardLayerManager.hasControllerCapacityFor(layer.slot)) {
             boardLayerManager.failProjection(layer.slot)
-            state.update { it.copy(ble = it.ble.copy(error = R.string.board_layer_error_board_full)) }
+            updateForVariant(variant) { it.copy(ble = it.ble.copy(error = R.string.board_layer_error_board_full)) }
             return false
         }
         val activeOwnedLayers = boardLayerManager.state.value.layers.filter {
@@ -423,7 +462,7 @@ internal class BoardSendController(
         }
         if (BoardLayerConflictPolicy.sharedHoldCount(layer.holds, activeOwnedLayers, null) > 0) {
             boardLayerManager.failProjection(layer.slot)
-            state.update { it.copy(ble = it.ble.copy(error = R.string.board_layer_error_shared_hold)) }
+            updateForVariant(variant) { it.copy(ble = it.ble.copy(error = R.string.board_layer_error_shared_hold)) }
             return false
         }
         val occupiedColors = activeOwnedLayers.mapTo(mutableSetOf()) {
@@ -431,7 +470,7 @@ internal class BoardSendController(
         } + boardLayerManager.state.value.externalLayers.map { it.color }
         if (layer.color in occupiedColors) {
             boardLayerManager.failProjection(layer.slot)
-            state.update { it.copy(ble = it.ble.copy(error = R.string.board_layer_error_color_taken)) }
+            updateForVariant(variant) { it.copy(ble = it.ble.copy(error = R.string.board_layer_error_color_taken)) }
             return false
         }
         val productSizeId = userPreferences.boardProductSizeId.first()
@@ -440,7 +479,7 @@ internal class BoardSendController(
         }
         if (placementToLed.isEmpty() || layer.holds.none { it.placementId in placementToLed }) {
             boardLayerManager.failProjection(layer.slot)
-            state.update { it.copy(ble = it.ble.copy(error = R.string.board_send_error_no_led_data)) }
+            updateForVariant(variant) { it.copy(ble = it.ble.copy(error = R.string.board_send_error_no_led_data)) }
             return false
         }
         boardLayerManager.beginProjection(layer.slot)
@@ -454,8 +493,12 @@ internal class BoardSendController(
         )
         if (written) boardLayerManager.confirmProjection(layer.slot)
         else boardLayerManager.failProjection(layer.slot)
-        if (written && state.value.climb?.uuid == layer.climbUuid) {
-            recordSentToHistory(state.value)
+        val onScreen = state.value
+        if (written &&
+            onScreen.climb?.uuid == layer.climbUuid &&
+            onScreen.angle == layer.angle
+        ) {
+            recordSentToHistory(onScreen)
         }
         return written
     }
@@ -492,6 +535,7 @@ internal class BoardSendController(
             nearby = it.nearby.copy(debugInfo = "sending (moonboard)...")
         ) }
         Log.i(TAG, "sendMoonBoardToBoard: start frames=${frames.length}")
+        val sendVariant = s.variant()
         sendJob = scope.launch {
             try {
                 // Board-match guard, part 1: the CONNECTED board must be a
@@ -500,7 +544,7 @@ internal class BoardSendController(
                 // MoonBoard ASCII frame go to a still-connected Aurora board.
                 val connectedBrand = bleConnection.connectedBoardBrand.value
                 if (connectedBrand != null && connectedBrand != BoardBrand.MOONBOARD) {
-                    state.update { it.copy(
+                    updateForVariant(sendVariant) { it.copy(
                         ble = it.ble.copy(isSending = false, error = R.string.board_send_error_connected_board_mismatch),
                         nearby = it.nearby.copy(debugInfo = "connected board not moonboard")
                     ) }
@@ -513,7 +557,7 @@ internal class BoardSendController(
                 // would light wrong/garbled holds. Refuse with a clear message.
                 val activeBrand = userPreferences.boardBrand.first()
                 if (BoardBrand.fromWire(activeBrand) != BoardBrand.MOONBOARD) {
-                    state.update { it.copy(
+                    updateForVariant(sendVariant) { it.copy(
                         ble = it.ble.copy(isSending = false, error = R.string.board_send_error_active_not_moonboard),
                         nearby = it.nearby.copy(debugInfo = "active board not moonboard")
                     ) }
@@ -521,7 +565,7 @@ internal class BoardSendController(
                 }
                 val activeLayout = userPreferences.boardLayoutId.first().toLong()
                 if (climb.layoutId != activeLayout) {
-                    state.update { it.copy(
+                    updateForVariant(sendVariant) { it.copy(
                         ble = it.ble.copy(isSending = false, error = R.string.board_send_error_moonboard_variant_mismatch),
                         nearby = it.nearby.copy(debugInfo = "moonboard variant mismatch")
                     ) }
@@ -546,7 +590,7 @@ internal class BoardSendController(
                     ledMode,
                 )
                 Log.i(TAG, "sendMoonBoardToBoard: writes done success=$success variant=$variant")
-                state.update { it.copy(
+                updateForVariant(sendVariant) { it.copy(
                     ble = it.ble.copy(
                         isSending = false,
                         success = success,
@@ -563,7 +607,7 @@ internal class BoardSendController(
                         projectionSurvivesDisconnect =
                             BoardProjectionPolicy.projectionSurvivesDisconnect(climb.brand),
                     )
-                    state.update { it.copy(
+                    updateForVariant(sendVariant) { it.copy(
                         nearby = it.nearby.copy(debugInfo = "adv: $result")
                     ) }
                 }
@@ -571,7 +615,7 @@ internal class BoardSendController(
                 throw e
             } catch (e: Exception) {
                 Log.e(TAG, "sendMoonBoardToBoard failed", e)
-                state.update { it.copy(
+                updateForVariant(sendVariant) { it.copy(
                     ble = it.ble.copy(isSending = false, error = R.string.board_send_error_generic),
                     nearby = it.nearby.copy(debugInfo = "exception: ${e.message?.take(50)}")
                 ) }
@@ -591,8 +635,17 @@ internal class BoardSendController(
      * playback ran its whole animation, frame counter and all, while every
      * frame was discarded. Surfaces that offer a send ask this, not the
      * connection alone.
+     *
+     * A BoardCell group is the same answer for a worse reason. A per-frame
+     * send does not "not arrive" there — it arrives as a whole-climb
+     * [BoardProjection], because the mesh wire model has no frame index. The
+     * controller then re-resolves the climb and lights frame 1 again for every
+     * frame this device animates through: the counter runs, the wall does not
+     * move, and the group's own list is overwritten at animation rate. Until
+     * that protocol carries a frame, playback stays on this screen.
      */
-    fun canSendToBoard(): Boolean = isConnected() && !isBoardOwnedBySession()
+    fun canSendToBoard(): Boolean =
+        isConnected() && !isBoardOwnedBySession()
 
     fun removeBoardLayer(slot: Int) {
         if (isBoardOwnedBySession()) return
@@ -604,6 +657,7 @@ internal class BoardSendController(
         }
         if (bleConnection.connectedBoardBrand.value != BoardBrand.QUANTUM) return
         sendJob?.cancel()
+        val variant = currentVariant()
         state.update { it.copy(ble = it.ble.copy(isSending = true, success = false, error = null)) }
         sendJob = scope.launch {
             val success = runCatching { bleConnection.removeQuantumLayer(layer.userUuid) }.getOrDefault(false)
@@ -611,7 +665,7 @@ internal class BoardSendController(
             val failure = runCatching {
                 bleConnection.quantumControllerState.value.lastFailure
             }.getOrNull()
-            state.update { current -> current.copy(
+            updateForVariant(variant) { current -> current.copy(
                 ble = current.ble.copy(
                     isSending = false,
                     success = success,
