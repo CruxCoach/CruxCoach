@@ -115,6 +115,9 @@ class BoardRepositoryImpl(
         }
     }
 
+    override fun getQuantumExternalRouteUuid(appUuid: String): String? =
+        q.getQuantumExternalRouteUuid(appUuid).executeAsOneOrNull()
+
     override fun getClimbByUuidNormalized(uuid: String, angle: Int): ClimbWithStats? {
         return q.getClimbByUuidNormalized(angle.toLong(), uuid).executeAsOneOrNull()?.let {
             mapClimb(
@@ -347,7 +350,7 @@ class BoardRepositoryImpl(
     ): List<String> {
         return q.getAllFramesForFilter(
             layoutId.toLong(), boardBrand, angle.toLong(), climbType.minFrames(), climbType.maxFrames(),
-            minDifficulty, maxDifficulty, minAscensionists.toLong()
+            minDifficulty, maxDifficulty, minAscensionists.toLong(), 0L
         ).executeAsList()
             .filter { it.frames.contains(holdPattern) }
             .map { it.uuid }
@@ -360,7 +363,7 @@ class BoardRepositoryImpl(
         if (holdPatterns.isEmpty()) return emptySet()
         return q.getAllFramesForFilter(
             layoutId.toLong(), boardBrand, angle.toLong(), climbType.minFrames(), climbType.maxFrames(),
-            minDifficulty, maxDifficulty, minAscensionists.toLong()
+            minDifficulty, maxDifficulty, minAscensionists.toLong(), 0L
         ).executeAsList()
             .filter { row -> holdPatterns.all { pattern -> row.frames.contains(pattern) } }
             .map { it.uuid }
@@ -369,11 +372,11 @@ class BoardRepositoryImpl(
 
     override fun getAllFramesForHeatmap(
         angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double,
-        minAscensionists: Int, climbType: ClimbTypeFilter
+        minAscensionists: Int, climbType: ClimbTypeFilter, hsmExcludedMask: Long
     ): List<ClimbFrameRow> {
         return q.getAllFramesForFilter(
             layoutId.toLong(), boardBrand, angle.toLong(), climbType.minFrames(), climbType.maxFrames(),
-            minDifficulty, maxDifficulty, minAscensionists.toLong()
+            minDifficulty, maxDifficulty, minAscensionists.toLong(), hsmExcludedMask
         ).executeAsList().map { ClimbFrameRow(it.uuid, it.frames) }
     }
 
@@ -493,6 +496,16 @@ class BoardRepositoryImpl(
             .groupBy { it.uuid }
             .map { (_, rows) -> mapBrowse(rows.firstOrNull { it.angle == angle.toLong() } ?: rows.first()) }
     }
+
+    override fun getQuantumOfficialClimbs(
+        layoutId: Int, angle: Int, minDifficulty: Double, maxDifficulty: Double,
+        minAscensionists: Int, climbType: ClimbTypeFilter, hsmExcludedMask: Long,
+        showUngraded: Boolean,
+    ): List<ClimbWithStats> = q.browseQuantumOfficialOnly(
+        layoutId.toLong(), angle.toLong(), climbType.minFrames(), climbType.maxFrames(),
+        minDifficulty, maxDifficulty, if (showUngraded) 1L else 0L,
+        minAscensionists.toLong(), hsmExcludedMask,
+    ).executeAsList().map { mapBrowse(it) }
 
     override fun canRenderClimbOnSize(uuid: String, productSizeId: Int, boardBrand: String): Boolean {
         return q.canRenderClimbOnSize(productSizeId.toLong(), boardBrand, uuid).executeAsOneOrNull() != null
@@ -730,7 +743,8 @@ class BoardRepositoryImpl(
 
     override fun deleteAllBoardData() {
         q.transaction {
-            // Catalogue rows only (source='kilter'): locally-authored /
+            // Re-downloadable catalogue rows only (legacy source='kilter'
+            // plus official source='quantum'): locally-authored /
             // community climbs are not re-downloadable, so they — and
             // their stats — survive even the all-boards wipe.
             q.deleteKilterSourceClimbStats()
@@ -743,6 +757,8 @@ class BoardRepositoryImpl(
             q.deleteAllHoles()
             q.deleteAllSyncState()
             q.deleteAllBetaLinks()
+            q.deleteAllQuantumRouteRefs()
+            q.deleteAllQuantumRouteMetadata()
         }
     }
 
@@ -761,6 +777,10 @@ class BoardRepositoryImpl(
                 q.deleteBoardImagesForBrand(brand)
                 q.deleteProductSizesForBrand(brand)
                 q.deleteHolesForBrand(brand)
+                if (brand == BoardBrand.QUANTUM.wireValue) {
+                    q.deleteAllQuantumRouteRefs()
+                    q.deleteAllQuantumRouteMetadata()
+                }
             }
             if (BoardBrand.KILTER.wireValue in brands) {
                 q.deleteKilterOwnedSyncStates()
@@ -1059,6 +1079,12 @@ class BoardRepositoryImpl(
      * 0 stays the safe answer: it means UNKNOWN and passes every mask.
      */
     private fun moonBoardHsm(layoutId: Long, boardBrand: String, frames: String): Long {
+        // Quantum reuses this existing per-row exclusion-mask channel for its
+        // five positive vendor rules. Community/local rows have no eWalls
+        // attestation, so all rules are deliberately marked missing.
+        if (com.cruxcoach.domain.board.BoardBrand.fromWire(boardBrand) ==
+            com.cruxcoach.domain.board.BoardBrand.QUANTUM
+        ) return 31L
         val variant = com.cruxcoach.domain.board.MoonBoardVariant.fromBoardSelection(
             layoutId, com.cruxcoach.domain.board.BoardBrand.fromWire(boardBrand),
         ) ?: return 0L
@@ -1584,6 +1610,7 @@ class BoardRepositoryImpl(
                 edge_top = row.edgeTop,
                 created_at = row.createdAt,
                 description = row.description,
+                hsm = if (row.boardBrand == BoardBrand.QUANTUM.wireValue) 31L else 0L,
                 move_count = row.moveCount,
                 source = row.source,
                 sync_status = row.syncStatus,

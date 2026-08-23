@@ -38,6 +38,10 @@ object CruxCoachBackup {
     private const val MAX_EXTERNAL_ID_LEN = 100
     private const val MAX_DATE_LEN = 40
     private const val MAX_BRAND_LEN = 32
+    // Layout ids are vendor/catalogue identities, not a dense Kilter-only
+    // range. Quantum intentionally lives at 9101..9105. This wider cap keeps
+    // pre-0.2.2 payloads valid while still rejecting crafted huge integers.
+    private const val MAX_LAYOUT_ID = 100_000L
 
     // 8-4-4-4-12 canonical — app-generated IDs (UUID.randomUUID().toString()).
     private val UUID_REGEX =
@@ -189,7 +193,7 @@ object CruxCoachBackup {
             // by BoardBrand.fromWire at read time, the cap just blocks a giant
             // string from a crafted backup.
             requireLen("ascent.boardBrand", a.boardBrand, MAX_BRAND_LEN)
-            requireRange("ascent.layoutId", a.layoutId, 0L..1_000L)
+            requireRange("ascent.layoutId", a.layoutId, 0L..MAX_LAYOUT_ID)
             // Full-fidelity additions — cap, don't whitelist (same posture
             // as boardBrand): odd legacy values must not brick a restore.
             requireLen("ascent.gymUuid", a.gymUuid, MAX_EXTERNAL_ID_LEN)
@@ -209,7 +213,7 @@ object CruxCoachBackup {
             requireLen("bid.climbedAt", b.climbedAt, MAX_DATE_LEN)
             // Board context (FEAT-027 P2) — see the ascent loop above.
             requireLen("bid.boardBrand", b.boardBrand, MAX_BRAND_LEN)
-            requireRange("bid.layoutId", b.layoutId, 0L..1_000L)
+            requireRange("bid.layoutId", b.layoutId, 0L..MAX_LAYOUT_ID)
             requireLen("bid.gymUuid", b.gymUuid, MAX_EXTERNAL_ID_LEN)
             requireLen("bid.wallUuid", b.wallUuid, MAX_EXTERNAL_ID_LEN)
             requireLen("bid.productLayoutUuid", b.productLayoutUuid, MAX_EXTERNAL_ID_LEN)
@@ -314,7 +318,7 @@ object CruxCoachBackup {
             // Cap, don't whitelist (see boardBrand) — a Keycloak uuid today,
             // but an odd legacy value must not brick the whole restore.
             requireLen("ownClimb.kilterAuthorUuid", c.kilterAuthorUuid, MAX_EXTERNAL_ID_LEN)
-            requireRange("ownClimb.layoutId", c.layoutId, 0L..1_000L)
+            requireRange("ownClimb.layoutId", c.layoutId, 0L..MAX_LAYOUT_ID)
             requireRange("ownClimb.moveCount", c.moveCount, 0L..1_000L)
             requireRange("ownClimb.kilterSyncedAt", c.kilterSyncedAt, 0L..Long.MAX_VALUE)
             // edge_* are pixel coords on the layout grid — generous range.

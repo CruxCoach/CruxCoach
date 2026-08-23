@@ -1,0 +1,15 @@
+CREATE TABLE quantum_route_metadata (
+    app_uuid TEXT NOT NULL PRIMARY KEY,
+    source_grade TEXT NOT NULL DEFAULT '',
+    campusing INTEGER NOT NULL DEFAULT 0,
+    edge INTEGER NOT NULL DEFAULT 0,
+    kickplate INTEGER NOT NULL DEFAULT 0,
+    matching INTEGER NOT NULL DEFAULT 0,
+    standard INTEGER NOT NULL DEFAULT 0,
+    tags TEXT NOT NULL DEFAULT ''
+);
+
+-- Locally-authored/relayed Quantum climbs have no authoritative eWalls rule
+-- metadata. Mark every positive rule as unknown/missing so selecting a vendor
+-- rule never presents a local climb as if it were verified by eWalls.
+UPDATE climbs SET hsm = 31 WHERE board_brand = 'quantum';

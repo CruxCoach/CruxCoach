@@ -296,6 +296,29 @@ class CruxCoachBackupSecureRoundTripTest {
         assertEquals("aurora-json:bid:${"b".repeat(32)}", bid.externalId)
     }
 
+    @Test
+    fun `quantum board context round-trips without narrowing legacy backup schema`() {
+        val climbUuid = "2f06c97d-a92f-5ec0-a02f-b19f5db0ce45"
+        source.personal.insertAscent(
+            uuid = "11111111-2222-4333-8444-555555555555",
+            climbUuid = climbUuid, angle = 40L,
+            isMirror = false, attemptId = 0L, bidCount = 1L,
+            quality = null, difficulty = null, isBenchmark = false,
+            comment = null, climbedAt = "2026-08-20 08:00:00",
+            synced = false, gymUuid = null, wallUuid = null, productLayoutUuid = null,
+            climbName = "Quantum Test", difficultyAverage = 18.0,
+            climbFrames = "p1000001r12p1000002r14", framesCount = 1L,
+            boardBrand = "quantum", layoutId = 9101L, externalId = null,
+        )
+
+        import(target, export(source))
+
+        val ascent = target.personal.getAscentsForBackup().single()
+        assertEquals("quantum", ascent.boardBrand)
+        assertEquals(9101L, ascent.layoutId)
+        assertEquals(climbUuid, ascent.climbUuid)
+    }
+
     // ── 4 + 5. Workout linkage remap + content-exact dedup ───────
 
     @Test

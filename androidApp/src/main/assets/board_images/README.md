@@ -273,3 +273,25 @@ The renderer (`boardImageCandidatePaths`) tries the layout-specific path first
 size-only path, then falls back to a placements-only view if neither asset is
 present. So no code change is needed for a new size, and a board not yet
 regenerated keeps working off its old single-set image.
+
+---
+
+# Quantum Board images
+
+`quantum/board_9201.png` through `board_9205.jpg` are the five original
+XL/L/M/S Fitness/Belay `board-small` assets bundled in eWalls 2.0.14
+(`com.walltopia.ewalls2`, version code 490). They are stored byte-for-byte in
+their source PNG/JPEG formats. The product-size mapping is CruxCoach's stable
+Quantum mapping: 9201=XL (`big`), 9202=L (`medium`), 9203=M (`small`),
+9204=S Fitness (`xsmall`), 9205=Belay.
+
+The overlay uses the exact 1000×1000 transform recovered from the eWalls
+2.0.14 renderer: `x * 9.321401938851603` and
+`(100 - y) * 9.29368029739777`. Do not crop, pad, rotate, or re-encode these
+files without updating and visually validating that transform.
+
+The Quantum Board product, Walltopia branding, hold layouts, and imagery are
+property of Walltopia. CruxCoach is not affiliated with or endorsed by
+Walltopia. The assets are included as referential material for users operating
+their own compatible board; removal requests are handled through the channels
+listed in `SECURITY.md`.
