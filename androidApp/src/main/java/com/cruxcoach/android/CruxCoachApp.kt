@@ -72,9 +72,6 @@ class CruxCoachApp : Application(), Configuration.Provider {
     @Inject
     lateinit var boardCellManager: dagger.Lazy<com.cruxcoach.android.boardcell.BoardCellManager>
 
-    @Inject
-    lateinit var competitionMesh: dagger.Lazy<com.cruxcoach.android.competition.CompetitionMeshTransport>
-
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override val workManagerConfiguration: Configuration
@@ -145,11 +142,10 @@ class CruxCoachApp : Application(), Configuration.Provider {
         PerfLogger.trace("UpdaterCoordinator.start") { updaterCoordinator.get().start() }
 
         // Foreground mesh path: API 29+ uses authenticated FIPS/L2CAP. A
-        // session/cell/competition promotes it to a foreground service through
+        // session or cell promotes it to a foreground service through
         // FipsMeshRuntime.acquire(); API 28 keeps the established GATT path.
         appScope.launch {
             boardCellManager.get() // installs board/FIPS lifecycle binding
-            competitionMesh.get() // installs signed offline competition receiver
         }
 
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {

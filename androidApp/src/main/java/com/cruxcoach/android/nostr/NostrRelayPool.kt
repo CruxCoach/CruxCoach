@@ -46,7 +46,7 @@ class NostrRelayPool @Inject constructor(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val connections = ConcurrentHashMap<String, RelayConnection>()
     private val _connectedRelayCount = MutableStateFlow(0)
-    /** Transport health only; competition truth still comes from signed events. */
+    /** Transport health only; event truth still comes from the signed events. */
     val connectedRelayCount: StateFlow<Int> = _connectedRelayCount.asStateFlow()
 
     private fun updateConnectedRelayCount() {
