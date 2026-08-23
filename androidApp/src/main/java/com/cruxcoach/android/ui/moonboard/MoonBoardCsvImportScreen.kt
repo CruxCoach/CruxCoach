@@ -15,8 +15,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -30,7 +30,11 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -40,10 +44,20 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
 import com.cruxcoach.android.moonboard.MoonBoardAccessibilityBridge
 import com.cruxcoach.android.ui.theme.OrangeAccent
+
+/**
+ * Whether the official Moon app is reachable from here. The manifest declares
+ * it under <queries>, so package visibility does not hide it on Android 11+.
+ */
+private fun isMoonAppInstalled(context: android.content.Context): Boolean =
+    context.packageManager.getLaunchIntentForPackage("com.trainingboard.moon") != null
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -54,6 +68,19 @@ fun MoonBoardCsvImportScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val scanState by MoonBoardAccessibilityBridge.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    // Without Moon there is nothing to transfer, and finding that out *after*
+    // being sent to Android's accessibility settings and granting a service is
+    // a bad trade to ask of anyone. Re-checked on every resume so installing
+    // Moon and coming back does the obvious thing.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var moonInstalled by remember { mutableStateOf(isMoonAppInstalled(context)) }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) moonInstalled = isMoonAppInstalled(context)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     val uriHandler = LocalUriHandler.current
     val clipboard = LocalClipboardManager.current
     val requestSubject = stringResource(R.string.moon_csv_request_subject)
@@ -154,10 +181,16 @@ fun MoonBoardCsvImportScreen(
             ) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(stringResource(R.string.moon_device_title), fontWeight = FontWeight.Bold)
-                    Text(stringResource(R.string.moon_device_explanation), style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        stringResource(
+                            if (moonInstalled) R.string.moon_device_explanation
+                            else R.string.moon_device_not_installed,
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
                     Button(
                         onClick = { MoonBoardAccessibilityBridge.start(context) },
-                        enabled = !scanState.running,
+                        enabled = moonInstalled && !scanState.running,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         if (scanState.running) CircularProgressIndicator(
@@ -165,6 +198,7 @@ fun MoonBoardCsvImportScreen(
                         )
                         Text(stringResource(
                             when {
+                                !moonInstalled -> R.string.moon_device_unavailable
                                 scanState.running -> R.string.moon_device_running
                                 scanState.serviceConnected -> R.string.moon_device_start
                                 else -> R.string.moon_device_enable

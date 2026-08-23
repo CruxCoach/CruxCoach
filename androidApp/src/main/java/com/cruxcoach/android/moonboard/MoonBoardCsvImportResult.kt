@@ -7,8 +7,10 @@ data class MoonBoardCsvImportResult(
     val foundEntries: Int = 0,
     val notImported: Int = 0,
     val snapshotOnly: Int = 0,
-    /** Rows replaced because the entry was edited in Moon after the import. */
+    /** Rows replaced because the entry changed in Moon after the import. */
     val replacedEntries: Int = 0,
+    /** Rows Moon no longer lists but that carry notes added in CruxCoach. */
+    val keptOrphans: Int = 0,
     /** Sessions actually read / sessions Moon's own logbook header announced. */
     val sessionsScanned: Int = 0,
     val sessionsExpected: Int = 0,

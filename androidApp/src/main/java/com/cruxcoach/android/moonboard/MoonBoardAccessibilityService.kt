@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityService
 import android.content.Intent
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.os.SystemClock
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
@@ -69,6 +70,7 @@ class MoonBoardAccessibilityService : AccessibilityService() {
     private var datesAtTop = false
     private var detailAtTop = false
     private var nullRootPasses = 0
+    private var sampleLabels: List<String> = emptyList()
     @Volatile private var cancelRequested = false
     private var emptyPasses = 0
     private var leavePasses = 0
@@ -89,7 +91,12 @@ class MoonBoardAccessibilityService : AccessibilityService() {
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
         scope.cancel()
-        if (MoonBoardAccessibilityBridge.service === this) MoonBoardAccessibilityBridge.connected(null)
+        if (MoonBoardAccessibilityBridge.service === this) {
+            MoonBoardAccessibilityBridge.connected(
+                null,
+                getString(R.string.moon_scan_error_interrupted, completedSessions.size),
+            )
+        }
         super.onDestroy()
     }
 
@@ -107,6 +114,7 @@ class MoonBoardAccessibilityService : AccessibilityService() {
         steps = 0
         foreignWindowPasses = 0
         nullRootPasses = 0
+        sampleLabels = emptyList()
         clickFailures = 0
         openFailures = 0
         rewinding = false
@@ -166,6 +174,13 @@ class MoonBoardAccessibilityService : AccessibilityService() {
         if (++steps > MAX_STEPS || now - scanStartedAt > SCAN_TIMEOUT_MS) {
             return fail(getString(R.string.moon_scan_error_timeout, completedSessions.size))
         }
+        // A dark screen stops Moon from rendering, so the scan cannot make
+        // progress and must not be blamed for it. Pause instead of failing;
+        // it picks up by itself when the screen comes back.
+        if (!isScreenOn()) {
+            progress()
+            return scheduleDrive(SCREEN_OFF_POLL_MS)
+        }
         if (now - lastProgressAt > NO_PROGRESS_MS) {
             return fail(getString(R.string.moon_scan_error_stalled, completedSessions.size))
         }
@@ -183,6 +198,7 @@ class MoonBoardAccessibilityService : AccessibilityService() {
         if (root.packageName?.toString() != MOON_PACKAGE) return recoverMoonForeground()
         foreignWindowPasses = 0
         val nodes = root.flatten()
+        rememberLabels(nodes)
         readHeaderCounts(nodes)
         when (stage) {
             Stage.OPEN_HUB -> openHub(nodes)
@@ -193,6 +209,31 @@ class MoonBoardAccessibilityService : AccessibilityService() {
             Stage.IDLE, Stage.PREPARING, Stage.SAVING, Stage.FINISHING -> Unit
         }
     }
+
+    /**
+     * Keeps a few of the labels last seen on screen.
+     *
+     * The parser is written against the wording of one Moon build. If a future
+     * one renames "Logbook" or its date rows, the scan finds nothing and there
+     * is otherwise no way to tell that from "the logbook is empty". Reporting
+     * what Moon actually showed turns an unreproducible bug report into an
+     * answerable one.
+     */
+    private fun rememberLabels(nodes: List<AccessibilityNodeInfo>) {
+        if (knownSessions.isNotEmpty()) return
+        val seen = nodes.asSequence()
+            .map { it.label() }
+            .filter { it.isNotBlank() }
+            .map { it.replace('\n', '/').take(60) }
+            .distinct()
+            .take(MAX_SAMPLE_LABELS)
+            .toList()
+        if (seen.isNotEmpty()) sampleLabels = seen
+    }
+
+    private fun isScreenOn(): Boolean =
+        runCatching { getSystemService(PowerManager::class.java)?.isInteractive != false }
+            .getOrDefault(true)
 
     /** `Logbook\n83 entries, 382 problems` is the run's completeness contract. */
     private fun readHeaderCounts(nodes: List<AccessibilityNodeInfo>) {
@@ -266,16 +307,9 @@ class MoonBoardAccessibilityService : AccessibilityService() {
         // fully imported logbook costs scrolling only, not 83 open/close cycles.
         rows.forEach { (session, _) ->
             if (session.label in completedSessions) return@forEach
-            val stored = existingByDate[session.climbedAt]
-            val listed = session.problems
-            // A day the logbook over-covers is still re-read below, but say so:
-            // otherwise it silently costs a re-read on every future run.
-            if (stored != null && listed != null && stored.entries > listed) {
-                warn(MoonBoardDeviation.StaleDay(session.label.lineOne(), stored.entries, listed))
-            }
-            if (!canSkipSession(session, stored)) return@forEach
+            if (!canSkipSession(session, existingByDate[session.climbedAt])) return@forEach
             completedSessions += session.label
-            tally.skipSession(listed ?: 0)
+            tally.skipSession(session.problems ?: 0)
             progress()
         }
 
@@ -286,13 +320,7 @@ class MoonBoardAccessibilityService : AccessibilityService() {
                 detailAtTop = false
                 clickFailures = 0
                 enterStage(Stage.DETAIL)
-                status(
-                    getString(
-                        R.string.moon_scan_status_session,
-                        completedSessions.size + 1,
-                        expectedSessions,
-                    ),
-                )
+                status(getString(R.string.moon_scan_status_session, next.first.label.lineOne()))
                 return scheduleDrive(OPEN_SETTLE_MS)
             }
             // Never scroll past a row that refused to open — that is exactly how
@@ -425,7 +453,16 @@ class MoonBoardAccessibilityService : AccessibilityService() {
         performGlobalAction(GLOBAL_ACTION_BACK)
         stage = Stage.SAVING
         scope.launch {
-            val stored = runCatching { importer.importScreenSession(result.entries) }
+            val stored = runCatching {
+                importer.importScreenSession(result.entries, result.complete) {
+                    // The one-off catalogue scan takes tens of seconds on a
+                    // full MoonBoard catalogue. Without this the screen keeps
+                    // showing the last training day and looks frozen.
+                    MoonBoardAccessibilityBridge.update {
+                        it.copy(status = getString(R.string.moon_scan_status_catalogue))
+                    }
+                }
+            }
                 .getOrElse {
                     Log.w(TAG, "storing ${session.label.lineOne()} failed", it)
                     warnings += getString(
@@ -436,6 +473,9 @@ class MoonBoardAccessibilityService : AccessibilityService() {
                     MoonBoardCsvImportResult(foundEntries = result.entries.size, notImported = result.entries.size)
                 }
             tally.add(stored)
+            if (stored.keptOrphans > 0) {
+                warn(MoonBoardDeviation.KeptEntries(session.label.lineOne(), stored.keptOrphans))
+            }
             progress()
             publishProgress()
             enterStage(Stage.LEAVE_DETAIL)
@@ -566,6 +606,12 @@ class MoonBoardAccessibilityService : AccessibilityService() {
 
     private fun fail(message: String) {
         Log.w(TAG, message)
+        // Nothing was ever recognised: name what Moon actually put on screen so
+        // the mismatch is diagnosable instead of just "it did not work".
+        if (knownSessions.isEmpty() && sampleLabels.isNotEmpty()) {
+            warnings += getString(R.string.moon_scan_deviation_unrecognised)
+            sampleLabels.forEach { warnings += "· $it" }
+        }
         // Everything read so far is already in the logbook, so a run that got
         // anywhere reports its real counters plus the reason it stopped —
         // never a bare failure that hides what was stored.
@@ -627,8 +673,8 @@ class MoonBoardAccessibilityService : AccessibilityService() {
             is MoonBoardDeviation.SessionNotOpened -> getString(
                 R.string.moon_scan_deviation_not_opened, deviation.date,
             )
-            is MoonBoardDeviation.StaleDay -> getString(
-                R.string.moon_scan_deviation_stale, deviation.date, deviation.stored, deviation.listed,
+            is MoonBoardDeviation.KeptEntries -> getString(
+                R.string.moon_scan_deviation_kept, deviation.date, deviation.count,
             )
         }
         if (warnings.size < MAX_WARNINGS && warnings.none { it == message }) warnings += message
@@ -677,7 +723,7 @@ class MoonBoardAccessibilityService : AccessibilityService() {
         foreignWindowPasses = 0
         Log.i(TAG, "Restoring Moon while scan is active")
         val launch = packageManager.getLaunchIntentForPackage(MOON_PACKAGE)
-            ?: return fail("The official Moon app is not installed")
+            ?: return fail(getString(R.string.moon_scan_error_missing_app))
         startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
         scheduleDrive(1200)
     }
@@ -731,6 +777,8 @@ class MoonBoardAccessibilityService : AccessibilityService() {
         const val MAX_WARNINGS = 120
         const val FOREIGN_WINDOW_LIMIT = 2
         const val NULL_ROOT_LIMIT = 12
+        const val MAX_SAMPLE_LABELS = 6
+        const val SCREEN_OFF_POLL_MS = 2_000L
         const val MOON_RESTART_MS = 1_800L
         const val EMPTY_SCREEN_LIMIT = 8
         const val LEAVE_DETAIL_LIMIT = 12

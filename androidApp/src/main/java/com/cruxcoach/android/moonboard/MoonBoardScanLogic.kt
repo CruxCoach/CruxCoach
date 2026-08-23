@@ -130,12 +130,11 @@ sealed interface MoonBoardDeviation {
     data class SessionNotOpened(override val date: String) : MoonBoardDeviation
 
     /**
-     * The logbook holds more entries for this day than Moon lists — typically a
-     * row that was edited in Moon after it was imported, leaving the original
-     * behind. Reported rather than repaired: those rows may have been edited in
-     * CruxCoach too, so deleting them is the user's call, not the import's.
+     * Rows Moon no longer lists for this day that were kept rather than removed,
+     * because somebody added a comment or a rating to them in CruxCoach.
+     * Deleting those is the user's call, not the import's.
      */
-    data class StaleDay(override val date: String, val stored: Int, val listed: Int) : MoonBoardDeviation
+    data class KeptEntries(override val date: String, val count: Int) : MoonBoardDeviation
 }
 
 /** The problem cards of one Moon session, plus everything that did not add up. */
@@ -143,7 +142,16 @@ data class MoonBoardSessionResult(
     val entries: List<MoonBoardScreenEntry>,
     val unreadable: Map<String, Int>,
     val deviations: List<MoonBoardDeviation>,
-)
+) {
+    /**
+     * True only when this reading accounts for the training day in full: every
+     * problem Moon promised was seen, every card was understood, and the send
+     * and attempt totals match Moon's own. Anything less and the importer must
+     * not conclude that a stored row is gone from Moon — it might simply not
+     * have been read.
+     */
+    val complete: Boolean get() = deviations.isEmpty()
+}
 
 /**
  * Accumulates the problem cards seen while one Moon session was open.
@@ -238,6 +246,8 @@ class MoonBoardImportTally {
         private set
     var replacedEntries = 0
         private set
+    var keptOrphans = 0
+        private set
     var sessionsSkipped = 0
         private set
     private val unresolved = LinkedHashSet<String>()
@@ -250,6 +260,7 @@ class MoonBoardImportTally {
         notImported = 0
         snapshotOnly = 0
         replacedEntries = 0
+        keptOrphans = 0
         sessionsSkipped = 0
         unresolved.clear()
     }
@@ -262,6 +273,7 @@ class MoonBoardImportTally {
         notImported += result.notImported
         snapshotOnly += result.snapshotOnly
         replacedEntries += result.replacedEntries
+        keptOrphans += result.keptOrphans
         unresolved += result.unresolvedLabels
     }
 
@@ -290,6 +302,7 @@ class MoonBoardImportTally {
         notImported = notImported,
         snapshotOnly = snapshotOnly,
         replacedEntries = replacedEntries,
+        keptOrphans = keptOrphans,
         sessionsScanned = sessionsScanned,
         sessionsExpected = sessionsExpected,
         sessionsSkipped = sessionsSkipped,

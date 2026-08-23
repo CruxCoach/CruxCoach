@@ -28,14 +28,23 @@ object MoonBoardAccessibilityBridge {
     val state = mutableState.asStateFlow()
     internal var service: MoonBoardAccessibilityService? = null
 
-    internal fun connected(value: MoonBoardAccessibilityService?) {
+    /**
+     * @param interruptedMessage localized text for a scan that was cut short by
+     *   the service going away — the bridge has no Context of its own, so the
+     *   wording has to come from the service rather than being hardcoded here.
+     */
+    internal fun connected(
+        value: MoonBoardAccessibilityService?,
+        interruptedMessage: String? = null,
+    ) {
         service = value
         mutableState.value = if (value == null && mutableState.value.running) {
             mutableState.value.copy(
                 serviceConnected = false,
                 running = false,
+                cancelling = false,
                 status = "",
-                result = MoonBoardCsvImportResult(error = "Moon import was interrupted"),
+                result = MoonBoardCsvImportResult(error = interruptedMessage.orEmpty()),
             )
         } else {
             mutableState.value.copy(serviceConnected = value != null)

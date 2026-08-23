@@ -2450,6 +2450,19 @@ WHERE c.uuid IN :uuids
 -- real catalogue, i.e. a quarter of an hour for one 382-entry logbook. The
 -- importer reads this once, matches name/setter in memory, and then fetches the
 -- full rows for the handful of resolved uuids via lookupMoonCsvCandidates.
+-- Same projection for the case where only a handful of names are wanted — a
+-- delta run that re-reads one training day should not pay a full catalogue
+-- scan to resolve a single entry. COLLATE NOCASE is only a prefilter; the
+-- importer still matches Unicode-correctly in Kotlin afterwards.
+lookupMoonScreenByNames:
+SELECT c.uuid, c.name, c.setter_username, cs.angle
+FROM climbs c
+INNER JOIN climb_stats cs ON cs.climb_uuid = c.uuid
+WHERE c.board_brand = 'moonboard'
+  AND c.is_deleted = 0
+  AND cs.angle IN :angles
+  AND c.name COLLATE NOCASE IN :names;
+
 listMoonScreenIndex:
 SELECT c.uuid, c.name, c.setter_username, cs.angle
 FROM climbs c
