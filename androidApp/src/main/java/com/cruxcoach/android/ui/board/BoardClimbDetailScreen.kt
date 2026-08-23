@@ -1,6 +1,8 @@
 package com.cruxcoach.android.ui.board
 
 import android.util.Log
+import androidx.annotation.ColorInt
+import androidx.annotation.StringRes
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -54,6 +56,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
@@ -925,6 +932,24 @@ fun BoardClimbDetailScreen(
 }
 
 /**
+ * The controller palette, named.
+ *
+ * Layer numbers are the redundant cue everywhere else on this screen, but
+ * inside the colour picker itself there are no numbers — only four circles.
+ * These are what a screen reader has to work with, and they are also why the
+ * palette is exactly four: the six eWalls swatches collapse to four protocol
+ * colours, so two of them would otherwise be unnameable duplicates.
+ */
+@StringRes
+internal fun boardLayerColorName(@ColorInt color: Int): Int = when (color) {
+    BoardLayerManager.LAYER_COLORS[0] -> R.string.board_layer_color_green
+    BoardLayerManager.LAYER_COLORS[1] -> R.string.board_layer_color_cyan
+    BoardLayerManager.LAYER_COLORS[2] -> R.string.board_layer_color_magenta
+    BoardLayerManager.LAYER_COLORS[3] -> R.string.board_layer_color_yellow
+    else -> R.string.board_layer_custom_color
+}
+
+/**
  * What is on a multi-layer wall right now, in one line, above the wall.
  *
  * A rack big enough to operate four projections does not fit on a screen whose
@@ -1040,6 +1065,51 @@ private fun BoardLayerSheet(
                 onRemove = onRemove,
             )
             Spacer(Modifier.height(24.dp))
+        }
+    }
+}
+
+/**
+ * The four controller colours, as a choice somebody can actually make.
+ *
+ * A swatch is a colour and nothing else: without semantics it reaches a screen
+ * reader as four identical unlabelled buttons, and the layer numbers that carry
+ * the redundancy everywhere else on this screen are not in here. So each one
+ * carries its name, whether it is the current choice, and — when it is already
+ * on the wall under somebody else's layer — why it cannot be picked, rather
+ * than just going quiet on tap.
+ */
+@Composable
+internal fun BoardLayerColorPicker(
+    selectedColor: Int?,
+    unavailableColors: Set<Int>,
+    onSelectColor: (Int) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().testTag("board_layer_color_picker"),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        BoardLayerManager.LAYER_COLORS.forEachIndexed { index, color ->
+            val available = color !in unavailableColors
+            val name = stringResource(boardLayerColorName(color))
+            val takenName = stringResource(R.string.board_layer_color_unavailable, name)
+            Surface(
+                onClick = { if (available) onSelectColor(color) },
+                enabled = available,
+                modifier = Modifier
+                    .size(34.dp)
+                    .testTag("board_layer_color_$index")
+                    .semantics {
+                        role = Role.RadioButton
+                        selected = selectedColor == color
+                        contentDescription = if (available) name else takenName
+                    },
+                shape = CircleShape,
+                color = Color(color).copy(alpha = if (available) 1f else 0.22f),
+                border = if (selectedColor == color) {
+                    androidx.compose.foundation.BorderStroke(3.dp, MaterialTheme.colorScheme.onSurface)
+                } else null,
+            ) {}
         }
     }
 }
@@ -1288,27 +1358,11 @@ private fun BoardLayerRack(
                     stringResource(R.string.board_layer_color),
                     style = MaterialTheme.typography.labelMedium,
                 )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    BoardLayerManager.LAYER_COLORS.forEachIndexed { index, color ->
-                        val ownedBySelected = selectedLayer?.color == color
-                        val available = color !in occupiedColors || ownedBySelected
-                        Surface(
-                            onClick = { if (available) onSelectColor(color) },
-                            enabled = available,
-                            modifier = Modifier
-                                .size(34.dp)
-                                .testTag("board_layer_color_$index"),
-                            shape = CircleShape,
-                            color = Color(color).copy(alpha = if (available) 1f else 0.22f),
-                            border = if (selectedColor == color) {
-                                androidx.compose.foundation.BorderStroke(3.dp, MaterialTheme.colorScheme.onSurface)
-                            } else null,
-                        ) {}
-                    }
-                }
+                BoardLayerColorPicker(
+                    selectedColor = selectedColor,
+                    unavailableColors = occupiedColors - setOfNotNull(selectedLayer?.color),
+                    onSelectColor = onSelectColor,
+                )
                 OutlinedButton(
                     onClick = onAssignCurrent,
                     enabled = !state.ble.isSending && !selectedColorConflict,
