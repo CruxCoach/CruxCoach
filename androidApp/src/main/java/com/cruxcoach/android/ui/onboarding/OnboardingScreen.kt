@@ -2,6 +2,7 @@ package com.cruxcoach.android.ui.onboarding
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -14,14 +15,11 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.automirrored.filled.Login
 import androidx.compose.material.icons.filled.SwapHoriz
@@ -30,6 +28,7 @@ import com.cruxcoach.android.ui.aurora.AuroraMigrationViewModel
 import com.cruxcoach.android.ui.aurora.MigrationFlowContent
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -426,7 +425,11 @@ private fun BoardSetupStep(
         // Board picker — hardware knowledge, no sync round-trip needed.
         // Original/Homewall is now an in-dialog segment, not a chip.
         com.cruxcoach.android.ui.settings.BoardModelSection(
-            boardModelName = state.boardProductSizeName,
+            boardModelName = com.cruxcoach.android.ui.settings.boardSelectionLabel(
+                brand = BoardBrand.fromWire(state.boardBrand),
+                layoutId = state.boardLayoutId,
+                detail = state.boardProductSizeName,
+            ),
             onChangeModel = { showBoardModelDialog = true },
         )
 
@@ -478,15 +481,6 @@ private fun PrivacyStep(
             stringResource(R.string.onboarding_privacy_subtitle),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-
-        PrivacyToggleCard(
-            icon = { Icon(Icons.Default.Bluetooth, null, tint = OrangeAccent, modifier = Modifier.size(32.dp)) },
-            title = stringResource(R.string.onboarding_privacy_ble_title),
-            description = stringResource(R.string.onboarding_privacy_ble_desc),
-            checked = state.bleSharing,
-            onCheckedChange = { viewModel.updateBleSharing(it) },
-            testTag = "onboarding_ble_switch",
         )
 
         BackupCard(state, viewModel, onNavigateToKeyManagement)
@@ -780,17 +774,25 @@ private fun PrivacyToggleCard(
 
 // ─── Step 3: existing logbook (optional) ──────────────────────────────────
 
+private enum class LogbookImportSource { KILTER, MOONBOARD }
+
 @Composable
 private fun KilterStep(
     state: OnboardingState,
     viewModel: OnboardingViewModel,
     onNavigateToMoonBoardImport: () -> Unit,
 ) {
-    val activeBoard = BoardBrand.fromWire(state.boardBrand)
-    var kilterExpanded by rememberSaveable(state.boardBrand) {
-        mutableStateOf(
-            state.boardBrand == BoardBrand.KILTER.wireValue ||
-                state.kilterConnected || state.kilterImportResult != null,
+    // Keep the first view deliberately quiet. Import credentials, scraping
+    // instructions and migration details only appear after the user chooses
+    // their previous app. An in-progress/completed Kilter import is restored
+    // directly so rotation or process recreation never hides its result.
+    var selectedSource by rememberSaveable {
+        mutableStateOf<LogbookImportSource?>(
+            if (state.kilterConnected || state.kilterImportResult != null) {
+                LogbookImportSource.KILTER
+            } else {
+                null
+            },
         )
     }
     Column(
@@ -831,97 +833,95 @@ private fun KilterStep(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
-        if (activeBoard == BoardBrand.MOONBOARD) {
-            MoonBoardImportCard(onNavigateToMoonBoardImport, highlighted = true)
-        }
-        if (activeBoard.usesAuroraProtocol && activeBoard != BoardBrand.KILTER) {
-            AuroraOnboardingCard(onClick = { viewModel.setAuroraSheetOpen(true) })
-        }
-
-        Card(
+        Row(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = if (state.boardBrand == BoardBrand.KILTER.wireValue) {
-                    OrangeAccent.copy(alpha = 0.08f)
-                } else {
-                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                },
-            ),
-            shape = RoundedCornerShape(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { kilterExpanded = !kilterExpanded },
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ImportSourceChoiceCard(
+                modifier = Modifier.weight(1f),
+                icon = { Icon(Icons.AutoMirrored.Filled.Login, null) },
+                label = BoardBrand.KILTER.displayName,
+                selected = selectedSource == LogbookImportSource.KILTER,
+                testTag = "onboarding_import_source_kilter",
+                onClick = { selectedSource = LogbookImportSource.KILTER },
+            )
+            ImportSourceChoiceCard(
+                modifier = Modifier.weight(1f),
+                icon = { Icon(Icons.Default.History, null) },
+                label = BoardBrand.MOONBOARD.displayName,
+                selected = selectedSource == LogbookImportSource.MOONBOARD,
+                testTag = "onboarding_import_source_moonboard",
+                onClick = { selectedSource = LogbookImportSource.MOONBOARD },
+            )
+        }
+
+        AnimatedContent(
+            targetState = selectedSource,
+            label = "logbook_import_source",
+        ) { source ->
+            when (source) {
+                LogbookImportSource.KILTER -> Column(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    Icon(Icons.AutoMirrored.Filled.Login, null, tint = OrangeAccent, modifier = Modifier.size(28.dp))
-                    Text(
-                        stringResource(R.string.onboarding_kilter_title),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1f),
-                    )
-                    // ⓘ explains the Kilter data exchange (import / local / publish).
-                    com.cruxcoach.android.ui.common.KilterDataInfoButton()
-                    Icon(
-                        if (kilterExpanded) Icons.Default.KeyboardArrowUp
-                        else Icons.Default.KeyboardArrowDown,
-                        contentDescription = stringResource(
-                            if (kilterExpanded) R.string.onboarding_import_collapse
-                            else R.string.onboarding_import_expand,
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = OrangeAccent.copy(alpha = 0.08f),
                         ),
-                    )
-                }
-
-                Text(
-                    stringResource(R.string.onboarding_kilter_desc),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-
-                AnimatedVisibility(visible = kilterExpanded) {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        // While the board catalogue is still importing, a Kilter
-                        // import works but its ascents show up nameless/gradeless
-                        // until the catalogue lands — tell the user rather than let
-                        // them hit that state unwarned. Hidden once a result is shown.
-                        val boardSyncing by viewModel.boardCatalogueSyncing.collectAsStateWithLifecycle()
-                        if (boardSyncing && state.kilterImportResult == null) {
+                        shape = RoundedCornerShape(16.dp),
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Row(
+                                modifier = Modifier.padding(start = 16.dp, top = 16.dp, end = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    stringResource(R.string.onboarding_kilter_title),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                com.cruxcoach.android.ui.common.KilterDataInfoButton()
+                            }
                             Text(
-                                stringResource(R.string.kilter_import_board_sync_pending),
+                                stringResource(R.string.onboarding_kilter_desc),
+                                modifier = Modifier.padding(horizontal = 16.dp),
                                 style = MaterialTheme.typography.bodySmall,
-                                color = OrangeAccent,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                        }
+                            // While the board catalogue is still importing, a Kilter
+                            // import works but its ascents show up nameless/gradeless
+                            // until the catalogue lands — tell the user rather than let
+                            // them hit that state unwarned. Hidden once a result is shown.
+                            val boardSyncing by viewModel.boardCatalogueSyncing.collectAsStateWithLifecycle()
+                            if (boardSyncing && state.kilterImportResult == null) {
+                                Text(
+                                    stringResource(R.string.kilter_import_board_sync_pending),
+                                    modifier = Modifier.padding(horizontal = 16.dp),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = OrangeAccent,
+                                )
+                            }
 
-                        if (state.kilterImportResult != null) {
-                            KilterImportDoneContent(state, viewModel)
-                        } else if (state.kilterConnected && state.kilterImportPreview != null) {
-                            KilterPreviewContent(state, viewModel)
-                        } else {
-                            KilterLoginContent(state, viewModel)
+                            Column(
+                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                            ) {
+                                if (state.kilterImportResult != null) {
+                                    KilterImportDoneContent(state, viewModel)
+                                } else if (state.kilterConnected && state.kilterImportPreview != null) {
+                                    KilterPreviewContent(state, viewModel)
+                                } else {
+                                    KilterLoginContent(state, viewModel)
+                                }
+                            }
                         }
                     }
+                    AuroraOnboardingCard(onClick = { viewModel.setAuroraSheetOpen(true) })
                 }
+                LogbookImportSource.MOONBOARD ->
+                    MoonBoardImportCard(onNavigateToMoonBoardImport, highlighted = true)
+                null -> Spacer(Modifier.height(1.dp))
             }
-        }
-
-        if (activeBoard != BoardBrand.MOONBOARD) {
-            MoonBoardImportCard(onNavigateToMoonBoardImport, highlighted = false)
-        }
-
-        // FEAT-005 — Aurora-from-old-Kilter migration tile. Tucked
-        // below the live OAuth card so the default path (sign in to
-        // the new Kilter API) still wins visually for the 95 % of
-        // users who never used Aurora.
-        if (!activeBoard.usesAuroraProtocol || activeBoard == BoardBrand.KILTER) {
-            AuroraOnboardingCard(onClick = { viewModel.setAuroraSheetOpen(true) })
         }
 
         Card(
@@ -942,6 +942,40 @@ private fun KilterStep(
         AuroraMigrationBottomSheet(
             onDismiss = { viewModel.setAuroraSheetOpen(false) },
         )
+    }
+}
+
+@Composable
+private fun ImportSourceChoiceCard(
+    modifier: Modifier,
+    icon: @Composable () -> Unit,
+    label: String,
+    selected: Boolean,
+    testTag: String,
+    onClick: () -> Unit,
+) {
+    Card(
+        modifier = modifier.height(104.dp).testTag(testTag),
+        onClick = onClick,
+        border = BorderStroke(
+            width = if (selected) 2.dp else 1.dp,
+            color = if (selected) OrangeAccent else MaterialTheme.colorScheme.outlineVariant,
+        ),
+        colors = CardDefaults.cardColors(
+            containerColor = if (selected) OrangeAccent.copy(alpha = 0.10f)
+            else MaterialTheme.colorScheme.surface,
+        ),
+        shape = RoundedCornerShape(16.dp),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(12.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            CompositionLocalProvider(LocalContentColor provides OrangeAccent) { icon() }
+            Spacer(Modifier.height(8.dp))
+            Text(label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+        }
     }
 }
 

@@ -193,7 +193,7 @@ fun SettingsScreen(
                         // shows its name/variant + size; Kilter shows the size.
                         boardModelName = run {
                             val brand = activeBoardBrand
-                            when {
+                            val detail = when {
                                 brand == BoardBrand.MOONBOARD ->
                                     state.moonBoardVariant?.displayName ?: ""
                                 brand.usesAuroraProtocol && brand != BoardBrand.KILTER -> {
@@ -205,6 +205,7 @@ fun SettingsScreen(
                                 }
                                 else -> state.boardProductSizeName
                             }
+                            boardSelectionLabel(brand, state.boardLayoutId, detail)
                         },
                         onChangeModel = { showBoardModelDialog = true },
                     )
