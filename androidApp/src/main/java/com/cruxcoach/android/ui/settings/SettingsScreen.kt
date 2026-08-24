@@ -237,7 +237,9 @@ fun SettingsScreen(
                     HorizontalDivider()
                     ClimbSharingSection(
                         climbSharing = state.climbSharing,
-                        onSharingChange = { viewModel.updateNearbyClimbSharing(it) }
+                        onSharingChange = { viewModel.updateNearbyClimbSharing(it) },
+                        relayManualStart = state.relayManualStart,
+                        onRelayManualStartChange = { viewModel.updateRelayManualStart(it) },
                     )
                     HorizontalDivider()
                     LedColorSection(

@@ -500,6 +500,7 @@ object AppModule {
         advertiser: ClimbBleAdvertiser,
         bleConnection: BoardBleConnection,
         projectionCoordinator: BoardProjectionCoordinator,
+        userPreferences: UserPreferences,
     ): CruxRelayManager {
         return CruxRelayManager(
             context,
@@ -507,6 +508,7 @@ object AppModule {
             advertiser,
             bleConnection,
             projectionCoordinator,
+            userPreferences,
         )
     }
 

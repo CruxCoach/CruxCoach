@@ -77,6 +77,8 @@ class MoonBoardAccessibilityService : AccessibilityService() {
     private var clickFailures = 0
     private var openFailures = 0
     private var foreignWindowPasses = 0
+    /** Absolute uptime of the pending drive; [NO_DRIVE_SCHEDULED] if none. */
+    private var driveScheduledAt = NO_DRIVE_SCHEDULED
 
     override fun onServiceConnected() {
         MoonBoardAccessibilityBridge.connected(this)
@@ -90,6 +92,7 @@ class MoonBoardAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
+        driveScheduledAt = NO_DRIVE_SCHEDULED
         scope.cancel()
         if (MoonBoardAccessibilityBridge.service === this) {
             MoonBoardAccessibilityBridge.connected(
@@ -161,12 +164,28 @@ class MoonBoardAccessibilityService : AccessibilityService() {
         scheduleDrive(0)
     }
 
-    private fun scheduleDrive(delay: Long = 450) {
+    /**
+     * Schedules the earliest requested look at Moon.
+     *
+     * Accessibility content events arrive in bursts while a list scrolls. The
+     * old debounce removed a 90 ms scroll poll and replaced it with a fresh
+     * 450 ms delay for every event, so more responsive Moon builds actually
+     * made the scraper slower (and could starve it during an animation). An
+     * event may now wake the driver sooner, but can never postpone work that is
+     * already due. ListTraversal still prevents two scrolls on one node tree.
+     */
+    private fun scheduleDrive(delay: Long = EVENT_POLL_MS) {
+        val dueAt = SystemClock.uptimeMillis() + delay.coerceAtLeast(0)
+        if (driveScheduledAt != NO_DRIVE_SCHEDULED && driveScheduledAt <= dueAt) return
         handler.removeCallbacks(driveRunnable)
-        handler.postDelayed(driveRunnable, delay)
+        driveScheduledAt = dueAt
+        handler.postAtTime(driveRunnable, dueAt)
     }
 
-    private val driveRunnable = Runnable { drive() }
+    private val driveRunnable = Runnable {
+        driveScheduledAt = NO_DRIVE_SCHEDULED
+        drive()
+    }
 
     private fun drive() {
         if (cancelRequested) return finishScan(cancelled = true)
@@ -255,12 +274,12 @@ class MoonBoardAccessibilityService : AccessibilityService() {
             performGlobalAction(GLOBAL_ACTION_BACK)
             return scheduleDrive(900)
         }
-        val logbook = nodes.firstOrNull { it.label() == "Logbook" }
+        val logbook = nodes.firstOrNull { MoonBoardScreenParser.isLogbookTitle(it.label()) }
         if (logbook != null && click(logbook)) {
             enterStage(Stage.DATES)
             status("Reading logbook…")
         } else {
-            val hub = nodes.firstOrNull { it.label().startsWith("Hub\n") }
+            val hub = nodes.firstOrNull { it.label().lineOne().equals("Hub", ignoreCase = true) }
             if (hub != null && click(hub)) {
                 enterStage(Stage.OPEN_LOGBOOK)
                 status(getString(R.string.moon_scan_status_logbook))
@@ -270,7 +289,7 @@ class MoonBoardAccessibilityService : AccessibilityService() {
     }
 
     private fun openLogbook(nodes: List<AccessibilityNodeInfo>) {
-        val logbook = nodes.firstOrNull { it.label() == "Logbook" }
+        val logbook = nodes.firstOrNull { MoonBoardScreenParser.isLogbookTitle(it.label()) }
         if (logbook != null && click(logbook)) {
             enterStage(Stage.DATES)
             status("Reading logbook…")
@@ -386,7 +405,7 @@ class MoonBoardAccessibilityService : AccessibilityService() {
                 enterStage(Stage.DATES)
                 return scheduleDrive(500)
             }
-            return completeSession(open, sessionExpectation(nodes, session))
+            return completeSession(open, sessionExpectation(nodes, session), nodes)
         }
         openFailures = 0
 
@@ -409,18 +428,22 @@ class MoonBoardAccessibilityService : AccessibilityService() {
         if (seen == 0) {
             // A single slow or partially rendered session must not end the run.
             if (++emptyPasses >= EMPTY_SCREEN_LIMIT) {
-                return completeSession(open, sessionExpectation(nodes, session))
+                return completeSession(open, sessionExpectation(nodes, session), nodes)
             }
             return scheduleDrive(OPEN_SETTLE_MS)
         }
         emptyPasses = 0
 
         val expected = sessionExpectation(nodes, session)
-        if (expected != null && seen >= expected) return completeSession(open, expected)
+        if (expected != null && seen >= expected) return completeSession(open, expected, nodes)
+        // Full semantic cards, not only their names: Moon permits repeated
+        // names and may reorder/update card metadata while the first line stays
+        // unchanged. Treating those views as identical can falsely signal a
+        // stalled/end list.
         val fingerprint = visible.filter(MoonBoardScreenParser::isProblemLabel)
-            .joinToString("|") { it.lineOne() }
+            .joinToString("|")
         if (!advanceList(nodes, fingerprint)) return scheduleDrive(nextPollDelay)
-        completeSession(open, expected)
+        completeSession(open, expected, nodes)
     }
 
     /** How many problems Moon promises for the open session. */
@@ -442,7 +465,11 @@ class MoonBoardAccessibilityService : AccessibilityService() {
      * the next run's delta filter skips it. Moon is sent back to the date list
      * first, so the write overlaps its navigation instead of following it.
      */
-    private fun completeSession(open: MoonBoardSessionCollector, expected: Int?) {
+    private fun completeSession(
+        open: MoonBoardSessionCollector,
+        expected: Int?,
+        nodes: List<AccessibilityNodeInfo>,
+    ) {
         val session = open.session
         val result = open.finish(expected)
         completedSessions += session.label
@@ -450,10 +477,18 @@ class MoonBoardAccessibilityService : AccessibilityService() {
         result.deviations.forEach(::warn)
         collector = null
         progress()
-        performGlobalAction(GLOBAL_ACTION_BACK)
+        navigateBack(nodes)
         stage = Stage.SAVING
         scope.launch {
-            val stored = runCatching {
+            val stored = if (!result.complete) {
+                // Only Moon's exact three-way contract (problem count, sends,
+                // tries) authorises a write. A partial or structurally
+                // ambiguous reading must leave the existing day untouched.
+                MoonBoardCsvImportResult(
+                    foundEntries = result.observed,
+                    notImported = result.observed,
+                )
+            } else runCatching {
                 importer.importScreenSession(result.entries, result.complete) {
                     // The one-off catalogue scan takes tens of seconds on a
                     // full MoonBoard catalogue. Without this the screen keeps
@@ -505,7 +540,7 @@ class MoonBoardAccessibilityService : AccessibilityService() {
             performGlobalAction(GLOBAL_ACTION_BACK)
             return scheduleDrive(900)
         }
-        val logbook = nodes.firstOrNull { it.label() == "Logbook" }
+        val logbook = nodes.firstOrNull { MoonBoardScreenParser.isLogbookTitle(it.label()) }
         if (logbook != null && click(logbook)) return scheduleDrive(900)
         if (++emptyPasses >= EMPTY_SCREEN_LIMIT) enterStage(Stage.OPEN_HUB)
         scheduleDrive(900)
@@ -553,6 +588,7 @@ class MoonBoardAccessibilityService : AccessibilityService() {
     private fun finishScan(error: String? = null, cancelled: Boolean = false) {
         stage = Stage.FINISHING
         handler.removeCallbacks(driveRunnable)
+        driveScheduledAt = NO_DRIVE_SCHEDULED
         if (cancelled) {
             warnings += getString(
                 R.string.moon_scan_deviation_cancelled,
@@ -618,6 +654,7 @@ class MoonBoardAccessibilityService : AccessibilityService() {
         if (tally.found == 0) {
             stage = Stage.IDLE
             handler.removeCallbacks(driveRunnable)
+            driveScheduledAt = NO_DRIVE_SCHEDULED
             importer.endScreenImport()
             MoonBoardAccessibilityBridge.update {
                 it.copy(
@@ -660,6 +697,9 @@ class MoonBoardAccessibilityService : AccessibilityService() {
         val message = when (deviation) {
             is MoonBoardDeviation.MissingProblems -> getString(
                 R.string.moon_scan_deviation_missing, deviation.date, deviation.read, deviation.expected,
+            )
+            is MoonBoardDeviation.ExcessProblems -> getString(
+                R.string.moon_scan_deviation_excess, deviation.date, deviation.read, deviation.expected,
             )
             is MoonBoardDeviation.UnknownWording -> getString(
                 R.string.moon_scan_deviation_wording, deviation.date, deviation.count,
@@ -734,6 +774,20 @@ class MoonBoardAccessibilityService : AccessibilityService() {
         return target?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true
     }
 
+    /**
+     * Prefer Moon's visible back control over Android's global back dispatch.
+     * Flutter applications may attach route-result/state restoration work to
+     * that control. Current Moon usually maps both paths to Navigator.pop, but
+     * using the app's own path gives future builds the opportunity to preserve
+     * the Logbook ScrollController. Global back remains a reliable fallback.
+     */
+    private fun navigateBack(nodes: List<AccessibilityNodeInfo>): Boolean {
+        val back = nodes.firstOrNull { node ->
+            node.label().trim().lowercase() in BACK_LABELS
+        }
+        return (back != null && click(back)) || performGlobalAction(GLOBAL_ACTION_BACK)
+    }
+
     private fun AccessibilityNodeInfo.flatten(): List<AccessibilityNodeInfo> {
         val result = ArrayList<AccessibilityNodeInfo>()
         val queue = ArrayDeque<AccessibilityNodeInfo>()
@@ -746,7 +800,15 @@ class MoonBoardAccessibilityService : AccessibilityService() {
         return result
     }
 
-    private fun AccessibilityNodeInfo.label(): String = contentDescription?.toString().orEmpty().trim()
+    /**
+     * Flutter currently puts whole cards in contentDescription. A future
+     * native/Compose screen may expose the same semantic value through `text`
+     * instead, so keep that standard Accessibility fallback available.
+     */
+    private fun AccessibilityNodeInfo.label(): String =
+        contentDescription?.toString()?.takeIf { it.isNotBlank() }
+            ?.trim()
+            ?: text?.toString().orEmpty().trim()
 
     private fun String.lineOne(): String = lineSequence().firstOrNull()?.trim().orEmpty()
 
@@ -767,7 +829,8 @@ class MoonBoardAccessibilityService : AccessibilityService() {
         // full viewport instantly rather than animate, which is both faster and
         // more deterministic.
         const val SCROLL_POLL_MS = 90L
-        const val WAIT_POLL_MS = 220L
+        const val WAIT_POLL_MS = 120L
+        const val EVENT_POLL_MS = 80L
         const val OPEN_SETTLE_MS = 500L
         const val BACK_SETTLE_MS = 450L
         const val CLICK_RETRY_LIMIT = 4
@@ -786,5 +849,7 @@ class MoonBoardAccessibilityService : AccessibilityService() {
         const val NO_PROGRESS_MS = 150_000L
         const val SCAN_TIMEOUT_MS = 75L * 60_000L
         const val TAG = "MoonBoardImport"
+        const val NO_DRIVE_SCHEDULED = Long.MAX_VALUE
+        val BACK_LABELS = setOf("back", "zurück")
     }
 }

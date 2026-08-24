@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
@@ -39,6 +40,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -72,11 +74,18 @@ fun NostrProfileScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val showPublishWarning = remember { androidx.compose.runtime.mutableStateOf(false) }
 
     val savedToast = stringResource(R.string.nostr_profile_saved_toast)
     LaunchedEffect(state.justSaved) {
         if (state.justSaved) {
             snackbarHostState.showSnackbar(message = savedToast)
+        }
+    }
+    val publishedToast = stringResource(R.string.nostr_profile_published_toast)
+    LaunchedEffect(state.justPublished) {
+        if (state.justPublished) {
+            snackbarHostState.showSnackbar(message = publishedToast)
         }
     }
     LaunchedEffect(state.errorMessage) {
@@ -96,6 +105,29 @@ fun NostrProfileScreen(
         contract = ActivityResultContracts.PickVisualMedia(),
         onResult = { uri: Uri? -> uri?.let { viewModel.uploadPicture(it) } },
     )
+
+    if (showPublishWarning.value) {
+        AlertDialog(
+            onDismissRequest = { showPublishWarning.value = false },
+            title = { Text(stringResource(R.string.nostr_profile_publish_warning_title)) },
+            text = { Text(stringResource(R.string.nostr_profile_publish_warning_body)) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showPublishWarning.value = false
+                        viewModel.publishToNostr()
+                    },
+                ) {
+                    Text(stringResource(R.string.nostr_profile_publish_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPublishWarning.value = false }) {
+                    Text(stringResource(android.R.string.cancel))
+                }
+            },
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -284,12 +316,29 @@ fun NostrProfileScreen(
 
             Button(
                 onClick = viewModel::save,
-                enabled = !state.isSaving,
+                enabled = !state.isSaving && !state.isPublishing,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(
                     if (state.isSaving) stringResource(R.string.nostr_profile_saving)
                     else stringResource(R.string.nostr_profile_save),
+                )
+            }
+
+            Text(
+                stringResource(R.string.profile_local_storage_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            OutlinedButton(
+                onClick = { showPublishWarning.value = true },
+                enabled = !state.isSaving && !state.isPublishing,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    if (state.isPublishing) stringResource(R.string.nostr_profile_publishing)
+                    else stringResource(R.string.nostr_profile_publish_action),
                 )
             }
 

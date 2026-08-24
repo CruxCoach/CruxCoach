@@ -11,6 +11,7 @@ import androidx.core.app.NotificationCompat
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.BoardConnectionOwner
+import com.cruxcoach.android.ble.BlePermissionHelper
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ble.GattConnectionEvent
@@ -26,6 +27,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -53,6 +55,7 @@ data class CruxRelayState(
     val advertising: Boolean = false,
     val clientCount: Int = 0,
     val advertisedName: String? = null,
+    val boardName: String? = null,
     val error: RelayError? = null,
     /** Raw technical detail for [error] (log-grade, appended to the message). */
     val errorDetail: String? = null,
@@ -82,6 +85,7 @@ class CruxRelayManager(
     private val advertiser: ClimbBleAdvertiser,
     private val bleConnection: BoardBleConnection,
     private val projectionCoordinator: BoardProjectionCoordinator,
+    private val userPreferences: UserPreferences,
 ) {
     companion object {
         private const val TAG = "CruxRelay/Manager"
@@ -100,10 +104,9 @@ class CruxRelayManager(
 
     private val _state = MutableStateFlow(CruxRelayState())
     val state: StateFlow<CruxRelayState> = _state.asStateFlow()
-    // Sharing is deliberately NOT persisted (FEAT-044 §12): it is a momentary,
-    // safety-relevant action. Default OFF every process; only setEnabled(true)
-    // — a fresh user tap — turns it on, and a lost board turns it back off so
-    // a later reconnect never silently re-fronts the board.
+    // Not persisted: this is runtime state, rebuilt on every process from the
+    // board link and the user's standing choice. A lost board still turns it
+    // off — sharing never outlives the connection it belongs to.
     private val enabledFlow = MutableStateFlow(false)
 
     private var running = false
@@ -119,11 +122,26 @@ class CruxRelayManager(
         // React to BOTH the runtime toggle AND the board connection: the relay
         // runs only while enabled AND the real board link is up
         // (WAIT_BEFORE_ADVERTISE). A falling board link disables sharing
-        // entirely — it never re-arms on a later board connection.
+        // entirely, so it never outlives the connection it was started for.
         scope.launch {
             combine(enabledFlow, bleConnection.connectionState) { enabled, st ->
                 enabled to st
             }.collect { (enabled, st) -> reconcile(enabled, st) }
+        }
+        // Normal mode follows the physical board connection. Users who opt in
+        // to manual start keep the explicit button in the connection sheet.
+        scope.launch {
+            combine(
+                userPreferences.relayManualStart,
+                bleConnection.connectionState,
+            ) { manual, st -> !manual && st == ConnectionState.CONNECTED }
+                .distinctUntilChanged()
+                .collect { shouldShare ->
+                    if (shouldShare && !enabledFlow.value) setEnabled(true)
+                    else if (!shouldShare && enabledFlow.value &&
+                        bleConnection.connectionState.value == ConnectionState.DISCONNECTED
+                    ) setEnabled(false)
+                }
         }
     }
 
@@ -164,9 +182,8 @@ class CruxRelayManager(
                 // surface the loss (never silent — §12). The persistent FGS
                 // notification dies with enabled=false, so leave a final
                 // auto-dismissible one for background users.
-                postStoppedNotification(R.string.relay_error_board_lost)
                 enabledFlow.value = false
-                _state.update { it.copy(enabled = false, error = RelayError.BOARD_LOST) }
+                _state.update { it.copy(enabled = false, boardName = null, error = null, errorDetail = null) }
             }
         }
     }
@@ -182,6 +199,23 @@ class CruxRelayManager(
         if (board == null) {
             Log.w(TAG, "startRelay: no connected board descriptor")
             rejectEnable(RelayError.UNSUPPORTED_BOARD)
+            return
+        }
+        // ADVERTISE can be missing even though SCAN and CONNECT were already
+        // granted. Fail before renaming the adapter or opening a GATT server;
+        // the root UI observes this precise result, shows Android's runtime
+        // permission dialog, and retries after a grant.
+        if (!BlePermissionHelper.hasAdvertisingPermission(context)) {
+            Log.w(TAG, "startRelay: Bluetooth advertising permission missing")
+            enabledFlow.value = false
+            _state.update {
+                it.copy(
+                    enabled = false,
+                    advertising = false,
+                    error = RelayError.ADVERTISE_FAILED,
+                    errorDetail = "no permission",
+                )
+            }
             return
         }
         running = true
@@ -263,7 +297,10 @@ class CruxRelayManager(
             abortStart(RelayError.ADVERTISE_FAILED, advertisingFailure)
             return
         }
-        _state.update { it.copy(advertising = true, advertisedName = desired) }
+        val boardLabel = if (board.serial.isNotBlank()) {
+            "${board.displayName} #${board.serial}"
+        } else board.displayName
+        _state.update { it.copy(advertising = true, advertisedName = desired, boardName = boardLabel) }
 
         // FGS keeps advertising alive (Android 12+ throttles background
         // advertising) + shows the mandatory persistent sharing notification.
@@ -323,7 +360,7 @@ class CruxRelayManager(
         relayServer.stop()
 
         restoreAdapterName()
-        _state.update { it.copy(advertising = false, clientCount = 0, advertisedName = null) }
+        _state.update { it.copy(advertising = false, clientCount = 0, advertisedName = null, boardName = null) }
         Log.i(TAG, "CruxRelay stopped; direct board connection preserved")
     }
 

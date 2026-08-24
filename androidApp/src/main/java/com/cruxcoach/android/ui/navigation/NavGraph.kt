@@ -16,6 +16,9 @@ import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.filled.DeveloperBoard
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material3.*
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.view.WindowManager
 import android.bluetooth.BluetoothAdapter
 import android.content.Intent
@@ -35,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavHostController
@@ -81,6 +85,9 @@ import com.cruxcoach.android.ui.common.LocalPlaylistPlayback
 import com.cruxcoach.android.ui.common.LocalCruxRelayManager
 import com.cruxcoach.android.ui.common.LocalSessionGattBridge
 import com.cruxcoach.android.ui.common.LocalSessionQueueManager
+import com.cruxcoach.android.ble.BlePermissionHelper
+import com.cruxcoach.android.data.CruxRelayManager
+import com.cruxcoach.android.data.RelayError
 import com.cruxcoach.android.ui.workout.ActiveWorkoutScreen
 import com.cruxcoach.android.ui.workout.PostWorkoutScreen
 import com.cruxcoach.android.ui.devcontact.DevChatScreen
@@ -300,6 +307,7 @@ fun CruxCoachNavHost(
             navController.navigate(Routes.PLAYLIST_PLAYER) { launchSingleTop = true }
         },
     ) {
+    CruxRelayAdvertisingPermissionEffect(startViewModel.cruxRelayManager)
     Scaffold(
         bottomBar = { CruxCoachBottomBar(navController) }
     ) { innerPadding ->
@@ -737,6 +745,9 @@ fun CruxCoachNavHost(
                         onNavigateToClimb = { climbUuid, angle ->
                             navController.navigate(Routes.boardClimbDetail(climbUuid, angle))
                         },
+                        onNavigateToSetter = { pubkey ->
+                            navController.navigate(Routes.setterDetail(pubkey))
+                        },
                         onNavigateToBrowser = {
                             navController.navigate(Routes.BOARD_BROWSER) {
                                 popUpTo(Routes.BOARD_BROWSER) { inclusive = false }
@@ -997,6 +1008,38 @@ fun CruxCoachNavHost(
         onNavigateToSettings = { navController.navigate(Routes.SETTINGS) },
     )
     } // CompositionLocalProvider
+}
+
+/**
+ * Auto-starting CruxRelay is the first flow that may need ADVERTISE after the
+ * user already granted SCAN/CONNECT. Surface the platform dialog at that exact
+ * point and retry once permission is granted; never make the user hunt through
+ * Android settings and never request unrelated Nearby permissions.
+ */
+@Composable
+private fun CruxRelayAdvertisingPermissionEffect(relayManager: CruxRelayManager) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+    val context = LocalContext.current
+    val relayState by relayManager.state.collectAsStateWithLifecycle()
+    var handledFailure by remember { mutableStateOf<String?>(null) }
+    val launcher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) relayManager.enable()
+    }
+    val missing = ContextCompat.checkSelfPermission(
+        context,
+        Manifest.permission.BLUETOOTH_ADVERTISE,
+    ) != PackageManager.PERMISSION_GRANTED
+    val permissionFailure = relayState.error == RelayError.ADVERTISE_FAILED &&
+        relayState.errorDetail == "no permission"
+
+    LaunchedEffect(permissionFailure, missing) {
+        if (permissionFailure && missing && handledFailure != relayState.errorDetail) {
+            handledFailure = relayState.errorDetail
+            launcher.launch(BlePermissionHelper.getAdvertisingPermissions().single())
+        }
+    }
 }
 
 /** Isolated composable for wake lock — reads navBackStackEntry without recomposing parent. */

@@ -5,7 +5,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.IntensityZoneManager
-import com.cruxcoach.android.data.SessionVisibility
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.IntensityZones
@@ -330,11 +329,14 @@ class BoardListDetailViewModel @Inject constructor(
         }
     }
 
-    /** Compile the selected list mode into the existing session queue. A
-     *  session may target exactly one concrete board configuration. */
+    /**
+     * Compile the visible list directly into a private local playlist.
+     * 0.2.2 has one start meaning: saved order, manual transport, no Nearby
+     * publication. The explicit training-plan editor remains available as an
+     * editor, but list playback never asks for a second "source" decision.
+     */
     fun startPlayback(
         hostName: String,
-        visibility: SessionVisibility,
         onStarted: () -> Unit,
     ) {
         val snapshot = _state.value
@@ -342,11 +344,7 @@ class BoardListDetailViewModel @Inject constructor(
         _state.update { it.copy(isStartingPlayback = true, playbackStartError = null) }
         viewModelScope.safeLaunch(TAG) {
             try {
-                val prepared = if (snapshot.usePlaybackPlan && snapshot.hasPlaybackPlan) {
-                    withContext(Dispatchers.IO) { preparePlanPlayback(snapshot.angle) }
-                } else {
-                    prepareListPlayback(snapshot)
-                }
+                val prepared = prepareListPlayback(snapshot)
                 val error = when {
                     prepared.items.isEmpty() -> PlaybackStartError.EMPTY
                     prepared.boardKeys.size > 1 -> PlaybackStartError.MULTIPLE_BOARDS
@@ -359,16 +357,14 @@ class BoardListDetailViewModel @Inject constructor(
                 withContext(Dispatchers.IO) {
                     personalBoardRepo.updatePlaybackSettings(
                         listId = listId,
-                        order = snapshot.playbackOrder,
-                        advance = snapshot.playbackAdvance,
+                        order = ListPlaybackOrder.LIST,
+                        advance = ListPlaybackAdvance.MANUAL,
                         restSeconds = snapshot.playbackRestSeconds,
                     )
                 }
                 playback.play(
                     hostName,
                     prepared.items,
-                    snapshot.playbackAdvance,
-                    visibility,
                 )
                 _state.update { it.copy(showPlaybackOptions = false) }
                 onStarted()
@@ -384,8 +380,7 @@ class BoardListDetailViewModel @Inject constructor(
     )
 
     private fun prepareListPlayback(state: BoardListDetailState): PreparedPlayback {
-        var entries = state.entries
-        if (state.playbackOrder == ListPlaybackOrder.SHUFFLE) entries = entries.shuffled()
+        val entries = state.entries
         val items = entries.mapIndexed { index, entry ->
             com.cruxcoach.android.ble.QueueItem(
                 climbUuid = entry.climb.uuid,

@@ -156,6 +156,40 @@ class MoonBoardSessionCollectorTest {
         )
         assertTrue(collector.isEmpty)
     }
+
+    @Test
+    fun `missing Moon count never authorizes destructive reconciliation`() {
+        val noContract = MoonBoardScreenParser.parseSession("19 Aug 2025")!!
+        val collector = MoonBoardSessionCollector(noContract)
+        collector.observe(listOf(warmUp))
+
+        val result = collector.finish(expected = null)
+        assertEquals(1, result.entries.size)
+        assertFalse(result.complete)
+    }
+
+    @Test
+    fun `accessibility over-count fails exact validation`() {
+        val one = MoonBoardScreenParser.parseSession(
+            "19 Aug 2025\n1 problem (0 completed, 1 try)",
+        )!!
+        val collector = MoonBoardSessionCollector(one)
+        collector.observe(listOf(warmUp, warmUp))
+
+        val result = collector.finish(expected = 1)
+        assertEquals(2, result.entries.size)
+        assertFalse(result.complete)
+        assertTrue(MoonBoardDeviation.ExcessProblems("19 Aug 2025", 2, 1) in result.deviations)
+    }
+
+    @Test
+    fun `problem count alone is not enough to authorize a write`() {
+        val noTotals = MoonBoardScreenParser.parseSession("19 Aug 2025\n1 problem")!!
+        val collector = MoonBoardSessionCollector(noTotals)
+        collector.observe(listOf(warmUp))
+
+        assertFalse(collector.finish(expected = 1).complete)
+    }
 }
 
 

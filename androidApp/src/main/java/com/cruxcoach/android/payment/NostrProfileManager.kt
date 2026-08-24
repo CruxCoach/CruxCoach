@@ -25,6 +25,49 @@ class NostrProfileManager @Inject constructor(
     private val profileQueries get() = database.nostrProfilesQueries
 
     /**
+     * Persist the user's profile in the encrypted local database without
+     * signing or sending a Nostr event. The last published Kind-0 timestamp is
+     * preserved so a later explicit publication can still replace it.
+     */
+    fun saveLocalProfile(
+        pubkey: String,
+        displayName: String?,
+        lightningAddress: String?,
+        picture: String?,
+        about: String? = null,
+        banner: String? = null,
+        nip05: String? = null,
+        website: String? = null,
+    ): NostrProfileData {
+        val lastPublishedAt = profileQueries.getLastEventCreatedAt(pubkey)
+            .executeAsOneOrNull()
+            ?.last_event_created_at
+        profileQueries.upsert(
+            pubkey = pubkey,
+            display_name = displayName?.takeIf { it.isNotBlank() },
+            lightning_address = lightningAddress?.takeIf { it.isNotBlank() },
+            picture_url = picture?.takeIf { it.isNotBlank() },
+            updated_at = System.currentTimeMillis() / 1000,
+            banner_url = banner?.takeIf { it.isNotBlank() },
+            nip05 = nip05?.takeIf { it.isNotBlank() },
+            website = website?.takeIf { it.isNotBlank() },
+            about = about?.takeIf { it.isNotBlank() },
+            local_primary = 1,
+            last_event_created_at = lastPublishedAt,
+        )
+        return NostrProfileData(
+            pubkey = pubkey,
+            displayName = displayName?.takeIf { it.isNotBlank() },
+            lightningAddress = lightningAddress?.takeIf { it.isNotBlank() },
+            pictureUrl = picture?.takeIf { it.isNotBlank() },
+            bannerUrl = banner?.takeIf { it.isNotBlank() },
+            nip05 = nip05?.takeIf { it.isNotBlank() },
+            website = website?.takeIf { it.isNotBlank() },
+            about = about?.takeIf { it.isNotBlank() },
+        )
+    }
+
+    /**
      * Publish a Kind 0 metadata event with the given fields and refresh
      * the local cache so subsequent [getProfile] calls see the new
      * values without a relay round-trip. `about` is now a parameter
@@ -86,6 +129,8 @@ class NostrProfileManager @Inject constructor(
                 bannerUrl = banner?.takeIf { it.isNotBlank() },
                 nip05 = nip05?.takeIf { it.isNotBlank() },
                 website = website?.takeIf { it.isNotBlank() },
+                about = about?.takeIf { it.isNotBlank() },
+                localPrimary = true,
             )
             NostrProfileData(
                 pubkey = ownPubkey,
@@ -95,6 +140,7 @@ class NostrProfileManager @Inject constructor(
                 bannerUrl = banner?.takeIf { it.isNotBlank() },
                 nip05 = nip05?.takeIf { it.isNotBlank() },
                 website = website?.takeIf { it.isNotBlank() },
+                about = about?.takeIf { it.isNotBlank() },
             )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to publish profile", e)
@@ -120,6 +166,7 @@ class NostrProfileManager @Inject constructor(
         // fetch fails — so a momentary network outage doesn't blank
         // the displayed profile.
         val cached = getCachedProfile(pubkey)
+        if (cached != null && isLocalPrimary(pubkey)) return cached
         // Single-column SELECT on a NOT NULL column — SQLDelight
         // generates `Query<Long>` so executeAsOneOrNull() returns
         // Long? directly (null when no row matches the pubkey).
@@ -139,8 +186,10 @@ class NostrProfileManager @Inject constructor(
      *  fetch keeps the cached row as fallback (same contract as
      *  [getProfile]'s stale-tolerance) if the relay fetch fails. */
     suspend fun refreshProfile(pubkey: String): NostrProfileData? {
+        val cached = getCachedProfile(pubkey)
+        if (cached != null && isLocalPrimary(pubkey)) return cached
         val refreshed = fetchProfileFromRelays(pubkey)
-        return refreshed ?: getCachedProfile(pubkey)
+        return refreshed ?: cached
     }
 
     suspend fun getLightningAddress(pubkey: String): String? {
@@ -161,6 +210,9 @@ class NostrProfileManager @Inject constructor(
      */
     fun getProfileFromCache(pubkey: String): NostrProfileData? = getCachedProfile(pubkey)
 
+    private fun isLocalPrimary(pubkey: String): Boolean =
+        profileQueries.isLocalPrimary(pubkey).executeAsOneOrNull() == 1L
+
     private fun getCachedProfile(pubkey: String): NostrProfileData? {
         val row = profileQueries.getByPubkey(pubkey).executeAsOneOrNull() ?: return null
         return NostrProfileData(
@@ -171,6 +223,7 @@ class NostrProfileManager @Inject constructor(
             bannerUrl = row.banner_url,
             nip05 = row.nip05,
             website = row.website,
+            about = row.about,
         )
     }
 
@@ -244,12 +297,13 @@ class NostrProfileManager @Inject constructor(
             }
 
             val content = JSONObject(event.content)
-            val displayName = content.optString("name", null)
-            val lud16 = content.optString("lud16", null)
-            val picture = content.optString("picture", null)
-            val banner = content.optString("banner", null)
-            val nip05 = content.optString("nip05", null)
-            val website = content.optString("website", null)
+            val displayName = content.optString("name").takeIf { it.isNotBlank() }
+            val lud16 = content.optString("lud16").takeIf { it.isNotBlank() }
+            val picture = content.optString("picture").takeIf { it.isNotBlank() }
+            val banner = content.optString("banner").takeIf { it.isNotBlank() }
+            val nip05 = content.optString("nip05").takeIf { it.isNotBlank() }
+            val website = content.optString("website").takeIf { it.isNotBlank() }
+            val about = content.optString("about").takeIf { it.isNotBlank() }
 
             // Stale-event guard: an older Kind-0 arriving after a newer
             // one (mis-configured relay, slow delivery, hostile race)
@@ -266,6 +320,8 @@ class NostrProfileManager @Inject constructor(
                 bannerUrl = banner,
                 nip05 = nip05,
                 website = website,
+                about = about,
+                localPrimary = false,
             )
             if (!written) {
                 Log.i(TAG, "skip stale Kind-0 for $pubkey created_at=${event.createdAt}")
@@ -285,6 +341,7 @@ class NostrProfileManager @Inject constructor(
                 bannerUrl = banner,
                 nip05 = nip05,
                 website = website,
+                about = about,
             )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to parse profile event", e)
@@ -318,9 +375,16 @@ class NostrProfileManager @Inject constructor(
         bannerUrl: String?,
         nip05: String?,
         website: String?,
+        about: String?,
+        localPrimary: Boolean,
     ): Boolean {
         var wrote = false
         database.nostrProfilesQueries.transaction {
+            val existingIsLocalPrimary = profileQueries.isLocalPrimary(pubkey)
+                .executeAsOneOrNull() == 1L
+            if (existingIsLocalPrimary && !localPrimary) {
+                return@transaction
+            }
             val existing = profileQueries.getLastEventCreatedAt(pubkey)
                 .executeAsOneOrNull()
                 ?.last_event_created_at
@@ -336,6 +400,8 @@ class NostrProfileManager @Inject constructor(
                 banner_url = bannerUrl,
                 nip05 = nip05,
                 website = website,
+                about = about,
+                local_primary = if (localPrimary || existingIsLocalPrimary) 1 else 0,
                 last_event_created_at = eventCreatedAt,
             )
             wrote = true

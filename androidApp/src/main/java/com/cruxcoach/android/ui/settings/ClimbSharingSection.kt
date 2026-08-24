@@ -9,6 +9,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -22,7 +23,9 @@ import com.cruxcoach.android.ui.theme.WarningYellow
 @Composable
 internal fun ClimbSharingSection(
     climbSharing: ClimbSharingSettings,
-    onSharingChange: (Boolean) -> Unit
+    onSharingChange: (Boolean) -> Unit,
+    relayManualStart: Boolean = false,
+    onRelayManualStartChange: (Boolean) -> Unit = {},
 ) {
     Text(
         stringResource(R.string.settings_sharing_title),
@@ -113,6 +116,32 @@ internal fun ClimbSharingSection(
                 }
             },
             colors = SwitchDefaults.colors(checkedTrackColor = OrangeAccent)
+        )
+    }
+
+    // The normal mode follows the physical board connection. This opt-in is
+    // only for users who deliberately want the old manual start button.
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                stringResource(R.string.settings_relay_manual_start),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Text(
+                stringResource(R.string.settings_relay_manual_start_desc),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Switch(
+            checked = relayManualStart,
+            onCheckedChange = onRelayManualStartChange,
+            modifier = Modifier.testTag("settings_relay_manual_start"),
+            colors = SwitchDefaults.colors(checkedTrackColor = OrangeAccent),
         )
     }
 

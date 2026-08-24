@@ -259,12 +259,27 @@ connectable board) and the board-owner keep-alive refcount landed.
 
 ## 12. UI/UX requirements
 
-**Hosting is a momentary action, NOT a persisted setting.**
-- Remove the persistent, key-scoped `relayEnabled` pref. Board-sharing is
-  runtime state (default OFF every session), a deliberate "Board teilen /
-  Party-Modus" action, and NOT scoped to the Nostr identity. `CruxRelayManager`
-  keeps an in-memory enabled flag; `WAIT_BEFORE_ADVERTISE` stays, but nothing
-  re-activates sharing on a later board connection without a fresh user action.
+**Hosting follows the board link.** *(revised 2026-08-23; see below for what
+this replaced and why.)*
+- Sharing is on by default and starts when a board connects, stops when it
+  disconnects. It is still not scoped to the Nostr identity and still not a
+  per-session toggle the user has to find: `CruxRelayManager` keeps an
+  in-memory enabled flag, `WAIT_BEFORE_ADVERTISE` stays, and the standing
+  choice lives in the app-scoped `relay_manual_start_v022` preference.
+- Settings offers an explicit **manual start** opt-in. It is off by default;
+  enabling it restores the old behaviour where the connection sheet's action
+  must be used for each board connection.
+- The active surfaces name the physical board (including its serial where the
+  controller advertises one), so sharing can never look destination-less.
+
+*Superseded:* this section originally read "Hosting is a momentary action, NOT
+a persisted setting… nothing re-activates sharing on a later board connection
+without a fresh user action", on the reasoning that fronting a board is
+safety-relevant and should always be a deliberate act. In a gym that produced a
+control nobody found: other apps in the room could not send, and the person
+holding the board had no idea why. Tying sharing to the connection keeps the
+safety property that mattered — the phone is never a board while nobody is
+connected to one — without requiring the tap.
 - The action lives on the board/connection screen, visible only while connected
   to a real board; labelled around "sharing this board", never "relay".
 

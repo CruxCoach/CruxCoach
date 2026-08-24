@@ -1,6 +1,12 @@
 package com.cruxcoach.android.ui.moonboard
 
+import android.app.AppOpsManager
+import android.content.ComponentName
+import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.os.Process
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -34,6 +40,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -50,6 +57,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
 import com.cruxcoach.android.moonboard.MoonBoardAccessibilityBridge
+import com.cruxcoach.android.moonboard.MoonBoardAccessibilityService
 import com.cruxcoach.android.ui.theme.OrangeAccent
 
 /**
@@ -58,6 +66,55 @@ import com.cruxcoach.android.ui.theme.OrangeAccent
  */
 private fun isMoonAppInstalled(context: android.content.Context): Boolean =
     context.packageManager.getLaunchIntentForPackage("com.trainingboard.moon") != null
+
+/** Android 13+ guards Accessibility for APKs installed outside a trusted store. */
+private fun mayNeedRestrictedSettingsApproval(context: android.content.Context): Boolean {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return false
+    return runCatching {
+        val source = context.packageManager.getInstallSourceInfo(context.packageName)
+        source.installingPackageName == null ||
+            source.packageSource == android.content.pm.PackageInstaller.PACKAGE_SOURCE_LOCAL_FILE ||
+            source.packageSource == android.content.pm.PackageInstaller.PACKAGE_SOURCE_DOWNLOADED_FILE
+    }.getOrDefault(true)
+}
+
+private enum class AccessibilitySetupState { READY, NEEDS_SERVICE_ENABLE, NEEDS_RESTRICTED_APPROVAL }
+
+/** Android exposes both facts we need; install source alone is only a fallback. */
+private fun accessibilitySetupState(context: android.content.Context): AccessibilitySetupState {
+    val component = ComponentName(context, MoonBoardAccessibilityService::class.java)
+    val enabled = Settings.Secure.getString(
+        context.contentResolver,
+        Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+    ).orEmpty().split(':').mapNotNull(ComponentName::unflattenFromString).any { it == component }
+    if (enabled) return AccessibilitySetupState.READY
+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+        mayNeedRestrictedSettingsApproval(context)
+    ) {
+        val restrictedAllowed = runCatching {
+            val appOps = context.getSystemService(AppOpsManager::class.java)
+            appOps.unsafeCheckOpNoThrow(
+                "android:access_restricted_settings",
+                Process.myUid(),
+                context.packageName,
+            ) == AppOpsManager.MODE_ALLOWED
+        }.getOrDefault(false)
+        if (!restrictedAllowed) return AccessibilitySetupState.NEEDS_RESTRICTED_APPROVAL
+    }
+    return AccessibilitySetupState.NEEDS_SERVICE_ENABLE
+}
+
+private fun openMoonAccessibilitySettings(context: android.content.Context) {
+    val component = ComponentName(context, MoonBoardAccessibilityService::class.java)
+    // These Settings app contracts exist on Android but are not part of every public SDK stub.
+    val direct = Intent("android.settings.ACCESSIBILITY_DETAILS_SETTINGS").putExtra(
+        "android.provider.extra.EXTRA_ACCESSIBILITY_SERVICE_COMPONENT_NAME",
+        component.flattenToString(),
+    )
+    runCatching { context.startActivity(direct) }
+        .onFailure { context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -68,6 +125,44 @@ fun MoonBoardCsvImportScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val scanState by MoonBoardAccessibilityBridge.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    var showRestrictedSettingsGuide by rememberSaveable { mutableStateOf(false) }
+    var accessibilitySetup by remember { mutableStateOf(accessibilitySetupState(context)) }
+    val appInfoLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) {
+        // Re-check instead of assuming that the overflow action existed or
+        // was needed. Only proceed when Android confirms the restriction is
+        // gone; an already-enabled service needs no settings screen at all.
+        accessibilitySetup = accessibilitySetupState(context)
+        if (accessibilitySetup == AccessibilitySetupState.NEEDS_SERVICE_ENABLE) {
+            openMoonAccessibilitySettings(context)
+        }
+    }
+    if (showRestrictedSettingsGuide) {
+        AlertDialog(
+            onDismissRequest = { showRestrictedSettingsGuide = false },
+            title = { Text(stringResource(R.string.moon_device_restricted_title)) },
+            text = { Text(stringResource(R.string.moon_device_restricted_explanation)) },
+            confirmButton = {
+                Button(onClick = {
+                    showRestrictedSettingsGuide = false
+                    appInfoLauncher.launch(
+                        Intent(
+                            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                            Uri.fromParts("package", context.packageName, null),
+                        ),
+                    )
+                }) {
+                    Text(stringResource(R.string.moon_device_open_app_info))
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showRestrictedSettingsGuide = false }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            },
+        )
+    }
     // Without Moon there is nothing to transfer, and finding that out *after*
     // being sent to Android's accessibility settings and granting a service is
     // a bad trade to ask of anyone. Re-checked on every resume so installing
@@ -76,7 +171,10 @@ fun MoonBoardCsvImportScreen(
     var moonInstalled by remember { mutableStateOf(isMoonAppInstalled(context)) }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) moonInstalled = isMoonAppInstalled(context)
+            if (event == Lifecycle.Event.ON_RESUME) {
+                moonInstalled = isMoonAppInstalled(context)
+                accessibilitySetup = accessibilitySetupState(context)
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
@@ -91,16 +189,27 @@ fun MoonBoardCsvImportScreen(
     val result = scanState.result ?: state.result
     result?.let { importResult ->
         val failed = importResult.error != null
+        val incomplete = failed ||
+            importResult.notImported > 0 ||
+            importResult.warnings.isNotEmpty() ||
+            (importResult.expectedEntries > 0 && importResult.foundEntries != importResult.expectedEntries) ||
+            (importResult.sessionsExpected > 0 && importResult.sessionsScanned != importResult.sessionsExpected)
         AlertDialog(
             onDismissRequest = {},
             icon = {
                 Icon(
-                    if (failed || importResult.notImported > 0) Icons.Default.Warning else Icons.Default.CheckCircle,
+                    if (incomplete) Icons.Default.Warning else Icons.Default.CheckCircle,
                     contentDescription = null,
                 )
             },
             title = {
-                Text(stringResource(if (failed) R.string.moon_csv_failed else R.string.moon_import_result_title))
+                Text(stringResource(
+                    when {
+                        failed -> R.string.moon_csv_failed
+                        incomplete -> R.string.moon_import_result_incomplete
+                        else -> R.string.moon_import_result_title
+                    },
+                ))
             },
             text = {
                 if (failed) {
@@ -189,7 +298,16 @@ fun MoonBoardCsvImportScreen(
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     Button(
-                        onClick = { MoonBoardAccessibilityBridge.start(context) },
+                        onClick = {
+                            when {
+                                scanState.serviceConnected -> MoonBoardAccessibilityBridge.start(context)
+                                accessibilitySetup == AccessibilitySetupState.READY ->
+                                    MoonBoardAccessibilityBridge.start(context)
+                                accessibilitySetup == AccessibilitySetupState.NEEDS_RESTRICTED_APPROVAL ->
+                                    showRestrictedSettingsGuide = true
+                                else -> openMoonAccessibilitySettings(context)
+                            }
+                        },
                         enabled = moonInstalled && !scanState.running,
                         modifier = Modifier.fillMaxWidth(),
                     ) {

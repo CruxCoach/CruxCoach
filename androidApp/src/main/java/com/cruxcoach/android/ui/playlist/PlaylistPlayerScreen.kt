@@ -21,10 +21,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -35,11 +33,9 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.StopCircle
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.People
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -54,7 +50,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -71,54 +66,47 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.LedHoldColors
-import com.cruxcoach.android.data.PlaybackPhase
 import com.cruxcoach.android.data.PlaylistPlaybackState
-import com.cruxcoach.android.data.SessionVisibility
-import com.cruxcoach.android.ui.board.QueueDeliveryPolicy
 import com.cruxcoach.android.ui.board.BleConnectionSheet
 import com.cruxcoach.android.ui.board.BleConnectionViewModel
+import com.cruxcoach.android.ui.board.ClimbRenderData
 import com.cruxcoach.android.ui.board.KilterBoardVisualization
 import com.cruxcoach.android.ui.board.MoonBoardAssetState
 import com.cruxcoach.android.ui.board.MoonBoardVisualization
 import com.cruxcoach.android.ui.board.SessionQueueSheet
 import com.cruxcoach.android.ui.board.SessionSummarySheet
 import com.cruxcoach.android.ui.board.rememberMoonBoardAsset
+import com.cruxcoach.android.ui.common.RestTimerBannerSlot
 import com.cruxcoach.android.ui.navigation.ClimbNavigationSource
 import com.cruxcoach.android.ui.theme.DarkBackground
-import com.cruxcoach.android.ui.theme.InfoBlue
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.SuccessGreen
 import com.cruxcoach.android.ui.theme.WarningYellow
+import com.cruxcoach.android.ui.theme.zoneColorForDifficulty
 import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.data.repository.brand
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.MoonBoardVariant
-import android.bluetooth.BluetoothManager
-import androidx.compose.ui.platform.LocalContext
-import com.cruxcoach.android.ble.BlePermissionHelper
 import com.cruxcoach.android.ble.ConnectionState
-import androidx.compose.material.icons.automirrored.filled.Logout
-import androidx.compose.ui.res.pluralStringResource
 
 /**
  * The playlist player — the one place a running playlist lives. Board
- * render of the current climb, big transport controls, the rest block as
- * a full countdown ring with up-next preview, swipe navigation, attempt
- * indicator, participants and the summary sheet on stop. Hosts and
- * participants get the same surface (the coordinator routes role-aware);
- * next/prev are phase-aware: during a rest they skip/undo the pause
- * instead of jumping past the upcoming climb.
+ * render of the current climb, detail-style metadata and manual transport.
+ * Rest remains the normal top banner, leaving the upcoming climb visible.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlaylistPlayerScreen(
     onNavigateBack: () -> Unit,
     onNavigateToClimb: (String, Int) -> Unit,
+    onNavigateToSetter: (String) -> Unit = {},
     /** "+"-Button: zum Browser, wo Long-Press Climbs hinzufügt. */
     onNavigateToBrowser: () -> Unit = {},
     /** Opens the system's Bluetooth-enable dialog via the connect sheet's flow. */
@@ -194,82 +182,31 @@ fun PlaylistPlayerScreen(
     }
 
     if (state.showStopConfirm) {
-        // Three different things happened behind one red stop icon. A host with
-        // participants does not end anything: stopSharing() sends the sentinel
-        // that starts host migration, so the group climbs on and the person who
-        // just pressed "End session" was never told. Say which of the three it
-        // is, and stop promising termination when a handover is what follows.
-        val othersStay = playback.isHost && playback.participantCount > 1
-        val remaining = (playback.participantCount - 1).coerceAtLeast(1)
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { viewModel.dismissStopConfirm() },
             title = {
                 Text(
-                    stringResource(
-                        when {
-                            !playback.isHost -> R.string.playlist_stop_leave_title
-                            othersStay -> R.string.playlist_stop_handover_title
-                            else -> R.string.playlist_stop_end_title
-                        }
-                    ),
+                    stringResource(R.string.playlist_stop_end_title),
                     fontWeight = FontWeight.Bold,
                 )
             },
-            text = {
-                Text(
-                    when {
-                        !playback.isHost -> stringResource(R.string.playlist_stop_leave_body)
-                        othersStay -> pluralStringResource(
-                            R.plurals.playlist_stop_handover_body, remaining, remaining,
-                        )
-                        else -> stringResource(R.string.playlist_stop_end_body)
-                    }
-                )
-            },
+            text = { Text(stringResource(R.string.playlist_stop_end_body)) },
             confirmButton = {
                 androidx.compose.material3.Button(
                     onClick = { viewModel.stop() },
                     colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                        // Only a real ending is destructive. Leaving and handing
-                        // over are not, and red made them look like one.
-                        containerColor = if (playback.isHost && !othersStay) {
-                            MaterialTheme.colorScheme.error
-                        } else MaterialTheme.colorScheme.primary,
+                        containerColor = MaterialTheme.colorScheme.error,
                     ),
                     modifier = Modifier.testTag("player_stop_confirm"),
                 ) {
-                    Text(
-                        stringResource(
-                            when {
-                                !playback.isHost -> R.string.playlist_stop_leave_confirm
-                                othersStay -> R.string.playlist_stop_handover_confirm
-                                else -> R.string.playlist_stop_end_confirm
-                            }
-                        )
-                    )
+                    Text(stringResource(R.string.playlist_stop_end_confirm))
                 }
             },
             dismissButton = {
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    // Handing over is the default; ending it for the whole
-                    // group is the deliberate second choice, not the silent
-                    // one it used to be.
-                    if (othersStay) {
-                        androidx.compose.material3.TextButton(
-                            onClick = { viewModel.stop(endForEveryone = true) },
-                            modifier = Modifier.testTag("player_stop_end_for_all"),
-                        ) {
-                            Text(
-                                stringResource(R.string.playlist_stop_end_for_all),
-                                color = MaterialTheme.colorScheme.error,
-                            )
-                        }
-                    }
-                    androidx.compose.material3.TextButton(
-                        onClick = { viewModel.dismissStopConfirm() },
-                    ) {
-                        Text(stringResource(R.string.action_cancel))
-                    }
+                androidx.compose.material3.TextButton(
+                    onClick = { viewModel.dismissStopConfirm() },
+                ) {
+                    Text(stringResource(R.string.action_cancel))
                 }
             },
         )
@@ -295,11 +232,7 @@ fun PlaylistPlayerScreen(
                     title = {
                         Column {
                             Text(
-                                if (playback.isParticipant && playback.hostName.isNotBlank()) {
-                                    stringResource(R.string.playlist_player_hosted_by, playback.hostName)
-                                } else {
-                                    stringResource(R.string.playlist_player_title)
-                                },
+                                stringResource(R.string.playlist_player_title),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                             )
@@ -343,40 +276,16 @@ fun PlaylistPlayerScreen(
                                 else MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
-                        if (playback.participantCount > 1) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    Icons.Default.People, contentDescription = null,
-                                    tint = OrangeAccent, modifier = Modifier.size(18.dp),
-                                )
-                                Spacer(Modifier.width(3.dp))
-                                Text(
-                                    "${playback.participantCount}",
-                                    color = OrangeAccent,
-                                    fontWeight = FontWeight.Bold,
-                                )
-                                Spacer(Modifier.width(6.dp))
-                            }
-                        }
                         // Central, always-visible stop — no more overflow hunt.
                         IconButton(
                             onClick = { viewModel.requestStop() },
                             modifier = Modifier.testTag("player_stop"),
                         ) {
                             // A stop sign for the one case that really stops.
-                            val reallyEnds = playback.isHost && playback.participantCount <= 1
                             Icon(
-                                if (reallyEnds) Icons.Default.StopCircle
-                                else Icons.AutoMirrored.Filled.Logout,
-                                contentDescription = stringResource(
-                                    when {
-                                        !playback.isHost -> R.string.playlist_stop_leave_title
-                                        reallyEnds -> R.string.playlist_stop_end_title
-                                        else -> R.string.playlist_stop_handover_title
-                                    }
-                                ),
-                                tint = if (reallyEnds) MaterialTheme.colorScheme.error
-                                       else MaterialTheme.colorScheme.onSurfaceVariant,
+                                Icons.Default.StopCircle,
+                                contentDescription = stringResource(R.string.playlist_stop_end_title),
+                                tint = MaterialTheme.colorScheme.error,
                                 modifier = Modifier.size(26.dp),
                             )
                         }
@@ -415,89 +324,7 @@ fun PlaylistPlayerScreen(
                         )
                     }
                 }
-                if (playback.sharingBlocked) {
-                    // sharingBlocked is true for three different reasons and
-                    // carries none of them, so the banner used to name the
-                    // most common one and be wrong for the other two: a
-                    // climber who had refused the advertise permission read
-                    // "Bluetooth is off" with Bluetooth on. Ask the platform
-                    // here instead — it is the same question, answered where
-                    // the answer exists.
-                    val context = LocalContext.current
-                    // Read platform state on every recomposition. Keying these
-                    // checks only on sharingBlocked kept the pre-dialog result
-                    // cached after a permission grant, so the banner continued
-                    // to claim that permission was missing.
-                    val adapter = context.getSystemService(BluetoothManager::class.java)?.adapter
-                    val bluetoothOff = adapter != null && !adapter.isEnabled
-                    val advertisePermissionMissing =
-                        !BlePermissionHelper.hasAdvertisingPermission(context)
-                    Surface(
-                        color = WarningYellow.copy(alpha = 0.15f),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                stringResource(
-                                    when {
-                                        bluetoothOff -> R.string.ble_sharing_blocked
-                                        advertisePermissionMissing ->
-                                            R.string.ble_sharing_blocked_permission
-                                        else -> R.string.ble_sharing_blocked_other
-                                    }
-                                ),
-                                style = MaterialTheme.typography.bodySmall,
-                                fontWeight = FontWeight.SemiBold,
-                                color = WarningYellow,
-                                modifier = Modifier.weight(1f),
-                            )
-                            // Only offer an action that leads somewhere. The
-                            // third case — the GATT server itself refused —
-                            // has nothing for the user to do but retry.
-                            if (bluetoothOff) {
-                                TextButton(onClick = onEnableBluetooth) {
-                                    Text(stringResource(R.string.ble_sharing_blocked_action))
-                                }
-                            } else if (advertisePermissionMissing) {
-                                TextButton(onClick = onRequestSharingPermission) {
-                                    Text(stringResource(R.string.ble_sharing_blocked_permission_action))
-                                }
-                            }
-                        }
-                    }
-                }
-                if (playback.isHost && !playback.sharingBlocked) {
-                    val isJoinable = playback.visibility == SessionVisibility.JOINABLE
-                    Surface(
-                        color = if (isJoinable) {
-                            OrangeAccent.copy(alpha = 0.12f)
-                        } else {
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(
-                            stringResource(
-                                if (isJoinable) {
-                                    R.string.ble_session_visibility_status_joinable
-                                } else {
-                                    R.string.ble_session_visibility_status_local
-                                },
-                            ),
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = if (isJoinable) {
-                                OrangeAccent
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            },
-                        )
-                    }
-                }
+                RestTimerBannerSlot()
             }
         },
         bottomBar = {
@@ -505,6 +332,8 @@ fun PlaylistPlayerScreen(
                 playback = playback,
                 onPrevious = { viewModel.playback.previous() },
                 onNext = { viewModel.playback.next() },
+                onSendToBoard = { viewModel.playback.resendCurrentClimb() },
+                onConnect = { showBleSheet = true },
                 onOpenQueue = { showQueueSheet = true },
                 onAddClimbs = onNavigateToBrowser,
             )
@@ -541,16 +370,15 @@ fun PlaylistPlayerScreen(
                 return@Column
             }
 
-            // Animated phase/climb transitions: advancing slides left,
-            // going back slides right, entering/leaving a rest crossfades.
+            // A rest remains a compact banner above the climb. The queue is
+            // already parked on the upcoming climb, so it can be inspected
+            // while the countdown continues.
             AnimatedContent(
                 modifier = Modifier.weight(1f),
-                targetState = PlayerContentKey(playback.currentIndex, playback.isResting),
+                targetState = playback.currentIndex,
                 transitionSpec = {
                     when {
-                        initialState.resting != targetState.resting ->
-                            fadeIn(tween(250)) togetherWith fadeOut(tween(200))
-                        targetState.index > initialState.index ->
+                        targetState > initialState ->
                             (slideInHorizontally(tween(250)) { it / 3 } + fadeIn(tween(250))) togetherWith
                                 (slideOutHorizontally(tween(200)) { -it / 3 } + fadeOut(tween(200)))
                         else ->
@@ -559,15 +387,8 @@ fun PlaylistPlayerScreen(
                     }
                 },
                 label = "player_content",
-            ) { key ->
-                if (key.resting) {
-                    RestingContent(
-                        playback = playback,
-                        gradeScale = state.gradeScale,
-                        onSkip = { viewModel.playback.next() },
-                    )
-                } else {
-                    ClimbingContent(
+            ) {
+                ClimbingContent(
                         state = state,
                         playback = playback,
                         onSwipeNext = { viewModel.playback.next() },
@@ -580,16 +401,12 @@ fun PlaylistPlayerScreen(
                             onNavigateToClimb(uuid, angle)
                         },
                         onQuickLog = { viewModel.quickLog(it) },
-                        onResend = { viewModel.playback.resendCurrentClimb() },
-                    )
-                }
+                        onNavigateToSetter = onNavigateToSetter,
+                )
             }
         }
     }
 }
-
-/** AnimatedContent key: which climb + which phase is on screen. */
-private data class PlayerContentKey(val index: Int, val resting: Boolean)
 
 @Composable
 private fun ClimbingContent(
@@ -599,7 +416,7 @@ private fun ClimbingContent(
     onSwipePrevious: () -> Unit,
     onClimbTapped: (String, Int) -> Unit,
     onQuickLog: (Boolean) -> Unit,
-    onResend: () -> Unit,
+    onNavigateToSetter: (String) -> Unit,
 ) {
     val render = state.render
     val density = LocalDensity.current
@@ -630,55 +447,22 @@ private fun ClimbingContent(
             },
     ) {
         Spacer(Modifier.height(8.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    // Empty queue: no title — the empty-state message below
-                    // explains the situation; "Unbekannter Climb" would
-                    // contradict the banner the user just tapped.
-                    when {
-                        playback.currentClimb == null -> ""
-                        else -> playback.currentClimbName ?: render?.climb?.name
-                            ?: stringResource(R.string.ble_unknown_climb)
-                    },
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.testTag("player_climb_name"),
-                )
-                val subtitle = buildString {
-                    (playback.currentClimbDifficulty ?: render?.climb?.difficultyAverage)?.let {
-                        append(GradeDisplayHelper.formatDifficulty(it, state.gradeScale))
-                    }
-                    playback.currentClimb?.let {
-                        if (isNotEmpty()) append(" · ")
-                        append("${it.angle}°")
-                    }
-                }
-                if (subtitle.isNotEmpty()) {
-                    Text(
-                        subtitle,
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-            // Attempt chip for limit/projecting runs ("Versuch 2 von 5").
-            playback.attemptInfo?.let { (attempt, total) ->
-                Surface(
-                    color = OrangeAccent.copy(alpha = 0.15f),
-                    shape = RoundedCornerShape(10.dp),
-                ) {
-                    Text(
-                        stringResource(R.string.playlist_player_attempt, attempt, total),
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = OrangeAccent,
-                        modifier = Modifier
-                            .padding(horizontal = 10.dp, vertical = 6.dp)
-                            .testTag("player_attempt_chip"),
-                    )
-                }
-            }
+        if (render != null && playback.currentClimb != null) {
+            PlaylistClimbOverview(
+                render = render,
+                angle = playback.currentClimb.angle,
+                zones = state.zones,
+                attemptInfo = playback.attemptInfo,
+                onNavigateToSetter = onNavigateToSetter,
+            )
+        } else {
+            Text(
+                if (playback.currentClimb == null) ""
+                else playback.currentClimbName ?: stringResource(R.string.ble_unknown_climb),
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.testTag("player_climb_name"),
+            )
         }
         Spacer(Modifier.height(12.dp))
 
@@ -740,50 +524,6 @@ private fun ClimbingContent(
                                 modifier = Modifier.fillMaxWidth(),
                             )
                         }
-                        // Light the wall with this climb again. It was the only
-                        // entry in an overflow menu, which meant the whole menu
-                        // existed for it — and it sat two taps away from the
-                        // board it acts on. Same corner as the explicit-send
-                        // mode uses, so the gesture means one thing everywhere.
-                        if (playback.isParticipant ||
-                            QueueDeliveryPolicy.canSend(playback.isHost, playback.boardConnected)
-                        ) {
-                            // Two jobs, one control. Normally it repeats a send
-                            // that someone overwrote — quiet, easily ignored.
-                            // Under the explicit send mode it *is* the send, and
-                            // then it has to be impossible to miss: the wall is
-                            // waiting and nothing else on screen says so.
-                            val pending = playback.awaitingExplicitSend
-                            IconButton(
-                                onClick = { onResend() },
-                                modifier = Modifier
-                                    .align(Alignment.TopEnd)
-                                    .padding(6.dp)
-                                    .size(if (pending) 52.dp else 40.dp)
-                                    .testTag("player_resend"),
-                            ) {
-                                Surface(
-                                    shape = CircleShape,
-                                    color = if (pending) {
-                                        OrangeAccent
-                                    } else {
-                                        MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)
-                                    },
-                                ) {
-                                    Icon(
-                                        Icons.Default.Lightbulb,
-                                        stringResource(
-                                            if (pending) R.string.playlist_send_to_board
-                                            else R.string.ble_queue_resend,
-                                        ),
-                                        tint = if (pending) DarkBackground else OrangeAccent,
-                                        modifier = Modifier
-                                            .padding(if (pending) 9.dp else 7.dp)
-                                            .size(if (pending) 28.dp else 22.dp),
-                                    )
-                                }
-                            }
-                        }
                     }
                 }
                 state.renderLoading -> CircularProgressIndicator(color = OrangeAccent)
@@ -837,111 +577,106 @@ private fun ClimbingContent(
     }
 }
 
-/**
- * Rest phase: countdown ring front and center; the up-next card shows the
- * climb the queue is ALREADY parked on (it advanced when the rest was
- * armed) so the climber knows what's lit on the board.
- */
 @Composable
-private fun RestingContent(
-    playback: PlaylistPlaybackState,
-    gradeScale: com.cruxcoach.android.data.GradeScale,
-    onSkip: () -> Unit,
+private fun PlaylistClimbOverview(
+    render: ClimbRenderData,
+    angle: Int,
+    zones: com.cruxcoach.domain.board.IntensityZones?,
+    attemptInfo: Pair<Int, Int>?,
+    onNavigateToSetter: (String) -> Unit,
 ) {
-    val phase = playback.phase as? PlaybackPhase.Resting ?: return
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            // Safety valve for very small screens — normally everything fits.
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 24.dp, vertical = 24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
+    val climb = render.climb
+    Card(
+        modifier = Modifier.fillMaxWidth().testTag("player_climb_overview"),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+        ),
+        shape = RoundedCornerShape(14.dp),
     ) {
-        Text(
-            stringResource(R.string.playlist_player_rest_title),
-            style = MaterialTheme.typography.titleMedium,
-            color = InfoBlue,
-        )
-        Spacer(Modifier.height(20.dp))
-        // Countdown ring — animated smoothly toward the next tick.
-        val progress by animateFloatAsState(
-            targetValue = if (phase.totalSeconds <= 0) 0f
-                          else phase.secondsRemaining.toFloat() / phase.totalSeconds,
-            animationSpec = tween(500),
-            label = "rest_ring",
-        )
-        Box(contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(
-                progress = { 1f },
-                color = InfoBlue.copy(alpha = 0.12f),
-                strokeWidth = 10.dp,
-                modifier = Modifier.size(220.dp),
-            )
-            CircularProgressIndicator(
-                progress = { progress },
-                color = InfoBlue,
-                strokeWidth = 10.dp,
-                modifier = Modifier.size(220.dp),
-            )
-            Text(
-                formatCountdown(phase.secondsRemaining),
-                style = MaterialTheme.typography.displayLarge,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.testTag("player_rest_countdown"),
-            )
-        }
-        Spacer(Modifier.height(28.dp))
-        // Up next = the CURRENT queue item (already lit on the board).
-        val upNextName = playback.currentClimbName
-        if (upNextName != null) {
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                ),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth(),
+        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    climb.name,
+                    modifier = Modifier.weight(1f, fill = false).testTag("player_climb_name"),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                climb.setterUsername?.takeIf(String::isNotBlank)?.let { setter ->
+                    val pubkey = climb.createdByPubkey?.takeIf(String::isNotBlank)
+                    val isClickable = climb.origin == "cruxcoach" && pubkey != null
+                    Spacer(Modifier.width(7.dp))
+                    Text(
+                        setter,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            textDecoration = if (isClickable) TextDecoration.Underline else TextDecoration.None,
+                        ),
+                        color = if (isClickable) OrangeAccent else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.widthIn(max = 112.dp).then(
+                            if (isClickable) Modifier.clickable {
+                                onNavigateToSetter(requireNotNull(pubkey))
+                            } else Modifier,
+                        ),
+                    )
+                }
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
             ) {
-                Column(
-                    modifier = Modifier.padding(16.dp).fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Text(
-                        stringResource(R.string.playlist_player_up_next),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                climb.difficultyAverage?.let { difficulty ->
+                    val french = GradeDisplayHelper.formatDifficulty(
+                        difficulty, com.cruxcoach.android.data.GradeScale.FRENCH,
                     )
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        buildString {
-                            append(upNextName)
-                            playback.currentClimbDifficulty?.let {
-                                append("  ")
-                                append(GradeDisplayHelper.formatDifficulty(it, gradeScale))
-                            }
-                        },
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.testTag("player_up_next"),
+                    val vScale = GradeDisplayHelper.formatDifficulty(
+                        difficulty, com.cruxcoach.android.data.GradeScale.V_SCALE,
                     )
-                    playback.attemptInfo?.let { (attempt, total) ->
-                        Spacer(Modifier.height(2.dp))
+                    Surface(color = zoneColorForDifficulty(difficulty, zones), shape = RoundedCornerShape(8.dp)) {
                         Text(
-                            stringResource(R.string.playlist_player_attempt, attempt, total),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = OrangeAccent,
+                            "$french / $vScale",
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = DarkBackground,
                         )
                     }
                 }
+                Text("$angle°", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = OrangeAccent)
+                Text(
+                    if (climb.framesCount > 1) "${climb.framesCount}F" else "${climb.moveCount}M",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    "${climb.qualityAverage?.let { "%.1f".format(it) } ?: "–"}★",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                if (climb.benchmarkDifficulty > 0.0) {
+                    Icon(
+                        Icons.Default.Verified,
+                        contentDescription = stringResource(R.string.board_detail_benchmark),
+                        tint = OrangeAccent,
+                        modifier = Modifier.size(15.dp),
+                    )
+                }
             }
-            Spacer(Modifier.height(24.dp))
-        }
-        OutlinedButton(
-            onClick = onSkip,
-            shape = RoundedCornerShape(12.dp),
-            modifier = Modifier.testTag("player_skip_rest"),
-        ) {
-            Text(stringResource(R.string.playlist_player_skip_rest))
+            attemptInfo?.let { (attempt, total) ->
+                Spacer(Modifier.height(5.dp))
+                Surface(color = OrangeAccent.copy(alpha = 0.15f), shape = RoundedCornerShape(8.dp)) {
+                    Text(
+                        stringResource(R.string.playlist_player_attempt, attempt, total),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = OrangeAccent,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            .testTag("player_attempt_chip"),
+                    )
+                }
+            }
         }
     }
 }
@@ -951,6 +686,8 @@ private fun PlayerControls(
     playback: PlaylistPlaybackState,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
+    onSendToBoard: () -> Unit,
+    onConnect: () -> Unit,
     onOpenQueue: () -> Unit,
     onAddClimbs: () -> Unit,
 ) {
@@ -964,13 +701,13 @@ private fun PlayerControls(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 24.dp, vertical = 12.dp),
+            .padding(horizontal = 12.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceEvenly,
     ) {
         IconButton(
             onClick = onOpenQueue,
-            modifier = Modifier.size(48.dp).testTag("player_queue"),
+            modifier = Modifier.size(44.dp).testTag("player_queue"),
         ) {
             Icon(
                 Icons.AutoMirrored.Filled.PlaylistPlay,
@@ -992,30 +729,49 @@ private fun PlayerControls(
         IconButton(
             onClick = withHaptic(onPrevious),
             enabled = playback.hasPrevious,
-            modifier = Modifier.size(64.dp).testTag("player_prev"),
+            modifier = Modifier.size(56.dp).testTag("player_prev"),
         ) {
             Icon(
                 Icons.Default.SkipPrevious,
                 contentDescription = stringResource(R.string.cd_previous),
-                modifier = Modifier.size(40.dp),
+                modifier = Modifier.size(36.dp),
+            )
+        }
+        FilledIconButton(
+            onClick = withHaptic(if (playback.boardConnected) onSendToBoard else onConnect),
+            enabled = playback.currentClimb != null,
+            colors = IconButtonDefaults.filledIconButtonColors(
+                containerColor = OrangeAccent,
+                contentColor = DarkBackground,
+            ),
+            modifier = Modifier.size(60.dp).testTag(
+                if (playback.boardConnected) "player_lamp" else "player_connect",
+            ),
+        ) {
+            Icon(
+                if (playback.boardConnected) Icons.Default.Lightbulb else Icons.Default.Bluetooth,
+                contentDescription = stringResource(
+                    if (playback.boardConnected) R.string.playlist_send_to_board else R.string.cd_board_connect,
+                ),
+                modifier = Modifier.size(34.dp),
             )
         }
         IconButton(
             onClick = withHaptic(onNext),
             enabled = playback.hasNext,
-            modifier = Modifier.size(64.dp).testTag("player_next"),
+            modifier = Modifier.size(56.dp).testTag("player_next"),
         ) {
             Icon(
                 Icons.Default.SkipNext,
                 contentDescription = stringResource(R.string.cd_next),
-                modifier = Modifier.size(40.dp),
+                modifier = Modifier.size(36.dp),
             )
         }
         // Add climbs: to the browser, where long-press adds to the
         // running playlist — same flow for host and participants.
         IconButton(
             onClick = onAddClimbs,
-            modifier = Modifier.size(48.dp).testTag("player_add"),
+            modifier = Modifier.size(44.dp).testTag("player_add"),
         ) {
             Icon(
                 Icons.Default.Add,
@@ -1028,9 +784,6 @@ private fun PlayerControls(
 
 /** MoonBoard viz fallback aspect (see MoonBoardVisualization). */
 private const val MOONBOARD_FALLBACK_ASPECT = 0.65f
-
-private fun formatCountdown(seconds: Int): String =
-    "%d:%02d".format(seconds / 60, seconds % 60)
 
 private fun formatElapsed(totalSeconds: Int): String {
     val h = totalSeconds / 3600

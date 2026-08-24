@@ -151,7 +151,7 @@ internal class BoardSendController(
         }.onFailure { Log.w(TAG, "recordClimbHistory(send) failed", it) }
     }
 
-    fun sendToBoard(@Suppress("UNUSED_PARAMETER") automaticLayer: Boolean = false) {
+    fun sendToBoard(automaticLayer: Boolean = false) {
         // When a session queue is active, the queue controls what's on the board.
         // Individual climb sends from detail views are suppressed.
         if (isBoardOwnedBySession()) {
@@ -169,7 +169,7 @@ internal class BoardSendController(
             // Quantum never follows page selection automatically. The detail
             // lamp is an explicit request: assign the current climb to the
             // selected local layer, then transmit exactly that identity.
-            sendCurrentQuantumClimb()
+            sendCurrentQuantumClimb(automaticLayer)
             return
         }
         val s = state.value
@@ -374,14 +374,24 @@ internal class BoardSendController(
         launchQuantumLayerSend(slots)
     }
 
-    private fun sendCurrentQuantumClimb() {
+    private fun sendCurrentQuantumClimb(automaticLayer: Boolean) {
         if (isBoardOwnedBySession()) return
         val snapshot = state.value
         if (snapshot.holds.isEmpty() || snapshot.ble.connectionState != ConnectionState.CONNECTED) return
-        val slot = selectedSlotFor(snapshot) ?: run {
-            state.update { it.copy(ble = it.ble.copy(error = R.string.board_layer_error_all_assigned)) }
+        val existingSlot = snapshot.climb?.uuid
+            ?.let(boardLayerManager::layerForClimb)
+            ?.slot
+        val explicitlySelectedSlot = snapshot.selectedBoardLayerSlot
+        val resolvedSlot = existingSlot
+            ?: explicitlySelectedSlot
+            ?: if (automaticLayer) automaticQuantumSlot(snapshot) else null
+        if (resolvedSlot == null) {
+            if (!automaticLayer) {
+                state.update { it.copy(ble = it.ble.copy(error = R.string.board_layer_error_all_assigned)) }
+            }
             return
         }
+        val slot: Int = resolvedSlot
         sendJob?.cancel()
         val variant = beginSendFence(snapshot)
         sendJob = scope.launch {
@@ -408,6 +418,42 @@ internal class BoardSendController(
             }
             sendQuantumLayers(listOf(slot), variant)
         }
+    }
+
+    /**
+     * Resolve a slot for the detail screen's primary "light" action.
+     *
+     * Automatic allocation is deliberately conservative: previews reserve a
+     * local slot, controller occupancy must leave room for a new identity, and
+     * a hold shared with an already projected local layer requires an explicit
+     * choice in the rack. Foreign Quantum layers do not expose their holds, so
+     * the controller's own capacity/exception response remains authoritative
+     * for those.
+     */
+    private fun automaticQuantumSlot(snapshot: ClimbDetailState): Int? {
+        val activeLayers = boardLayerManager.state.value.layers.filter {
+            it.confirmedRouteUuid != null
+        }
+        if (BoardLayerConflictPolicy.sharedHoldCount(snapshot.holds, activeLayers, null) > 0) {
+            state.update { it.copy(ble = it.ble.copy(error = R.string.board_layer_error_shared_hold)) }
+            return null
+        }
+        val slot = boardLayerManager.nextAvailableSlot(BoardBrand.QUANTUM) ?: run {
+            state.update { it.copy(ble = it.ble.copy(error = R.string.board_layer_error_all_assigned)) }
+            return null
+        }
+        if (!boardLayerManager.hasControllerCapacityFor(slot)) {
+            state.update { it.copy(ble = it.ble.copy(error = R.string.board_layer_error_board_full)) }
+            return null
+        }
+        state.update {
+            it.copy(
+                selectedBoardLayerSlot = slot,
+                selectedBoardLayerColor = boardLayerManager.availableColors().firstOrNull()
+                    ?: boardLayerManager.defaultColor(slot),
+            )
+        }
+        return slot
     }
 
     private fun selectedSlotFor(snapshot: ClimbDetailState): Int? =

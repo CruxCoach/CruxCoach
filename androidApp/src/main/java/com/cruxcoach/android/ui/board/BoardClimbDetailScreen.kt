@@ -53,6 +53,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
@@ -1715,6 +1716,33 @@ private fun BoardDetailBottomActions(
     }
 }
 
+/**
+ * One dock button's contents: the icon, and under it the word for what it does.
+ *
+ * The icons alone were a red cross, a lamp and a green tick, which is legible
+ * once somebody has been told and ambiguous until then — a cross reads as
+ * "cancel" at least as readily as "attempt". The label is the cheapest way to
+ * say it, and it keeps all three buttons the same height whichever state the
+ * middle one is in.
+ */
+@Composable
+private fun DockButtonContent(icon: ImageVector, contentDescription: String, label: String) {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Icon(icon, contentDescription = contentDescription, modifier = Modifier.size(27.dp))
+        Spacer(Modifier.height(1.dp))
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+        )
+    }
+}
+
 @Composable
 private fun BoardDetailActionDock(
     loggingEnabled: Boolean,
@@ -1735,20 +1763,18 @@ private fun BoardDetailActionDock(
             enabled = loggingEnabled,
             modifier = Modifier
                 .weight(1f)
-                .height(58.dp)
+                .height(64.dp)
                 .testTag("boarddetail_quick_attempt"),
             shape = RoundedCornerShape(18.dp),
             color = ErrorRed.copy(alpha = 0.13f),
             contentColor = ErrorRed,
             border = androidx.compose.foundation.BorderStroke(1.dp, ErrorRed.copy(alpha = 0.42f)),
         ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    Icons.Default.Close,
-                    contentDescription = stringResource(R.string.board_ascent_attempt),
-                    modifier = Modifier.size(32.dp),
-                )
-            }
+            DockButtonContent(
+                icon = Icons.Default.Close,
+                contentDescription = stringResource(R.string.board_ascent_attempt),
+                label = stringResource(R.string.board_dock_attempt),
+            )
         }
         when (lamp) {
             BoardDetailLampMode.HIDDEN -> Unit
@@ -1757,23 +1783,22 @@ private fun BoardDetailActionDock(
                 enabled = lightEnabled,
                 modifier = Modifier
                     .weight(1.12f)
-                    .height(58.dp)
+                    .height(64.dp)
                     .testTag("boarddetail_connect_board_button"),
                 shape = RoundedCornerShape(18.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                border = androidx.compose.foundation.BorderStroke(
-                    1.dp,
-                    MaterialTheme.colorScheme.outlineVariant,
-                ),
+                // Same treatment as the lamp: this is the primary action of
+                // the dock whenever there is no board yet, and a grey control
+                // between a red and an orange one read as the disabled one.
+                // The icon carries the difference.
+                color = OrangeAccent,
+                contentColor = DarkBackground,
+                shadowElevation = 4.dp,
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        Icons.Default.Bluetooth,
-                        contentDescription = stringResource(R.string.cd_board_connect),
-                        modifier = Modifier.size(31.dp),
-                    )
-                }
+                DockButtonContent(
+                    icon = Icons.Default.Bluetooth,
+                    contentDescription = stringResource(R.string.cd_board_connect),
+                    label = stringResource(R.string.board_dock_connect),
+                )
             }
             BoardDetailLampMode.LIGHT,
             BoardDetailLampMode.SHARED_QUEUE -> {
@@ -1783,7 +1808,7 @@ private fun BoardDetailActionDock(
                     enabled = lightEnabled && !lightInProgress,
                     modifier = Modifier
                         .weight(1.12f)
-                        .height(58.dp)
+                        .height(64.dp)
                         .testTag(
                             if (sharedQueue) "boarddetail_add_to_shared_queue_button"
                             else "boarddetail_light_climb_button",
@@ -1801,17 +1826,18 @@ private fun BoardDetailActionDock(
                                 color = DarkBackground,
                             )
                         } else {
-                            Box(Modifier.size(38.dp), contentAlignment = Alignment.Center) {
-                                Icon(
-                                    if (sharedQueue) Icons.AutoMirrored.Filled.PlaylistAdd
-                                    else Icons.Default.Lightbulb,
-                                    contentDescription = stringResource(
-                                        if (sharedQueue) R.string.cd_add_climb_to_shared_queue
-                                        else R.string.cd_light_climb_on_board,
-                                    ),
-                                    modifier = Modifier.size(31.dp),
-                                )
-                            }
+                            DockButtonContent(
+                                icon = if (sharedQueue) Icons.AutoMirrored.Filled.PlaylistAdd
+                                else Icons.Default.Lightbulb,
+                                contentDescription = stringResource(
+                                    if (sharedQueue) R.string.cd_add_climb_to_shared_queue
+                                    else R.string.cd_light_climb_on_board,
+                                ),
+                                label = stringResource(
+                                    if (sharedQueue) R.string.board_dock_queue
+                                    else R.string.board_dock_light,
+                                ),
+                            )
                         }
                     }
                 }
@@ -1822,20 +1848,18 @@ private fun BoardDetailActionDock(
             enabled = loggingEnabled,
             modifier = Modifier
                 .weight(1f)
-                .height(58.dp)
+                .height(64.dp)
                 .testTag("boarddetail_quick_send"),
             shape = RoundedCornerShape(18.dp),
             color = SuccessGreen.copy(alpha = 0.16f),
             contentColor = SuccessGreen,
             border = androidx.compose.foundation.BorderStroke(1.dp, SuccessGreen.copy(alpha = 0.46f)),
         ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    Icons.Default.Check,
-                    contentDescription = stringResource(R.string.board_ascent_send),
-                    modifier = Modifier.size(32.dp),
-                )
-            }
+            DockButtonContent(
+                icon = Icons.Default.Check,
+                contentDescription = stringResource(R.string.board_ascent_send),
+                label = stringResource(R.string.board_dock_top),
+            )
         }
     }
 }

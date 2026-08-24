@@ -7,8 +7,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.People
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -20,7 +18,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.data.BoardMismatch
 import com.cruxcoach.android.data.BleShareUiState
-import com.cruxcoach.android.data.NearbySessionEntry
 import com.cruxcoach.android.data.OnBoardClimbEntry
 import com.cruxcoach.android.data.OnBoardSource
 import com.cruxcoach.android.data.OwnSessionState
@@ -32,62 +29,25 @@ internal fun BleStatusExpanded(
     effectiveOnBoard: OnBoardClimbEntry?,
     onCollapse: () -> Unit,
     onClimbTapped: ((uuid: String, angle: Int) -> Unit)?,
-    onJoinSession: ((NearbySessionEntry) -> Unit)?,
     onRequestDisconnect: (() -> Unit)?,
     onAddToQueue: (() -> Unit)?,
     onOpenQueueSheet: (() -> Unit)? = null,
-    /** Non-null while this phone is relaying for other apps. */
+    /** Relay is detail-only: never rendered in the collapsed status banner. */
     relayClientCount: Int? = null,
+    relayBoardName: String? = null,
     onStopRelay: (() -> Unit)? = null,
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp),
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .clickable(onClick = onCollapse),
         colors = CardDefaults.cardColors(
             containerColor = OrangeAccent.copy(alpha = 0.10f)
         ),
         shape = RoundedCornerShape(14.dp)
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
-            // What this picks is the *playlist* presentation versus the generic
-            // sharing one — so it has to ask whether a queue is running, not
-            // whether anyone may join. Keyed on visibility, a playlist started as
-            // joinable was never shown as a playlist, and a participant promoted
-            // to host inherited JOINABLE and so lost the playlist look mid-session
-            // for no reason the user could see.
-            val isLocalSession = state.ownSession?.let { session ->
-                session.isHost && session.queue.isNotEmpty()
-            } == true
-            // Header
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    if (isLocalSession) Icons.AutoMirrored.Filled.QueueMusic else Icons.Default.CellTower,
-                    null,
-                    tint = OrangeAccent,
-                    modifier = Modifier.size(20.dp),
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    stringResource(
-                        if (isLocalSession) {
-                            R.string.ble_session_visibility_local
-                        } else {
-                            R.string.ble_sharing_title
-                        },
-                    ),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = OrangeAccent,
-                    modifier = Modifier.weight(1f)
-                )
-                IconButton(onClick = onCollapse, modifier = Modifier.size(32.dp)) {
-                    Icon(Icons.Default.Close, stringResource(R.string.action_close), modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-
-            HorizontalDivider(color = OrangeAccent.copy(alpha = 0.15f), modifier = Modifier.padding(vertical = 8.dp))
-
             // Bug 1: Session queue section (shown when own session active)
             val session = state.ownSession
             if (session != null) {
@@ -117,12 +77,6 @@ internal fun BleStatusExpanded(
                 Spacer(Modifier.height(8.dp))
             }
 
-            // Nearby sessions section — hide when already in a session (own or connecting)
-            if (state.nearbySessions.isNotEmpty() && state.ownSession == null) {
-                NearbySessionsSection(sessions = state.nearbySessions, onJoinSession = onJoinSession)
-                Spacer(Modifier.height(8.dp))
-            }
-
             // Disconnect request section
             if (state.canRequestDisconnect && onRequestDisconnect != null) {
                 DisconnectRequestSection(
@@ -130,14 +84,16 @@ internal fun BleStatusExpanded(
                     onRequest = onRequestDisconnect
                 )
             }
-        }
 
-        // Inside the card, as it already is when the chip is collapsed. It used
-        // to be rendered next to this view instead, so the same line sat on the
-        // card in one state and floated on the page background in the other —
-        // one strip that belonged to neither container.
-        if (relayClientCount != null && onStopRelay != null) {
-            RelaySharingLine(clientCount = relayClientCount, onStop = onStopRelay)
+            if (relayClientCount != null && onStopRelay != null) {
+                if (effectiveOnBoard != null || state.boardOccupiedCount > 0 || state.ownSession != null) {
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                        modifier = Modifier.padding(vertical = 8.dp),
+                    )
+                }
+                RelaySharingLine(relayBoardName, relayClientCount, onStopRelay)
+            }
         }
     }
 }
@@ -177,10 +133,6 @@ private fun SessionQueueSection(
                     append(session.currentClimbName ?: stringResource(R.string.ble_unknown))
                     if (session.queue.isNotEmpty()) {
                         append(" · ${session.currentIndex + 1}/${session.queue.size}")
-                    }
-                    if (session.participantCount > 1) {
-                        append(" · ")
-                        append(stringResource(R.string.ble_participants, session.participantCount))
                     }
                 },
                 style = MaterialTheme.typography.bodySmall,
@@ -265,43 +217,6 @@ private fun OnBoardClimbSection(
         }
         if (onClimbTapped != null) {
             Icon(Icons.Default.ChevronRight, stringResource(R.string.cd_open), modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-}
-
-@Composable
-private fun NearbySessionsSection(
-    sessions: List<NearbySessionEntry>,
-    onJoinSession: ((NearbySessionEntry) -> Unit)?
-) {
-    sessions.forEach { session ->
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(Icons.Default.People, null, tint = OrangeAccent, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(session.hostName, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-                val details = buildString {
-                    append(stringResource(R.string.ble_participants, session.participantCount))
-                    val climbName = session.currentClimbName
-                    if (climbName != null) {
-                        append(" · $climbName")
-                        if (session.currentClimbGrade != null) append(" ${session.currentClimbGrade}")
-                    }
-                }
-                Text(details, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            if (onJoinSession != null) {
-                FilledTonalButton(
-                    onClick = { onJoinSession(session) },
-                    colors = ButtonDefaults.filledTonalButtonColors(containerColor = OrangeAccent.copy(alpha = 0.3f)),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
-                ) {
-                    Text(stringResource(R.string.common_join), style = MaterialTheme.typography.labelSmall)
-                }
-            }
         }
     }
 }

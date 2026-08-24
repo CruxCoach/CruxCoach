@@ -16,7 +16,6 @@ import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Lightbulb
-import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.SignalCellular4Bar
 import androidx.compose.material.icons.filled.SignalCellularAlt
 import androidx.compose.material.icons.filled.SignalCellularAlt1Bar
@@ -53,9 +52,6 @@ internal fun BleStatusChip(
     onExpand: () -> Unit,
     onAddToQueue: (() -> Unit)?,
     onRandomToQueue: (() -> Unit)? = null,
-    /** Client count while the board is shared, or null when it is not. */
-    relayClientCount: Int? = null,
-    onStopRelay: (() -> Unit)? = null,
 ) {
     val session = state.ownSession
 
@@ -68,11 +64,6 @@ internal fun BleStatusChip(
             onAddToQueue = onAddToQueue,
             onRandomToQueue = onRandomToQueue
         )
-        // The mini-player owns its own card, so the sharing line trails it
-        // rather than sitting inside — still one block, not a detached strip.
-        if (relayClientCount != null && onStopRelay != null) {
-            RelaySharingLine(clientCount = relayClientCount, onStop = onStopRelay)
-        }
         return
     }
 
@@ -96,9 +87,6 @@ internal fun BleStatusChip(
         shape = RoundedCornerShape(14.dp)
     ) {
       Column {
-        // Sharing alone is enough to show this block, but it has nothing to
-        // say in the summary line — rendering the row anyway left a bare
-        // icon + chevron above the sharing line.
         val summary = buildChipSummary(effectiveOnBoard, state)
         if (summary.isNotBlank()) {
         Row(
@@ -138,13 +126,6 @@ internal fun BleStatusChip(
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-        }
-        if (relayClientCount != null && onStopRelay != null) {
-            RelaySharingLine(
-                clientCount = relayClientCount,
-                onStop = onStopRelay,
-                showDivider = summary.isNotBlank(),
-            )
         }
       }
     }
@@ -256,18 +237,6 @@ internal fun SessionChipContent(
                             )
                         }
                     }
-                }
-
-                // Participant count
-                if (session.participantCount > 0) {
-                    Icon(Icons.Default.People, null, tint = OrangeAccent, modifier = Modifier.size(14.dp))
-                    Spacer(Modifier.width(2.dp))
-                    Text(
-                        "${session.participantCount}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = OrangeAccent
-                    )
-                    Spacer(Modifier.width(6.dp))
                 }
 
                 // Random button on browser, Add button on detail screen
@@ -419,6 +388,7 @@ internal fun formatSessionTime(totalSeconds: Int): String {
  */
 @Composable
 internal fun RelaySharingLine(
+    boardName: String?,
     clientCount: Int,
     onStop: () -> Unit,
     /** Off when this line is the only content of its block. */
@@ -445,7 +415,11 @@ internal fun RelaySharingLine(
             )
             Spacer(Modifier.width(8.dp))
             Text(
-                stringResource(R.string.relay_chip_text, clientCount),
+                stringResource(
+                    R.string.relay_chip_text,
+                    boardName ?: stringResource(R.string.ble_unknown),
+                    clientCount,
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,

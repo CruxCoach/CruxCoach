@@ -90,6 +90,8 @@ class BoardBleConnection(private val context: Context) {
         const val DELAY_RECONNECT_MODERN_MS = 200L
         const val DELAY_SCAN_SETTLE_MS = 500L
         const val DELAY_PRE_DISCOVERY_LEGACY_MS = 300L
+        const val QUANTUM_MTU_TIMEOUT_MS = 3_000L
+        const val SERVICE_DISCOVERY_CALLBACK_FALLBACK_MS = 3_500L
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -117,6 +119,8 @@ class BoardBleConnection(private val context: Context) {
     val connectFailureReason: StateFlow<Int?> = _connectFailureReason.asStateFlow()
 
     private var gatt: BluetoothGatt? = null
+    private var serviceDiscoveryGatt: BluetoothGatt? = null
+    private var quantumMtuGatt: BluetoothGatt? = null
     private var writeCharacteristic: BluetoothGattCharacteristic? = null
     private var encoder: BoardPacketEncoder = BoardPacketEncoder(3)
 
@@ -294,6 +298,74 @@ class BoardBleConnection(private val context: Context) {
         }
     }
 
+    @SuppressLint("MissingPermission")
+    private fun startServiceDiscovery(currentGatt: BluetoothGatt) {
+        if (_connectionState.value != ConnectionState.CONNECTING ||
+            gatt !== currentGatt || gattClosed || serviceDiscoveryGatt === currentGatt
+        ) return
+        serviceDiscoveryGatt = currentGatt
+        val queued = currentGatt.discoverServices()
+        Log.d(TAG, "discoverServices queued=$queued")
+        if (!queued) {
+            serviceDiscoveryGatt = null
+            return
+        }
+        // Some vendor stacks populate BluetoothGatt.services but omit the app
+        // callback. Use the already-discovered required characteristic as a
+        // conservative completion signal; never accept a partial service list.
+        mainHandler.postDelayed({
+            if (_connectionState.value != ConnectionState.CONNECTING ||
+                gatt !== currentGatt || gattClosed
+            ) return@postDelayed
+            val expectedWrite = if (_connectedBoardBrand.value == BoardBrand.QUANTUM) {
+                (currentGatt.getService(BoardBleUuids.QUANTUM_SERVICE)
+                    ?: currentGatt.getService(BoardBleUuids.QUANTUM_SERVICE_OLD))
+                    ?.getCharacteristic(BoardBleUuids.QUANTUM_WRITE_CHAR)
+            } else {
+                currentGatt.getService(BoardBleUuids.DATA_TRANSFER_SERVICE)
+                    ?.getCharacteristic(BoardBleUuids.DATA_TRANSFER_CHAR)
+            }
+            if (expectedWrite != null) {
+                Log.w(TAG, "service discovery callback missing; completing from populated GATT services")
+                gattCallback.onServicesDiscovered(currentGatt, BluetoothGatt.GATT_SUCCESS)
+            }
+        }, SERVICE_DISCOVERY_CALLBACK_FALLBACK_MS)
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun finishGattSetup(currentGatt: BluetoothGatt) {
+        if (_connectionState.value != ConnectionState.CONNECTING ||
+            gatt !== currentGatt || gattClosed || writeCharacteristic == null
+        ) return
+        quantumMtuGatt = null
+        connectionTimeoutJob?.cancel()
+        connectionTimeoutJob = null
+
+        if (_connectedBoardBrand.value == BoardBrand.QUANTUM) {
+            val quantumService = currentGatt.getService(BoardBleUuids.QUANTUM_SERVICE)
+                ?: currentGatt.getService(BoardBleUuids.QUANTUM_SERVICE_OLD)
+            val notify = quantumService?.getCharacteristic(BoardBleUuids.QUANTUM_NOTIFY_CHAR)
+            if (notify != null) {
+                currentGatt.setCharacteristicNotification(notify, true)
+                notify.getDescriptor(BoardBleUuids.CLIENT_CHARACTERISTIC_CONFIG)?.let { descriptor ->
+                    descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                    currentGatt.writeDescriptor(descriptor)
+                }
+            }
+        }
+
+        Log.i(TAG, "GATT ready, state→CONNECTED (writes can start)")
+        _connectionState.value = ConnectionState.CONNECTED
+        resetIdleTimer()
+        onRestartScannersAfterConnect?.invoke()
+        if (_connectedBoardBrand.value == BoardBrand.QUANTUM) {
+            scope.launch {
+                delay(250)
+                refreshQuantumState()
+            }
+        }
+    }
+
     private val gattCallback = object : BluetoothGattCallback() {
         @SuppressLint("MissingPermission")
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
@@ -319,30 +391,16 @@ class BoardBleConnection(private val context: Context) {
                     // discovery and fails because writeCharacteristic is still null.
                     // Keep connectionTimeoutJob running to cover service discovery too.
                     Log.d(TAG, "GATT connected, discovering services...")
-                    if (_connectedBoardBrand.value == BoardBrand.QUANTUM && Build.VERSION.SDK_INT >= 21) {
-                        // eWalls 2.0.14 negotiates 512 first (then 247/185 on
-                        // failure). Writes remain conservatively fragmented at
-                        // 20 bytes, so an MTU callback is an optimization only.
-                        gatt.requestMtu(512)
-                    }
-                    // Bump BLE connection priority before service discovery
-                    // — drops the connection interval from the default
-                    // ~50 ms down to ~7.5–15 ms, which makes the rest of
-                    // the connect (service discovery + every subsequent
-                    // GATT write of a send-frame) 2-4× faster.
-                    gatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH)
                     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-                        // Legacy stacks can stall discovery (or fail it with
-                        // 129/133) when it races the connection-parameter
-                        // update above — give the update a beat first. The
-                        // attempt timeout keeps covering this window.
+                        // Give legacy stacks a beat after STATE_CONNECTED.
+                        // The attempt timeout keeps covering this window.
                         mainHandler.postDelayed({
                             if (_connectionState.value == ConnectionState.CONNECTING && !gattClosed) {
-                                gatt.discoverServices()
+                                startServiceDiscovery(gatt)
                             }
                         }, DELAY_PRE_DISCOVERY_LEGACY_MS)
                     } else {
-                        gatt.discoverServices()
+                        startServiceDiscovery(gatt)
                     }
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
@@ -374,11 +432,11 @@ class BoardBleConnection(private val context: Context) {
 
         @SuppressLint("MissingPermission")
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
+            if (_connectionState.value != ConnectionState.CONNECTING ||
+                this@BoardBleConnection.gatt !== gatt || gattClosed
+            ) return
             // Log.i so the R8 Log.d/v stripping rule doesn't erase the diagnostic marker.
             Log.i(TAG, "onServicesDiscovered status=$status services=${gatt.services.size}")
-            connectionTimeoutJob?.cancel()
-            connectionTimeoutJob = null
-
             if (status == BluetoothGatt.GATT_SUCCESS) {
                 val service = gatt.getService(BoardBleUuids.DATA_TRANSFER_SERVICE)
                 writeCharacteristic = if (_connectedBoardBrand.value == BoardBrand.QUANTUM) {
@@ -386,31 +444,30 @@ class BoardBleConnection(private val context: Context) {
                         ?: gatt.getService(BoardBleUuids.QUANTUM_SERVICE_OLD)
                     quantumService?.getCharacteristic(BoardBleUuids.QUANTUM_WRITE_CHAR)?.also {
                         it.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
-                    }.also {
-                        val notify = quantumService?.getCharacteristic(BoardBleUuids.QUANTUM_NOTIFY_CHAR)
-                        if (notify != null) {
-                            gatt.setCharacteristicNotification(notify, true)
-                            notify.getDescriptor(BoardBleUuids.CLIENT_CHARACTERISTIC_CONFIG)?.let { descriptor ->
-                                descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-                                gatt.writeDescriptor(descriptor)
-                            }
-                        }
                     }
                 } else service?.getCharacteristic(BoardBleUuids.DATA_TRANSFER_CHAR)
                 if (writeCharacteristic != null) {
-                    // NOW the GATT is fully ready — set CONNECTED so downstream
-                    // auto-send and advertising see a usable connection.
-                    Log.i(TAG, "GATT ready, state→CONNECTED (writes can start)")
-                    _connectionState.value = ConnectionState.CONNECTED
-                    resetIdleTimer()
-                    onRestartScannersAfterConnect?.invoke()
-                    if (_connectedBoardBrand.value == BoardBrand.QUANTUM) {
-                        // Let CCCD registration settle, then pull the
-                        // authoritative four-player controller snapshot.
-                        scope.launch {
-                            delay(250)
-                            refreshQuantumState()
+                    if (_connectedBoardBrand.value == BoardBrand.QUANTUM && Build.VERSION.SDK_INT >= 21) {
+                        // Match eWalls 2.0.14: finish service retrieval first,
+                        // then negotiate MTU, then register notifications. The
+                        // previous concurrent discoverServices/requestMtu pair
+                        // made Nokia Android 10 populate services internally
+                        // without delivering onServicesDiscovered.
+                        quantumMtuGatt = gatt
+                        val queued = gatt.requestMtu(512)
+                        Log.d(TAG, "requestMtu after services queued=$queued")
+                        if (queued) {
+                            mainHandler.postDelayed({
+                                if (quantumMtuGatt === gatt) {
+                                    Log.w(TAG, "MTU callback timeout; continuing with negotiated/default MTU")
+                                    finishGattSetup(gatt)
+                                }
+                            }, QUANTUM_MTU_TIMEOUT_MS)
+                        } else {
+                            finishGattSetup(gatt)
                         }
+                    } else {
+                        finishGattSetup(gatt)
                     }
                 } else {
                     Log.w(TAG, "DATA_TRANSFER_CHAR not found in service")
@@ -452,6 +509,11 @@ class BoardBleConnection(private val context: Context) {
                     onRestartScannersAfterConnect?.invoke()
                 }
             }
+        }
+
+        override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
+            Log.d(TAG, "onMtuChanged mtu=$mtu status=$status")
+            if (quantumMtuGatt === gatt) finishGattSetup(gatt)
         }
 
         override fun onCharacteristicWrite(
@@ -778,6 +840,8 @@ class BoardBleConnection(private val context: Context) {
         }
 
         gatt = newGatt
+        serviceDiscoveryGatt = null
+        quantumMtuGatt = null
 
         // Per-attempt timeout: a hung CONNECTING is torn down and retried
         // quietly; only the final attempt surfaces the failure.

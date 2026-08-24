@@ -153,6 +153,29 @@ data class BoardLogbookState(
     val ownPublishFeedback: OwnPublishFeedback? = null,
 )
 
+/**
+ * Resolve a denormalized logbook row to a concrete heatmap board.
+ *
+ * Rows written before board context was introduced are known to be Kilter
+ * rows, so only those may use the historical Original-layout fallback. A
+ * missing layout on any other brand means that the concrete board is unknown
+ * (for example an ambiguous MoonBoard screen import) and must not be rendered
+ * on an arbitrary board generation.
+ */
+internal fun heatmapLoggedBoardKey(
+    boardBrandWire: String,
+    layoutId: Long?,
+): Pair<String, Int>? {
+    val brand = BoardBrand.fromWire(boardBrandWire)
+    val concreteLayoutId = layoutId?.toInt()
+        ?: if (brand == BoardBrand.KILTER) {
+            com.cruxcoach.android.data.BoardConstants.KILTER_ORIGINAL_LAYOUT
+        } else {
+            return null
+        }
+    return brand.wireValue to concreteLayoutId
+}
+
 @HiltViewModel
 class BoardLogbookViewModel @Inject constructor(
     private val personalBoardRepo: PersonalBoardRepository,
@@ -353,11 +376,7 @@ class BoardLogbookViewModel @Inject constructor(
                 val activeLayoutId = userPreferences.boardLayoutId.first()
                 val activeSizeId = userPreferences.boardProductSizeId.first()
                 val loggedBoards: Set<Pair<String, Int>> = all
-                    .map {
-                        BoardBrand.fromWire(it.boardBrand).wireValue to
-                            (it.layoutId?.toInt()
-                                ?: com.cruxcoach.android.data.BoardConstants.KILTER_ORIGINAL_LAYOUT)
-                    }
+                    .mapNotNull { heatmapLoggedBoardKey(it.boardBrand, it.layoutId) }
                     .toSet()
                 // The whole gate is pure in-memory now: no catalogue probe
                 // (hasClimbsForBrand) and no layout lookup (getDefaultLayoutForBrand

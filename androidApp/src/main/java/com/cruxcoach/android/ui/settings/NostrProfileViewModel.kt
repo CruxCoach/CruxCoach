@@ -23,14 +23,16 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
- * Editor for the local user's Nostr Kind 0 profile. Three operations:
- *  - Load: read cache or fetch from relays on first open
- *  - Save: publish a new Kind 0 event, refresh cache, propagate the
- *    new display_name to the user's own community climbs (so the
- *    browser shows the real name immediately, no async lookup needed)
+ * Editor for the local user's profile. Local persistence is the default;
+ * publishing a Nostr Kind 0 is a separate, explicitly confirmed operation.
+ *  - Load: prefer the encrypted local profile; import Kind 0 only on a miss
+ *  - Save: write locally and propagate the display name to own climbs
+ *  - Publish: after UI confirmation, send Kind 0 and refresh the local cache
  *  - Import from Kilter: pre-fill `displayName` with the cached
  *    Kilter username from the JWT (`preferred_username` claim)
  */
@@ -51,7 +53,9 @@ data class NostrProfileEditState(
     val website: String = "",
     val isLoading: Boolean = true,
     val isSaving: Boolean = false,
+    val isPublishing: Boolean = false,
     val justSaved: Boolean = false,
+    val justPublished: Boolean = false,
     val canImportFromKilter: Boolean = false,
     /** Cached Kilter username when the user is connected. UI shows a
      *  divergence hint when [displayName] is set and differs — clarifies
@@ -157,12 +161,12 @@ class NostrProfileViewModel @Inject constructor(
                         displayName = cached.displayName.orEmpty(),
                         lightningAddress = cached.lightningAddress.orEmpty(),
                         pictureUrl = cached.pictureUrl.orEmpty(),
-                        about = "",
+                        about = cached.about.orEmpty(),
                         bannerUrl = cached.bannerUrl.orEmpty(),
                         nip05 = cached.nip05.orEmpty(),
                         website = cached.website.orEmpty(),
                         isLoading = false,
-                        isRefreshing = true,
+                        isRefreshing = false,
                         hasUserEdited = false,
                         canImportFromKilter = kilterUsername != null,
                         kilterUsername = kilterUsername,
@@ -170,6 +174,7 @@ class NostrProfileViewModel @Inject constructor(
                 }
                 if (!cached.nip05.isNullOrBlank()) verifyNip05Now()
                 if (!cached.lightningAddress.isNullOrBlank()) verifyLightningNow()
+                return@launch
             } else {
                 // No cache yet — drop the full-screen spinner anyway
                 // so the user can start typing while the relay fetch
@@ -187,19 +192,12 @@ class NostrProfileViewModel @Inject constructor(
                 }
             }
 
-            // Phase 2: background relay fetch. This either populates an
-            // empty cache (first-ever open) or refreshes a stale one.
+            // Phase 2: only on a local miss, offer the user's existing public
+            // Kind 0 as an initial import. Once a local profile exists the
+            // early return above makes it authoritative.
             // We skip the field-overwrite if the user already started
             // typing — `setDisplayName`/etc. flip `hasUserEdited`.
             val fresh = runCatching { nostrProfileManager.getProfile(pubkey) }.getOrNull()
-            val freshChanged = fresh != null && (
-                fresh.displayName.orEmpty() != cached?.displayName.orEmpty() ||
-                fresh.lightningAddress.orEmpty() != cached?.lightningAddress.orEmpty() ||
-                fresh.pictureUrl.orEmpty() != cached?.pictureUrl.orEmpty() ||
-                fresh.bannerUrl.orEmpty() != cached?.bannerUrl.orEmpty() ||
-                fresh.nip05.orEmpty() != cached?.nip05.orEmpty() ||
-                fresh.website.orEmpty() != cached?.website.orEmpty()
-            )
             _state.update { current ->
                 if (fresh == null) {
                     // Relay fetch failed — keep whatever cache we already
@@ -210,7 +208,7 @@ class NostrProfileViewModel @Inject constructor(
                     // landed in the cache via parseAndCacheProfile, so
                     // a future load() picks them up.
                     current.copy(isLoading = false, isRefreshing = false)
-                } else if (cached == null || freshChanged) {
+                } else {
                     current.copy(
                         displayName = fresh.displayName.orEmpty(),
                         lightningAddress = fresh.lightningAddress.orEmpty(),
@@ -218,17 +216,13 @@ class NostrProfileViewModel @Inject constructor(
                         bannerUrl = fresh.bannerUrl.orEmpty(),
                         nip05 = fresh.nip05.orEmpty(),
                         website = fresh.website.orEmpty(),
+                        about = fresh.about.orEmpty(),
                         isLoading = false,
                         isRefreshing = false,
                     )
-                } else {
-                    current.copy(isLoading = false, isRefreshing = false)
                 }
             }
-            // Re-verify if the relay-fetched values differ — the cached
-            // verifyNip05Now / verifyLightningNow above were against
-            // the (potentially stale) cache.
-            if (fresh != null && (cached == null || freshChanged) && !_state.value.hasUserEdited) {
+            if (fresh != null && !_state.value.hasUserEdited) {
                 if (!fresh.nip05.isNullOrBlank()) verifyNip05Now()
                 if (!fresh.lightningAddress.isNullOrBlank()) verifyLightningNow()
             }
@@ -236,7 +230,7 @@ class NostrProfileViewModel @Inject constructor(
     }
 
     fun setDisplayName(value: String) = _state.update {
-        it.copy(displayName = value, justSaved = false, hasUserEdited = true)
+        it.copy(displayName = value, justSaved = false, justPublished = false, hasUserEdited = true)
     }
     fun setLightningAddress(value: String) = _state.update {
         // Reset verification on every keystroke — a half-typed address
@@ -245,29 +239,31 @@ class NostrProfileViewModel @Inject constructor(
         it.copy(
             lightningAddress = value,
             justSaved = false,
+            justPublished = false,
             hasUserEdited = true,
             lnurlVerification = LnurlVerifier.State.Idle,
         )
     }
     fun setPictureUrl(value: String) = _state.update {
-        it.copy(pictureUrl = value, justSaved = false, hasUserEdited = true)
+        it.copy(pictureUrl = value, justSaved = false, justPublished = false, hasUserEdited = true)
     }
     fun setAbout(value: String) = _state.update {
-        it.copy(about = value, justSaved = false, hasUserEdited = true)
+        it.copy(about = value, justSaved = false, justPublished = false, hasUserEdited = true)
     }
     fun setBannerUrl(value: String) = _state.update {
-        it.copy(bannerUrl = value, justSaved = false, hasUserEdited = true)
+        it.copy(bannerUrl = value, justSaved = false, justPublished = false, hasUserEdited = true)
     }
     fun setNip05(value: String) = _state.update {
         it.copy(
             nip05 = value,
             justSaved = false,
+            justPublished = false,
             hasUserEdited = true,
             nip05Verification = Nip05Verifier.State.Idle,
         )
     }
     fun setWebsite(value: String) = _state.update {
-        it.copy(website = value, justSaved = false, hasUserEdited = true)
+        it.copy(website = value, justSaved = false, justPublished = false, hasUserEdited = true)
     }
     fun clearError() = _state.update { it.copy(errorMessage = null) }
 
@@ -377,21 +373,55 @@ class NostrProfileViewModel @Inject constructor(
         val username = kilterTokenStore.getUsername()?.takeIf { it.isNotBlank() } ?: return
         _state.update { current ->
             if (current.displayName.isNotBlank()) current
-            else current.copy(displayName = username, justSaved = false)
+            else current.copy(displayName = username, justSaved = false, justPublished = false)
         }
     }
 
     fun save() {
         val s = _state.value
-        // CAS guard against double-tap fanout: tapping "Save" twice in
-        // quick succession used to start two `publishProfile` coroutines
-        // that each fired a Kind-0 event under the user's pubkey,
-        // doubling the relay write and potentially causing replaceable-
-        // event ordering surprises. The check-and-set is on the
-        // single-threaded main dispatcher, so it's safe without a Mutex.
         if (s.isSaving) return
         viewModelScope.launch {
             _state.update { it.copy(isSaving = true, errorMessage = null) }
+            val result = runCatching {
+                withContext(Dispatchers.IO) { saveLocally(s) }
+            }.getOrNull()
+            if (result == null) {
+                _state.update {
+                    it.copy(
+                        isSaving = false,
+                        errorMessage = appContext.getString(R.string.profile_local_save_failed),
+                    )
+                }
+                return@launch
+            }
+            propagateDisplayName(result)
+            _state.update {
+                it.copy(isSaving = false, justSaved = true, hasUserEdited = false)
+            }
+        }
+    }
+
+    /** Called only after the user accepted the public Kind-0 warning. */
+    fun publishToNostr() {
+        val s = _state.value
+        if (s.isPublishing) return
+        viewModelScope.launch {
+            _state.update { it.copy(isPublishing = true, errorMessage = null) }
+
+            // Keep the local copy even if the relay publication fails.
+            val local = runCatching {
+                withContext(Dispatchers.IO) { saveLocally(s) }
+            }.getOrNull()
+            if (local == null) {
+                _state.update {
+                    it.copy(
+                        isPublishing = false,
+                        errorMessage = appContext.getString(R.string.profile_local_save_failed),
+                    )
+                }
+                return@launch
+            }
+
             val result = nostrProfileManager.publishProfile(
                 displayName = s.displayName.trim(),
                 lightningAddress = s.lightningAddress.trim(),
@@ -404,36 +434,51 @@ class NostrProfileViewModel @Inject constructor(
             if (result == null) {
                 _state.update {
                     it.copy(
-                        isSaving = false,
+                        isPublishing = false,
                         errorMessage = appContext.getString(R.string.nostr_profile_save_failed),
                     )
                 }
                 return@launch
             }
-            // Propagate the new display_name to the user's own community
-            // climbs so the browse list updates instantly. Only the
-            // setter_username column changes — provenance fields stay.
-            // The Nostr publish has already succeeded by this point, so
-            // a SQL failure here is non-fatal: the user's profile is
-            // public on relays, the browse-list rename will happen on
-            // the next sync. But the silent runCatching pre-fix hid
-            // disk-full / lock-contention bugs forever — log them.
-            val newDisplayName = result.displayName?.takeIf { it.isNotBlank() }
-            if (newDisplayName != null) {
-                runCatching {
-                    boardRepository.updateSetterUsernameForPubkey(
-                        pubkey = result.pubkey,
-                        displayName = newDisplayName,
-                    )
-                }.onFailure {
-                    android.util.Log.w(
-                        "NostrProfileVM",
-                        "post-publish bulk rename failed (browse will catch up on next sync)",
-                        it,
-                    )
-                }
+            propagateDisplayName(result)
+            _state.update {
+                it.copy(
+                    isPublishing = false,
+                    justSaved = false,
+                    justPublished = true,
+                    hasUserEdited = false,
+                )
             }
-            _state.update { it.copy(isSaving = false, justSaved = true) }
+        }
+    }
+
+    private fun saveLocally(s: NostrProfileEditState) =
+        nostrProfileManager.saveLocalProfile(
+            pubkey = nostrSigner.getPublicKeyHex(),
+            displayName = s.displayName.trim(),
+            lightningAddress = s.lightningAddress.trim(),
+            picture = s.pictureUrl.trim(),
+            about = s.about.trim(),
+            banner = s.bannerUrl.trim(),
+            nip05 = s.nip05.trim(),
+            website = s.website.trim(),
+        )
+
+    private fun propagateDisplayName(result: com.cruxcoach.android.payment.model.NostrProfileData) {
+        val newDisplayName = result.displayName?.takeIf { it.isNotBlank() }
+        if (newDisplayName != null) {
+            runCatching {
+                boardRepository.updateSetterUsernameForPubkey(
+                    pubkey = result.pubkey,
+                    displayName = newDisplayName,
+                )
+            }.onFailure {
+                android.util.Log.w(
+                    "NostrProfileVM",
+                    "profile bulk rename failed (browse will catch up on next sync)",
+                    it,
+                )
+            }
         }
     }
 }
