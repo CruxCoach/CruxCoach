@@ -254,7 +254,11 @@ class CruxRelayManager(
                 // guest write in order and byte-for-byte; there is no Aurora
                 // packet grouping for RelayFrameReassembler to perform.
                 relayServer.writes.collect { inbound ->
-                    if (bleConnection.sendRawChunks(listOf(inbound.value))) {
+                    if (bleConnection.sendRawChunks(
+                            listOf(inbound.value),
+                            expectedBrand = board.boardBrand,
+                        )
+                    ) {
                         advertiser.clearActiveClimb()
                     } else {
                         Log.w(TAG, "sendRawChunks failed for a relayed MoonBoard write")
@@ -263,7 +267,10 @@ class CruxRelayManager(
                 }
             } else {
                 relayServer.climbs.collect { inbound ->
-                    val ok = bleConnection.sendRawChunks(inbound.climb.chunks)
+                    val ok = bleConnection.sendRawChunks(
+                        inbound.climb.chunks,
+                        expectedBrand = board.boardBrand,
+                    )
                     if (ok) {
                         advertiser.clearActiveClimb()
                         // Hand the raw climb along: it is the only thing that can

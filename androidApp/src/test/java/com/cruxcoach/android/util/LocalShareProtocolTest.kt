@@ -6,10 +6,13 @@ import io.mockk.every
 import io.mockk.mockk
 import java.io.File
 import java.net.HttpURLConnection
+import java.net.InetAddress
+import java.net.ServerSocket
 import java.net.URL
 import javax.net.SocketFactory
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import kotlin.concurrent.thread
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -38,6 +41,65 @@ class LocalShareProtocolTest {
     fun tearDown() {
         server?.stop()
         tempDir.deleteRecursively()
+    }
+
+    @Test
+    fun apkSnapshotProtocolIsLegacyUnlessReceiverExplicitlyRequestsV2() {
+        assertEquals(LocalShareProtocol.VERSION, snapshotProtocolForApkRequest(null))
+        assertEquals(LocalShareProtocol.VERSION, snapshotProtocolForApkRequest("1"))
+        assertEquals(LocalShareProtocol.VERSION, snapshotProtocolForApkRequest("unexpected"))
+        assertEquals(LocalShareProtocol.VERSION_V2, snapshotProtocolForApkRequest(" 2 "))
+    }
+
+    @Test
+    fun v2ApkDownloadIdentifiesProtocolOnTheSharedApkPath() = runBlocking {
+        val bytes = "v2-apk".toByteArray()
+        val source = File(tempDir, "protocol-source.apk").apply { writeBytes(bytes) }
+        val socket = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"))
+        val port = socket.localPort
+        val requestHeaders = mutableMapOf<String, String>()
+        val serving = thread {
+            socket.accept().use { client ->
+                val reader = client.getInputStream().bufferedReader()
+                reader.readLine()
+                while (true) {
+                    val line = reader.readLine()
+                    if (line.isNullOrBlank()) break
+                    val separator = line.indexOf(':')
+                    if (separator > 0) {
+                        requestHeaders[line.substring(0, separator).trim().lowercase()] =
+                            line.substring(separator + 1).trim()
+                    }
+                }
+                client.getOutputStream().buffered().apply {
+                    write("HTTP/1.1 200 OK\r\nContent-Length: ${bytes.size}\r\nConnection: close\r\n\r\n".toByteArray())
+                    write(bytes)
+                    flush()
+                }
+            }
+            socket.close()
+        }
+        val network = mockk<Network>()
+        every { network.socketFactory } returns SocketFactory.getDefault()
+
+        LocalShareClient().downloadResumable(
+            network = network,
+            baseUrl = "http://127.0.0.1:$port",
+            artifact = LocalShareProtocol.Artifact(
+                path = LocalShareProtocol.APK_PATH,
+                sizeBytes = source.length(),
+                sha256 = LocalShareProtocol.sha256(source),
+            ),
+            target = File(tempDir, "protocol-received.apk"),
+            protocolVersion = LocalShareProtocol.VERSION_V2,
+            onProgress = { _, _ -> },
+        )
+
+        serving.join(2_000)
+        assertEquals(
+            "2",
+            requestHeaders[LocalShareProtocol.PROTOCOL_HEADER.lowercase()],
+        )
     }
 
     @Test
@@ -211,6 +273,177 @@ class LocalShareProtocolTest {
             board.catalogues.map { it.boardBrand },
         )
         assertEquals(98_000L, board.catalogues[1].climbCount)
+    }
+
+    @Test
+    fun manifestBindsProtocolVersionToItsBoardArtifactPath() {
+        val hash = "c".repeat(64)
+        fun ready(protocol: Int, path: String) = """
+            {
+              "protocolVersion": $protocol,
+              "sessionId": "01234567-89ab-cdef-0123-456789abcdef",
+              "apk": {"path":"/CruxCoach.apk","versionCode":8,"versionName":"0.2.2",
+                      "sizeBytes":42,"sha256":"$hash"},
+              "board": {"status":"ready","path":"$path","compression":"gzip",
+                        "sizeBytes":20,"sha256":"$hash","uncompressedSizeBytes":100,
+                        "uncompressedSha256":"$hash","schemaVersion":27,"catalogues":[]}
+            }
+        """.trimIndent()
+
+        assertEquals(
+            LocalShareProtocol.BOARD_PATH,
+            LocalShareProtocol.parseManifest(
+                ready(LocalShareProtocol.VERSION, LocalShareProtocol.BOARD_PATH),
+            ).board!!.artifact.path,
+        )
+        assertEquals(
+            LocalShareProtocol.V2_BOARD_PATH,
+            LocalShareProtocol.parseManifest(
+                ready(LocalShareProtocol.VERSION_V2, LocalShareProtocol.V2_BOARD_PATH),
+            ).board!!.artifact.path,
+        )
+        assertFailsWith<IllegalArgumentException> {
+            LocalShareProtocol.parseManifest(
+                ready(LocalShareProtocol.VERSION, LocalShareProtocol.V2_BOARD_PATH),
+            )
+        }
+        assertFailsWith<IllegalArgumentException> {
+            LocalShareProtocol.parseManifest(
+                ready(LocalShareProtocol.VERSION_V2, LocalShareProtocol.BOARD_PATH),
+            )
+        }
+    }
+
+    @Test
+    fun receiverPrefersV2WhenThePeerSupportsIt() {
+        val apk = File(tempDir, "v2.apk").apply { writeText("apk") }
+        server = LocalApkServer(apkFile = apk)
+        val port = server!!.start(port = 0, hostIp = "127.0.0.1")
+        val network = mockk<Network>()
+        every { network.socketFactory } returns SocketFactory.getDefault()
+
+        val manifest = LocalShareClient().fetchManifest(
+            network,
+            "http://127.0.0.1:$port",
+        )
+
+        assertEquals(LocalShareProtocol.VERSION_V2, manifest.protocolVersion)
+    }
+
+    @Test
+    fun receiverFallsBackWhenOldPeerReturnsLandingHtmlForUnknownV2Path() {
+        val hash = "d".repeat(64)
+        val v1Manifest = manifestJson(apkPath = LocalShareProtocol.APK_PATH, hash = hash)
+        ServerSocket(0, 8, InetAddress.getByName("127.0.0.1")).use { socket ->
+            val servedPaths = mutableListOf<String>()
+            val serving = kotlin.concurrent.thread {
+                repeat(2) { requestIndex ->
+                    socket.accept().use { client ->
+                        val input = client.getInputStream().bufferedReader()
+                        servedPaths += input.readLine().split(' ')[1]
+                        while (!input.readLine().isNullOrEmpty()) Unit
+                        val body = if (requestIndex == 0) "<html>old landing page</html>" else v1Manifest
+                        val bytes = body.toByteArray()
+                        client.getOutputStream().apply {
+                            write(
+                                ("HTTP/1.1 200 OK\r\nContent-Length: ${bytes.size}\r\n" +
+                                    "Connection: close\r\n\r\n").toByteArray(),
+                            )
+                            write(bytes)
+                            flush()
+                        }
+                    }
+                }
+            }
+            val network = mockk<Network>()
+            every { network.socketFactory } returns SocketFactory.getDefault()
+
+            val manifest = LocalShareClient().fetchManifest(
+                network,
+                "http://127.0.0.1:${socket.localPort}",
+            )
+
+            serving.join(2_000)
+            assertEquals(LocalShareProtocol.VERSION, manifest.protocolVersion)
+            assertEquals(
+                listOf(LocalShareProtocol.V2_MANIFEST_PATH, LocalShareProtocol.MANIFEST_PATH),
+                servedPaths,
+            )
+        }
+    }
+
+    @Test
+    fun receiverFallsBackToV1OnlyWhenV2ManifestIsActuallyMissing() {
+        val hash = "e".repeat(64)
+        val v1Manifest = manifestJson(apkPath = LocalShareProtocol.APK_PATH, hash = hash)
+        ServerSocket(0, 8, InetAddress.getByName("127.0.0.1")).use { socket ->
+            val port = socket.localPort
+            val servedPaths = mutableListOf<String>()
+            val serving = thread {
+                repeat(2) { requestIndex ->
+                    socket.accept().use { client ->
+                        val input = client.getInputStream().bufferedReader()
+                        servedPaths += input.readLine().split(' ')[1]
+                        while (!input.readLine().isNullOrEmpty()) Unit
+                        val body = if (requestIndex == 0) ByteArray(0) else v1Manifest.toByteArray()
+                        val status = if (requestIndex == 0) "404 Not Found" else "200 OK"
+                        client.getOutputStream().apply {
+                            write(
+                                ("HTTP/1.1 $status\r\nContent-Length: ${body.size}\r\n" +
+                                    "Connection: close\r\n\r\n").toByteArray(),
+                            )
+                            write(body)
+                            flush()
+                        }
+                    }
+                }
+            }
+            val network = mockk<Network>()
+            every { network.socketFactory } returns SocketFactory.getDefault()
+
+            val manifest = LocalShareClient().fetchManifest(network, "http://127.0.0.1:$port")
+
+            serving.join(2_000)
+            assertEquals(LocalShareProtocol.VERSION, manifest.protocolVersion)
+            assertEquals(
+                listOf(LocalShareProtocol.V2_MANIFEST_PATH, LocalShareProtocol.MANIFEST_PATH),
+                servedPaths,
+            )
+        }
+    }
+
+    @Test
+    fun malformedV2JsonDoesNotSilentlyDowngrade() {
+        ServerSocket(0, 8, InetAddress.getByName("127.0.0.1")).use { socket ->
+            val servedPaths = mutableListOf<String>()
+            val serving = kotlin.concurrent.thread {
+                socket.accept().use { client ->
+                    val input = client.getInputStream().bufferedReader()
+                    servedPaths += input.readLine().split(' ')[1]
+                    while (!input.readLine().isNullOrEmpty()) Unit
+                    val bytes = "{ definitely-not-a-manifest".toByteArray()
+                    client.getOutputStream().apply {
+                        write(
+                            ("HTTP/1.1 200 OK\r\nContent-Length: ${bytes.size}\r\n" +
+                                "Connection: close\r\n\r\n").toByteArray(),
+                        )
+                        write(bytes)
+                        flush()
+                    }
+                }
+            }
+            val network = mockk<Network>()
+            every { network.socketFactory } returns SocketFactory.getDefault()
+
+            assertFailsWith<java.io.IOException> {
+                LocalShareClient().fetchManifest(
+                    network,
+                    "http://127.0.0.1:${socket.localPort}",
+                )
+            }
+            serving.join(2_000)
+            assertEquals(listOf(LocalShareProtocol.V2_MANIFEST_PATH), servedPaths)
+        }
     }
 
     @Test

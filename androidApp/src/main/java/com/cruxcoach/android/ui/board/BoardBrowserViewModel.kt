@@ -1955,11 +1955,15 @@ class BoardBrowserViewModel @Inject constructor(
                     for (frame in frames) {
                         // sendRawLeds encodes with the CONNECTED board's
                         // encoder (correct apiLevel), not a hardcoded @3 one.
-                        bleConnection.sendRawLeds(frame.leds)
+                        if (!bleConnection.sendRawLeds(
+                                frame.leds,
+                                expectedBrand = BoardBrand.KILTER,
+                            )
+                        ) return@safeLaunch
                         delay(250)
                     }
                 }
-                bleConnection.clearBoard()
+                bleConnection.clearBoard(expectedBrand = BoardBrand.KILTER)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -1981,7 +1985,7 @@ class BoardBrowserViewModel @Inject constructor(
         _isAnimating.value = false
         viewModelScope.safeLaunch(TAG) {
             runCatching {
-                bleConnection.clearBoard()
+                bleConnection.clearBoard(expectedBrand = BoardBrand.KILTER)
             }
                 .onFailure { android.util.Log.w("BoardBrowserVM", "stopAnimation clearBoard failed", it) }
         }

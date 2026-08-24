@@ -38,6 +38,14 @@ class BoardRelayPolicyTest {
     }
 
     @Test
+    fun `Quantum rejects raw relay protocol`() {
+        assertEquals(
+            BoardRelayAvailability.UNSUPPORTED_PROTOCOL,
+            BoardRelayPolicy.availability(board(brand = BoardBrand.QUANTUM)),
+        )
+    }
+
+    @Test
     fun `relay endpoint cannot be relayed again`() {
         assertEquals(
             BoardRelayAvailability.RELAY_ENDPOINT,

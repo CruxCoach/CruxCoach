@@ -54,6 +54,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -80,6 +81,7 @@ import com.cruxcoach.android.ui.board.ClimbRenderData
 import com.cruxcoach.android.ui.board.KilterBoardVisualization
 import com.cruxcoach.android.ui.board.MoonBoardAssetState
 import com.cruxcoach.android.ui.board.MoonBoardVisualization
+import com.cruxcoach.android.ui.board.QuantumLayerStatusStrip
 import com.cruxcoach.android.ui.board.SessionQueueSheet
 import com.cruxcoach.android.ui.board.SessionSummarySheet
 import com.cruxcoach.android.ui.board.rememberMoonBoardAsset
@@ -117,6 +119,7 @@ fun PlaylistPlayerScreen(
 ) {
     val playback by viewModel.playbackState.collectAsStateWithLifecycle()
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val boardLayers by viewModel.boardLayerState.collectAsStateWithLifecycle()
     var showQueueSheet by remember { mutableStateOf(false) }
     var showBleSheet by remember { mutableStateOf(false) }
     val bleConnectionViewModel: BleConnectionViewModel = hiltViewModel()
@@ -387,8 +390,9 @@ fun PlaylistPlayerScreen(
                     }
                 },
                 label = "player_content",
-            ) {
-                ClimbingContent(
+            ) { targetIndex ->
+                key(targetIndex) {
+                    ClimbingContent(
                         state = state,
                         playback = playback,
                         onSwipeNext = { viewModel.playback.next() },
@@ -402,7 +406,9 @@ fun PlaylistPlayerScreen(
                         },
                         onQuickLog = { viewModel.quickLog(it) },
                         onNavigateToSetter = onNavigateToSetter,
-                )
+                        boardLayers = boardLayers,
+                    )
+                }
             }
         }
     }
@@ -417,6 +423,7 @@ private fun ClimbingContent(
     onClimbTapped: (String, Int) -> Unit,
     onQuickLog: (Boolean) -> Unit,
     onNavigateToSetter: (String) -> Unit,
+    boardLayers: com.cruxcoach.android.ble.BoardLayerState,
 ) {
     val render = state.render
     val density = LocalDensity.current
@@ -464,7 +471,24 @@ private fun ClimbingContent(
                 modifier = Modifier.testTag("player_climb_name"),
             )
         }
-        Spacer(Modifier.height(12.dp))
+        if (render?.climb?.brand == BoardBrand.QUANTUM) {
+            Spacer(Modifier.height(8.dp))
+            QuantumLayerStatusStrip(
+                state = boardLayers,
+                currentClimbUuid = render.climb.uuid,
+                currentPlacements = render.holds.mapTo(HashSet()) { it.placementId },
+                // The complete assign/replace/remove controls live on the
+                // occurrence's detail page; the running list stays compact.
+                onOpen = {
+                    onClimbTapped(
+                        render.climb.uuid,
+                        playback.currentClimb?.angle ?: 40,
+                    )
+                },
+                testTag = "playlist_quantum_layer_rack",
+            )
+        }
+        Spacer(Modifier.height(if (render?.climb?.brand == BoardBrand.QUANTUM) 8.dp else 12.dp))
 
         // Board area flexes into whatever height remains — header, log
         // buttons and transport NEVER require scrolling. The viz sizes by

@@ -68,8 +68,10 @@ object LocalShareSchema {
      * The caller must VACUUM afterwards — DELETE alone leaves the row
      * images recoverable from free pages.
      */
-    val SNAPSHOT_SCRUB: List<String> = listOf(
-        // The peer wire format predates quantum_route_refs. Until its version
+    val V1_QUANTUM_SCRUB: List<String> = listOf(
+        // The v1 peer wire format predates quantum_route_refs. Keep this exact
+        // compatibility view for old receivers; v2 carries the complete
+        // Quantum catalogue including the controller UUID bridge.
         // is bumped, remove Quantum catalogue + geometry from the served copy
         // so pre-0.2.2 peers never receive an unknown/inoperable board. The
         // live DB is untouched and Quantum re-downloads from its isolated
@@ -85,6 +87,9 @@ object LocalShareSchema {
         """DELETE FROM placement_roles WHERE board_brand = 'quantum'""",
         """DELETE FROM quantum_route_refs""",
         """DELETE FROM quantum_route_metadata""",
+    ).map { it.trimIndent() }
+
+    val PRIVACY_SCRUB: List<String> = listOf(
         """DELETE FROM climb_stats WHERE climb_uuid IN
            (SELECT uuid FROM climbs WHERE COALESCE(source, 'kilter') = 'local')""",
         """DELETE FROM climbs WHERE COALESCE(source, 'kilter') = 'local'""",
@@ -99,6 +104,9 @@ object LocalShareSchema {
         // leakage with no functional upside.
         """UPDATE climbs SET kilter_author_uuid = NULL, kilter_error = NULL""",
     ).map { it.trimIndent() }
+
+    /** Historical v1 scrub contract. */
+    val SNAPSHOT_SCRUB: List<String> = V1_QUANTUM_SCRUB + PRIVACY_SCRUB
 
     // ── Peer-share column contract (the drift guard) ────────────────────
 
@@ -266,14 +274,12 @@ object LocalShareSchema {
                 "from the served snapshot by [SNAPSHOT_SCRUB], never imported."
         ),
         "quantum_route_refs" to PeerTableRule(
-            false,
-            "external controller UUID bridge; local-share v1 cannot carry it atomically, " +
-                "so Quantum rows are scrubbed and re-downloaded from their isolated catalogue"
+            true,
+            "v2 copies the public external-controller UUID bridge atomically; v1 scrubs Quantum"
         ),
         "quantum_route_metadata" to PeerTableRule(
-            false,
-            "Quantum vendor grade/rules metadata; scrubbed with Quantum rows and rebuilt " +
-                "from the isolated catalogue rather than copied through local-share v1"
+            true,
+            "v2 copies public Quantum vendor grade/rules metadata; v1 scrubs Quantum"
         ),
         "ExerciseLibrary" to PeerTableRule(false, "training content, not board catalogue"),
     )

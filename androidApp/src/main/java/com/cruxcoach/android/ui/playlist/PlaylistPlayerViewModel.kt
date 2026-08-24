@@ -2,6 +2,7 @@ package com.cruxcoach.android.ui.playlist
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.cruxcoach.android.ble.BoardLayerManager
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.IntensityZoneManager
 import com.cruxcoach.android.data.PlaylistPlaybackCoordinator
@@ -54,10 +55,13 @@ class PlaylistPlayerViewModel @Inject constructor(
     private val personalBoardRepo: PersonalBoardRepository,
     private val zoneManager: IntensityZoneManager,
     private val boardSessionManager: com.cruxcoach.android.data.BoardSessionManager,
+    boardLayerManager: BoardLayerManager,
     val climbNavState: ClimbNavigationState,
 ) : ViewModel() {
 
     val playbackState: StateFlow<PlaylistPlaybackState> = playback.state
+    /** Local physical-controller rack; playlists never publish this state. */
+    val boardLayerState = boardLayerManager.state
 
     private val _state = MutableStateFlow(PlaylistPlayerState())
     val state = _state.asStateFlow()

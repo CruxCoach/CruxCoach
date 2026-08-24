@@ -1235,6 +1235,14 @@ class ClimbEditorViewModel @Inject constructor(
      */
     private suspend fun syncLeds() {
         val cur = _state.value
+        if (cur.editor.brand == BoardBrand.QUANTUM) {
+            // Quantum projections are controller-owned layers. The generic
+            // editor mirror has no explicit rack slot/route identity and must
+            // not fall back to the shared all-zero protocol user. Users can
+            // stage the saved climb from detail once it has a real route UUID.
+            Log.d(TAG, "syncLeds(quantum): suppressed until a scoped layer is assigned")
+            return
+        }
         if (cur.editor.brand == BoardBrand.MOONBOARD) {
             // MoonBoard preview: the board lights its own LEDs from the
             // climb frame (no per-hold LED address map like Kilter). Re-use

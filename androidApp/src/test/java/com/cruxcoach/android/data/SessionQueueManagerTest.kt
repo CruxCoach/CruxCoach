@@ -697,6 +697,31 @@ class SessionQueueManagerTest {
     }
 
     @Test
+    fun `loadPlaylist always starts local only even when joinable is requested`() {
+        queueManager.loadPlaylist(
+            "Host",
+            listOf(QueueItem("a", 40)),
+            SessionVisibility.JOINABLE,
+        )
+
+        assertEquals(SessionVisibility.LOCAL_ONLY, queueManager.state.value.visibility)
+        assertEquals(SessionVisibility.LOCAL_ONLY, queueManager.state.value.visibilityRequested)
+    }
+
+    @Test
+    fun `loadPlaylist cannot repurpose an active joinable session`() {
+        queueManager.startQueue("Shared host", SessionVisibility.JOINABLE)
+        queueManager.addClimb("shared", 40)
+
+        queueManager.loadPlaylist("Private", listOf(QueueItem("private", 30)))
+
+        assertEquals(SessionVisibility.JOINABLE, queueManager.state.value.visibility)
+        assertEquals(listOf("shared"), queueManager.state.value.queue.map { it.climbUuid })
+        assertFalse(queueManager.state.value.isPlaylist)
+        assertFalse(queueManager.isPlaylistQueue)
+    }
+
+    @Test
     fun `loadPlaylist replaces an existing ad-hoc queue`() {
         queueManager.startQueue("Host")
         queueManager.addClimb("old", 40)

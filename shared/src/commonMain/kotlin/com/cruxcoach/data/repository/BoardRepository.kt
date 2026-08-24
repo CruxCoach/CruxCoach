@@ -402,6 +402,10 @@ interface BoardClimbQueries {
     fun getClimbByUuid(uuid: String, angle: Int): ClimbWithStats?
     /** Upstream route UUID used by the Quantum 2.0.14 BLE protocol. */
     fun getQuantumExternalRouteUuid(appUuid: String): String? = null
+    /** Resolve a controller-reported Quantum route for one physical model.
+     * The model is mandatory because its app UUID and placement ids are
+     * model-local even when the upstream route UUID is shared. */
+    fun getQuantumClimbByExternalRoute(routeUuid: String, model: String): ClimbWithStats? = null
     /** Defensive fallback for [getClimbByUuid]: resolves a stored row whose
      *  uuid matches [uuid] only after normalization (strip hyphens +
      *  lowercase on both sides). The board DB mixes uuid formats (legacy

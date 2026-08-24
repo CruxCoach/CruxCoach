@@ -10,10 +10,14 @@ import java.security.MessageDigest
 /** Wire contract for the peer-to-peer offline-share flow. */
 object LocalShareProtocol {
     const val VERSION = 1
+    const val VERSION_V2 = 2
     const val MANIFEST_PATH = "/v1/manifest"
+    const val V2_MANIFEST_PATH = "/v2/manifest"
     const val COMPLETE_PATH = "/v1/complete"
     const val APK_PATH = "/CruxCoach.apk"
     const val BOARD_PATH = "/board.db.gz"
+    const val V2_BOARD_PATH = "/v2/board.db.gz"
+    const val PROTOCOL_HEADER = "X-CruxCoach-Share-Protocol"
 
     data class Invitation(
         val baseUrl: String,
@@ -43,6 +47,7 @@ object LocalShareProtocol {
     )
 
     data class Manifest(
+        val protocolVersion: Int,
         val sessionId: String,
         val apkVersionCode: Long,
         val apkVersionName: String,
@@ -73,7 +78,10 @@ object LocalShareProtocol {
 
     fun parseManifest(json: String): Manifest {
         val root = JSONObject(json)
-        require(root.getInt("protocolVersion") == VERSION) { "Unsupported share protocol" }
+        val protocolVersion = root.getInt("protocolVersion")
+        require(protocolVersion == VERSION || protocolVersion == VERSION_V2) {
+            "Unsupported share protocol"
+        }
         val apkJson = root.getJSONObject("apk")
         val boardJson = root.getJSONObject("board")
         val boardStatus = boardJson.getString("status")
@@ -99,6 +107,7 @@ object LocalShareProtocol {
             null
         }
         return Manifest(
+            protocolVersion = protocolVersion,
             sessionId = root.getString("sessionId").also {
                 require(it.matches(Regex("[0-9a-fA-F-]{16,64}"))) { "Invalid session id" }
             },
@@ -115,6 +124,14 @@ object LocalShareProtocol {
             require(manifest.apkVersionCode > 0L)
             require(manifest.apk.sizeBytes > 0L)
             manifest.board?.let {
+                val expectedBoardPath = when (manifest.protocolVersion) {
+                    VERSION -> BOARD_PATH
+                    VERSION_V2 -> V2_BOARD_PATH
+                    else -> error("Unsupported share protocol")
+                }
+                require(it.artifact.path == expectedBoardPath) {
+                    "Board artifact does not match share protocol"
+                }
                 require(it.artifact.sizeBytes > 0L)
                 require(it.uncompressedSizeBytes > 0L)
                 require(it.schemaVersion >= 0)

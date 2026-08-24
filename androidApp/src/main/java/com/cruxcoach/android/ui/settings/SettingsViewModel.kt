@@ -551,7 +551,9 @@ class SettingsViewModel @Inject constructor(
     fun updateLedColor(roleId: Int, colorByte: Int) {
         viewModelScope.launch {
             userPreferences.setLedColor(roleId, colorByte)
-            if (bleConnection.isConnected()) {
+            if (bleConnection.isConnected() &&
+                bleConnection.connectedBoardBrand.value != BoardBrand.QUANTUM
+            ) {
                 val current = _state.value.ledColors
                 val updated = LedHoldColors(
                     start = if (roleId == HoldRole.START) colorByte else current.start,
@@ -567,7 +569,9 @@ class SettingsViewModel @Inject constructor(
     fun resetLedColors() {
         viewModelScope.launch {
             userPreferences.resetLedColors()
-            if (bleConnection.isConnected()) {
+            if (bleConnection.isConnected() &&
+                bleConnection.connectedBoardBrand.value != BoardBrand.QUANTUM
+            ) {
                 bleConnection.resendWithColors(LedHoldColors().toRoleColorMap())
             }
         }
@@ -576,7 +580,9 @@ class SettingsViewModel @Inject constructor(
     fun setKilterColors() {
         viewModelScope.launch {
             userPreferences.setKilterColors()
-            if (bleConnection.isConnected()) {
+            if (bleConnection.isConnected() &&
+                bleConnection.connectedBoardBrand.value != BoardBrand.QUANTUM
+            ) {
                 bleConnection.resendWithColors(LedHoldColors.kilterStandard().toRoleColorMap())
             }
         }
@@ -720,11 +726,15 @@ class SettingsViewModel @Inject constructor(
                     for (frame in frames) {
                         // sendRawLeds encodes with the CONNECTED board's
                         // encoder (correct apiLevel), not a hardcoded @3 one.
-                        bleConnection.sendRawLeds(frame.leds)
+                        if (!bleConnection.sendRawLeds(
+                                frame.leds,
+                                expectedBrand = BoardBrand.KILTER,
+                            )
+                        ) return@launch
                         delay(250)
                     }
                 }
-                bleConnection.clearBoard()
+                bleConnection.clearBoard(expectedBrand = BoardBrand.KILTER)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -742,7 +752,9 @@ class SettingsViewModel @Inject constructor(
         animationJob?.cancel()
         animationJob = null
         _state.update { it.copy(isAnimating = false) }
-        viewModelScope.launch { bleConnection.clearBoard() }
+        viewModelScope.launch {
+            bleConnection.clearBoard(expectedBrand = BoardBrand.KILTER)
+        }
     }
 
     // ── Data management ──────────────────────────────────────────

@@ -161,11 +161,8 @@ class PlaylistPlaybackCoordinatorTest {
 
     @Test
     fun `permission retry republishes a blocked host session`() {
-        queueManager.loadPlaylist(
-            "Playlist",
-            listOf(QueueItem("a", 40)),
-            SessionVisibility.JOINABLE,
-        )
+        queueManager.startQueue("Shared session", SessionVisibility.JOINABLE)
+        queueManager.addClimb("a", 40)
         queueManager.setVisibility(SessionVisibility.LOCAL_ONLY)
         awaitState { it.sharingBlocked }
 
@@ -176,11 +173,8 @@ class PlaylistPlaybackCoordinatorTest {
 
     @Test
     fun `stop as joinable host ends sharing and queue, stop as participant leaves`() {
-        queueManager.loadPlaylist(
-            "Playlist",
-            listOf(QueueItem("a", 40)),
-            SessionVisibility.JOINABLE,
-        )
+        queueManager.startQueue("Shared session", SessionVisibility.JOINABLE)
+        queueManager.addClimb("a", 40)
         coordinator.stop()
         // Handing over is the default; ending it for the whole group is the
         // climber's explicit second choice.

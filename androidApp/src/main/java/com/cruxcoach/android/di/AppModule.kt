@@ -383,8 +383,13 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideBoardBleConnection(@ApplicationContext context: Context): BoardBleConnection {
-        return PerfLogger.trace("DI: BoardBleConnection") { BoardBleConnection(context) }
+    fun provideBoardBleConnection(
+        @ApplicationContext context: Context,
+        boardLayerManager: com.cruxcoach.android.ble.BoardLayerManager,
+    ): BoardBleConnection {
+        return PerfLogger.trace("DI: BoardBleConnection") {
+            BoardBleConnection(context, boardLayerManager::ownsIdentity)
+        }
     }
 
     @Provides
@@ -528,9 +533,14 @@ object AppModule {
         boardRepository: BoardRepository,
         climbNameResolver: ClimbNameResolver,
         userPreferences: UserPreferences,
+        boardLayerManager: com.cruxcoach.android.ble.BoardLayerManager,
     ): SessionQueueManager {
         return SessionQueueManager(
-            bleConnection, boardRepository, climbNameResolver, userPreferences,
+            bleConnection = bleConnection,
+            boardRepository = boardRepository,
+            climbNameResolver = climbNameResolver,
+            userPreferences = userPreferences,
+            boardLayerManager = boardLayerManager,
         )
     }
 

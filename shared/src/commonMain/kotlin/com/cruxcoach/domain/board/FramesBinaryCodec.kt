@@ -13,7 +13,10 @@ package com.cruxcoach.domain.board
  *   → `[0xFF][frameCount][len_lo][len_hi][entries...][len_lo][len_hi][entries...]...`
  *   Removal entries (`x{id}`) use `0xFE` as the third byte.
  *
- * Magic byte `0xFF` distinguishes multi-frame (max placementId ~16000 → high byte ≤ 0x3E).
+ * Magic byte `0xFF` distinguishes multi-frame for placement IDs that fit the
+ * legacy unsigned 16-bit representation. Boards such as Quantum use larger
+ * placement IDs; those strings are stored as UTF-8 text BLOBs so no bits are
+ * discarded. [decode] already accepts that backwards-compatible shape.
  * Removal marker `0xFE` is outside valid roleId range (12-15, 42-45).
  */
 object FramesBinaryCodec {
@@ -36,6 +39,19 @@ object FramesBinaryCodec {
         if (framesText.isEmpty()) return ByteArray(0)
 
         val frames = framesText.split(",")
+        // The compact legacy shape only allocates two bytes to placement IDs.
+        // Falling back to the already-supported text BLOB representation is
+        // essential for Quantum IDs (currently in the tens of millions):
+        // masking those IDs into two bytes silently changes the selected hold.
+        if (frames.any { frame ->
+                parseEntries(frame).any { entry ->
+                    entry.id !in 0..0xFFFF ||
+                        (entry.type != 'x' && entry.role !in 0 until (REMOVAL_MARKER.toInt() and 0xFF))
+                }
+            }
+        ) {
+            return framesText.encodeToByteArray()
+        }
         if (frames.size == 1) {
             return encodeSingleFrame(frames[0])
         }
@@ -45,7 +61,7 @@ object FramesBinaryCodec {
     fun decode(blob: ByteArray): String {
         if (blob.isEmpty()) return ""
 
-        if (blob[0] == MULTI_FRAME_MAGIC) {
+        if (blob[0] == MULTI_FRAME_MAGIC && isWellFormedMultiFrame(blob)) {
             return decodeMultiFrame(blob)
         }
         // Detect raw UTF-8 text BLOBs (from CAST migration, not yet binary-encoded).
@@ -55,6 +71,28 @@ object FramesBinaryCodec {
             return blob.decodeToString()
         }
         return decodeSingleFrame(blob)
+    }
+
+    /**
+     * A single-frame placement may also start with 0xFF when its ID's low byte
+     * is 255. Treat the marker as a multi-frame header only when every declared
+     * frame has a complete, three-byte-aligned body and consumes the full BLOB.
+     */
+    private fun isWellFormedMultiFrame(blob: ByteArray): Boolean {
+        if (blob.size < 8) return false // two frames need header + at least one entry each
+        val frameCount = blob[1].toInt() and 0xFF
+        if (frameCount < 2) return false
+
+        var pos = 2
+        repeat(frameCount) {
+            if (pos + 2 > blob.size) return false
+            val frameLen =
+                (blob[pos].toInt() and 0xFF) or ((blob[pos + 1].toInt() and 0xFF) shl 8)
+            pos += 2
+            if (frameLen % BYTES_PER_ENTRY != 0 || pos + frameLen > blob.size) return false
+            pos += frameLen
+        }
+        return pos == blob.size
     }
 
     private fun looksLikeText(blob: ByteArray): Boolean {

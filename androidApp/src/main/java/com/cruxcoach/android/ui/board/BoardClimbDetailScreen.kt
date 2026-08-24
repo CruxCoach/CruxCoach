@@ -58,6 +58,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
@@ -70,10 +71,13 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.cruxcoach.android.ble.BoardProjectionPolicy
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ble.BoardLayerManager
+import com.cruxcoach.android.ble.BoardClimbLayer
 import com.cruxcoach.android.ble.BoardLayerStatus
 import com.cruxcoach.android.ble.BoardLayerConflictPolicy
+import com.cruxcoach.android.ble.reservedLayerColors
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.LedHoldColors
+import com.cruxcoach.android.data.SessionVisibility
 import com.cruxcoach.android.ui.common.BleStatusArea
 import com.cruxcoach.android.ui.common.LocalSessionQueueManager
 import com.cruxcoach.android.ui.common.RestTimerBannerSlot
@@ -120,6 +124,7 @@ fun BoardClimbDetailScreen(
     // BLE sheet lives here (once), not inside per-page content
     val detailQueueManager = com.cruxcoach.android.ui.common.LocalSessionQueueManager.current
     val detailQueueState by detailQueueManager.state.collectAsStateWithLifecycle()
+    val layerControlsAllowed = localQuantumLayerManagementAllowed(detailQueueState)
 
     // Swipe navigation: only use queue items when the user navigated FROM the queue sheet.
     // When navigating from the browser, always use the full browser climb list —
@@ -150,10 +155,12 @@ fun BoardClimbDetailScreen(
         if (viewModel.initialClimbUuid in unique) unique
         else listOf(viewModel.initialClimbUuid)
     }
-    val navAngle = if (navigatedFromQueue && detailQueueState.isActive && detailQueueState.queue.isNotEmpty()) {
-        detailQueueState.queue.firstOrNull()?.angle ?: remember { viewModel.climbNavState.angle }
-    } else {
-        remember { viewModel.climbNavState.angle }
+    val fallbackNavAngle = remember { viewModel.climbNavState.angle }
+    val navAngleFor: (String) -> Int = { uuid ->
+        if (navigatedFromQueue && detailQueueState.isActive) {
+            if (uuid == viewModel.initialClimbUuid) fallbackNavAngle
+            else detailQueueState.queue.firstOrNull { it.climbUuid == uuid }?.angle ?: fallbackNavAngle
+        } else fallbackNavAngle
     }
     val initialIndex = remember(navUuids) {
         val idx = navUuids.indexOf(viewModel.initialClimbUuid)
@@ -436,6 +443,8 @@ fun BoardClimbDetailScreen(
         sendMode = state.boardSendMode,
         sessionRole = detailQueueState.role,
         sessionConnecting = detailQueueState.isConnecting,
+        localPlaylist = detailQueueState.isPlaylist &&
+            detailQueueState.visibility == SessionVisibility.LOCAL_ONLY,
         boardConnected = state.ble.connectionState == ConnectionState.CONNECTED ||
             state.ble.connectionState == ConnectionState.SENDING,
         hasDirectPayload = hasDirectPayload,
@@ -873,20 +882,28 @@ fun BoardClimbDetailScreen(
             )
 
             // Switch active climb when user settles on a new page
-            LaunchedEffect(pagerState) {
+            LaunchedEffect(pagerState, detailQueueState.queue, fallbackNavAngle) {
                 snapshotFlow { pagerState.settledPage }.collect { page ->
                     val uuid = navUuids.getOrNull(page) ?: return@collect
-                    viewModel.switchClimb(uuid, navAngle)
+                    viewModel.switchClimb(uuid, navAngleFor(uuid))
                 }
             }
 
             // Preload adjacent pages for smooth swiping (wait until current page is loaded)
-            LaunchedEffect(pagerState.settledPage, state.isLoading) {
+            LaunchedEffect(
+                pagerState.settledPage,
+                state.isLoading,
+                detailQueueState.queue,
+                fallbackNavAngle,
+            ) {
                 if (state.isLoading) return@LaunchedEffect
                 val settled = pagerState.settledPage
                 listOf(settled - 1, settled + 1)
                     .filter { it in navUuids.indices }
-                    .forEach { viewModel.preloadClimb(navUuids[it], navAngle) }
+                    .forEach { index ->
+                        val uuid = navUuids[index]
+                        viewModel.preloadClimb(uuid, navAngleFor(uuid))
+                    }
             }
 
             HorizontalPager(
@@ -916,6 +933,7 @@ fun BoardClimbDetailScreen(
                     onNavigateBack = onNavigateBack,
                     onNavigateToBugReport = onNavigateToBugReport,
                     onNavigateToSetter = onNavigateToSetter,
+                    layerControlsAllowed = layerControlsAllowed,
                 )
             }
         } else {
@@ -926,6 +944,7 @@ fun BoardClimbDetailScreen(
                 onNavigateBack = onNavigateBack,
                 onNavigateToBugReport = onNavigateToBugReport,
                 onNavigateToSetter = onNavigateToSetter,
+                layerControlsAllowed = layerControlsAllowed,
                 modifier = Modifier.padding(padding)
             )
         }
@@ -966,74 +985,13 @@ private fun BoardLayerStrip(
 ) {
     val maxLayers = state.climb?.brand?.maxSimultaneousClimbs ?: return
     if (maxLayers <= 1) return
-    val bySlot = state.boardLayers.layers.associateBy { it.slot }
-    val currentUuid = state.climb?.uuid
-    Surface(
-        onClick = onOpen,
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag("board_layer_strip"),
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Text(
-                stringResource(R.string.board_layers_title),
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold,
-            )
-            for (slot in 0 until maxLayers) {
-                val layer = bySlot[slot]
-                val onWall = layer?.confirmedRouteUuid != null
-                Surface(
-                    modifier = Modifier
-                        .size(width = 26.dp, height = 20.dp)
-                        .testTag("board_layer_strip_slot_${slot + 1}"),
-                    shape = RoundedCornerShape(6.dp),
-                    color = layer?.let {
-                        Color(it.color).copy(alpha = if (onWall) 1f else 0.35f)
-                    } ?: Color.Transparent,
-                    border = androidx.compose.foundation.BorderStroke(
-                        if (layer?.climbUuid != null && layer.climbUuid == currentUuid) 2.dp else 1.dp,
-                        if (layer?.climbUuid != null && layer.climbUuid == currentUuid) OrangeAccent
-                        else MaterialTheme.colorScheme.outlineVariant,
-                    ),
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        // The number, not just the colour: two of the four
-                        // controller colours are a hard pair to tell apart.
-                        Text(
-                            "${slot + 1}",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = if (layer != null) DarkBackground
-                            else MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-            }
-            Spacer(Modifier.weight(1f))
-            Text(
-                stringResource(
-                    R.string.board_layers_occupied,
-                    state.boardLayers.occupiedCount,
-                    maxLayers,
-                ),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Icon(
-                Icons.Default.ArrowDropDown,
-                contentDescription = stringResource(R.string.board_layers_open),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(18.dp),
-            )
-        }
-    }
+    QuantumLayerStatusStrip(
+        state = state.boardLayers,
+        currentClimbUuid = state.climb?.uuid,
+        currentPlacements = state.holds.mapTo(HashSet()) { it.placementId },
+        onOpen = onOpen,
+        modifier = Modifier.testTag("board_layer_strip"),
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1043,10 +1001,13 @@ private fun BoardLayerSheet(
     onDismiss: () -> Unit,
     onSelectSlot: (Int) -> Unit,
     onSelectColor: (Int) -> Unit,
+    onSelectSuggestion: (Int, Int) -> Unit,
     onAssignCurrent: () -> Unit,
     onSendSlot: (Int) -> Unit,
     onSendAll: () -> Unit,
+    onCancelReplacement: (Int) -> Unit,
     onRemove: (Int) -> Unit,
+    controlsAllowed: Boolean,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
@@ -1060,10 +1021,13 @@ private fun BoardLayerSheet(
                 state = state,
                 onSelectSlot = onSelectSlot,
                 onSelectColor = onSelectColor,
+                onSelectSuggestion = onSelectSuggestion,
                 onAssignCurrent = onAssignCurrent,
                 onSendSlot = onSendSlot,
                 onSendAll = onSendAll,
+                onCancelReplacement = onCancelReplacement,
                 onRemove = onRemove,
+                controlsAllowed = controlsAllowed,
             )
             Spacer(Modifier.height(24.dp))
         }
@@ -1098,7 +1062,7 @@ internal fun BoardLayerColorPicker(
                 onClick = { if (available) onSelectColor(color) },
                 enabled = available,
                 modifier = Modifier
-                    .size(34.dp)
+                    .size(48.dp)
                     .testTag("board_layer_color_$index")
                     .semantics {
                         role = Role.RadioButton
@@ -1118,21 +1082,27 @@ internal fun BoardLayerColorPicker(
 @Composable
 private fun BoardLayerRack(
     state: ClimbDetailState,
-    /**
-     * A BoardCell group owns this wall. Layers are a direct-controller
-     * feature: the mesh carries exactly one canonical projection, so a layer
-     * sent through it would arrive stripped of its identity and colour and
-     * still report success. Staging stays open; only the lamps close.
-     */
+    /** Shared/joinable sessions own wall mutations. A private local playlist
+     * may use these controls because it never exposes a joinable queue. */
     onSelectSlot: (Int) -> Unit,
     onSelectColor: (Int) -> Unit,
+    onSelectSuggestion: (Int, Int) -> Unit,
     onAssignCurrent: () -> Unit,
     onSendSlot: (Int) -> Unit,
     onSendAll: () -> Unit,
+    onCancelReplacement: (Int) -> Unit,
     onRemove: (Int) -> Unit,
+    controlsAllowed: Boolean,
 ) {
     val maxLayers = BoardBrand.QUANTUM.maxSimultaneousClimbs
     val ownBySlot = state.boardLayers.layers.associateBy { it.slot }
+    val summary = QuantumLayerUiPolicy.summarize(
+        state = state.boardLayers,
+        currentClimbUuid = state.climb?.uuid,
+        currentPlacements = state.holds.mapTo(HashSet()) { it.placementId },
+        maxLayers = maxLayers,
+    )
+    val uiBySlot = summary.slots.associateBy { it.slot }
     val currentLayer = state.climb?.uuid?.let { uuid ->
         state.boardLayers.layers.firstOrNull { it.climbUuid == uuid }
     }
@@ -1143,16 +1113,14 @@ private fun BoardLayerRack(
     val selectedColor = state.selectedBoardLayerColor
         ?: selectedLayer?.color
         ?: selectedSlot?.let { BoardLayerManager.LAYER_COLORS[it] }
-    val occupiedColors = state.boardLayers.layers.mapTo(mutableSetOf()) { it.color } +
-        state.boardLayers.externalLayers.map { it.color }
-    val sharedHoldCount = BoardLayerConflictPolicy.sharedHoldCount(
-        state.holds,
-        state.boardLayers.layers,
-        selectedSlot,
+    val layerAssessment = BoardLayerConflictPolicy.assess(
+        candidate = state.holds,
+        activeLayers = state.boardLayers.layers,
+        externalLayers = state.boardLayers.externalLayers,
+        replacingSlot = selectedSlot,
     )
-    val colorsOnOtherLayers = state.boardLayers.layers
-        .filterNot { it.slot == selectedSlot }.mapTo(mutableSetOf()) { it.color } +
-        state.boardLayers.externalLayers.map { it.color }
+    val sharedHoldCount = layerAssessment.sharedHoldCount
+    val colorsOnOtherLayers = state.boardLayers.reservedLayerColors(selectedSlot)
     val selectedColorConflict = selectedColor != null && selectedColor in colorsOnOtherLayers
     val connected = state.ble.connectionState == ConnectionState.CONNECTED
     val duplicateHoldCount = state.boardLayers.layers
@@ -1207,18 +1175,116 @@ private fun BoardLayerRack(
                 }
             }
 
+            if (!controlsAllowed) {
+                Text(
+                    stringResource(R.string.board_layer_group_owns_board),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.testTag("board_layer_controls_blocked"),
+                )
+            }
+
+            val suggestedSlot = summary.suggestedSlot
+            val suggestedColor = summary.suggestedColor
+            if (suggestedSlot != null && suggestedColor != null) {
+                val colorName = stringResource(boardLayerColorName(suggestedColor))
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = SuccessGreen.copy(alpha = 0.12f),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp, SuccessGreen.copy(alpha = 0.55f),
+                    ),
+                    modifier = Modifier.fillMaxWidth().testTag("quantum_layer_suggestion"),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                stringResource(
+                                    R.string.quantum_layer_suggestion,
+                                    suggestedSlot + 1,
+                                    colorName,
+                                ),
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Text(
+                                stringResource(
+                                    if (summary.suggestionUsesExistingSlot) {
+                                        R.string.quantum_layer_suggestion_existing_reason
+                                    } else {
+                                        R.string.quantum_layer_suggestion_reason
+                                    },
+                                ),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        if (selectedSlot != suggestedSlot || selectedColor != suggestedColor) {
+                            TextButton(
+                                onClick = { onSelectSuggestion(suggestedSlot, suggestedColor) },
+                                enabled = controlsAllowed && !state.ble.isSending,
+                                modifier = Modifier.testTag("quantum_layer_select_suggestion"),
+                            ) {
+                                Text(stringResource(R.string.quantum_layer_select_suggestion))
+                            }
+                        }
+                    }
+                }
+            }
+            summary.suggestionBlock?.let { block ->
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = WarningYellow.copy(alpha = 0.12f),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp, WarningYellow.copy(alpha = 0.55f),
+                    ),
+                    modifier = Modifier.fillMaxWidth().testTag("quantum_layer_suggestion_blocked"),
+                ) {
+                    Text(
+                        stringResource(quantumLayerSuggestionBlockResource(block)),
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
             if (state.boardLayers.externalLayers.isNotEmpty()) {
+                Text(
+                    stringResource(R.string.quantum_layer_foreign_title),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                )
                 Text(
                     stringResource(R.string.board_layers_external_explanation),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 state.boardLayers.externalLayers.forEachIndexed { index, external ->
+                    val colorName = stringResource(boardLayerColorName(external.color))
+                    val routeLabel = external.climbName ?: external.routeUuid.take(8)
+                    val foreignDescription = if (external.holds != null) {
+                        stringResource(
+                            R.string.quantum_layer_foreign_known,
+                            routeLabel,
+                            colorName,
+                        )
+                    } else {
+                        stringResource(
+                            R.string.quantum_layer_foreign_unknown,
+                            routeLabel,
+                            colorName,
+                        )
+                    }
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(10.dp))
-                            .padding(horizontal = 10.dp, vertical = 7.dp),
+                            .padding(horizontal = 10.dp, vertical = 7.dp)
+                            .clearAndSetSemantics { contentDescription = foreignDescription },
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
@@ -1229,7 +1295,10 @@ private fun BoardLayerRack(
                             fontWeight = FontWeight.Bold,
                         )
                         Text(
-                            external.routeUuid.take(8),
+                            if (external.holds != null) routeLabel else stringResource(
+                                R.string.quantum_layer_unknown_route,
+                                routeLabel,
+                            ),
                             modifier = Modifier.weight(1f),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1239,19 +1308,50 @@ private fun BoardLayerRack(
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                for (rowStart in 0 until maxLayers step 2) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        for (slot in rowStart until minOf(rowStart + 2, maxLayers)) {
+                // A layer with two 48dp actions cannot share half a compact
+                // phone row without collapsing its climb/status text. Four
+                // full-width rows remain compact vertically and readable down
+                // to the narrowest supported width.
+                for (slot in 0 until maxLayers) {
                             val layer = ownBySlot[slot]
+                            val slotUi = requireNotNull(uiBySlot[slot])
                             val selected = slot == selectedSlot
+                            val statusLabel = stringResource(
+                                quantumLayerStatusResource(slotUi.visualState),
+                            )
+                            val colorName = (layer?.confirmedColor ?: layer?.color)?.let {
+                                stringResource(boardLayerColorName(it))
+                            }
+                            val slotDescription = buildString {
+                                append(stringResource(R.string.board_layer_number, slot + 1))
+                                append(": ")
+                                append(statusLabel)
+                                colorName?.let { append(", "); append(it) }
+                                layer?.climbName?.let { append(", "); append(it) }
+                                if (layer?.confirmedRouteUuid != null &&
+                                    slotUi.visualState in setOf(
+                                        QuantumLayerVisualState.REPLACING,
+                                        QuantumLayerVisualState.FAILED,
+                                    )
+                                ) {
+                                    append(". ")
+                                    append(stringResource(
+                                        R.string.quantum_layer_confirmed_previous,
+                                        layer.confirmedClimbName ?: layer.confirmedRouteUuid.take(8),
+                                    ))
+                                }
+                            }
                             Surface(
+                                onClick = { onSelectSlot(slot) },
+                                enabled = controlsAllowed,
                                 modifier = Modifier
-                                    .weight(1f)
+                                    .fillMaxWidth()
                                     .testTag("board_layer_slot_${slot + 1}")
-                                    .clickable { onSelectSlot(slot) },
+                                    .semantics {
+                                        role = Role.RadioButton
+                                        this.selected = selected
+                                        contentDescription = slotDescription
+                                    },
                                 shape = RoundedCornerShape(12.dp),
                                 color = if (selected) {
                                     OrangeAccent.copy(alpha = 0.16f)
@@ -1267,7 +1367,9 @@ private fun BoardLayerRack(
                                 ) {
                                     Box(
                                         Modifier.size(16.dp).background(
-                                            color = layer?.let { Color(it.color) }
+                                                    color = layer?.let {
+                                                        Color(it.confirmedColor ?: it.color)
+                                                    }
                                                 ?: MaterialTheme.colorScheme.outlineVariant,
                                             shape = CircleShape,
                                         ),
@@ -1286,29 +1388,42 @@ private fun BoardLayerRack(
                                         )
                                         if (layer != null) {
                                             Text(
-                                                when (layer.status) {
-                                                    BoardLayerStatus.PREVIEW -> stringResource(R.string.board_layer_preview)
-                                                    BoardLayerStatus.SENDING -> stringResource(R.string.board_layer_sending)
-                                                    BoardLayerStatus.CONFIRMED -> stringResource(R.string.board_layer_confirmed)
-                                                    BoardLayerStatus.FAILED -> stringResource(R.string.board_layer_failed)
-                                                },
+                                                statusLabel,
                                                 style = MaterialTheme.typography.labelSmall,
-                                                color = when (layer.status) {
-                                                    BoardLayerStatus.CONFIRMED -> SuccessGreen
-                                                    BoardLayerStatus.FAILED -> ErrorRed
+                                                color = when (slotUi.visualState) {
+                                                    QuantumLayerVisualState.ON_BOARD -> SuccessGreen
+                                                    QuantumLayerVisualState.FAILED -> ErrorRed
+                                                    QuantumLayerVisualState.UNKNOWN -> WarningYellow
                                                     else -> OrangeAccent
                                                 },
                                             )
+                                            if (layer.confirmedRouteUuid != null &&
+                                                slotUi.visualState in setOf(
+                                                    QuantumLayerVisualState.REPLACING,
+                                                    QuantumLayerVisualState.FAILED,
+                                                )
+                                            ) {
+                                                Text(
+                                                    stringResource(
+                                                        R.string.quantum_layer_confirmed_previous,
+                                                        layer.confirmedClimbName
+                                                            ?: layer.confirmedRouteUuid.take(8),
+                                                    ),
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    maxLines = 1,
+                                                )
+                                            }
                                         }
                                     }
                                     if (layer != null) {
                                         IconButton(
                                             onClick = { onSendSlot(slot) },
-                                            enabled = connected && !state.ble.isSending &&
+                                            enabled = controlsAllowed && connected && !state.ble.isSending &&
                                                 (layer.confirmedRouteUuid != null ||
                                                     state.boardLayers.occupiedCount < maxLayers),
                                             modifier = Modifier
-                                                .size(32.dp)
+                                                .size(48.dp)
                                                 .testTag("board_layer_send_${slot + 1}"),
                                         ) {
                                             Icon(
@@ -1328,22 +1443,27 @@ private fun BoardLayerRack(
                                             // Dropping a preview is local.
                                             // Dropping a live layer is a
                                             // TURN_OFF_USER on the wall.
-                                            enabled = !state.ble.isSending,
+                                            enabled = controlsAllowed && !state.ble.isSending,
                                             modifier = Modifier
-                                                .size(28.dp)
+                                                .size(48.dp)
                                                 .testTag("board_layer_remove_${slot + 1}"),
                                         ) {
                                             Icon(
                                                 Icons.Default.Delete,
-                                                contentDescription = stringResource(R.string.board_layer_remove),
+                                                contentDescription = stringResource(
+                                                    if (layer.confirmedRouteUuid != null) {
+                                                        R.string.quantum_layer_remove_live_one
+                                                    } else {
+                                                        R.string.quantum_layer_remove_plan_one
+                                                    },
+                                                    slot + 1,
+                                                ),
                                                 modifier = Modifier.size(17.dp),
                                             )
                                         }
                                     }
                                 }
                             }
-                        }
-                    }
                 }
             }
 
@@ -1361,12 +1481,12 @@ private fun BoardLayerRack(
                 )
                 BoardLayerColorPicker(
                     selectedColor = selectedColor,
-                    unavailableColors = occupiedColors - setOfNotNull(selectedLayer?.color),
+                    unavailableColors = state.boardLayers.reservedLayerColors(selectedSlot),
                     onSelectColor = onSelectColor,
                 )
                 OutlinedButton(
                     onClick = onAssignCurrent,
-                    enabled = !state.ble.isSending && !selectedColorConflict,
+                    enabled = controlsAllowed && !state.ble.isSending && !selectedColorConflict,
                     modifier = Modifier.fillMaxWidth().testTag("board_layer_assign_current"),
                 ) {
                     Icon(Icons.Default.Check, contentDescription = null)
@@ -1384,6 +1504,22 @@ private fun BoardLayerRack(
                         ),
                     )
                 }
+                val hasSelectedReplacementPlan = selectedLayer?.confirmedRouteUuid != null &&
+                    (!selectedLayer.confirmedRouteUuid.equals(selectedLayer.routeUuid, ignoreCase = true) ||
+                        selectedLayer.confirmedColor != selectedLayer.color)
+                if (hasSelectedReplacementPlan) {
+                    OutlinedButton(
+                        onClick = { onCancelReplacement(slot) },
+                        enabled = controlsAllowed && !state.ble.isSending,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("board_layer_cancel_replacement_${slot + 1}"),
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(stringResource(R.string.quantum_layer_cancel_replacement, slot + 1))
+                    }
+                }
                 if (sharedHoldCount > 0) {
                     Text(
                         stringResource(R.string.board_layer_preview_overlap_warning, sharedHoldCount),
@@ -1398,12 +1534,20 @@ private fun BoardLayerRack(
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
+                if (layerAssessment.unknownLayerCount > 0) {
+                    Text(
+                        stringResource(R.string.board_layer_error_external_unknown),
+                        color = WarningYellow,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
             }
 
             Button(
                 onClick = onSendAll,
-                enabled = connected && !state.ble.isSending &&
-                    state.boardLayers.layers.isNotEmpty() && canSendAll && duplicateHoldCount == 0,
+                enabled = controlsAllowed && connected && !state.ble.isSending &&
+                    state.boardLayers.layers.isNotEmpty() && canSendAll && duplicateHoldCount == 0 &&
+                    layerAssessment.unknownLayerCount == 0,
                 modifier = Modifier.fillMaxWidth().testTag("board_layer_send_all"),
             ) {
                 Icon(Icons.Default.Lightbulb, contentDescription = null)
@@ -1437,12 +1581,14 @@ private fun ClimbDetailPageContent(
     onNavigateBack: () -> Unit,
     onNavigateToBugReport: (title: String, description: String) -> Unit = { _, _ -> },
     onNavigateToSetter: (pubkey: String) -> Unit = {},
+    layerControlsAllowed: Boolean,
     modifier: Modifier = Modifier
 ) {
     val climbBugReportTitle = stringResource(R.string.error_bug_report_climb_title)
     val bleBugReportTitle = stringResource(R.string.error_bug_report_ble_title)
     var showDetails by remember { mutableStateOf(false) }
     var showLayers by remember { mutableStateOf(false) }
+    var pendingLiveLayerRemoval by remember { mutableStateOf<BoardClimbLayer?>(null) }
     LaunchedEffect(state.personalNoteDraft, showDetails, state.climb?.uuid) {
         if (showDetails && state.personalNoteDraft.trim() != state.personalNote) {
             delay(700)
@@ -1477,6 +1623,30 @@ private fun ClimbDetailPageContent(
             onRetryNote = { viewModel.savePersonalNote(state.personalNoteDraft) },
         )
     }
+    pendingLiveLayerRemoval?.let { layer ->
+        AlertDialog(
+            onDismissRequest = { pendingLiveLayerRemoval = null },
+            title = { Text(stringResource(R.string.quantum_layer_remove_live_title)) },
+            text = {
+                Text(stringResource(R.string.quantum_layer_remove_live_body, layer.slot + 1))
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        pendingLiveLayerRemoval = null
+                        viewModel.removeBoardLayer(layer.slot)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier.testTag("quantum_layer_remove_live_confirm"),
+                ) { Text(stringResource(R.string.quantum_layer_remove_live_confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingLiveLayerRemoval = null }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            },
+        )
+    }
     // A board that holds four climbs at once needs four climbs' worth of
     // controls, and the screen's whole point is that the wall gets the space.
     // So the rack is a sheet, like the other two board surfaces on this screen.
@@ -1486,10 +1656,17 @@ private fun ClimbDetailPageContent(
             onDismiss = { showLayers = false },
             onSelectSlot = viewModel::selectBoardLayer,
             onSelectColor = viewModel::selectBoardLayerColor,
+            onSelectSuggestion = viewModel::selectSuggestedBoardLayer,
             onAssignCurrent = viewModel::assignCurrentToBoardLayer,
             onSendSlot = viewModel::sendBoardLayer,
             onSendAll = viewModel::sendAllBoardLayers,
-            onRemove = viewModel::removeBoardLayer,
+            onCancelReplacement = viewModel::cancelBoardLayerReplacement,
+            onRemove = { slot ->
+                val layer = state.boardLayers.layers.firstOrNull { it.slot == slot }
+                if (layer?.confirmedRouteUuid != null) pendingLiveLayerRemoval = layer
+                else viewModel.removeBoardLayer(slot)
+            },
+            controlsAllowed = layerControlsAllowed,
         )
     }
     when {

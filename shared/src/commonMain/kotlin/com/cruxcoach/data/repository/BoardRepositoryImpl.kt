@@ -118,6 +118,15 @@ class BoardRepositoryImpl(
     override fun getQuantumExternalRouteUuid(appUuid: String): String? =
         q.getQuantumExternalRouteUuid(appUuid).executeAsOneOrNull()
 
+    override fun getQuantumClimbByExternalRoute(routeUuid: String, model: String): ClimbWithStats? {
+        val appUuid = q.getQuantumAppUuidByExternalRoute(routeUuid, model).executeAsOneOrNull()
+            ?: return null
+        // Use the base-climb LEFT JOIN rather than climb_browse: a retained
+        // controller route can legitimately be known before any stats row has
+        // been imported, and conflict hydration still needs its frames.
+        return getClimbByUuid(appUuid, angle = 0)
+    }
+
     override fun getClimbByUuidNormalized(uuid: String, angle: Int): ClimbWithStats? {
         return q.getClimbByUuidNormalized(angle.toLong(), uuid).executeAsOneOrNull()?.let {
             mapClimb(

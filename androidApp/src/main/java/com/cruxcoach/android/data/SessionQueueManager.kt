@@ -2,7 +2,18 @@ package com.cruxcoach.android.data
 
 import android.util.Log
 import com.cruxcoach.android.ble.BoardBleConnection
+import com.cruxcoach.android.ble.BoardClimbLayer
 import com.cruxcoach.android.ble.BoardConnectionOwner
+import com.cruxcoach.android.ble.BoardLayerBoardIdentity
+import com.cruxcoach.android.ble.BoardLayerConflictPolicy
+import com.cruxcoach.android.ble.BoardLayerManager
+import com.cruxcoach.android.ble.BoardLayerRouteDetails
+import com.cruxcoach.android.ble.BoardLayerStatus
+import com.cruxcoach.android.ble.PhysicalBoardIdentity
+import com.cruxcoach.android.ble.reservedLayerColors
+import com.cruxcoach.android.ble.hasCompleteQuantumLedMapping
+import com.cruxcoach.android.ble.hasConfirmableQuantumDiodeCount
+import com.cruxcoach.android.ble.matchesQuantumPlayers
 import com.cruxcoach.android.ui.board.BoardSendModePolicy
 import com.cruxcoach.android.ui.board.QueueDeliveryPolicy
 import com.cruxcoach.android.ble.BoardControllerProfiles
@@ -14,10 +25,12 @@ import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.brand
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardClimbParser
+import com.cruxcoach.domain.board.QuantumBoardModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -97,7 +110,10 @@ class SessionQueueManager(
     // launchers (including a `withContext(Dispatchers.IO)` inside `state.collect`)
     // outlive `Dispatchers.resetMain()` and surface as UncaughtExceptionsBeforeTest
     // in whichever test runs next in the same JVM.
-    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
+    /** Present in production; optional only so older focused tests can keep a
+     *  lightweight queue fixture for non-Quantum transports. */
+    private val boardLayerManager: BoardLayerManager? = null,
 ) {
     companion object {
         private const val TAG = "SessionQueueManager"
@@ -135,6 +151,33 @@ class SessionQueueManager(
                     sendCurrentClimbToBoard()
                 }
                 wasConnected = isConnected
+            }
+        }
+    }
+
+    init {
+        // The Quantum controller refreshes independently every ten seconds.
+        // Keep a running local playlist's compact rack live even while climb
+        // detail is closed; collectLatest prevents a slow catalogue lookup
+        // from applying an older controller revision over a newer one.
+        val layers = boardLayerManager
+        if (layers != null) scope.launch {
+            bleConnection.quantumControllerState.collectLatest { controller ->
+                val queue = _state.value
+                if (!queue.isPlaylist ||
+                    queue.visibility != SessionVisibility.LOCAL_ONLY ||
+                    !controller.authoritative ||
+                    bleConnection.connectedBoardBrand.value != BoardBrand.QUANTUM
+                ) return@collectLatest
+                val descriptor = bleConnection.connectedBoardDescriptor.value
+                    ?: return@collectLatest
+                val physical = runCatching { PhysicalBoardIdentity.resolve(descriptor) }.getOrNull()
+                    ?: return@collectLatest
+                val productSizeId = userPreferences.boardProductSizeId.first().toLong()
+                val model = QuantumBoardModel.fromProductSizeId(productSizeId)?.wireValue
+                    ?: return@collectLatest
+                layers.bindBoard(BoardLayerBoardIdentity(physical.value, productSizeId))
+                applyQuantumPlaylistControllerState(layers, model, controller)
             }
         }
     }
@@ -232,14 +275,37 @@ class SessionQueueManager(
         visibility: SessionVisibility = SessionVisibility.LOCAL_ONLY,
     ) {
         if (items.isEmpty()) return
+        if (visibility != SessionVisibility.LOCAL_ONLY) {
+            Log.w(TAG, "loadPlaylist: coercing joinable request to local-only")
+        }
+        val current = _state.value
+        if (current.isActive &&
+            (current.role != SessionRole.HOST ||
+                current.visibility != SessionVisibility.LOCAL_ONLY ||
+                current.visibilityRequested != SessionVisibility.LOCAL_ONLY)
+        ) {
+            // A playlist must never silently repurpose a published host queue
+            // or a participant connection. Its caller can explicitly leave
+            // that session first; until then this is a fail-closed no-op.
+            Log.w(TAG, "loadPlaylist: refused while a shared session is active")
+            return
+        }
         if (!_state.value.isActive) {
-            startQueue(hostName, visibility)
+            startQueue(hostName, SessionVisibility.LOCAL_ONLY)
         }
         isPlaylistQueue = true
         lastSentClimbKey = null
         // Publish queue and playlist identity atomically so inline append
         // actions do not appear a recomposition late.
-        _state.update { it.copy(queue = items, currentIndex = 0, isPlaylist = true) }
+        _state.update {
+            it.copy(
+                queue = items,
+                currentIndex = 0,
+                isPlaylist = true,
+                visibility = SessionVisibility.LOCAL_ONLY,
+                visibilityRequested = SessionVisibility.LOCAL_ONLY,
+            )
+        }
         onQueueChanged?.invoke()
         onCurrentClimbChanged?.invoke()
         // Starting a playlist *is* the explicit action — the second case the
@@ -709,23 +775,22 @@ class SessionQueueManager(
                 }
                 val holds = BoardClimbParser.parseFrames(climb.frames)
                 if (holds.isEmpty()) return@withLock
-                val productSizeId = userPreferences.boardProductSizeId.first()
-                // Brand-scope the LED map + colours, keyed off the CLIMB's own
-                // brand (mirrors BoardSendController). Aurora boards reuse
-                // Kilter's product_size ids, so the no-brand default would load
-                // Kilter's LED partition and the wrong per-board colours.
-                val brandWire = climb.brand.wireValue
-                val ledMap = boardRepository.getPlacementLedMap(productSizeId, brandWire)
-                val roleColors = boardRepository.getRoleColorMapForBrand(brandWire).ifEmpty {
-                    (if (climb.brand == BoardBrand.KILTER) userPreferences.ledHoldColors.first()
-                     else LedHoldColors.standardFor(climb.brand)).toRoleColorMap()
+                val sent = if (climb.brand == BoardBrand.QUANTUM) {
+                    sendQuantumPlaylistLayer(climb, item, holds)
+                } else {
+                    val productSizeId = userPreferences.boardProductSizeId.first()
+                    // Brand-scope the LED map + colours, keyed off the CLIMB's own
+                    // brand (mirrors BoardSendController). Aurora boards reuse
+                    // Kilter's product_size ids, so the no-brand default would load
+                    // Kilter's LED partition and the wrong per-board colours.
+                    val brandWire = climb.brand.wireValue
+                    val ledMap = boardRepository.getPlacementLedMap(productSizeId, brandWire)
+                    val roleColors = boardRepository.getRoleColorMapForBrand(brandWire).ifEmpty {
+                        (if (climb.brand == BoardBrand.KILTER) userPreferences.ledHoldColors.first()
+                         else LedHoldColors.standardFor(climb.brand)).toRoleColorMap()
+                    }
+                    bleConnection.sendClimb(holds, ledMap, roleColors)
                 }
-                val sent = bleConnection.sendClimb(
-                    holds, ledMap, roleColors,
-                    routeId = if (climb.brand == BoardBrand.QUANTUM) {
-                        boardRepository.getQuantumExternalRouteUuid(item.climbUuid) ?: item.climbUuid
-                    } else null,
-                )
                 if (sent) {
                     markCurrentClimbProjected(key)
                     Log.d(TAG, "sendCurrentClimbToBoard: sent ${item.climbUuid.take(8)} angle=${item.angle}")
@@ -735,6 +800,154 @@ class SessionQueueManager(
             }
             }
         }
+    }
+
+    /**
+     * Project a private playlist occurrence through the same stable Quantum
+     * identities as climb detail. The playlist remains an ordered, local-only
+     * backlog; this method only chooses the single unambiguous free rack slot.
+     * A full/unknown/conflicting rack requires an explicit choice on detail and
+     * never evicts or overwrites another controller user.
+     */
+    private suspend fun sendQuantumPlaylistLayer(
+        climb: com.cruxcoach.data.repository.ClimbWithStats,
+        item: QueueItem,
+        holds: List<com.cruxcoach.domain.board.BoardHold>,
+    ): Boolean {
+        val layers = boardLayerManager ?: return false
+        if (!hasConfirmableQuantumDiodeCount(holds)) return false
+        val descriptor = bleConnection.connectedBoardDescriptor.value ?: return false
+        val physical = runCatching { PhysicalBoardIdentity.resolve(descriptor) }.getOrNull()
+            ?: return false
+        val productSizeId = userPreferences.boardProductSizeId.first().toLong()
+        val model = QuantumBoardModel.fromProductSizeId(productSizeId)?.wireValue ?: return false
+        val expectedBoard = BoardLayerBoardIdentity(physical.value, productSizeId)
+        layers.bindBoard(expectedBoard)
+
+        // A retained controller is shared mutable state. Refresh immediately
+        // before allocating capacity, then enrich every route the controller
+        // actually reported so conflicts include known eWalls users.
+        if (!refreshQuantumPlaylistState(layers, model)) return false
+        val ledMap = withContext(Dispatchers.IO) {
+            boardRepository.getPlacementLedMap(
+                expectedBoard.productSizeId.toInt(), BoardBrand.QUANTUM.wireValue,
+            )
+        }
+        if (!layers.isBoundTo(expectedBoard) ||
+            !hasCompleteQuantumLedMapping(holds, ledMap)
+        ) return false
+
+        val existing = layers.layerForClimb(climb.uuid)
+        val slot = existing?.slot ?: layers.nextAvailableSlot(BoardBrand.QUANTUM) ?: return false
+        if (!layers.hasControllerCapacityFor(slot)) return false
+        val assessment = BoardLayerConflictPolicy.assess(
+            candidate = holds,
+            activeLayers = layers.state.value.layers,
+            externalLayers = layers.state.value.externalLayers,
+            replacingSlot = slot,
+        )
+        if (!assessment.canProveConflictFree) return false
+
+        val color = existing?.color ?: layers.availableColors().firstOrNull() ?: return false
+        val routeUuid = boardRepository.getQuantumExternalRouteUuid(climb.uuid) ?: climb.uuid
+        val layer = BoardClimbLayer(
+            slot = slot,
+            climbUuid = climb.uuid,
+            routeUuid = routeUuid,
+            climbName = climb.name,
+            angle = item.angle,
+            userUuid = layers.identityForSlot(slot),
+            color = color,
+            holds = holds,
+            status = BoardLayerStatus.PREVIEW,
+        )
+        layers.assignPreview(layer)
+
+        // Catalogue hydration above may take disk time. Pull truth again at
+        // the write boundary and repeat every safety predicate so a second
+        // client cannot occupy the last slot/colour/hold in that interval.
+        if (!refreshQuantumPlaylistState(layers, model)) {
+            layers.failProjection(slot)
+            return false
+        }
+        val expectedPlayers = bleConnection.quantumControllerState.value.players
+        if (!layers.hasControllerCapacityFor(slot) ||
+            !layers.state.value.matchesQuantumPlayers(expectedPlayers) ||
+            layer.color in layers.state.value.reservedLayerColors(replacingSlot = slot) ||
+            !BoardLayerConflictPolicy.assess(
+                candidate = holds,
+                activeLayers = layers.state.value.layers,
+                externalLayers = layers.state.value.externalLayers,
+                replacingSlot = slot,
+            ).canProveConflictFree
+        ) {
+            layers.failProjection(slot)
+            return false
+        }
+        layers.beginProjection(slot)
+        val sent = bleConnection.sendClimb(
+            holds = holds,
+            placementToLed = ledMap,
+            roleColors = emptyMap(),
+            routeId = routeUuid,
+            quantumUserId = layer.userUuid,
+            quantumColor = color,
+            expectedQuantumPlayers = expectedPlayers,
+            expectedQuantumBoard = expectedBoard,
+        )
+        if (sent) layers.confirmProjection(slot) else layers.failProjection(slot)
+        return sent
+    }
+
+    private suspend fun refreshQuantumPlaylistState(
+        layers: BoardLayerManager,
+        model: String,
+    ): Boolean {
+        if (!bleConnection.refreshQuantumState()) return false
+        val controller = bleConnection.quantumControllerState.value
+        if (!controller.authoritative) return false
+        return applyQuantumPlaylistControllerState(layers, model, controller)
+    }
+
+    private suspend fun applyQuantumPlaylistControllerState(
+        layers: BoardLayerManager,
+        model: String,
+        controller: com.cruxcoach.android.ble.QuantumControllerState,
+    ): Boolean {
+        val expectedBoard = layers.state.value.board ?: return false
+        val productSizeId = userPreferences.boardProductSizeId.first().toLong()
+        if (QuantumBoardModel.fromProductSizeId(productSizeId)?.wireValue != model ||
+            !layers.isBoundTo(expectedBoard)
+        ) return false
+        layers.reconcile(controller.players)
+        val details = withContext(Dispatchers.IO) {
+            val ledMap = boardRepository.getPlacementLedMap(
+                productSizeId.toInt(), BoardBrand.QUANTUM.wireValue,
+            )
+            controller.players.mapNotNull { player ->
+                boardRepository.getQuantumClimbByExternalRoute(player.routeId, model)?.let { known ->
+                    val holds = BoardClimbParser.parseFrames(known.frames)
+                    if (!hasCompleteQuantumLedMapping(holds, ledMap)) return@let null
+                    player.routeId to BoardLayerRouteDetails(
+                        climbUuid = known.uuid,
+                        climbName = known.name,
+                        holds = holds,
+                    )
+                }
+            }.toMap()
+        }
+        val latestDescriptor = bleConnection.connectedBoardDescriptor.value ?: return false
+        val latestPhysical = runCatching { PhysicalBoardIdentity.resolve(latestDescriptor) }.getOrNull()
+            ?: return false
+        val latestProductSize = userPreferences.boardProductSizeId.first().toLong()
+        if (bleConnection.quantumControllerState.value.authoritativeRevision !=
+                controller.authoritativeRevision ||
+            latestProductSize != productSizeId ||
+            latestPhysical.value != expectedBoard.physicalBoardId ||
+            !layers.isBoundTo(expectedBoard)
+        ) return false
+        layers.hydrateControllerRoutes(details)
+        return true
     }
 
     /**

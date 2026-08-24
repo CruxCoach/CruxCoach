@@ -310,6 +310,15 @@ class CruxCoachBackupSecureRoundTripTest {
             climbFrames = "p1000001r12p1000002r14", framesCount = 1L,
             boardBrand = "quantum", layoutId = 9101L, externalId = null,
         )
+        source.personal.insertBid(
+            uuid = "22222222-3333-4444-8555-666666666666",
+            climbUuid = climbUuid, angle = 45L,
+            isMirror = false, bidCount = 4L,
+            comment = "Quantum project", climbedAt = "2026-08-21 08:00:00",
+            synced = false, gymUuid = null, wallUuid = null, productLayoutUuid = null,
+            climbName = "Quantum Test", difficultyAverage = 18.0,
+            boardBrand = "quantum", layoutId = 9101L, externalId = null,
+        )
 
         import(target, export(source))
 
@@ -317,6 +326,55 @@ class CruxCoachBackupSecureRoundTripTest {
         assertEquals("quantum", ascent.boardBrand)
         assertEquals(9101L, ascent.layoutId)
         assertEquals(climbUuid, ascent.climbUuid)
+        val bid = target.personal.getBidsForBackup().single()
+        assertEquals("quantum", bid.boardBrand)
+        assertEquals(9101L, bid.layoutId)
+        assertEquals(climbUuid, bid.climbUuid)
+    }
+
+    @Test
+    fun `literal 0_2_1 version 3 logbook imports with additive fields absent`() {
+        val climbUuid = "8f06c97d-a92f-5ec0-a02f-b19f5db0ce45"
+        val oldBackup = """
+            {
+              "version": 3,
+              "app": "CruxCoach",
+              "exportedAt": "2026-07-01T12:00:00Z",
+              "boardAscents": [{
+                "uuid": "11111111-1111-4111-8111-111111111111",
+                "climbUuid": "$climbUuid",
+                "angle": 40,
+                "isMirror": false,
+                "bidCount": 2,
+                "climbedAt": "2026-07-01 10:00:00",
+                "climbName": "Old Backup Climb",
+                "difficultyAverage": 18.0,
+                "climbFrames": "p1100r12",
+                "framesCount": 1,
+                "boardBrand": "kilter",
+                "layoutId": 1
+              }],
+              "boardBids": [{
+                "uuid": "22222222-2222-4222-8222-222222222222",
+                "climbUuid": "$climbUuid",
+                "angle": 45,
+                "isMirror": false,
+                "bidCount": 3,
+                "climbedAt": "2026-07-02 10:00:00",
+                "climbName": "Old Backup Climb",
+                "difficultyAverage": 18.0,
+                "boardBrand": "kilter",
+                "layoutId": 1
+              }]
+            }
+        """.trimIndent()
+
+        val result = import(target, oldBackup)
+
+        assertEquals(1, result.boardAscents)
+        assertEquals(1, result.boardBids)
+        assertEquals(climbUuid, target.personal.getAscentsForBackup().single().climbUuid)
+        assertEquals(climbUuid, target.personal.getBidsForBackup().single().climbUuid)
     }
 
     // ── 4 + 5. Workout linkage remap + content-exact dedup ───────

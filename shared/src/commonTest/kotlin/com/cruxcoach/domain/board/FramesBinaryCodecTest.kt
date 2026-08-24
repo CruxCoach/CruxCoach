@@ -2,6 +2,7 @@ package com.cruxcoach.domain.board
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class FramesBinaryCodecTest {
 
@@ -39,8 +40,32 @@ class FramesBinaryCodecTest {
 
     @Test
     fun maxPlacementId() {
-        // Max placement ID around 16000
-        roundtrip("p16000r12p15999r15")
+        roundtrip("p65535r12p15999r15")
+    }
+
+    @Test
+    fun singleFrameIdWhoseLowByteMatchesMultiFrameMagic() {
+        roundtrip("p255r12p511r14")
+    }
+
+    @Test
+    fun quantumPlacementIdsUseLosslessTextFallback() {
+        val text = "p19100001r12p19100002r14"
+
+        val encoded = FramesBinaryCodec.encode(text)
+
+        assertTrue(encoded.contentEquals(text.encodeToByteArray()))
+        assertEquals(text, FramesBinaryCodec.decode(encoded))
+    }
+
+    @Test
+    fun quantumMultiFrameWithRemovalsUsesLosslessTextFallback() {
+        val text = "p19100001r42p19100002r45,x19100001p19100003r43"
+
+        val encoded = FramesBinaryCodec.encode(text)
+
+        assertTrue(encoded.contentEquals(text.encodeToByteArray()))
+        assertEquals(text, FramesBinaryCodec.decode(encoded))
     }
 
     @Test

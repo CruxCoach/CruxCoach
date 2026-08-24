@@ -266,4 +266,19 @@ class CruxCoachBackupValidationTest {
         val json = """{"version":3,"exportedAt":"2026-04-21"}"""
         assertEquals(0, CruxCoachBackup.preview(json).climbNotes)
     }
+
+    @Test
+    fun rejects_own_climb_stats_without_their_own_climb() {
+        val json = """{
+            "version":3,
+            "exportedAt":"2026-08-24",
+            "boardClimbStats":[{
+                "climbUuid":"aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+                "angle":40,
+                "ascensionistCount":1
+            }]
+        }"""
+
+        assertFailsWith<IllegalArgumentException> { CruxCoachBackup.preview(json) }
+    }
 }

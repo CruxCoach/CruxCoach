@@ -23,6 +23,15 @@ import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
 
+/** No header is the immutable v1 contract; only an exact v2 marker opts into
+ * the full-Quantum snapshot build. */
+internal fun snapshotProtocolForApkRequest(header: String?): Int =
+    if (header?.trim() == LocalShareProtocol.VERSION_V2.toString()) {
+        LocalShareProtocol.VERSION_V2
+    } else {
+        LocalShareProtocol.VERSION
+    }
+
 object ApkShareHelper {
 
     private const val TAG = "ApkShareHelper"
@@ -58,6 +67,12 @@ object ApkShareHelper {
             // LocalApkServer.boardDbSnapshot).
             "${LocalApkServer.SNAPSHOT_NAME}-wal",
             "${LocalApkServer.SNAPSHOT_NAME}-shm",
+            // v2 is deliberately session-only: unlike the exact legacy v1
+            // artifact it is not adopted as a persistent cache.
+            LocalApkServer.V2_SNAPSHOT_NAME,
+            LocalApkServer.V2_COMPRESSED_SNAPSHOT_NAME,
+            "${LocalApkServer.V2_SNAPSHOT_NAME}-wal",
+            "${LocalApkServer.V2_SNAPSHOT_NAME}-shm",
         )
         for (name in staleFiles) {
             val file = File(context.cacheDir, name)
@@ -123,7 +138,7 @@ object ApkShareHelper {
  * File-level + internal so the Robolectric share test can exercise it
  * directly against a seeded DB file.
  */
-internal fun scrubAndCompactBoardDbSnapshot(snapshot: File) {
+internal fun scrubAndCompactBoardDbSnapshot(snapshot: File, includeQuantum: Boolean = false) {
     val db = android.database.sqlite.SQLiteDatabase.openDatabase(
         snapshot.absolutePath, null,
         android.database.sqlite.SQLiteDatabase.OPEN_READWRITE
@@ -135,7 +150,14 @@ internal fun scrubAndCompactBoardDbSnapshot(snapshot: File) {
         // multi-catalogue DB from minutes into seconds on phone flash.
         db.rawQuery("PRAGMA synchronous=OFF", null).use { it.moveToFirst() }
         db.rawQuery("PRAGMA journal_mode=DELETE", null).use { it.moveToFirst() }
-        for (statement in com.cruxcoach.android.data.LocalShareSchema.SNAPSHOT_SCRUB) {
+        val statements = if (includeQuantum) {
+            com.cruxcoach.android.data.LocalShareSchema.PRIVACY_SCRUB
+        } else {
+            // Do not reorder this historical contract: old v1 receivers must
+            // continue to receive the byte-equivalent logical scrub view.
+            com.cruxcoach.android.data.LocalShareSchema.SNAPSHOT_SCRUB
+        }
+        for (statement in statements) {
             db.execSQL(statement)
         }
         db.execSQL("VACUUM")
@@ -185,6 +207,10 @@ class LocalApkServer(
     private var snapshotFile: File? = null
     private var compressedSnapshotFile: File? = null
     private var snapshotMetadata: SnapshotMetadata? = null
+    private var v2SnapState = SnapState.IDLE
+    private var v2SnapshotFile: File? = null
+    private var v2CompressedSnapshotFile: File? = null
+    private var v2SnapshotMetadata: SnapshotMetadata? = null
 
     private data class SnapshotMetadata(
         val compressedSha256: String,
@@ -215,6 +241,14 @@ class LocalApkServer(
     private val sessionId = UUID.randomUUID().toString()
     private val apkSha256: String by lazy { LocalShareProtocol.sha256(apkFile) }
     private val activeTransfers = AtomicInteger(0)
+
+    private fun snapshotView(protocolVersion: Int): SnapshotView = synchronized(snapshotLock) {
+        if (protocolVersion == LocalShareProtocol.VERSION_V2) {
+            SnapshotView(v2SnapState, v2CompressedSnapshotFile, v2SnapshotFile, v2SnapshotMetadata)
+        } else {
+            SnapshotView(snapState, compressedSnapshotFile, snapshotFile, snapshotMetadata)
+        }
+    }
 
     var onAutoShutdown: (() -> Unit)? = null
     var onReceiverComplete: (() -> Unit)? = null
@@ -290,6 +324,16 @@ class LocalApkServer(
             compressedSnapshotFile = null
             snapshotMetadata = null
             snapState = SnapState.IDLE
+            v2SnapshotFile?.let { snap ->
+                snap.delete()
+                File(snap.path + "-wal").delete()
+                File(snap.path + "-shm").delete()
+            }
+            v2SnapshotFile = null
+            v2CompressedSnapshotFile?.delete()
+            v2CompressedSnapshotFile = null
+            v2SnapshotMetadata = null
+            v2SnapState = SnapState.IDLE
         }
     }
 
@@ -349,11 +393,23 @@ class LocalApkServer(
                         receiverCompleted = true
                     }
                     method != "GET" && method != "HEAD" -> serveMethodNotAllowed(out)
+                    path == LocalShareProtocol.V2_MANIFEST_PATH ->
+                        serveManifest(out, headOnly, LocalShareProtocol.VERSION_V2)
                     path == LocalShareProtocol.MANIFEST_PATH ||
                         path == "/.well-known/cruxcoach-share" -> serveManifest(out, headOnly)
-                    path == LocalShareProtocol.APK_PATH -> serveApk(out, headers["range"], headOnly)
+                    path == LocalShareProtocol.APK_PATH -> serveApk(
+                        out,
+                        headers["range"],
+                        headOnly,
+                        snapshotProtocolForApkRequest(
+                            headers[LocalShareProtocol.PROTOCOL_HEADER.lowercase()],
+                        ),
+                    )
                     path == LocalShareProtocol.BOARD_PATH ->
                         serveBoardDb(out, compressed = true, rangeHeader = headers["range"], headOnly = headOnly)
+                    path == LocalShareProtocol.V2_BOARD_PATH ->
+                        serveBoardDb(out, compressed = true, rangeHeader = headers["range"], headOnly = headOnly,
+                            protocolVersion = LocalShareProtocol.VERSION_V2)
                     path == "/board.db" ->
                         serveBoardDb(out, compressed = false, rangeHeader = headers["range"], headOnly = headOnly)
                     path == "/favicon.ico" -> serve404(out)
@@ -369,16 +425,18 @@ class LocalApkServer(
         }
     }
 
-    private fun serveManifest(out: java.io.OutputStream, headOnly: Boolean) {
+    private fun serveManifest(
+        out: java.io.OutputStream,
+        headOnly: Boolean,
+        protocolVersion: Int = LocalShareProtocol.VERSION,
+    ) {
         // Reading the manifest must stay cheap: the receiver uses it to decide
         // whether an APK is needed. Snapshot work is armed explicitly by a
         // board request, or after the APK's final byte, so APK always wins.
         // Hashing the APK is intentionally lazy but deterministic. The first
         // manifest request pays this one-time read while the board snapshot is
         // normally still being prepared in parallel.
-        val view = synchronized(snapshotLock) {
-            SnapshotView(snapState, compressedSnapshotFile, snapshotFile, snapshotMetadata)
-        }
+        val view = snapshotView(protocolVersion)
         val boardJson = org.json.JSONObject().put(
             "status",
             when {
@@ -390,7 +448,8 @@ class LocalApkServer(
             view.compressed != null && view.metadata != null
         ) {
             boardJson
-                .put("path", LocalShareProtocol.BOARD_PATH)
+                .put("path", if (protocolVersion == LocalShareProtocol.VERSION_V2)
+                    LocalShareProtocol.V2_BOARD_PATH else LocalShareProtocol.BOARD_PATH)
                 .put("compression", "gzip")
                 .put("sizeBytes", view.compressed.length())
                 .put("sha256", view.metadata.compressedSha256)
@@ -411,7 +470,7 @@ class LocalApkServer(
                 )
         }
         val json = org.json.JSONObject()
-            .put("protocolVersion", LocalShareProtocol.VERSION)
+            .put("protocolVersion", protocolVersion)
             .put("sessionId", sessionId)
             .put("idleTimeoutSeconds", AUTO_SHUTDOWN_MS / 1000L)
             .put(
@@ -449,7 +508,12 @@ class LocalApkServer(
         .replace("\"", "&quot;")
         .replace("'", "&#39;")
 
-    private fun serveApk(out: java.io.OutputStream, rangeHeader: String?, headOnly: Boolean) {
+    private fun serveApk(
+        out: java.io.OutputStream,
+        rangeHeader: String?,
+        headOnly: Boolean,
+        receiverProtocolVersion: Int,
+    ) {
         serveFile(
             out = out,
             file = apkFile,
@@ -458,7 +522,11 @@ class LocalApkServer(
             rangeHeader = rangeHeader,
             headOnly = headOnly,
         )
-        if (!headOnly) ensureSnapshotBuilding()
+        // Headerless v1 receivers retain the byte-for-byte legacy artifact and
+        // their historical "APK GET arms snapshot" behavior. A v2 receiver
+        // identifies itself on that same APK path so only the full Quantum
+        // snapshot is built; this avoids concurrent half-gigabyte v1/v2 copies.
+        if (!headOnly) ensureSnapshotBuilding(receiverProtocolVersion)
     }
 
     /**
@@ -478,6 +546,7 @@ class LocalApkServer(
         compressed: Boolean,
         rangeHeader: String?,
         headOnly: Boolean,
+        protocolVersion: Int = LocalShareProtocol.VERSION,
     ) {
         val live = boardDbFile
         if (live == null || !live.exists()) {
@@ -493,24 +562,26 @@ class LocalApkServer(
         // its socket read-timeout. Answer immediately: 200 + stream when
         // READY, else (re)arm the build and tell the receiver to poll.
         val db = synchronized(snapshotLock) {
-            if (snapState == SnapState.READY) {
-                (if (compressed) compressedSnapshotFile else snapshotFile)?.takeIf { it.exists() }
+            val view = if (protocolVersion == LocalShareProtocol.VERSION_V2) {
+                SnapshotView(v2SnapState, v2CompressedSnapshotFile, v2SnapshotFile, v2SnapshotMetadata)
             } else {
-                null
+                SnapshotView(snapState, compressedSnapshotFile, snapshotFile, snapshotMetadata)
             }
+            if (view.state == SnapState.READY) (if (compressed) view.compressed else view.raw)?.takeIf { it.exists() }
+            else null
         }
         if (db == null) {
             // Only the gzip endpoint is part of the advertised v1 protocol.
             // A restored cross-session cache deliberately retains the compact
             // gzip file, not another 500+ MB raw copy.
             if (!compressed && synchronized(snapshotLock) {
-                    snapState == SnapState.READY && compressedSnapshotFile?.exists() == true
+                    snapshotView(protocolVersion).let { it.state == SnapState.READY && it.compressed?.exists() == true }
                 }
             ) {
                 serve404(out)
                 return
             }
-            ensureSnapshotBuilding()
+            ensureSnapshotBuilding(protocolVersion)
             serve503(out)
             return
         }
@@ -608,12 +679,14 @@ class LocalApkServer(
      * catalogue sync briefly holding the board-DB write lock — heal without
      * user interaction.
      */
-    private fun ensureSnapshotBuilding() {
+    private fun ensureSnapshotBuilding(protocolVersion: Int = LocalShareProtocol.VERSION_V2) {
         val live = boardDbFile ?: return
         if (snapshotDir == null || !live.exists()) return
         synchronized(snapshotLock) {
-            if (snapState == SnapState.BUILDING || snapState == SnapState.READY) return
-            snapState = SnapState.BUILDING
+            val state = if (protocolVersion == LocalShareProtocol.VERSION_V2) v2SnapState else snapState
+            if (state == SnapState.BUILDING || state == SnapState.READY) return
+            if (protocolVersion == LocalShareProtocol.VERSION_V2) v2SnapState = SnapState.BUILDING
+            else snapState = SnapState.BUILDING
         }
         // A receiver that already has this APK can arm /board.db directly;
         // don't wait for a file stream before giving SQLite exclusive CPU.
@@ -623,23 +696,32 @@ class LocalApkServer(
                 android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_DISPLAY)
             }
             val startMs = System.currentTimeMillis()
-            val built = buildBoardDbSnapshot(live)
+            val built = buildBoardDbSnapshot(live, protocolVersion)
             synchronized(snapshotLock) {
                 // stop() may have raced us back to IDLE and cleaned up — don't
                 // resurrect state (or leave a stray file) for a dead server.
-                if (snapState != SnapState.BUILDING) {
+                val state = if (protocolVersion == LocalShareProtocol.VERSION_V2) v2SnapState else snapState
+                if (state != SnapState.BUILDING) {
                     built?.raw?.delete()
                     built?.compressed?.delete()
                     return@thread
                 }
                 if (built != null) {
-                    snapshotFile = built.raw
-                    compressedSnapshotFile = built.compressed
-                    snapshotMetadata = built.metadata
-                    snapState = SnapState.READY
-                    persistSnapshotCache(built.metadata, built.sourceFingerprint)
+                    if (protocolVersion == LocalShareProtocol.VERSION_V2) {
+                        v2SnapshotFile = built.raw
+                        v2CompressedSnapshotFile = built.compressed
+                        v2SnapshotMetadata = built.metadata
+                        v2SnapState = SnapState.READY
+                    } else {
+                        snapshotFile = built.raw
+                        compressedSnapshotFile = built.compressed
+                        snapshotMetadata = built.metadata
+                        snapState = SnapState.READY
+                        persistSnapshotCache(built.metadata, built.sourceFingerprint)
+                    }
                 } else {
-                    snapState = SnapState.FAILED
+                    if (protocolVersion == LocalShareProtocol.VERSION_V2) v2SnapState = SnapState.FAILED
+                    else snapState = SnapState.FAILED
                 }
             }
             val secs = (System.currentTimeMillis() - startMs) / 1000
@@ -688,9 +770,10 @@ class LocalApkServer(
      * [snapshotLock] (the build takes minutes; holding the lock would make
      * /board.db block instead of answering 503).
      */
-    private fun buildBoardDbSnapshot(live: File): BuiltSnapshot? {
-        val snap = File(snapshotDir, SNAPSHOT_NAME)
-        val compressed = File(snapshotDir, COMPRESSED_SNAPSHOT_NAME)
+    private fun buildBoardDbSnapshot(live: File, protocolVersion: Int): BuiltSnapshot? {
+        val v2 = protocolVersion == LocalShareProtocol.VERSION_V2
+        val snap = File(snapshotDir, if (v2) V2_SNAPSHOT_NAME else SNAPSHOT_NAME)
+        val compressed = File(snapshotDir, if (v2) V2_COMPRESSED_SNAPSHOT_NAME else COMPRESSED_SNAPSHOT_NAME)
         val snapWal = File(snap.path + "-wal")
         val snapShm = File(snap.path + "-shm")
         return try {
@@ -724,7 +807,7 @@ class LocalApkServer(
             } finally {
                 db.close()
             }
-            scrubAndCompactBoardDbSnapshot(snap)
+            scrubAndCompactBoardDbSnapshot(snap, includeQuantum = v2)
             // Compression happens only after SQLite has folded the copied WAL,
             // scrubbed private rows and VACUUMed the result. Therefore both
             // hashes describe one immutable, internally consistent snapshot.
@@ -999,6 +1082,8 @@ class LocalApkServer(
         /** Checkpointed board-DB copy in cacheDir; see [buildBoardDbSnapshot]. */
         const val SNAPSHOT_NAME = "board_share_snapshot.db"
         const val COMPRESSED_SNAPSHOT_NAME = "board_share_snapshot.db.gz"
+        const val V2_SNAPSHOT_NAME = "board_share_snapshot_v2.db"
+        const val V2_COMPRESSED_SNAPSHOT_NAME = "board_share_snapshot_v2.db.gz"
         internal const val SNAPSHOT_METADATA_NAME = "board_share_snapshot.meta.json"
 
         private val LANDING_HTML = """

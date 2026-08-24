@@ -34,6 +34,17 @@ data class BoardClimbLayer(
      * already disappeared. */
     val confirmedRouteUuid: String? = null,
     @ColorInt val confirmedColor: Int? = null,
+    /** Local catalogue identity for [confirmedRouteUuid]. These fields describe
+     * controller truth and must never overwrite the staged climb above: during
+     * a replacement the old physical route and the new plan coexist. */
+    val confirmedClimbUuid: String? = null,
+    val confirmedClimbName: String? = null,
+    /** Null means the controller route could not be resolved locally. */
+    val confirmedHolds: List<BoardHold>? = null,
+    /** False for a controller layer reconstructed only from its wire UUID.
+     * Until the local catalogue resolves that UUID, its occupied holds are
+     * unknown and another projection must not assume it is conflict-free. */
+    val controllerDetailsKnown: Boolean = true,
 )
 
 enum class BoardLayerStatus { PREVIEW, SENDING, CONFIRMED, FAILED }
@@ -43,6 +54,16 @@ data class ExternalBoardLayer(
     val userUuid: String,
     @ColorInt val color: Int,
     val remainingSeconds: Int,
+    val climbUuid: String? = null,
+    val climbName: String? = null,
+    /** Null means unknown, not an empty climb. */
+    val holds: List<BoardHold>? = null,
+)
+
+data class BoardLayerRouteDetails(
+    val climbUuid: String,
+    val climbName: String,
+    val holds: List<BoardHold>,
 )
 
 /**
@@ -69,6 +90,36 @@ data class BoardLayerState(
     val occupiedCount: Int
         get() = layers.count { it.confirmedRouteUuid != null } + externalLayers.size
     val assignedCount: Int get() = layers.size
+}
+
+/** Prove that hydrated rack state still describes the exact physical players
+ * used for the next coexistence preflight. Countdown values are intentionally
+ * ignored by [quantumPlayersMatch]. */
+fun BoardLayerState.matchesQuantumPlayers(players: List<QuantumActivePlayer>): Boolean {
+    val represented = buildList {
+        layers.forEach { layer ->
+            val route = layer.confirmedRouteUuid ?: return@forEach
+            add(
+                QuantumActivePlayer(
+                    routeId = route,
+                    userId = layer.userUuid,
+                    remainingSeconds = 0,
+                    color = layer.confirmedColor ?: layer.color,
+                ),
+            )
+        }
+        externalLayers.forEach { layer ->
+            add(
+                QuantumActivePlayer(
+                    routeId = layer.routeUuid,
+                    userId = layer.userUuid,
+                    remainingSeconds = 0,
+                    color = layer.color,
+                ),
+            )
+        }
+    }
+    return quantumPlayersMatch(players, represented)
 }
 
 /**
@@ -103,6 +154,11 @@ class BoardLayerManager @Inject constructor(
 
     fun identityForSlot(slot: Int): String = identities[slot.coerceIn(0, identities.lastIndex)]
 
+    /** Trust-boundary predicate used by the BLE transport before any scoped
+     * Quantum mutation. A syntactically valid UUID is not proof of ownership. */
+    fun ownsIdentity(userUuid: String): Boolean =
+        identities.any { it.equals(userUuid, ignoreCase = true) }
+
     fun nextAvailableSlot(brand: BoardBrand, preferred: Int? = null): Int? {
         val max = brand.maxSimultaneousClimbs
         val used = _state.value.layers.filter { it.ownedByThisInstallation }.mapTo(mutableSetOf()) { it.slot }
@@ -113,11 +169,8 @@ class BoardLayerManager @Inject constructor(
 
     fun defaultColor(slot: Int): Int = LAYER_COLORS[slot.mod(LAYER_COLORS.size)]
 
-    fun availableColors(): List<Int> {
-        val used = _state.value.layers.mapTo(mutableSetOf()) { it.color } +
-            _state.value.externalLayers.map { it.color }
-        return LAYER_COLORS.filterNot { it in used }
-    }
+    fun availableColors(replacingSlot: Int? = null): List<Int> =
+        LAYER_COLORS.filterNot { it in _state.value.reservedLayerColors(replacingSlot) }
 
     /** Assign or replace a local layer without touching BLE/controller state. */
     fun assignPreview(layer: BoardClimbLayer) {
@@ -130,6 +183,10 @@ class BoardLayerManager @Inject constructor(
                         status = BoardLayerStatus.PREVIEW,
                         confirmedRouteUuid = previous?.confirmedRouteUuid,
                         confirmedColor = previous?.confirmedColor,
+                        confirmedClimbUuid = previous?.confirmedClimbUuid,
+                        confirmedClimbName = previous?.confirmedClimbName,
+                        confirmedHolds = previous?.confirmedHolds,
+                        controllerDetailsKnown = previous?.controllerDetailsKnown ?: true,
                     )).sortedBy { it.slot },
             )
         }
@@ -149,6 +206,10 @@ class BoardLayerManager @Inject constructor(
             status = BoardLayerStatus.CONFIRMED,
             confirmedRouteUuid = it.routeUuid,
             confirmedColor = it.color,
+            confirmedClimbUuid = it.climbUuid,
+            confirmedClimbName = it.climbName,
+            confirmedHolds = it.holds,
+            controllerDetailsKnown = true,
         )
     }
 
@@ -164,6 +225,27 @@ class BoardLayerManager @Inject constructor(
         val layer = _state.value.layers.firstOrNull { it.slot == slot } ?: return false
         if (layer.confirmedRouteUuid != null) return false
         removeOwned(slot)
+        return true
+    }
+
+    /** Discard a staged replacement without touching the controller. */
+    fun cancelReplacement(slot: Int): Boolean {
+        val layer = _state.value.layers.firstOrNull { it.slot == slot } ?: return false
+        val confirmedRoute = layer.confirmedRouteUuid ?: return false
+        val isReplacement = !confirmedRoute.equals(layer.routeUuid, ignoreCase = true) ||
+            layer.confirmedColor != layer.color
+        if (!isReplacement) return false
+        updateOwned(slot) {
+            it.copy(
+                climbUuid = it.confirmedClimbUuid ?: confirmedRoute,
+                routeUuid = confirmedRoute,
+                climbName = it.confirmedClimbName ?: confirmedRoute.take(8),
+                color = it.confirmedColor ?: it.color,
+                holds = it.confirmedHolds.orEmpty(),
+                status = BoardLayerStatus.CONFIRMED,
+                controllerDetailsKnown = it.confirmedHolds?.isNotEmpty() == true,
+            )
+        }
         return true
     }
 
@@ -227,20 +309,30 @@ class BoardLayerManager @Inject constructor(
                     return@mapNotNull if (layer.status == BoardLayerStatus.CONFIRMED) {
                         null
                     } else {
-                        layer.copy(confirmedRouteUuid = null, confirmedColor = null)
+                        layer.copy(
+                            confirmedRouteUuid = null,
+                            confirmedColor = null,
+                            confirmedClimbUuid = null,
+                            confirmedClimbName = null,
+                            confirmedHolds = null,
+                            controllerDetailsKnown = true,
+                        )
                     }
                 }
-                if (!player.routeId.equals(layer.routeUuid, ignoreCase = true)) {
-                    return@mapNotNull layer.copy(
-                        confirmedRouteUuid = player.routeId,
-                        confirmedColor = player.color.asOpaqueArgb(),
-                    )
-                }
+                val reportedColor = player.color.asOpaqueArgb()
+                val routeMatchesPlan = player.routeId.equals(layer.routeUuid, ignoreCase = true)
+                val tupleMatchesPlan = routeMatchesPlan && reportedColor == layer.color
                 layer.copy(
-                    color = player.color.asOpaqueArgb(),
-                    status = BoardLayerStatus.CONFIRMED,
+                    // Never replace the planned colour or climb with readback.
+                    // The controller may still be showing the previous route.
+                    status = if (tupleMatchesPlan) BoardLayerStatus.CONFIRMED else layer.status,
                     confirmedRouteUuid = player.routeId,
-                    confirmedColor = player.color.asOpaqueArgb(),
+                    confirmedColor = reportedColor,
+                    confirmedClimbUuid = layer.climbUuid.takeIf { routeMatchesPlan },
+                    confirmedClimbName = layer.climbName.takeIf { routeMatchesPlan }
+                        ?: player.routeId.take(8),
+                    confirmedHolds = layer.holds.takeIf { routeMatchesPlan },
+                    controllerDetailsKnown = routeMatchesPlan,
                 )
             }.toMutableList()
             val representedUsers = owned.mapTo(mutableSetOf()) { it.userUuid.lowercase() }
@@ -259,6 +351,9 @@ class BoardLayerManager @Inject constructor(
                         status = BoardLayerStatus.CONFIRMED,
                         confirmedRouteUuid = player.routeId,
                         confirmedColor = player.color.asOpaqueArgb(),
+                        confirmedClimbName = player.routeId.take(8),
+                        confirmedHolds = null,
+                        controllerDetailsKnown = false,
                     )
                 }
             val external = players.filterNot { it.userId.lowercase() in ownedIds }.map {
@@ -268,6 +363,47 @@ class BoardLayerManager @Inject constructor(
                 brand = BoardBrand.QUANTUM,
                 layers = owned.sortedBy { it.slot },
                 externalLayers = external,
+            )
+        }
+    }
+
+    /** Add local catalogue knowledge to a fresh controller snapshot.
+     * Matching is route-UUID based and applied only to layers still present,
+     * so a slow DB lookup can never resurrect a player that left meanwhile. */
+    fun hydrateControllerRoutes(detailsByRouteUuid: Map<String, BoardLayerRouteDetails>) {
+        // A resolved UUID is not enough to prove geometry. Blank or malformed
+        // frame strings parse to no holds; treating that as a known empty climb
+        // would make conflict checks fail open. Keep such routes unknown.
+        val normalized = detailsByRouteUuid
+            .filterValues { it.holds.isNotEmpty() }
+            .mapKeys { it.key.lowercase() }
+        _state.update { current ->
+            current.copy(
+                layers = current.layers.map { layer ->
+                    val route = layer.confirmedRouteUuid ?: return@map layer
+                    val details = normalized[route.lowercase()] ?: return@map layer
+                    val physicalIsPlan = route.equals(layer.routeUuid, ignoreCase = true)
+                    layer.copy(
+                        // A reconstructed layer has no separate pending plan,
+                        // so catalogue hydration may name both sides. During a
+                        // replacement only the confirmed side is enriched.
+                        climbUuid = if (physicalIsPlan) details.climbUuid else layer.climbUuid,
+                        climbName = if (physicalIsPlan) details.climbName else layer.climbName,
+                        holds = if (physicalIsPlan) details.holds else layer.holds,
+                        confirmedClimbUuid = details.climbUuid,
+                        confirmedClimbName = details.climbName,
+                        confirmedHolds = details.holds,
+                        controllerDetailsKnown = true,
+                    )
+                },
+                externalLayers = current.externalLayers.map { layer ->
+                    val details = normalized[layer.routeUuid.lowercase()] ?: return@map layer
+                    layer.copy(
+                        climbUuid = details.climbUuid,
+                        climbName = details.climbName,
+                        holds = details.holds,
+                    )
+                },
             )
         }
     }
@@ -318,7 +454,61 @@ data class BoardLayerCapabilities(
     val selectableColors: Boolean,
 )
 
+/** Colours reserved by staged plans and by routes still physically lit.
+ * The target slot is excluded because its TURN_OFF_USER precedes activation. */
+fun BoardLayerState.reservedLayerColors(replacingSlot: Int? = null): Set<Int> = buildSet {
+    layers.filterNot { it.slot == replacingSlot }.forEach { layer ->
+        add(layer.color)
+        layer.confirmedColor?.let { add(it) }
+    }
+    externalLayers.forEach { add(it.color) }
+}
+
 object BoardLayerConflictPolicy {
+    data class Assessment(val sharedHoldCount: Int, val unknownLayerCount: Int) {
+        val canProveConflictFree: Boolean get() = sharedHoldCount == 0 && unknownLayerCount == 0
+    }
+
+    fun assess(
+        candidate: List<BoardHold>,
+        activeLayers: List<BoardClimbLayer>,
+        externalLayers: List<ExternalBoardLayer>,
+        replacingSlot: Int?,
+    ): Assessment {
+        val own = activeLayers.filterNot { it.slot == replacingSlot }
+            .filter { it.confirmedRouteUuid != null }
+        val occupied = own.mapNotNull(BoardClimbLayer::confirmedHolds)
+            .flatten().mapTo(mutableSetOf(), BoardHold::placementId)
+        externalLayers.mapNotNull(ExternalBoardLayer::holds)
+            .flatten().mapTo(occupied, BoardHold::placementId)
+        val unknown = own.count { !it.controllerDetailsKnown || it.confirmedHolds == null } +
+            externalLayers.count { it.holds == null }
+        return Assessment(
+            sharedHoldCount = candidate.count { it.placementId in occupied },
+            unknownLayerCount = unknown,
+        )
+    }
+
+    fun assessPlacements(
+        candidate: Set<Int>,
+        activeLayers: List<BoardClimbLayer>,
+        externalLayers: List<ExternalBoardLayer>,
+        replacingSlot: Int?,
+    ): Assessment {
+        val own = activeLayers.filterNot { it.slot == replacingSlot }
+            .filter { it.confirmedRouteUuid != null }
+        val occupied = own.mapNotNull(BoardClimbLayer::confirmedHolds)
+            .flatten().mapTo(mutableSetOf(), BoardHold::placementId)
+        externalLayers.mapNotNull(ExternalBoardLayer::holds)
+            .flatten().mapTo(occupied, BoardHold::placementId)
+        return Assessment(
+            sharedHoldCount = candidate.count { it in occupied },
+            unknownLayerCount = own.count {
+                !it.controllerDetailsKnown || it.confirmedHolds == null
+            } + externalLayers.count { it.holds == null },
+        )
+    }
+
     fun sharedHoldCount(
         candidate: List<BoardHold>,
         activeLayers: List<BoardClimbLayer>,
