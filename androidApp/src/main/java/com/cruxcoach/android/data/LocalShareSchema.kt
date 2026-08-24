@@ -71,11 +71,10 @@ object LocalShareSchema {
     val V1_QUANTUM_SCRUB: List<String> = listOf(
         // The v1 peer wire format predates quantum_route_refs. Keep this exact
         // compatibility view for old receivers; v2 carries the complete
-        // Quantum catalogue including the controller UUID bridge.
-        // is bumped, remove Quantum catalogue + geometry from the served copy
-        // so pre-0.2.2 peers never receive an unknown/inoperable board. The
-        // live DB is untouched and Quantum re-downloads from its isolated
-        // Blossom d-tag.
+        // Quantum catalogue including the controller UUID bridge. Remove
+        // Quantum catalogue + geometry from the served copy so pre-0.2.2 peers
+        // never receive an unknown/inoperable board. The live DB is untouched
+        // and Quantum re-downloads from its isolated Blossom d-tag.
         """DELETE FROM climb_stats WHERE climb_uuid IN
            (SELECT uuid FROM climbs WHERE board_brand = 'quantum')""",
         """DELETE FROM climbs WHERE board_brand = 'quantum'""",
@@ -94,15 +93,22 @@ object LocalShareSchema {
            (SELECT uuid FROM climbs WHERE COALESCE(source, 'kilter') = 'local')""",
         """DELETE FROM climbs WHERE COALESCE(source, 'kilter') = 'local'""",
         """DELETE FROM kilter_publish_attempts""",
-        // Account-linked leftovers on the rows that DO stay shareable.
-        // `kilter_author_uuid` (22.sqm) is a Kilter ACCOUNT identifier — the
-        // sender's own for climbs they authored, a third party's for climbs
-        // they merely logged — and `kilter_error` is a raw Kilter API error
-        // body from the sender's publish attempt. No import path on any
-        // receiver reads either column ([CLIMBS_PEER_SHARE_CONTRACT] marks
-        // both STRIPPED), so leaving them in the served file is pure
-        // leakage with no functional upside.
-        """UPDATE climbs SET kilter_author_uuid = NULL, kilter_error = NULL""",
+        // Sender-private publishing state on rows that DO stay shareable.
+        // No receiver import path reads these STRIPPED columns, so carrying
+        // account choice, failure history, timestamps or the sender's own
+        // geometry fingerprint has no functional upside. `sync_status` is
+        // NOT NULL and therefore returns to its schema default; the rest are
+        // nullable. Keep source/is_deleted intact because they are load-
+        // bearing sender-side row filters above.
+        """UPDATE climbs SET
+             kilter_author_uuid = NULL,
+             kilter_error = NULL,
+             sync_status = 'synced',
+             kilter_status = NULL,
+             kilter_synced_at = NULL,
+             kilter_publish_via = NULL,
+             nostr_publish_via = NULL,
+             frames_hash = NULL""",
     ).map { it.trimIndent() }
 
     /** Historical v1 scrub contract. */
@@ -210,12 +216,24 @@ object LocalShareSchema {
         ),
         "nostr_event_id" to stripped("publish state; the canonical is-published signal (23.sqm view)"),
         "nostr_d_tag" to stripped("publish state, meaningful only with a verified event"),
-        "nostr_publish_via" to stripped("which signing identity the SENDER published with"),
-        "sync_status" to stripped("receiver-local draft/publish lifecycle"),
-        "frames_hash" to stripped("dup-detection hash for the receiver's OWN authored climbs"),
-        "kilter_status" to stripped("the SENDER's Kilter publish state"),
-        "kilter_synced_at" to stripped("the SENDER's Kilter publish state"),
-        "kilter_publish_via" to stripped("the SENDER's Kilter account choice"),
+        "nostr_publish_via" to stripped(
+            "which signing identity the SENDER published with; also scrubbed from the sender snapshot"
+        ),
+        "sync_status" to stripped(
+            "receiver-local draft/publish lifecycle; reset in the sender snapshot"
+        ),
+        "frames_hash" to stripped(
+            "dup-detection hash for the receiver's OWN authored climbs; also scrubbed from the sender snapshot"
+        ),
+        "kilter_status" to stripped(
+            "the SENDER's Kilter publish state; also scrubbed from the sender snapshot"
+        ),
+        "kilter_synced_at" to stripped(
+            "the SENDER's Kilter publish state; also scrubbed from the sender snapshot"
+        ),
+        "kilter_publish_via" to stripped(
+            "the SENDER's Kilter account choice; also scrubbed from the sender snapshot"
+        ),
         "kilter_error" to stripped("raw Kilter API error body; also scrubbed from the snapshot"),
         "kilter_author_uuid" to stripped(
             "22.sqm ownership gate — a Kilter ACCOUNT id. Accepting a peer's " +

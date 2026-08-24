@@ -165,8 +165,11 @@ participants use the existing host migration unchanged.
 - `WAIT_BEFORE_ADVERTISE`: advertise only once the board central link is
   CONNECTED; drop the relay if that link falls (never let a client attach to a
   dead relay).
-- `suppressAutoDisconnect = true` for the relay lifetime, with a watchdog that
-  auto-disables the relay after ~90 s of no clients + no activity.
+- The relay holds its own board keep-alive owner for its lifetime. A monotonic
+  watchdog auto-disables it after exactly 90 s with no client and no activity.
+  A positive client count suspends expiry; the last client's departure starts
+  a complete new window. Stop/abort cancels the watchdog and a timeout leaves a
+  final user-visible notification before transport teardown.
 - Run the relay under a `dataSync` foreground service (Android 12+ throttles
   background advertising).
 - Crash-safe adapter-name restore on next launch via `relay_name_dirty`.
@@ -289,6 +292,12 @@ connected to one — without requiring the tap.
   "explainer seen" (app-scoped, not identity-scoped).
 - Include a short non-affiliation disclaimer (not affiliated with Kilter/Aurora;
   board names are compatibility references only).
+- The manager owns this gate. Automatic connection-following, the manual
+  button, and advertising-permission retry all call the same request API; no
+  caller can enable the transport directly. The app-global dialog is available
+  even when the connection sheet is closed, and its answer is bound to the
+  exact connected board address so consent for one wall cannot enable a
+  replacement connection.
 
 **Persistent host status + one-tap stop + foreground service.**
 - While sharing: an in-app status surface (banner/chip) AND a `dataSync`

@@ -21,6 +21,32 @@ import kotlin.test.assertTrue
 class BoardSyncStateTest {
 
     @Test
+    fun catalogueOrderPrioritisesSelectedBoardAndStillContainsEveryInteractiveBrand() {
+        val order = catalogueSyncOrder(BoardBrand.QUANTUM)
+
+        assertEquals(BoardBrand.QUANTUM, order.first())
+        assertEquals(BoardBrand.entries.filter { it.isInteractive }.toSet(), order.toSet())
+        assertEquals(order.size, order.distinct().size)
+    }
+
+    @Test
+    fun catalogueOrderKeepsStableDefaultOrderForMapOnlySelection() {
+        assertEquals(
+            BoardBrand.entries.filter { it.isInteractive },
+            catalogueSyncOrder(BoardBrand.AURORA),
+        )
+    }
+
+    @Test
+    fun waitingForWifiIsDistinctFromFailureAndNeverClaimsSyncSlot() {
+        val queued = BoardSyncState(waitingForUnmeteredNetwork = true)
+
+        assertTrue(queued.waitingForUnmeteredNetwork)
+        assertFalse(queued.isSyncing)
+        assertEquals(null, queued.errorMessage)
+    }
+
+    @Test
     fun boardStepsUnifiesAllStreamsOrderedKilterMoonboardAurora() {
         val kilter = ImportStep.FetchingManifest
         val moon = ImportStep.Done(1, 2, 3)

@@ -103,6 +103,32 @@ confirmed. The separate clear-entire-wall action likewise requires controller
 readback (an authoritative empty snapshot); successful BLE transport alone no
 longer clears local truth optimistically.
 
+## Catalogue identity and offline migration
+
+Quantum's app climb UUID is not the controller route UUID. The local catalogue
+therefore stores an authoritative `(app UUID, route UUID, model)` bridge plus
+route metadata. Reverse lookup hydrates a foreign controller route to its known
+climb name and hold set; known holds participate in overlap checks. Missing,
+blank, malformed, wrong-model, or otherwise unresolved geometry remains
+unknown and blocks another projection conservatively.
+
+Local share keeps two permanent compatibility views. A v1 receiver receives
+the same Quantum-free legacy logical artifact at `/board.db.gz`; it never sees
+Quantum geometry, bridge rows, or route metadata. A v2 receiver prefers the
+full `/v2/board.db.gz` artifact and falls back to v1 only when the v2 endpoint
+is genuinely absent, never after a corrupt or mismatched v2 response. Generic
+catalogue rows, geometry that exists in the peer schema, route references, and
+metadata validate before writing and commit in one SQLite transaction. A
+mapping conflict or malformed official Quantum row leaves no partial generic
+rows behind.
+
+Pre-0.2.2 modern databases are also accepted. Additive geometry tables may be
+missing, and geometry without a `board_brand` column is interpreted as Kilter;
+present tables still have their required columns probed before any write.
+Backup format 3 already carries the additive brand/layout fields used by
+Quantum ascents, bids, own climbs, and own-climb stats, so 0.2.1 restores and
+current round trips require no format bump.
+
 ## Conflict and overlay UX
 
 The detail screen shows a four-position rack with route name, state, colour,

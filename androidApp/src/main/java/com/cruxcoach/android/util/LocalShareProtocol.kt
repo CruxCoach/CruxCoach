@@ -18,6 +18,10 @@ object LocalShareProtocol {
     const val BOARD_PATH = "/board.db.gz"
     const val V2_BOARD_PATH = "/v2/board.db.gz"
     const val PROTOCOL_HEADER = "X-CruxCoach-Share-Protocol"
+    /** Optional continuity proof. Missing remains valid for legacy clients;
+     *  once a receiver has seen a manifest, every later request binds to that
+     *  exact bounded sender session. */
+    const val SESSION_HEADER = "X-CruxCoach-Share-Session"
 
     data class Invitation(
         val baseUrl: String,

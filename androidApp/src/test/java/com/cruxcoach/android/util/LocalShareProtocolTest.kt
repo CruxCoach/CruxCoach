@@ -8,6 +8,7 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.InetAddress
 import java.net.ServerSocket
+import java.net.Socket
 import java.net.URL
 import javax.net.SocketFactory
 import java.util.concurrent.CountDownLatch
@@ -92,6 +93,7 @@ class LocalShareProtocolTest {
             ),
             target = File(tempDir, "protocol-received.apk"),
             protocolVersion = LocalShareProtocol.VERSION_V2,
+            expectedSessionId = "01234567-89ab-cdef-0123-456789abcdef",
             onProgress = { _, _ -> },
         )
 
@@ -99,6 +101,10 @@ class LocalShareProtocolTest {
         assertEquals(
             "2",
             requestHeaders[LocalShareProtocol.PROTOCOL_HEADER.lowercase()],
+        )
+        assertEquals(
+            "01234567-89ab-cdef-0123-456789abcdef",
+            requestHeaders[LocalShareProtocol.SESSION_HEADER.lowercase()],
         )
     }
 
@@ -240,6 +246,76 @@ class LocalShareProtocolTest {
         assertTrue(stopped.await(1, TimeUnit.SECONDS))
         requestThread.join(1_000)
         assertTrue(successfulRequests >= 2)
+    }
+
+    @Test
+    fun stalledHeaderClientIsClosedAtTheAbsoluteDeadline() {
+        val apk = File(tempDir, "stalled.apk").apply { writeBytes(ByteArray(1024)) }
+        val stopped = CountDownLatch(1)
+        server = LocalApkServer(apkFile = apk, autoShutdownMs = 120L).also {
+            it.onAutoShutdown = { stopped.countDown() }
+        }
+        val port = server!!.start(port = 0, hostIp = "127.0.0.1")
+        val stalled = Socket("127.0.0.1", port).apply { soTimeout = 1_000 }
+
+        // Send no request line. The server thread is blocked in readLine(),
+        // but the hard session deadline owns and closes this accepted socket.
+        assertTrue(stopped.await(1, TimeUnit.SECONDS))
+        val closedByServer = runCatching { stalled.getInputStream().read() }
+            .fold(onSuccess = { it == -1 }, onFailure = { true })
+        stalled.close()
+
+        assertTrue(closedByServer)
+    }
+
+    @Test
+    fun optionalSessionHeaderBindsArtifactsWithoutBreakingHeaderlessV1Clients() {
+        val apk = File(tempDir, "session.apk").apply { writeText("apk") }
+        val completed = CountDownLatch(1)
+        val bulkStarted = CountDownLatch(1)
+        server = LocalApkServer(apkFile = apk).also {
+            it.onReceiverComplete = { completed.countDown() }
+            it.onBulkTransferStarted = { bulkStarted.countDown() }
+        }
+        val port = server!!.start(port = 0, hostIp = "127.0.0.1")
+        val network = mockk<Network>()
+        every { network.socketFactory } returns SocketFactory.getDefault()
+        val client = LocalShareClient()
+        val manifest = client.fetchManifest(network, "http://127.0.0.1:$port")
+
+        // A stale/other manifest is rejected before an artifact request can
+        // arm work or a completion request can invoke the callback.
+        assertFailsWith<ShareSessionChangedException> {
+            client.requestSnapshotBuild(
+                network,
+                "http://127.0.0.1:$port",
+                manifest.protocolVersion,
+                "ffffffff-ffff-ffff-ffff-ffffffffffff",
+            )
+        }
+        assertFalse(bulkStarted.await(150, TimeUnit.MILLISECONDS))
+        assertFailsWith<ShareSessionChangedException> {
+            client.notifyDownloadComplete(
+                network,
+                "http://127.0.0.1:$port",
+                "ffffffff-ffff-ffff-ffff-ffffffffffff",
+            )
+        }
+        assertFalse(completed.await(150, TimeUnit.MILLISECONDS))
+
+        // Missing remains the immutable old-client behavior; matching binds
+        // every modern follow-up to the manifest the user accepted.
+        client.notifyDownloadComplete(network, "http://127.0.0.1:$port")
+        assertTrue(completed.await(1, TimeUnit.SECONDS))
+        assertEquals(
+            manifest.sessionId,
+            client.fetchManifest(
+                network,
+                "http://127.0.0.1:$port",
+                protocolVersion = manifest.protocolVersion,
+                expectedSessionId = manifest.sessionId,
+            ).sessionId,
+        )
     }
 
     @Test

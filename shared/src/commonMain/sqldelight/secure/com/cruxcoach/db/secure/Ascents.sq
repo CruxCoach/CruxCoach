@@ -212,6 +212,12 @@ INSERT OR IGNORE INTO ascents(uuid, climb_uuid, angle, is_mirror,
     external_id, board_brand, layout_id)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'moonboard', ?);
 
+resolveStagedMoonAscent:
+UPDATE ascents SET
+    climb_uuid = ?, angle = ?, climb_name = ?, difficulty_average = ?,
+    climb_frames = ?, frames_count = ?, board_brand = 'moonboard', layout_id = ?
+WHERE external_id = ?;
+
 countAscentsWithExternalIdPrefix:
 SELECT COUNT(*) FROM ascents WHERE external_id LIKE ?;
 

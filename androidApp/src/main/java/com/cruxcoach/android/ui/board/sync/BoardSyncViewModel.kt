@@ -93,6 +93,8 @@ class BoardSyncViewModel @Inject constructor(
     fun dismissLocalImport() = syncManager.dismissLocalImport()
     fun confirmOfflineShare() = syncManager.confirmOfflineShare()
     fun dismissOfflineShare() = syncManager.dismissOfflineShare()
+    fun confirmDiscoveredShare() = syncManager.confirmDiscoveredShare()
+    fun dismissDiscoveredShare() = syncManager.dismissDiscoveredShare()
     fun dismissLocalShareUpdate() = syncManager.dismissLocalShareUpdate()
 
     /**

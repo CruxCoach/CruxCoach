@@ -8,8 +8,6 @@ import androidx.annotation.RequiresApi
 import java.io.File
 import java.io.FileInputStream
 import java.security.MessageDigest
-import java.security.cert.CertificateFactory
-import java.util.zip.ZipFile
 
 /**
  * Two-gate integrity check that sits between download (§5.3) and install
@@ -77,9 +75,7 @@ class IntegrityVerifier(
         //
         // This does not weaken the gate. The lineage is only ever read back
         // from PackageManager, which validates each link before exposing the
-        // history — a forged lineage does not parse. The unverified ZIP
-        // fallback still contributes exactly one certificate, so it cannot be
-        // used to smuggle a trusted cert in alongside a hostile signer.
+        // history — a forged lineage does not parse.
         val matched = pinMatchesSigningHistory(pin.certSha256Hex, signerHashes)
         if (!matched) {
             Log.w(
@@ -131,7 +127,7 @@ class IntegrityVerifier(
         } else {
             extractSignerLegacy(pm, apkFile)?.let(::listOf)
         }
-        val certs = viaPm ?: extractSignerFromZip(apkFile)?.let(::listOf) ?: emptyList()
+        val certs = viaPm.orEmpty()
         return certs.map(pinStore::sha256OfApkSigner).distinct()
     }
 
@@ -187,45 +183,6 @@ class IntegrityVerifier(
         return first.toByteArray()
     }
 
-    /** Last-resort path: parse the APK as a ZIP, read the PKCS#7 `.RSA`
-     *  (or `.DSA` / `.EC`) entry in `META-INF/`, and let the JCA
-     *  [CertificateFactory] extract the X.509 signer. This sidesteps
-     *  PackageManager entirely, so it still works when a ROM refuses to
-     *  scan APKs in the app-scoped external dir (observed: HTC Android 9).
-     *
-     *  Returns the same DER-encoded certificate bytes as
-     *  `Signature.toByteArray()` for non-rotated signing keys, so the
-     *  SHA-256 fed into the TOFU pin matches byte-for-byte. */
-    private fun extractSignerFromZip(apkFile: File): ByteArray? {
-        return try {
-            ZipFile(apkFile).use { zip ->
-                val entry = zip.entries().asSequence()
-                    .firstOrNull { e ->
-                        val n = e.name.uppercase()
-                        n.startsWith("META-INF/") &&
-                            (n.endsWith(".RSA") || n.endsWith(".DSA") || n.endsWith(".EC"))
-                    }
-                if (entry == null) {
-                    Log.w(TAG, "No META-INF/*.RSA|DSA|EC in APK ZIP")
-                    return@use null
-                }
-                val cf = CertificateFactory.getInstance("X.509")
-                zip.getInputStream(entry).use { input ->
-                    val cert = cf.generateCertificates(input).firstOrNull()
-                    if (cert == null) {
-                        Log.w(TAG, "PKCS#7 entry ${entry.name} yielded no certificates")
-                        null
-                    } else {
-                        cert.encoded
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "ZIP-based signer extraction failed", e)
-            null
-        }
-    }
-
     private fun hexEqualsConstantTime(a: String, b: String): Boolean {
         if (a.length != b.length) return false
         val aBytes = a.lowercase().toByteArray(Charsets.US_ASCII)
@@ -251,12 +208,11 @@ class IntegrityVerifier(
 
         /**
          * The signing certificate could not be extracted from the APK at all
-         * (every PackageManager path returned null AND the ZIP v1-signature
-         * fallback found no cert). Unlike [PayloadMismatch]/[PayloadError]
-         * this is NOT fixable by re-downloading — it's a ROM/signing-scheme
-         * edge (e.g. a v2/v3-only APK on a ROM where getPackageArchiveInfo
-         * returns null) — so the caller hands off to the release page instead
-         * of looping on a corrupt-retry that can never succeed.
+         * (every PackageManager path returned null or no signers). Unlike
+         * [PayloadMismatch]/[PayloadError] this is NOT fixable by re-
+         * downloading — it is a ROM/package-parser edge — so the caller hands
+         * off to the canonical release page instead of accepting unverified
+         * `META-INF` certificate material or looping forever.
          */
         data class SignerUnavailable(val message: String) : Result
     }

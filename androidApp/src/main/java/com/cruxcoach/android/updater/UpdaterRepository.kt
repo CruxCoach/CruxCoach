@@ -778,15 +778,19 @@ class UpdaterRepository @Inject constructor(
         }
     }
 
-    /** §5.4.3 — one-tap handoff to the release page of whichever source announced it. */
-    fun openReleasePage(info: UpdateInfo) {
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(info.releasePageUrl)).apply {
+    /** §5.4.3 — handoff to the app-compiled canonical release page. Forge
+     * JSON and persisted updater state are data, never navigation authority. */
+    fun openReleasePage(@Suppress("UNUSED_PARAMETER") info: UpdateInfo) {
+        val intent = Intent(
+            Intent.ACTION_VIEW,
+            Uri.parse(BuildConfig.UPDATER_RELEASE_PAGE_URL),
+        ).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         try {
             context.startActivity(intent)
         } catch (e: Exception) {
-            Log.w(TAG, "No browser available for ${info.releasePageUrl}", e)
+            Log.w(TAG, "No browser available for canonical updater release page", e)
         }
     }
 

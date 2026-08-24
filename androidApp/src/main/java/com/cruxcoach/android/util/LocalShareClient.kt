@@ -21,12 +21,18 @@ class LocalShareClient {
         timeoutMs: Long,
         onPreparing: () -> Unit = {},
         protocolVersion: Int = LocalShareProtocol.VERSION_V2,
+        expectedSessionId: String? = null,
     ): LocalShareProtocol.Manifest {
         val deadline = System.currentTimeMillis() + timeoutMs
         var failures = 0
         while (true) {
             try {
-                val manifest = fetchManifest(network, baseUrl, protocolVersion = protocolVersion)
+                val manifest = fetchManifest(
+                    network,
+                    baseUrl,
+                    protocolVersion = protocolVersion,
+                    expectedSessionId = expectedSessionId,
+                )
                 when (manifest.boardStatus) {
                     "ready", "unavailable" -> return manifest
                     else -> {
@@ -38,6 +44,8 @@ class LocalShareClient {
                         delay(MANIFEST_POLL_MS)
                     }
                 }
+            } catch (error: ShareSessionChangedException) {
+                throw error
             } catch (error: IOException) {
                 if (++failures > MAX_CONNECT_FAILURES || System.currentTimeMillis() >= deadline) {
                     throw error
@@ -54,18 +62,21 @@ class LocalShareClient {
         connectTimeoutMs: Int = CONNECT_TIMEOUT_MS,
         readTimeoutMs: Int = READ_TIMEOUT_MS,
         protocolVersion: Int? = null,
+        expectedSessionId: String? = null,
     ): LocalShareProtocol.Manifest {
         if (protocolVersion == null) {
             try {
                 return fetchManifest(
                     network, baseUrl, connectTimeoutMs, readTimeoutMs,
                     LocalShareProtocol.VERSION_V2,
+                    expectedSessionId,
                 )
             } catch (error: HttpStatusException) {
                 if (error.code != HTTP_NOT_FOUND) throw error
                 return fetchManifest(
                     network, baseUrl, connectTimeoutMs, readTimeoutMs,
                     LocalShareProtocol.VERSION,
+                    expectedSessionId,
                 )
             } catch (error: LegacyManifestEndpointException) {
                 // Pre-v2 servers return their HTML landing page (HTTP 200)
@@ -75,6 +86,7 @@ class LocalShareClient {
                 return fetchManifest(
                     network, baseUrl, connectTimeoutMs, readTimeoutMs,
                     LocalShareProtocol.VERSION,
+                    expectedSessionId,
                 )
             }
         }
@@ -91,10 +103,14 @@ class LocalShareClient {
         return openResponse(
             network = network,
             url = url,
-            headers = mapOf("Accept" to "application/json"),
+            headers = buildMap {
+                put("Accept", "application/json")
+                expectedSessionId?.let { put(LocalShareProtocol.SESSION_HEADER, it) }
+            },
             connectTimeoutMs = connectTimeoutMs,
             readTimeoutMs = readTimeoutMs,
         ).use { response ->
+            if (response.code == HTTP_CONFLICT) throw ShareSessionChangedException()
             if (response.code != HTTP_OK) throw HttpStatusException(response.code)
             val body = response.readBody(MAX_MANIFEST_BYTES).toString(Charsets.UTF_8)
             val manifest = runCatching { LocalShareProtocol.parseManifest(body) }
@@ -113,6 +129,9 @@ class LocalShareClient {
                     IllegalArgumentException("Manifest protocol does not match request"),
                 )
             }
+            if (expectedSessionId != null && manifest.sessionId != expectedSessionId) {
+                throw ShareSessionChangedException()
+            }
             manifest
         }
     }
@@ -122,6 +141,7 @@ class LocalShareClient {
         network: Network,
         baseUrl: String,
         protocolVersion: Int = LocalShareProtocol.VERSION_V2,
+        expectedSessionId: String? = null,
     ) {
         require(
             protocolVersion == LocalShareProtocol.VERSION ||
@@ -131,7 +151,11 @@ class LocalShareClient {
             LocalShareProtocol.V2_BOARD_PATH
         } else LocalShareProtocol.BOARD_PATH
         val url = URL(LocalShareProtocol.artifactUrl(baseUrl, path))
-        openResponse(network, url, method = "HEAD").use { response ->
+        val headers = expectedSessionId?.let {
+            mapOf(LocalShareProtocol.SESSION_HEADER to it)
+        }.orEmpty()
+        openResponse(network, url, headers = headers, method = "HEAD").use { response ->
+            if (response.code == HTTP_CONFLICT) throw ShareSessionChangedException()
             if (response.code !in setOf(HTTP_OK, HTTP_SERVICE_UNAVAILABLE)) {
                 throw IOException("Snapshot request HTTP ${response.code}")
             }
@@ -142,9 +166,17 @@ class LocalShareClient {
      * hotspot, which also returns manually connected fresh installs to their
      * previous Wi-Fi — something the newly installed app cannot request
      * directly because it never received the hotspot password. */
-    fun notifyDownloadComplete(network: Network, baseUrl: String) {
+    fun notifyDownloadComplete(
+        network: Network,
+        baseUrl: String,
+        expectedSessionId: String? = null,
+    ) {
         val url = URL(LocalShareProtocol.artifactUrl(baseUrl, LocalShareProtocol.COMPLETE_PATH))
-        openResponse(network, url, method = "POST").use { response ->
+        val headers = expectedSessionId?.let {
+            mapOf(LocalShareProtocol.SESSION_HEADER to it)
+        }.orEmpty()
+        openResponse(network, url, headers = headers, method = "POST").use { response ->
+            if (response.code == HTTP_CONFLICT) throw ShareSessionChangedException()
             if (response.code != HTTP_NO_CONTENT) {
                 throw IOException("Completion HTTP ${response.code}")
             }
@@ -162,6 +194,7 @@ class LocalShareClient {
         artifact: LocalShareProtocol.Artifact,
         target: File,
         protocolVersion: Int = LocalShareProtocol.VERSION,
+        expectedSessionId: String? = null,
         onVerifying: () -> Unit = {},
         onProgress: (downloadedBytes: Long, totalBytes: Long) -> Unit,
     ): File {
@@ -181,9 +214,17 @@ class LocalShareClient {
         while (partial.length() < artifact.sizeBytes) {
             try {
                 downloadRemaining(
-                    network, baseUrl, artifact, partial, protocolVersion, onProgress,
+                    network,
+                    baseUrl,
+                    artifact,
+                    partial,
+                    protocolVersion,
+                    expectedSessionId,
+                    onProgress,
                 )
                 failures = 0
+            } catch (error: ShareSessionChangedException) {
+                throw error
             } catch (error: IOException) {
                 if (++failures > MAX_TRANSFER_FAILURES) throw error
                 Log.w(
@@ -215,6 +256,7 @@ class LocalShareClient {
         artifact: LocalShareProtocol.Artifact,
         partial: File,
         protocolVersion: Int,
+        expectedSessionId: String?,
         onProgress: (downloadedBytes: Long, totalBytes: Long) -> Unit,
     ) {
         var offset = partial.length()
@@ -227,9 +269,11 @@ class LocalShareClient {
             if (artifact.path == LocalShareProtocol.APK_PATH) {
                 put(LocalShareProtocol.PROTOCOL_HEADER, protocolVersion.toString())
             }
+            expectedSessionId?.let { put(LocalShareProtocol.SESSION_HEADER, it) }
         }
         openResponse(network, url, requestHeaders).use { response ->
             val code = response.code
+            if (code == HTTP_CONFLICT) throw ShareSessionChangedException()
             val append = when {
                 offset > 0L && code == HTTP_PARTIAL -> {
                     val range = response.headers["content-range"].orEmpty()
@@ -404,9 +448,14 @@ class LocalShareClient {
         const val HTTP_PARTIAL = 206
         const val HTTP_NO_CONTENT = 204
         const val HTTP_SERVICE_UNAVAILABLE = 503
+        const val HTTP_CONFLICT = 409
         const val HTTP_NOT_FOUND = 404
         const val MAX_MANIFEST_BYTES = 1 * 1024 * 1024
         const val MAX_HEADER_LINE_BYTES = 8 * 1024
         val HEADER_NAME = Regex("[A-Za-z0-9-]{1,64}")
     }
 }
+
+/** The sender restarted or a different peer answered after the user accepted
+ *  a specific manifest. Retrying would silently cross that consent boundary. */
+class ShareSessionChangedException : IOException("Offline-share session changed")

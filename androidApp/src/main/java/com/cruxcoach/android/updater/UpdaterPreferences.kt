@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.cruxcoach.android.BuildConfig
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -279,7 +280,10 @@ data class UpdaterState(
         val sha = pendingApkSha256 ?: return null
         val size = pendingApkSizeBytes ?: return null
         val shaUrl = pendingApkSha256Url ?: return null
-        val pageUrl = pendingReleasePageUrl ?: return null
+        // Presence still participates in the persisted-state completeness
+        // check, but its value is untrusted and never becomes navigation
+        // authority after a process restart.
+        pendingReleasePageUrl ?: return null
         return UpdateInfo(
             tagName = tag,
             versionName = pendingVersionName ?: version.toString(),
@@ -289,7 +293,7 @@ data class UpdaterState(
             apkSizeBytes = size,
             apkSha256 = sha,
             releaseNotesMarkdown = pendingReleaseNotesMarkdown.orEmpty(),
-            releasePageUrl = pageUrl,
+            releasePageUrl = BuildConfig.UPDATER_RELEASE_PAGE_URL,
             publishedAtEpochSeconds = 0L,
         )
     }

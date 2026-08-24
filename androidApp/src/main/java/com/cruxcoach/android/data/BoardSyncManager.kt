@@ -10,6 +10,7 @@ import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.android.data.blossom.BlossomSyncException
 import com.cruxcoach.android.data.blossom.BlossomSyncManager
 import com.cruxcoach.android.notification.BoardSyncWorker
+import com.cruxcoach.android.moonboard.MoonBoardCsvImporter
 import com.cruxcoach.android.util.isNetworkAvailable
 import com.cruxcoach.android.util.isNetworkPermissionGranted
 import com.cruxcoach.android.util.isWifiConnected
@@ -68,6 +69,15 @@ class BoardSyncManager(
     private val auroraCatalogueSync: AuroraCatalogueSync,
     private val quantumCatalogueSync: QuantumCatalogueSync,
     private val integrityVerifier: IntegrityVerifier,
+    private val moonBoardCsvImporter: MoonBoardCsvImporter? = null,
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+    private val discoverInitialShare: suspend () -> LocalShareDiscovery.Found? = {
+        LocalShareDiscovery(appContext).discover()
+    },
+    /** Narrow deterministic test seam; production uses [startApiSync]. */
+    private val initialOnlineFallback: ((BoardSyncManager) -> Unit)? = null,
+    /** Narrow deterministic test seam; production runs the real bound peer. */
+    private val initialShareRunner: (suspend (LocalShareDiscovery.Found) -> Unit)? = null,
 ) : CatalogueRevisionSource {
     private companion object {
         const val TAG = "BoardSyncManager"
@@ -108,8 +118,10 @@ class BoardSyncManager(
         const val LOCAL_SHARE_NETWORK_RECHECK_MS = 2_500L
     }
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var deferralWatchdog: Job? = null
+    /** True only for the onboarding fallback. Dismissing its mobile-data
+     * consent queues the catalogue for Wi-Fi instead of cancelling it. */
+    private var queueAfterMeteredDismiss = false
     private val localShareResumeStore = LocalShareResumeStore(appContext)
 
     private val _state = MutableStateFlow(BoardSyncState())
@@ -373,13 +385,22 @@ class BoardSyncManager(
     }
 
     fun dismissMeteredConfirm() {
-        _state.update { it.copy(showMeteredConfirmDialog = false) }
+        val queueForWifi = queueAfterMeteredDismiss
+        queueAfterMeteredDismiss = false
+        _state.update {
+            it.copy(
+                showMeteredConfirmDialog = false,
+                waitingForUnmeteredNetwork = queueForWifi,
+            )
+        }
+        if (queueForWifi) BoardSyncWorker.enqueueExpedited(appContext, allowMetered = false)
     }
 
     /** Consent action of the metered-download dialog: the user explicitly
      *  chose to pull the full catalogue over mobile data (one-time consent;
      *  the background auto-sync paths stay WiFi-only). */
     fun confirmMeteredSync() {
+        queueAfterMeteredDismiss = false
         _state.update { it.copy(showMeteredConfirmDialog = false) }
         startApiSync(bypassWifi = true)
     }
@@ -490,6 +511,8 @@ class BoardSyncManager(
                     // fresh sync doesn't render stale Done rows (and their
                     // old counts) for boards whose lane hasn't started yet.
                     auroraSteps = emptyMap(),
+                    auroraErrors = emptyMap(),
+                    waitingForUnmeteredNetwork = false,
                     syncGeneration = current.syncGeneration + 1
                 )
             }
@@ -505,7 +528,7 @@ class BoardSyncManager(
      */
     fun startInitialSyncIfNeeded() {
         val current = _state.value
-        if (current.alreadyImported || current.isSyncing) return
+        if (current.alreadyImported || current.isSyncing || current.pendingDiscoveredShare != null) return
         // Discovery is only a probe at this point. Do not advertise a nearby
         // transfer in the UI until a valid peer manifest has actually been
         // found; on an ordinary fresh install this probe simply falls through
@@ -513,7 +536,7 @@ class BoardSyncManager(
         if (!claimSyncSlot(ImportStep.CheckingUpdate)) return
 
         scope.launch {
-            val found = runCatching { LocalShareDiscovery(appContext).discover() }
+            val found = runCatching { discoverInitialShare() }
                 .onFailure { Log.w(TAG, "Local-share onboarding discovery failed", it) }
                 .getOrNull()
             if (found == null) {
@@ -525,24 +548,83 @@ class BoardSyncManager(
                         localShareBoardSteps = emptyMap(),
                     )
                 }
-                startApiSync()
+                startInitialOnlineFallback()
                 return@launch
             }
+            // Discovery proves only that a peer answered on this LAN. It is
+            // not user consent to transfer or parse that peer's artifacts.
+            // Release the probe slot and stage the exact manifest/network;
+            // confirmation below reclaims the slot atomically.
+            _state.update { currentState ->
+                currentState.copy(
+                    isSyncing = false,
+                    importStep = null,
+                    localShareInProgress = false,
+                    localShareBoardSteps = emptyMap(),
+                    pendingDiscoveredShare = found,
+                )
+            }
+        }
+    }
+
+    private fun startInitialOnlineFallback() {
+        initialOnlineFallback?.invoke(this) ?: startApiSync(queueWhenOffline = true)
+    }
+
+    /** Accept the exact peer/session the user saw. Consuming the offer and
+     * claiming the sync slot happen in one StateFlow update, so another sync
+     * cannot slip between those decisions. */
+    fun confirmDiscoveredShare() {
+        var claimed: LocalShareDiscovery.Found? = null
+        _state.update { current ->
+            val found = current.pendingDiscoveredShare
+            if (found == null || current.isSyncing) {
+                current
+            } else {
+                claimed = found
+                current.copy(
+                    isSyncing = true,
+                    syncComplete = false,
+                    errorMessage = null,
+                    importStep = ImportStep.FetchingManifest,
+                    localShareInProgress = true,
+                    localShareBoardSteps = sharedBoardBrands(
+                        found.manifest.board,
+                        found.manifest.protocolVersion,
+                    ).associateWith { ImportStep.FetchingManifest },
+                    auroraSteps = emptyMap(),
+                    syncGeneration = current.syncGeneration + 1,
+                    pendingDiscoveredShare = null,
+                )
+            }
+        }
+        val found = claimed ?: return
+        scope.launch {
             try {
-                updateLocalShareProgress(
-                    ImportStep.DiscoveringLocalShare,
-                    sharedBoardBrands(found.manifest.board, found.manifest.protocolVersion),
-                )
-                runOfflineShare(
-                    network = found.network,
-                    baseUrl = found.baseUrl,
-                    initialManifest = found.manifest,
-                    releaseNetwork = {},
-                )
+                initialShareRunner?.invoke(found) ?: runOfflineShare(
+                        network = found.network,
+                        baseUrl = found.baseUrl,
+                        initialManifest = found.manifest,
+                        releaseNetwork = {},
+                    )
             } catch (error: Exception) {
                 failOfflineShare(error)
             }
         }
+    }
+
+    /** Declining the unauthenticated LAN peer is also the user's one answer
+     * to continue onboarding over the ordinary Internet catalogue path. */
+    fun dismissDiscoveredShare() {
+        var dismissed = false
+        _state.update { current ->
+            if (current.pendingDiscoveredShare == null) current
+            else {
+                dismissed = true
+                current.copy(pendingDiscoveredShare = null)
+            }
+        }
+        if (dismissed) startInitialOnlineFallback()
     }
 
     private fun interactiveBoardBrands(): List<BoardBrand> =
@@ -673,7 +755,7 @@ class BoardSyncManager(
         _state.update { it.copy(pendingLocalImportUrl = null) }
     }
 
-    fun startApiSync(bypassWifi: Boolean = false) {
+    fun startApiSync(bypassWifi: Boolean = false, queueWhenOffline: Boolean = false) {
         Log.d(TAG, "startApiSync() called, isSyncing=${_state.value.isSyncing}, bypassWifi=$bypassWifi")
         if (_state.value.isSyncing) return
 
@@ -692,7 +774,18 @@ class BoardSyncManager(
         checkNetwork()
         Log.d(TAG, "network=${_state.value.networkAvailable}, wifi=${_state.value.wifiConnected}")
         if (!_state.value.networkAvailable) {
-            _state.update { it.copy(showNetworkDialog = true) }
+            if (queueWhenOffline) {
+                BoardSyncWorker.enqueueExpedited(appContext, allowMetered = false)
+                _state.update {
+                    it.copy(
+                        showNetworkDialog = false,
+                        waitingForUnmeteredNetwork = true,
+                        errorMessage = null,
+                    )
+                }
+            } else {
+                _state.update { it.copy(showNetworkDialog = true) }
+            }
             return
         }
         // Not on WiFi: no hard block anymore — ask instead. The consent dialog
@@ -702,13 +795,14 @@ class BoardSyncManager(
         // uses). Background auto-sync (syncIfStale / periodic worker /
         // missing-catalogue autoload) never reaches this prompt — WiFi-only.
         if (!bypassWifi && !_state.value.wifiConnected) {
+            queueAfterMeteredDismiss = queueWhenOffline
             _state.update { it.copy(showMeteredConfirmDialog = true) }
             return
         }
 
         // Execute under a foreground-service worker so the sync
         // survives the app being backgrounded mid-download.
-        BoardSyncWorker.enqueueExpedited(appContext)
+        BoardSyncWorker.enqueueExpedited(appContext, allowMetered = bypassWifi)
         watchForSilentDeferral()
     }
 
@@ -794,12 +888,20 @@ class BoardSyncManager(
     }
 
     private suspend fun performBlossomSync() {
+        val activeBrand = BoardBrand.fromWire(userPreferences.boardBrand.first())
+        val prioritisedBrand = activeBrand.takeIf {
+            it.isInteractive && it != BoardBrand.KILTER
+        }
         // 1. Fetch manifest
         _state.update { it.copy(
             importStep = ImportStep.FetchingManifest,
             moonBoardStep = null,
             moonBoardError = null,
         ) }
+        // Make the board selected during onboarding useful first. Its lane is
+        // isolated and idempotent, so a failure cannot prevent the complete
+        // all-catalogue pass (Kilter remains the historical main lane).
+        prioritisedBrand?.let { syncCatalogue(it) }
         Log.d(TAG, "Fetching Blossom manifest...")
         val manifest = blossomSyncManager.fetchManifest()
         // Persist manifest timestamp so CommunityClimbSubscriber can seed
@@ -822,8 +924,7 @@ class BoardSyncManager(
             )) }
             // MoonBoard rides on the same board-data sync (FEAT-027) — re-check
             // it even when the Kilter catalogue itself is unchanged.
-            syncMoonBoardCatalogue()
-            syncAllAuroraBoards()
+            syncRemainingCatalogues(activeBrand)
             val timestamp = DateTimeUtil.nowIso()
             userPreferences.setLastSyncTimestamp(timestamp)
             _state.update { it.copy(
@@ -986,8 +1087,7 @@ class BoardSyncManager(
                     0,
                 )
             ) }
-            syncMoonBoardCatalogue()
-            syncAllAuroraBoards()
+            syncRemainingCatalogues(activeBrand)
 
             val timestamp = DateTimeUtil.nowIso()
             userPreferences.setLastSyncTimestamp(timestamp)
@@ -1022,6 +1122,7 @@ class BoardSyncManager(
             )) {
                 is MoonBoardCatalogueSync.Result.AlreadyCurrent -> {
                     Log.d(TAG, "MoonBoard catalogue already current")
+                    moonBoardCsvImporter?.finalizePendingIfCatalogueReady(catalogueReady = true)
                     // No import ran — mark the section complete anyway so
                     // the user sees the MoonBoard catalogue is accounted for.
                     _state.update { it.copy(moonBoardStep = ImportStep.Done(0, 0, 0)) }
@@ -1029,6 +1130,7 @@ class BoardSyncManager(
                 }
                 is MoonBoardCatalogueSync.Result.Imported -> {
                     Log.i(TAG, "MoonBoard catalogue imported (total catalogue climbs=${result.climbCount})")
+                    moonBoardCsvImporter?.finalizePendingIfCatalogueReady(catalogueReady = true)
                     // The commit that can flip the FEAT-049 presence gate, and
                     // the moment the browser's mask cache must re-ask it. Still
                     // inside the same sync run, so syncGeneration says nothing.
@@ -1068,20 +1170,28 @@ class BoardSyncManager(
     }
 
     /**
-     * Sync EVERY interactive Aurora board's catalogue (FEAT-031). Product
+     * Sync every remaining interactive board catalogue. Product
      * decision 2026-06-11: the full board-data sync — onboarding first sync,
      * the manual re-download button, and the scheduled background sync —
-     * loads ALL boards, not just already-loaded ones, so a fresh install or
+     * loads ALL boards, not just already-loaded ones. The active non-Kilter
+     * lane has already run before Kilter and is excluded here, so a fresh install or
      * a post-deletion re-download restores the complete multiboard catalogue
      * without per-board activation. The bins are small (0.3–26 MB gz) and
      * unchanged boards short-circuit to AlreadyCurrent on every later run,
      * so repeat syncs stay cheap.
      */
-    private suspend fun syncAllAuroraBoards() {
-        BoardBrand.entries
-            .filter { it.usesAuroraProtocol && it != BoardBrand.KILTER }
-            .forEach { syncAuroraBoard(it) }
-        syncQuantumBoard()
+    private suspend fun syncRemainingCatalogues(activeBrand: BoardBrand) {
+        catalogueSyncOrder(activeBrand)
+            .filter { it != BoardBrand.KILTER && it != activeBrand }
+            .forEach { syncCatalogue(it) }
+    }
+
+    private suspend fun syncCatalogue(brand: BoardBrand) {
+        when {
+            brand == BoardBrand.MOONBOARD -> syncMoonBoardCatalogue()
+            brand == BoardBrand.QUANTUM -> syncQuantumBoard()
+            brand.usesAuroraProtocol && brand != BoardBrand.KILTER -> syncAuroraBoard(brand)
+        }
     }
 
     private suspend fun syncQuantumBoard(): Boolean = try {
@@ -1455,6 +1565,7 @@ class BoardSyncManager(
                     artifact = firstManifest.apk,
                     target = target,
                     protocolVersion = firstManifest.protocolVersion,
+                    expectedSessionId = firstManifest.sessionId,
                     onVerifying = {
                         updateLocalShareProgress(ImportStep.VerifyingApk, initialBrands)
                     },
@@ -1466,7 +1577,12 @@ class BoardSyncManager(
             receivedManifest = if (firstManifest.boardStatus == "preparing") {
                 // Explicitly arm the expensive sender-side work only after the
                 // APK is complete (or when no APK update was required).
-                client.requestSnapshotBuild(network, baseUrl, firstManifest.protocolVersion)
+                client.requestSnapshotBuild(
+                    network,
+                    baseUrl,
+                    firstManifest.protocolVersion,
+                    firstManifest.sessionId,
+                )
                 updateLocalShareProgress(
                     ImportStep.PreparingSnapshot,
                     initialBrands,
@@ -1476,6 +1592,7 @@ class BoardSyncManager(
                     baseUrl = baseUrl,
                     timeoutMs = SNAPSHOT_WAIT_MAX_MS,
                     protocolVersion = firstManifest.protocolVersion,
+                    expectedSessionId = firstManifest.sessionId,
                     onPreparing = {
                         updateLocalShareProgress(
                             ImportStep.PreparingSnapshot,
@@ -1503,6 +1620,7 @@ class BoardSyncManager(
                     artifact = offeredBoard.artifact,
                     target = target,
                     protocolVersion = receivedManifest.protocolVersion,
+                    expectedSessionId = firstManifest.sessionId,
                     onVerifying = {
                         updateLocalShareProgress(ImportStep.VerifyingSnapshot, brands)
                     },
@@ -1513,7 +1631,9 @@ class BoardSyncManager(
                 throw java.io.IOException("Sender has no board snapshot")
             }
 
-            runCatching { client.notifyDownloadComplete(network, baseUrl) }
+            runCatching {
+                client.notifyDownloadComplete(network, baseUrl, firstManifest.sessionId)
+            }
                 .onFailure { Log.w(TAG, "Could not notify sender that downloads completed", it) }
         } finally {
             // The explicit one-scan path releases its scoped Wi-Fi request at
@@ -1897,6 +2017,15 @@ class BoardSyncManager(
 internal fun parseRetryAfterSeconds(header: String?): Long =
     (header?.trim()?.toLongOrNull() ?: 5L).coerceIn(2L, 15L)
 
+/** Stable all-catalogue order with the user's current board moved to the
+ * front. Map-only brands are deliberately absent. Keeping this pure makes
+ * onboarding priority independent of the transport implementations. */
+internal fun catalogueSyncOrder(activeBrand: BoardBrand): List<BoardBrand> {
+    val supported = BoardBrand.entries.filter { it.isInteractive }
+    if (activeBrand !in supported) return supported
+    return listOf(activeBrand) + supported.filterNot { it == activeBrand }
+}
+
 /**
  * Observable progress of the board-catalogue deletion. [completions] is a
  * monotonic success counter so the Settings UI can show the success banner
@@ -1923,6 +2052,9 @@ data class BoardSyncState(
     /** Metered-download consent: set when a user-triggered full sync starts
      *  without WiFi; confirm proceeds over mobile data, dismiss cancels. */
     val showMeteredConfirmDialog: Boolean = false,
+    /** An onboarding request is safely parked in WorkManager until an
+     * unmetered network exists; navigation remains completely independent. */
+    val waitingForUnmeteredNetwork: Boolean = false,
     val importStep: ImportStep? = null,
     /**
      * Progress of the MoonBoard catalogue sync (FEAT-027), tracked
@@ -1945,6 +2077,9 @@ data class BoardSyncState(
     val pendingLocalImportUrl: String? = null,
     /** One-scan invitation awaiting the in-app trust confirmation. */
     val pendingOfflineShare: LocalShareProtocol.Invitation? = null,
+    /** A bounded first-run LAN probe awaiting explicit in-app consent. No
+     * artifact request has been made while this is non-null. */
+    val pendingDiscoveredShare: LocalShareDiscovery.Found? = null,
     /** A newer, hash- and signer-verified APK downloaded from the peer. */
     val localShareUpdate: LocalShareUpdate? = null,
     /** True from local sender discovery through the final local DB refresh. */

@@ -637,7 +637,7 @@ class MoonBoardAccessibilityService : AccessibilityService() {
                 result = result,
             )
         }
-        returnToCruxCoach()
+        returnAndRelinquishAccess()
     }
 
     private fun fail(message: String) {
@@ -664,7 +664,7 @@ class MoonBoardAccessibilityService : AccessibilityService() {
                     result = MoonBoardCsvImportResult(error = message),
                 )
             }
-            returnToCruxCoach()
+            returnAndRelinquishAccess()
             return
         }
         warnings += message
@@ -691,6 +691,16 @@ class MoonBoardAccessibilityService : AccessibilityService() {
             .putExtra("navigate_to", Routes.MOONBOARD_CSV_IMPORT)
         runCatching { startActivity(intent) }
             .onFailure { Log.w(TAG, "could not return to CruxCoach", it) }
+    }
+
+    /** Accessibility is a one-transfer lease. Terminal bridge state is
+     * published first so onDestroy's disconnect cannot replace the completed
+     * result with an "interrupted" error; then the user is returned and the
+     * service removes its own grant. */
+    private fun returnAndRelinquishAccess() {
+        returnToCruxCoach()
+        runCatching { disableSelf() }
+            .onFailure { Log.w(TAG, "could not relinquish accessibility access", it) }
     }
 
     private fun warn(deviation: MoonBoardDeviation) {

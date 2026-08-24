@@ -1,7 +1,5 @@
 package com.cruxcoach.android.ui.board
 
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,8 +12,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -23,15 +19,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -39,7 +30,6 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
-import com.cruxcoach.android.ble.BlePermissionHelper
 import com.cruxcoach.android.ble.DiscoveredBoard
 import com.cruxcoach.android.data.RelayError
 import com.cruxcoach.domain.board.BoardBrand
@@ -67,39 +57,7 @@ fun RelaySharingSection(
     // it must not expose a path around the layer coexistence boundary.
     if (board == null || board.isCruxRelay || board.boardBrand == BoardBrand.QUANTUM) return
 
-    val context = LocalContext.current
     val state by viewModel.relayState.collectAsStateWithLifecycle()
-    val disclosureSeen by viewModel.disclosureSeen.collectAsStateWithLifecycle()
-
-    var showDisclosure by remember { mutableStateOf(false) }
-
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { granted ->
-        if (granted.values.all { it }) {
-            if (disclosureSeen) viewModel.enableSharing() else showDisclosure = true
-        }
-    }
-    val startSharing = {
-        if (!BlePermissionHelper.hasAdvertisingPermission(context)) {
-            permissionLauncher.launch(BlePermissionHelper.getAdvertisingPermissions())
-        } else if (!disclosureSeen) {
-            showDisclosure = true
-        } else {
-            viewModel.enableSharing()
-        }
-    }
-
-    if (showDisclosure) {
-        RelayDisclosureDialog(
-            onConfirm = {
-                showDisclosure = false
-                viewModel.confirmDisclosure()
-                viewModel.enableSharing()
-            },
-            onDismiss = { showDisclosure = false }
-        )
-    }
 
     state.error?.let { error ->
         Row(
@@ -128,7 +86,7 @@ fun RelaySharingSection(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         OutlinedButton(
-            onClick = startSharing,
+            onClick = { viewModel.requestSharing() },
             modifier = Modifier
                 .fillMaxWidth()
                 .testTag("relay_share_button"),
@@ -209,43 +167,6 @@ private fun RelayActiveCard(
     }
 }
 
-/** One-time disclosure (§12): the phone's GLOBAL Bluetooth name changes to
- *  "CruxRelay…" while sharing, plus the non-affiliation disclaimer. */
-@Composable
-private fun RelayDisclosureDialog(
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        modifier = Modifier.testTag("relay_disclosure_dialog"),
-        title = { Text(stringResource(R.string.relay_disclosure_title)) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(stringResource(R.string.relay_disclosure_text))
-                Text(
-                    stringResource(R.string.relay_disclosure_disclaimer),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = onConfirm,
-                colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent)
-            ) {
-                Text(stringResource(R.string.relay_disclosure_confirm))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.action_cancel))
-            }
-        }
-    )
-}
-
 /** Shared with [com.cruxcoach.android.ui.common.BleStatusArea]'s transient
  *  relay-error row — the sheet is usually gone when a BOARD_LOST lands. */
 @Composable
@@ -257,6 +178,7 @@ internal fun relayErrorText(error: RelayError, detail: String?): String {
         RelayError.BOARD_LOST -> stringResource(R.string.relay_error_board_lost)
         RelayError.UNSUPPORTED_BOARD -> stringResource(R.string.relay_error_unsupported_board)
         RelayError.FORWARD_FAILED -> stringResource(R.string.relay_error_forward_failed)
+        RelayError.IDLE_TIMEOUT -> stringResource(R.string.relay_error_idle_timeout)
     }
     return if (detail != null) "$base ($detail)" else base
 }

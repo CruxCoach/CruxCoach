@@ -60,7 +60,7 @@ enum class OnboardingStep {
  *    exist). The button navigates to [com.cruxcoach.android.ui.settings.KeyImportScreen]
  *    after persisting a restore-intent marker. On the next cold start
  *    (after the KeyImport-driven app restart) onboarding lands back on
- *    [OnboardingStep.PRIVACY] and only *then* triggers
+ *    the existing-data screen and only *then* triggers
  *    [BackupRepository.checkForBackup] against the imported key.
  */
 enum class BackupChoice { FRESH, RESTORE }
@@ -235,7 +235,7 @@ class OnboardingViewModel @Inject constructor(
             if (backupPreferences.isBackupRestoreIntent()) {
                 _state.update {
                     it.copy(
-                        currentStep = OnboardingStep.PRIVACY,
+                        currentStep = OnboardingStep.KILTER,
                         backupOptIn = true,
                         backupChoice = BackupChoice.RESTORE,
                         hasNostrKey = keyStore.hasKey(),
@@ -264,7 +264,7 @@ class OnboardingViewModel @Inject constructor(
 
     fun nextStep() {
         val next = when (_state.value.currentStep) {
-            OnboardingStep.BOARD_SETUP -> OnboardingStep.PRIVACY
+            OnboardingStep.BOARD_SETUP -> OnboardingStep.KILTER
             OnboardingStep.PRIVACY -> OnboardingStep.KILTER
             OnboardingStep.KILTER -> return
         }
@@ -275,7 +275,7 @@ class OnboardingViewModel @Inject constructor(
         val prev = when (_state.value.currentStep) {
             OnboardingStep.BOARD_SETUP -> return
             OnboardingStep.PRIVACY -> OnboardingStep.BOARD_SETUP
-            OnboardingStep.KILTER -> OnboardingStep.PRIVACY
+            OnboardingStep.KILTER -> OnboardingStep.BOARD_SETUP
         }
         _state.update { it.copy(currentStep = prev) }
     }
@@ -623,10 +623,10 @@ class OnboardingViewModel @Inject constructor(
                     runCatching { kilterApiClient.revokeRefreshToken() }
                     kilterTokenStore.clear()
                 }
-                userPreferences.setNearbyClimbSharing(s.bleSharing)
-                userPreferences.setAllowRemoteDisconnect(s.bleSharing)
-                userPreferences.setCrashReportOptIn(s.communityFeatures)
-                userPreferences.setAnnouncementsEnabled(s.communityFeatures)
+                // Nearby/community/privacy preferences are deliberately not
+                // onboarding decisions. Preserve their app defaults (and any
+                // value restored from an existing backup) instead of silently
+                // writing the old, now-hidden switches here.
                 // FEAT-002: persist backup opt-in + schedule worker. RESTORE
                 // path has already set backupEnabled=true via confirmRestore,
                 // so the check here is the user's explicit toggle state.
@@ -658,7 +658,7 @@ class OnboardingViewModel @Inject constructor(
                 } else {
                     userPreferences.setBoardLayoutId(s.boardLayoutId)
                     userPreferences.setBoardProductSizeId(s.boardProductSizeId)
-                    userPreferences.setBoardBrand(BoardBrand.KILTER.wireValue)
+                    userPreferences.setBoardBrand(BoardBrand.fromWire(s.boardBrand).wireValue)
                 }
                 userPreferences.setOnboardingCompleted(true)
                 // Suppress the "what's new" dialog for features the user

@@ -20,7 +20,6 @@ import java.net.NetworkInterface
 import java.net.ServerSocket
 import java.net.Socket
 import java.util.UUID
-import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
 
 /** No header is the immutable v1 contract; only an exact v2 marker opts into
@@ -195,6 +194,8 @@ class LocalApkServer(
     private var serverSocket: ServerSocket? = null
     @Volatile private var running = false
     private var shutdownTimer: java.util.Timer? = null
+    private val clientLock = Any()
+    private val clientSockets = linkedSetOf<Socket>()
 
     /** Snapshot lifecycle. The build (copy + scrub + VACUUM of an ~85 MB DB)
      *  can take minutes on a phone, so /board.db must NEVER block on it —
@@ -240,7 +241,6 @@ class LocalApkServer(
 
     private val sessionId = UUID.randomUUID().toString()
     private val apkSha256: String by lazy { LocalShareProtocol.sha256(apkFile) }
-    private val activeTransfers = AtomicInteger(0)
 
     private fun snapshotView(protocolVersion: Int): SnapshotView = synchronized(snapshotLock) {
         if (protocolVersion == LocalShareProtocol.VERSION_V2) {
@@ -291,8 +291,17 @@ class LocalApkServer(
                         sendBufferSize = SOCKET_BUFFER_SIZE
                         receiveBufferSize = SOCKET_BUFFER_SIZE
                         tcpNoDelay = true
+                        soTimeout = CLIENT_READ_TIMEOUT_MS
                     }
-                    handleClient(client)
+                    val accepted = synchronized(clientLock) {
+                        if (!running || clientSockets.size >= MAX_CONCURRENT_CLIENTS) {
+                            false
+                        } else {
+                            clientSockets += client
+                            true
+                        }
+                    }
+                    if (accepted) handleClient(client) else runCatching { client.close() }
                 } catch (_: Exception) {
                     break
                 }
@@ -310,10 +319,26 @@ class LocalApkServer(
     }
 
     fun stop() {
-        running = false
-        shutdownTimer?.cancel()
-        shutdownTimer = null
-        try { serverSocket?.close() } catch (_: Exception) { }
+        stopIfRunning()
+    }
+
+    /** Stops exactly once across explicit stop, deadline and receiver-complete
+     *  races. Closing accepted sockets is what makes the lifetime absolute:
+     *  a client stalled in headers or refusing artifact bytes cannot retain a
+     *  daemon thread and hotspot past the session deadline. */
+    private fun stopIfRunning(): Boolean {
+        synchronized(this) {
+            if (!running && serverSocket == null) return false
+            running = false
+            shutdownTimer?.cancel()
+            shutdownTimer = null
+            try { serverSocket?.close() } catch (_: Exception) { }
+            serverSocket = null
+        }
+        val clients = synchronized(clientLock) {
+            clientSockets.toList().also { clientSockets.clear() }
+        }
+        clients.forEach { runCatching { it.close() } }
         synchronized(snapshotLock) {
             snapshotFile?.let { snap ->
                 snap.delete()
@@ -335,14 +360,14 @@ class LocalApkServer(
             v2SnapshotMetadata = null
             v2SnapState = SnapState.IDLE
         }
+        return true
     }
 
     /**
      * Hard session deadline. Landing-page refreshes, browser probes and a
      * receiver polling the manifest must not leave the hotspot reachable
-     * indefinitely. If an APK/DB file is actively streaming at the deadline,
-     * let that transfer finish and recheck shortly; ordinary HTTP requests do
-     * not extend the session.
+     * indefinitely. The deadline closes even active/stalled sockets; receivers
+     * can resume a verified range only while this same bounded session exists.
      */
     @Synchronized
     private fun scheduleAutoShutdown(delayMs: Long) {
@@ -350,12 +375,8 @@ class LocalApkServer(
         shutdownTimer = java.util.Timer("apk-server-timeout", true).apply {
             schedule(object : java.util.TimerTask() {
                 override fun run() {
-                    if (!running) return
-                    if (activeTransfers.get() > 0) {
-                        scheduleAutoShutdown(ACTIVE_TRANSFER_RECHECK_MS)
-                    } else {
+                    if (stopIfRunning()) {
                         Log.d("LocalApkServer", "Auto-shutdown at fixed session deadline")
-                        stop()
                         onAutoShutdown?.invoke()
                     }
                 }
@@ -387,6 +408,14 @@ class LocalApkServer(
                 val headOnly = method == "HEAD"
                 var receiverCompleted = false
 
+                val requestedSession =
+                    headers[LocalShareProtocol.SESSION_HEADER.lowercase()]
+                if (requestedSession != null && requestedSession != sessionId) {
+                    serveConflict(out)
+                    out.flush()
+                    return@thread
+                }
+
                 when {
                     method == "POST" && path == LocalShareProtocol.COMPLETE_PATH -> {
                         serveNoContent(out)
@@ -417,10 +446,12 @@ class LocalApkServer(
                 }
 
                 out.flush()
-                socket.close()
                 if (receiverCompleted) onReceiverComplete?.invoke()
             } catch (e: Exception) {
-                Log.e("LocalApkServer", "Client error", e)
+                if (running) Log.e("LocalApkServer", "Client error", e)
+            } finally {
+                synchronized(clientLock) { clientSockets.remove(socket) }
+                runCatching { socket.close() }
             }
         }
     }
@@ -628,27 +659,22 @@ class LocalApkServer(
         out.write(headers.toByteArray())
         if (headOnly) return
 
-        activeTransfers.incrementAndGet()
         announceBulkWork()
-        try {
-            runCatching {
-                android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_DISPLAY)
-            }
-            RandomAccessFile(file, "r").use { input ->
-                input.seek(offset)
-                val buffer = ByteArray(STREAM_BUFFER_SIZE)
-                var left = remaining
-                while (left > 0L) {
-                    val read = input.read(buffer, 0, minOf(buffer.size.toLong(), left).toInt())
-                    if (read < 0) break
-                    out.write(buffer, 0, read)
-                    left -= read
-                }
-            }
-            out.flush()
-        } finally {
-            activeTransfers.decrementAndGet()
+        runCatching {
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_DISPLAY)
         }
+        RandomAccessFile(file, "r").use { input ->
+            input.seek(offset)
+            val buffer = ByteArray(STREAM_BUFFER_SIZE)
+            var left = remaining
+            while (left > 0L) {
+                val read = input.read(buffer, 0, minOf(buffer.size.toLong(), left).toInt())
+                if (read < 0) break
+                out.write(buffer, 0, read)
+                left -= read
+            }
+        }
+        out.flush()
     }
 
     private fun parseRangeStart(header: String?, total: Long): Long? {
@@ -1072,11 +1098,19 @@ class LocalApkServer(
         )
     }
 
+    private fun serveConflict(out: java.io.OutputStream) {
+        out.write(
+            "HTTP/1.1 409 Conflict\r\n".toByteArray() +
+                "Content-Length: 0\r\nConnection: close\r\n\r\n".toByteArray(),
+        )
+    }
+
     companion object {
         /** Fixed port for auto-discovery by receivers (WiFi Direct group owner = 192.168.49.1). */
         const val LOCAL_SHARE_PORT = 4949
         const val AUTO_SHUTDOWN_MS = 15 * 60 * 1000L
-        private const val ACTIVE_TRANSFER_RECHECK_MS = 30_000L
+        private const val CLIENT_READ_TIMEOUT_MS = 30_000
+        private const val MAX_CONCURRENT_CLIENTS = 8
         private const val STREAM_BUFFER_SIZE = 512 * 1024
         private const val SOCKET_BUFFER_SIZE = 1024 * 1024
         /** Checkpointed board-DB copy in cacheDir; see [buildBoardDbSnapshot]. */
