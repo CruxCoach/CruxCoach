@@ -203,10 +203,10 @@ fun BoardFilterScreen(
                 // same brand-aware logic as the Settings board section). Kilter
                 // and the Aurora family keep the product-size label.
                 val brand = BoardBrand.fromWire(state.filter.boardBrand)
-                val boardLabel = when {
+                val boardDetail = when {
                     brand == BoardBrand.MOONBOARD ->
                         MoonBoardVariant.fromLayoutId(state.filter.layoutId.toLong())?.displayName
-                            ?: stringResource(R.string.settings_board_model_not_configured)
+                            .orEmpty()
                     // Aurora family: name WHICH board (Tension / Grasshopper / …),
                     // with the variant where one exists (Tension TB2 Mirror/Spray),
                     // then the product size — same as the Settings board section.
@@ -221,8 +221,13 @@ fun BoardFilterScreen(
                     else ->
                         state.boardSize
                             ?.let { BoardConstants.sizeLabel(it.id, it.name, it.boardBrand) }
-                            ?: stringResource(R.string.settings_board_model_not_configured)
+                            .orEmpty()
                 }
+                val boardLabel = com.cruxcoach.android.ui.settings.boardSelectionLabel(
+                    brand = brand,
+                    layoutId = state.filter.layoutId,
+                    detail = boardDetail,
+                )
                 Column {
                     Text(
                         stringResource(R.string.board_filter_selected_board),

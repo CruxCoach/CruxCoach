@@ -83,13 +83,6 @@ tags:
 - assertVisible: "Deine Daten, deine Entscheidung"
 - scrollUntilVisible:
     element:
-      id: "onboarding_ble_switch"
-    direction: DOWN
-- assertVisible:
-    id: "onboarding_ble_switch"
-    checked: true
-- scrollUntilVisible:
-    element:
       id: "onboarding_backup_switch"
     direction: DOWN
 - assertVisible:
@@ -112,6 +105,12 @@ tags:
 - assertVisible:
     id: "onboarding_kilter"
 - assertVisible: "Optional"
+- assertVisible:
+    id: "onboarding_import_source_kilter"
+- assertVisible:
+    id: "onboarding_import_source_moonboard"
+- tapOn:
+    id: "onboarding_import_source_kilter"
 - assertVisible: "Kilter Logbook importieren"
 - scrollUntilVisible:
     element:
