@@ -19,6 +19,9 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.filled.Forum
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.automirrored.filled.Login
 import androidx.compose.material.icons.filled.SwapHoriz
@@ -52,28 +55,20 @@ import com.cruxcoach.android.nostr.SignerMode
 import com.cruxcoach.android.ui.board.sync.BoardSyncInlineCard
 import com.cruxcoach.android.ui.common.BackupKeyWarningCard
 import com.cruxcoach.android.ui.theme.*
+import com.cruxcoach.domain.board.BoardBrand
 
 @Composable
 fun OnboardingScreen(
     onComplete: () -> Unit,
     onNavigateToKeyImport: () -> Unit = {},
     onNavigateToKeyManagement: () -> Unit = {},
+    onNavigateToMoonBoardImport: () -> Unit = {},
     viewModel: OnboardingViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // Honest 3-step progress bar.
-        val steps = OnboardingStep.entries
-        val currentIdx = steps.indexOf(state.currentStep)
-        LinearProgressIndicator(
-            progress = { (currentIdx + 1).toFloat() / steps.size },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(4.dp),
-            color = OrangeAccent,
-            trackColor = MaterialTheme.colorScheme.surfaceVariant,
-        )
+        OnboardingProgressHeader(state.currentStep)
 
         AnimatedContent(
             targetState = state.currentStep,
@@ -83,7 +78,11 @@ fun OnboardingScreen(
             when (step) {
                 OnboardingStep.BOARD_SETUP -> BoardSetupStep(state)
                 OnboardingStep.PRIVACY -> PrivacyStep(state, viewModel, onNavigateToKeyManagement)
-                OnboardingStep.KILTER -> KilterStep(state, viewModel)
+                OnboardingStep.KILTER -> KilterStep(
+                    state = state,
+                    viewModel = viewModel,
+                    onNavigateToMoonBoardImport = onNavigateToMoonBoardImport,
+                )
             }
         }
 
@@ -274,6 +273,49 @@ fun OnboardingScreen(
     }
 }
 
+@Composable
+private fun OnboardingProgressHeader(step: OnboardingStep) {
+    val steps = OnboardingStep.entries
+    val current = steps.indexOf(step) + 1
+    val title = stringResource(
+        when (step) {
+            OnboardingStep.BOARD_SETUP -> R.string.onboarding_progress_board
+            OnboardingStep.PRIVACY -> R.string.onboarding_progress_privacy
+            OnboardingStep.KILTER -> R.string.onboarding_progress_import
+        },
+    )
+    Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 2.dp) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    stringResource(R.string.onboarding_progress_step, current, steps.size),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = OrangeAccent,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(Modifier.weight(1f))
+                Text(
+                    title,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            LinearProgressIndicator(
+                progress = { current.toFloat() / steps.size },
+                modifier = Modifier.fillMaxWidth().height(3.dp),
+                color = OrangeAccent,
+                trackColor = MaterialTheme.colorScheme.surfaceVariant,
+            )
+        }
+    }
+}
+
 // ─── Step 1: Board setup (with inline welcome header) ─────────────────────
 
 @Composable
@@ -314,11 +356,18 @@ private fun BoardSetupStep(
             .padding(horizontal = 16.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
-        // Compact welcome header (no longer a standalone step).
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        // Product-first hero. Board choice comes next; no brand is presented
+        // as the app itself now that all supported families are first-class.
+        Surface(
+            color = OrangeAccent.copy(alpha = 0.09f),
+            shape = RoundedCornerShape(20.dp),
+            modifier = Modifier.fillMaxWidth(),
         ) {
+            Row(
+                modifier = Modifier.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
             // Can't use R.mipmap.ic_launcher{,_round} directly — those
             // resolve to an <adaptive-icon> XML on Android 8+, which
             // Compose's painterResource refuses ("Only VectorDrawables
@@ -326,31 +375,52 @@ private fun BoardSetupStep(
             // Compose the same visual here: black circle background (the
             // adaptive icon's <background>) + the foreground PNG sized
             // generously to compensate for the adaptive-icon safe zone.
-            Box(
-                modifier = Modifier
-                    .size(56.dp)
-                    .clip(CircleShape)
-                    .background(Color.Black),
-                contentAlignment = Alignment.Center,
-            ) {
-                Image(
-                    painter = painterResource(id = R.mipmap.ic_launcher_foreground),
-                    contentDescription = null,
-                    modifier = Modifier.size(84.dp),
-                )
+                Box(
+                    modifier = Modifier
+                        .size(64.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Image(
+                        painter = painterResource(id = R.mipmap.ic_launcher_foreground),
+                        contentDescription = null,
+                        modifier = Modifier.size(96.dp),
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        stringResource(R.string.onboarding_welcome),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        stringResource(R.string.onboarding_welcome_subtitle),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        stringResource(R.string.onboarding_supported_boards),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = OrangeAccent,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
             }
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    stringResource(R.string.onboarding_welcome),
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                )
-                Text(
-                    stringResource(R.string.onboarding_welcome_subtitle),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+        }
+
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                stringResource(R.string.onboarding_choose_board_title),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                stringResource(R.string.onboarding_choose_board_subtitle),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
 
         // Board picker — hardware knowledge, no sync round-trip needed.
@@ -359,8 +429,6 @@ private fun BoardSetupStep(
             boardModelName = state.boardProductSizeName,
             onChangeModel = { showBoardModelDialog = true },
         )
-
-        HorizontalDivider()
 
         Text(
             stringResource(R.string.onboarding_board_setup_title),
@@ -710,10 +778,21 @@ private fun PrivacyToggleCard(
     }
 }
 
-// ─── Step 3: Kilter (optional) ────────────────────────────────────────────
+// ─── Step 3: existing logbook (optional) ──────────────────────────────────
 
 @Composable
-private fun KilterStep(state: OnboardingState, viewModel: OnboardingViewModel) {
+private fun KilterStep(
+    state: OnboardingState,
+    viewModel: OnboardingViewModel,
+    onNavigateToMoonBoardImport: () -> Unit,
+) {
+    val activeBoard = BoardBrand.fromWire(state.boardBrand)
+    var kilterExpanded by rememberSaveable(state.boardBrand) {
+        mutableStateOf(
+            state.boardBrand == BoardBrand.KILTER.wireValue ||
+                state.kilterConnected || state.kilterImportResult != null,
+        )
+    }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -752,10 +831,21 @@ private fun KilterStep(state: OnboardingState, viewModel: OnboardingViewModel) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
+        if (activeBoard == BoardBrand.MOONBOARD) {
+            MoonBoardImportCard(onNavigateToMoonBoardImport, highlighted = true)
+        }
+        if (activeBoard.usesAuroraProtocol && activeBoard != BoardBrand.KILTER) {
+            AuroraOnboardingCard(onClick = { viewModel.setAuroraSheetOpen(true) })
+        }
+
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                containerColor = if (state.boardBrand == BoardBrand.KILTER.wireValue) {
+                    OrangeAccent.copy(alpha = 0.08f)
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                },
             ),
             shape = RoundedCornerShape(16.dp),
         ) {
@@ -764,6 +854,9 @@ private fun KilterStep(state: OnboardingState, viewModel: OnboardingViewModel) {
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { kilterExpanded = !kilterExpanded },
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
@@ -776,6 +869,14 @@ private fun KilterStep(state: OnboardingState, viewModel: OnboardingViewModel) {
                     )
                     // ⓘ explains the Kilter data exchange (import / local / publish).
                     com.cruxcoach.android.ui.common.KilterDataInfoButton()
+                    Icon(
+                        if (kilterExpanded) Icons.Default.KeyboardArrowUp
+                        else Icons.Default.KeyboardArrowDown,
+                        contentDescription = stringResource(
+                            if (kilterExpanded) R.string.onboarding_import_collapse
+                            else R.string.onboarding_import_expand,
+                        ),
+                    )
                 }
 
                 Text(
@@ -784,36 +885,44 @@ private fun KilterStep(state: OnboardingState, viewModel: OnboardingViewModel) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
 
-                // While the board catalogue is still importing, a Kilter
-                // import works but its ascents show up nameless/gradeless
-                // until the catalogue lands — tell the user rather than let
-                // them hit that state unwarned. Hidden once a result is shown.
-                val boardSyncing by viewModel.boardCatalogueSyncing.collectAsStateWithLifecycle()
-                if (boardSyncing && state.kilterImportResult == null) {
-                    Text(
-                        stringResource(R.string.kilter_import_board_sync_pending),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = OrangeAccent,
-                    )
-                }
+                AnimatedVisibility(visible = kilterExpanded) {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        // While the board catalogue is still importing, a Kilter
+                        // import works but its ascents show up nameless/gradeless
+                        // until the catalogue lands — tell the user rather than let
+                        // them hit that state unwarned. Hidden once a result is shown.
+                        val boardSyncing by viewModel.boardCatalogueSyncing.collectAsStateWithLifecycle()
+                        if (boardSyncing && state.kilterImportResult == null) {
+                            Text(
+                                stringResource(R.string.kilter_import_board_sync_pending),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = OrangeAccent,
+                            )
+                        }
 
-                if (state.kilterImportResult != null) {
-                    KilterImportDoneContent(state, viewModel)
-                } else if (state.kilterConnected && state.kilterImportPreview != null) {
-                    KilterPreviewContent(state, viewModel)
-                } else {
-                    KilterLoginContent(state, viewModel)
+                        if (state.kilterImportResult != null) {
+                            KilterImportDoneContent(state, viewModel)
+                        } else if (state.kilterConnected && state.kilterImportPreview != null) {
+                            KilterPreviewContent(state, viewModel)
+                        } else {
+                            KilterLoginContent(state, viewModel)
+                        }
+                    }
                 }
             }
+        }
+
+        if (activeBoard != BoardBrand.MOONBOARD) {
+            MoonBoardImportCard(onNavigateToMoonBoardImport, highlighted = false)
         }
 
         // FEAT-005 — Aurora-from-old-Kilter migration tile. Tucked
         // below the live OAuth card so the default path (sign in to
         // the new Kilter API) still wins visually for the 95 % of
         // users who never used Aurora.
-        AuroraOnboardingCard(
-            onClick = { viewModel.setAuroraSheetOpen(true) },
-        )
+        if (!activeBoard.usesAuroraProtocol || activeBoard == BoardBrand.KILTER) {
+            AuroraOnboardingCard(onClick = { viewModel.setAuroraSheetOpen(true) })
+        }
 
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -833,6 +942,57 @@ private fun KilterStep(state: OnboardingState, viewModel: OnboardingViewModel) {
         AuroraMigrationBottomSheet(
             onDismiss = { viewModel.setAuroraSheetOpen(false) },
         )
+    }
+}
+
+@Composable
+private fun MoonBoardImportCard(onClick: () -> Unit, highlighted: Boolean) {
+    ImportSourceCard(
+        icon = { Icon(Icons.Default.History, null, tint = OrangeAccent, modifier = Modifier.size(28.dp)) },
+        title = stringResource(R.string.onboarding_moon_import_title),
+        description = stringResource(R.string.onboarding_moon_import_desc),
+        action = stringResource(R.string.onboarding_moon_import_action),
+        onClick = onClick,
+        highlighted = highlighted,
+        testTag = "onboarding_moon_import",
+    )
+}
+
+@Composable
+private fun ImportSourceCard(
+    icon: @Composable () -> Unit,
+    title: String,
+    description: String,
+    action: String,
+    onClick: () -> Unit,
+    highlighted: Boolean,
+    testTag: String,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth().testTag(testTag),
+        onClick = onClick,
+        colors = CardDefaults.cardColors(
+            containerColor = if (highlighted) OrangeAccent.copy(alpha = 0.10f)
+            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+        ),
+        shape = RoundedCornerShape(16.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            icon()
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Text(
+                    description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Text(action, style = MaterialTheme.typography.labelMedium, color = OrangeAccent)
+        }
     }
 }
 

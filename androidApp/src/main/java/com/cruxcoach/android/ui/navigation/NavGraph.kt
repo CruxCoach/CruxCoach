@@ -341,6 +341,9 @@ fun CruxCoachNavHost(
                         // to the same onboarding step they were on (state +
                         // ViewModel preserved via the survived BackStackEntry).
                         onNavigateToKeyManagement = { navController.navigate(Routes.KEY_MANAGEMENT) },
+                        onNavigateToMoonBoardImport = {
+                            navController.navigate(Routes.MOONBOARD_CSV_IMPORT)
+                        },
                     )
                 }
             }
