@@ -30,7 +30,7 @@ import org.junit.Test
  *     event=check_no_update trigger=MANUAL answered=3 failed=0
  *     event=download_complete version=0.2.1 bytes=34558390
  *     event=integrity_ok version=0.2.1 — ready to install
- *     Automatic install session committed
+ *     Automatic update install session committed
  *     INSTALL_FAILED_VERSION_DOWNGRADE: version code 7 is older than current 8
  *
  * 34.5 MB downloaded, verified, and handed to an install Android was always
@@ -78,7 +78,7 @@ class UpdaterRepositoryStalePendingTest {
     /** Pending state for [version], in the stage that makes the resume path fire. */
     private fun pending(version: String) = UpdaterState(
         pipelineStage = PipelineStage.PENDING_DOWNLOAD,
-        automationMode = UpdateAutomationMode.AUTO_DOWNLOAD,
+        automationMode = UpdateAutomationMode.AUTO_UPDATE,
         pendingDownloadId = 4711L,
         pendingTagName = "v$version",
         pendingVersionName = version,

@@ -1261,20 +1261,17 @@
     <string name="updater_settings_auto_check_desc">Prüft beim App-Start, nach Netzrückkehr und regelmäßig im Hintergrund.</string>
     <string name="updater_settings_automation_title">Wenn ein Update verfügbar ist</string>
     <string name="updater_mode_notify">Hinweis</string>
-    <string name="updater_mode_download">Laden</string>
-    <string name="updater_mode_install">Installieren</string>
-    <string name="updater_mode_notify_desc">Zeigt einen Update-Hinweis. Download und Installation starten erst nach deiner Bestätigung.</string>
-    <string name="updater_mode_download_desc">Lädt und prüft das Update automatisch. Du entscheidest, wann es installiert wird.</string>
-    <string name="updater_mode_install_desc">Lädt, prüft und installiert automatisch, soweit Android es zulässt. Android kann trotzdem eine Bestätigung verlangen.</string>
+    <string name="updater_mode_auto_update">Automatisch</string>
+    <string name="updater_mode_notify_desc">Zeigt einen Update-Hinweis. Du entscheidest, ob du es herunterladen und installieren möchtest.</string>
+    <string name="updater_mode_auto_update_desc">Lädt und prüft Updates automatisch und stößt anschließend die Installation an. Du kannst sie in Android bestätigen oder ablehnen.</string>
     <string name="updater_settings_auto_mobile">Auch über mobile Daten laden</string>
     <string name="updater_settings_auto_mobile_desc">Nur aktivieren, wenn du einen unbegrenzten Datentarif hast.</string>
     <string name="updater_settings_anonymous_metrics">Anonymer Zähler verifizierter Updates</string>
     <string name="updater_settings_anonymous_metrics_desc">Nachdem ein Update-Download sowohl Hash- als auch Signaturprüfung bestanden hat, wird pro Zielversion höchstens ein Best-Effort-Zählversuch unternommen. Er enthält nur die Zielversion und welche konfigurierte Download-Quelle die Datei geliefert hat, aber keine Nutzer-, Geräte-, Installations-, Account-, Nostr- oder Session-Kennung. Schalte dies aus, um nichts zu senden. Update-Prüfung, Download und Installation bleiben immer unbeeinflusst.</string>
-    <string name="updater_auto_install_info_title">Automatische Installation</string>
-    <string name="updater_auto_install_ready_desc">Bereit. Ab Android 12 kann CruxCoach verifizierte eigene Updates normalerweise im Hintergrund installieren. Das System kann trotzdem eine Bestätigung verlangen.</string>
-    <string name="updater_auto_install_permission_desc">Android benötigt einmalig eine Systemfreigabe, bevor CruxCoach eigene verifizierte Updates installieren darf.</string>
-    <string name="updater_auto_install_permission_action">App-Installationen erlauben</string>
-    <string name="updater_auto_install_legacy_desc">Unter Android 8 bis 11 laufen Download und Prüfung automatisch, Android verlangt vor der Installation aber immer eine Bestätigung.</string>
+    <string name="updater_auto_update_info_title">Bestätigte Installation</string>
+    <string name="updater_auto_update_ready_desc">Nach Download und Prüfung fordert Android deine Bestätigung für die Installation an. CruxCoach installiert Updates nicht still.</string>
+    <string name="updater_auto_update_permission_desc">Erlaube CruxCoach einmalig, den Android-Installationsdialog für eigene geprüfte Updates zu öffnen. Jede Installation kannst du weiterhin bestätigen oder ablehnen.</string>
+    <string name="updater_auto_update_permission_action">App-Installationen erlauben</string>
     <string name="updater_settings_pending_title">Version %1$s verfügbar</string>
     <string name="updater_settings_pending_size">ca. %1$s</string>
     <string name="updater_settings_pending_release_notes">Release-Notes</string>
@@ -2137,7 +2134,7 @@
     <string name="whatsnew_021_action_boards">Boards ansehen</string>
     <string name="whatsnew_022_title">Neu in 0.2.2</string>
     <string name="whatsnew_022_body">• Spiel deine Listen ab — ein Climb nach dem anderen, mit Pausen, Loggen per Tipp und einer Zusammenfassung am Ende. Oder lass CruxCoach die Session aus deinem Logbuch planen.\n\n• CruxRelay — teile dein Board, damit alle in der Session von ihrem eigenen Handy senden können.\n\n• Zwei weitere MoonBoards (2010 und Mini 2025), Probleme mit Angabe wie „footless“, und ein Climb, der beim Ausbouldern angeleuchtet bleibt.\n\n• Tippe dein letztes Board an, um dich wieder zu verbinden, wähle, wann ein Climb aufs Board geht, und hol dir App-Updates aus mehreren Quellen.</string>
-    <string name="whatsnew_022_hint">Automatische Installation ist standardmäßig aus. Das gewünschte Update-Verhalten lässt sich in den Einstellungen wählen.</string>
+    <string name="whatsnew_022_hint">Automatische Updates sind standardmäßig aus. Das gewünschte Update-Verhalten lässt sich in den Einstellungen wählen; die Installation bestätigst du immer in Android.</string>
     <string name="whatsnew_022_action_go">Alles klar</string>
     <string name="whatsnew_022_action_settings">Update-Einstellungen</string>
     <!-- FEAT-031: Aurora-Boards (What's New) -->

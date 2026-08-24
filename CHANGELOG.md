@@ -104,8 +104,9 @@ server.
   download server can be added or retired without anyone having to install
   a new version first.
 - **Choose what happens when an update is found** — just notify (unchanged
-  default), download it automatically, or install it automatically.
-  Automatic installation is off unless you turn it on.
+  default), or let CruxCoach download and verify it automatically before
+  asking Android to install it. Android always leaves the final confirmation
+  or rejection to you; CruxCoach does not install updates silently.
 - **Android 8.0 and 8.1: this is the last version** — 0.2.3 will require
   Android 9. CruxCoach now says so on affected devices instead of letting
   them wait for updates that can never arrive. Nothing breaks: the app

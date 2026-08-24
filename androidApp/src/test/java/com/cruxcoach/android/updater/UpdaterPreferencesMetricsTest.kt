@@ -46,6 +46,22 @@ class UpdaterPreferencesMetricsTest {
     }
 
     @Test
+    fun `both legacy automatic modes migrate to confirmed automatic update`() {
+        assertEquals(
+            UpdateAutomationMode.AUTO_UPDATE,
+            parseUpdateAutomationMode("AUTO_DOWNLOAD"),
+        )
+        assertEquals(
+            UpdateAutomationMode.AUTO_UPDATE,
+            parseUpdateAutomationMode("AUTO_INSTALL"),
+        )
+        assertEquals(
+            UpdateAutomationMode.AUTO_UPDATE,
+            parseUpdateAutomationMode("AUTO_UPDATE"),
+        )
+    }
+
+    @Test
     fun `opt out and attempted target version persist together`() = runTest {
         val preferences = preferences(backgroundScope)
 

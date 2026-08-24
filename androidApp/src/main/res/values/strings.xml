@@ -1214,20 +1214,17 @@
     <string name="updater_settings_auto_check_desc">Checks after app start, when the network returns, and periodically in the background.</string>
     <string name="updater_settings_automation_title">When an update is available</string>
     <string name="updater_mode_notify">Notify</string>
-    <string name="updater_mode_download">Download</string>
-    <string name="updater_mode_install">Install</string>
-    <string name="updater_mode_notify_desc">Shows an update notice. Download and installation start only after you confirm.</string>
-    <string name="updater_mode_download_desc">Downloads and verifies the update automatically. You decide when to install it.</string>
-    <string name="updater_mode_install_desc">Downloads, verifies, and installs automatically when Android permits it. Android may still require confirmation.</string>
+    <string name="updater_mode_auto_update">Automatic</string>
+    <string name="updater_mode_notify_desc">Shows an update notice. You decide whether to download and install it.</string>
+    <string name="updater_mode_auto_update_desc">Downloads and verifies updates automatically, then starts installation. You can confirm or decline it in Android.</string>
     <string name="updater_settings_auto_mobile">Also download over mobile data</string>
     <string name="updater_settings_auto_mobile_desc">Only enable if you have an unlimited data plan.</string>
     <string name="updater_settings_anonymous_metrics">Anonymous verified-update count</string>
     <string name="updater_settings_anonymous_metrics_desc">After an update download passes both hash and signer verification, make at most one best-effort count attempt per target version containing only that version and which configured download source delivered the file. No user, device, installation, account, Nostr, or session ID. Turn this off to send nothing. It never affects update checks, downloads, or installation.</string>
-    <string name="updater_auto_install_info_title">Automatic installation</string>
-    <string name="updater_auto_install_ready_desc">Ready. Android 12 or newer can normally install verified CruxCoach self-updates in the background. The system may still ask for confirmation.</string>
-    <string name="updater_auto_install_permission_desc">Android needs one system-level approval before CruxCoach may install its own verified updates.</string>
-    <string name="updater_auto_install_permission_action">Allow app installs</string>
-    <string name="updater_auto_install_legacy_desc">On Android 8 through 11, download and verification are automatic, but Android always requires confirmation before installation.</string>
+    <string name="updater_auto_update_info_title">Confirmed installation</string>
+    <string name="updater_auto_update_ready_desc">After download and verification, Android asks you to confirm installation. CruxCoach does not install updates silently.</string>
+    <string name="updater_auto_update_permission_desc">Allow CruxCoach once to open Android’s installer for its own verified updates. You can still confirm or decline every installation.</string>
+    <string name="updater_auto_update_permission_action">Allow app installs</string>
     <string name="updater_settings_pending_title">Version %1$s available</string>
     <string name="updater_settings_pending_size">about %1$s</string>
     <string name="updater_settings_pending_release_notes">Release notes</string>
@@ -2138,7 +2135,7 @@
     <string name="whatsnew_021_action_boards">See boards</string>
     <string name="whatsnew_022_title">New in 0.2.2</string>
     <string name="whatsnew_022_body">• Play your lists — one climb at a time, with rests, one-tap logging and a summary at the end. Or let CruxCoach plan the session from your logbook.\n\n• CruxRelay — share your board so that everyone in the session can send from their own phone.\n\n• Two more MoonBoards (2010 and Mini 2025), problems that say when they are meant to be climbed footless, and a climb that stays lit while you work it.\n\n• Tap your last board to reconnect, choose when a climb goes to the wall, and get app updates from more than one download source.</string>
-    <string name="whatsnew_022_hint">Automatic installation is off by default. Choose your preferred update behavior in Settings.</string>
+    <string name="whatsnew_022_hint">Automatic updates are off by default. Choose your preferred update behavior in Settings; you always confirm installation in Android.</string>
     <string name="whatsnew_022_action_go">Got it</string>
     <string name="whatsnew_022_action_settings">Update settings</string>
     <!-- FEAT-031: Aurora-family boards what's-new -->

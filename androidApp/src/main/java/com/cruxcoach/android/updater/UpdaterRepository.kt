@@ -63,7 +63,7 @@ class UpdaterRepository @Inject constructor(
     private var downloadMonitorJob: Job? = null
     private val downloadCompletionMutex = Mutex()
     private val anonymousUpdateMetricsMutex = Mutex()
-    private val automaticInstallInFlight = AtomicBoolean(false)
+    private val automaticUpdateInstallInFlight = AtomicBoolean(false)
 
     val state: Flow<UpdaterState> = preferences.state
 
@@ -218,9 +218,9 @@ class UpdaterRepository @Inject constructor(
             PipelineStage.BLOCKED_CERT_MISMATCH,
                 -> return
             PipelineStage.READY_TO_INSTALL -> {
-                if (prefs.automationMode == UpdateAutomationMode.AUTO_INSTALL) {
+                if (prefs.automationMode == UpdateAutomationMode.AUTO_UPDATE) {
                     val apk = downloader.targetFileFor(info.versionName)
-                    if (!tryAutomaticInstall(info, apk)) notifier.showReadyToInstall(info)
+                    if (!tryConfirmedAutomaticInstall(info, apk)) notifier.showReadyToInstall(info)
                 }
                 return
             }
@@ -557,7 +557,9 @@ class UpdaterRepository @Inject constructor(
                     Log.w(TAG, "Anonymous update count failed locally", error)
                 }
                 val mode = preferences.snapshot().automationMode
-                if (mode == UpdateAutomationMode.AUTO_INSTALL && tryAutomaticInstall(info, apk)) {
+                if (mode == UpdateAutomationMode.AUTO_UPDATE &&
+                    tryConfirmedAutomaticInstall(info, apk)
+                ) {
                     // PackageInstaller owns the rest. A pending user-action
                     // callback is surfaced by ApkInstallStatusReceiver.
                 } else {
@@ -658,7 +660,7 @@ class UpdaterRepository @Inject constructor(
             val info = prefs.pendingUpdate() ?: return@launch
             val apk = downloader.targetFileFor(info.versionName)
             preferences.update { it.copy(pipelineStage = PipelineStage.INSTALLING) }
-            when (val result = installer.install(apk, preferNoUserAction = false)) {
+            when (val result = installer.install(apk, deferUserConfirmation = false)) {
                 is ApkInstaller.InstallResult.Committed -> {
                     Log.i(TAG, "Install session ${result.sessionId} committed")
                 }
@@ -685,7 +687,7 @@ class UpdaterRepository @Inject constructor(
                 val info = prefs.pendingUpdate()
                 when (outcome) {
                     InstallOutcome.Success -> {
-                        automaticInstallInFlight.set(false)
+                        automaticUpdateInstallInFlight.set(false)
                         info?.let { downloader.clearCacheFor(it.versionName) }
                         preferences.update {
                             UpdaterState(
@@ -716,14 +718,14 @@ class UpdaterRepository @Inject constructor(
                         when (outcome.status) {
                             PackageInstaller.STATUS_FAILURE_ABORTED -> {
                                 // User cancelled consent — stay ready to install.
-                                automaticInstallInFlight.set(false)
+                                automaticUpdateInstallInFlight.set(false)
                                 preferences.update {
                                     it.copy(pipelineStage = PipelineStage.READY_TO_INSTALL)
                                 }
                                 info?.let { notifier.showReadyToInstall(it) }
                             }
                             else -> {
-                                automaticInstallInFlight.set(false)
+                                automaticUpdateInstallInFlight.set(false)
                                 if (info != null) {
                                     notifier.showInstallError(info, outcome.status, outcome.message)
                                 }
@@ -758,13 +760,13 @@ class UpdaterRepository @Inject constructor(
      */
     fun onConsentRequired(
         consentIntent: Intent,
-        automatic: Boolean,
+        deferUserConfirmation: Boolean,
         onDone: () -> Unit = {},
     ) {
         scope.launch {
             try {
                 consentIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                if (!automatic) {
+                if (!deferUserConfirmation) {
                     runCatching { context.startActivity(consentIntent) }
                         .onFailure { Log.w(TAG, "Direct consent launch failed", it) }
                 }
@@ -863,7 +865,7 @@ class UpdaterRepository @Inject constructor(
             val prefs = preferences.snapshot()
             if (prefs.pipelineStage != PipelineStage.INSTALLING) return@launch
             val info = prefs.pendingUpdate()
-            automaticInstallInFlight.set(false)
+            automaticUpdateInstallInFlight.set(false)
             val installed = SemVer.parseInstalledOrNull(BuildConfig.VERSION_NAME)
             if (info == null || installed != null && info.version == installed) {
                 Log.i(TAG, "Interrupted install actually succeeded — clearing pipeline")
@@ -876,30 +878,33 @@ class UpdaterRepository @Inject constructor(
         }
     }
 
-    fun resumeAutomaticInstallIfReady() {
+    fun resumeAutomaticUpdateIfReady() {
         scope.launch {
             val prefs = preferences.snapshot()
-            if (prefs.automationMode != UpdateAutomationMode.AUTO_INSTALL ||
+            if (prefs.automationMode != UpdateAutomationMode.AUTO_UPDATE ||
                 prefs.pipelineStage != PipelineStage.READY_TO_INSTALL
             ) return@launch
             val info = prefs.pendingUpdate() ?: return@launch
             val apk = downloader.targetFileFor(info.versionName)
-            if (!tryAutomaticInstall(info, apk)) notifier.showReadyToInstall(info)
+            if (!tryConfirmedAutomaticInstall(info, apk)) notifier.showReadyToInstall(info)
         }
     }
 
-    private suspend fun tryAutomaticInstall(info: UpdateInfo, apk: java.io.File): Boolean {
+    private suspend fun tryConfirmedAutomaticInstall(
+        info: UpdateInfo,
+        apk: java.io.File,
+    ): Boolean {
         if (!installer.canRequestPackageInstalls()) return false
-        if (!automaticInstallInFlight.compareAndSet(false, true)) return true
+        if (!automaticUpdateInstallInFlight.compareAndSet(false, true)) return true
         preferences.update { it.copy(pipelineStage = PipelineStage.INSTALLING) }
-        return when (val install = installer.install(apk, preferNoUserAction = true)) {
+        return when (val install = installer.install(apk, deferUserConfirmation = true)) {
             is ApkInstaller.InstallResult.Committed -> {
-                Log.i(TAG, "Automatic install session ${install.sessionId} committed")
+                Log.i(TAG, "Confirmed automatic update session ${install.sessionId} committed")
                 true
             }
             is ApkInstaller.InstallResult.Error -> {
-                Log.w(TAG, "Automatic install commit failed: ${install.message}")
-                automaticInstallInFlight.set(false)
+                Log.w(TAG, "Automatic update install commit failed: ${install.message}")
+                automaticUpdateInstallInFlight.set(false)
                 preferences.update { it.copy(pipelineStage = PipelineStage.READY_TO_INSTALL) }
                 false
             }

@@ -63,9 +63,7 @@ class UpdaterPreferences(private val store: DataStore<Preferences>) {
         pipelineStage = this[Keys.PIPELINE_STAGE]?.let { runCatching { PipelineStage.valueOf(it) }.getOrNull() }
             ?: PipelineStage.NONE,
         autoCheckEnabled = this[Keys.AUTO_CHECK_ENABLED] ?: true,
-        automationMode = this[Keys.AUTOMATION_MODE]
-            ?.let { runCatching { UpdateAutomationMode.valueOf(it) }.getOrNull() }
-            ?: UpdateAutomationMode.NOTIFY,
+        automationMode = parseUpdateAutomationMode(this[Keys.AUTOMATION_MODE]),
         autoDownloadOnMobile = this[Keys.AUTO_DOWNLOAD_ON_MOBILE] ?: false,
         anonymousUpdateMetricsEnabled = this[Keys.ANONYMOUS_UPDATE_METRICS_ENABLED] ?: true,
         lastAnonymousMetricsAttemptVersion = this[Keys.LAST_ANONYMOUS_METRICS_ATTEMPT_VERSION],
@@ -300,6 +298,14 @@ data class UpdaterState(
 /** User-selected updater behavior. New installs and upgrades default to [NOTIFY]. */
 enum class UpdateAutomationMode {
     NOTIFY,
-    AUTO_DOWNLOAD,
-    AUTO_INSTALL,
+    AUTO_UPDATE,
+}
+
+/** Both former automatic choices migrate to the single, confirmation-based flow. */
+internal fun parseUpdateAutomationMode(value: String?): UpdateAutomationMode = when (value) {
+    UpdateAutomationMode.AUTO_UPDATE.name,
+    "AUTO_DOWNLOAD",
+    "AUTO_INSTALL",
+        -> UpdateAutomationMode.AUTO_UPDATE
+    else -> UpdateAutomationMode.NOTIFY
 }
