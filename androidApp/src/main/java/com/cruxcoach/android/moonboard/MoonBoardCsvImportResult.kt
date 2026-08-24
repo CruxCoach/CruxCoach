@@ -7,6 +7,10 @@ data class MoonBoardCsvImportResult(
     val foundEntries: Int = 0,
     val notImported: Int = 0,
     val snapshotOnly: Int = 0,
+    /** Parsed rows durably waiting for a complete Moon catalogue. */
+    val stagedEntries: Int = 0,
+    /** Catalogue was confirmed complete; raw data remains for future updates. */
+    val unresolvedEntries: Int = 0,
     /** Rows replaced because the entry changed in Moon after the import. */
     val replacedEntries: Int = 0,
     /** Rows Moon no longer lists but that carry notes added in CruxCoach. */

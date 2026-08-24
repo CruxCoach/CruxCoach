@@ -25,6 +25,29 @@ transfer arms only the v2 snapshot. A headerless or unknown request retains the
 v1 behavior exactly and arms only the legacy scrubbed snapshot. This prevents
 two large copy/VACUUM/gzip jobs from running concurrently for one v2 transfer.
 
+The first manifest request is deliberately headerless. Once it has selected a
+peer, the receiver binds every later manifest poll, APK/DB GET or HEAD, and
+completion POST to that manifest's `sessionId` with
+`X-CruxCoach-Share-Session`. A new server returns `409 Conflict` before arming
+snapshot work, transferring an artifact, or accepting completion when a
+present session header does not match. Receivers treat that as a terminal peer
+replacement, not as a retryable network failure. Missing session headers remain
+accepted so pre-0.2.2 clients work with a new sender, and old senders simply
+ignore the additive request header.
+
+The sender lifetime is an absolute 15 minutes from server start. Requests and
+active transfers cannot postpone it. Accepted sockets are bounded, receive a
+read timeout, and are all closed at shutdown so a stalled header or non-reading
+download cannot keep the share alive. Explicit and timed shutdown are
+idempotent.
+
+On first-run discovery, a valid LAN manifest is only an unauthenticated offer.
+The app stages the exact network, base URL, manifest, and session while no
+transfer or import is active, then names the peer and its declared catalogues in
+a one-answer dialog. **Use nearby share** starts the bound transfer; **Use
+internet** discards it and follows the normal online catalogue path. Repeated
+composition, confirmation, or dismissal cannot probe or act twice.
+
 Resume records written across an APK replacement persist both protocol and
 artifact path. Records written before 0.2.2 have neither field and are treated
 as v1. A persisted protocol/path mismatch is discarded.
@@ -65,3 +88,12 @@ the restore derives Quantum's hold-set mask from the restored brand. When an
 active signer is supplied, selected own-climb data must carry that exact
 `nostrPubkey` envelope identity; an absent or different identity fails before
 database writes. No backup-version bump is required.
+
+Both v1 and v2 serve-time copies apply the common privacy scrub after removing
+private local drafts and the Kilter publish-attempt audit table. Shareable climb
+rows have `kilter_author_uuid`, `kilter_error`, `kilter_status`,
+`kilter_synced_at`, `kilter_publish_via`, `nostr_publish_via`, and
+`frames_hash` cleared, with `sync_status` restored to `synced`. The sender's
+live database is never modified. The v1 copy additionally applies the complete
+historical Quantum scrub; v2 alone retains the public Quantum bridge and
+metadata.

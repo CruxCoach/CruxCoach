@@ -99,8 +99,15 @@ class BoardSyncWorker @AssistedInject constructor(
          * Safe against interrupting a live sync: the caller only gets here
          * while [BoardSyncManager] reports no sync in progress.
          */
-        fun enqueueExpedited(context: Context) {
+        fun enqueueExpedited(context: Context, allowMetered: Boolean = false) {
             val request = OneTimeWorkRequestBuilder<BoardSyncWorker>()
+                .setConstraints(
+                    Constraints.Builder()
+                        .setRequiredNetworkType(
+                            if (allowMetered) NetworkType.CONNECTED else NetworkType.UNMETERED,
+                        )
+                        .build(),
+                )
                 .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
                 .build()
             WorkManager.getInstance(context).enqueueUniqueWork(

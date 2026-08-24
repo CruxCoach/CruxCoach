@@ -634,6 +634,40 @@ class SessionQueueManagerTest {
     }
 
     @Test
+    fun `remote resend respects explicit mode while local lamp remains authorized`() {
+        every { userPreferences.singleConnectionBoardSendMode } returns
+            flowOf(BoardSendMode.EXPLICIT)
+        every { userPreferences.multiConnectionBoardSendMode } returns
+            flowOf(BoardSendMode.EXPLICIT)
+        setupConnectedSendScenario(connectedBrand = BoardBrand.MOONBOARD)
+
+        // Adding the first climb and a peer resend both lack the host user's
+        // explicit wall-write authority.
+        queueManager.requestRemoteResend()
+
+        coVerify(exactly = 0) { bleConnection.sendMoonBoardClimb(any(), any(), any()) }
+        assertTrue(queueManager.state.value.awaitingExplicitSend)
+
+        // The host's own lamp action is explicit and force-bypasses dedup.
+        queueManager.resendCurrentClimb()
+
+        coVerify(exactly = 1) { bleConnection.sendMoonBoardClimb(any(), any(), any()) }
+        assertFalse(queueManager.state.value.awaitingExplicitSend)
+    }
+
+    @Test
+    fun `remote resend force-writes the same climb only in automatic mode`() {
+        setupConnectedSendScenario(connectedBrand = BoardBrand.MOONBOARD)
+
+        // The first item was projected automatically. A peer resend is still
+        // a real resend in AUTOMATIC mode, despite the matching dedup key.
+        queueManager.requestRemoteResend()
+
+        coVerify(exactly = 2) { bleConnection.sendMoonBoardClimb(any(), any(), any()) }
+        assertFalse(queueManager.state.value.awaitingExplicitSend)
+    }
+
+    @Test
     fun `single-connect host keeps automatic mode when participants join`() {
         every { userPreferences.singleConnectionBoardSendMode } returns
             flowOf(BoardSendMode.AUTOMATIC)

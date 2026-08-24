@@ -28,7 +28,7 @@ import javax.inject.Inject
  * Keeps BLE advertising alive while the phone fronts the real board (Android
  * 12+ throttles background advertising) and shows the mandatory persistent
  * "sharing" notification with the live client count and a one-tap stop that
- * stops only the relay transport via [CruxRelayManager.setEnabled].
+ * stops only the relay transport via [CruxRelayManager.disable].
  *
  * Lifecycle is slaved to [CruxRelayManager]: the manager starts this service
  * when the relay comes up and the service stops itself the moment the manager
@@ -62,7 +62,7 @@ class CruxRelayService : android.app.Service() {
         if (intent?.action == ACTION_STOP_SHARING) {
             // One-tap stop from the notification. Queue and direct board
             // connection remain independent; the collector shuts this service down.
-            relayManager.setEnabled(false)
+            relayManager.disable()
             return START_NOT_STICKY
         }
         ServiceCompat.startForeground(

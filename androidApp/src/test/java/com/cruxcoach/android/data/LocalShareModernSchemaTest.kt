@@ -402,8 +402,27 @@ class LocalShareModernSchemaTest {
     // simulated here by scrubbing a copy — keeps every row.
 
     @Test
-    fun snapshotScrub_removesDraftsTheirStatsAndPublishAttempts() {
+    fun snapshotScrub_removesDraftsStatsAttemptsAndSenderPublishState() {
         val snapshot = File(srcPath.parentFile, "share_snapshot.db")
+        // Seed every sender-private retained-row field on the LIVE source
+        // first. Both snapshot generations must clear them while the live DB
+        // remains untouched.
+        SQLiteDatabase.openDatabase(srcPath.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL(
+                """UPDATE climbs SET
+                       kilter_author_uuid = ?, kilter_error = ?,
+                       sync_status = 'published_both', kilter_status = 'failed',
+                       kilter_synced_at = 1787488496,
+                       kilter_publish_via = 'self', nostr_publish_via = 'self',
+                       frames_hash = 'sender-private-frames-hash'
+                   WHERE uuid = ?""".trimIndent(),
+                arrayOf<Any?>(
+                    "sender-kilter-account-uuid",
+                    "403 {\"detail\":\"…\"}",
+                    communityUuid,
+                ),
+            )
+        }
         srcPath.copyTo(snapshot, overwrite = true)
         val quantumUuid = "66666666-6666-6666-6666-000000000006"
         val quantumRouteUuid = "77777777-7777-7777-7777-000000000007"
@@ -424,13 +443,6 @@ class LocalShareModernSchemaTest {
                 INSERT INTO kilter_publish_attempts(climb_uuid, attempted_at, op, via, outcome, http_code)
                 VALUES ('$communityUuid', 1720000000000, 'create', 'self', 'success', 200)
                 """.trimIndent()
-            )
-            // Account-linked leftovers on a row that legitimately stays on the
-            // wire: the Kilter userUuid the ownership gate keys off (22.sqm)
-            // and the raw Kilter API error body from the sender's last publish.
-            db.execSQL(
-                "UPDATE climbs SET kilter_author_uuid = ?, kilter_error = ? WHERE uuid = ?",
-                arrayOf<Any?>("sender-kilter-account-uuid", "403 {\"detail\":\"…\"}", communityUuid),
             )
             // Quantum is deliberately absent from the v1 peer wire format:
             // old clients do not have its route UUID mapping table and could
@@ -491,6 +503,7 @@ class LocalShareModernSchemaTest {
                 "kilter_error scrubbed", 0,
                 countWhere(db, "climbs", "kilter_error IS NOT NULL"),
             )
+            assertSenderPublishStateScrubbed(db, "v1")
             // Everything shareable is untouched.
             assertEquals(1, countWhere(db, "climbs", "uuid = '$kilterUuid'"))
             assertEquals(1, countWhere(db, "climbs", "uuid = '$communityUuid' AND created_by_pubkey = '$authorPubkey'"))
@@ -520,13 +533,44 @@ class LocalShareModernSchemaTest {
             assertEquals("v2 keeps vendor metadata", 1, countWhere(db, "quantum_route_metadata", "app_uuid='$quantumUuid'"))
             assertEquals("v2 still scrubs private draft", 0, countWhere(db, "climbs", "uuid='$draftUuid'"))
             assertEquals("v2 still scrubs publish audit", 0, countWhere(db, "kilter_publish_attempts", "1=1"))
+            assertSenderPublishStateScrubbed(db, "v2")
         }
         v2Snapshot.delete()
 
         // The live source is untouched — scrub only ever runs on the copy.
         SQLiteDatabase.openDatabase(srcPath.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
             assertEquals(1, countWhere(db, "climbs", "uuid = '$draftUuid'"))
+            assertEquals(
+                "live sender state preserved", 1,
+                countWhere(
+                    db,
+                    "climbs",
+                    "uuid='$communityUuid' AND sync_status='published_both' " +
+                        "AND kilter_status='failed' " +
+                        "AND kilter_synced_at=1787488496 " +
+                        "AND kilter_publish_via='self' AND nostr_publish_via='self' " +
+                        "AND frames_hash='sender-private-frames-hash' " +
+                        "AND kilter_author_uuid='sender-kilter-account-uuid' " +
+                        "AND kilter_error IS NOT NULL",
+                ),
+            )
         }
+    }
+
+    private fun assertSenderPublishStateScrubbed(db: SQLiteDatabase, generation: String) {
+        assertEquals(
+            "$generation retained row resets sender lifecycle and clears nullable publish state",
+            1,
+            countWhere(
+                db,
+                "climbs",
+                "uuid='$communityUuid' AND sync_status='synced' " +
+                    "AND kilter_status IS NULL AND kilter_synced_at IS NULL " +
+                    "AND kilter_publish_via IS NULL AND nostr_publish_via IS NULL " +
+                    "AND frames_hash IS NULL AND kilter_author_uuid IS NULL " +
+                    "AND kilter_error IS NULL",
+            ),
+        )
     }
 
     @Test

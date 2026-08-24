@@ -130,7 +130,7 @@ fun BleStatusArea(
             onOpenQueueSheet = { showQueueSheet = true },
             relayClientCount = relayState.clientCount.takeIf { relayState.enabled },
             relayBoardName = relayState.boardName,
-            onStopRelay = { relayManager.setEnabled(false) },
+            onStopRelay = { relayManager.disable() },
         )
     } else {
         BleStatusChip(

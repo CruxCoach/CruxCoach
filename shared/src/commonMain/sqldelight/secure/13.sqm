@@ -1,0 +1,16 @@
+-- Persist Moon logbook rows which cannot be resolved until the independently
+-- downloaded MoonBoard catalogue is complete. Additive/default-free so every
+-- pre-0.2.2 secure database upgrades without touching existing logbook rows.
+CREATE TABLE moon_import_staging (
+    external_id TEXT NOT NULL PRIMARY KEY,
+    source_type TEXT NOT NULL,
+    problem_id INTEGER,
+    problem_name TEXT,
+    setter_name TEXT,
+    angle INTEGER,
+    climbed_at TEXT NOT NULL,
+    attempts INTEGER NOT NULL,
+    rating INTEGER,
+    is_send INTEGER NOT NULL,
+    resolution_state TEXT NOT NULL DEFAULT 'pending'
+);

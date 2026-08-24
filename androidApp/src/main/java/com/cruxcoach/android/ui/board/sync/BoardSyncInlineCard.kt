@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import androidx.compose.animation.AnimatedVisibility
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -20,6 +21,7 @@ import androidx.compose.material.icons.filled.SignalWifiOff
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -61,6 +63,8 @@ fun BoardSyncInlineCard(
      *  false keeps every other call site (BoardBrowser, Settings)
      *  manual-trigger as before. */
     autoStartIfNeeded: Boolean = false,
+    /** Compact background-preparation status for the board-first onboarding. */
+    compact: Boolean = false,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val modelState by viewModel.modelState.collectAsStateWithLifecycle()
@@ -124,6 +128,58 @@ fun BoardSyncInlineCard(
                 TextButton(onClick = { viewModel.dismissNetworkDialog() }) {
                     Text(stringResource(R.string.action_cancel))
                 }
+            },
+        )
+    }
+
+    state.pendingDiscoveredShare?.let { found ->
+        val host = remember(found.baseUrl) {
+            runCatching { Uri.parse(found.baseUrl).host }.getOrNull() ?: found.baseUrl
+        }
+        val offeredCatalogues = remember(found.manifest) {
+            found.manifest.board?.catalogues.orEmpty().joinToString(", ") { catalogue ->
+                val brand = BoardBrand.fromWireOrNull(catalogue.boardBrand)
+                val name = brand?.displayName ?: catalogue.boardBrand
+                "$name (${catalogue.climbCount})"
+            }
+        }
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissDiscoveredShare() },
+            icon = {
+                Icon(
+                    Icons.Default.NetworkWifi,
+                    contentDescription = null,
+                    tint = OrangeAccent,
+                    modifier = Modifier.size(40.dp),
+                )
+            },
+            title = { Text(stringResource(R.string.board_sync_discovered_share_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(R.string.board_sync_discovered_share_message, host))
+                    if (offeredCatalogues.isNotBlank()) {
+                        Text(
+                            stringResource(
+                                R.string.board_sync_discovered_share_catalogues,
+                                offeredCatalogues,
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { viewModel.confirmDiscoveredShare() },
+                    colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
+                    modifier = Modifier.testTag("board_sync_discovered_share_confirm"),
+                ) { Text(stringResource(R.string.board_sync_discovered_share_confirm)) }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { viewModel.dismissDiscoveredShare() },
+                    modifier = Modifier.testTag("board_sync_discovered_share_internet"),
+                ) { Text(stringResource(R.string.board_sync_discovered_share_internet)) }
             },
         )
     }
@@ -334,31 +390,166 @@ fun BoardSyncInlineCard(
         // A CruxCoach share hotspot is intentionally local-only and therefore
         // has no VALIDATED internet capability. Showing "no network" while a
         // nearby DB is visibly downloading is both false and alarming.
-        if (!state.localShareInProgress) {
+        if (!compact && !state.localShareInProgress) {
             when {
                 !state.networkAvailable -> NetworkWarningBanner()
                 !state.wifiConnected -> NoWifiWarningBanner()
             }
         }
         state.autoSyncOverdueDays?.let { days -> AutoSyncOverdueBanner(days) }
-        DatabaseImportSection(
-            state = state,
-            boardCounts = boardCounts,
-            activeBrand = activeBrand,
-            onStartSync = {
-                if (autoStartIfNeeded) viewModel.startInitialSync()
-                else viewModel.startApiSync()
-            },
-            onLoadBoard = { viewModel.loadBoard(it) },
-            onDismissError = { viewModel.clearError() },
-            onReportBug = { error ->
-                onNavigateToBugReport(
-                    syncBugReportTitle,
-                    error,
+        val startSync = {
+            if (autoStartIfNeeded) viewModel.startInitialSync()
+            else viewModel.startApiSync()
+        }
+        if (compact) {
+            CompactDatabasePreparation(
+                state = state,
+                boardCounts = boardCounts,
+                activeBrand = activeBrand,
+                onRetry = startSync,
+                onLoadBoard = { viewModel.loadBoard(it) },
+            )
+        } else {
+            DatabaseImportSection(
+                state = state,
+                boardCounts = boardCounts,
+                activeBrand = activeBrand,
+                onStartSync = startSync,
+                onLoadBoard = { viewModel.loadBoard(it) },
+                onDismissError = { viewModel.clearError() },
+                onReportBug = { error ->
+                    onNavigateToBugReport(
+                        syncBugReportTitle,
+                        error,
+                    )
+                    viewModel.clearError()
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun CompactDatabasePreparation(
+    state: BoardSyncState,
+    boardCounts: Map<String, Long>,
+    activeBrand: BoardBrand,
+    onRetry: () -> Unit,
+    onLoadBoard: (BoardBrand) -> Unit,
+) {
+    var showDetails by rememberSaveable { mutableStateOf(false) }
+    val supportedBoards = remember { BoardBrand.entries.filter { it.isInteractive } }
+    val readyBoards = supportedBoards.count { brand ->
+        boardCounts[brand.wireValue]?.let { it > 0L } == true ||
+            state.boardSteps[brand] is ImportStep.Done
+    }
+    val hasErrors = state.errorMessage != null || state.boardErrors.isNotEmpty()
+    Surface(
+        modifier = Modifier.fillMaxWidth().testTag("onboarding_offline_preparation"),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    if (state.alreadyImported) Icons.Default.CheckCircle else Icons.Default.CloudDownload,
+                    contentDescription = null,
+                    tint = if (state.alreadyImported) SuccessGreen else OrangeAccent,
+                    modifier = Modifier.size(22.dp),
                 )
-                viewModel.clearError()
-            },
-        )
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        stringResource(R.string.onboarding_offline_status_title),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        stringResource(
+                            when {
+                                state.isSyncing -> R.string.onboarding_offline_status_loading
+                                state.alreadyImported -> R.string.onboarding_offline_status_ready
+                                state.waitingForUnmeteredNetwork || !state.networkAvailable ->
+                                    R.string.board_sync_compact_waiting_wifi
+                                hasErrors -> R.string.onboarding_offline_status_waiting
+                                else -> R.string.onboarding_offline_status_starting
+                            },
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (state.errorMessage != null && !state.isSyncing) {
+                    TextButton(onClick = onRetry, modifier = Modifier.testTag("onboarding_offline_retry")) {
+                        Text(stringResource(R.string.action_retry))
+                    }
+                }
+            }
+            Text(
+                stringResource(R.string.board_sync_compact_description),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (state.isSyncing && readyBoards > 0) {
+                LinearProgressIndicator(
+                    progress = { readyBoards.toFloat() / supportedBoards.size },
+                    modifier = Modifier.fillMaxWidth(),
+                    color = OrangeAccent,
+                    trackColor = OrangeAccent.copy(alpha = 0.16f),
+                )
+                Text(
+                    stringResource(
+                        R.string.board_sync_compact_progress,
+                        readyBoards,
+                        supportedBoards.size,
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else if (state.isSyncing) {
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = OrangeAccent,
+                    trackColor = OrangeAccent.copy(alpha = 0.16f),
+                )
+            }
+            TextButton(
+                onClick = { showDetails = !showDetails },
+                contentPadding = PaddingValues(0.dp),
+                modifier = Modifier.testTag("board_sync_compact_details"),
+            ) {
+                Text(
+                    stringResource(
+                        if (showDetails) R.string.board_sync_compact_hide_details
+                        else R.string.board_sync_compact_show_details,
+                    ),
+                )
+            }
+            AnimatedVisibility(showDetails) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    BoardCatalogueStatusList(
+                        boardCounts = boardCounts,
+                        activeBrand = activeBrand,
+                        boardSteps = state.boardSteps,
+                        boardErrors = state.boardErrors,
+                        syncing = state.isSyncing,
+                        localShareInProgress = state.localShareInProgress,
+                        globalStep = state.importStep,
+                        onLoadBoard = onLoadBoard,
+                    )
+                    state.errorMessage?.let { error ->
+                        Text(
+                            error,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 

@@ -1,8 +1,6 @@
 package com.cruxcoach.android.ui.settings
 
 import android.Manifest
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -52,9 +50,14 @@ import com.cruxcoach.android.util.LocalShareService
  * confirmation too; the toast on top is harmless duplication but keeps
  * the UX consistent across Android versions.
  */
-private fun copyToClipboard(context: Context, label: String, text: String, toastMessage: String) {
-    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-    clipboard.setPrimaryClip(ClipData.newPlainText(label, text))
+internal fun copyToClipboardWithToast(
+    context: Context,
+    label: String,
+    text: String,
+    toastMessage: String,
+    sensitive: Boolean = false,
+) {
+    copyToClipboard(context, text, label, sensitive)
     Toast.makeText(context, toastMessage, Toast.LENGTH_SHORT).show()
 }
 
@@ -90,7 +93,7 @@ private fun CopyableUrlRow(
 ) {
     val context = LocalContext.current
     val onCopy = {
-        copyToClipboard(
+        copyToClipboardWithToast(
             context = context,
             label = clipLabel,
             text = url,
@@ -424,11 +427,12 @@ private fun AppShareActiveCard(
                         )
                         CopyIconButton(
                             onClick = {
-                                copyToClipboard(
+                                copyToClipboardWithToast(
                                     context = context,
                                     label = "CruxCoach WiFi password",
                                     text = hotspotPassword,
                                     toastMessage = copiedPasswordMessage,
+                                    sensitive = true,
                                 )
                             },
                             contentDescription = stringResource(R.string.action_copy),

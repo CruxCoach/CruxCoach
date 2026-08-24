@@ -10,6 +10,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -92,5 +93,28 @@ class UpdaterPreferencesMetricsTest {
         val restored = preferences.snapshot()
         assertEquals(false, restored.anonymousUpdateMetricsEnabled)
         assertNull(restored.lastAnonymousMetricsAttemptVersion)
+    }
+
+    @Test
+    fun `persisted release URL is completeness data not navigation authority`() = runTest {
+        val preferences = preferences(backgroundScope)
+        val injected = "https://attacker.invalid/release"
+        preferences.update {
+            it.copy(
+                pendingTagName = "v9.9.9",
+                pendingVersionName = "9.9.9",
+                pendingDownloadUrls = listOf("https://downloads.example/app.apk"),
+                pendingApkSha256 = "a".repeat(64),
+                pendingApkSizeBytes = 42,
+                pendingApkSha256Url = "https://downloads.example/app.apk.sha256",
+                pendingReleasePageUrl = injected,
+            )
+        }
+
+        val restored = preferences.snapshot()
+        assertEquals(injected, restored.pendingReleasePageUrl)
+        val update = restored.pendingUpdate()!!
+        assertEquals(com.cruxcoach.android.BuildConfig.UPDATER_RELEASE_PAGE_URL, update.releasePageUrl)
+        assertNotEquals(injected, update.releasePageUrl)
     }
 }

@@ -209,6 +209,24 @@
     <string name="onboarding_supported_boards">Kilter · MoonBoard · Quantum · Aurora boards</string>
     <string name="onboarding_choose_board_title">Choose your board</string>
     <string name="onboarding_choose_board_subtitle">This sets the right layout, holds and Bluetooth protocol. You can switch boards at any time.</string>
+    <string name="onboarding_board_first_subtitle">Choose the brand and model you use most. You can switch at any time.</string>
+    <string name="onboarding_continue">Continue</string>
+    <string name="onboarding_start_without_import">Start without import</string>
+    <string name="onboarding_start_cruxcoach">Start CruxCoach</string>
+    <string name="onboarding_offline_status_title">Preparing offline climbs</string>
+    <string name="onboarding_offline_status_starting">Starts automatically in the background.</string>
+    <string name="onboarding_offline_status_loading">Loading in the background — you can continue.</string>
+    <string name="onboarding_offline_status_ready">Offline catalogues are ready.</string>
+    <string name="onboarding_offline_status_waiting">Will resume when a connection is available.</string>
+    <string name="onboarding_existing_data_title">Do you already have climbing data?</string>
+    <string name="onboarding_existing_data_subtitle">Choose its source to see the matching import. Otherwise start directly.</string>
+    <string name="onboarding_source_cruxcoach">CruxCoach</string>
+    <string name="onboarding_cruxcoach_restore_title">Restore encrypted backup</string>
+    <string name="onboarding_cruxcoach_restore_desc">Restore a backup from another CruxCoach device using its account key.</string>
+    <string name="onboarding_cruxcoach_restore_action">Restore</string>
+    <string name="onboarding_cruxcoach_file_title">Import a CruxCoach file</string>
+    <string name="onboarding_cruxcoach_file_desc">Open the existing validated file import with preview and merge controls.</string>
+    <string name="onboarding_cruxcoach_file_action">Choose file</string>
     <string name="onboarding_progress_step" formatted="false">Step %1$d of %2$d</string>
     <string name="onboarding_progress_board">Your board</string>
     <string name="onboarding_progress_privacy">Your data</string>
@@ -965,6 +983,7 @@
     <string name="relay_notification_title">Board available to other apps</string>
     <string name="relay_notification_text">%d board-app connections</string>
     <string name="relay_notification_stop">Stop app sharing</string>
+    <string name="relay_stopped_idle">Sharing stopped after 90 seconds without a connected guest.</string>
 
     <!-- Board: Climb Card -->
     <string name="board_climb_by_setter">by %s</string>
@@ -1000,6 +1019,11 @@
     <string name="board_sync_to_browser">Done</string>
     <string name="board_sync_db_title">Board databases</string>
     <string name="board_sync_db_description">Downloads the public climb catalogues for offline use (currently about 130 MB; varies with catalogue updates). WiFi recommended.</string>
+    <string name="board_sync_compact_description">All board catalogues · about 130 MB. This continues in the background, so you can continue.</string>
+    <string name="board_sync_compact_waiting_wifi">Queued — starts automatically on WiFi</string>
+    <string name="board_sync_compact_progress">%1$d of %2$d boards ready</string>
+    <string name="board_sync_compact_show_details">Show details</string>
+    <string name="board_sync_compact_hide_details">Hide details</string>
     <string name="board_sync_db_synced">Database synced</string>
     <string name="board_sync_last_sync">Last sync: %s</string>
     <string name="board_sync_no_network_permission">CruxCoach has no network permission — grant it in the system settings under Permissions › Network.</string>
@@ -1018,6 +1042,11 @@
     <string name="board_sync_offline_share_title">Receive offline share?</string>
     <string name="board_sync_offline_share_message">CruxCoach will temporarily connect to %1$s, compare the offered app and board data, and download only what is missing. Android returns to your previous Wi-Fi afterwards.</string>
     <string name="board_sync_offline_share_confirm">Connect and compare</string>
+    <string name="board_sync_discovered_share_title">Use a nearby CruxCoach share?</string>
+    <string name="board_sync_discovered_share_message">A device at %1$s is offering board data on this local network. This peer is not authenticated. Choose whether to use it before CruxCoach downloads anything.</string>
+    <string name="board_sync_discovered_share_catalogues">Offered catalogues: %1$s</string>
+    <string name="board_sync_discovered_share_confirm">Use nearby share</string>
+    <string name="board_sync_discovered_share_internet">Use internet</string>
     <string name="board_sync_local_update_title">App update ready</string>
     <string name="board_sync_local_update_message">CruxCoach %1$s was transferred and verified. Install it now?</string>
     <string name="board_sync_local_update_install">Install</string>
@@ -1193,6 +1222,7 @@
     <string name="updater_notif_action_install">Install</string>
     <string name="updater_notif_action_retry">Try again</string>
     <string name="updater_notif_action_open_release">Open release page</string>
+    <string name="updater_notif_action_review_settings">Review update</string>
     <string name="updater_notif_cert_title">Update cannot be installed automatically</string>
     <string name="updater_notif_cert_body">The signature of the new version differs from the installed one. This may be a legitimate key rotation or an attack. Please reinstall manually from the release page.</string>
     <string name="updater_notif_error_title">Download of update v%1$s failed</string>
@@ -2354,6 +2384,7 @@
     <string name="relay_error_board_lost">Board connection lost — sharing stopped.</string>
     <string name="relay_error_unsupported_board">This board does not support compatible app sharing.</string>
     <string name="relay_error_forward_failed">A shared climb did not reach the board. Sharing is still on — ask them to send it again.</string>
+    <string name="relay_error_idle_timeout">Board sharing stopped after 90 seconds without a connected guest.</string>
     <string name="relay_chip_stop">Stop</string>
     <string name="relay_host_title">Shared CruxCoach session</string>
     <string name="relay_host_join_subtitle">%1$d in session · Tap to join</string>
@@ -2445,7 +2476,7 @@
     <string name="moon_csv_title">MoonBoard logbook import</string>
     <string name="moon_csv_intro">Move your existing MoonBoard history into CruxCoach. The direct on-device transfer is fastest; CSV remains available as a fallback.</string>
     <string name="moon_device_title">Copy from the installed Moon app</string>
-    <string name="moon_device_explanation">Android will ask you to enable a one-time accessibility service. After you start the transfer, CruxCoach opens Moon and reads only Moon’s visible Logbook labels on this device. It cannot read other apps and never asks for your Moon password. You can disable the service again immediately afterwards.</string>
+    <string name="moon_device_explanation">Android will ask you to enable a one-time accessibility service. After you start the transfer, CruxCoach opens Moon and reads only Moon’s visible Logbook labels on this device. It cannot read other apps and never asks for your Moon password. CruxCoach automatically relinquishes accessibility access when the transfer ends.</string>
     <string name="moon_device_enable">Enable one-time access</string>
     <string name="moon_device_restricted_title">Allow access in two steps</string>
     <string name="moon_device_restricted_explanation">Android currently reports that accessibility access is restricted for CruxCoach. Open App info and choose “Allow restricted settings” (on some devices this is in the overflow menu), then return. CruxCoach checks the result and opens only the remaining setting. If access is already allowed, this step is skipped automatically.</string>
@@ -2477,6 +2508,8 @@
     <string name="moon_import_result_duplicates">Already in CruxCoach: %1$d</string>
     <string name="moon_import_result_not_imported">Could not be imported: %1$d</string>
     <string name="moon_import_result_snapshots">Imported as logbook-only snapshots because they are not in the current local catalogue: %1$d</string>
+    <string name="moon_import_result_staged">Saved safely and completed automatically when the MoonBoard catalogue is ready: %1$d</string>
+    <string name="moon_import_result_unresolved">Not in the current MoonBoard catalogue; kept for automatic matching after future catalogue updates: %1$d</string>
     <string name="moon_import_result_close">Done</string>
     <string name="moon_import_result_sessions">Moon sessions read: %1$d of %2$d</string>
     <string name="moon_import_result_expected">Problems listed by Moon: %1$d</string>

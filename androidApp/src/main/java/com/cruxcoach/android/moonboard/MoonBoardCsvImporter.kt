@@ -51,6 +51,7 @@ class MoonBoardCsvImporter @Inject constructor(
     suspend fun beginScreenImport(): Map<String, MoonBoardImportedDay> = withContext(Dispatchers.IO) {
         screenIndex.clear()
         targetedLookups = 0
+        finalizePendingIfCatalogueReady()
         val days = HashMap<String, MoonBoardImportedDay>()
         fun merge(date: String, entries: Int, sends: Int, tries: Int) {
             val previous = days[date]
@@ -91,34 +92,50 @@ class MoonBoardCsvImporter @Inject constructor(
             var duplicates = 0
             var notImported = 0
             var snapshotOnly = 0
+            var staged = 0
+            var trulyUnresolved = 0
             var replaced = 0
             var kept = 0
             val unresolved = linkedSetOf<String>()
             val occurrence = HashMap<String, Int>()
+            val observedExternalIds = LinkedHashSet<String>()
 
             // Resolve against the catalogue *before* opening the write
             // transaction. Catalogue lookups inside it held the secure database
             // for the entire import and froze every other screen with it.
             val catalogue = resolveScreenEntries(entries, onCatalogueScan)
+            val catalogueComplete = catalogueIsComplete()
 
-            val prepared = entries.map { entry ->
+            val prepared = entries.mapNotNull { entry ->
                 val resolved = catalogue[screenKey(entry)]
-                val climb = resolved ?: screenSnapshot(entry).also { snapshotOnly++ }
                 val signature = listOf(
                     entry.name, entry.setter, entry.angle, entry.climbedAt,
                     entry.tries, entry.attempts,
                 ).joinToString(":")
                 val ordinal = occurrence.merge(signature, 1, Int::plus) ?: 1
                 val kind = if (entry.isSend) "ascent" else "bid"
+                val externalId = "moon-screen:$kind:${sha256("$signature:$ordinal").take(32)}"
+                observedExternalIds += externalId
+                if (resolved == null) {
+                    stageScreen(entry, externalId, catalogueComplete)
+                    if (catalogueComplete) {
+                        snapshotOnly++
+                        trulyUnresolved++
+                        unresolved += "${entry.name} — ${entry.setter} @ ${entry.angle}°"
+                        return@mapNotNull PreparedEntry(entry, screenSnapshot(entry), externalId)
+                    }
+                    staged++
+                    return@mapNotNull null
+                }
                 PreparedEntry(
                     entry = entry,
-                    climb = climb,
-                    externalId = "moon-screen:$kind:${sha256("$signature:$ordinal").take(32)}",
+                    climb = resolved,
+                    externalId = externalId,
                 )
             }
 
             secureDb.transaction {
-                val retired = retireSupersededRows(prepared, complete)
+                val retired = retireSupersededRows(prepared, complete, observedExternalIds)
                 replaced = retired.first
                 kept = retired.second
                 prepared.forEach { row ->
@@ -153,11 +170,14 @@ class MoonBoardCsvImporter @Inject constructor(
                 snapshotOnly = snapshotOnly,
                 replacedEntries = replaced,
                 keptOrphans = kept,
+                stagedEntries = staged,
+                unresolvedEntries = trulyUnresolved,
                 unresolvedLabels = unresolved.take(100),
             )
         }
 
     suspend fun import(csv: String): MoonBoardCsvImportResult = withContext(Dispatchers.IO) {
+        finalizePendingIfCatalogueReady()
         val export = MoonBoardCsvParser.parse(csv).getOrElse {
             return@withContext MoonBoardCsvImportResult(error = it.message ?: "Invalid MoonBoard CSV")
         }
@@ -166,16 +186,14 @@ class MoonBoardCsvImporter @Inject constructor(
         var projects = 0
         var duplicates = 0
         var notImported = 0
+        var staged = 0
+        var trulyUnresolved = 0
         val unresolved = linkedSetOf<Long>()
         val occurrence = HashMap<String, Int>()
+        val catalogueComplete = catalogueIsComplete()
 
         secureDb.transaction {
             export.entries.forEach { entry ->
-                val climb = resolved[entry.problemId] ?: run {
-                    notImported++
-                    unresolved += entry.problemId
-                    return@forEach
-                }
                 try {
                     val signature = listOf(
                         entry.problemId, entry.climbedAt, entry.tries,
@@ -184,6 +202,17 @@ class MoonBoardCsvImporter @Inject constructor(
                     val ordinal = occurrence.merge(signature, 1, Int::plus) ?: 1
                     val kind = if (entry.isSend) "ascent" else "bid"
                     val externalId = "moon-csv:$kind:${sha256("$signature:$ordinal").take(32)}"
+                    val climb = resolved[entry.problemId] ?: run {
+                        stageCsv(entry, externalId, catalogueComplete)
+                        if (catalogueComplete) {
+                            notImported++
+                            trulyUnresolved++
+                            unresolved += entry.problemId
+                        } else {
+                            staged++
+                        }
+                        return@forEach
+                    }
                     val inserted = insertResolved(
                         climb, entry.climbedAt, entry.attempts, entry.rating, entry.isSend, externalId,
                     )
@@ -205,6 +234,8 @@ class MoonBoardCsvImporter @Inject constructor(
             duplicates = duplicates,
             foundEntries = export.entries.size,
             notImported = notImported,
+            stagedEntries = staged,
+            unresolvedEntries = trulyUnresolved,
             unresolvedProblemIds = unresolved.take(100),
         )
     }
@@ -239,9 +270,10 @@ class MoonBoardCsvImporter @Inject constructor(
     private fun retireSupersededRows(
         prepared: List<PreparedEntry>,
         complete: Boolean,
+        observedExternalIds: Set<String> = prepared.mapTo(HashSet()) { it.externalId },
     ): Pair<Int, Int> {
-        if (prepared.isEmpty()) return 0 to 0
-        val wantedIds = prepared.mapTo(HashSet()) { it.externalId }
+        if (prepared.isEmpty() && observedExternalIds.isEmpty()) return 0 to 0
+        val wantedIds = observedExternalIds
         val wantedClimbs = prepared.mapTo(HashSet()) { it.climb.uuid }
         var removed = 0
         var kept = 0
@@ -427,10 +459,123 @@ class MoonBoardCsvImporter @Inject constructor(
     }
 
     /**
-     * A Moon log can be newer than the independently synced CruxCoach catalogue.
-     * The secure logbook is deliberately denormalized, so preserve that account
-     * history as a non-lightable snapshot instead of silently dropping it.
+     * Called after Moon catalogue Imported/AlreadyCurrent, and opportunistically
+     * at every import start. The board marker makes readiness survive restart;
+     * staged rows remain until an idempotent external-id insert has succeeded.
      */
+    suspend fun finalizePendingIfCatalogueReady(catalogueReady: Boolean = false): Int =
+        withContext(Dispatchers.IO) {
+            if (catalogueReady) {
+                boardDb.boardQueries.upsertSyncState(CATALOGUE_READY_MARKER, "complete")
+                // A preceding scan may have cached a partial/empty catalogue.
+                // Never resolve newly staged rows against that stale view after
+                // the catalogue sync has just completed.
+                screenIndex.clear()
+                targetedLookups = 0
+            }
+            if (!catalogueIsComplete()) return@withContext 0
+            val pending = secureDb.moonImportStagingQueries.selectStagedMoonImports().executeAsList()
+            if (pending.isEmpty()) return@withContext 0
+            val csvIds = pending.mapNotNull { it.problem_id }.distinct()
+            val csvResolved = resolve(csvIds)
+            val screenEntries = pending.filter { it.source_type == "screen" }.mapNotNull { row ->
+                val name = row.problem_name ?: return@mapNotNull null
+                val setter = row.setter_name ?: return@mapNotNull null
+                val angle = row.angle?.toInt() ?: return@mapNotNull null
+                MoonBoardScreenEntry(name, setter, angle, row.climbed_at, "", row.attempts.toInt(), row.is_send != 0L)
+            }
+            val screenResolved = resolveScreenEntries(screenEntries) {}
+            var finalized = 0
+            secureDb.transaction {
+                pending.forEach { row ->
+                    val climb = if (row.source_type == "csv") {
+                        row.problem_id?.let(csvResolved::get)
+                    } else {
+                        val key = "${row.problem_name.orEmpty().lowercase(Locale.ROOT)}|" +
+                            "${row.setter_name.orEmpty().lowercase(Locale.ROOT)}|${row.angle}"
+                        screenResolved[key]
+                    }
+                    if (climb == null) {
+                        if (row.source_type == "screen") {
+                            val name = row.problem_name
+                            val setter = row.setter_name
+                            val angle = row.angle?.toInt()
+                            if (name != null && setter != null && angle != null) {
+                                // Once completeness is confirmed, keep this
+                                // visible as history while retaining its raw
+                                // identity for a future catalogue update.
+                                insertResolved(
+                                    screenSnapshot(
+                                        MoonBoardScreenEntry(
+                                            name, setter, angle, row.climbed_at, "",
+                                            row.attempts.toInt(), row.is_send != 0L,
+                                        ),
+                                    ),
+                                    row.climbed_at,
+                                    row.attempts.toInt(),
+                                    row.rating?.toInt(),
+                                    row.is_send != 0L,
+                                    row.external_id,
+                                )
+                            }
+                        }
+                        secureDb.moonImportStagingQueries.markStagedMoonImportUnresolved(row.external_id)
+                    } else {
+                        insertResolved(
+                            climb, row.climbed_at, row.attempts.toInt(), row.rating?.toInt(),
+                            row.is_send != 0L, row.external_id,
+                        )
+                        reconcileExistingSnapshot(climb, row.is_send != 0L, row.external_id)
+                        // INSERT OR IGNORE returning 0 means an earlier attempt
+                        // already finalized this external id: deletion is still safe.
+                        secureDb.moonImportStagingQueries.deleteStagedMoonImport(row.external_id)
+                        finalized++
+                    }
+                }
+            }
+            finalized
+        }
+
+    private fun catalogueIsComplete(): Boolean =
+        boardDb.boardQueries.getSyncState(CATALOGUE_READY_MARKER).executeAsOneOrNull() == "complete"
+
+    private fun reconcileExistingSnapshot(climb: Resolved, isSend: Boolean, externalId: String) {
+        if (isSend) {
+            secureDb.ascentsQueries.resolveStagedMoonAscent(
+                climb_uuid = climb.uuid, angle = climb.angle, climb_name = climb.name,
+                difficulty_average = climb.difficulty, climb_frames = climb.frames,
+                frames_count = climb.framesCount, layout_id = climb.layoutId,
+                external_id = externalId,
+            )
+        } else {
+            secureDb.bidsQueries.resolveStagedMoonBid(
+                climb_uuid = climb.uuid, angle = climb.angle, climb_name = climb.name,
+                difficulty_average = climb.difficulty, layout_id = climb.layoutId,
+                external_id = externalId,
+            )
+        }
+    }
+
+    private fun stageCsv(entry: MoonBoardCsvEntry, externalId: String, complete: Boolean) {
+        secureDb.moonImportStagingQueries.stageMoonImport(
+            external_id = externalId, source_type = "csv", problem_id = entry.problemId,
+            problem_name = null, setter_name = null, angle = null,
+            climbed_at = entry.climbedAt, attempts = entry.attempts.toLong(),
+            rating = entry.rating?.toLong(), is_send = if (entry.isSend) 1 else 0,
+            resolution_state = if (complete) "unresolved" else "pending",
+        )
+    }
+
+    private fun stageScreen(entry: MoonBoardScreenEntry, externalId: String, complete: Boolean) {
+        secureDb.moonImportStagingQueries.stageMoonImport(
+            external_id = externalId, source_type = "screen", problem_id = null,
+            problem_name = entry.name, setter_name = entry.setter, angle = entry.angle.toLong(),
+            climbed_at = entry.climbedAt, attempts = entry.attempts.toLong(), rating = null,
+            is_send = if (entry.isSend) 1 else 0,
+            resolution_state = if (complete) "unresolved" else "pending",
+        )
+    }
+
     private fun screenSnapshot(entry: MoonBoardScreenEntry): Resolved = Resolved(
         uuid = UUID.nameUUIDFromBytes(
             "moon-screen-climb:${entry.name}:${entry.setter}:${entry.angle}"
@@ -514,5 +659,6 @@ class MoonBoardCsvImporter @Inject constructor(
         const val TAG = "MoonBoardCsvImporter"
         const val SCREEN_PREFIX = "moon-screen:%"
         const val TARGETED_LOOKUP_LIMIT = 4
+        const val CATALOGUE_READY_MARKER = "moonboard_catalogue_complete_v1"
     }
 }

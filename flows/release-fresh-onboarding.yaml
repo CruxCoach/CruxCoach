@@ -21,7 +21,7 @@ tags:
     visible:
       id: "onboarding_board_setup"
     timeout: 15000
-- assertVisible: "Willkommen bei CruxCoach"
+- assertVisible: "Wähle dein Board"
 # The shared board picker is the source of truth for every supported catalogue.
 - scrollUntilVisible:
     element:
@@ -60,55 +60,26 @@ tags:
 - pressKey: Back
 - tapOn:
     id: "board_picker_cancel"
-# Catalogue download copy lives below the compact-device fold.
-- scrollUntilVisible:
-    element:
-      text: "Climbs offline verfügbar machen"
-    direction: DOWN
-- assertVisible: "Climbs offline verfügbar machen"
-- scrollUntilVisible:
-    element:
-      text: "etwa 130 MB"
-    direction: DOWN
-- assertVisible: "etwa 130 MB"
-- scrollUntilVisible:
-    element:
-      text: "WLAN empfohlen"
-    direction: DOWN
-- assertVisible: "WLAN empfohlen"
+# Offline preparation stays compact and never blocks board selection.
+- assertVisible:
+    id: "onboarding_offline_preparation"
 - tapOn:
     id: "onboarding_next_button"
 - assertVisible:
-    id: "onboarding_privacy"
-- assertVisible: "Deine Daten, deine Entscheidung"
-- scrollUntilVisible:
-    element:
-      id: "onboarding_backup_switch"
-    direction: DOWN
+    id: "onboarding_import"
+- assertVisible: "Hast du bereits Kletterdaten?"
 - assertVisible:
-    id: "onboarding_backup_switch"
-    checked: false
-- scrollUntilVisible:
-    element:
-      id: "onboarding_community_switch"
-    direction: DOWN
-- assertVisible:
-    id: "onboarding_community_switch"
-    checked: true
-- scrollUntilVisible:
-    element:
-      text: "standardmäßig"
-    direction: DOWN
-- assertVisible: "standardmäßig"
-- tapOn:
-    id: "onboarding_next_button"
-- assertVisible:
-    id: "onboarding_kilter"
-- assertVisible: "Optional"
+    id: "onboarding_import_source_cruxcoach"
 - assertVisible:
     id: "onboarding_import_source_kilter"
 - assertVisible:
     id: "onboarding_import_source_moonboard"
+- tapOn:
+    id: "onboarding_import_source_cruxcoach"
+- assertVisible:
+    id: "onboarding_cruxcoach_restore"
+- assertVisible:
+    id: "onboarding_cruxcoach_file_import"
 - tapOn:
     id: "onboarding_import_source_kilter"
 - assertVisible: "Kilter Logbook importieren"

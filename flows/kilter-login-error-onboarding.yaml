@@ -22,10 +22,10 @@ tags:
     timeout: 15000
 - tapOn:
     id: "onboarding_next_button"
-- tapOn:
-    id: "onboarding_next_button"
 - assertVisible:
-    id: "onboarding_kilter"
+    id: "onboarding_import"
+- tapOn:
+    id: "onboarding_import_source_kilter"
 - scrollUntilVisible:
     element:
       id: "onboarding_kilter_email"
@@ -51,5 +51,5 @@ tags:
     visible: "Ungültige Zugangsdaten."
     timeout: 30000
 - assertVisible:
-    id: "onboarding_kilter"
+    id: "onboarding_import"
 - assertNotVisible: "Angemeldet als"

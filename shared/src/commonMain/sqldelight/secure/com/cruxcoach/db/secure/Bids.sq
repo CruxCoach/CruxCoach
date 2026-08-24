@@ -123,6 +123,12 @@ INSERT OR IGNORE INTO bids(uuid, climb_uuid, angle, is_mirror,
     external_id, board_brand, layout_id)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'moonboard', ?);
 
+resolveStagedMoonBid:
+UPDATE bids SET
+    climb_uuid = ?, angle = ?, climb_name = ?, difficulty_average = ?,
+    board_brand = 'moonboard', layout_id = ?
+WHERE external_id = ?;
+
 countBidsWithExternalIdPrefix:
 SELECT COUNT(*) FROM bids WHERE external_id LIKE ?;
 

@@ -265,6 +265,10 @@ class MoonBoardImportTally {
         private set
     var snapshotOnly = 0
         private set
+    var stagedEntries = 0
+        private set
+    var unresolvedEntries = 0
+        private set
     var replacedEntries = 0
         private set
     var keptOrphans = 0
@@ -280,6 +284,8 @@ class MoonBoardImportTally {
         duplicates = 0
         notImported = 0
         snapshotOnly = 0
+        stagedEntries = 0
+        unresolvedEntries = 0
         replacedEntries = 0
         keptOrphans = 0
         sessionsSkipped = 0
@@ -293,6 +299,8 @@ class MoonBoardImportTally {
         duplicates += result.duplicates
         notImported += result.notImported
         snapshotOnly += result.snapshotOnly
+        stagedEntries += result.stagedEntries
+        unresolvedEntries += result.unresolvedEntries
         replacedEntries += result.replacedEntries
         keptOrphans += result.keptOrphans
         unresolved += result.unresolvedLabels
@@ -322,6 +330,8 @@ class MoonBoardImportTally {
         foundEntries = found,
         notImported = notImported,
         snapshotOnly = snapshotOnly,
+        stagedEntries = stagedEntries,
+        unresolvedEntries = unresolvedEntries,
         replacedEntries = replacedEntries,
         keptOrphans = keptOrphans,
         sessionsScanned = sessionsScanned,

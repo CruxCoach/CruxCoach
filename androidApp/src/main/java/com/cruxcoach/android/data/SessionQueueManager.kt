@@ -673,13 +673,20 @@ class SessionQueueManager(
      *  cancelling an in-flight GATT write. */
     private val sendMutex = kotlinx.coroutines.sync.Mutex()
 
-    /** Force re-send of the current climb — the "board shows something
-     *  else" escape hatch (someone re-lit the wall from another device;
-     *  our dedup would otherwise skip the identical key). */
-    fun resendCurrentClimb() {
-        lastSentClimbKey = null
-        sendCurrentClimbToBoard(explicitRequest = true)
-    }
+    /** Local-user escape hatch: the lamp is explicit authority to put the
+     *  current climb back on the wall, even when it matches the dedup key. */
+    fun resendCurrentClimb() = enqueueCurrentClimbSend(
+        explicitRequest = true,
+        forceResend = true,
+    )
+
+    /** A joined peer may ask the host to resend, but cannot manufacture the
+     *  host user's explicit wall-write authority. AUTOMATIC mode may resend;
+     *  EXPLICIT mode raises the host's lamp prompt instead. */
+    internal fun requestRemoteResend() = enqueueCurrentClimbSend(
+        explicitRequest = false,
+        forceResend = true,
+    )
 
     /**
      * @param explicitRequest true when the user asked for it — the lamp, or the
@@ -687,6 +694,13 @@ class SessionQueueManager(
      *   the explicit send mode the wall stays as it is until asked.
      */
     fun sendCurrentClimbToBoard(explicitRequest: Boolean = false) {
+        enqueueCurrentClimbSend(explicitRequest = explicitRequest, forceResend = false)
+    }
+
+    /** Queue the authority and dedup decision as one immutable send intent.
+     *  Both are evaluated under [sendMutex], so a rapid SetCurrent + remote
+     *  resend cannot clear shared state or inherit a later local action. */
+    private fun enqueueCurrentClimbSend(explicitRequest: Boolean, forceResend: Boolean) {
         scope.launch {
             sendMutex.withLock {
                 // Read state inside the lock so queued navigation events resolve
@@ -731,7 +745,7 @@ class SessionQueueManager(
 
             // Dedup: don't re-send the same climb (multiple callers can trigger this)
             val key = "${item.climbUuid}:${item.angle}"
-            if (key == lastSentClimbKey) {
+            if (!forceResend && key == lastSentClimbKey) {
                 Log.d(TAG, "sendCurrentClimbToBoard: skipped dedup ${item.climbUuid.take(8)}")
                 return@withLock
             }

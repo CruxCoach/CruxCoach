@@ -8,6 +8,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -38,6 +40,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -307,6 +311,7 @@ fun CruxCoachNavHost(
             navController.navigate(Routes.PLAYLIST_PLAYER) { launchSingleTop = true }
         },
     ) {
+    CruxRelayDisclosureEffect(startViewModel.cruxRelayManager)
     CruxRelayAdvertisingPermissionEffect(startViewModel.cruxRelayManager)
     Scaffold(
         bottomBar = { CruxCoachBottomBar(navController) }
@@ -343,6 +348,9 @@ fun CruxCoachNavHost(
                         onNavigateToKeyManagement = { navController.navigate(Routes.KEY_MANAGEMENT) },
                         onNavigateToMoonBoardImport = {
                             navController.navigate(Routes.MOONBOARD_CSV_IMPORT)
+                        },
+                        onNavigateToDataImport = {
+                            navController.navigate(Routes.DATA_IMPORT)
                         },
                     )
                 }
@@ -1028,21 +1036,55 @@ private fun CruxRelayAdvertisingPermissionEffect(relayManager: CruxRelayManager)
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
-        if (granted) relayManager.enable()
+        if (granted) relayManager.requestEnable()
     }
     val missing = ContextCompat.checkSelfPermission(
         context,
         Manifest.permission.BLUETOOTH_ADVERTISE,
     ) != PackageManager.PERMISSION_GRANTED
     val permissionFailure = relayState.error == RelayError.ADVERTISE_FAILED &&
-        relayState.errorDetail == "no permission"
+        relayState.errorDetail == "no permission" && !relayState.pendingDisclosure
 
     LaunchedEffect(permissionFailure, missing) {
+        if (!permissionFailure) handledFailure = null
         if (permissionFailure && missing && handledFailure != relayState.errorDetail) {
             handledFailure = relayState.errorDetail
             launcher.launch(BlePermissionHelper.getAdvertisingPermissions().single())
         }
     }
+}
+
+/** App-global one-time disclosure. Automatic sharing may be requested while
+ * the connection sheet is closed, so this trust gate overlays every route. */
+@Composable
+private fun CruxRelayDisclosureEffect(relayManager: CruxRelayManager) {
+    val relayState by relayManager.state.collectAsStateWithLifecycle()
+    if (!relayState.pendingDisclosure) return
+    AlertDialog(
+        onDismissRequest = relayManager::dismissDisclosure,
+        modifier = Modifier.testTag("relay_disclosure_dialog"),
+        title = { Text(stringResource(com.cruxcoach.android.R.string.relay_disclosure_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(com.cruxcoach.android.R.string.relay_disclosure_text))
+                Text(
+                    stringResource(com.cruxcoach.android.R.string.relay_disclosure_disclaimer),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = relayManager::confirmDisclosureAndEnable) {
+                Text(stringResource(com.cruxcoach.android.R.string.relay_disclosure_confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = relayManager::dismissDisclosure) {
+                Text(stringResource(com.cruxcoach.android.R.string.action_cancel))
+            }
+        },
+    )
 }
 
 /** Isolated composable for wake lock — reads navBackStackEntry without recomposing parent. */

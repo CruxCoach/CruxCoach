@@ -1011,7 +1011,7 @@ class SessionGattBridge(
                 is SessionCommand.Move -> queueManager.moveClimb(cmd.from, cmd.to)
                 is SessionCommand.Resend -> {
                     Log.i(TAG, "event=transport_received action=resend")
-                    queueManager.resendCurrentClimb()
+                    queueManager.requestRemoteResend()
                 }
             }
         }.onFailure { Log.e(TAG, "Failed to apply session command", it) }.isSuccess

@@ -5,6 +5,7 @@ import android.app.NotificationManager
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.AdvertisingSetCallback
 import android.content.Context
+import android.os.SystemClock
 import android.util.Log
 import androidx.annotation.StringRes
 import androidx.core.app.NotificationCompat
@@ -29,6 +30,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -48,6 +50,8 @@ enum class RelayError {
      * simply stayed dark on both sides of a relay that looked healthy.
      */
     FORWARD_FAILED,
+    /** No official-app client remained for the bounded sharing window. */
+    IDLE_TIMEOUT,
 }
 
 data class CruxRelayState(
@@ -59,6 +63,10 @@ data class CruxRelayState(
     val error: RelayError? = null,
     /** Raw technical detail for [error] (log-grade, appended to the message). */
     val errorDetail: String? = null,
+    /** The one-time Bluetooth-name/non-affiliation disclosure is app-global,
+     * so this state is rendered at the navigation root, not only in the
+     * connection sheet. */
+    val pendingDisclosure: Boolean = false,
 )
 
 /**
@@ -86,6 +94,9 @@ class CruxRelayManager(
     private val bleConnection: BoardBleConnection,
     private val projectionCoordinator: BoardProjectionCoordinator,
     private val userPreferences: UserPreferences,
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
+    private val monotonicNowMs: () -> Long = SystemClock::elapsedRealtime,
+    private val relayIdleTimeoutMs: Long = RELAY_IDLE_TIMEOUT_MS,
 ) {
     companion object {
         private const val TAG = "CruxRelay/Manager"
@@ -95,13 +106,12 @@ class CruxRelayManager(
         private const val NAME_PROPAGATE_TIMEOUT_MS = 2_000L
         private const val ADVERTISE_START_TIMEOUT_MS = 3_000L
         private const val STOPPED_NOTIFICATION_ID = 4402
+        internal const val RELAY_IDLE_TIMEOUT_MS = 90_000L
     }
 
     private val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
     private val adapter get() = bluetoothManager?.adapter
     private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-
     private val _state = MutableStateFlow(CruxRelayState())
     val state: StateFlow<CruxRelayState> = _state.asStateFlow()
     // Not persisted: this is runtime state, rebuilt on every process from the
@@ -114,6 +124,26 @@ class CruxRelayManager(
     private var eventJob: Job? = null
     /** Climb identification for the most recent relayed write; see forwardJob. */
     private var identifyJob: Job? = null
+    private var disclosureJob: Job? = null
+    /** Board identity for the disclosure currently shown. A consent answer
+     * must never carry across a disconnect/reconnect to a different wall. */
+    private var pendingDisclosureBoardAddress: String? = null
+    private val idleWatchdog = RelayIdleWatchdog(
+        scope = scope,
+        timeoutMs = relayIdleTimeoutMs,
+        nowMs = monotonicNowMs,
+        clientCount = relayServer::getConnectedCount,
+        onTimeout = {
+            if (running && relayServer.getConnectedCount() == 0) {
+                Log.i(TAG, "CruxRelay stopped after zero-client idle timeout")
+                postStoppedNotification(R.string.relay_stopped_idle)
+                _state.update {
+                    it.copy(error = RelayError.IDLE_TIMEOUT, errorDetail = null)
+                }
+                disableInternal()
+            }
+        },
+    )
 
     init {
         // Crash-safe: a previous run may have died with the adapter name still
@@ -137,20 +167,100 @@ class CruxRelayManager(
             ) { manual, st -> !manual && st == ConnectionState.CONNECTED }
                 .distinctUntilChanged()
                 .collect { shouldShare ->
-                    if (shouldShare && !enabledFlow.value) setEnabled(true)
-                    else if (!shouldShare && enabledFlow.value &&
+                    if (shouldShare && !enabledFlow.value) requestEnable()
+                    else if (!shouldShare &&
                         bleConnection.connectionState.value == ConnectionState.DISCONNECTED
-                    ) setEnabled(false)
+                    ) disable()
                 }
         }
     }
 
-    /** UI entry point — a deliberate user action; [init]'s collector does the rest. */
-    fun enable() = setEnabled(true)
+    /** The sole start entry point for manual, automatic and permission-retry
+     * paths. No caller can enable transport before the persisted disclosure. */
+    fun requestEnable() {
+        val board = bleConnection.connectedBoard ?: return
+        if (bleConnection.connectionState.value != ConnectionState.CONNECTED ||
+            BoardRelayPolicy.availability(board) != BoardRelayAvailability.AVAILABLE
+        ) {
+            rejectEnable(RelayError.UNSUPPORTED_BOARD)
+            return
+        }
+        val expectedAddress = board.address
+        disclosureJob?.cancel()
+        pendingDisclosureBoardAddress = null
+        _state.update { it.copy(pendingDisclosure = false) }
+        disclosureJob = scope.launch {
+            val seen = userPreferences.relayDisclosureSeen.first()
+            val currentBoard = bleConnection.connectedBoard
+            if (bleConnection.connectionState.value != ConnectionState.CONNECTED ||
+                currentBoard?.address != expectedAddress ||
+                BoardRelayPolicy.availability(currentBoard) != BoardRelayAvailability.AVAILABLE
+            ) return@launch
+            if (seen) enableInternal()
+            else {
+                pendingDisclosureBoardAddress = expectedAddress
+                _state.update {
+                    it.copy(
+                        enabled = false,
+                        pendingDisclosure = true,
+                        error = null,
+                        errorDetail = null,
+                    )
+                }
+            }
+        }
+    }
 
-    fun setEnabled(enabled: Boolean) {
-        enabledFlow.value = enabled
-        if (enabled) _state.update { it.copy(error = null, errorDetail = null) }
+    /** Persist first, then revalidate the exact connected board before the
+     * transport can become enabled. */
+    fun confirmDisclosureAndEnable() {
+        if (!_state.value.pendingDisclosure) return
+        val expectedAddress = pendingDisclosureBoardAddress ?: return
+        pendingDisclosureBoardAddress = null
+        _state.update { it.copy(pendingDisclosure = false) }
+        disclosureJob?.cancel()
+        disclosureJob = scope.launch {
+            userPreferences.setRelayDisclosureSeen()
+            val board = bleConnection.connectedBoard
+            if (bleConnection.connectionState.value == ConnectionState.CONNECTED &&
+                board?.address == expectedAddress &&
+                BoardRelayPolicy.availability(board) == BoardRelayAvailability.AVAILABLE
+            ) {
+                enableInternal()
+            }
+        }
+    }
+
+    fun dismissDisclosure() {
+        disclosureJob?.cancel()
+        disclosureJob = null
+        pendingDisclosureBoardAddress = null
+        _state.update { it.copy(pendingDisclosure = false) }
+    }
+
+    /** One-tap stop used by every UI/service surface. */
+    fun disable() {
+        disclosureJob?.cancel()
+        disclosureJob = null
+        pendingDisclosureBoardAddress = null
+        _state.update { it.copy(pendingDisclosure = false) }
+        disableInternal()
+    }
+
+    private fun enableInternal() {
+        pendingDisclosureBoardAddress = null
+        enabledFlow.value = true
+        _state.update {
+            it.copy(
+                pendingDisclosure = false,
+                error = null,
+                errorDetail = null,
+            )
+        }
+    }
+
+    private fun disableInternal() {
+        enabledFlow.value = false
     }
 
     fun clearError() {
@@ -182,15 +292,18 @@ class CruxRelayManager(
                 // surface the loss (never silent — §12). The persistent FGS
                 // notification dies with enabled=false, so leave a final
                 // auto-dismissible one for background users.
-                enabledFlow.value = false
+                disableInternal()
                 _state.update { it.copy(enabled = false, boardName = null, error = null, errorDetail = null) }
             }
         }
     }
 
     private fun rejectEnable(error: RelayError) {
+        pendingDisclosureBoardAddress = null
         enabledFlow.value = false
-        _state.update { it.copy(enabled = false, error = error, errorDetail = null) }
+        _state.update {
+            it.copy(enabled = false, pendingDisclosure = false, error = error, errorDetail = null)
+        }
     }
 
     @SuppressLint("MissingPermission")
@@ -254,6 +367,7 @@ class CruxRelayManager(
                 // guest write in order and byte-for-byte; there is no Aurora
                 // packet grouping for RelayFrameReassembler to perform.
                 relayServer.writes.collect { inbound ->
+                    idleWatchdog.activity()
                     if (bleConnection.sendRawChunks(
                             listOf(inbound.value),
                             expectedBrand = board.boardBrand,
@@ -267,6 +381,7 @@ class CruxRelayManager(
                 }
             } else {
                 relayServer.climbs.collect { inbound ->
+                    idleWatchdog.activity()
                     val ok = bleConnection.sendRawChunks(
                         inbound.climb.chunks,
                         expectedBrand = board.boardBrand,
@@ -290,6 +405,7 @@ class CruxRelayManager(
         eventJob = scope.launch {
             relayServer.connectionEvents.collect { event ->
                 _state.update { it.copy(clientCount = relayServer.getConnectedCount()) }
+                idleWatchdog.activity()
                 if (event is GattConnectionEvent.Connected) {
                     // A connectable legacy advertising set may stop after one
                     // connection. Restart it so further clients can join the
@@ -308,6 +424,7 @@ class CruxRelayManager(
             "${board.displayName} #${board.serial}"
         } else board.displayName
         _state.update { it.copy(advertising = true, advertisedName = desired, boardName = boardLabel) }
+        idleWatchdog.start()
 
         // FGS keeps advertising alive (Android 12+ throttles background
         // advertising) + shows the mandatory persistent sharing notification.
@@ -358,6 +475,7 @@ class CruxRelayManager(
     private suspend fun stopRelay() {
         if (!running) return
         running = false
+        idleWatchdog.stop()
         forwardJob?.cancel(); forwardJob = null
         eventJob?.cancel(); eventJob = null
         identifyJob?.cancel(); identifyJob = null

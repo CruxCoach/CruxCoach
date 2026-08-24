@@ -242,6 +242,12 @@ fun MoonBoardCsvImportScreen(
                         if (importResult.snapshotOnly > 0) {
                             Text(stringResource(R.string.moon_import_result_snapshots, importResult.snapshotOnly))
                         }
+                        if (importResult.stagedEntries > 0) {
+                            Text(stringResource(R.string.moon_import_result_staged, importResult.stagedEntries))
+                        }
+                        if (importResult.unresolvedEntries > 0) {
+                            Text(stringResource(R.string.moon_import_result_unresolved, importResult.unresolvedEntries))
+                        }
                         if (importResult.unresolvedLabels.isNotEmpty()) {
                             Text(importResult.unresolvedLabels.joinToString("\n"), style = MaterialTheme.typography.bodySmall)
                         }
