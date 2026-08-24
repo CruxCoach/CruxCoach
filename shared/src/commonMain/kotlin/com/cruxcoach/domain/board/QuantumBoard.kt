@@ -112,7 +112,10 @@ object QuantumBoardBroadcastParser {
             QuantumCommand.BOARD_SWIPE,
             QuantumCommand.REQUEST_USER_ROUTE_LIST -> {
                 val count = frame[2].toInt() and 0xff
-                if (count > 4) return null
+                // eWalls/BoardSimulator reserve the fourth header byte as
+                // zero. It is our only fixed structural invariant beyond
+                // length on this CRC-less notification channel.
+                if (count > 4 || frame[3].toInt() != 0) return null
                 val players = List(count) { index ->
                     val offset = 4 + index * PLAYER_BYTES
                     QuantumActivePlayer(

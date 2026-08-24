@@ -22,6 +22,7 @@ import com.cruxcoach.android.data.BoardSessionManager
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.IntensityZoneManager
 import com.cruxcoach.android.data.LedHoldColors
+import com.cruxcoach.android.data.SessionVisibility
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.domain.board.IntensityZones
 import com.cruxcoach.data.repository.AscentWithClimb
@@ -190,8 +191,10 @@ internal fun ClimbDetailState.withLiveDeviceState(live: ClimbDetailState): Climb
         zones = live.zones,
         currentUserPubkey = live.currentUserPubkey,
         boardLayers = live.boardLayers,
-        selectedBoardLayerSlot = live.selectedBoardLayerSlot,
-        selectedBoardLayerColor = live.selectedBoardLayerColor,
+        // A slot choice belongs to the climb variant on which it was made.
+        // Cached neighbours must never inherit it and become a replacement.
+        selectedBoardLayerSlot = null,
+        selectedBoardLayerColor = null,
     )
 
 data class ClimbDetailState(
@@ -452,6 +455,7 @@ class BoardClimbDetailViewModel @Inject constructor(
             bleConnection.quantumControllerState.collect { controller ->
                 if (controller.authoritative) {
                     boardLayerManager.reconcile(controller.players)
+                    sendController.hydrateQuantumControllerState()
                 }
             }
         }
@@ -887,6 +891,8 @@ class BoardClimbDetailViewModel @Inject constructor(
             _state.update { current -> cached.withLiveDeviceState(current).copy(
                 ascent = AscentFormState(),
                 listDialog = ListDialogState(),
+                selectedBoardLayerSlot = null,
+                selectedBoardLayerColor = null,
                 ble = current.ble.copy(
                     connectionState = currentConn,
                     isSending = false,
@@ -909,7 +915,9 @@ class BoardClimbDetailViewModel @Inject constructor(
                 ),
                 playback = it.playback.copy(showPreview = false),
                 ascent = AscentFormState(),
-                listDialog = it.listDialog.copy(show = false)
+                listDialog = it.listDialog.copy(show = false),
+                selectedBoardLayerSlot = null,
+                selectedBoardLayerColor = null,
             ) }
         }
         loadClimb(uuid, angle)
@@ -932,6 +940,8 @@ class BoardClimbDetailViewModel @Inject constructor(
                 error = null,
                 angle = angle,
                 ble = current.ble.copy(isSending = false, success = false, error = null),
+                selectedBoardLayerSlot = null,
+                selectedBoardLayerColor = null,
             )
         }
         loadClimb(currentClimbUuid, angle)
@@ -1349,9 +1359,21 @@ class BoardClimbDetailViewModel @Inject constructor(
         _state.update { it.copy(selectedBoardLayerColor = color) }
     }
 
+    /** Apply the policy's one safe answer atomically. This remains a local
+     * selection; assigning or lighting is a separate explicit action. */
+    fun selectSuggestedBoardLayer(slot: Int, color: Int) {
+        if (slot !in 0 until BoardLayerManager.MAX_LAYER_IDENTITIES ||
+            color !in BoardLayerManager.LAYER_COLORS
+        ) return
+        _state.update {
+            it.copy(selectedBoardLayerSlot = slot, selectedBoardLayerColor = color)
+        }
+    }
+
     fun assignCurrentToBoardLayer() = sendController.assignCurrentToBoardLayer()
     fun sendBoardLayer(slot: Int) = sendController.sendBoardLayer(slot)
     fun sendAllBoardLayers() = sendController.sendAllBoardLayers()
+    fun cancelBoardLayerReplacement(slot: Int) = sendController.cancelBoardLayerReplacement(slot)
     fun removeBoardLayer(slot: Int) = sendController.removeBoardLayer(slot)
 
     /**
@@ -1362,10 +1384,13 @@ class BoardClimbDetailViewModel @Inject constructor(
     fun deliverClimb() {
         val climbState = _state.value
         val climb = climbState.climb ?: return
+        val queueState = sessionQueueManager.state.value
         val decision = BoardDeliveryPolicy.resolve(
             sendMode = climbState.boardSendMode,
-            sessionRole = sessionQueueManager.state.value.role,
-            sessionConnecting = sessionQueueManager.state.value.isConnecting,
+            sessionRole = queueState.role,
+            sessionConnecting = queueState.isConnecting,
+            localPlaylist = queueState.isPlaylist &&
+                queueState.visibility == SessionVisibility.LOCAL_ONLY,
             boardConnected = sendController.isConnected(),
             hasDirectPayload = BoardProjectionPolicy.hasSendablePayload(
                 brand = climb.brand,
@@ -1558,10 +1583,13 @@ class BoardClimbDetailViewModel @Inject constructor(
             _state.value.boardSendMode
         }
         val climbState = _state.value
+        val queueState = sessionQueueManager.state.value
         val decision = BoardDeliveryPolicy.resolve(
             sendMode = mode,
-            sessionRole = sessionQueueManager.state.value.role,
-            sessionConnecting = sessionQueueManager.state.value.isConnecting,
+            sessionRole = queueState.role,
+            sessionConnecting = queueState.isConnecting,
+            localPlaylist = queueState.isPlaylist &&
+                queueState.visibility == SessionVisibility.LOCAL_ONLY,
             boardConnected = sendController.isConnected(),
             hasDirectPayload = BoardProjectionPolicy.hasSendablePayload(
                 brand = climbState.climb?.brand,

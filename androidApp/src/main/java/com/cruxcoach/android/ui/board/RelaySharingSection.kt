@@ -42,6 +42,7 @@ import com.cruxcoach.android.R
 import com.cruxcoach.android.ble.BlePermissionHelper
 import com.cruxcoach.android.ble.DiscoveredBoard
 import com.cruxcoach.android.data.RelayError
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.android.ui.theme.ErrorRed
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.SuccessGreen
@@ -61,10 +62,10 @@ fun RelaySharingSection(
     board: DiscoveredBoard?,
     viewModel: RelayShareViewModel = hiltViewModel()
 ) {
-    // Offer CruxRelay for every directly-connected physical board, regardless
-    // of inferred controller capacity or board family. Only a relay endpoint
-    // itself must not be nested inside another relay.
-    if (board == null || board.isCruxRelay) return
+    // Quantum writes require a scoped route/user identity plus authoritative
+    // readback. CruxRelay currently carries only raw Aurora/Kilter streams, so
+    // it must not expose a path around the layer coexistence boundary.
+    if (board == null || board.isCruxRelay || board.boardBrand == BoardBrand.QUANTUM) return
 
     val context = LocalContext.current
     val state by viewModel.relayState.collectAsStateWithLifecycle()

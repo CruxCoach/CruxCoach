@@ -531,7 +531,7 @@ class BoardSyncManager(
             try {
                 updateLocalShareProgress(
                     ImportStep.DiscoveringLocalShare,
-                    sharedBoardBrands(found.manifest.board),
+                    sharedBoardBrands(found.manifest.board, found.manifest.protocolVersion),
                 )
                 runOfflineShare(
                     network = found.network,
@@ -546,20 +546,20 @@ class BoardSyncManager(
     }
 
     private fun interactiveBoardBrands(): List<BoardBrand> =
-        // Local-share protocol predates quantum_route_refs. Advertising a
-        // Quantum catalogue without that external-UUID bridge would import
-        // climbs that render but cannot address the real controller. Keep
-        // Quantum on its isolated Blossom d-tag until the peer protocol grows
-        // the mapping table; older (<0.2.2) peers remain unaffected.
-        BoardBrand.entries.filter { it.isInteractive && it != BoardBrand.QUANTUM }
+        BoardBrand.entries.filter { it.isInteractive }
 
-    private fun sharedBoardBrands(board: LocalShareProtocol.BoardArtifact?): List<BoardBrand> =
+    private fun sharedBoardBrands(
+        board: LocalShareProtocol.BoardArtifact?,
+        protocolVersion: Int = LocalShareProtocol.VERSION,
+    ): List<BoardBrand> =
         board?.catalogues
             ?.mapNotNull { BoardBrand.fromWireOrNull(it.boardBrand) }
-            ?.filter { it.isInteractive && it != BoardBrand.QUANTUM }
+            ?.filter { it.isInteractive }
             ?.distinct()
             ?.takeIf { it.isNotEmpty() }
-            ?: interactiveBoardBrands()
+            ?: interactiveBoardBrands().filter {
+                protocolVersion == LocalShareProtocol.VERSION_V2 || it != BoardBrand.QUANTUM
+            }
 
     private fun updateLocalShareProgress(step: ImportStep, brands: List<BoardBrand>) {
         _state.update {
@@ -1294,7 +1294,7 @@ class BoardSyncManager(
         }
         if (!claimSyncSlot(ImportStep.Extract, localShare = true)) return
         try {
-            importDownloadedBoard(compressed, board)
+            importDownloadedBoard(compressed, board, pending.protocolVersion)
             pending.apkPath?.let(::File)?.delete()
             localShareResumeStore.clear()
             val timestamp = DateTimeUtil.nowIso()
@@ -1328,8 +1328,9 @@ class BoardSyncManager(
     private suspend fun importDownloadedBoard(
         compressed: File,
         board: LocalShareProtocol.BoardArtifact,
+        protocolVersion: Int,
     ) {
-        val brands = sharedBoardBrands(board)
+        val brands = sharedBoardBrands(board, protocolVersion)
         require(board.uncompressedSizeBytes in 1..MAX_LOCAL_SHARE_DB_BYTES) {
             "Shared board snapshot exceeds size limit"
         }
@@ -1363,7 +1364,10 @@ class BoardSyncManager(
                 throw java.io.IOException("Shared board snapshot failed verification")
             }
             withBackgroundThreadPriority {
-                importer.importFromLocalDb(raw) { step ->
+                importer.importFromLocalDb(
+                    raw,
+                    includeQuantum = protocolVersion == LocalShareProtocol.VERSION_V2,
+                ) { step ->
                     // ImportStep.Done is emitted before the manager's own
                     // denormalized refresh and durable hash bookkeeping. Keep the
                     // visible run in Finalizing until all of that is actually done.
@@ -1430,7 +1434,10 @@ class BoardSyncManager(
         try {
             updateLocalShareProgress(ImportStep.FetchingManifest, interactiveBoardBrands())
             val firstManifest = initialManifest ?: client.fetchManifest(network, baseUrl)
-            val initialBrands = sharedBoardBrands(firstManifest.board)
+            val initialBrands = sharedBoardBrands(
+                firstManifest.board,
+                firstManifest.protocolVersion,
+            )
                 .ifEmpty { interactiveBoardBrands() }
 
             // The APK is the bootstrapping artifact: transfer it before any
@@ -1447,6 +1454,7 @@ class BoardSyncManager(
                     baseUrl = baseUrl,
                     artifact = firstManifest.apk,
                     target = target,
+                    protocolVersion = firstManifest.protocolVersion,
                     onVerifying = {
                         updateLocalShareProgress(ImportStep.VerifyingApk, initialBrands)
                     },
@@ -1458,7 +1466,7 @@ class BoardSyncManager(
             receivedManifest = if (firstManifest.boardStatus == "preparing") {
                 // Explicitly arm the expensive sender-side work only after the
                 // APK is complete (or when no APK update was required).
-                client.requestSnapshotBuild(network, baseUrl)
+                client.requestSnapshotBuild(network, baseUrl, firstManifest.protocolVersion)
                 updateLocalShareProgress(
                     ImportStep.PreparingSnapshot,
                     initialBrands,
@@ -1467,6 +1475,7 @@ class BoardSyncManager(
                     network = network,
                     baseUrl = baseUrl,
                     timeoutMs = SNAPSHOT_WAIT_MAX_MS,
+                    protocolVersion = firstManifest.protocolVersion,
                     onPreparing = {
                         updateLocalShareProgress(
                             ImportStep.PreparingSnapshot,
@@ -1477,7 +1486,7 @@ class BoardSyncManager(
             } else firstManifest
 
             val offeredBoard = receivedManifest.board
-            val brands = sharedBoardBrands(offeredBoard)
+            val brands = sharedBoardBrands(offeredBoard, receivedManifest.protocolVersion)
             updateLocalShareProgress(ImportStep.CheckingUpdate, brands)
             val lastSnapshotHash = userPreferences.lastLocalShareSnapshotSha256.first()
             val needsBoard = offeredBoard != null &&
@@ -1493,6 +1502,7 @@ class BoardSyncManager(
                     baseUrl = baseUrl,
                     artifact = offeredBoard.artifact,
                     target = target,
+                    protocolVersion = receivedManifest.protocolVersion,
                     onVerifying = {
                         updateLocalShareProgress(ImportStep.VerifyingSnapshot, brands)
                     },
@@ -1540,6 +1550,7 @@ class BoardSyncManager(
             localShareResumeStore.save(
                 LocalShareResumeStore.Pending(
                     requiredVersionCode = receivedManifest.apkVersionCode,
+                    protocolVersion = receivedManifest.protocolVersion,
                     apkPath = readyUpdate.apkPath,
                     apkVersionName = readyUpdate.versionName,
                     boardPath = compressedBoard?.absolutePath,
@@ -1547,7 +1558,11 @@ class BoardSyncManager(
                 ),
             )
         } else if (offeredBoard != null && compressedBoard != null) {
-            importDownloadedBoard(compressedBoard, offeredBoard)
+            importDownloadedBoard(
+                compressedBoard,
+                offeredBoard,
+                receivedManifest.protocolVersion,
+            )
             boardImported = true
         }
 
@@ -1559,7 +1574,9 @@ class BoardSyncManager(
             // leave non-terminal spinners behind in the old process.
             emptyMap()
         } else {
-            completedLocalShareSteps(sharedBoardBrands(receivedManifest.board))
+            completedLocalShareSteps(
+                sharedBoardBrands(receivedManifest.board, receivedManifest.protocolVersion),
+            )
         }
         val networkAvailable = isNetworkAvailable(appContext)
         val wifiConnected = isWifiConnected(appContext)

@@ -308,6 +308,15 @@ object CruxCoachBackup {
             c.createdByPubkey?.let {
                 require(HEX64_REGEX.matches(it)) { "invalid backup: ownClimb.createdByPubkey" }
             }
+            if (c.source == "nostr") {
+                require(nostrPubkey != null && c.createdByPubkey == nostrPubkey) {
+                    "invalid backup: published own climb does not belong to nostrPubkey"
+                }
+            } else {
+                require(c.createdByPubkey == null || c.createdByPubkey == nostrPubkey) {
+                    "invalid backup: local own climb belongs to another pubkey"
+                }
+            }
             c.framesHash?.let {
                 require(HEX64_REGEX.matches(it)) { "invalid backup: ownClimb.framesHash" }
             }
@@ -328,8 +337,12 @@ object CruxCoachBackup {
             requireRange("ownClimb.edgeTop", c.edgeTop, 0L..10_000L)
         }
 
+        val ownClimbUuids = boardClimbs.mapTo(mutableSetOf()) { it.uuid.lowercase() }
         for (s in boardClimbStats) {
             requireUuid("ownClimbStat.climbUuid", s.climbUuid)
+            require(s.climbUuid.lowercase() in ownClimbUuids) {
+                "invalid backup: ownClimbStat does not belong to boardClimbs"
+            }
             requireRange("ownClimbStat.angle", s.angle, 0L..70L)
             requireRange("ownClimbStat.ascensionistCount", s.ascensionistCount, 0L..100_000L)
             requireFinite("ownClimbStat.displayDifficulty", s.displayDifficulty)
@@ -911,8 +924,9 @@ object CruxCoachBackup {
          * Nostr identity the backup MUST belong to (typically the
          * currently active signer's pubkey), pass it here. If the
          * decrypted payload carries a different pubkey in its
-         * [Backup.nostrPubkey] envelope field, `import` refuses before
-         * any DB write — catches the "identity mismatch" edge case
+         * [Backup.nostrPubkey] envelope field, or omits that identity while
+         * selected own-climb data is present, `import` refuses before any DB
+         * write — catches the "identity mismatch" edge case
          * that the NIP-44 decrypt layer already makes cryptographically
          * unlikely, but would otherwise silently import wrong-owner
          * data if it ever reached this code path. `null` skips the
@@ -921,12 +935,16 @@ object CruxCoachBackup {
         expectedNostrPubkey: String? = null,
     ): ImportResult {
         val backup = json.decodeFromString<Backup>(jsonString).validate()
-        if (expectedNostrPubkey != null && backup.nostrPubkey != null &&
+        val importsOwnClimbData = Category.OWN_CLIMBS in selectedCategories &&
+            (backup.boardClimbs.isNotEmpty() || backup.boardClimbStats.isNotEmpty())
+        if (expectedNostrPubkey != null &&
+            (backup.nostrPubkey != null || importsOwnClimbData) &&
             backup.nostrPubkey != expectedNostrPubkey
         ) {
+            val payloadIdentity = backup.nostrPubkey?.take(8)?.plus("…") ?: "missing"
             throw IllegalArgumentException(
                 "invalid backup: nostrPubkey does not match active signer " +
-                    "(payload ${backup.nostrPubkey.take(8)}…, active ${expectedNostrPubkey.take(8)}…)",
+                    "(payload $payloadIdentity, active ${expectedNostrPubkey.take(8)}…)",
             )
         }
 
@@ -1302,6 +1320,14 @@ object CruxCoachBackup {
         var ownClimbStatsImported = 0
         var ownClimbsSkipped = 0
         if (Category.OWN_CLIMBS in selectedCategories) {
+            // Existing rows are eligible for idempotent stat restore only when
+            // the repository already recognizes them as belonging to this
+            // backup identity (or as a legacy NULL-pubkey local draft). A UUID
+            // collision with an arbitrary catalogue/community row must neither
+            // fill its lifecycle metadata nor replace its statistics.
+            val restorableUuids = boardRepository
+                .getOwnClimbsForBackup(backup.nostrPubkey.orEmpty())
+                .mapTo(mutableSetOf()) { it.uuid.lowercase() }
             for (climb in backup.boardClimbs) {
                 // uuid lowercase — same legacy-mixed-case defense as the
                 // ascents / bids / list-entries above. v3 backups from
@@ -1329,9 +1355,18 @@ object CruxCoachBackup {
                     boardBrand = climb.boardBrand,
                     kilterAuthorUuid = climb.kilterAuthorUuid,
                 )
-                if (boardRepository.restoreOwnClimb(row)) ownClimbsImported++ else ownClimbsSkipped++
+                if (boardRepository.restoreOwnClimb(row)) {
+                    ownClimbsImported++
+                    restorableUuids += row.uuid
+                } else {
+                    ownClimbsSkipped++
+                }
             }
             for (stat in backup.boardClimbStats) {
+                if (stat.climbUuid.lowercase() !in restorableUuids) {
+                    ownClimbsSkipped++
+                    continue
+                }
                 boardRepository.restoreOwnClimbStat(
                     OwnClimbStatBackupRow(
                         climbUuid = stat.climbUuid.lowercase(), angle = stat.angle,

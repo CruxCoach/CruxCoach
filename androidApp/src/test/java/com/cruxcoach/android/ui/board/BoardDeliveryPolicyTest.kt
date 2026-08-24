@@ -175,6 +175,31 @@ class BoardDeliveryPolicyTest {
     }
 
     @Test
+    fun `private local playlist keeps the detail lamp on direct board delivery`() {
+        val decision = BoardDeliveryPolicy.resolve(
+            sendMode = BoardSendMode.EXPLICIT,
+            sessionRole = SessionRole.HOST,
+            localPlaylist = true,
+            boardConnected = true,
+            hasDirectPayload = true,
+        )
+
+        assertEquals(BoardDeliveryTarget.DIRECT_BOARD, decision.target)
+        assertFalse(decision.dispatchAutomatically)
+        assertTrue(decision.showAction)
+        assertEquals(
+            BoardDetailLampMode.LIGHT,
+            BoardDeliveryPolicy.lampMode(
+                decision = decision,
+                hasDirectPayload = true,
+                boardConnected = true,
+                boardOwnedByOthers = false,
+                countdownRunning = false,
+            ),
+        )
+    }
+
+    @Test
     fun `shared queue does not depend on participant having board payload`() {
         val decision = BoardDeliveryPolicy.resolve(
             sendMode = BoardSendMode.AUTOMATIC,

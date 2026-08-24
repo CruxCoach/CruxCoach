@@ -15,6 +15,7 @@ import com.cruxcoach.domain.board.HoldRole
 import com.cruxcoach.domain.board.MoonBoardFrameEncoder
 import com.cruxcoach.domain.board.MoonBoardLedMode
 import com.cruxcoach.domain.board.QuantumBoardPacketEncoder
+import com.cruxcoach.domain.board.QuantumBoardModel
 import com.cruxcoach.domain.board.QuantumBoardBroadcastParser
 import com.cruxcoach.domain.board.QuantumBroadcast
 import com.cruxcoach.domain.board.QuantumActivePlayer
@@ -48,10 +49,208 @@ enum class QuantumCommandFailure {
 data class QuantumControllerState(
     val players: List<QuantumActivePlayer> = emptyList(),
     val revision: Long = 0,
+    /** Revision of the last complete controller snapshot. Delta acknowledgements
+     * increment [revision] but must not satisfy a fresh-read precondition. */
+    val authoritativeRevision: Long = 0,
+    /** Revision of the last explicit REQUEST_USER_ROUTE_LIST response. fff4
+     * reads and activation broadcasts can be complete snapshots, but cannot
+     * confirm the freshness of a mutation precondition. */
+    val routeListRevision: Long = 0,
     val lastFailure: QuantumCommandFailure? = null,
     /** True only after a controller broadcast supplied real state. */
     val authoritative: Boolean = false,
 )
+
+private data class QuantumGattRead(
+    val status: Int,
+    val value: ByteArray?,
+)
+
+private data class PendingGattWrite(
+    val gatt: BluetoothGatt,
+    val characteristic: BluetoothGattCharacteristic,
+    val result: CompletableDeferred<Int>,
+)
+
+internal enum class QuantumControllerEvidence {
+    AUTHORITATIVE,
+    DELTA,
+    FAILURE,
+    INFORMATIONAL,
+    UNSUPPORTED,
+}
+
+internal fun classifyQuantumControllerEvidence(
+    broadcast: QuantumBroadcast?,
+): QuantumControllerEvidence = when (broadcast) {
+    is QuantumBroadcast.RouteList, QuantumBroadcast.BoardCleared ->
+        QuantumControllerEvidence.AUTHORITATIVE
+    is QuantumBroadcast.UserTurnedOff -> QuantumControllerEvidence.DELTA
+    is QuantumBroadcast.Exception -> QuantumControllerEvidence.FAILURE
+    is QuantumBroadcast.BoardLit -> QuantumControllerEvidence.INFORMATIONAL
+    null -> QuantumControllerEvidence.UNSUPPORTED
+}
+
+internal fun hasFreshQuantumSnapshot(
+    before: QuantumControllerState,
+    after: QuantumControllerState,
+): Boolean = after.lastFailure == null &&
+    after.authoritative &&
+    after.authoritativeRevision > before.authoritativeRevision
+
+internal fun hasFreshExplicitQuantumRouteList(
+    before: QuantumControllerState,
+    after: QuantumControllerState,
+): Boolean = after.lastFailure == null && after.authoritative &&
+    after.routeListRevision > before.routeListRevision
+
+internal fun quantumReadRequiresRouteListFallback(
+    evidence: QuantumControllerEvidence,
+): Boolean = evidence != QuantumControllerEvidence.AUTHORITATIVE
+
+internal fun quantumNotificationSetupConfirmed(
+    localNotificationsEnabled: Boolean,
+    descriptorStatus: Int?,
+): Boolean = localNotificationsEnabled && descriptorStatus == BluetoothGatt.GATT_SUCCESS
+
+internal fun isScopedQuantumUserId(
+    userId: String,
+    isOwnedByInstallation: (String) -> Boolean,
+): Boolean = !userId.equals(QuantumBoardPacketEncoder.ZERO_UUID, ignoreCase = true) &&
+    isOwnedByInstallation(userId)
+
+internal const val QUANTUM_NOTIFICATION_NEED_MORE = 0
+internal const val QUANTUM_NOTIFICATION_INVALID = -1
+
+/** Distinguish an incomplete supported broadcast from a prefix which can never
+ * become one. Quantum broadcasts have no CRC or delimiter, so invalid input is
+ * discarded a byte at a time until the next 0x01 frame marker. */
+internal fun quantumNotificationFrameSize(bytes: ByteArray): Int {
+    if (bytes.isEmpty()) return QUANTUM_NOTIFICATION_NEED_MORE
+    if ((bytes[0].toInt() and 0xff) != 1) return QUANTUM_NOTIFICATION_INVALID
+    if (bytes.size < 2) return QUANTUM_NOTIFICATION_NEED_MORE
+    val command = bytes[1].toInt() and 0xff
+    if (command and 0x80 != 0) return 3
+    return when (command) {
+        0x41, 0x44, 0x47 -> {
+            if (bytes.size < 4) QUANTUM_NOTIFICATION_NEED_MORE
+            else {
+                val players = bytes[2].toInt() and 0xff
+                if (players > BoardLayerManager.MAX_LAYER_IDENTITIES || bytes[3].toInt() != 0) {
+                    QUANTUM_NOTIFICATION_INVALID
+                }
+                else 4 + players * QuantumBoardBroadcastParser.PLAYER_BYTES
+            }
+        }
+        0x43 -> 21
+        0x45 -> 6
+        0x64 -> 3
+        else -> QUANTUM_NOTIFICATION_INVALID
+    }
+}
+
+internal data class RecoveredQuantumNotification(
+    val bytes: ByteArray,
+    /** True when the frame used bytes from more than one callback. With no
+     * delimiter or CRC this is authoritative only inside a freshly reset,
+     * explicit route-list request generation. */
+    val crossedCallbackBoundary: Boolean,
+)
+
+/** Stateful fff1 decoder with an explicit generation reset. A pending prefix
+ * can never make later callback bytes authoritative by itself: every frame
+ * recovered from that callback is marked cross-boundary, including leftovers
+ * after a fabricated first length. */
+internal class QuantumNotificationAccumulator {
+    private val buffer = mutableListOf<Byte>()
+
+    fun reset() = synchronized(buffer) { buffer.clear() }
+
+    fun consume(bytes: ByteArray): List<RecoveredQuantumNotification> = synchronized(buffer) {
+        val crossedBoundary = buffer.isNotEmpty()
+        buffer += bytes.toList()
+        buildList {
+            while (buffer.isNotEmpty()) {
+                if ((buffer.first().toInt() and 0xff) != 1) {
+                    buffer.removeAt(0)
+                    continue
+                }
+                val candidate = buffer.toByteArray()
+                val expected = quantumNotificationFrameSize(candidate)
+                if (expected == QUANTUM_NOTIFICATION_NEED_MORE) break
+                if (expected == QUANTUM_NOTIFICATION_INVALID) {
+                    buffer.removeAt(0)
+                    continue
+                }
+                if (candidate.size < expected) break
+                add(
+                    RecoveredQuantumNotification(
+                        bytes = candidate.copyOf(expected),
+                        crossedCallbackBoundary = crossedBoundary,
+                    ),
+                )
+                repeat(expected) { buffer.removeAt(0) }
+            }
+        }
+    }
+}
+
+internal fun quantumPlayersMatch(
+    expected: List<QuantumActivePlayer>,
+    actual: List<QuantumActivePlayer>,
+): Boolean = expected.map {
+    // remainingSeconds naturally ticks between the two reads and is not an
+    // occupancy/conflict dimension. Route, owner and colour are the mutation
+    // guard.
+    listOf(it.routeId.lowercase(), it.userId.lowercase(), (it.color and 0xffffff).toString())
+}.sortedBy { it.joinToString("|") } == actual.map {
+    listOf(it.routeId.lowercase(), it.userId.lowercase(), (it.color and 0xffffff).toString())
+}.sortedBy { it.joinToString("|") }
+
+internal fun hasCompleteQuantumLedMapping(
+    holds: List<BoardHold>,
+    placementToLed: Map<Int, Int>,
+): Boolean = holds.isNotEmpty() && holds.all { it.placementId in placementToLed }
+
+internal fun hasConfirmableQuantumDiodeCount(holds: List<BoardHold>): Boolean =
+    holds.size <= QuantumBoardPacketEncoder.ACTIVATE_CHUNK_LIMIT
+
+internal fun boardScopedCommandAllowed(
+    connectedBrand: BoardBrand?,
+    expectedBrand: BoardBrand?,
+): Boolean = expectedBrand == null || connectedBrand == expectedBrand
+
+internal fun quantumBoardWriteFenceMatches(
+    connectedBoard: DiscoveredBoard?,
+    expectedBoard: BoardLayerBoardIdentity?,
+): Boolean {
+    if (connectedBoard?.boardBrand != BoardBrand.QUANTUM || expectedBoard == null) return false
+    if (QuantumBoardModel.fromProductSizeId(expectedBoard.productSizeId) == null) return false
+    val physical = runCatching { PhysicalBoardIdentity.resolve(connectedBoard) }.getOrNull()
+        ?: return false
+    return physical.value == expectedBoard.physicalBoardId
+}
+
+internal fun genericBoardClearAllowed(connectedBrand: BoardBrand?): Boolean =
+    connectedBrand != BoardBrand.QUANTUM
+
+internal fun isQuantumProjectionConfirmed(
+    state: QuantumControllerState,
+    routeId: String,
+    userId: String,
+    color: Int,
+): Boolean = state.authoritative && state.lastFailure == null && state.players.any {
+    it.userId.equals(userId, ignoreCase = true) &&
+        it.routeId.equals(routeId, ignoreCase = true) &&
+        it.color == (color and 0xffffff)
+}
+
+internal fun isQuantumScopedRemovalConfirmed(
+    state: QuantumControllerState,
+    userId: String,
+): Boolean = state.authoritative && state.lastFailure == null && state.players.none {
+    it.userId.equals(userId, ignoreCase = true)
+}
 
 /**
  * Manages GATT connection to an Aurora Climbing board and sends hold/clear packets.
@@ -66,12 +265,16 @@ data class QuantumControllerState(
  *  4. Stop BLE scanners 500ms before connectGatt() (shared radio contention)
  *  5. Always use TRANSPORT_LE, never TRANSPORT_AUTO
  */
-class BoardBleConnection(private val context: Context) {
+class BoardBleConnection(
+    private val context: Context,
+    private val ownsQuantumUserId: (String) -> Boolean = { false },
+) {
 
     private companion object {
         const val TAG = "BoardBleConnection"
         const val WRITE_TIMEOUT_MS = 5000L
         const val QUANTUM_CONFIRM_TIMEOUT_MS = 3000L
+        const val QUANTUM_REFRESH_INTERVAL_MS = 10_000L
         const val CLOSE_SAFETY_TIMEOUT_MS = 5000L
 
         // Per-attempt connect budget × silent retries. Legacy stacks (9-11)
@@ -129,6 +332,8 @@ class BoardBleConnection(private val context: Context) {
     private var connectionTimeoutJob: Job? = null
     private var closeSafetyJob: Job? = null
     private var connectJob: Job? = null
+    private var quantumSetupJob: Job? = null
+    private var quantumRefreshJob: Job? = null
 
     // Silent-retry bookkeeping for the in-flight connect: the board being
     // connected and which attempt (1-based) is currently running. State stays
@@ -234,13 +439,19 @@ class BoardBleConnection(private val context: Context) {
     // @Volatile: callback may arrive on a GATT-stack Binder thread on some
     // Android versions, so writer/reader visibility must be guaranteed.
     @Volatile
-    private var writeDeferred: CompletableDeferred<Int>? = null
+    private var pendingWrite: PendingGattWrite? = null
+    @Volatile
+    private var descriptorDeferred: CompletableDeferred<Int>? = null
+    @Volatile
+    private var quantumReadDeferred: CompletableDeferred<QuantumGattRead>? = null
     private val writeMutex = Mutex()
 
     private val _quantumControllerState = MutableStateFlow(QuantumControllerState())
     val quantumControllerState: StateFlow<QuantumControllerState> =
         _quantumControllerState.asStateFlow()
-    private val quantumNotificationBuffer = mutableListOf<Byte>()
+    private val quantumNotificationAccumulator = QuantumNotificationAccumulator()
+    @Volatile
+    private var quantumRouteListRequestActive = false
 
     // Track whether disconnect() was called by us (vs. remote disconnect).
     @Volatile
@@ -263,6 +474,22 @@ class BoardBleConnection(private val context: Context) {
     // Remember last sent climb for live color preview
     private var lastHolds: List<BoardHold>? = null
     private var lastPlacementToLed: Map<Int, Int>? = null
+    private var lastSendBoardAddress: String? = null
+    private var lastSendBoardBrand: BoardBrand? = null
+
+    private fun cancelQuantumGattOperations() {
+        quantumSetupJob?.cancel()
+        quantumSetupJob = null
+        quantumRefreshJob?.cancel()
+        quantumRefreshJob = null
+        descriptorDeferred?.complete(BluetoothGatt.GATT_FAILURE)
+        descriptorDeferred = null
+        quantumReadDeferred?.complete(QuantumGattRead(BluetoothGatt.GATT_FAILURE, null))
+        quantumReadDeferred = null
+        quantumRouteListRequestActive = false
+        quantumNotificationAccumulator.reset()
+    }
+
     private fun resetIdleTimer() {
         disconnectJob?.cancel()
         val seconds = autoDisconnectSeconds
@@ -338,30 +565,83 @@ class BoardBleConnection(private val context: Context) {
             gatt !== currentGatt || gattClosed || writeCharacteristic == null
         ) return
         quantumMtuGatt = null
+        if (_connectedBoardBrand.value != BoardBrand.QUANTUM) {
+            markGattReady(currentGatt)
+            return
+        }
+        // MTU negotiation has completed (or reached its guarded timeout).
+        // Notification setup below owns its own bounded descriptor wait.
         connectionTimeoutJob?.cancel()
         connectionTimeoutJob = null
 
-        if (_connectedBoardBrand.value == BoardBrand.QUANTUM) {
-            val quantumService = currentGatt.getService(BoardBleUuids.QUANTUM_SERVICE)
-                ?: currentGatt.getService(BoardBleUuids.QUANTUM_SERVICE_OLD)
-            val notify = quantumService?.getCharacteristic(BoardBleUuids.QUANTUM_NOTIFY_CHAR)
-            if (notify != null) {
-                currentGatt.setCharacteristicNotification(notify, true)
-                notify.getDescriptor(BoardBleUuids.CLIENT_CHARACTERISTIC_CONFIG)?.let { descriptor ->
-                    descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-                    currentGatt.writeDescriptor(descriptor)
+        // Android GATT permits one outstanding operation. Enabling the local
+        // notification route and queueing its CCCD write is not completion:
+        // writing fff2 before onDescriptorWrite is a race which loses either
+        // the subscription or the first route-list request on real stacks.
+        quantumSetupJob?.cancel()
+        quantumSetupJob = scope.launch {
+            val notificationsReady = enableQuantumNotifications(currentGatt)
+            if (!notificationsReady || gatt !== currentGatt || gattClosed) {
+                Log.w(TAG, "Quantum notification setup failed; refusing writable connection")
+                if (_connectFailureReason.value == null) {
+                    _connectFailureReason.value = R.string.board_ble_connect_failed_hint
                 }
+                disconnect()
+                onRestartScannersAfterConnect?.invoke()
+                return@launch
             }
+            markGattReady(currentGatt)
         }
+    }
 
+    @SuppressLint("MissingPermission")
+    private suspend fun enableQuantumNotifications(currentGatt: BluetoothGatt): Boolean {
+        val quantumService = currentGatt.getService(BoardBleUuids.QUANTUM_SERVICE)
+            ?: currentGatt.getService(BoardBleUuids.QUANTUM_SERVICE_OLD)
+            ?: return false
+        val notify = quantumService.getCharacteristic(BoardBleUuids.QUANTUM_NOTIFY_CHAR)
+            ?: return false
+        val localNotificationsEnabled = currentGatt.setCharacteristicNotification(notify, true)
+        if (!localNotificationsEnabled) return false
+        val descriptor = notify.getDescriptor(BoardBleUuids.CLIENT_CHARACTERISTIC_CONFIG)
+            ?: return false
+        descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+        val deferred = CompletableDeferred<Int>()
+        descriptorDeferred = deferred
+        val queued = currentGatt.writeDescriptor(descriptor)
+        if (!queued) {
+            descriptorDeferred = null
+            return false
+        }
+        val status = withTimeoutOrNull(WRITE_TIMEOUT_MS) { deferred.await() }
+        if (descriptorDeferred === deferred) descriptorDeferred = null
+        return quantumNotificationSetupConfirmed(localNotificationsEnabled, status)
+    }
+
+    private fun markGattReady(currentGatt: BluetoothGatt) {
+        if (_connectionState.value != ConnectionState.CONNECTING ||
+            gatt !== currentGatt || gattClosed || writeCharacteristic == null
+        ) return
+        connectionTimeoutJob?.cancel()
+        connectionTimeoutJob = null
         Log.i(TAG, "GATT ready, state→CONNECTED (writes can start)")
         _connectionState.value = ConnectionState.CONNECTED
         resetIdleTimer()
         onRestartScannersAfterConnect?.invoke()
         if (_connectedBoardBrand.value == BoardBrand.QUANTUM) {
-            scope.launch {
-                delay(250)
+            quantumRefreshJob?.cancel()
+            quantumRefreshJob = scope.launch {
+                // fff4 is the eWalls current-state read characteristic. A
+                // structurally valid complete snapshot avoids an unnecessary
+                // controller command; unsupported/delta evidence falls back to
+                // REQUEST_USER_ROUTE_LIST.
                 refreshQuantumState()
+                while (gatt === currentGatt &&
+                    _connectedBoardBrand.value == BoardBrand.QUANTUM
+                ) {
+                    delay(QUANTUM_REFRESH_INTERVAL_MS)
+                    refreshQuantumState()
+                }
             }
         }
     }
@@ -406,11 +686,12 @@ class BoardBleConnection(private val context: Context) {
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     connectionTimeoutJob?.cancel()
                     connectionTimeoutJob = null
+                    cancelQuantumGattOperations()
                     // Snapshot-before-null so a concurrent writer that just
                     // installed a new deferred doesn't get its completion lost.
-                    val d = writeDeferred
-                    writeDeferred = null
-                    d?.complete(BluetoothGatt.GATT_FAILURE)
+                    val pending = pendingWrite?.takeIf { it.gatt === gatt }
+                    if (pendingWrite === pending) pendingWrite = null
+                    pending?.result?.complete(BluetoothGatt.GATT_FAILURE)
 
                     // On Android <12, delay before close() — the BLE stack needs time
                     // after STATE_DISCONNECTED to fully release internal resources.
@@ -524,7 +805,40 @@ class BoardBleConnection(private val context: Context) {
             if (status != BluetoothGatt.GATT_SUCCESS) {
                 Log.w(TAG, "onCharacteristicWrite failed: status=0x${status.toString(16)}")
             }
-            writeDeferred?.complete(status)
+            pendingWrite?.takeIf {
+                this@BoardBleConnection.gatt === gatt &&
+                    it.gatt === gatt && it.characteristic === characteristic
+            }?.result?.complete(status)
+        }
+
+        override fun onDescriptorWrite(
+            gatt: BluetoothGatt,
+            descriptor: BluetoothGattDescriptor,
+            status: Int,
+        ) {
+            if (this@BoardBleConnection.gatt === gatt &&
+                descriptor.uuid == BoardBleUuids.CLIENT_CHARACTERISTIC_CONFIG
+            ) {
+                descriptorDeferred?.complete(status)
+            }
+        }
+
+        @Deprecated("Deprecated in Android 13")
+        override fun onCharacteristicRead(
+            gatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic,
+            status: Int,
+        ) {
+            completeQuantumRead(gatt, characteristic, characteristic.value, status)
+        }
+
+        override fun onCharacteristicRead(
+            gatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic,
+            value: ByteArray,
+            status: Int,
+        ) {
+            completeQuantumRead(gatt, characteristic, value, status)
         }
 
         @Deprecated("Deprecated in Android 13")
@@ -532,7 +846,9 @@ class BoardBleConnection(private val context: Context) {
             gatt: BluetoothGatt,
             characteristic: BluetoothGattCharacteristic,
         ) {
-            if (characteristic.uuid == BoardBleUuids.QUANTUM_NOTIFY_CHAR) {
+            if (this@BoardBleConnection.gatt === gatt &&
+                characteristic.uuid == BoardBleUuids.QUANTUM_NOTIFY_CHAR
+            ) {
                 consumeQuantumNotification(characteristic.value ?: return)
             }
         }
@@ -542,58 +858,81 @@ class BoardBleConnection(private val context: Context) {
             characteristic: BluetoothGattCharacteristic,
             value: ByteArray,
         ) {
-            if (characteristic.uuid == BoardBleUuids.QUANTUM_NOTIFY_CHAR) {
+            if (this@BoardBleConnection.gatt === gatt &&
+                characteristic.uuid == BoardBleUuids.QUANTUM_NOTIFY_CHAR
+            ) {
                 consumeQuantumNotification(value)
             }
         }
 
     }
 
-    private fun consumeQuantumNotification(bytes: ByteArray) = synchronized(quantumNotificationBuffer) {
-        quantumNotificationBuffer += bytes.toList()
-        while (quantumNotificationBuffer.isNotEmpty()) {
-            if ((quantumNotificationBuffer.first().toInt() and 0xff) != 1) {
-                quantumNotificationBuffer.removeAt(0)
-                continue
+    private fun completeQuantumRead(
+        callbackGatt: BluetoothGatt,
+        characteristic: BluetoothGattCharacteristic,
+        value: ByteArray?,
+        status: Int,
+    ) {
+        if (gatt !== callbackGatt || characteristic.uuid != BoardBleUuids.QUANTUM_STATE_CHAR) return
+        quantumReadDeferred?.complete(QuantumGattRead(status, value?.copyOf()))
+    }
+
+    private fun consumeQuantumNotification(bytes: ByteArray) {
+        quantumNotificationAccumulator.consume(bytes).forEach { recovered ->
+            if (recovered.crossedCallbackBoundary && !quantumRouteListRequestActive) {
+                // A truncated callback followed by another fragmented event can
+                // otherwise splice into a structurally plausible player list.
+                // Keep observing complete callback-local events, but wait for
+                // the next reset explicit request before trusting a recovered
+                // cross-callback frame.
+                Log.w(TAG, "Ignoring uncorrelated fragmented Quantum notification")
+                return@forEach
             }
-            val candidate = quantumNotificationBuffer.toByteArray()
-            val expected = QuantumBoardBroadcastParser.expectedFrameSize(candidate) ?: break
-            if (expected > 512) {
-                quantumNotificationBuffer.removeAt(0)
-                continue
-            }
-            if (candidate.size < expected) break
-            val frame = candidate.copyOf(expected)
-            repeat(expected) { quantumNotificationBuffer.removeAt(0) }
-            when (val broadcast = QuantumBoardBroadcastParser.parse(frame)) {
-                is QuantumBroadcast.RouteList -> _quantumControllerState.value =
-                    QuantumControllerState(
-                        players = broadcast.players,
-                        revision = _quantumControllerState.value.revision + 1,
-                        authoritative = true,
-                    )
-                is QuantumBroadcast.UserTurnedOff -> _quantumControllerState.value =
-                    _quantumControllerState.value.copy(
-                        players = _quantumControllerState.value.players.filterNot {
-                            it.userId.equals(broadcast.userId, ignoreCase = true)
-                        },
-                        revision = _quantumControllerState.value.revision + 1,
-                        lastFailure = null,
-                        authoritative = _quantumControllerState.value.authoritative,
-                    )
-                QuantumBroadcast.BoardCleared -> _quantumControllerState.value =
-                    QuantumControllerState(
-                        revision = _quantumControllerState.value.revision + 1,
-                        authoritative = true,
-                    )
-                is QuantumBroadcast.Exception -> _quantumControllerState.value =
-                    _quantumControllerState.value.copy(
-                        revision = _quantumControllerState.value.revision + 1,
-                        lastFailure = quantumFailure(broadcast.code),
-                    )
-                is QuantumBroadcast.BoardLit, null -> Unit
-            }
+            applyQuantumBroadcast(QuantumBoardBroadcastParser.parse(recovered.bytes))
         }
+    }
+
+    /** Apply only evidence represented by the recovered eWalls broadcast
+     * contract. Complete route lists/all-off acknowledgements advance
+     * [QuantumControllerState.authoritativeRevision]; deltas never do. */
+    private fun applyQuantumBroadcast(broadcast: QuantumBroadcast?): QuantumControllerEvidence {
+        val evidence = classifyQuantumControllerEvidence(broadcast)
+        val current = _quantumControllerState.value
+        val revision = current.revision + 1
+        when (broadcast) {
+            is QuantumBroadcast.RouteList -> _quantumControllerState.value =
+                QuantumControllerState(
+                    players = broadcast.players,
+                    revision = revision,
+                    authoritativeRevision = revision,
+                    routeListRevision = if (
+                        broadcast.command == com.cruxcoach.domain.board.QuantumCommand.REQUEST_USER_ROUTE_LIST
+                    ) revision else current.routeListRevision,
+                    authoritative = true,
+                )
+            is QuantumBroadcast.UserTurnedOff -> _quantumControllerState.value =
+                current.copy(
+                    players = current.players.filterNot {
+                        it.userId.equals(broadcast.userId, ignoreCase = true)
+                    },
+                    revision = revision,
+                    lastFailure = null,
+                )
+            QuantumBroadcast.BoardCleared -> _quantumControllerState.value =
+                QuantumControllerState(
+                    revision = revision,
+                    authoritativeRevision = revision,
+                    routeListRevision = current.routeListRevision,
+                    authoritative = true,
+                )
+            is QuantumBroadcast.Exception -> _quantumControllerState.value =
+                current.copy(
+                    revision = revision,
+                    lastFailure = quantumFailure(broadcast.code),
+                )
+            is QuantumBroadcast.BoardLit, null -> Unit
+        }
+        return evidence
     }
 
     private fun quantumFailure(code: Int): QuantumCommandFailure = when (code) {
@@ -610,6 +949,7 @@ class BoardBleConnection(private val context: Context) {
 
     /** Finalize state after disconnect callback (or error). */
     private fun finalizeDisconnect(status: Int) {
+        cancelQuantumGattOperations()
         if (userDisconnecting) {
             closeSafetyJob?.cancel()
             closeSafetyJob = null
@@ -683,12 +1023,13 @@ class BoardBleConnection(private val context: Context) {
     fun connect(board: DiscoveredBoard, maxAttempts: Int = MAX_CONNECT_ATTEMPTS) {
         if (_connectionState.value != ConnectionState.DISCONNECTED) return
 
+        cancelQuantumGattOperations()
         attemptBudget = maxAttempts.coerceIn(1, MAX_CONNECT_ATTEMPTS)
         userDisconnecting = false
         gattClosed = false
         _connectionState.value = ConnectionState.CONNECTING
         if (board.boardBrand == BoardBrand.QUANTUM) {
-            synchronized(quantumNotificationBuffer) { quantumNotificationBuffer.clear() }
+            quantumNotificationAccumulator.reset()
             _quantumControllerState.value = QuantumControllerState(
                 revision = _quantumControllerState.value.revision + 1,
                 authoritative = false,
@@ -765,6 +1106,7 @@ class BoardBleConnection(private val context: Context) {
         Log.i(TAG, "Connect attempt failed ($trigger) — retrying quietly (attempt $connectAttempt/$attemptBudget)")
         connectionTimeoutJob?.cancel()
         connectionTimeoutJob = null
+        cancelQuantumGattOperations()
         gatt?.let { g ->
             runCatching { g.disconnect() }
             closeGatt(g)
@@ -872,22 +1214,27 @@ class BoardBleConnection(private val context: Context) {
         chunk: ByteArray
     ): Boolean {
         val deferred = CompletableDeferred<Int>()
-        writeDeferred = deferred
+        val pending = PendingGattWrite(currentGatt, characteristic, deferred)
+        pendingWrite = pending
 
         characteristic.value = chunk
         val queued = currentGatt.writeCharacteristic(characteristic)
         if (!queued) {
             Log.w(TAG, "writeCharacteristic returned false (not queued)")
-            writeDeferred = null
+            if (pendingWrite === pending) pendingWrite = null
             delay(100)
             return false
         }
 
         val status = withTimeoutOrNull(WRITE_TIMEOUT_MS) { deferred.await() }
-        writeDeferred = null
+        if (pendingWrite === pending) pendingWrite = null
 
         if (status == null) {
             Log.w(TAG, "Write timed out after ${WRITE_TIMEOUT_MS}ms")
+            // Android does not give write callbacks an operation token. Retire
+            // this GATT so a late callback cannot acknowledge a later write on
+            // the same characteristic.
+            disconnect()
             return false
         }
         return status == BluetoothGatt.GATT_SUCCESS
@@ -923,11 +1270,58 @@ class BoardBleConnection(private val context: Context) {
         routeId: String? = null,
         quantumUserId: String = QuantumBoardPacketEncoder.ZERO_UUID,
         quantumColor: Int = 0x00ffff,
+        expectedQuantumPlayers: List<QuantumActivePlayer>? = null,
+        expectedQuantumBoard: BoardLayerBoardIdentity? = null,
     ): Boolean = writeMutex.withLock {
         if (_connectionState.value != ConnectionState.CONNECTED) return false
 
+        if (_connectedBoardBrand.value == BoardBrand.QUANTUM &&
+            !quantumBoardWriteFenceMatches(currentBoard, expectedQuantumBoard)
+        ) {
+            Log.w(TAG, "Refusing Quantum projection after board/model fence changed")
+            return false
+        }
+        if (_connectedBoardBrand.value == BoardBrand.QUANTUM &&
+            !isScopedQuantumUserId(quantumUserId, ownsQuantumUserId)
+        ) {
+            // Reject before changing connection state or the generic resend
+            // cache. Editor/settings callers do not own the anonymous
+            // sentinel and must not perturb a later scoped Quantum resend.
+            Log.w(TAG, "Refusing Quantum projection with anonymous user identity")
+            return false
+        }
+        if (_connectedBoardBrand.value == BoardBrand.QUANTUM) {
+            val expectedPlayers = expectedQuantumPlayers ?: return false
+            // The controller list is shared mutable state. Re-read under the
+            // same mutex as TURN_OFF_USER and reject any occupancy change since
+            // the caller's conflict/capacity preflight.
+            if (!requestQuantumRouteListLocked(expectedQuantumBoard) ||
+                !quantumPlayersMatch(expectedPlayers, _quantumControllerState.value.players)
+            ) return false
+        }
+        if (_connectedBoardBrand.value == BoardBrand.QUANTUM &&
+            !hasCompleteQuantumLedMapping(holds, placementToLed)
+        ) {
+            // Route-list readback confirms only route/user/color. It cannot
+            // prove which diodes were accepted, so a partial Quantum mapping
+            // must be rejected before any controller mutation.
+            Log.w(TAG, "Refusing partial Quantum projection: incomplete LED mapping")
+            return false
+        }
+        if (_connectedBoardBrand.value == BoardBrand.QUANTUM &&
+            !hasConfirmableQuantumDiodeCount(holds)
+        ) {
+            // Route-list readback cannot prove append/atomicity across multiple
+            // ACTIVATE_WALL frames. Fail closed until captured hardware evidence
+            // establishes that contract.
+            Log.w(TAG, "Refusing unverified multi-frame Quantum activation")
+            return false
+        }
+
         lastHolds = holds
         lastPlacementToLed = placementToLed
+        lastSendBoardAddress = currentBoard?.address
+        lastSendBoardBrand = _connectedBoardBrand.value
 
         _connectionState.value = ConnectionState.SENDING
         // Park any pending idle-disconnect so it can't fire mid-send.
@@ -956,24 +1350,18 @@ class BoardBleConnection(private val context: Context) {
                     diodes = mapped,
                     color = quantumColor and 0xffffff,
                 )
-                val revision = _quantumControllerState.value.revision
                 _quantumControllerState.value = _quantumControllerState.value.copy(lastFailure = null)
-                if (!writeQuantumFrames(transition.take(1))) return false
+                if (!writeQuantumFrames(transition.take(1), expectedQuantumBoard)) return false
                 delay(50)
-                if (!writeQuantumFrames(transition.drop(1))) return false
-                if (!writeQuantumFrames(listOf(QuantumBoardPacketEncoder.requestRouteList()))) return false
-                return awaitQuantumState(revision) { snapshot ->
-                    snapshot.lastFailure != null || snapshot.players.any {
-                        it.userId.equals(quantumUserId, ignoreCase = true) &&
-                            it.routeId.equals(routeId ?: QuantumBoardPacketEncoder.ZERO_UUID, ignoreCase = true) &&
-                            it.color == (quantumColor and 0xffffff)
-                    }
-                }?.let { snapshot ->
-                    snapshot.lastFailure == null && snapshot.players.any {
-                        it.userId.equals(quantumUserId, ignoreCase = true) &&
-                            it.routeId.equals(routeId ?: QuantumBoardPacketEncoder.ZERO_UUID, ignoreCase = true)
-                    }
-                } == true
+                if (!writeQuantumFrames(transition.drop(1), expectedQuantumBoard)) return false
+                if (!requestQuantumRouteListLocked(expectedQuantumBoard)) return false
+                val snapshot = _quantumControllerState.value
+                return isQuantumProjectionConfirmed(
+                    state = snapshot,
+                    routeId = routeId ?: QuantumBoardPacketEncoder.ZERO_UUID,
+                    userId = quantumUserId,
+                    color = quantumColor,
+                )
             }
             val chunks = if (roleColors != null) {
                 // Resolve each hold's colour by canonical role CLASS, not raw
@@ -1003,8 +1391,14 @@ class BoardBleConnection(private val context: Context) {
         }
     }
 
-    private suspend fun writeQuantumFrames(frames: List<ByteArray>): Boolean {
+    private suspend fun writeQuantumFrames(
+        frames: List<ByteArray>,
+        expectedQuantumBoard: BoardLayerBoardIdentity? = null,
+    ): Boolean {
         for ((index, frame) in frames.withIndex()) {
+            if (expectedQuantumBoard != null &&
+                !quantumBoardWriteFenceMatches(currentBoard, expectedQuantumBoard)
+            ) return false
             // 2.0.14 passes 15 as Android's native write fragment size.
             // This is transport fragmentation, independent of the 92-diode
             // logical command limit enforced by the encoder.
@@ -1015,37 +1409,128 @@ class BoardBleConnection(private val context: Context) {
         return true
     }
 
+    @SuppressLint("MissingPermission")
+    private suspend fun readQuantumStateLocked(): QuantumControllerEvidence {
+        val currentGatt = gatt ?: return QuantumControllerEvidence.UNSUPPORTED
+        val service = currentGatt.getService(BoardBleUuids.QUANTUM_SERVICE)
+            ?: currentGatt.getService(BoardBleUuids.QUANTUM_SERVICE_OLD)
+            ?: return QuantumControllerEvidence.UNSUPPORTED
+        val stateCharacteristic = service.getCharacteristic(BoardBleUuids.QUANTUM_STATE_CHAR)
+            ?: return QuantumControllerEvidence.UNSUPPORTED
+        val deferred = CompletableDeferred<QuantumGattRead>()
+        quantumReadDeferred = deferred
+        val queued = currentGatt.readCharacteristic(stateCharacteristic)
+        if (!queued) {
+            quantumReadDeferred = null
+            return QuantumControllerEvidence.UNSUPPORTED
+        }
+        val result = withTimeoutOrNull(WRITE_TIMEOUT_MS) { deferred.await() }
+        if (quantumReadDeferred === deferred) quantumReadDeferred = null
+        if (result == null) {
+            // Android does not attach an operation token to read callbacks.
+            // Retire this GATT before another read can consume a late callback.
+            disconnect()
+            return QuantumControllerEvidence.UNSUPPORTED
+        }
+        if (result.status != BluetoothGatt.GATT_SUCCESS) {
+            return QuantumControllerEvidence.UNSUPPORTED
+        }
+        val broadcast = result.value?.let(QuantumBoardBroadcastParser::parse)
+        val evidence = applyQuantumBroadcast(broadcast)
+        // Hardware evidence has not established whether fff4 BoardCleared is a
+        // fresh empty snapshot or a cached last event. Apply it as observed, but
+        // require an explicit route-list round trip before a write precondition.
+        return if (broadcast == QuantumBroadcast.BoardCleared) {
+            QuantumControllerEvidence.INFORMATIONAL
+        } else {
+            evidence
+        }
+    }
+
+    private suspend fun requestQuantumRouteListLocked(
+        expectedQuantumBoard: BoardLayerBoardIdentity? = null,
+    ): Boolean {
+        if (expectedQuantumBoard != null &&
+            !quantumBoardWriteFenceMatches(currentBoard, expectedQuantumBoard)
+        ) return false
+        val before = _quantumControllerState.value
+        _quantumControllerState.value = before.copy(lastFailure = null)
+        quantumNotificationAccumulator.reset()
+        quantumRouteListRequestActive = true
+        try {
+            if (!writeQuantumFrames(
+                    listOf(QuantumBoardPacketEncoder.requestRouteList()),
+                    expectedQuantumBoard,
+                )
+            ) return false
+            val state = awaitQuantumState(before.revision) { snapshot ->
+                snapshot.lastFailure != null ||
+                    snapshot.routeListRevision > before.routeListRevision
+            }
+            if (state == null) {
+                // Route-list notifications carry no request token. Retire the
+                // GATT so a late response can never confirm a later request.
+                disconnect()
+                return false
+            }
+            return hasFreshExplicitQuantumRouteList(before, state)
+        } finally {
+            quantumRouteListRequestActive = false
+            quantumNotificationAccumulator.reset()
+        }
+    }
+
+    /** Prefer eWalls' fff4 state characteristic. Only a complete supported
+     * snapshot is sufficient; deltas, informational records, malformed reads
+     * and unavailable fff4 all fall back to an explicit route-list request. */
+    private suspend fun refreshQuantumStateLocked(): Boolean {
+        val readEvidence = readQuantumStateLocked()
+        if (!quantumReadRequiresRouteListFallback(readEvidence)) return true
+        return requestQuantumRouteListLocked()
+    }
+
     /** Pull the controller's authoritative active-player list. */
     suspend fun refreshQuantumState(): Boolean = writeMutex.withLock {
         if (_connectionState.value != ConnectionState.CONNECTED ||
             _connectedBoardBrand.value != BoardBrand.QUANTUM
         ) return false
-        val revision = _quantumControllerState.value.revision
-        _quantumControllerState.value = _quantumControllerState.value.copy(lastFailure = null)
-        if (!writeQuantumFrames(listOf(QuantumBoardPacketEncoder.requestRouteList()))) return false
-        return awaitQuantumState(revision) { it.revision > revision }?.lastFailure == null
+        return refreshQuantumStateLocked()
     }
 
     /** Remove exactly one installation-owned Quantum layer, never all users. */
-    suspend fun removeQuantumLayer(userId: String): Boolean = writeMutex.withLock {
+    suspend fun removeQuantumLayer(
+        userId: String,
+        expectedRouteId: String? = null,
+        expectedQuantumBoard: BoardLayerBoardIdentity? = null,
+    ): Boolean = writeMutex.withLock {
         if (_connectionState.value != ConnectionState.CONNECTED ||
             _connectedBoardBrand.value != BoardBrand.QUANTUM
         ) return false
+        if (!quantumBoardWriteFenceMatches(currentBoard, expectedQuantumBoard)) return false
+        // Never allow the protocol's anonymous sentinel to become a deletion
+        // target. Installation layer identities are stable, non-zero UUIDs.
+        if (!isScopedQuantumUserId(userId, ownsQuantumUserId) || expectedRouteId == null) return false
+        // A retained wall can change through another eWalls client while our
+        // rack is open. Refresh immediately before the scoped command; absence
+        // is already the desired result and must not produce a speculative write.
+        if (!requestQuantumRouteListLocked(expectedQuantumBoard)) return false
+        val currentPlayer = _quantumControllerState.value.players.firstOrNull {
+            it.userId.equals(userId, ignoreCase = true)
+        } ?: return true
+        if (!currentPlayer.routeId.equals(expectedRouteId, ignoreCase = true)) return false
         _connectionState.value = ConnectionState.SENDING
         disconnectJob?.cancel()
         try {
-            val revision = _quantumControllerState.value.revision
             _quantumControllerState.value = _quantumControllerState.value.copy(lastFailure = null)
-            if (!writeQuantumFrames(listOf(QuantumBoardPacketEncoder.turnOffUser(userId)))) return false
-            if (!writeQuantumFrames(listOf(QuantumBoardPacketEncoder.requestRouteList()))) return false
-            val state = awaitQuantumState(revision) { snapshot ->
-                snapshot.lastFailure != null || snapshot.players.none {
-                    it.userId.equals(userId, ignoreCase = true)
-                }
-            }
-            return state != null && state.lastFailure == null && state.players.none {
-                it.userId.equals(userId, ignoreCase = true)
-            }
+            if (!writeQuantumFrames(
+                    listOf(QuantumBoardPacketEncoder.turnOffUser(userId)),
+                    expectedQuantumBoard,
+                )
+            ) return false
+            // Confirmation is a fresh complete snapshot, not an optimistic
+            // local deletion or a delta copied over an older player list.
+            if (!requestQuantumRouteListLocked(expectedQuantumBoard)) return false
+            return isQuantumScopedRemovalConfirmed(_quantumControllerState.value, userId)
         } finally {
             if (_connectionState.value == ConnectionState.SENDING) {
                 _connectionState.value = ConnectionState.CONNECTED
@@ -1064,11 +1549,20 @@ class BoardBleConnection(private val context: Context) {
     suspend fun resendWithColors(roleColors: Map<Int, Int>): Boolean {
         val holds = lastHolds ?: return false
         val ledMap = lastPlacementToLed ?: return false
+        if (lastSendBoardBrand != _connectedBoardBrand.value ||
+            lastSendBoardAddress?.equals(currentBoard?.address, ignoreCase = true) != true
+        ) return false
         return sendClimb(holds, ledMap, roleColors)
     }
 
-    suspend fun sendRawChunks(chunks: List<ByteArray>): Boolean = writeMutex.withLock {
-        if (_connectionState.value != ConnectionState.CONNECTED) return false
+    suspend fun sendRawChunks(
+        chunks: List<ByteArray>,
+        expectedBrand: BoardBrand? = null,
+    ): Boolean = writeMutex.withLock {
+        if (_connectionState.value != ConnectionState.CONNECTED ||
+            _connectedBoardBrand.value == BoardBrand.QUANTUM ||
+            !boardScopedCommandAllowed(_connectedBoardBrand.value, expectedBrand)
+        ) return false
         return writeChunks(chunks)
     }
 
@@ -1078,8 +1572,16 @@ class BoardBleConnection(private val context: Context) {
      * them. Used by the easter animation so an @2 legacy board gets v2
      * packets instead of frames from a hardcoded API-3 encoder.
      */
-    suspend fun sendRawLeds(leds: List<Pair<Int, Int>>): Boolean =
-        sendRawChunks(encoder.encodeClimb(leds))
+    suspend fun sendRawLeds(
+        leds: List<Pair<Int, Int>>,
+        expectedBrand: BoardBrand? = null,
+    ): Boolean = writeMutex.withLock {
+        if (_connectionState.value != ConnectionState.CONNECTED ||
+            _connectedBoardBrand.value == BoardBrand.QUANTUM ||
+            !boardScopedCommandAllowed(_connectedBoardBrand.value, expectedBrand)
+        ) return false
+        return writeChunks(encoder.encodeClimb(leds))
+    }
 
     /**
      * Send a MoonBoard climb to the connected board (FEAT-027).
@@ -1126,26 +1628,48 @@ class BoardBleConnection(private val context: Context) {
         }
     }
 
-    suspend fun clearBoard(): Boolean = writeMutex.withLock {
-        if (_connectionState.value != ConnectionState.CONNECTED) return false
+    /** Generic single-projection clear. Quantum is intentionally excluded:
+     * its global command removes every eWalls user, so only the distinctly
+     * named explicit API below may authorize it. [expectedBrand] fences
+     * long-running producers such as Kilter animations across board swaps. */
+    suspend fun clearBoard(expectedBrand: BoardBrand? = null): Boolean = writeMutex.withLock {
+        val connectedBrand = _connectedBoardBrand.value
+        if (_connectionState.value != ConnectionState.CONNECTED ||
+            !boardScopedCommandAllowed(connectedBrand, expectedBrand) ||
+            !genericBoardClearAllowed(connectedBrand)
+        ) return false
 
+        return clearConnectedBoardLocked(allowQuantumGlobalClear = false)
+    }
+
+    /** Deliberate global Quantum clear. Callers must put this behind an
+     * explicit user action that describes its effect on every wall user. */
+    suspend fun clearQuantumBoardExplicitly(): Boolean = writeMutex.withLock {
+        if (_connectionState.value != ConnectionState.CONNECTED ||
+            _connectedBoardBrand.value != BoardBrand.QUANTUM
+        ) return false
+        return clearConnectedBoardLocked(allowQuantumGlobalClear = true)
+    }
+
+    private suspend fun clearConnectedBoardLocked(allowQuantumGlobalClear: Boolean): Boolean {
         _connectionState.value = ConnectionState.SENDING
         // Park any pending idle-disconnect so it can't fire mid-send.
         // Re-armed from the finally below once we flip back to CONNECTED.
         disconnectJob?.cancel()
         try {
-            val chunks = if (_connectedBoardBrand.value == BoardBrand.QUANTUM) {
-                QuantumBoardPacketEncoder.turnOffAll().toList()
-                    .chunked(BoardPacketEncoder.BLE_MTU).map { it.toByteArray() }
-            } else encoder.encodeClear()
-            val success = writeChunks(chunks)
-            if (success && _connectedBoardBrand.value == BoardBrand.QUANTUM) {
-                _quantumControllerState.value = QuantumControllerState(
-                    revision = _quantumControllerState.value.revision + 1,
-                    authoritative = true,
-                )
+            if (_connectedBoardBrand.value == BoardBrand.QUANTUM) {
+                if (!allowQuantumGlobalClear) return false
+                // TURN_OFF_ALL is reserved for this explicit clear action. The
+                // ordinary rack paths use TURN_OFF_USER only. Transport success
+                // is not controller confirmation: read fff4/request a complete
+                // snapshot and require the wall to report no remaining players.
+                if (!writeQuantumFrames(listOf(QuantumBoardPacketEncoder.turnOffAll()))) {
+                    return false
+                }
+                if (!refreshQuantumStateLocked()) return false
+                return _quantumControllerState.value.players.isEmpty()
             }
-            return success
+            return writeChunks(encoder.encodeClear())
         } finally {
             if (_connectionState.value == ConnectionState.SENDING) {
                 _connectionState.value = ConnectionState.CONNECTED
@@ -1171,11 +1695,12 @@ class BoardBleConnection(private val context: Context) {
         disconnectJob?.cancel()
         disconnectJob = null
         closeSafetyJob?.cancel()
+        cancelQuantumGattOperations()
 
         run {
-            val d = writeDeferred
-            writeDeferred = null
-            d?.complete(BluetoothGatt.GATT_FAILURE)
+            val pending = pendingWrite
+            pendingWrite = null
+            pending?.result?.complete(BluetoothGatt.GATT_FAILURE)
         }
 
         val g = gatt

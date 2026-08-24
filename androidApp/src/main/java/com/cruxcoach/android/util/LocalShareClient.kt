@@ -20,12 +20,13 @@ class LocalShareClient {
         baseUrl: String,
         timeoutMs: Long,
         onPreparing: () -> Unit = {},
+        protocolVersion: Int = LocalShareProtocol.VERSION_V2,
     ): LocalShareProtocol.Manifest {
         val deadline = System.currentTimeMillis() + timeoutMs
         var failures = 0
         while (true) {
             try {
-                val manifest = fetchManifest(network, baseUrl)
+                val manifest = fetchManifest(network, baseUrl, protocolVersion = protocolVersion)
                 when (manifest.boardStatus) {
                     "ready", "unavailable" -> return manifest
                     else -> {
@@ -52,8 +53,41 @@ class LocalShareClient {
         baseUrl: String,
         connectTimeoutMs: Int = CONNECT_TIMEOUT_MS,
         readTimeoutMs: Int = READ_TIMEOUT_MS,
+        protocolVersion: Int? = null,
     ): LocalShareProtocol.Manifest {
-        val url = URL(LocalShareProtocol.artifactUrl(baseUrl, LocalShareProtocol.MANIFEST_PATH))
+        if (protocolVersion == null) {
+            try {
+                return fetchManifest(
+                    network, baseUrl, connectTimeoutMs, readTimeoutMs,
+                    LocalShareProtocol.VERSION_V2,
+                )
+            } catch (error: HttpStatusException) {
+                if (error.code != HTTP_NOT_FOUND) throw error
+                return fetchManifest(
+                    network, baseUrl, connectTimeoutMs, readTimeoutMs,
+                    LocalShareProtocol.VERSION,
+                )
+            } catch (error: LegacyManifestEndpointException) {
+                // Pre-v2 servers return their HTML landing page (HTTP 200)
+                // for unknown paths. Treat only that recognizable HTML as
+                // evidence that this is a legacy peer; transport and artifact
+                // failures must not silently downgrade the protocol.
+                return fetchManifest(
+                    network, baseUrl, connectTimeoutMs, readTimeoutMs,
+                    LocalShareProtocol.VERSION,
+                )
+            }
+        }
+        require(
+            protocolVersion == LocalShareProtocol.VERSION ||
+                protocolVersion == LocalShareProtocol.VERSION_V2,
+        ) { "Unsupported share protocol" }
+        val manifestPath = if (protocolVersion == LocalShareProtocol.VERSION_V2) {
+            LocalShareProtocol.V2_MANIFEST_PATH
+        } else {
+            LocalShareProtocol.MANIFEST_PATH
+        }
+        val url = URL(LocalShareProtocol.artifactUrl(baseUrl, manifestPath))
         return openResponse(
             network = network,
             url = url,
@@ -61,16 +95,42 @@ class LocalShareClient {
             connectTimeoutMs = connectTimeoutMs,
             readTimeoutMs = readTimeoutMs,
         ).use { response ->
-            if (response.code != HTTP_OK) throw IOException("Manifest HTTP ${response.code}")
+            if (response.code != HTTP_OK) throw HttpStatusException(response.code)
             val body = response.readBody(MAX_MANIFEST_BYTES).toString(Charsets.UTF_8)
-            runCatching { LocalShareProtocol.parseManifest(body) }
-                .getOrElse { throw IOException("Invalid share manifest", it) }
+            val manifest = runCatching { LocalShareProtocol.parseManifest(body) }
+                .getOrElse { error ->
+                    if (protocolVersion == LocalShareProtocol.VERSION_V2 &&
+                        body.trimStart().lowercase().let {
+                            it.startsWith("<!doctype html") || it.startsWith("<html")
+                        }
+                    ) {
+                        throw LegacyManifestEndpointException(error)
+                    }
+                    throw InvalidManifestException(error)
+                }
+            if (manifest.protocolVersion != protocolVersion) {
+                throw InvalidManifestException(
+                    IllegalArgumentException("Manifest protocol does not match request"),
+                )
+            }
+            manifest
         }
     }
 
     /** Arms sender-side snapshot preparation without downloading its body. */
-    fun requestSnapshotBuild(network: Network, baseUrl: String) {
-        val url = URL(LocalShareProtocol.artifactUrl(baseUrl, LocalShareProtocol.BOARD_PATH))
+    fun requestSnapshotBuild(
+        network: Network,
+        baseUrl: String,
+        protocolVersion: Int = LocalShareProtocol.VERSION_V2,
+    ) {
+        require(
+            protocolVersion == LocalShareProtocol.VERSION ||
+                protocolVersion == LocalShareProtocol.VERSION_V2,
+        ) { "Unsupported share protocol" }
+        val path = if (protocolVersion == LocalShareProtocol.VERSION_V2) {
+            LocalShareProtocol.V2_BOARD_PATH
+        } else LocalShareProtocol.BOARD_PATH
+        val url = URL(LocalShareProtocol.artifactUrl(baseUrl, path))
         openResponse(network, url, method = "HEAD").use { response ->
             if (response.code !in setOf(HTTP_OK, HTTP_SERVICE_UNAVAILABLE)) {
                 throw IOException("Snapshot request HTTP ${response.code}")
@@ -101,6 +161,7 @@ class LocalShareClient {
         baseUrl: String,
         artifact: LocalShareProtocol.Artifact,
         target: File,
+        protocolVersion: Int = LocalShareProtocol.VERSION,
         onVerifying: () -> Unit = {},
         onProgress: (downloadedBytes: Long, totalBytes: Long) -> Unit,
     ): File {
@@ -119,7 +180,9 @@ class LocalShareClient {
         var failures = 0
         while (partial.length() < artifact.sizeBytes) {
             try {
-                downloadRemaining(network, baseUrl, artifact, partial, onProgress)
+                downloadRemaining(
+                    network, baseUrl, artifact, partial, protocolVersion, onProgress,
+                )
                 failures = 0
             } catch (error: IOException) {
                 if (++failures > MAX_TRANSFER_FAILURES) throw error
@@ -151,11 +214,20 @@ class LocalShareClient {
         baseUrl: String,
         artifact: LocalShareProtocol.Artifact,
         partial: File,
+        protocolVersion: Int,
         onProgress: (downloadedBytes: Long, totalBytes: Long) -> Unit,
     ) {
         var offset = partial.length()
         val url = URL(LocalShareProtocol.artifactUrl(baseUrl, artifact.path))
-        val requestHeaders = if (offset > 0L) mapOf("Range" to "bytes=$offset-") else emptyMap()
+        require(protocolVersion == LocalShareProtocol.VERSION ||
+            protocolVersion == LocalShareProtocol.VERSION_V2
+        ) { "Unsupported share protocol" }
+        val requestHeaders = buildMap {
+            if (offset > 0L) put("Range", "bytes=$offset-")
+            if (artifact.path == LocalShareProtocol.APK_PATH) {
+                put(LocalShareProtocol.PROTOCOL_HEADER, protocolVersion.toString())
+            }
+        }
         openResponse(network, url, requestHeaders).use { response ->
             val code = response.code
             val append = when {
@@ -310,6 +382,14 @@ class LocalShareClient {
         }
     }
 
+    private class HttpStatusException(val code: Int) : IOException("Manifest HTTP $code")
+
+    private class InvalidManifestException(cause: Throwable) :
+        IOException("Invalid share manifest", cause)
+
+    private class LegacyManifestEndpointException(cause: Throwable) :
+        IOException("Peer does not expose a v2 manifest", cause)
+
     private companion object {
         const val TRANSFER_BUFFER_SIZE = 512 * 1024
         const val SOCKET_BUFFER_SIZE = 1024 * 1024
@@ -324,6 +404,7 @@ class LocalShareClient {
         const val HTTP_PARTIAL = 206
         const val HTTP_NO_CONTENT = 204
         const val HTTP_SERVICE_UNAVAILABLE = 503
+        const val HTTP_NOT_FOUND = 404
         const val MAX_MANIFEST_BYTES = 1 * 1024 * 1024
         const val MAX_HEADER_LINE_BYTES = 8 * 1024
         val HEADER_NAME = Regex("[A-Za-z0-9-]{1,64}")

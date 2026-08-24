@@ -124,6 +124,16 @@ DELETE FROM quantum_route_metadata;
 getQuantumExternalRouteUuid:
 SELECT route_uuid FROM quantum_route_refs WHERE app_uuid = ?;
 
+-- Reverse bridge used by the live Quantum controller state. The board reports
+-- vendor route UUIDs, while every app-facing query uses the deterministic
+-- model-specific app UUID. Keep the model predicate: one vendor route can be
+-- projected onto more than one Quantum size with different placement ids.
+getQuantumAppUuidByExternalRoute:
+SELECT app_uuid FROM quantum_route_refs
+WHERE LOWER(route_uuid) = LOWER(:routeUuid)
+  AND LOWER(model) = LOWER(:model)
+LIMIT 1;
+
 deleteAllQuantumRouteRefs:
 DELETE FROM quantum_route_refs;
 
@@ -2352,7 +2362,9 @@ UPDATE climbs SET
     kilter_publish_via  = COALESCE(kilter_publish_via,  :kilter_publish_via),
     kilter_error        = COALESCE(kilter_error,        :kilter_error),
     kilter_author_uuid  = COALESCE(kilter_author_uuid,  :kilter_author_uuid)
-WHERE uuid = :uuid AND origin = 'cruxcoach';
+WHERE uuid = :uuid AND origin = 'cruxcoach'
+  AND (created_by_pubkey = :created_by_pubkey
+       OR (created_by_pubkey IS NULL AND source = 'local'));
 
 -- Insert/refresh climb_stats for a local climb at a given angle (setter
 -- difficulty + quality not yet aggregated — sets sentinels). layout_id is

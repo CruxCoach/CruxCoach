@@ -160,6 +160,10 @@ class QuantumBoardPacketEncoderTest {
             ),
             QuantumBoardBroadcastParser.parse(frame),
         )
+        assertEquals(
+            null,
+            QuantumBoardBroadcastParser.parse(byteArrayOf(1, 0x47, 0, 1)),
+        )
     }
 
     @Test fun `only Quantum opts into four independent layers`() {

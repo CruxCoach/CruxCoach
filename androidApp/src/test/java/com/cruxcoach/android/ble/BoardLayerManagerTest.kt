@@ -102,6 +102,58 @@ class BoardLayerManagerTest {
         assertFalse(manager.removePreview(0))
     }
 
+    @Test fun `controller refresh and hydration cannot replace a staged replacement`() {
+        val manager = BoardLayerManager(context)
+        val original = layer(manager, 0).copy(
+            climbName = "Old climb",
+            holds = listOf(BoardHold(10, 1), BoardHold(11, 2)),
+        )
+        manager.assignPreview(original)
+        manager.confirmProjection(0)
+        val replacement = layer(manager, 0, manager.defaultColor(1)).copy(
+            climbUuid = "20000000-0000-0000-0000-000000000001",
+            routeUuid = "30000000-0000-0000-0000-000000000001",
+            climbName = "New climb",
+            holds = listOf(BoardHold(20, 1), BoardHold(21, 2)),
+        )
+        manager.assignPreview(replacement)
+
+        manager.reconcile(listOf(playerFor(original)))
+        manager.hydrateControllerRoutes(mapOf(
+            original.routeUuid to BoardLayerRouteDetails(
+                climbUuid = original.climbUuid,
+                climbName = original.climbName,
+                holds = original.holds,
+            ),
+        ))
+
+        val layer = manager.state.value.layers.single()
+        assertEquals(replacement.climbUuid, layer.climbUuid)
+        assertEquals(replacement.routeUuid, layer.routeUuid)
+        assertEquals(replacement.climbName, layer.climbName)
+        assertEquals(replacement.holds, layer.holds)
+        assertEquals(replacement.color, layer.color)
+        assertEquals(original.routeUuid, layer.confirmedRouteUuid)
+        assertEquals(original.climbName, layer.confirmedClimbName)
+        assertEquals(original.holds, layer.confirmedHolds)
+        assertEquals(original.color, layer.confirmedColor)
+    }
+
+    @Test fun `matching route with wrong physical color remains a replacement plan`() {
+        val manager = BoardLayerManager(context)
+        val planned = layer(manager, 0)
+        manager.assignPreview(planned)
+        val reportedColor = manager.defaultColor(1)
+
+        manager.reconcile(listOf(playerFor(planned).copy(color = reportedColor and 0xffffff)))
+
+        val layer = manager.state.value.layers.single()
+        assertEquals(BoardLayerStatus.PREVIEW, layer.status)
+        assertEquals(planned.color, layer.color)
+        assertEquals(reportedColor, layer.confirmedColor)
+        assertEquals(planned.holds, layer.confirmedHolds)
+    }
+
     @Test fun `palette matches four unique eWalls controller colors`() {
         assertEquals(
             listOf(0xFF00FF00.toInt(), 0xFF00FFFF.toInt(), 0xFFFF00FF.toInt(), 0xFFFFFF00.toInt()),
@@ -153,6 +205,114 @@ class BoardLayerManagerTest {
         assertEquals(1, BoardLayerConflictPolicy.sharedHoldCount(candidate, listOf(first, second), 0))
         assertEquals(1, BoardLayerConflictPolicy.sharedHoldCount(candidate, listOf(first, second), 1))
     }
+
+    @Test fun `conflict policy includes known foreign holds and fails closed for unknown routes`() {
+        val known = ExternalBoardLayer(
+            routeUuid = "known-route",
+            userUuid = "foreign-user",
+            color = managerColor(0),
+            remainingSeconds = 10,
+            holds = listOf(BoardHold(42, 1)),
+        )
+        val unknown = known.copy(routeUuid = "unknown-route", holds = null)
+        val candidate = listOf(BoardHold(42, 2), BoardHold(99, 3))
+
+        val knownAssessment = BoardLayerConflictPolicy.assess(
+            candidate, emptyList(), listOf(known), replacingSlot = null,
+        )
+        assertEquals(1, knownAssessment.sharedHoldCount)
+        assertEquals(0, knownAssessment.unknownLayerCount)
+
+        val unknownAssessment = BoardLayerConflictPolicy.assess(
+            candidate, emptyList(), listOf(unknown), replacingSlot = null,
+        )
+        assertEquals(0, unknownAssessment.sharedHoldCount)
+        assertEquals(1, unknownAssessment.unknownLayerCount)
+        assertFalse(unknownAssessment.canProveConflictFree)
+    }
+
+    @Test fun `empty resolved geometry remains unknown and blocks conflict proof`() {
+        val manager = BoardLayerManager(context)
+        val foreign = QuantumActivePlayer(
+            routeId = "known-uuid-but-bad-frames",
+            userId = "foreign-user",
+            remainingSeconds = 10,
+            color = 0x123456,
+        )
+        manager.reconcile(listOf(foreign))
+
+        manager.hydrateControllerRoutes(
+            mapOf(
+                foreign.routeId to BoardLayerRouteDetails(
+                    climbUuid = "local-climb",
+                    climbName = "Malformed climb",
+                    holds = emptyList(),
+                ),
+            ),
+        )
+
+        val retained = manager.state.value.externalLayers.single()
+        assertNull(retained.holds)
+        assertEquals(
+            1,
+            BoardLayerConflictPolicy.assess(
+                candidate = listOf(BoardHold(99, 1)),
+                activeLayers = emptyList(),
+                externalLayers = listOf(retained),
+                replacingSlot = null,
+            ).unknownLayerCount,
+        )
+    }
+
+    @Test fun `replacement reserves planned and physical colors outside its own slot`() {
+        val manager = BoardLayerManager(context)
+        val original = layer(manager, 0, manager.defaultColor(0))
+        manager.assignPreview(original)
+        manager.confirmProjection(0)
+        manager.assignPreview(layer(manager, 0, manager.defaultColor(1)))
+
+        assertEquals(
+            setOf(manager.defaultColor(0), manager.defaultColor(1)),
+            manager.state.value.reservedLayerColors(),
+        )
+        assertTrue(manager.state.value.reservedLayerColors(replacingSlot = 0).isEmpty())
+    }
+
+    @Test fun `cancelling a replacement restores confirmed controller state without a write`() {
+        val manager = BoardLayerManager(context)
+        val original = layer(manager, 2).copy(
+            climbName = "Still on the wall",
+            holds = listOf(BoardHold(50, 1), BoardHold(51, 2)),
+        )
+        manager.assignPreview(original)
+        manager.confirmProjection(original.slot)
+        val replacement = layer(manager, 2, manager.defaultColor(3)).copy(
+            climbUuid = "20000000-0000-0000-0000-000000000002",
+            routeUuid = "30000000-0000-0000-0000-000000000002",
+            climbName = "Unsent replacement",
+            holds = listOf(BoardHold(60, 1)),
+        )
+        manager.assignPreview(replacement)
+
+        assertTrue(manager.cancelReplacement(original.slot))
+
+        val restored = manager.state.value.layers.single()
+        assertEquals(original.climbUuid, restored.climbUuid)
+        assertEquals(original.routeUuid, restored.routeUuid)
+        assertEquals(original.climbName, restored.climbName)
+        assertEquals(original.color, restored.color)
+        assertEquals(original.holds, restored.holds)
+        assertEquals(BoardLayerStatus.CONFIRMED, restored.status)
+        assertEquals(original.routeUuid, restored.confirmedRouteUuid)
+        assertEquals(original.climbUuid, restored.confirmedClimbUuid)
+        assertEquals(original.climbName, restored.confirmedClimbName)
+        assertEquals(original.color, restored.confirmedColor)
+        assertEquals(original.holds, restored.confirmedHolds)
+        assertTrue(restored.controllerDetailsKnown)
+        assertFalse(manager.cancelReplacement(original.slot))
+    }
+
+    private fun managerColor(slot: Int): Int = BoardLayerManager.LAYER_COLORS[slot]
 
     private fun layer(manager: BoardLayerManager, slot: Int, color: Int = manager.defaultColor(slot)) =
         BoardClimbLayer(

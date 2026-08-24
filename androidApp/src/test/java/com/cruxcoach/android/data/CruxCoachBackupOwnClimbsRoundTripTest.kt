@@ -18,10 +18,16 @@ import com.cruxcoach.domain.board.FramesBinaryCodec
 import io.mockk.every
 import io.mockk.mockk
 import java.nio.file.Files
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -89,6 +95,7 @@ class CruxCoachBackupOwnClimbsRoundTripTest {
         name: String = "Test Draft",
         boardBrand: String = "kilter",
         layoutId: Long = 1L,
+        hsm: Long = 0L,
     ): String {
         db.boardQueries.insertLocalDraft(
             uuid = uuid, layout_id = layoutId, setter_username = "alice",
@@ -101,7 +108,7 @@ class CruxCoachBackupOwnClimbsRoundTripTest {
             // 64 lowercase hex characters — must match HEX64_REGEX in validate().
             frames_hash = "f".repeat(64),
             // FEAT-049: MoonBoard rows derive hsm on insert; a Kilter fixture has none.
-            hsm = 0L,
+            hsm = hsm,
             board_brand = boardBrand,
         )
         // Stats row at angle 40, setter grade id 18 (V5 / 6c+).
@@ -132,7 +139,56 @@ class CruxCoachBackupOwnClimbsRoundTripTest {
         )
     }
 
+    private fun statLayoutId(uuid: String): Long = driver.executeQuery(
+        null,
+        "SELECT layout_id FROM climb_stats WHERE climb_uuid = '$uuid' LIMIT 1",
+        { cursor ->
+            app.cash.sqldelight.db.QueryResult.Value(
+                if (cursor.next().value) (cursor.getLong(0) ?: -1L) else -1L,
+            )
+        },
+        0,
+    ).value
+
+    private data class StatSnapshot(
+        val displayDifficulty: Double?,
+        val difficultyAverage: Double?,
+        val qualityAverage: Double?,
+        val ascensionistCount: Long?,
+        val benchmarkDifficulty: Double?,
+    )
+
+    private fun statFor(uuid: String): StatSnapshot = driver.executeQuery(
+        null,
+        """SELECT display_difficulty, difficulty_average, quality_average,
+                  ascensionist_count, benchmark_difficulty
+             FROM climb_stats WHERE climb_uuid = '$uuid' LIMIT 1""",
+        { cursor ->
+            check(cursor.next().value) { "Missing stats for $uuid" }
+            app.cash.sqldelight.db.QueryResult.Value(
+                StatSnapshot(
+                    displayDifficulty = cursor.getDouble(0),
+                    difficultyAverage = cursor.getDouble(1),
+                    qualityAverage = cursor.getDouble(2),
+                    ascensionistCount = cursor.getLong(3),
+                    benchmarkDifficulty = cursor.getDouble(4),
+                ),
+            )
+        },
+        0,
+    ).value
+
     private fun rowFor(uuid: String) = db.boardQueries.getClimbByUuid(40L, uuid).executeAsOne()
+
+    private fun climbCount(uuid: String): Long = driver.executeQuery(
+        null,
+        "SELECT COUNT(*) FROM climbs WHERE uuid = '$uuid'",
+        { cursor ->
+            cursor.next()
+            app.cash.sqldelight.db.QueryResult.Value(cursor.getLong(0) ?: 0L)
+        },
+        0,
+    ).value
 
     private fun mockedExport(boardRepo: BoardRepositoryImpl, pubkey: String? = ownPubkey): String =
         CruxCoachBackup.export(
@@ -271,6 +327,274 @@ class CruxCoachBackupOwnClimbsRoundTripTest {
         val after = rowFor(uuid)
         assertEquals("moonboard", after.board_brand, "board_brand survived the round-trip")
         assertEquals(before.layout_id, after.layout_id, "layout_id unchanged")
+    }
+
+    @Test
+    fun `quantum own climb stats and hsm round-trip in backup version 3`() {
+        val uuid = "4f06c97d-a92f-5ec0-a02f-b19f5db0ce45"
+        seedDraft(
+            uuid = uuid,
+            name = "Quantum Draft",
+            boardBrand = "quantum",
+            layoutId = 9101L,
+            hsm = 31L,
+        )
+        db.boardQueries.upsertClimbStat(
+            climb_uuid = uuid,
+            angle = 40L,
+            display_difficulty = 18.0,
+            difficulty_average = 18.75,
+            quality_average = 2.4,
+            ascensionist_count = 37L,
+            benchmark_difficulty = 19.0,
+            fa_username = null,
+            fa_at = null,
+            official_kilter_difficulty = null,
+        )
+
+        val json = mockedExport(boardRepo)
+        assertEquals(
+            3,
+            Json.parseToJsonElement(json).jsonObject.getValue("version").jsonPrimitive.int,
+            "Quantum support remains additive inside the established v3 format",
+        )
+        driver.execute(null, "DELETE FROM climb_stats WHERE climb_uuid = '$uuid'", 0)
+        driver.execute(null, "DELETE FROM climbs WHERE uuid = '$uuid'", 0)
+
+        val result = mockedImport(boardRepo, json)
+
+        assertEquals(1, result.ownClimbs)
+        assertEquals(1, result.ownClimbStats)
+        val climb = rowFor(uuid)
+        assertEquals("quantum", climb.board_brand)
+        assertEquals(9101L, climb.layout_id)
+        assertEquals(31L, climb.hsm)
+        val stats = statFor(uuid)
+        assertEquals(9101L, statLayoutId(uuid))
+        assertEquals(18.0, stats.displayDifficulty)
+        assertEquals(18.75, stats.difficultyAverage)
+        assertEquals(2.4, stats.qualityAverage)
+        assertEquals(37L, stats.ascensionistCount)
+        assertEquals(19.0, stats.benchmarkDifficulty)
+    }
+
+    @Test
+    fun `v0_2_1 version 3 own-climb golden restores with legacy defaults`() {
+        // Captures the v0.2.1 wire shape: boardClimbs and boardClimbStats are
+        // present, while later additive fields such as boardBrand are absent.
+        // It must remain readable without a backup-version bump.
+        val uuid = "521f8b6d-1d36-4d9f-8f83-62f012a92c11"
+        val v021Json = """
+            {
+              "version": 3,
+              "app": "CruxCoach",
+              "exportedAt": "2026-07-18T09:42:11Z",
+              "nostrPubkey": "$ownPubkey",
+              "boardClimbs": [{
+                "uuid": "$uuid",
+                "layoutId": 1,
+                "setterUsername": "alice",
+                "name": "v0.2.1 backup climb",
+                "frames": "p1164r12p1233r15p1392r14",
+                "edgeLeft": 1,
+                "edgeRight": 144,
+                "edgeBottom": 1,
+                "edgeTop": 156,
+                "createdAt": "2026-07-17T18:20:00Z",
+                "description": "Golden backup fixture",
+                "moveCount": 3,
+                "source": "nostr",
+                "origin": "cruxcoach",
+                "syncStatus": "published_nostr",
+                "createdByPubkey": "$ownPubkey",
+                "framesHash": "${"f".repeat(64)}",
+                "nostrEventId": "${"e".repeat(64)}",
+                "nostrDTag": "cruxcoach:climb:aaaaaaaa:$uuid",
+                "nostrPublishVia": "direct",
+                "kilterStatus": "synced",
+                "kilterSyncedAt": 1721300000,
+                "kilterPublishVia": "self",
+                "kilterAuthorUuid": "3fc3c2bc-0000-1111-2222-333333333333"
+              }],
+              "boardClimbStats": [{
+                "climbUuid": "$uuid",
+                "angle": 40,
+                "displayDifficulty": 18.0,
+                "difficultyAverage": 18.5,
+                "qualityAverage": 2.7,
+                "ascensionistCount": 12,
+                "benchmarkDifficulty": 19.0
+              }]
+            }
+        """.trimIndent()
+
+        val result = mockedImport(boardRepo, v021Json)
+
+        assertEquals(1, result.ownClimbs)
+        assertEquals(1, result.ownClimbStats)
+        val climb = rowFor(uuid)
+        assertEquals("kilter", climb.board_brand, "missing additive brand keeps the legacy default")
+        assertEquals("published_nostr", climb.sync_status)
+        assertEquals("synced", climb.kilter_status)
+        assertEquals("self", climb.kilter_publish_via)
+        assertEquals("3fc3c2bc-0000-1111-2222-333333333333", climb.kilter_author_uuid)
+        val stat = statFor(uuid)
+        assertEquals(18.0, stat.displayDifficulty)
+        assertEquals(18.5, stat.difficultyAverage)
+        assertEquals(2.7, stat.qualityAverage)
+        assertEquals(12L, stat.ascensionistCount)
+        assertEquals(19.0, stat.benchmarkDifficulty)
+
+        val reExported = mockedExport(boardRepo)
+        assertEquals(
+            3,
+            Json.parseToJsonElement(reExported).jsonObject.getValue("version").jsonPrimitive.int,
+            "additive 0.2.2 fields do not bump the established backup format",
+        )
+        assertEquals(1, CruxCoachBackup.preview(reExported).ownClimbs)
+        assertEquals(
+            1,
+            Json.parseToJsonElement(reExported).jsonObject
+                .getValue("boardClimbStats").jsonArray.size,
+        )
+    }
+
+    @Test
+    fun `own-climb UUID collision preserves unrelated catalogue lifecycle and stats`() {
+        val uuid = "674ff8bd-f702-4ba4-8aa9-cc529aa22222"
+        driver.execute(null, """
+            INSERT INTO climbs(
+                uuid, layout_id, setter_username, name, frames, frames_count,
+                is_listed, created_at, description, hsm, move_count, is_deleted,
+                source, origin, sync_status, created_by_pubkey, frames_hash,
+                nostr_event_id, kilter_status, kilter_synced_at,
+                kilter_publish_via, kilter_error, board_brand
+            ) VALUES (
+                '$uuid', 1, 'catalogue-setter', 'Catalogue Original', X'', 1,
+                1, '2025-01-02T03:04:05Z', 'remote catalogue row', 0, 7, 0,
+                'kilter', 'kilter', 'synced', '$otherPubkey', '${"c".repeat(64)}',
+                '${"d".repeat(64)}', 'synced', 1700000000,
+                'official', 'keep this error', 'kilter'
+            )
+        """.trimIndent(), 0)
+        db.boardQueries.upsertClimbStat(
+            climb_uuid = uuid,
+            angle = 40L,
+            display_difficulty = 12.0,
+            difficulty_average = 12.5,
+            quality_average = 2.9,
+            ascensionist_count = 222L,
+            benchmark_difficulty = 13.0,
+            fa_username = "first-ascent",
+            fa_at = "2025-01-03T00:00:00Z",
+            official_kilter_difficulty = 12L,
+        )
+        val beforeClimb = rowFor(uuid)
+        val beforeStat = statFor(uuid)
+        val collisionJson = """
+            {
+              "version": 3,
+              "exportedAt": "2026-08-24T00:00:00Z",
+              "nostrPubkey": "$ownPubkey",
+              "boardClimbs": [{
+                "uuid": "$uuid",
+                "layoutId": 9101,
+                "name": "Injected replacement",
+                "frames": "p100r15",
+                "description": "must not overwrite",
+                "source": "local",
+                "syncStatus": "draft",
+                "createdByPubkey": "$ownPubkey",
+                "framesHash": "${"f".repeat(64)}",
+                "boardBrand": "quantum"
+              }],
+              "boardClimbStats": [{
+                "climbUuid": "$uuid",
+                "angle": 40,
+                "displayDifficulty": 30.0,
+                "difficultyAverage": 30.5,
+                "qualityAverage": 0.1,
+                "ascensionistCount": 1,
+                "benchmarkDifficulty": 31.0
+              }]
+            }
+        """.trimIndent()
+
+        val result = mockedImport(boardRepo, collisionJson)
+
+        assertEquals(0, result.ownClimbs)
+        assertEquals(0, result.ownClimbStats)
+        assertEquals(2, result.skippedDuplicates, "both the colliding climb and its stat are skipped")
+        val afterClimb = rowFor(uuid)
+        val afterStat = statFor(uuid)
+        assertEquals(beforeClimb, afterClimb, "catalogue data and lifecycle remain byte-for-byte equivalent")
+        assertEquals(beforeStat, afterStat, "colliding backup stats cannot replace catalogue stats")
+    }
+
+    @Test
+    fun `identity mismatch is rejected before any own-climb database write`() {
+        val uuid = "de3c3114-11e5-4a56-9420-67d6adadbeef"
+        val wrongIdentityJson = """
+            {
+              "version": 3,
+              "exportedAt": "2026-08-24T00:00:00Z",
+              "nostrPubkey": "$otherPubkey",
+              "boardClimbs": [{
+                "uuid": "$uuid",
+                "layoutId": 9101,
+                "name": "Wrong signer climb",
+                "frames": "p100r15",
+                "source": "nostr",
+                "syncStatus": "published_nostr",
+                "createdByPubkey": "$otherPubkey",
+                "nostrEventId": "${"e".repeat(64)}",
+                "boardBrand": "quantum"
+              }],
+              "boardClimbStats": [{
+                "climbUuid": "$uuid",
+                "angle": 40,
+                "displayDifficulty": 20.0
+              }]
+            }
+        """.trimIndent()
+
+        assertFailsWith<IllegalArgumentException> {
+            mockedImport(boardRepo, wrongIdentityJson)
+        }
+        assertEquals(0L, climbCount(uuid), "identity rejection happens before board DB restore")
+        assertNull(db.boardQueries.getClimbStatsForUuid(uuid).executeAsOneOrNull())
+    }
+
+    @Test
+    fun `missing identity is rejected before any selected own-climb database write`() {
+        val uuid = "de3c3114-11e5-4a56-9420-67d6ada0beef"
+        val missingIdentityJson = """
+            {
+              "version": 3,
+              "exportedAt": "2026-08-24T00:00:00Z",
+              "boardClimbs": [{
+                "uuid": "$uuid",
+                "layoutId": 9101,
+                "name": "Unbound draft",
+                "frames": "p100r15",
+                "source": "local",
+                "syncStatus": "draft",
+                "framesHash": "${"f".repeat(64)}",
+                "boardBrand": "quantum"
+              }],
+              "boardClimbStats": [{
+                "climbUuid": "$uuid",
+                "angle": 40,
+                "displayDifficulty": 20.0
+              }]
+            }
+        """.trimIndent()
+
+        assertFailsWith<IllegalArgumentException> {
+            mockedImport(boardRepo, missingIdentityJson)
+        }
+        assertEquals(0L, climbCount(uuid), "identity rejection happens before board DB restore")
+        assertNull(db.boardQueries.getClimbStatsForUuid(uuid).executeAsOneOrNull())
     }
 
     // ── Identity isolation: export filter scopes to current pubkey ──

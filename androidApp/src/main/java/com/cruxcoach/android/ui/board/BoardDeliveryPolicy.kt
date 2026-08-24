@@ -60,6 +60,9 @@ internal object BoardDeliveryPolicy {
         sendMode: BoardSendMode,
         sessionRole: SessionRole,
         sessionConnecting: Boolean = false,
+        /** A playlist uses queue mechanics locally but is not a shared
+         * session. Its detail lamp remains a direct board action. */
+        localPlaylist: Boolean = false,
         boardConnected: Boolean,
         hasDirectPayload: Boolean,
         connectedViaRelay: Boolean = false,
@@ -75,7 +78,7 @@ internal object BoardDeliveryPolicy {
             )
         }
 
-        if (sessionRole != SessionRole.NONE) {
+        if (sessionRole != SessionRole.NONE && !localPlaylist) {
             return BoardDeliveryDecision(
                 target = BoardDeliveryTarget.SHARED_QUEUE,
                 dispatchAutomatically = false,
