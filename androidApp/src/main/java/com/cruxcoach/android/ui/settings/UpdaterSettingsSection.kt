@@ -2,7 +2,6 @@ package com.cruxcoach.android.ui.settings
 
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
 import android.provider.Settings
 import android.text.format.DateUtils
 import androidx.compose.foundation.layout.Arrangement
@@ -208,8 +207,7 @@ internal fun UpdaterSettingsSection(
                 modes.forEachIndexed { index, mode ->
                     val label = when (mode) {
                         UpdateAutomationMode.NOTIFY -> R.string.updater_mode_notify
-                        UpdateAutomationMode.AUTO_DOWNLOAD -> R.string.updater_mode_download
-                        UpdateAutomationMode.AUTO_INSTALL -> R.string.updater_mode_install
+                        UpdateAutomationMode.AUTO_UPDATE -> R.string.updater_mode_auto_update
                     }
                     SegmentedButton(
                         selected = state.automationMode == mode,
@@ -223,8 +221,7 @@ internal fun UpdaterSettingsSection(
                 text = stringResource(
                     when (state.automationMode) {
                         UpdateAutomationMode.NOTIFY -> R.string.updater_mode_notify_desc
-                        UpdateAutomationMode.AUTO_DOWNLOAD -> R.string.updater_mode_download_desc
-                        UpdateAutomationMode.AUTO_INSTALL -> R.string.updater_mode_install_desc
+                        UpdateAutomationMode.AUTO_UPDATE -> R.string.updater_mode_auto_update_desc
                     },
                 ),
                 style = MaterialTheme.typography.bodySmall,
@@ -240,8 +237,8 @@ internal fun UpdaterSettingsSection(
                 )
             }
 
-            if (state.automationMode == UpdateAutomationMode.AUTO_INSTALL) {
-                AutomaticInstallInfo(
+            if (state.automationMode == UpdateAutomationMode.AUTO_UPDATE) {
+                UpdateInstallPermissionInfo(
                     permissionGranted = installPermissionGranted,
                     onGrantPermission = {
                         val intent = Intent(
@@ -358,7 +355,7 @@ private fun ToggleSettingRow(
 }
 
 @Composable
-private fun AutomaticInstallInfo(
+private fun UpdateInstallPermissionInfo(
     permissionGranted: Boolean,
     onGrantPermission: () -> Unit,
 ) {
@@ -370,22 +367,21 @@ private fun AutomaticInstallInfo(
     ) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
-                text = stringResource(R.string.updater_auto_install_info_title),
+                text = stringResource(R.string.updater_auto_update_info_title),
                 fontWeight = FontWeight.Bold,
             )
-            val body = when {
-                Build.VERSION.SDK_INT < Build.VERSION_CODES.S ->
-                    R.string.updater_auto_install_legacy_desc
-                permissionGranted -> R.string.updater_auto_install_ready_desc
-                else -> R.string.updater_auto_install_permission_desc
+            val body = if (permissionGranted) {
+                R.string.updater_auto_update_ready_desc
+            } else {
+                R.string.updater_auto_update_permission_desc
             }
             Text(
                 text = stringResource(body),
                 style = MaterialTheme.typography.bodySmall,
             )
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !permissionGranted) {
+            if (!permissionGranted) {
                 OutlinedButton(onClick = onGrantPermission) {
-                    Text(stringResource(R.string.updater_auto_install_permission_action))
+                    Text(stringResource(R.string.updater_auto_update_permission_action))
                 }
             }
         }
@@ -418,7 +414,7 @@ private fun PendingUpdateRow(
             )
             // Fetched from the release since 0.2.2, carried through the
             // DataStore, and read by nobody — so "download update?" offered a
-            // size and nothing about what changes, and AUTO_INSTALL asked
+            // size and nothing about what changes, and automatic update asked
             // nothing at all. Collapsed by default: changelogs run long, and
             // an update row should not push the rest of the screen away.
             if (!releaseNotesMarkdown.isNullOrBlank()) {

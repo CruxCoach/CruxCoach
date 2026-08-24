@@ -81,7 +81,7 @@ class UpdaterCoordinator @Inject constructor(
         repository.recoverInterruptedInstall()
         // A verified APK may already be ready after process death or after the
         // one-time package-install permission was granted outside the app.
-        repository.resumeAutomaticInstallIfReady()
+        repository.resumeAutomaticUpdateIfReady()
     }
 
     override fun onStart(owner: LifecycleOwner) {

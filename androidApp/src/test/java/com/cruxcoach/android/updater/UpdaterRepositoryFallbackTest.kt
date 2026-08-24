@@ -140,7 +140,7 @@ class UpdaterRepositoryFallbackTest {
         pendingDownloadSourceIndex = sourceIndex,
         pendingAllowMobile = true,
         pipelineStage = PipelineStage.DOWNLOADING,
-        automationMode = UpdateAutomationMode.AUTO_DOWNLOAD,
+        automationMode = UpdateAutomationMode.AUTO_UPDATE,
         anonymousUpdateMetricsEnabled = metricsEnabled,
         lastAnonymousMetricsAttemptVersion = lastMetricsAttemptVersion,
     )
@@ -205,7 +205,7 @@ class UpdaterRepositoryFallbackTest {
     fun `repeated release check does not duplicate an active download`() = runTest {
         val active = UpdaterState(
             pipelineStage = PipelineStage.DOWNLOADING,
-            automationMode = UpdateAutomationMode.AUTO_INSTALL,
+            automationMode = UpdateAutomationMode.AUTO_UPDATE,
             pendingTagName = info.tagName,
             pendingVersionName = info.versionName,
             pendingDownloadUrls = info.downloadUrls,
@@ -240,7 +240,7 @@ class UpdaterRepositoryFallbackTest {
             pendingApkSha256Url = info.apkSha256Url,
             pendingReleasePageUrl = info.releasePageUrl,
             pipelineStage = PipelineStage.PENDING_DOWNLOAD,
-            automationMode = UpdateAutomationMode.AUTO_DOWNLOAD,
+            automationMode = UpdateAutomationMode.AUTO_UPDATE,
         )
         coEvery { preferences.snapshot() } returns pending
         coEvery { checker.maybeCheck(UpdateChecker.Trigger.NETWORK_AVAILABLE) } returns
@@ -283,6 +283,24 @@ class UpdaterRepositoryFallbackTest {
             notifier.showReadyToInstall(match { it.tagName == info.tagName })
         }
         verify(exactly = 0) { installer.install(any(), any()) }
+    }
+
+    @Test
+    fun `automatic update requests a user-confirmed install after verification`() = runTest {
+        val state = persist(downloadingState())
+        val apk = File("build/tmp/pending-update-${info.versionName}.apk")
+        every { downloader.query(42L) } returns status(apk)
+        every { downloader.targetFileFor(info.versionName) } returns apk
+        every { verifier.verify(apk, info.apkSha256) } returns IntegrityVerifier.Result.Ok
+        every { installer.canRequestPackageInstalls() } returns true
+        every { installer.install(apk, deferUserConfirmation = true) } returns
+            ApkInstaller.InstallResult.Committed(77)
+
+        repository().onDownloadManagerCompleted(42L)
+
+        assertEquals(PipelineStage.INSTALLING, state.value.pipelineStage)
+        verify(exactly = 1) { installer.install(apk, deferUserConfirmation = true) }
+        verify(exactly = 0) { notifier.showReadyToInstall(any()) }
     }
 
     @Test
@@ -385,7 +403,7 @@ class UpdaterRepositoryFallbackTest {
             pendingApkSha256Url = info.apkSha256Url,
             pendingReleasePageUrl = info.releasePageUrl,
             pipelineStage = PipelineStage.INSTALLING,
-            automationMode = UpdateAutomationMode.AUTO_INSTALL,
+            automationMode = UpdateAutomationMode.AUTO_UPDATE,
             anonymousUpdateMetricsEnabled = false,
             lastAnonymousMetricsAttemptVersion = info.versionName,
         )
@@ -400,7 +418,7 @@ class UpdaterRepositoryFallbackTest {
         assertEquals(true, completed)
         assertEquals(emptyMap<String, String>(), state.lastCheckEtags)
         assertEquals(0L, state.lastCheckBootRealtime)
-        assertEquals(UpdateAutomationMode.AUTO_INSTALL, state.automationMode)
+        assertEquals(UpdateAutomationMode.AUTO_UPDATE, state.automationMode)
         assertEquals(false, state.anonymousUpdateMetricsEnabled)
         assertEquals(info.versionName, state.lastAnonymousMetricsAttemptVersion)
         assertEquals(PipelineStage.NONE, state.pipelineStage)

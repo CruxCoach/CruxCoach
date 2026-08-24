@@ -12,10 +12,9 @@
     <!-- Vibration for rest timer -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
-    <!-- FEAT-004 in-app updater. Silent self-update is strictly opt-in and
-         available only when Android's PackageInstaller conditions are met. -->
+    <!-- FEAT-004 in-app updater. APK installs always retain Android's final
+         user-confirmation step. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
-    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
     <!-- FEAT-004 in-app updater: DownloadManager.setNotificationVisibility(
          VISIBILITY_HIDDEN) requires this permission — we post our own
          progress UI so the system notification would be a duplicate. -->

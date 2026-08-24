@@ -89,7 +89,7 @@ class UpdaterSettingsViewModel @Inject constructor(
 
     fun refreshInstallPermission() {
         _installPermissionGranted.value = repository.canRequestPackageInstalls()
-        if (_installPermissionGranted.value) repository.resumeAutomaticInstallIfReady()
+        if (_installPermissionGranted.value) repository.resumeAutomaticUpdateIfReady()
     }
 
     fun checkNow() {
