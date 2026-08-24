@@ -5,14 +5,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import android.util.Log
 import com.cruxcoach.android.data.BleShareManager
 import com.cruxcoach.android.data.CruxRelayManager
-import com.cruxcoach.android.data.NearbySessionEntry
 import com.cruxcoach.android.data.OnBoardSource
 import com.cruxcoach.android.data.PlaylistPlaybackCoordinator
 import com.cruxcoach.android.data.SessionGattBridge
 import com.cruxcoach.android.data.SessionQueueManager
 import com.cruxcoach.android.data.SessionRole
+import com.cruxcoach.android.ui.board.LocalPlaylistBrowserCard
 import com.cruxcoach.android.ui.board.SessionQueueSheet
-import com.cruxcoach.android.ui.board.relayErrorText
 
 private const val TAG = "CruxBLE/UI"
 
@@ -59,23 +58,37 @@ fun BleStatusArea(
     currentClimbUuid: String? = null,
     onClimbTapped: ((uuid: String, angle: Int) -> Unit)? = null,
     onAddToQueue: (() -> Unit)? = null,
-    onRandomToQueue: (() -> Unit)? = null
+    onRandomToQueue: (() -> Unit)? = null,
 ) {
     val bleShareManager = LocalBleShareManager.current
     val state by bleShareManager.uiState.collectAsStateWithLifecycle()
 
     // Bug 3: Session join handled internally via CompositionLocals — works on every screen
     val sessionQueueManager = LocalSessionQueueManager.current
-    val sessionGattBridge = LocalSessionGattBridge.current
     val queueState by sessionQueueManager.state.collectAsStateWithLifecycle()
-
+    val isLocalPlaylist = queueState.isActive && queueState.isPlaylist
+    val currentPlaylistClimbName by sessionQueueManager.currentClimbName.collectAsStateWithLifecycle()
     val playback = LocalPlaylistPlayback.current
-    val openPlayer = LocalOpenPlaylistPlayer.current
-    val handleJoinSession: (NearbySessionEntry) -> Unit = { sessionEntry ->
-        // Joining lands directly in the player — it shows the connecting
-        // state and becomes the participant's home for the playlist.
-        playback.join(sessionEntry)
-        openPlayer()
+    val playbackState by playback.state.collectAsStateWithLifecycle()
+    val displayState = if (isLocalPlaylist) state.copy(ownSession = null) else state
+    val relayManager = LocalCruxRelayManager.current
+    val relayState by relayManager.state.collectAsStateWithLifecycle()
+
+    // One universal Playlist-UX banner on every screen. It replaces the old
+    // session mini-player everywhere, not just in the board browser.
+    if (isLocalPlaylist) {
+        LocalPlaylistBrowserCard(
+            currentClimbName = currentPlaylistClimbName,
+            currentIndex = queueState.currentIndex,
+            totalCount = queueState.queue.size,
+            hasPrevious = playbackState.hasPrevious,
+            hasNext = playbackState.hasNext,
+            canLight = playbackState.currentClimb != null && playbackState.boardConnected,
+            onPrevious = playback::previous,
+            onLight = playback::resendCurrentClimb,
+            onNext = playback::next,
+            onOpen = LocalOpenPlaylistPlayer.current,
+        )
     }
 
     // Suppress on-board climb on detail screen:
@@ -83,37 +96,12 @@ fun BleStatusArea(
     // 2. LOCAL_ACTIVE — user is swiping through climbs they're sending to the board;
     //    the chip would briefly flash on each swipe because the new page UUID differs
     //    from the stale BLE state for one frame before the BLE state catches up.
-    val effectiveOnBoard = state.onBoardClimb?.takeIf {
+    val effectiveOnBoard = displayState.onBoardClimb?.takeIf {
         if (currentClimbUuid == null) true
         else it.climbUuid != currentClimbUuid && it.source != OnBoardSource.LOCAL_ACTIVE
     }
-    // FEAT-044 §12: persistent in-app sharing status with one-tap stop —
-    // visible on every screen while the board is shared.
-    val relayManager = LocalCruxRelayManager.current
-    val relayState by relayManager.state.collectAsStateWithLifecycle()
-
-    // Sharing counts as content in its own right. It used to render as a
-    // separate card above this area, which meant the host saw the sharing
-    // state and the board state as two disconnected strips — and with nothing
-    // else going on, the area below returned early and the climb currently on
-    // the board never appeared at all. The relay line now rides along inside
-    // the regular chip instead.
-    val hasContent = effectiveOnBoard != null || state.boardOccupiedCount > 0 ||
-        state.nearbySessions.isNotEmpty() || state.ownSession != null ||
-        relayState.enabled
-
-    // Terminal relay errors (BOARD_LOST, a failed start) land AFTER the
-    // sharing sheet's error surface is gone — show them here so the stop
-    // is never silent (§12); dismissible, on every screen. Independent of
-    // hasContent: an error means sharing already stopped.
-    if (!relayState.enabled) {
-        relayState.error?.let { error ->
-            RelayErrorRow(
-                text = relayErrorText(error, relayState.errorDetail),
-                onDismiss = { relayManager.clearError() }
-            )
-        }
-    }
+    val hasContent = effectiveOnBoard != null || displayState.boardOccupiedCount > 0 ||
+        displayState.ownSession != null
 
     if (!hasContent) return
 
@@ -131,31 +119,26 @@ fun BleStatusArea(
         )
     }
 
-    val relayClientCount = relayState.clientCount.takeIf { relayState.enabled }
-    val stopRelay: () -> Unit = { relayManager.setEnabled(false) }
-
     if (expanded) {
         BleStatusExpanded(
-            state = state,
+            state = displayState,
             effectiveOnBoard = effectiveOnBoard,
             onCollapse = { Log.d(TAG, "COLLAPSE"); expanded = false },
             onClimbTapped = onClimbTapped,
-            onJoinSession = handleJoinSession,
             onRequestDisconnect = { bleShareManager.requestDisconnect() },
             onAddToQueue = onAddToQueue,
             onOpenQueueSheet = { showQueueSheet = true },
-            relayClientCount = relayClientCount,
-            onStopRelay = stopRelay,
+            relayClientCount = relayState.clientCount.takeIf { relayState.enabled },
+            relayBoardName = relayState.boardName,
+            onStopRelay = { relayManager.setEnabled(false) },
         )
     } else {
         BleStatusChip(
-            state = state,
+            state = displayState,
             effectiveOnBoard = effectiveOnBoard,
             onExpand = { Log.d(TAG, "EXPAND"); expanded = true },
             onAddToQueue = onAddToQueue,
             onRandomToQueue = onRandomToQueue,
-            relayClientCount = relayClientCount,
-            onStopRelay = stopRelay
         )
     }
 }

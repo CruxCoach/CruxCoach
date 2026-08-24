@@ -4,7 +4,6 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.data.GradeScale
-import com.cruxcoach.android.data.SessionVisibility
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.util.safeLaunch
 import com.cruxcoach.data.repository.BoardRepository
@@ -121,7 +120,9 @@ class PlaylistDetailViewModel @Inject constructor(
                     name = list?.name ?: "",
                     isBuiltin = list?.isBuiltin == true,
                     isGenerated = list?.generatorParams != null,
-                    playbackAdvance = list?.playbackAdvance ?: ListPlaybackAdvance.MANUAL,
+                    // 0.2.2 playlists always advance through an explicit
+                    // previous/next action, including restored older lists.
+                    playbackAdvance = ListPlaybackAdvance.MANUAL,
                     playbackOrder = list?.playbackOrder ?: ListPlaybackOrder.LIST,
                     playbackRestSeconds = list?.playbackRestSeconds ?: 0L,
                     entries = uiEntries,
@@ -363,7 +364,6 @@ class PlaylistDetailViewModel @Inject constructor(
      */
     fun play(
         hostName: String,
-        visibility: SessionVisibility,
         onStarted: () -> Unit,
     ) {
         val boardCount = _state.value.entries
@@ -407,8 +407,6 @@ class PlaylistDetailViewModel @Inject constructor(
         playback.play(
             hostName,
             items,
-            _state.value.playbackAdvance,
-            visibility,
         )
         _state.update { it.copy(playbackBoardError = false) }
         onStarted()

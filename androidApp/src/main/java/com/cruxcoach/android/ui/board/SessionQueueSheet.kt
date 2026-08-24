@@ -10,9 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DragHandle
-import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.*
@@ -115,8 +113,6 @@ fun SessionQueueSheet(
                 }
                 if (state.participants.isNotEmpty()) {
                     Spacer(Modifier.width(8.dp))
-                    Icon(Icons.Default.People, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Text(" ${state.participantCount}", style = MaterialTheme.typography.bodySmall)
                 }
                 Spacer(Modifier.width(4.dp))
                 IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
@@ -309,48 +305,6 @@ fun SessionQueueSheet(
             }
 
             Spacer(Modifier.height(16.dp))
-
-            // Participants — always show host, plus connected participants
-            if (state.hostName.isNotEmpty() || state.participants.isNotEmpty()) {
-                Text(
-                    stringResource(R.string.board_queue_participants, state.participantCount),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(Modifier.height(4.dp))
-                // Host (always first, with star icon)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Default.Star,
-                        contentDescription = "Host",
-                        tint = OrangeAccent,
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        if (state.role == SessionRole.HOST) stringResource(R.string.board_queue_you_host)
-                        else state.hostName.ifEmpty { "Host" },
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-                state.participants.forEach { participant ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Default.People,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Text(
-                            participant.displayName,
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    }
-                }
-                Spacer(Modifier.height(16.dp))
-            }
 
             // End/Leave button
             val buttonText = when (state.role) {

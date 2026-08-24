@@ -178,6 +178,24 @@ class MoonBoardScreenParserTest {
     }
 
     @Test
+    fun `accepts harmless localisation and typography changes`() {
+        assertEquals(
+            "2026-08-23T12:00:00Z",
+            MoonBoardScreenParser.parseDateLabel("23 aUG. 2026\n1 problem"),
+        )
+        val spaced = MoonBoardScreenParser.parseSession(
+            "23\u00a0Aug\u00a02026\n4\u202fproblems (1 completed, 7 tries)",
+        )!!
+        assertEquals(4, spaced.problems)
+
+        val entry = parse(
+            "A PROBLEM\nset by Setter\u00a0@\u00a040º\n6C/V5\n2nd try @ 40º",
+        )
+        assertEquals("Setter", entry.setter)
+        assertEquals(2, entry.attempts)
+    }
+
+    @Test
     fun `reads the completeness counts from both logbook headers`() {
         val list = MoonBoardScreenParser.parseHeader("Logbook\n83 entries, 382 problems")!!
         assertEquals(83, list.sessions)
@@ -192,12 +210,30 @@ class MoonBoardScreenParserTest {
     }
 
     @Test
+    fun `header title may change without losing completeness counts`() {
+        val renamed = MoonBoardScreenParser.parseHeader("My activity\n83 entries, 382 problems")!!
+        assertEquals(83, renamed.sessions)
+        assertEquals(382, renamed.problems)
+        // A dated session summary is never mistaken for the global header.
+        assertNull(MoonBoardScreenParser.parseHeader("21 Jul 2026\n4 problems"))
+    }
+
+    @Test
     fun `an unknown outcome is reported as a problem card instead of vanishing`() {
         val label = "MYSTERY\nSet by Setter @ 40°\n6C/V5\nAny marked holds\nRepeated @40°"
         // Structurally a problem card, so the scanner counts and names it …
         assertTrue(MoonBoardScreenParser.isProblemLabel(label))
         // … but it is never guessed into the logbook as a send or a project.
         assertNull(MoonBoardScreenParser.parseProblem(label, date))
+    }
+
+    @Test
+    fun `setter caption may change while card remains structurally readable`() {
+        val entry = parse(
+            "A PROBLEM\nEstablished by Setter @ 40°\n6C/V5\nFlashed @40°",
+        )
+        assertEquals("Setter", entry.setter)
+        assertEquals(40, entry.angle)
     }
 
     @Test

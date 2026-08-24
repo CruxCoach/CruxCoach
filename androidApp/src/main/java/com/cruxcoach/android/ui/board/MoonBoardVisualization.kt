@@ -6,7 +6,6 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -95,7 +94,12 @@ internal fun MoonBoardVisualization(
     val showLattice = editable || onHoldTapped != null
 
     Card(
-        modifier = modifier,
+        // Constrain the card itself to the board aspect. Putting aspectRatio
+        // on a fillMaxWidth child lets the child grow taller than a weighted
+        // detail-screen viewport; the parent then clips the overflow (on the
+        // Nokia 6.1 this hid rows 18, 2 and 1). At the outer boundary Compose
+        // can instead choose the largest width/height pair that fits fully.
+        modifier = modifier.aspectRatio(aspect),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant,
         ),
@@ -103,8 +107,7 @@ internal fun MoonBoardVisualization(
     ) {
         Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(aspect)
+                .fillMaxSize()
                 .onSizeChanged { boxSize = it }
                 .let { base ->
                     if (onHoldTapped == null) base
@@ -301,4 +304,3 @@ private fun DrawScope.drawClimbHoldsMapped(
         drawHoldMarker(Offset(norm.x * size.width, norm.y * size.height), color, radius)
     }
 }
-

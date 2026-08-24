@@ -138,10 +138,10 @@
     <string name="climb_editor_load_failed_kilter_locked">Dieser Climb ist auf Kilter veröffentlicht und kann nicht bearbeitet werden. Nutze die Remix-Aktion, um einen frischen Climb darauf basierend zu starten.</string>
 
     <!-- Nostr-Profil-Editor (Einstellungen) -->
-    <string name="nostr_profile_title">Mein Nostr-Profil</string>
-    <string name="nostr_profile_settings_label">Nostr-Profil</string>
+    <string name="nostr_profile_title">Mein Profil</string>
+    <string name="nostr_profile_settings_label">Profil</string>
     <string name="nostr_profile_settings_summary">Anzeigename, Profilbild, Lightning-Adresse</string>
-    <string name="nostr_profile_explainer">Andere CruxCoach-Nutzer sehen dieses Profil neben deinen Community-Climbs. Ohne Profil siehst du nur eine kurze Hex-npub.</string>
+    <string name="nostr_profile_explainer">Dein Profil wird lokal in CruxCoach gespeichert. Optional kannst du eine Kopie auf Nostr veröffentlichen, damit andere Nutzer es neben deinen Community-Climbs sehen.</string>
     <string name="nostr_profile_display_name">Anzeigename</string>
     <string name="nostr_profile_display_name_hint">Wird neben deinen Climbs als Setter angezeigt.</string>
     <string name="nostr_profile_about">Über mich</string>
@@ -170,9 +170,17 @@
     <string name="nostr_profile_save">Profil speichern</string>
     <string name="nostr_profile_saving">Wird gespeichert…</string>
     <string name="nostr_profile_saved_toast">Profil gespeichert</string>
-    <string name="nostr_profile_save_failed">Konnte Profil nicht senden. Versuche es nochmal.</string>
+    <string name="profile_local_save_failed">Das Profil konnte nicht lokal gespeichert werden. Bitte erneut versuchen.</string>
+    <string name="profile_local_storage_hint">Privat auf diesem Gerät gespeichert. Über diesen Button wird nichts veröffentlicht.</string>
+    <string name="nostr_profile_save_failed">Die Veröffentlichung auf Nostr ist fehlgeschlagen. Dein lokales Profil bleibt gespeichert.</string>
+    <string name="nostr_profile_publish_action">Profil auf Nostr veröffentlichen</string>
+    <string name="nostr_profile_publishing">Wird veröffentlicht…</string>
+    <string name="nostr_profile_published_toast">Profil auf Nostr veröffentlicht</string>
+    <string name="nostr_profile_publish_warning_title">Profil öffentlich veröffentlichen?</string>
+    <string name="nostr_profile_publish_warning_body">Dadurch wird dein Profil als öffentliches Nostr-Kind-0-Event veröffentlicht. Profilfelder und Bild-URLs können von Relays und anderen Clients kopiert und dauerhaft gespeichert werden. Ein späteres vollständiges Entfernen kann nicht garantiert werden.</string>
+    <string name="nostr_profile_publish_confirm">Öffentlich veröffentlichen</string>
     <string name="nostr_profile_import_from_kilter">Kilter-Username übernehmen</string>
-    <string name="nostr_profile_kilter_divergence_hint">Dein Kilter-Username (\"%1$s\") bleibt in der Kilter-App unverändert. Dieses Profil gilt nur für CruxCoach + Nostr.</string>
+    <string name="nostr_profile_kilter_divergence_hint">Dein Kilter-Username (\"%1$s\") bleibt in der Kilter-App unverändert. Dieses Profil gehört zu CruxCoach und wird nur nach deiner ausdrücklichen Freigabe mit Nostr geteilt.</string>
 
     <!-- Setter-Detail / Liste (Community) -->
     <string name="setter_detail_title_fallback">Setter</string>
@@ -743,7 +751,7 @@
     <string name="board_filter_type">Typ</string>
     <string name="board_filter_type_boulder">Boulder</string>
     <string name="board_filter_type_routes">Routen</string>
-    <string name="board_session_connecting">Verbinde mit Session…</string>
+    <string name="board_session_connecting">Playlist wird verbunden…</string>
     <string name="board_session_end_title">Session beenden?</string>
     <string name="board_session_end_confirm">Beenden</string>
     <string name="board_session_end_summary">Gesamtzeit: %1$s\nAktiv: %2$s\nPausen: %3$s\nSends: %4$d / Versuche: %5$d</string>
@@ -752,7 +760,7 @@
     <string name="board_ble_disconnect_request_confirm">Freigeben</string>
     <string name="board_ble_disconnect_request_deny">Ablehnen</string>
     <string name="board_bt_off_title">Bluetooth deaktiviert</string>
-    <string name="board_bt_off_message">Bluetooth wird für die aktive Session und Board-Verbindung benötigt. Bitte wieder aktivieren.</string>
+    <string name="board_bt_off_message">Bluetooth wird für die aktive Playlist und Board-Verbindung benötigt. Bitte wieder aktivieren.</string>
     <string name="board_bt_off_enable">Bluetooth aktivieren</string>
     <string name="board_bt_off_ignore">Ignorieren</string>
 
@@ -811,7 +819,7 @@
     <string name="payment_no_wallet_title">Keine Lightning-Wallet gefunden</string>
     <string name="payment_no_wallet_message">Du benötigst eine Lightning-Wallet-App, um Zaps zu senden.</string>
     <string name="payment_recommended_wallets">Empfohlene Wallets:</string>
-    <string name="payment_profile_setup_title">Nostr-Profil einrichten</string>
+    <string name="payment_profile_setup_title">Profil einrichten</string>
     <string name="payment_profile_setup_message">Erstelle ein Profil, um Zaps empfangen zu können.</string>
     <string name="payment_profile_name_hint">Anzeigename (optional)</string>
     <string name="payment_profile_lightning_hint">Lightning-Adresse</string>
@@ -964,8 +972,8 @@
     <string name="board_ble_bt_enable_button">Bluetooth einschalten</string>
     <string name="board_ble_location_disabled_title">Standortdienste deaktiviert</string>
     <string name="board_ble_location_disabled_message">Auf diesem Gerät müssen die Standortdienste (GPS) eingeschaltet sein, damit Bluetooth-Geräte gefunden werden können.</string>
-    <string name="board_ble_session_active_title">Session aktiv</string>
-    <string name="board_ble_session_active_message">Das Board wird vom Session-Host gesteuert. Deine Climbs werden über die Session an das Board gesendet.</string>
+    <string name="board_ble_session_active_title">Playlist aktiv</string>
+    <string name="board_ble_session_active_message">Das Board wird vom Playlist-Host gesteuert. Deine Climbs werden über die Playlist an das Board gesendet.</string>
     <string name="board_ble_connect_failed_hint">Verbindung fehlgeschlagen. Stelle sicher, dass das Board eingeschaltet und in der Nähe ist, und tippe es erneut an.</string>
     <string name="board_ble_open_location_settings">Standort-Einstellungen öffnen</string>
     <string name="board_ble_connected">Verbunden</string>
@@ -1285,6 +1293,11 @@
     <!-- Board Ascent Types -->
     <string name="board_ascent_send">Send</string>
     <string name="board_ascent_attempt">Versuch</string>
+    <string name="board_dock_attempt">Versuch</string>
+    <string name="board_dock_top">Top</string>
+    <string name="board_dock_connect">Verbinden</string>
+    <string name="board_dock_light">Leuchten</string>
+    <string name="board_dock_queue">Queue</string>
     <string name="board_ascent_attempts_count">Offen · %d Versuche</string>
 
     <!-- Dropdown -->
@@ -1294,28 +1307,28 @@
     <string name="ble_board_occupied">Board belegt</string>
     <string name="ble_board_occupied_detail">%1$d Nutzer am Board</string>
     <string name="ble_climbing_now">Klettert gerade</string>
-    <string name="ble_end_session">Session beenden</string>
-    <string name="ble_leave_session">Session verlassen</string>
+    <string name="ble_end_session">Playlist beenden</string>
+    <string name="ble_leave_session">Playlist verlassen</string>
     <string name="ble_last_climb">Letzter Boulder</string>
     <string name="ble_on_board">Auf dem Board</string>
     <string name="ble_participants">%1$d Teilnehmer</string>
-    <string name="ble_queue_empty">Session-Warteschlange ist leer</string>
+    <string name="ble_queue_empty">Playlist ist leer</string>
     <string name="ble_external_board_override">Eine andere Board-App hat die Beleuchtung geändert</string>
     <string name="ble_ready_to_resend">Zum erneuten Senden</string>
-    <string name="ble_session_climb">Session-Climb</string>
-    <string name="ble_session_label">SESSION</string>
-    <string name="ble_session_visibility_title">Session starten</string>
-    <string name="ble_session_visibility_message">Wähle die Sichtbarkeit für diese Session.</string>
+    <string name="ble_session_climb">Playlist-Climb</string>
+    <string name="ble_session_label">PLAYLIST</string>
+    <string name="ble_session_visibility_title">Playlist starten</string>
+    <string name="ble_session_visibility_message">Wähle die Sichtbarkeit für diese Playlist.</string>
     <string name="ble_session_visibility_joinable">Joinbar</string>
-    <string name="ble_session_visibility_joinable_desc">CruxCoach-Nutzer in der Nähe sehen die Session und können ohne Code beitreten.</string>
+    <string name="ble_session_visibility_joinable_desc">CruxCoach-Nutzer in der Nähe sehen die Playlist und können ohne Code beitreten.</string>
     <string name="ble_session_visibility_local">Nur lokal</string>
-    <string name="ble_session_visibility_local_desc">Session und Warteschlange bleiben auf diesem Gerät und werden nicht veröffentlicht.</string>
-    <string name="ble_session_visibility_permission_denied">Zum Veröffentlichen einer joinbaren Session ist die Bluetooth-Berechtigung erforderlich.</string>
+    <string name="ble_session_visibility_local_desc">Die Playlist bleibt auf diesem Gerät und wird nicht veröffentlicht.</string>
+    <string name="ble_session_visibility_permission_denied">Zum Veröffentlichen einer joinbaren Playlist ist die Bluetooth-Berechtigung erforderlich.</string>
     <string name="ble_session_visibility_status_joinable">Joinbar · für Nutzer in der Nähe sichtbar</string>
-    <string name="ble_session_visibility_status_local">Nur lokal · Session wird nicht veröffentlicht</string>
+    <string name="ble_session_visibility_status_local">Nur lokal · Playlist wird nicht veröffentlicht</string>
     <string name="ble_sharing_title">BLE Sharing</string>
     <string name="ble_error_gatt_server">Freigabe-Server konnte nicht gestartet werden</string>
-    <string name="ble_error_publish_failed">Session konnte nicht veröffentlicht werden</string>
+    <string name="ble_error_publish_failed">Playlist konnte nicht veröffentlicht werden</string>
     <string name="ble_error_connect_failed">Verbindung fehlgeschlagen</string>
     <string name="playlist_send_to_board">Ans Board senden</string>
     <string name="ble_sharing_blocked">Bluetooth ist aus — noch kann niemand beitreten</string>
@@ -1428,15 +1441,15 @@
     <string name="board_playback_frame">%1$d / %2$d</string>
     <string name="board_queue_empty">Warteschlange ist leer</string>
     <string name="board_queue_empty_editor">Füge Climbs aus dem Browser hinzu</string>
-    <string name="board_queue_end_session">Session beenden</string>
-    <string name="board_queue_leave_session">Session verlassen</string>
+    <string name="board_queue_end_session">Playlist beenden</string>
+    <string name="board_queue_leave_session">Playlist verlassen</string>
     <string name="board_queue_participants">Teilnehmer (%d)</string>
-    <string name="board_queue_title">Session</string>
+    <string name="board_queue_title">Playlist</string>
     <string name="board_queue_you_host">Du (Host)</string>
     <string name="board_queue_command_pending">Änderungen werden synchronisiert (%1$d)…</string>
-    <string name="board_queue_command_conflict">Die Session wurde gleichzeitig geändert. Sie ist jetzt aktuell – bitte versuche deine Änderung erneut.</string>
+    <string name="board_queue_command_conflict">Die Playlist wurde gleichzeitig geändert. Sie ist jetzt aktuell – bitte versuche deine Änderung erneut.</string>
     <string name="board_queue_command_unavailable">Die Änderung konnte nicht gesendet werden. Prüfe die Nearby-Verbindung und versuche es erneut.</string>
-    <string name="board_queue_command_failed">Der Controller konnte die Änderung nicht übernehmen. Die gemeinsame Session wurde aktualisiert.</string>
+    <string name="board_queue_command_failed">Der Controller konnte die Änderung nicht übernehmen. Die gemeinsame Playlist wurde aktualisiert.</string>
     <string name="board_random_climb">Zufall</string>
     <string name="board_rest_timer_finished">Pause vorbei!</string>
     <string name="board_rest_timer_ready">Bereit für den nächsten Versuch!</string>
@@ -2268,6 +2281,7 @@
     <string name="ble_queue_resend">Queue-Climb erneut ans Board senden</string>
     <string name="playlist_import_error">Dieser Trainingslisten-Link ist ungültig oder beschädigt.</string>
     <string name="playlist_player_title">Training</string>
+    <string name="playlist_banner_label">Playlist</string>
     <string name="playlist_player_hosted_by">Training von %1$s</string>
     <string name="playlist_player_progress">%1$d von %2$d · %3$s</string>
     <string name="playlist_player_rest_title">Pause</string>
@@ -2275,8 +2289,8 @@
     <string name="playlist_player_up_next">Als Nächstes</string>
     <string name="playlist_player_attempt">Versuch %1$d von %2$d</string>
     <string name="playlist_attempts_badge">%1$d Versuche</string>
-    <string name="playlist_add_to_running">Zur laufenden Session hinzufügen</string>
-    <string name="playlist_added_to_running">Zur Session hinzugefügt</string>
+    <string name="playlist_add_to_running">Zur laufenden Playlist hinzufügen</string>
+    <string name="playlist_added_to_running">Zur Playlist hinzugefügt</string>
     <string name="playlist_log_send">Geschafft</string>
     <string name="playlist_log_attempt">Versuch</string>
     <string name="playlist_logged_send">Send geloggt</string>
@@ -2301,7 +2315,7 @@
     <string name="list_playback_advance_log">Nach jedem geloggten Versuch</string>
     <string name="list_playback_plan_info">Reihenfolge, Wiederholungen, Winkel und Pausen kommen aus dem Trainingsablauf dieser Liste.</string>
     <string name="list_playback_edit_plan">Trainingsablauf bearbeiten</string>
-    <string name="list_playback_multiple_boards_hint">Wähle oben genau ein Board aus. Eine Session kann den Board-Controller nicht automatisch wechseln.</string>
+    <string name="list_playback_multiple_boards_hint">Wähle oben genau ein Board aus. Eine Playlist kann den Board-Controller nicht automatisch wechseln.</string>
     <string name="list_playback_unavailable_hint">%1$d gespeicherte Climbs sind lokal nicht verfügbar und werden nicht einbezogen.</string>
     <string name="list_playback_error_empty">Es sind keine lokal verfügbaren Climbs abspielbar.</string>
     <string name="list_playback_error_multiple_boards">Dieser Trainingsablauf enthält mehrere Board-Konfigurationen. Teile ihn in einen Ablauf pro Board auf.</string>
@@ -2316,8 +2330,10 @@
     <!-- FEAT-044 CruxRelay: Host-„Board teilen"-Fläche -->
     <string name="relay_share_description">Dieses Handy bleibt mit dem Board verbunden und leitet Boulder von anderen Handys an die Wand weiter.</string>
     <string name="relay_share_button">Für andere Board-Apps freigeben</string>
-    <string name="relay_chip_text">Für Board-Apps freigegeben · %1$d verbunden</string>
+    <string name="relay_chip_text">Relay für %1$s · %2$d verbunden</string>
     <string name="relay_advertised_as">Für andere sichtbar als \"%1$s\"</string>
+    <string name="settings_relay_manual_start">CruxRelay manuell starten</string>
+    <string name="settings_relay_manual_start_desc">Standardmäßig aus: CruxRelay startet und endet mit der Board-Verbindung. Nur aktivieren, wenn du es manuell starten möchtest.</string>
     <string name="relay_disclosure_title">Für Board-Apps freigeben</string>
     <string name="relay_disclosure_text">Dein Handy erscheint vorübergehend als kompatibles Board namens \"CruxRelay…\". Andere Board-Apps senden über CruxCoach, ohne eine Queue zu starten. Der zuletzt erfolgreich gesendete Boulder steuert die Beleuchtung. Beim Beenden wird dein Bluetooth-Name wiederhergestellt.</string>
     <string name="relay_disclosure_disclaimer">CruxCoach ist nicht mit Kilter oder Aurora Climbing verbunden; Board-Namen dienen nur der Kompatibilität.</string>
@@ -2421,6 +2437,9 @@
     <string name="moon_device_title">Aus der installierten Moon-App übernehmen</string>
     <string name="moon_device_explanation">Android bittet dich einmalig, eine Bedienungshilfe zu aktivieren. Nach dem Start öffnet CruxCoach Moon und liest ausschließlich die sichtbaren Logbook-Beschriftungen der Moon-App auf diesem Gerät. Andere Apps können nicht gelesen werden; dein Moon-Passwort wird nie abgefragt. Danach kannst du die Bedienungshilfe sofort wieder abschalten.</string>
     <string name="moon_device_enable">Einmaligen Zugriff aktivieren</string>
+    <string name="moon_device_restricted_title">Zugriff in zwei Schritten erlauben</string>
+    <string name="moon_device_restricted_explanation">Android meldet aktuell, dass der Bedienungshilfen-Zugriff für CruxCoach eingeschränkt ist. Öffne die App-Info und wähle „Eingeschränkte Einstellungen zulassen“ (auf manchen Geräten im Überlaufmenü), dann kehre zurück. CruxCoach prüft das Ergebnis und öffnet nur noch die tatsächlich fehlende Einstellung. Ist der Zugriff bereits erlaubt, wird dieser Schritt automatisch übersprungen.</string>
+    <string name="moon_device_open_app_info">App-Info öffnen</string>
     <string name="moon_device_start">Automatische Übertragung starten</string>
     <string name="moon_device_running">Übertragung läuft…</string>
     <string name="moon_device_captured">%1$d Logbook-Einträge gefunden</string>
@@ -2442,6 +2461,7 @@
     <string name="moon_csv_unresolved">%1$d ProblemIds wurden im lokalen MoonBoard-Katalog nicht gefunden. Synchronisiere die Boarddaten und importiere dieselbe Datei erneut.</string>
     <string name="moon_csv_another">Weitere Datei importieren</string>
     <string name="moon_import_result_title">Übertragung abgeschlossen</string>
+    <string name="moon_import_result_incomplete">Übertragung unvollständig – ungeprüfte Tage wurden nicht importiert</string>
     <string name="moon_import_result_found">In Moon gefunden: %1$d</string>
     <string name="moon_import_result_imported">Erfolgreich importiert: %1$d</string>
     <string name="moon_import_result_duplicates">Bereits in CruxCoach vorhanden: %1$d</string>
@@ -2459,6 +2479,7 @@
     <string name="moon_scan_error_timeout">Der Moon-Import hat nach %1$d Trainingstag(en) die Zeit überschritten.</string>
     <string name="moon_scan_error_stalled">Moon hat nach %1$d Trainingstag(en) nicht mehr reagiert.</string>
     <string name="moon_scan_deviation_missing">%1$s: %2$d von %3$d Problemen gelesen</string>
+    <string name="moon_scan_deviation_excess">%1$s: %2$d sichtbare Karten verworfen, da Moon nur %3$d nennt</string>
     <string name="moon_scan_deviation_wording">%1$s: %2$d Problem(e) mit CruxCoach unbekannter Bezeichnung</string>
     <string name="moon_scan_deviation_sends">%1$s: %2$d Begehungen gelesen, Moon nennt %3$d</string>
     <string name="moon_scan_deviation_tries">%1$s: %2$d Versuche gelesen, Moon nennt %3$d</string>
@@ -2535,4 +2556,9 @@
     <string name="board_layer_color_yellow">Gelb</string>
     <string name="board_layer_color_unavailable">%1$s — auf dem Board bereits vergeben</string>
     <string name="board_layer_error_other_board">Diese Ebenen wurden für ein anderes Board zusammengestellt. Weise sie auf diesem neu zu.</string>
+    <string name="board_playlist_add">Hinzufügen</string>
+    <plurals name="board_playlist_already_queued">
+        <item quantity="one">Schon einmal in der Playlist</item>
+        <item quantity="other">Schon %1$d mal in der Playlist</item>
+    </plurals>
 </resources>

@@ -4,7 +4,6 @@ import android.util.Log
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ble.QueueItem
-import com.cruxcoach.data.repository.ListPlaybackAdvance
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -116,8 +115,6 @@ class PlaylistPlaybackCoordinator(
     private val bleConnection: BoardBleConnection,
     scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
 ) {
-
-    private var advanceMode: ListPlaybackAdvance = ListPlaybackAdvance.MANUAL
 
     val state: StateFlow<PlaylistPlaybackState> = combine(
         queueManager.state,
@@ -274,7 +271,10 @@ class PlaylistPlaybackCoordinator(
         }
     }
 
-    /** Applies the list's interaction rule after a successful quick-log write. */
+    /**
+     * A successful quick-log never changes the visible playlist position.
+     * Moving on is an explicit transport action, consistently for every list.
+     */
     fun onClimbLogged(isSend: Boolean) {
         // A send ends the work on that problem. The hard-bouldering and 4x4
         // shapes schedule several tries of the SAME climb back to back, and
@@ -282,12 +282,6 @@ class PlaylistPlaybackCoordinator(
         // remaining tries of a problem they had already done — the generator's
         // attempt count treated as a quota rather than a budget.
         if (isSend) skipRemainingAttemptsOfCurrentClimb()
-        val shouldAdvance = when (advanceMode) {
-            ListPlaybackAdvance.MANUAL -> false
-            ListPlaybackAdvance.AFTER_SEND -> isSend
-            ListPlaybackAdvance.AFTER_LOG -> true
-        }
-        if (shouldAdvance && state.value.isActive && state.value.hasNext) next()
     }
 
     /**
@@ -315,25 +309,20 @@ class PlaylistPlaybackCoordinator(
     }
 
     /**
-     * Start playing a playlist as HOST: session timer + queue bulk-load +
-     * rest hook + optional GATT publication chosen for this run.
+     * Start a private local playlist: session timer + queue bulk-load + rest
+     * hook. Playlists deliberately have no visibility choice and never start
+     * the joinable GATT publication path.
      */
     fun play(
         hostName: String,
         items: List<QueueItem>,
-        advance: ListPlaybackAdvance = ListPlaybackAdvance.MANUAL,
-        visibility: SessionVisibility = SessionVisibility.LOCAL_ONLY,
     ) {
         if (items.isEmpty()) return
-        advanceMode = advance
         boardSessionManager.startSession()
         queueManager.onRestRequested = { seconds ->
             boardSessionManager.startRestTimer(seconds)
         }
-        queueManager.loadPlaylist(hostName, items, visibility)
-        if (visibility == SessionVisibility.JOINABLE) {
-            gattBridge.startSharing()
-        }
+        queueManager.loadPlaylist(hostName, items, SessionVisibility.LOCAL_ONLY)
     }
 
     /**
@@ -346,7 +335,6 @@ class PlaylistPlaybackCoordinator(
         hostName: String,
         visibility: SessionVisibility = SessionVisibility.LOCAL_ONLY,
     ) {
-        advanceMode = ListPlaybackAdvance.MANUAL
         boardSessionManager.startSession()
         queueManager.startQueue(hostName, visibility)
         queueManager.onRestRequested = { seconds ->
@@ -365,7 +353,6 @@ class PlaylistPlaybackCoordinator(
     /** Join a nearby playlist as PARTICIPANT. */
     fun join(entry: NearbySessionEntry) {
         val device = entry.rawSession.device ?: return
-        advanceMode = ListPlaybackAdvance.MANUAL
         boardSessionManager.startSession()
         // No startQueue() here: that would flash HOST before GATT connects;
         // joinSession() drives setConnecting() → setParticipantRole().
@@ -409,7 +396,6 @@ class PlaylistPlaybackCoordinator(
         if (lastClimb != null) {
             bleShareManager.setLastClimbAfterSession(lastClimb.climbUuid, lastClimb.angle)
         }
-        advanceMode = ListPlaybackAdvance.MANUAL
         return finished
     }
 

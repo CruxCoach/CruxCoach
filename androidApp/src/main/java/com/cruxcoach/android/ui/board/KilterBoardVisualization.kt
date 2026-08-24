@@ -11,7 +11,6 @@ import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -275,14 +274,16 @@ internal fun KilterBoardVisualization(
     } else Modifier
 
     Card(
-        modifier = modifier,
+        // Keep the aspect constraint at the component boundary. An inner
+        // fillMaxWidth().aspectRatio(...) can exceed a height-constrained
+        // detail viewport and be clipped vertically instead of fitting.
+        modifier = modifier.aspectRatio(aspectRatio),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
         shape = RoundedCornerShape(12.dp)
     ) {
         Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(aspectRatio)
+                .fillMaxSize()
                 .then(zoomModifier)
         ) {
             // Layer 1: Board image — loaded from bundled WebP asset

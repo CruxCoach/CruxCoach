@@ -125,7 +125,15 @@ class LocalShareNetwork(private val context: Context) {
         wifiManager.reconnect()
 
         try {
-            while (unquote(wifiManager.connectionInfo?.ssid) != invitation.ssid) {
+            // Android 8/9 can redact WifiInfo.ssid even after a successful
+            // association (for example while location state is changing).
+            // networkId identifies the exact configuration we selected and
+            // does not depend on that privacy-sensitive text field.
+            while (wifiManager.connectionInfo?.let { info ->
+                    info.networkId != targetNetworkId &&
+                        unquote(info.ssid) != invitation.ssid
+                } != false
+            ) {
                 delay(POLL_MS)
             }
             val selectedNetwork = connectivityManager.allNetworks.firstOrNull { network ->

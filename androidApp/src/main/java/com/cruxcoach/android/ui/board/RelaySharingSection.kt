@@ -146,6 +146,7 @@ fun RelaySharingSection(
         RelayActiveCard(
             clientCount = state.clientCount,
             advertisedName = state.advertisedName,
+            boardName = state.boardName ?: board.displayName,
             onStop = { viewModel.disableSharing() }
         )
     }
@@ -155,6 +156,7 @@ fun RelaySharingSection(
 private fun RelayActiveCard(
     clientCount: Int,
     advertisedName: String?,
+    boardName: String,
     onStop: () -> Unit
 ) {
     Card(
@@ -181,7 +183,7 @@ private fun RelayActiveCard(
                     tint = SuccessGreen
                 )
                 Text(
-                    stringResource(R.string.relay_chip_text, clientCount),
+                    stringResource(R.string.relay_chip_text, boardName, clientCount),
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold
                 )

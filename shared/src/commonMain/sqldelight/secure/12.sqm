@@ -1,0 +1,6 @@
+-- Migration version 12 → 13 (secure/personal DB): persist the profile bio
+-- locally. Profile editing is local-first; publishing a Nostr Kind 0 is a
+-- separate, explicit action.
+
+ALTER TABLE nostr_profiles ADD COLUMN about TEXT;
+ALTER TABLE nostr_profiles ADD COLUMN local_primary INTEGER NOT NULL DEFAULT 0;

@@ -115,6 +115,7 @@ data class SettingsState(
     val routePlayback: RoutePlaybackSettings = RoutePlaybackSettings(),
     val restTimer: RestTimerSettings = RestTimerSettings(),
     val climbSharing: ClimbSharingSettings = ClimbSharingSettings(),
+    val relayManualStart: Boolean = false,
     val keepScreenOn: Boolean = false,
     val easterAnimationsUnlocked: Boolean = false,
     val isAnimating: Boolean = false,
@@ -165,6 +166,11 @@ class SettingsViewModel @Inject constructor(
 
     init {
         loadSettings()
+        viewModelScope.safeLaunch("SettingsViewModel") {
+            userPreferences.relayManualStart.collect { manual ->
+                _state.update { it.copy(relayManualStart = manual) }
+            }
+        }
         viewModelScope.safeLaunch("SettingsViewModel") {
             val freq = withContext(Dispatchers.IO) { boardLocationRepository.productSizeFrequency() }
             val enabled = withContext(Dispatchers.IO) { boardLocationRepository.countWalls() > 0L }
@@ -629,6 +635,12 @@ class SettingsViewModel @Inject constructor(
     fun updateMoonBoardLedMode(mode: MoonBoardLedMode) {
         _state.update { it.copy(moonBoardLedMode = mode) }
         viewModelScope.launch { userPreferences.setMoonBoardLedMode(mode) }
+    }
+
+    /** Opt in to starting CruxRelay manually instead of with the board link. */
+    fun updateRelayManualStart(enabled: Boolean) {
+        _state.update { it.copy(relayManualStart = enabled) }
+        viewModelScope.safeLaunch(TAG) { userPreferences.setRelayManualStart(enabled) }
     }
 
     fun updateNearbyClimbSharing(enabled: Boolean) {

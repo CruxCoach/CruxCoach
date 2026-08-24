@@ -1375,7 +1375,10 @@ class BoardClimbDetailViewModel @Inject constructor(
             connectedViaRelay = climbState.ble.connectedViaRelay,
         )
         when (decision.target) {
-            BoardDeliveryTarget.DIRECT_BOARD -> sendController.sendToBoard()
+            // A tap on the lamp is an explicit projection request. Quantum may
+            // therefore claim the first genuinely free, conflict-free layer
+            // without making the user open the layer rack first.
+            BoardDeliveryTarget.DIRECT_BOARD -> sendController.sendToBoard(automaticLayer = true)
             BoardDeliveryTarget.SHARED_QUEUE ->
                 sessionQueueManager.addClimb(climb.uuid, climbState.angle)
             BoardDeliveryTarget.NONE -> Unit

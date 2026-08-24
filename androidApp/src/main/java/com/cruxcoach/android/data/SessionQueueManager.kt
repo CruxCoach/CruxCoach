@@ -41,6 +41,8 @@ data class SessionQueueState(
     val participants: List<SessionParticipant> = emptyList(),
     val queue: List<QueueItem> = emptyList(),
     val currentIndex: Int = -1,
+    /** True only for the private, locally running playlist player. */
+    val isPlaylist: Boolean = false,
     val isConnecting: Boolean = false,
     val error: String? = null,
     val visibility: SessionVisibility = SessionVisibility.LOCAL_ONLY,
@@ -235,7 +237,9 @@ class SessionQueueManager(
         }
         isPlaylistQueue = true
         lastSentClimbKey = null
-        _state.update { it.copy(queue = items, currentIndex = 0) }
+        // Publish queue and playlist identity atomically so inline append
+        // actions do not appear a recomposition late.
+        _state.update { it.copy(queue = items, currentIndex = 0, isPlaylist = true) }
         onQueueChanged?.invoke()
         onCurrentClimbChanged?.invoke()
         // Starting a playlist *is* the explicit action — the second case the

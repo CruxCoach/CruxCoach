@@ -117,6 +117,9 @@ sealed interface MoonBoardDeviation {
     /** Fewer problem cards were read than the session lists. */
     data class MissingProblems(override val date: String, val read: Int, val expected: Int) : MoonBoardDeviation
 
+    /** More semantic cards were exposed than Moon says the day contains. */
+    data class ExcessProblems(override val date: String, val read: Int, val expected: Int) : MoonBoardDeviation
+
     /** A card whose outcome wording the parser does not know. */
     data class UnknownWording(override val date: String, val count: Int) : MoonBoardDeviation
 
@@ -142,7 +145,12 @@ data class MoonBoardSessionResult(
     val entries: List<MoonBoardScreenEntry>,
     val unreadable: Map<String, Int>,
     val deviations: List<MoonBoardDeviation>,
+    val expected: Int?,
+    val hasFullMoonContract: Boolean,
 ) {
+    /** Every structurally visible card, including ones with unknown wording. */
+    val observed: Int get() = entries.size + unreadable.values.sum()
+
     /**
      * True only when this reading accounts for the training day in full: every
      * problem Moon promised was seen, every card was understood, and the send
@@ -150,7 +158,11 @@ data class MoonBoardSessionResult(
      * not conclude that a stored row is gone from Moon — it might simply not
      * have been read.
      */
-    val complete: Boolean get() = deviations.isEmpty()
+    val complete: Boolean get() =
+        expected != null &&
+            hasFullMoonContract &&
+            observed == expected &&
+            deviations.isEmpty()
 }
 
 /**
@@ -199,6 +211,9 @@ class MoonBoardSessionCollector(val session: MoonBoardScreenSession) {
         if (expected != null && seen < expected) {
             deviations += MoonBoardDeviation.MissingProblems(date, seen, expected)
         }
+        if (expected != null && seen > expected) {
+            deviations += MoonBoardDeviation.ExcessProblems(date, seen, expected)
+        }
         val missing = unreadable.values.sum()
         if (missing > 0) deviations += MoonBoardDeviation.UnknownWording(date, missing)
         session.completed?.let { promised ->
@@ -209,7 +224,13 @@ class MoonBoardSessionCollector(val session: MoonBoardScreenSession) {
             val tries = entries.sumOf { it.attempts }
             if (tries != promised) deviations += MoonBoardDeviation.TryMismatch(date, tries, promised)
         }
-        return MoonBoardSessionResult(entries, unreadable, deviations)
+        return MoonBoardSessionResult(
+            entries = entries,
+            unreadable = unreadable,
+            deviations = deviations,
+            expected = expected,
+            hasFullMoonContract = expected != null && session.completed != null && session.tries != null,
+        )
     }
 
     private companion object {

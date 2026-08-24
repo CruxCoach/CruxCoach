@@ -294,6 +294,7 @@ object PreferenceKeys {
     // name change + non-affiliation). App-scoped ON PURPOSE — the disclosure
     // is about the device, not the Nostr identity.
     val RELAY_DISCLOSURE_SEEN = booleanPreferencesKey("relay_disclosure_seen")
+    val RELAY_MANUAL_START = booleanPreferencesKey("relay_manual_start_v022")
     val BOARD_PRODUCT_SIZE_ID = intPreferencesKey("board_product_size_id")
     val BOARD_LAYOUT_ID = intPreferencesKey("board_layout_id")
     /** Active board brand — "kilter" | "moonboard" (FEAT-027). */
@@ -1553,6 +1554,15 @@ class UserPreferences(
 
     suspend fun setRelayDisclosureSeen() {
         dataStore.edit { it[PreferenceKeys.RELAY_DISCLOSURE_SEEN] = true }
+    }
+
+    /** Opt in to manual relay start. False means the relay follows the board connection. */
+    val relayManualStart: Flow<Boolean> = dataStore.data.map {
+        it[PreferenceKeys.RELAY_MANUAL_START] ?: false
+    }
+
+    suspend fun setRelayManualStart(enabled: Boolean) {
+        dataStore.edit { it[PreferenceKeys.RELAY_MANUAL_START] = enabled }
     }
 
     val leaderboardDisplayName: Flow<String> = keyScoped.data.map {

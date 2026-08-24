@@ -1,7 +1,5 @@
 package com.cruxcoach.android.ui.board
 
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -19,7 +17,6 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,7 +27,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.cruxcoach.android.ui.common.RestTimerBannerSlot
-import com.cruxcoach.android.ui.common.SessionVisibilityDialog
 import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
 import com.cruxcoach.android.ui.common.BleStatusArea
 import androidx.compose.ui.res.stringResource
@@ -38,11 +34,8 @@ import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.*
 import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.data.repository.Climb_list_entries
-import com.cruxcoach.data.repository.ListPlaybackAdvance
-import com.cruxcoach.data.repository.ListPlaybackOrder
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.IntensityZones
-import com.cruxcoach.android.ui.settings.DurationStepper
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -56,7 +49,6 @@ fun BoardListDetailScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val bleConnectionViewModel: BleConnectionViewModel = hiltViewModel()
     var menuExpanded by remember { mutableStateOf(false) }
-    var showSessionVisibilityDialog by rememberSaveable { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
     val queueTitle = stringResource(R.string.board_queue_title)
     val notificationPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
@@ -73,38 +65,13 @@ fun BoardListDetailScreen(
         }
     }
 
-    if (state.showPlaybackOptions) {
-        PlaybackOptionsSheet(
-            state = state,
-            onDismiss = viewModel::dismissPlaybackOptions,
-            onUsePlanChange = viewModel::setUsePlaybackPlan,
-            onOrderChange = viewModel::setPlaybackOrder,
-            onAdvanceChange = viewModel::setPlaybackAdvance,
-            onRestChange = viewModel::setPlaybackRestSeconds,
-            onEditPlan = {
-                viewModel.dismissPlaybackOptions()
-                viewModel.preparePlaybackPlan { onNavigateToPlaybackPlan(state.listId) }
-            },
-            onStart = {
-                viewModel.dismissPlaybackOptions()
-                showSessionVisibilityDialog = true
-            },
-        )
-    }
-
-    if (showSessionVisibilityDialog) {
-        SessionVisibilityDialog(
-            onDismiss = { showSessionVisibilityDialog = false },
-            onSelect = { visibility ->
-                showSessionVisibilityDialog = false
-                requestNotificationPermissionIfNeeded()
-                // Lists and generated plans share the same playlist player:
-                // always try the remembered physical controller before the
-                // queue changes this screen into session-host mode.
-                bleConnectionViewModel.reconnectRememberedBoard()
-                viewModel.startPlayback(queueTitle, visibility, onPlayed)
-            },
-        )
+    val startPlaylist = {
+        requestNotificationPermissionIfNeeded()
+        // 0.2.2 playlists are private and local. One tap starts the visible
+        // list in its saved order; there is no source, advance or visibility
+        // decision in between the list and its player.
+        bleConnectionViewModel.reconnectRememberedBoard()
+        viewModel.startPlayback(queueTitle, onPlayed)
     }
 
     if (state.showRenameDialog) {
@@ -201,7 +168,7 @@ fun BoardListDetailScreen(
         floatingActionButton = {
             if (!state.isIgnored && state.totalCount > 0) {
                 ExtendedFloatingActionButton(
-                    onClick = viewModel::showPlaybackOptions,
+                    onClick = startPlaylist,
                     containerColor = OrangeAccent,
                     icon = {
                         Icon(Icons.Default.PlayArrow, contentDescription = null, tint = DarkBackground)
@@ -280,6 +247,20 @@ fun BoardListDetailScreen(
                         )
                     }
 
+                    state.playbackStartError?.let { error ->
+                        PlaybackInfoBox(
+                            text = stringResource(
+                                when (error) {
+                                    PlaybackStartError.EMPTY -> R.string.list_playback_error_empty
+                                    PlaybackStartError.MULTIPLE_BOARDS ->
+                                        R.string.list_playback_error_multiple_boards
+                                }
+                            ),
+                            isError = true,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                        )
+                    }
+
                     // FEAT-023: a list is the user's selection, shown in FULL
                     // (every board) — each card's BoardBrandBadge labels its own
                     // board. When the list spans >1 board, offer a MULTI-SELECT
@@ -327,210 +308,19 @@ fun BoardListDetailScreen(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun PlaybackOptionsSheet(
-    state: BoardListDetailState,
-    onDismiss: () -> Unit,
-    onUsePlanChange: (Boolean) -> Unit,
-    onOrderChange: (ListPlaybackOrder) -> Unit,
-    onAdvanceChange: (ListPlaybackAdvance) -> Unit,
-    onRestChange: (Long) -> Unit,
-    onEditPlan: () -> Unit,
-    onStart: () -> Unit,
-) {
-    val visibleBoardCount = state.entries
-        .map { it.climb.boardBrand to it.climb.layoutId }
-        .distinct()
-        .size
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight(0.9f),
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 20.dp)
-                    // The fixed action below must never cover the final option.
-                    .padding(bottom = 88.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-            Text(
-                stringResource(R.string.list_playback_title),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-            )
-
-            if (state.hasPlaybackPlan) {
-                Text(
-                    stringResource(R.string.list_playback_source),
-                    style = MaterialTheme.typography.labelLarge,
-                )
-                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                    listOf(false, true).forEachIndexed { index, usePlan ->
-                        SegmentedButton(
-                            selected = state.usePlaybackPlan == usePlan,
-                            onClick = { onUsePlanChange(usePlan) },
-                            shape = SegmentedButtonDefaults.itemShape(index, 2),
-                            label = {
-                                Text(
-                                    stringResource(
-                                        if (usePlan) R.string.list_playback_source_plan
-                                        else R.string.list_playback_source_list
-                                    )
-                                )
-                            },
-                        )
-                    }
-                }
-            }
-
-            if (state.usePlaybackPlan) {
-                PlaybackInfoBox(
-                    text = stringResource(R.string.list_playback_plan_info),
-                    actionLabel = stringResource(R.string.list_playback_edit_plan),
-                    onAction = onEditPlan,
-                )
-            } else {
-                Text(
-                    stringResource(R.string.list_playback_order),
-                    style = MaterialTheme.typography.labelLarge,
-                )
-                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                    ListPlaybackOrder.entries.forEachIndexed { index, order ->
-                        SegmentedButton(
-                            selected = state.playbackOrder == order,
-                            onClick = { onOrderChange(order) },
-                            shape = SegmentedButtonDefaults.itemShape(index, ListPlaybackOrder.entries.size),
-                            label = {
-                                Text(
-                                    stringResource(
-                                        if (order == ListPlaybackOrder.LIST) {
-                                            R.string.list_playback_order_list
-                                        } else R.string.list_playback_order_shuffle
-                                    )
-                                )
-                            },
-                        )
-                    }
-                }
-                Text(
-                    stringResource(R.string.list_playback_default_rest),
-                    style = MaterialTheme.typography.labelLarge,
-                )
-                DurationStepper(
-                    seconds = state.playbackRestSeconds.toInt(),
-                    onChange = { onRestChange(it.toLong()) },
-                    minSeconds = 0,
-                    maxSeconds = 3600,
-                    minuteLabel = stringResource(R.string.settings_duration_minutes_label),
-                    secondLabel = stringResource(R.string.settings_duration_seconds_label),
-                )
-            }
-
-            HorizontalDivider()
-            Text(
-                stringResource(R.string.list_playback_advance),
-                style = MaterialTheme.typography.labelLarge,
-            )
-            ListPlaybackAdvance.entries.forEach { advance ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 48.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    RadioButton(
-                        selected = state.playbackAdvance == advance,
-                        onClick = { onAdvanceChange(advance) },
-                    )
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            stringResource(
-                                when (advance) {
-                                    ListPlaybackAdvance.MANUAL -> R.string.list_playback_advance_manual
-                                    ListPlaybackAdvance.AFTER_SEND -> R.string.list_playback_advance_send
-                                    ListPlaybackAdvance.AFTER_LOG -> R.string.list_playback_advance_log
-                                }
-                            ),
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                    }
-                }
-            }
-
-            if (!state.usePlaybackPlan && visibleBoardCount > 1) {
-                PlaybackInfoBox(stringResource(R.string.list_playback_multiple_boards_hint))
-            }
-            if (state.unavailableCount > 0) {
-                PlaybackInfoBox(
-                    stringResource(R.string.list_playback_unavailable_hint, state.unavailableCount)
-                )
-            }
-            state.playbackStartError?.let { error ->
-                PlaybackInfoBox(
-                    text = stringResource(
-                        when (error) {
-                            PlaybackStartError.EMPTY -> R.string.list_playback_error_empty
-                            PlaybackStartError.MULTIPLE_BOARDS -> R.string.list_playback_error_multiple_boards
-                        }
-                    ),
-                    isError = true,
-                )
-            }
-            }
-
-            Button(
-                onClick = onStart,
-                enabled = !state.isStartingPlayback &&
-                    (state.usePlaybackPlan || (state.entries.isNotEmpty() && visibleBoardCount == 1)),
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(horizontal = 20.dp, vertical = 12.dp)
-                    .fillMaxWidth()
-                    .testTag("list_playback_confirm"),
-                colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
-                shape = RoundedCornerShape(8.dp),
-            ) {
-                if (state.isStartingPlayback) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        strokeWidth = 2.dp,
-                        color = DarkBackground,
-                    )
-                } else {
-                    Icon(Icons.Default.PlayArrow, contentDescription = null, tint = DarkBackground)
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        stringResource(R.string.list_playback_start),
-                        color = DarkBackground,
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
-            }
-        }
-    }
-}
-
 @Composable
 private fun PlaybackInfoBox(
     text: String,
     actionLabel: String? = null,
     onAction: (() -> Unit)? = null,
     isError: Boolean = false,
+    modifier: Modifier = Modifier,
 ) {
     val color = if (isError) MaterialTheme.colorScheme.error else InfoBlue
     Surface(
         color = color.copy(alpha = 0.10f),
         shape = RoundedCornerShape(8.dp),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),

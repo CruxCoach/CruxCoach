@@ -1,8 +1,9 @@
 package com.cruxcoach.android.moonboard
 
 import java.time.LocalDate
-import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeFormatterBuilder
 import java.time.format.DateTimeParseException
+import java.time.temporal.ChronoField
 import java.util.Locale
 
 data class MoonBoardScreenEntry(
@@ -39,9 +40,13 @@ data class MoonBoardLogbookHeader(val sessions: Int?, val problems: Int?)
 
 /** Parses the semantic labels exposed by the official Moon Climbing app. */
 object MoonBoardScreenParser {
-    private val dateLine = Regex("^(\\d{1,2}\\s+\\p{L}{3,}\\.?\\s+\\d{4})$")
-    private val setterLine = Regex("^Set by\\s+(.+?)\\s*@\\s*(\\d{1,2})°$")
-    private val attemptLine = Regex("^(.*?)(?:\\s+@\\s*|\\s*@)(\\d{1,2})°$", RegexOption.IGNORE_CASE)
+    private val dateLine = Regex("^(\\d{1,2})\\s+([\\p{L}.]+),?\\s+(\\d{4})$")
+    private val setterLine = Regex("^Set\\s+by\\s+(.+?)\\s*@\\s*(\\d{1,2})\\s*[°º]$", RegexOption.IGNORE_CASE)
+    private val attemptLine = Regex("^(.*?)(?:\\s+@\\s*|\\s*@)(\\d{1,2})\\s*[°º]$", RegexOption.IGNORE_CASE)
+    private val setterPrefix = Regex(
+        "^(?:set\\s+by|setter|established\\s+by|opened\\s+by)\\s*:?\\s*",
+        RegexOption.IGNORE_CASE,
+    )
     private val sessionSummary = Regex(
         "(\\d+)\\s+problems?(?:\\s*\\((\\d+)\\s+completed,\\s*(\\d+)\\s+tr(?:y|ies)\\))?",
         RegexOption.IGNORE_CASE,
@@ -60,17 +65,31 @@ object MoonBoardScreenParser {
     private val flashOutcomes = setOf("flashed", "flash", "session flash")
     private val projectOutcomes = setOf("project", "projected", "attempted", "fail", "failed")
 
-    private val locales = listOf(
+    private val preferredLocales = listOf(
         Locale.ENGLISH, Locale.GERMAN, Locale.FRENCH, Locale.ITALIAN,
-        Locale("es"), Locale("nl"), Locale("pl"), Locale.getDefault(),
+        Locale.forLanguageTag("es"), Locale.forLanguageTag("nl"), Locale.forLanguageTag("pl"),
+        Locale.getDefault(),
     ).distinct()
 
+    // Moon normally exposes English semantics, but the device locale is not a
+    // contract. Trying the platform's month-name locales lets a future build
+    // localise the date without making the scraper mistake a valid row for an
+    // empty logbook. Preferred/common locales stay first for the hot path.
+    private val locales = (preferredLocales + Locale.getAvailableLocales())
+        .distinctBy { it.toLanguageTag() }
+
     fun parseDateLabel(label: String): String? {
-        val first = label.trim().lineSequence().firstOrNull()?.trim().orEmpty()
-        val raw = dateLine.matchEntire(first)?.groupValues?.get(1)?.replace(".", "") ?: return null
+        val first = label.normalizedLines().firstOrNull().orEmpty()
+        val match = dateLine.matchEntire(first) ?: return null
+        val raw = "${match.groupValues[1]} ${match.groupValues[2].replace(".", "")} ${match.groupValues[3]}"
         for (locale in locales) {
             try {
-                val date = LocalDate.parse(raw, DateTimeFormatter.ofPattern("d MMM uuuu", locale))
+                val formatter = DateTimeFormatterBuilder()
+                    .parseCaseInsensitive()
+                    .appendPattern("d MMM uuuu")
+                    .parseDefaulting(ChronoField.ERA, 1)
+                    .toFormatter(locale)
+                val date = LocalDate.parse(raw, formatter)
                 return "${date}T12:00:00Z"
             } catch (_: DateTimeParseException) {
                 // Try the next app/device locale.
@@ -81,7 +100,7 @@ object MoonBoardScreenParser {
 
     /** A logbook date row, including the counts Moon promises for that session. */
     fun parseSession(label: String): MoonBoardScreenSession? {
-        val trimmed = label.trim()
+        val trimmed = label.normalizedLines().joinToString("\n")
         val climbedAt = parseDateLabel(trimmed) ?: return null
         val summary = trimmed.lines().drop(1).joinToString(" ")
         val match = sessionSummary.find(summary)
@@ -96,12 +115,25 @@ object MoonBoardScreenParser {
 
     /** `Logbook\n83 entries, 382 problems` / `Logbook\n4 problems`. */
     fun parseHeader(label: String): MoonBoardLogbookHeader? {
-        val lines = label.trim().lines().map(String::trim).filter(String::isNotEmpty)
-        if (lines.size != 2 || !lines[0].equals("Logbook", ignoreCase = true)) return null
-        val sessions = headerSessions.find(lines[1])?.groupValues?.get(1)?.toCount()
-        val problems = headerProblems.find(lines[1])?.groupValues?.get(1)?.toCount()
+        val lines = label.normalizedLines()
+        if (lines.isEmpty() || parseDateLabel(lines.first()) != null) return null
+        // Do not bind the completeness contract to the screen title. Moon may
+        // rename/localise "Logbook" while retaining the semantic count line.
+        val counts = lines.joinToString(" ")
+        val sessions = headerSessions.find(counts)?.groupValues?.get(1)?.toCount()
+        val problems = headerProblems.find(counts)?.groupValues?.get(1)?.toCount()
         if (sessions == null && problems == null) return null
+        // A global list header is uniquely identified by its entry count and
+        // may safely change title. A problems-only label is much less specific,
+        // so retain the title check there; the date row remains the fallback
+        // source for an open session's expected count.
+        if (sessions == null && !isLogbookTitle(lines.first())) return null
         return MoonBoardLogbookHeader(sessions, problems)
+    }
+
+    fun isLogbookTitle(label: String): Boolean {
+        val title = label.normalizedLines().firstOrNull()?.lowercase(Locale.ROOT).orEmpty()
+        return title in setOf("logbook", "log book", "logbuch")
     }
 
     /**
@@ -111,24 +143,34 @@ object MoonBoardScreenParser {
      * vanishing from the import.
      */
     fun isProblemLabel(label: String): Boolean {
-        val lines = label.lines().map(String::trim).filter(String::isNotEmpty)
+        val lines = label.normalizedLines()
         if (lines.size < 3) return false
-        return lines.indexOfFirst(setterLine::matches) > 0
+        if (lines.indexOfFirst(setterLine::matches) > 0) return true
+        // A wording update may rename "Set by". Two angle-bearing semantic
+        // lines (metadata + final outcome) still identify the card structure;
+        // parseProblem remains conservative about the outcome itself.
+        val angles = lines.withIndex().filter { attemptLine.matches(it.value) }
+        return angles.size >= 2 && angles.first().index > 0
     }
 
     fun parseProblem(label: String, climbedAt: String): MoonBoardScreenEntry? {
-        val lines = label.lines().map(String::trim).filter(String::isNotEmpty)
+        val lines = label.normalizedLines()
         if (lines.size < 3) return null
-        val setterIndex = lines.indexOfFirst(setterLine::matches)
+        val exactSetterIndex = lines.indexOfFirst(setterLine::matches)
+        val angleLines = lines.withIndex().filter { attemptLine.matches(it.value) }
+        val setterIndex = if (exactSetterIndex > 0) exactSetterIndex else angleLines.firstOrNull()?.index ?: -1
         if (setterIndex <= 0) return null
-        val setter = setterLine.matchEntire(lines[setterIndex]) ?: return null
+        val setter = setterLine.matchEntire(lines[setterIndex])
+        val genericSetter = attemptLine.matchEntire(lines[setterIndex]) ?: return null
         val attempt = lines.asReversed().firstNotNullOfOrNull(attemptLine::matchEntire) ?: return null
+        if (lines.lastIndexOf(attempt.value) <= setterIndex) return null
         val tries = attempt.groupValues[1].trim()
         val angle = attempt.groupValues[2].toIntOrNull() ?: return null
         val classification = classify(tries) ?: return null
         return MoonBoardScreenEntry(
             name = lines.take(setterIndex).joinToString(" "),
-            setter = setter.groupValues[1].trim(),
+            setter = setter?.groupValues?.get(1)?.trim()
+                ?: genericSetter.groupValues[1].replace(setterPrefix, "").trim(),
             angle = angle,
             climbedAt = climbedAt,
             tries = tries,
@@ -175,4 +217,9 @@ object MoonBoardScreenParser {
     }
 
     private fun String.toCount(): Int? = replace(",", "").replace(".", "").toIntOrNull()
+
+    /** Normalises NBSP/thin-space changes commonly introduced by UI updates. */
+    private fun String.normalizedLines(): List<String> = lines()
+        .map { line -> line.replace(Regex("[\\s\\u00a0\\u2007\\u202f]+"), " ").trim() }
+        .filter(String::isNotEmpty)
 }

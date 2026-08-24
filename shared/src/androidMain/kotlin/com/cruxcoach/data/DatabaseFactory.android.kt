@@ -92,9 +92,9 @@ actual class BoardDriverFactory(private val context: Context) {
             "CREATE INDEX IF NOT EXISTS idx_climbs_kilter_status ON climbs(kilter_status)",
             "CREATE INDEX IF NOT EXISTS idx_climbs_nostr_via ON climbs(nostr_publish_via)",
             "CREATE INDEX IF NOT EXISTS idx_climb_stats_angle ON climb_stats(angle)",
-            "CREATE INDEX IF NOT EXISTS idx_climb_stats_browse ON climb_stats(angle, difficulty_average, quality_average, ascensionist_count, benchmark_difficulty, climb_uuid)",
-            "CREATE INDEX IF NOT EXISTS idx_climb_stats_by_popularity ON climb_stats(angle, ascensionist_count, difficulty_average, climb_uuid)",
-            "CREATE INDEX IF NOT EXISTS idx_climb_stats_count_cover ON climb_stats(angle, ascensionist_count, difficulty_average, benchmark_difficulty, climb_uuid)",
+            "CREATE INDEX IF NOT EXISTS idx_climb_stats_browse ON climb_stats(layout_id, angle, difficulty_average, quality_average, ascensionist_count, benchmark_difficulty, climb_uuid)",
+            "CREATE INDEX IF NOT EXISTS idx_climb_stats_by_popularity ON climb_stats(layout_id, angle, ascensionist_count, difficulty_average, climb_uuid)",
+            "CREATE INDEX IF NOT EXISTS idx_climb_stats_count_cover ON climb_stats(layout_id, angle, ascensionist_count, difficulty_average, benchmark_difficulty, climb_uuid)",
         )
     }
 

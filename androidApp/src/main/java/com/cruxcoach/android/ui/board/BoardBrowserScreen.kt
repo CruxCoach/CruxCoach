@@ -416,14 +416,14 @@ fun BoardBrowserScreen(
                 )
             }
 
-            // Unified BLE status area — nearby climbs, sessions, board status
+            // Universal BLE/playlist status area.
             BleStatusArea(
                 onClimbTapped = { uuid, angle ->
                     viewModel.climbNavState.climbUuids = listOf(uuid)
                     viewModel.climbNavState.angle = angle
                     onNavigateToClimb(uuid, angle)
                 },
-                onRandomToQueue = { viewModel.addRandomClimbToQueue() }
+                onRandomToQueue = { viewModel.addRandomClimbToQueue() },
             )
 
             // Connecting indicator while GATT connection is being established
@@ -657,6 +657,13 @@ fun BoardBrowserScreen(
                 // Long-press on a row: add to list/playlist (incl. the
                 // running playlist) without opening the detail screen.
                 var addToListClimbUuid by remember { mutableStateOf<String?>(null) }
+                val runningPlaylistCounts = remember(queueState.queue, state.filter.angle) {
+                    queueState.queue
+                        .filter { it.angle == state.filter.angle }
+                        .groupingBy { it.climbUuid.lowercase() }
+                        .eachCount()
+                }
+                val canAppendToRunningPlaylist = queueState.isActive && queueState.isPlaylist
                 addToListClimbUuid?.let { uuid ->
                     AddToListDialogHost(
                         climbUuid = uuid,
@@ -682,6 +689,11 @@ fun BoardBrowserScreen(
                             onNavigateToSetter = onSetterClickFromCard,
                             onClimbClick = onClimbClick,
                             onClimbLongClick = { addToListClimbUuid = it },
+                            onAddToBoardPlaylist = if (canAppendToRunningPlaylist) {
+                                { queueManager.addClimb(climb.uuid, state.filter.angle) }
+                            } else null,
+                            boardPlaylistCount =
+                                runningPlaylistCounts[climb.uuid.lowercase()] ?: 0,
                         )
                     }
 

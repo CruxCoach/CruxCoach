@@ -81,7 +81,6 @@ import com.cruxcoach.android.ui.board.BleConnectionSheet
 import com.cruxcoach.android.ui.board.BleConnectionViewModel
 import com.cruxcoach.android.ui.common.BleStatusArea
 import com.cruxcoach.android.ui.common.RestTimerBannerSlot
-import com.cruxcoach.android.ui.common.SessionVisibilityDialog
 import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
 import com.cruxcoach.android.ui.navigation.ClimbNavigationSource
 import com.cruxcoach.android.ui.theme.DarkBackground
@@ -110,7 +109,6 @@ fun PlaylistDetailScreen(
     var addRestAfterEntryId by rememberSaveable { mutableStateOf<Long?>(null) }
     var showResetConfirm by rememberSaveable { mutableStateOf(false) }
     var showClearConfirm by rememberSaveable { mutableStateOf(false) }
-    var showSessionVisibilityDialog by rememberSaveable { mutableStateOf(false) }
     var showBleSheet by rememberSaveable { mutableStateOf(false) }
 
     // A plan can be started without a board attached, and BleStatusArea below
@@ -178,20 +176,12 @@ fun PlaylistDetailScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    if (showSessionVisibilityDialog) {
-        SessionVisibilityDialog(
-            onDismiss = { showSessionVisibilityDialog = false },
-            onSelect = { visibility ->
-                showSessionVisibilityDialog = false
-                requestNotificationPermissionIfNeeded()
-                // Starting a playlist should immediately reach for the last
-                // controller of the active board family. This is a direct
-                // GATT reconnect (no discovery/location gate); the player
-                // still exposes the picker if the remembered board is absent.
-                bleConnectionViewModel.reconnectRememberedBoard()
-                viewModel.play(queueTitle, visibility, onPlayed)
-            },
-        )
+    val startPlaylist = {
+        requestNotificationPermissionIfNeeded()
+        // The plan is already the playback source. Start it immediately as a
+        // private local playlist; 0.2.2 has no join/visibility decision.
+        bleConnectionViewModel.reconnectRememberedBoard()
+        viewModel.play(state.name.ifBlank { queueTitle }, onPlayed)
     }
 
     if (showBleSheet) {
@@ -411,7 +401,7 @@ fun PlaylistDetailScreen(
             val playable = state.entries.any { !it.isRest && it.climb != null }
             if (playable) {
                 ExtendedFloatingActionButton(
-                    onClick = { showSessionVisibilityDialog = true },
+                    onClick = startPlaylist,
                     containerColor = OrangeAccent,
                     icon = {
                         Icon(Icons.Default.PlayArrow, contentDescription = null, tint = DarkBackground)
