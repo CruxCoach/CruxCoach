@@ -29,7 +29,9 @@ These rules apply to every human-assisted coding agent in this repository.
 ## Change hygiene
 
 - Preserve unrelated user/agent changes. Stage only task-owned hunks and inspect the cached diff.
-- Run the relevant Gradle and Python checks before committing. New UI strings must update the
-  default English and German resources together.
+- Run only focused, change-specific tests locally. Full Gradle test suites, full APK builds,
+  Android lint, and other repository-wide verification runs must run through CI, not locally.
+  Do not duplicate checks locally that the branch CI already performs.
+- New UI strings must update the default English and German resources together.
 - Never print, persist, commit, or place in process arguments Android keys, Nostr keys, bunker
   connections, APKTrack tokens, signing passwords, or release credentials.
