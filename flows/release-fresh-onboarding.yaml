@@ -63,14 +63,14 @@ tags:
 # Catalogue download copy lives below the compact-device fold.
 - scrollUntilVisible:
     element:
-      text: "Routen laden"
+      text: "Climbs offline verfügbar machen"
     direction: DOWN
-- assertVisible: "Routen laden"
+- assertVisible: "Climbs offline verfügbar machen"
 - scrollUntilVisible:
     element:
-      text: "~85 MB"
+      text: "etwa 130 MB"
     direction: DOWN
-- assertVisible: "~85 MB"
+- assertVisible: "etwa 130 MB"
 - scrollUntilVisible:
     element:
       text: "WLAN empfohlen"
@@ -80,7 +80,7 @@ tags:
     id: "onboarding_next_button"
 - assertVisible:
     id: "onboarding_privacy"
-- assertVisible: "Wie möchtest du CruxCoach nutzen?"
+- assertVisible: "Deine Daten, deine Entscheidung"
 - scrollUntilVisible:
     element:
       id: "onboarding_ble_switch"

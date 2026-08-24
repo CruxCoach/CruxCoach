@@ -205,17 +205,24 @@
 
     <!-- Onboarding -->
     <string name="onboarding_welcome">Welcome to CruxCoach</string>
-    <string name="onboarding_welcome_subtitle">Open source Kilter Board app — browse climbs, light up the board, log sessions.</string>
-    <string name="onboarding_privacy_title">How do you want to use CruxCoach?</string>
-    <string name="onboarding_privacy_subtitle">Choose which features should be active. You can change everything anytime in settings.</string>
-    <string name="onboarding_privacy_ble_title">Board sharing nearby</string>
-    <string name="onboarding_privacy_ble_desc">Share climbs with people at the board and use session mode for group bouldering.</string>
+    <string name="onboarding_welcome_subtitle">Find climbs, light your board and keep a private training log — across the boards you actually climb on.</string>
+    <string name="onboarding_supported_boards">Kilter · MoonBoard · Quantum · Aurora boards</string>
+    <string name="onboarding_choose_board_title">Choose your board</string>
+    <string name="onboarding_choose_board_subtitle">This sets the right layout, holds and Bluetooth protocol. You can switch boards at any time.</string>
+    <string name="onboarding_progress_step" formatted="false">Step %1$d of %2$d</string>
+    <string name="onboarding_progress_board">Your board</string>
+    <string name="onboarding_progress_privacy">Your data</string>
+    <string name="onboarding_progress_import">Your history</string>
+    <string name="onboarding_privacy_title">Your data, your choices</string>
+    <string name="onboarding_privacy_subtitle">Personal training data stays on this device by default. Enable only the extras you want; every choice remains editable in settings.</string>
+    <string name="onboarding_privacy_ble_title">Nearby board features</string>
+    <string name="onboarding_privacy_ble_desc">Share the climb you are viewing with people nearby and use CruxRelay when you choose to connect a board.</string>
     <string name="onboarding_privacy_community_title">Community &amp; feedback</string>
-    <string name="onboarding_privacy_community_desc">Crash reports, app announcements and developer chat — all encrypted, no account needed.</string>
+    <string name="onboarding_privacy_community_desc">Community climbs, release announcements and developer chat. Your profile stays local until you explicitly publish it.</string>
     <string name="onboarding_privacy_hint">Your personal data stays on this device by default. The optional cloud backup uploads only an end-to-end encrypted copy that only you can decrypt.</string>
     <string name="onboarding_lets_go">Let\'s go</string>
-    <string name="onboarding_board_setup_title">Load the climbs</string>
-    <string name="onboarding_board_setup_subtitle">Without it the app stays empty. Everything else is adjustable later in settings.</string>
+    <string name="onboarding_board_setup_title">Make climbs available offline</string>
+    <string name="onboarding_board_setup_subtitle">CruxCoach downloads the public catalogues once, then browsing and board control work without internet. You can continue while they load.</string>
     <string name="onboarding_board_skip_hint">You can skip both steps and set them up anytime in settings.</string>
     <string name="onboarding_kilter_title">Import Kilter logbook</string>
     <string name="onboarding_kilter_desc">Have a Kilter account? Import your ascents and projects.</string>
@@ -377,7 +384,7 @@
     <string name="settings_board_data_title">Board data</string>
     <string name="settings_board_type">Board type:</string>
     <string name="settings_board_auto_download">Automatic download (WiFi):</string>
-    <string name="settings_board_auto_download_desc">Downloads the complete board database (~85 MB) in the background over WiFi.</string>
+    <string name="settings_board_auto_download_desc">Downloads current board catalogues in the background over WiFi (currently about 130 MB; varies as catalogues grow).</string>
 
     <!-- Settings: BLE -->
     <string name="settings_ble_auto_disconnect_title">Release board connection</string>
@@ -986,13 +993,13 @@
     <string name="board_sync_no_network_message">An active internet connection is required for syncing.</string>
     <string name="board_sync_open_settings">Open settings</string>
     <string name="board_sync_metered_confirm_title">Download over mobile data?</string>
-    <string name="board_sync_metered_confirm_message">The board database download is approximately 85 MB. You are not on WiFi — downloading now will use mobile data, which may incur charges.</string>
+    <string name="board_sync_metered_confirm_message">The current board catalogues are about 130 MB in total and may grow over time. You are not on WiFi — downloading now will use mobile data, which may incur charges.</string>
     <string name="board_sync_metered_confirm_action">Use mobile data</string>
     <string name="board_sync_no_network_banner">No network available</string>
     <string name="board_sync_no_wifi_banner">No WiFi — downloading now will use mobile data</string>
     <string name="board_sync_to_browser">Done</string>
     <string name="board_sync_db_title">Board databases</string>
-    <string name="board_sync_db_description">Downloads the current climb catalogues for all supported boards (~85 MB). WiFi recommended.</string>
+    <string name="board_sync_db_description">Downloads the public climb catalogues for offline use (currently about 130 MB; varies with catalogue updates). WiFi recommended.</string>
     <string name="board_sync_db_synced">Database synced</string>
     <string name="board_sync_last_sync">Last sync: %s</string>
     <string name="board_sync_no_network_permission">CruxCoach has no network permission — grant it in the system settings under Permissions › Network.</string>
@@ -1670,7 +1677,7 @@
     <string name="settings_board_layout_desc">Pick which Kilter wall you have. Browse and climb-creator follow this choice.</string>
     <string name="settings_board_layout_original">Kilter Original</string>
     <string name="settings_board_layout_homewall">Kilter Homewall</string>
-    <string name="settings_board_model_title">Board size</string>
+    <string name="settings_board_model_title">Board</string>
     <string name="settings_board_model_change">Change</string>
     <string name="settings_board_model_not_configured">Not configured</string>
     <string name="settings_moonboard_led_position_title">LED position</string>
@@ -2031,9 +2038,14 @@
     <string name="onboarding_backup_restore_waiting_for_key">Import your Nostr key to continue, or switch back to \"Start fresh\".</string>
     <string name="onboarding_restart_confirm_title">Import Nostr key</string>
     <string name="onboarding_restart_confirm_body">CruxCoach will briefly restart after the import to switch the local encryption to your key. Onboarding continues automatically with the restore.</string>
-    <string name="onboarding_kilter_step_title">Kilter logbook</string>
-    <string name="onboarding_kilter_step_subtitle">Optional: pull your sends and attempts from the official Kilter Board app. You can do this later in settings.</string>
-    <string name="onboarding_kilter_skip_hint">Optional step. Tap \"Done\" without connecting — the Kilter import is always available later in settings.</string>
+    <string name="onboarding_kilter_step_title">Bring your logbook</string>
+    <string name="onboarding_kilter_step_subtitle">Optional: continue with your existing history. Pick the source you used before; imports merge safely with local entries.</string>
+    <string name="onboarding_kilter_skip_hint">No previous logbook? Tap “Done”. Every import remains available later under Settings → Data.</string>
+    <string name="onboarding_moon_import_title">MoonBoard logbook</string>
+    <string name="onboarding_moon_import_desc">Transfer your training history from the official Moon app on this device, or import a CSV export.</string>
+    <string name="onboarding_moon_import_action">Open</string>
+    <string name="onboarding_import_expand">Show import options</string>
+    <string name="onboarding_import_collapse">Hide import options</string>
 
     <!-- Clipboard -->
     <string name="action_copy">Copy</string>
@@ -2051,7 +2063,7 @@
 
     <!-- BoardModelSelectionDialog (was hardcoded German until 0.1.3) -->
     <string name="board_model_dialog_title_missing">Board data missing</string>
-    <string name="board_model_dialog_title_pick">Which Kilter board do you have?</string>
+    <string name="board_model_dialog_title_pick">Which board do you climb on?</string>
     <string name="board_model_dialog_body_missing_with_sync">The board database has not been synced yet. Start the sync; afterward you can pick your board model.</string>
     <string name="board_model_dialog_body_missing_inline">The board database has not been synced yet. Start the sync below on this screen; afterward you can pick your board model.</string>
     <string name="board_model_dialog_hint">The selection determines which holds and LEDs are shown.</string>
@@ -2113,8 +2125,8 @@
     <string name="whatsnew_nostr_backup_consent">A CruxCoach Account key is created on this device if you don\'t already have one. Backups don\'t run automatically — you start them yourself in Settings.</string>
 
     <!-- FEAT-005 Aurora-JSON migration -->
-    <string name="onboarding_aurora_card_title">Coming from the old Kilter app?</string>
-    <string name="onboarding_aurora_card_subtitle">Bring your Aurora ascents, attempts and playlists across via the JSON export Aurora sends after a data request.</string>
+    <string name="onboarding_aurora_card_title">Aurora / old Kilter app</string>
+    <string name="onboarding_aurora_card_subtitle">Import ascents, attempts and playlists from an Aurora JSON data export.</string>
     <string name="whatsnew_aurora_import_title">Aurora data — import it now</string>
     <string name="whatsnew_aurora_import_body">0.1.4 ingests the email JSON Aurora sends after a data-export request. Your historical ascents, attempts and playlists land in CruxCoach\'s logbook with one tap.</string>
     <string name="whatsnew_aurora_import_hint">Have the JSON file already? Tap \"Import now\". Otherwise the importer stays in Settings → Migrate from Aurora — request the export first, come back later.</string>
