@@ -3,6 +3,7 @@ package com.cruxcoach.android.ui.board
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.BoardLayerManager
+import com.cruxcoach.android.ble.BoardLayerPlanKey
 import com.cruxcoach.android.ble.BoardLayerBoardIdentity
 import com.cruxcoach.android.ble.BoardLayerState
 import com.cruxcoach.android.ble.BoardClimbLayer
@@ -11,6 +12,7 @@ import com.cruxcoach.android.ble.DiscoveredBoard
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ble.ExternalBoardLayer
 import com.cruxcoach.android.ble.QuantumControllerState
+import com.cruxcoach.android.ble.planKey
 import com.cruxcoach.android.data.SessionQueueManager
 import com.cruxcoach.android.data.SessionQueueState
 import com.cruxcoach.android.data.SessionRole
@@ -179,11 +181,12 @@ class BoardSendControllerTest {
                 every { state } returns layerState
                 every { layerForClimb(climb.uuid) } returns null
                 every { identityForSlot(2) } returns "99999999-8888-7777-6666-555555555555"
-                every { assignPreview(any()) } answers {
+                every { assignPreviewIfCurrent(any(), null) } answers {
                     layerState.value = BoardLayerState(
                         brand = BoardBrand.QUANTUM,
                         layers = listOf(firstArg()),
                     )
+                    true
                 }
             }
             val repository = mockk<BoardRepository>(relaxed = true) {
@@ -215,6 +218,87 @@ class BoardSendControllerTest {
             assertEquals(BoardLayerManager.LAYER_COLORS[2], preview.color)
             assertEquals(com.cruxcoach.android.ble.BoardLayerStatus.PREVIEW, preview.status)
             coVerify(exactly = 0) { ble.sendClimb(any(), any(), any(), any(), any(), any()) }
+        }
+
+    @Test
+    fun `Quantum assignment cannot overwrite a plan replaced during route lookup`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val climb = moonClimb.copy(
+                uuid = "11111111-2222-3333-4444-555555555555",
+                name = "Delayed preview",
+                boardBrand = BoardBrand.QUANTUM.wireValue,
+                layoutId = 9101,
+            )
+            val original = BoardClimbLayer(
+                slot = 2,
+                climbUuid = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+                routeUuid = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+                climbName = "Original plan",
+                angle = 40,
+                userUuid = "99999999-8888-4777-8666-555555555555",
+                color = BoardLayerManager.LAYER_COLORS[2],
+                holds = listOf(BoardHold(1, 12)),
+                status = com.cruxcoach.android.ble.BoardLayerStatus.PREVIEW,
+            )
+            val replacement = original.copy(
+                climbUuid = "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff",
+                routeUuid = "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff",
+                climbName = "Newer plan",
+                planToken = "replacement-token",
+            )
+            val layerState = MutableStateFlow(BoardLayerState(
+                brand = BoardBrand.QUANTUM,
+                layers = listOf(original),
+            ))
+            val layers = mockk<BoardLayerManager>(relaxed = true) {
+                every { state } returns layerState
+                every { layerForClimb(climb.uuid) } returns null
+                every { identityForSlot(2) } returns original.userUuid
+                every { assignPreviewIfCurrent(any(), original.planKey()) } answers {
+                    layerState.value.layers.single().planKey() == secondArg<BoardLayerPlanKey>()
+                }
+            }
+            val repository = mockk<BoardRepository>(relaxed = true) {
+                every { getQuantumExternalRouteUuid(climb.uuid) } answers {
+                    // Simulates another detail/playlist surface replacing the
+                    // slot while buildQuantumLayer is suspended on disk work.
+                    layerState.value = layerState.value.copy(layers = listOf(replacement))
+                    climb.uuid
+                }
+            }
+            val detailState = MutableStateFlow(ClimbDetailState(
+                climb = climb,
+                holds = listOf(BoardHold(10, 12), BoardHold(20, 14)),
+                angle = 40,
+                ble = BoardSendState(connectionState = ConnectionState.CONNECTED),
+                selectedBoardLayerSlot = 2,
+                selectedBoardLayerColor = BoardLayerManager.LAYER_COLORS[2],
+            ))
+            val queue = mockk<SessionQueueManager>(relaxed = true) {
+                every { state } returns MutableStateFlow(SessionQueueState())
+            }
+            val controller = BoardSendController(
+                scope = this,
+                state = detailState,
+                boardRepository = repository,
+                personalBoardRepo = mockk(relaxed = true),
+                bleConnection = mockk(relaxed = true),
+                userPreferences = mockk(relaxed = true),
+                climbAdvertiser = mockk(relaxed = true),
+                sessionQueueManager = queue,
+                isSharingEnabled = { false },
+                boardLayerManager = layers,
+                ioDispatcher = UnconfinedTestDispatcher(testScheduler),
+            )
+
+            controller.assignCurrentToBoardLayer()
+            advanceUntilIdle()
+
+            assertEquals(replacement.planKey(), layerState.value.layers.single().planKey())
+            assertEquals(R.string.board_layer_error_state_unavailable, detailState.value.ble.error)
+            verify(exactly = 1) {
+                layers.assignPreviewIfCurrent(any(), original.planKey())
+            }
         }
 
     @Test
@@ -278,7 +362,7 @@ class BoardSendControllerTest {
                 R.string.quantum_layer_already_assigned_error,
                 detailState.value.ble.error,
             )
-            verify(exactly = 0) { layers.assignPreview(any()) }
+            verify(exactly = 0) { layers.assignPreviewIfCurrent(any(), any()) }
 
             detailState.update { it.copy(ble = it.ble.copy(error = null)) }
             controller.sendToBoard()
@@ -366,12 +450,14 @@ class BoardSendControllerTest {
                 every { identityForSlot(1) } returns userId
                 every { defaultColor(1) } returns BoardLayerManager.LAYER_COLORS[1]
                 every { hasControllerCapacityFor(1, any()) } returns true
-                every { assignPreview(any()) } answers {
+                every { beginProjection(any<BoardLayerPlanKey>()) } returns true
+                every { assignPreviewIfCurrent(any(), null) } answers {
                     layerState.value = BoardLayerState(
                         brand = BoardBrand.QUANTUM,
                         board = expectedBoard,
                         layers = listOf(firstArg()),
                     )
+                    true
                 }
             }
             val controller = BoardSendController(
@@ -406,12 +492,15 @@ class BoardSendControllerTest {
             }
             coVerify(exactly = 2) { ble.refreshQuantumState() }
             verify(exactly = 1) {
-                layerManager.assignPreview(match<BoardClimbLayer> {
-                    it.slot == 1 && it.userUuid == userId && it.routeUuid == routeId &&
-                        it.color == BoardLayerManager.LAYER_COLORS[1]
-                })
-                layerManager.beginProjection(1)
-                layerManager.confirmProjection(1)
+                layerManager.assignPreviewIfCurrent(
+                    match<BoardClimbLayer> {
+                        it.slot == 1 && it.userUuid == userId && it.routeUuid == routeId &&
+                            it.color == BoardLayerManager.LAYER_COLORS[1]
+                    },
+                    null,
+                )
+                layerManager.beginProjection(match<BoardLayerPlanKey> { it.slot == 1 })
+                layerManager.confirmProjection(match<BoardLayerPlanKey> { it.slot == 1 })
             }
         }
 
@@ -454,7 +543,7 @@ class BoardSendControllerTest {
                 every { state } returns layerState
                 every { isBoundTo(expectedBoard) } returns true
                 every { hasControllerCapacityFor(0, any()) } returns true
-                every { beginProjection(0) } answers {
+                every { beginProjection(any<BoardLayerPlanKey>()) } answers {
                     layerState.update { current ->
                         current.copy(
                             layers = current.layers.map {
@@ -462,8 +551,9 @@ class BoardSendControllerTest {
                             },
                         )
                     }
+                    true
                 }
-                every { failProjection(0) } answers {
+                every { failProjection(any<BoardLayerPlanKey>()) } answers {
                     layerState.update { current ->
                         current.copy(
                             layers = current.layers.map {
@@ -471,6 +561,7 @@ class BoardSendControllerTest {
                             },
                         )
                     }
+                    true
                 }
             }
             val repository = mockk<BoardRepository>(relaxed = true) {
@@ -571,7 +662,7 @@ class BoardSendControllerTest {
             val layers = mockk<BoardLayerManager>(relaxed = true) {
                 every { state } returns layerState
                 every { isBoundTo(expectedBoard) } returns true
-                every { failProjection(0) } answers {
+                every { failProjection(any<BoardLayerPlanKey>()) } answers {
                     layerState.update { current ->
                         current.copy(
                             layers = current.layers.map {
@@ -579,6 +670,7 @@ class BoardSendControllerTest {
                             },
                         )
                     }
+                    true
                 }
             }
             val repository = mockk<BoardRepository>(relaxed = true) {
@@ -703,7 +795,7 @@ class BoardSendControllerTest {
             advanceUntilIdle()
 
             assertEquals(R.string.board_layer_error_external_unknown, detailState.value.ble.error)
-            verify(exactly = 0) { layers.assignPreview(any()) }
+            verify(exactly = 0) { layers.assignPreviewIfCurrent(any(), any()) }
         }
     /**
      * Review 2, finding 1. The pass-2 fence identified a variant by climb and

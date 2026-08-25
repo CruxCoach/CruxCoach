@@ -53,6 +53,74 @@ class LocalShareProtocolTest {
     }
 
     @Test
+    fun snapshotBuildSequencerNeverRunsV1AndV2Together() {
+        val sequencer = SnapshotBuildSequencer()
+
+        assertTrue(sequencer.request(LocalShareProtocol.VERSION))
+        assertEquals(LocalShareProtocol.VERSION, sequencer.activeProtocolVersion)
+        assertFalse(sequencer.request(LocalShareProtocol.VERSION_V2))
+        assertFalse(sequencer.request(LocalShareProtocol.VERSION_V2))
+        assertFalse(sequencer.request(LocalShareProtocol.VERSION))
+        assertEquals(listOf(LocalShareProtocol.VERSION_V2), sequencer.pending)
+
+        assertEquals(
+            LocalShareProtocol.VERSION_V2,
+            sequencer.complete(LocalShareProtocol.VERSION),
+        )
+        assertEquals(LocalShareProtocol.VERSION_V2, sequencer.activeProtocolVersion)
+        assertTrue(sequencer.pending.isEmpty())
+
+        // A retry of the other generation is queued behind v2 as well.
+        assertFalse(sequencer.request(LocalShareProtocol.VERSION))
+        assertEquals(
+            LocalShareProtocol.VERSION,
+            sequencer.complete(LocalShareProtocol.VERSION_V2),
+        )
+        assertNull(sequencer.complete(LocalShareProtocol.VERSION))
+        assertNull(sequencer.activeProtocolVersion)
+    }
+
+    @Test
+    fun unversionedAndOldSnapshotCachesAreDeletedInsteadOfAdopted() {
+        val sidecars = listOf(
+            "no metadata sidecar" to null,
+            "metadata without scrub version" to "{}",
+            "metadata from old scrub contract" to
+                """{"snapshotScrubContractVersion":${LocalApkServer.SNAPSHOT_SCRUB_CONTRACT_VERSION - 1}}""",
+        )
+
+        sidecars.forEachIndexed { index, (label, metadata) ->
+            val cacheDir = File(tempDir, "cache-$index").apply { mkdirs() }
+            val apk = File(cacheDir, "app.apk").apply { writeText("apk") }
+            val live = File(cacheDir, "live.db").apply { writeText("live") }
+            val artifacts = listOf(
+                LocalApkServer.SNAPSHOT_NAME,
+                "${LocalApkServer.SNAPSHOT_NAME}-wal",
+                "${LocalApkServer.SNAPSHOT_NAME}-shm",
+                LocalApkServer.COMPRESSED_SNAPSHOT_NAME,
+                "${LocalApkServer.SNAPSHOT_METADATA_NAME}.tmp",
+            ).map { name -> File(cacheDir, name).apply { writeText("unverified") } }
+            val metadataFile = File(cacheDir, LocalApkServer.SNAPSHOT_METADATA_NAME)
+            if (metadata != null) metadataFile.writeText(metadata)
+
+            val candidate = LocalApkServer(
+                apkFile = apk,
+                boardDbFile = live,
+                snapshotDir = cacheDir,
+            )
+            try {
+                candidate.start(port = 0, hostIp = "127.0.0.1")
+                artifacts.forEach { artifact ->
+                    assertFalse(artifact.exists(), "$label must delete ${artifact.name}")
+                }
+                assertFalse(metadataFile.exists(), "$label must delete metadata")
+            } finally {
+                candidate.stop()
+            }
+        }
+    }
+
+    @Test
     fun v2ApkDownloadIdentifiesProtocolOnTheSharedApkPath() = runBlocking {
         val bytes = "v2-apk".toByteArray()
         val source = File(tempDir, "protocol-source.apk").apply { writeBytes(bytes) }

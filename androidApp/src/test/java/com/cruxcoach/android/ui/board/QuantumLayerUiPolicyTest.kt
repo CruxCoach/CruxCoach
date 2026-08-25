@@ -29,6 +29,31 @@ class QuantumLayerUiPolicyTest {
         assertEquals(QuantumLayerSuggestionBlock.HOLD_CONFLICT, result.suggestionBlock)
     }
 
+    @Test fun `staged local preview overlap blocks the one-answer suggestion`() {
+        val preview = layer(slot = 0).copy(
+            holds = listOf(BoardHold(10, 1)),
+            status = BoardLayerStatus.PREVIEW,
+        )
+
+        val result = QuantumLayerUiPolicy.summarize(
+            BoardLayerState(brand = BoardBrand.QUANTUM, layers = listOf(preview)),
+            currentClimbUuid = "candidate",
+            currentPlacements = setOf(10, 20),
+        )
+
+        assertNull(result.suggestedSlot)
+        assertNull(result.suggestedColor)
+        assertEquals(QuantumLayerSuggestionBlock.HOLD_CONFLICT, result.suggestionBlock)
+        assertEquals(
+            1,
+            QuantumLayerUiPolicy.knownSharedHoldCount(
+                state = BoardLayerState(brand = BoardBrand.QUANTUM, layers = listOf(preview)),
+                candidate = setOf(10, 20),
+                replacingSlot = 1,
+            ),
+        )
+    }
+
     @Test fun `unknown foreign route fails closed instead of suggesting a layer`() {
         val state = BoardLayerState(
             brand = BoardBrand.QUANTUM,
@@ -45,6 +70,7 @@ class QuantumLayerUiPolicyTest {
 
     @Test fun `safe suggestion chooses one free slot and one unreserved color`() {
         val active = layer(slot = 0).copy(
+            holds = listOf(BoardHold(10, 1)),
             status = BoardLayerStatus.CONFIRMED,
             confirmedRouteUuid = "route-0",
             confirmedColor = BoardLayerManager.LAYER_COLORS[0],

@@ -20,10 +20,14 @@ import com.cruxcoach.domain.board.IntensityZones
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -41,6 +45,30 @@ data class PlaylistPlayerState(
     /** Confirm dialog for the central stop button. */
     val showStopConfirm: Boolean = false,
 )
+
+/**
+ * Resolve only the newest playlist occurrence. Clearing the previous render at
+ * the loading boundary prevents its board family and Quantum rack from leaking
+ * onto the next occurrence while catalogue/geometry reads are still running.
+ */
+internal suspend fun collectPlaylistRenders(
+    playbackStates: Flow<PlaylistPlaybackState>,
+    load: suspend (com.cruxcoach.android.ble.QueueItem) -> ClimbRenderData?,
+    update: (render: ClimbRenderData?, loading: Boolean) -> Unit,
+) {
+    playbackStates
+        .map { it.currentClimb }
+        .distinctUntilChangedBy { item -> item?.let { "${it.climbUuid}:${it.angle}" } }
+        .collectLatest { item ->
+            if (item == null) {
+                update(null, false)
+                return@collectLatest
+            }
+            update(null, true)
+            val render = load(item)
+            update(render, false)
+        }
+}
 
 /**
  * Player over [PlaylistPlaybackCoordinator]: exposes its state verbatim,
@@ -77,25 +105,15 @@ class PlaylistPlayerViewModel @Inject constructor(
         }
         // Re-load the board render whenever the current climb changes.
         viewModelScope.safeLaunch(TAG) {
-            var lastKey: String? = null
-            playback.state.collect { s ->
-                val item = s.currentClimb
-                val key = item?.let { "${it.climbUuid}:${it.angle}" }
-                if (key == lastKey) return@collect
-                lastKey = key
-                if (item == null) {
-                    _state.update { it.copy(render = null, renderLoading = false) }
-                    return@collect
-                }
-                _state.update { it.copy(renderLoading = true) }
-                val render = withContext(Dispatchers.IO) {
+            collectPlaylistRenders(
+                playbackStates = playback.state,
+                load = { item -> withContext(Dispatchers.IO) {
                     renderLoader.load(item.climbUuid, item.angle)
-                }
-                // Only apply if still current (rapid next/next).
-                if (lastKey == key) {
-                    _state.update { it.copy(render = render, renderLoading = false) }
-                }
-            }
+                } },
+                update = { render, loading ->
+                    _state.update { it.copy(render = render, renderLoading = loading) }
+                },
+            )
         }
     }
 

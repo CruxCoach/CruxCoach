@@ -12,6 +12,7 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.zip.GZIPInputStream
+import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -229,6 +230,61 @@ class LocalShareModernSchemaTest {
         // Modern sync-state table resolved (pre-fix: "no such table:
         // aurora_sync_state" killed the import right here).
         verify { boardRepository.upsertSyncState("climbs", "2026-07-01 00:00:00") }
+    }
+
+    @Test
+    fun eachMissingAdditiveGeometryTableStillImportsTheGenericCatalogueAtomically() {
+        val additiveGeometryTables = listOf(
+            "placements",
+            "holes",
+            "product_sizes",
+            "board_images",
+            "leds",
+            "placement_roles",
+        )
+
+        additiveGeometryTables.forEach { missingTable ->
+            recreateEmptyTarget()
+            val parkedTable = "${missingTable}_pre022_parked"
+            SQLiteDatabase.openDatabase(
+                srcPath.absolutePath,
+                null,
+                SQLiteDatabase.OPEN_READWRITE,
+            ).use { db ->
+                db.execSQL("ALTER TABLE $missingTable RENAME TO $parkedTable")
+            }
+            try {
+                importer.importFromLocalDb(srcPath, includeQuantum = false)
+
+                openTarget().use { db ->
+                    assertEquals(
+                        "$missingTable absence must not strand generic climbs",
+                        3,
+                        countWhere(db, "climbs", "is_listed=1"),
+                    )
+                    assertEquals(
+                        "$missingTable absence must not strand generic stats",
+                        2,
+                        countWhere(db, "climb_stats", "1=1"),
+                    )
+                    assertEquals(
+                        "$missingTable is additive and may remain empty",
+                        0,
+                        countWhere(db, missingTable, "1=1"),
+                    )
+                    assertEquals(0, countWhere(db, "climbs", "uuid='$draftUuid'"))
+                    assertEquals(0, countWhere(db, "climbs", "uuid='$tombstoneUuid'"))
+                }
+            } finally {
+                SQLiteDatabase.openDatabase(
+                    srcPath.absolutePath,
+                    null,
+                    SQLiteDatabase.OPEN_READWRITE,
+                ).use { db ->
+                    db.execSQL("ALTER TABLE $parkedTable RENAME TO $missingTable")
+                }
+            }
+        }
     }
 
     @Test
@@ -677,6 +733,14 @@ class LocalShareModernSchemaTest {
             }
 
             downloadSnapshot(LocalShareProtocol.BOARD_PATH, legacyDb)
+            val persistedCacheMetadata = JSONObject(
+                File(endpointDir, LocalApkServer.SNAPSHOT_METADATA_NAME).readText(),
+            )
+            assertEquals(
+                "v1 cache is bound to the exact scrub contract",
+                LocalApkServer.SNAPSHOT_SCRUB_CONTRACT_VERSION,
+                persistedCacheMetadata.getInt("snapshotScrubContractVersion"),
+            )
             downloadSnapshot(LocalShareProtocol.V2_BOARD_PATH, quantumDb)
 
             SQLiteDatabase.openDatabase(
@@ -1406,6 +1470,13 @@ class LocalShareModernSchemaTest {
             )
         }
         return appUuid to routeUuid
+    }
+
+    private fun recreateEmptyTarget() {
+        listOf("", "-wal", "-shm", "-journal").forEach { suffix ->
+            File(targetPath.path + suffix).delete()
+        }
+        createRealSchema("cruxcoach.db")
     }
 
     @Test

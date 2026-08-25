@@ -5,6 +5,7 @@ import com.cruxcoach.domain.board.BoardHold
 import com.cruxcoach.domain.board.HoldRole
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class BoardClimbParserTest {
@@ -34,6 +35,23 @@ class BoardClimbParserTest {
         val holds = BoardClimbParser.parseFrames("p100r12")
         assertEquals(1, holds.size)
         assertEquals(BoardHold(100, 12), holds[0])
+    }
+
+    @Test
+    fun strictSingleFrameRejectsAnyUnparsedOrMultiFrameContent() {
+        assertEquals(
+            listOf(BoardHold(100, 12), BoardHold(200, 14)),
+            BoardClimbParser.parseSingleFrameStrict("p100r12p200r14"),
+        )
+        assertEquals(
+            listOf(BoardHold(100, 12)),
+            BoardClimbParser.parseSingleFrameStrict("h100p12"),
+        )
+        assertNull(BoardClimbParser.parseSingleFrameStrict("p100r12BROKEN"))
+        assertNull(BoardClimbParser.parseSingleFrameStrict("BROKENp100r12"))
+        assertNull(BoardClimbParser.parseSingleFrameStrict("p100r12,p200r14"))
+        assertNull(BoardClimbParser.parseSingleFrameStrict("p999999999999999999999r12"))
+        assertNull(BoardClimbParser.parseSingleFrameStrict(""))
     }
 
     @Test

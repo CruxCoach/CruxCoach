@@ -13,6 +13,7 @@ import com.cruxcoach.android.ble.QueueItem
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.ClimbWithStats
 import com.cruxcoach.domain.board.BoardBrand
+import com.cruxcoach.domain.board.BoardHold
 import com.cruxcoach.domain.board.MoonBoardLedMode
 import com.cruxcoach.domain.board.QuantumActivePlayer
 import com.cruxcoach.domain.board.QuantumBoardPacketEncoder
@@ -38,6 +39,7 @@ import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -169,16 +171,92 @@ class SessionQueueQuantumLayerTest {
                 authoritative = true,
                 authoritativeRevision = 1,
             )
-        every { repository.getQuantumClimbByExternalRoute(foreign.routeId, "m") } returns null
+        every {
+            repository.getQuantumClimbByExternalRoute(foreign.routeId, "m", false)
+        } returns null
         coEvery { ble.refreshQuantumState() } returns true
 
         queue.loadPlaylist("Local playlist", listOf(QueueItem(climbUuid, 30)))
 
         verify(timeout = 2_000) {
-            repository.getQuantumClimbByExternalRoute(foreign.routeId, "m")
+            repository.getQuantumClimbByExternalRoute(foreign.routeId, "m", false)
         }
         assertEquals(1, layers.state.value.externalLayers.size)
         assertTrue(layers.state.value.layers.isEmpty())
+        coVerify(exactly = 0) {
+            ble.sendClimb(any(), any(), any(), any(), any(), any())
+        }
+    }
+
+    @Test
+    fun `known foreign controller holds hydrate and block playlist overlap`() {
+        val foreign = QuantumActivePlayer(
+            routeId = "99999999-8888-4777-8666-555555555555",
+            userId = "12345678-1234-4234-8234-123456789abc",
+            remainingSeconds = 120,
+            color = 0x123456,
+        )
+        controllerState.value = QuantumControllerState(
+            players = listOf(foreign),
+            authoritative = true,
+            authoritativeRevision = 1,
+        )
+        every {
+            repository.getQuantumClimbByExternalRoute(foreign.routeId, "m", false)
+        } returns quantumClimb("bbbbbbbb-cccc-4ddd-8eee-ffffffffffff").copy(
+            name = "Known foreign route",
+            frames = "p19100001r12",
+        )
+        coEvery { ble.refreshQuantumState() } returns true
+
+        queue.loadPlaylist("Local playlist", listOf(QueueItem(climbUuid, 30)))
+
+        verify(timeout = 2_000) {
+            repository.getQuantumClimbByExternalRoute(foreign.routeId, "m", false)
+        }
+        val external = layers.state.value.externalLayers.single()
+        assertEquals("Known foreign route", external.climbName)
+        assertEquals(listOf(BoardHold(19_100_001, 12)), external.holds)
+        coVerify(exactly = 0) {
+            ble.sendClimb(any(), any(), any(), any(), any(), any())
+        }
+    }
+
+    @Test
+    fun `owned direct UUID proof does not hydrate a foreign duplicate route`() {
+        val sharedRoute = climbUuid
+        val owned = QuantumActivePlayer(
+            routeId = sharedRoute,
+            userId = layers.identityForSlot(0),
+            remainingSeconds = 120,
+            color = 0x00ffff,
+        )
+        val foreign = owned.copy(
+            userId = "12345678-1234-4234-8234-123456789abc",
+            color = 0x123456,
+        )
+        controllerState.value = QuantumControllerState(
+            players = listOf(owned, foreign),
+            authoritative = true,
+            authoritativeRevision = 1,
+        )
+        every {
+            repository.getQuantumClimbByExternalRoute(sharedRoute, "m", true)
+        } returns quantumClimb(climbUuid)
+        every {
+            repository.getQuantumClimbByExternalRoute(sharedRoute, "m", false)
+        } returns null
+        coEvery { ble.refreshQuantumState() } returns true
+
+        queue.loadPlaylist("Local playlist", listOf(QueueItem(climbUuid, 30)))
+
+        verify(timeout = 2_000) {
+            repository.getQuantumClimbByExternalRoute(sharedRoute, "m", true)
+            repository.getQuantumClimbByExternalRoute(sharedRoute, "m", false)
+        }
+        assertEquals(listOf(BoardHold(19_100_001, 12), BoardHold(19_100_002, 14)),
+            layers.state.value.layers.single().confirmedHolds)
+        assertNull(layers.state.value.externalLayers.single().holds)
         coVerify(exactly = 0) {
             ble.sendClimb(any(), any(), any(), any(), any(), any())
         }

@@ -45,7 +45,15 @@ data class BoardClimbLayer(
      * Until the local catalogue resolves that UUID, its occupied holds are
      * unknown and another projection must not assume it is conflict-free. */
     val controllerDetailsKnown: Boolean = true,
+    /** Process-local compare-and-set token. BLE work suspends while another
+     * detail/playlist surface can replace the same numbered slot; completions
+     * may mutate only the exact plan that started the operation. */
+    val planToken: String = UUID.randomUUID().toString(),
 )
+
+data class BoardLayerPlanKey(val slot: Int, val planToken: String)
+
+fun BoardClimbLayer.planKey(): BoardLayerPlanKey = BoardLayerPlanKey(slot, planToken)
 
 enum class BoardLayerStatus { PREVIEW, SENDING, CONFIRMED, FAILED }
 
@@ -64,6 +72,14 @@ data class BoardLayerRouteDetails(
     val climbUuid: String,
     val climbName: String,
     val holds: List<BoardHold>,
+)
+
+/** Route readback is player-scoped. An installation-owned player may use the
+ * narrow direct-UUID fallback, while a foreign player reporting the same UUID
+ * must remain unknown unless it has the official vendor bridge. */
+data class BoardLayerControllerRouteKey(
+    val routeUuid: String,
+    val userUuid: String,
 )
 
 /**
@@ -175,33 +191,64 @@ class BoardLayerManager @Inject constructor(
     /** Assign or replace a local layer without touching BLE/controller state. */
     fun assignPreview(layer: BoardClimbLayer) {
         _state.update { current ->
-            val previous = current.layers.firstOrNull { it.slot == layer.slot }
-            current.copy(
-                brand = BoardBrand.QUANTUM,
-                layers = (current.layers.filterNot { it.slot == layer.slot } +
-                    layer.copy(
-                        status = BoardLayerStatus.PREVIEW,
-                        confirmedRouteUuid = previous?.confirmedRouteUuid,
-                        confirmedColor = previous?.confirmedColor,
-                        confirmedClimbUuid = previous?.confirmedClimbUuid,
-                        confirmedClimbName = previous?.confirmedClimbName,
-                        confirmedHolds = previous?.confirmedHolds,
-                        controllerDetailsKnown = previous?.controllerDetailsKnown ?: true,
-                    )).sortedBy { it.slot },
-            )
+            assignPreview(current, layer, current.layers.firstOrNull { it.slot == layer.slot })
         }
     }
 
-    fun beginProjection(layer: BoardClimbLayer) {
-        assignPreview(layer)
-        beginProjection(layer.slot)
+    /**
+     * Compare-and-set assignment for work that suspended before it produced a
+     * preview. Null means the slot was empty when the work began. A stale detail
+     * or playlist task must never overwrite a newer plan in the same slot.
+     */
+    fun assignPreviewIfCurrent(
+        layer: BoardClimbLayer,
+        expectedCurrent: BoardLayerPlanKey?,
+    ): Boolean {
+        var matched = false
+        _state.update { current ->
+            matched = false
+            val previous = current.layers.firstOrNull { it.slot == layer.slot }
+            val currentMatches = if (expectedCurrent == null) {
+                previous == null
+            } else {
+                previous?.planKey() == expectedCurrent
+            }
+            if (!currentMatches) current else {
+                matched = true
+                assignPreview(current, layer, previous)
+            }
+        }
+        return matched
     }
 
-    fun beginProjection(slot: Int) = updateOwned(slot) {
+    private fun assignPreview(
+        current: BoardLayerState,
+        layer: BoardClimbLayer,
+        previous: BoardClimbLayer?,
+    ): BoardLayerState = current.copy(
+        brand = BoardBrand.QUANTUM,
+        layers = (current.layers.filterNot { it.slot == layer.slot } +
+            layer.copy(
+                status = BoardLayerStatus.PREVIEW,
+                confirmedRouteUuid = previous?.confirmedRouteUuid,
+                confirmedColor = previous?.confirmedColor,
+                confirmedClimbUuid = previous?.confirmedClimbUuid,
+                confirmedClimbName = previous?.confirmedClimbName,
+                confirmedHolds = previous?.confirmedHolds,
+                controllerDetailsKnown = previous?.controllerDetailsKnown ?: true,
+            )).sortedBy { it.slot },
+    )
+
+    fun beginProjection(layer: BoardClimbLayer): Boolean {
+        assignPreview(layer)
+        return beginProjection(layer.planKey())
+    }
+
+    fun beginProjection(expected: BoardLayerPlanKey): Boolean = updateOwned(expected) {
         it.copy(status = BoardLayerStatus.SENDING)
     }
 
-    fun confirmProjection(slot: Int) = updateOwned(slot) {
+    fun confirmProjection(expected: BoardLayerPlanKey): Boolean = updateOwned(expected) {
         it.copy(
             status = BoardLayerStatus.CONFIRMED,
             confirmedRouteUuid = it.routeUuid,
@@ -213,10 +260,18 @@ class BoardLayerManager @Inject constructor(
         )
     }
 
-    fun failProjection(slot: Int) = updateOwned(slot) { it.copy(status = BoardLayerStatus.FAILED) }
+    fun failProjection(expected: BoardLayerPlanKey): Boolean =
+        updateOwned(expected) { it.copy(status = BoardLayerStatus.FAILED) }
 
-    fun removeOwned(slot: Int) {
-        _state.update { it.copy(layers = it.layers.filterNot { layer -> layer.slot == slot }) }
+    fun removeOwned(expected: BoardLayerPlanKey): Boolean {
+        var matched = false
+        _state.update { current ->
+            matched = false
+            current.copy(layers = current.layers.filterNot { layer ->
+                (layer.planKey() == expected).also { if (it) matched = true }
+            })
+        }
+        return matched
     }
 
     /** Remove an unsent assignment. A physically active identity is removed
@@ -224,7 +279,7 @@ class BoardLayerManager @Inject constructor(
     fun removePreview(slot: Int): Boolean {
         val layer = _state.value.layers.firstOrNull { it.slot == slot } ?: return false
         if (layer.confirmedRouteUuid != null) return false
-        removeOwned(slot)
+        removeOwned(layer.planKey())
         return true
     }
 
@@ -235,7 +290,7 @@ class BoardLayerManager @Inject constructor(
         val isReplacement = !confirmedRoute.equals(layer.routeUuid, ignoreCase = true) ||
             layer.confirmedColor != layer.color
         if (!isReplacement) return false
-        updateOwned(slot) {
+        updateOwned(layer.planKey()) {
             it.copy(
                 climbUuid = it.confirmedClimbUuid ?: confirmedRoute,
                 routeUuid = confirmedRoute,
@@ -368,20 +423,25 @@ class BoardLayerManager @Inject constructor(
     }
 
     /** Add local catalogue knowledge to a fresh controller snapshot.
-     * Matching is route-UUID based and applied only to layers still present,
-     * so a slow DB lookup can never resurrect a player that left meanwhile. */
-    fun hydrateControllerRoutes(detailsByRouteUuid: Map<String, BoardLayerRouteDetails>) {
+     * Matching requires both route and controller user, and applies only to
+     * layers still present, so a slow DB lookup can neither resurrect a player
+     * nor transfer an owned player's direct-UUID proof to a foreign duplicate. */
+    fun hydrateControllerRoutes(
+        detailsByPlayer: Map<BoardLayerControllerRouteKey, BoardLayerRouteDetails>,
+    ) {
         // A resolved UUID is not enough to prove geometry. Blank or malformed
         // frame strings parse to no holds; treating that as a known empty climb
         // would make conflict checks fail open. Keep such routes unknown.
-        val normalized = detailsByRouteUuid
+        val normalized = detailsByPlayer
             .filterValues { it.holds.isNotEmpty() }
-            .mapKeys { it.key.lowercase() }
+            .mapKeys { (key, _) -> key.normalized() }
         _state.update { current ->
             current.copy(
                 layers = current.layers.map { layer ->
                     val route = layer.confirmedRouteUuid ?: return@map layer
-                    val details = normalized[route.lowercase()] ?: return@map layer
+                    val details = normalized[
+                        BoardLayerControllerRouteKey(route, layer.userUuid).normalized()
+                    ] ?: return@map layer
                     val physicalIsPlan = route.equals(layer.routeUuid, ignoreCase = true)
                     layer.copy(
                         // A reconstructed layer has no separate pending plan,
@@ -397,7 +457,9 @@ class BoardLayerManager @Inject constructor(
                     )
                 },
                 externalLayers = current.externalLayers.map { layer ->
-                    val details = normalized[layer.routeUuid.lowercase()] ?: return@map layer
+                    val details = normalized[
+                        BoardLayerControllerRouteKey(layer.routeUuid, layer.userUuid).normalized()
+                    ] ?: return@map layer
                     layer.copy(
                         climbUuid = details.climbUuid,
                         climbName = details.climbName,
@@ -411,10 +473,23 @@ class BoardLayerManager @Inject constructor(
     fun layerForClimb(climbUuid: String): BoardClimbLayer? =
         _state.value.layers.firstOrNull { it.climbUuid == climbUuid }
 
-    private fun updateOwned(slot: Int, transform: (BoardClimbLayer) -> BoardClimbLayer) {
+    private fun updateOwned(
+        expected: BoardLayerPlanKey,
+        transform: (BoardClimbLayer) -> BoardClimbLayer,
+    ): Boolean {
+        var matched = false
         _state.update { current ->
-            current.copy(layers = current.layers.map { if (it.slot == slot) transform(it) else it })
+            matched = false
+            current.copy(layers = current.layers.map { layer ->
+                if (layer.planKey() == expected) {
+                    matched = true
+                    transform(layer)
+                } else {
+                    layer
+                }
+            })
         }
+        return matched
     }
 
     companion object {
@@ -446,6 +521,11 @@ class BoardLayerManager @Inject constructor(
 
     /** Quantum broadcasts 24-bit RGB; Compose and the layer palette use opaque ARGB. */
     private fun Int.asOpaqueArgb(): Int = 0xff000000.toInt() or (this and 0x00ffffff)
+
+    private fun BoardLayerControllerRouteKey.normalized() = BoardLayerControllerRouteKey(
+        routeUuid = routeUuid.lowercase(),
+        userUuid = userUuid.lowercase(),
+    )
 }
 
 data class BoardLayerCapabilities(

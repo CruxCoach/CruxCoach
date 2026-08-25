@@ -34,6 +34,53 @@ internal fun snapshotProtocolForApkRequest(header: String?): Int =
         LocalShareProtocol.VERSION
     }
 
+/**
+ * Serializes the two snapshot generations without making either receiver
+ * contract wait on the server's state lock. Callers own the synchronization;
+ * this tiny state machine is separate so ordering can be tested without
+ * thread timing.
+ */
+internal class SnapshotBuildSequencer {
+    internal var activeProtocolVersion: Int? = null
+        private set
+    private val pendingProtocolVersions = linkedSetOf<Int>()
+
+    internal val pending: List<Int>
+        get() = pendingProtocolVersions.toList()
+
+    /** Returns true only when the caller should start a worker now. */
+    fun request(protocolVersion: Int): Boolean {
+        require(
+            protocolVersion == LocalShareProtocol.VERSION ||
+                protocolVersion == LocalShareProtocol.VERSION_V2,
+        ) { "Unsupported snapshot protocol: $protocolVersion" }
+        if (activeProtocolVersion == null) {
+            activeProtocolVersion = protocolVersion
+            return true
+        }
+        if (activeProtocolVersion != protocolVersion) {
+            pendingProtocolVersions += protocolVersion
+        }
+        return false
+    }
+
+    /** Completes [protocolVersion] and returns the next queued generation. */
+    fun complete(protocolVersion: Int): Int? {
+        check(activeProtocolVersion == protocolVersion) {
+            "Snapshot protocol $protocolVersion is not active"
+        }
+        val next = pendingProtocolVersions.firstOrNull()
+        if (next != null) pendingProtocolVersions.remove(next)
+        activeProtocolVersion = next
+        return next
+    }
+
+    fun reset() {
+        activeProtocolVersion = null
+        pendingProtocolVersions.clear()
+    }
+}
+
 object ApkShareHelper {
 
     private const val TAG = "ApkShareHelper"
@@ -65,8 +112,9 @@ object ApkShareHelper {
             "aurora_apk_download.zip",
             "aurora_apk_db.sqlite3",
             "kilter_board_import.sqlite3",
-            // Pair-copy leftovers from an interrupted snapshot (see
-            // LocalApkServer.boardDbSnapshot).
+            // The raw copy is never a trusted cache artifact. Only the gzip
+            // plus its versioned metadata survive between share sessions.
+            LocalApkServer.SNAPSHOT_NAME,
             "${LocalApkServer.SNAPSHOT_NAME}-wal",
             "${LocalApkServer.SNAPSHOT_NAME}-shm",
             // v2 is deliberately session-only: unlike the exact legacy v1
@@ -205,6 +253,9 @@ class LocalApkServer(
      *  causes (a background sync holding the DB lock) heal themselves. */
     private enum class SnapState { IDLE, BUILDING, READY, FAILED }
     private val snapshotLock = Any()
+    private val snapshotBuildWorkLock = Any()
+    private val snapshotBuildSequencer = SnapshotBuildSequencer()
+    private var snapshotBuildGeneration = 0L
     private var snapState = SnapState.IDLE
     private var snapshotFile: File? = null
     private var compressedSnapshotFile: File? = null
@@ -341,6 +392,10 @@ class LocalApkServer(
         }
         clients.forEach { runCatching { it.close() } }
         synchronized(snapshotLock) {
+            // A worker may still be folding its private copy. Invalidate its
+            // result and its queue before a later start() can arm new work.
+            snapshotBuildGeneration++
+            snapshotBuildSequencer.reset()
             snapshotFile?.let { snap ->
                 snap.delete()
                 File(snap.path + "-wal").delete()
@@ -750,61 +805,104 @@ class LocalApkServer(
     private fun ensureSnapshotBuilding(protocolVersion: Int = LocalShareProtocol.VERSION_V2) {
         val live = boardDbFile ?: return
         if (snapshotDir == null || !live.exists()) return
-        synchronized(snapshotLock) {
+        val (startWorker, generation) = synchronized(snapshotLock) {
             val state = if (protocolVersion == LocalShareProtocol.VERSION_V2) v2SnapState else snapState
             if (state == SnapState.BUILDING || state == SnapState.READY) return
             if (protocolVersion == LocalShareProtocol.VERSION_V2) v2SnapState = SnapState.BUILDING
             else snapState = SnapState.BUILDING
+            snapshotBuildSequencer.request(protocolVersion) to snapshotBuildGeneration
         }
         // A receiver that already has this APK can arm /board.db directly;
         // don't wait for a file stream before giving SQLite exclusive CPU.
         announceBulkWork()
-        thread(isDaemon = true, name = "apk-snapshot-build") {
+        if (startWorker) {
+            launchSnapshotBuild(live, protocolVersion, generation)
+        }
+    }
+
+    private fun launchSnapshotBuild(
+        live: File,
+        protocolVersion: Int,
+        generation: Long,
+    ) {
+        thread(isDaemon = true, name = "apk-snapshot-build-v$protocolVersion") {
             runCatching {
                 android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_DISPLAY)
             }
             val startMs = System.currentTimeMillis()
-            val built = buildBoardDbSnapshot(live, protocolVersion)
-            synchronized(snapshotLock) {
-                // stop() may have raced us back to IDLE and cleaned up — don't
-                // resurrect state (or leave a stray file) for a dead server.
-                val state = if (protocolVersion == LocalShareProtocol.VERSION_V2) v2SnapState else snapState
-                if (state != SnapState.BUILDING) {
-                    built?.raw?.delete()
-                    built?.compressed?.delete()
-                    return@thread
+            var built: BuiltSnapshot? = null
+            var accepted = false
+            var nextProtocolVersion: Int? = null
+            // Keep the physical work lock through result adoption/cleanup. A
+            // stopped v1 worker and a newly armed v1 worker use the same file
+            // names, so releasing it before stale cleanup would let the old
+            // worker delete the new worker's files.
+            synchronized(snapshotBuildWorkLock) {
+                val shouldBuild = synchronized(snapshotLock) {
+                    generation == snapshotBuildGeneration &&
+                        snapshotBuildSequencer.activeProtocolVersion == protocolVersion &&
+                        snapshotState(protocolVersion) == SnapState.BUILDING
                 }
-                if (built != null) {
-                    if (protocolVersion == LocalShareProtocol.VERSION_V2) {
-                        v2SnapshotFile = built.raw
-                        v2CompressedSnapshotFile = built.compressed
-                        v2SnapshotMetadata = built.metadata
-                        v2SnapState = SnapState.READY
+                if (shouldBuild) built = buildBoardDbSnapshot(live, protocolVersion)
+                synchronized(snapshotLock) {
+                    // stop() may have invalidated this session while SQLite was
+                    // folding the copy. Never resurrect its state or artifacts.
+                    val current = generation == snapshotBuildGeneration &&
+                        snapshotBuildSequencer.activeProtocolVersion == protocolVersion &&
+                        snapshotState(protocolVersion) == SnapState.BUILDING
+                    if (!current) {
+                        built?.raw?.delete()
+                        built?.compressed?.delete()
                     } else {
-                        snapshotFile = built.raw
-                        compressedSnapshotFile = built.compressed
-                        snapshotMetadata = built.metadata
-                        snapState = SnapState.READY
-                        persistSnapshotCache(built.metadata, built.sourceFingerprint)
+                        accepted = true
+                        val completed = built
+                        if (completed != null) {
+                            if (protocolVersion == LocalShareProtocol.VERSION_V2) {
+                                v2SnapshotFile = completed.raw
+                                v2CompressedSnapshotFile = completed.compressed
+                                v2SnapshotMetadata = completed.metadata
+                                v2SnapState = SnapState.READY
+                            } else {
+                                snapshotFile = completed.raw
+                                compressedSnapshotFile = completed.compressed
+                                snapshotMetadata = completed.metadata
+                                snapState = SnapState.READY
+                                persistSnapshotCache(
+                                    completed.metadata,
+                                    completed.sourceFingerprint,
+                                )
+                            }
+                        } else {
+                            if (protocolVersion == LocalShareProtocol.VERSION_V2) {
+                                v2SnapState = SnapState.FAILED
+                            } else {
+                                snapState = SnapState.FAILED
+                            }
+                        }
+                        nextProtocolVersion = snapshotBuildSequencer.complete(protocolVersion)
                     }
-                } else {
-                    if (protocolVersion == LocalShareProtocol.VERSION_V2) v2SnapState = SnapState.FAILED
-                    else snapState = SnapState.FAILED
                 }
             }
             val secs = (System.currentTimeMillis() - startMs) / 1000
-            if (built != null) {
+            val completed = built
+            if (accepted && completed != null) {
                 Log.i(
                     "LocalApkServer",
                     "board-DB snapshot ready in ${secs}s " +
-                        "(${built.raw.length() / 1024 / 1024} MB raw, " +
-                        "${built.compressed.length() / 1024 / 1024} MB gzip)",
+                        "(${completed.raw.length() / 1024 / 1024} MB raw, " +
+                        "${completed.compressed.length() / 1024 / 1024} MB gzip)",
                 )
-            } else {
+            } else if (accepted) {
                 Log.w("LocalApkServer", "board-DB snapshot build failed after ${secs}s — will retry on next request")
+            }
+            nextProtocolVersion?.let { next ->
+                launchSnapshotBuild(live, next, generation)
             }
         }
     }
+
+    private fun snapshotState(protocolVersion: Int): SnapState =
+        if (protocolVersion == LocalShareProtocol.VERSION_V2) v2SnapState else snapState
 
     private fun announceBulkWork() {
         if (bulkTransferAnnounced.compareAndSet(false, true)) {
@@ -949,16 +1047,21 @@ class LocalApkServer(
         if (!live.exists()) return
         val compressed = File(dir, COMPRESSED_SNAPSHOT_NAME)
         val metadataFile = File(dir, SNAPSHOT_METADATA_NAME)
-        if (!compressed.exists()) return
+        if (!compressed.exists()) {
+            if (metadataFile.exists()) discardCachedSnapshot(dir)
+            return
+        }
         if (!metadataFile.exists()) {
-            val raw = File(dir, SNAPSHOT_NAME)
-            if (adoptLegacySnapshot(live, raw, compressed)) {
-                restoreCachedSnapshot()
-            }
+            Log.i("LocalApkServer", "Discarding unverified snapshot cache without metadata")
+            discardCachedSnapshot(dir)
             return
         }
         val restored = runCatching {
             val json = org.json.JSONObject(metadataFile.readText())
+            check(
+                json.getInt("snapshotScrubContractVersion") ==
+                    SNAPSHOT_SCRUB_CONTRACT_VERSION,
+            ) { "snapshot scrub contract changed" }
             val source = json.getJSONObject("source")
             val expected = SourceFingerprint(
                 mainLength = source.getLong("mainLength"),
@@ -991,8 +1094,7 @@ class LocalApkServer(
             )
         }.getOrElse { error ->
             Log.i("LocalApkServer", "Discarding stale snapshot cache: ${error.message}")
-            compressed.delete()
-            metadataFile.delete()
+            discardCachedSnapshot(dir)
             return
         }
         synchronized(snapshotLock) {
@@ -1006,52 +1108,16 @@ class LocalApkServer(
         )
     }
 
-    /** One-time migration for a snapshot produced by the previous build,
-     * which already had safe scrub/VACUUM semantics but no cache sidecar. */
-    private fun adoptLegacySnapshot(live: File, raw: File, compressed: File): Boolean {
-        if (!raw.exists() || raw.lastModified() < live.lastModified()) return false
-        return runCatching {
-            val schemaAndCatalogues = android.database.sqlite.SQLiteDatabase.openDatabase(
-                raw.absolutePath,
-                null,
-                android.database.sqlite.SQLiteDatabase.OPEN_READONLY,
-            ).use { snapshotDb ->
-                val schema = snapshotDb.rawQuery("PRAGMA user_version", null).use { cursor ->
-                    if (cursor.moveToFirst()) cursor.getInt(0) else 0
-                }
-                val catalogues = snapshotDb.rawQuery(
-                    """
-                    SELECT COALESCE(board_brand, 'kilter'), COUNT(*)
-                    FROM climbs
-                    WHERE is_listed = 1
-                    GROUP BY COALESCE(board_brand, 'kilter')
-                    ORDER BY COALESCE(board_brand, 'kilter')
-                    """.trimIndent(),
-                    null,
-                ).use { cursor ->
-                    buildList {
-                        while (cursor.moveToNext()) {
-                            add(LocalShareProtocol.BoardCatalogue(cursor.getString(0), cursor.getLong(1)))
-                        }
-                    }
-                }
-                schema to catalogues
-            }
-            val metadata = SnapshotMetadata(
-                compressedSha256 = LocalShareProtocol.sha256(compressed),
-                uncompressedSha256 = LocalShareProtocol.sha256(raw),
-                uncompressedSizeBytes = raw.length(),
-                schemaVersion = schemaAndCatalogues.first,
-                catalogues = schemaAndCatalogues.second,
-            )
-            compressedSnapshotFile = compressed
-            persistSnapshotCache(metadata, sourceFingerprint(live))
-            raw.delete()
-            Log.i("LocalApkServer", "Adopted previous board-DB snapshot cache")
-            true
-        }.getOrElse { error ->
-            Log.w("LocalApkServer", "Could not adopt previous snapshot cache", error)
-            false
+    private fun discardCachedSnapshot(dir: File) {
+        listOf(
+            SNAPSHOT_NAME,
+            "$SNAPSHOT_NAME-wal",
+            "$SNAPSHOT_NAME-shm",
+            COMPRESSED_SNAPSHOT_NAME,
+            SNAPSHOT_METADATA_NAME,
+            "$SNAPSHOT_METADATA_NAME.tmp",
+        ).forEach { name ->
+            File(dir, name).delete()
         }
     }
 
@@ -1074,6 +1140,7 @@ class LocalApkServer(
             }
             temporary.writeText(
                 org.json.JSONObject()
+                    .put("snapshotScrubContractVersion", SNAPSHOT_SCRUB_CONTRACT_VERSION)
                     .put("source", org.json.JSONObject()
                         .put("mainLength", source.mainLength)
                         .put("mainModified", source.mainModified)
@@ -1164,6 +1231,8 @@ class LocalApkServer(
         const val V2_SNAPSHOT_NAME = "board_share_snapshot_v2.db"
         const val V2_COMPRESSED_SNAPSHOT_NAME = "board_share_snapshot_v2.db.gz"
         internal const val SNAPSHOT_METADATA_NAME = "board_share_snapshot.meta.json"
+        /** Exact generation of the privacy + compatibility scrub contract. */
+        internal const val SNAPSHOT_SCRUB_CONTRACT_VERSION = 1
 
         private val LANDING_HTML = """
 <!doctype html>

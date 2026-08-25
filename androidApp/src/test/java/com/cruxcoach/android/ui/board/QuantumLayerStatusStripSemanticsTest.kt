@@ -1,6 +1,10 @@
 package com.cruxcoach.android.ui.board
 
 import android.app.Application
+import androidx.compose.foundation.layout.Column
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertTextEquals
@@ -24,7 +28,8 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class)
 class QuantumLayerStatusStripSemanticsTest {
-    @get:Rule val compose = createComposeRule()
+    @get:Rule
+    val compose = createComposeRule()
 
     @Test fun `replacement chip distinguishes planned and still live colors`() {
         val replacing = BoardClimbLayer(
@@ -90,7 +95,6 @@ class QuantumLayerStatusStripSemanticsTest {
         compose.onNodeWithText("O1?", useUnmergedTree = true).assertExists()
     }
 
-
     @Test
     @Config(qualifiers = "w320dp")
     fun `narrow rack keeps unknown state as an unclipped visible cue`() {
@@ -117,4 +121,105 @@ class QuantumLayerStatusStripSemanticsTest {
         compose.onNodeWithTag("quantum_layer_visible_state_1", useUnmergedTree = true)
             .assertTextEquals("?")
     }
+
+    @Test
+    fun `merged rack label names every local visual state`() {
+        val states = listOf(
+            "free" to BoardLayerState(brand = BoardBrand.QUANTUM),
+            "planned" to stateWith(layer(BoardLayerStatus.PREVIEW)),
+            "transmitting" to stateWith(layer(BoardLayerStatus.SENDING)),
+            "not confirmed" to stateWith(layer(BoardLayerStatus.FAILED)),
+            "replacement planned" to stateWith(
+                layer(BoardLayerStatus.PREVIEW).copy(
+                    confirmedRouteUuid = "previous-route",
+                    confirmedColor = BoardLayerManager.LAYER_COLORS[1],
+                    confirmedClimbName = "Previous climb",
+                    confirmedHolds = listOf(BoardHold(11, 1)),
+                ),
+            ),
+            "route details unknown" to stateWith(
+                layer(BoardLayerStatus.CONFIRMED).copy(
+                    confirmedRouteUuid = "route-0",
+                    confirmedColor = BoardLayerManager.LAYER_COLORS[0],
+                    controllerDetailsKnown = false,
+                ),
+            ),
+            "confirmed on the board" to stateWith(
+                layer(BoardLayerStatus.CONFIRMED).copy(
+                    confirmedRouteUuid = "route-0",
+                    confirmedColor = BoardLayerManager.LAYER_COLORS[0],
+                    confirmedClimbName = "Climb 0",
+                    confirmedHolds = listOf(BoardHold(10, 1)),
+                ),
+            ),
+        )
+        compose.setContent {
+            Column {
+                states.forEachIndexed { index, (_, state) ->
+                    QuantumLayerStatusStrip(
+                        state = state,
+                        onOpen = {},
+                        testTag = "rack-$index",
+                    )
+                }
+            }
+        }
+
+        states.forEachIndexed { index, (expected, _) ->
+            compose.onNodeWithTag("rack-$index").assert(contentDescriptionContains(expected))
+        }
+    }
+
+    @Test
+    fun `foreign labels say known or unknown and remain read only`() {
+        val known = foreign("known-route", listOf(BoardHold(20, 1)))
+        val unknown = foreign("unknown-route", null)
+        compose.setContent {
+            QuantumLayerStatusStrip(
+                state = BoardLayerState(
+                    brand = BoardBrand.QUANTUM,
+                    externalLayers = listOf(known, unknown),
+                ),
+                onOpen = {},
+                testTag = "foreign-rack",
+            )
+        }
+
+        compose.onNodeWithTag("foreign-rack")
+            .assert(contentDescriptionContains("holds known, read-only"))
+            .assert(contentDescriptionContains("holds unknown, read-only; new layers are blocked"))
+    }
+
+    private fun contentDescriptionContains(expected: String) = SemanticsMatcher(
+        "content description contains '$expected'",
+    ) { node ->
+        node.config[SemanticsProperties.ContentDescription]
+            .any { it.contains(expected, ignoreCase = true) }
+    }
+
+    private fun stateWith(layer: BoardClimbLayer) = BoardLayerState(
+        brand = BoardBrand.QUANTUM,
+        layers = listOf(layer),
+    )
+
+    private fun layer(status: BoardLayerStatus) = BoardClimbLayer(
+        slot = 0,
+        climbUuid = "climb-0",
+        routeUuid = "route-0",
+        climbName = "Climb 0",
+        angle = 40,
+        userUuid = "user-0",
+        color = BoardLayerManager.LAYER_COLORS[0],
+        holds = listOf(BoardHold(10, 1)),
+        status = status,
+    )
+
+    private fun foreign(route: String, holds: List<BoardHold>?) = ExternalBoardLayer(
+        routeUuid = route,
+        userUuid = "foreign-$route",
+        color = 0xff123456.toInt(),
+        remainingSeconds = 20,
+        climbName = route,
+        holds = holds,
+    )
 }

@@ -6,6 +6,10 @@ import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.cruxcoach.data.repository.BoardRepositoryImpl
 import com.cruxcoach.db.board.BoardDatabase
 import com.cruxcoach.db.board.Climbs
+import com.cruxcoach.android.ble.BoardLayerConflictPolicy
+import com.cruxcoach.android.ble.ExternalBoardLayer
+import com.cruxcoach.domain.board.BoardClimbParser
+import com.cruxcoach.domain.board.BoardHold
 import com.cruxcoach.domain.board.FramesBinaryCodec
 import java.nio.file.Files
 import kotlin.test.AfterTest
@@ -102,19 +106,43 @@ class QuantumExternalRouteLookupTest {
         assertEquals("M route", resolved?.name)
         assertEquals("p19100001r12p19100002r14", resolved?.frames)
         assertNull(repo.getQuantumClimbByExternalRoute(routeUuid, "belay"))
+
+        val knownForeign = ExternalBoardLayer(
+            routeUuid = routeUuid,
+            userUuid = "foreign-user",
+            color = 0xff00ffff.toInt(),
+            remainingSeconds = 30,
+            climbUuid = resolved?.uuid,
+            climbName = resolved?.name,
+            holds = resolved?.let { BoardClimbParser.parseFrames(it.frames) },
+        )
+        val conflict = BoardLayerConflictPolicy.assess(
+            candidate = listOf(BoardHold(19100001, 1)),
+            activeLayers = emptyList(),
+            externalLayers = listOf(knownForeign),
+            replacingSlot = null,
+        )
+        assertEquals(1, conflict.sharedHoldCount, "known foreign geometry blocks overlap")
+        assertEquals(0, conflict.unknownLayerCount)
     }
 
     @Test
-    fun directVendorUuidFallbackRequiresQuantumSingleFrameInConnectedModelLayout() {
+    fun directVendorUuidFallbackRequiresOwnedPlayerOptInAndConnectedModelLayout() {
         val routeUuid = "00112233-4455-6677-8899-aabbccddeeff"
         insertClimb(routeUuid, "Direct M route", "p19100001r12", 9103)
 
-        val resolved = repo.getQuantumClimbByExternalRoute(routeUuid.uppercase(), "M")
+        assertNull(
+            repo.getQuantumClimbByExternalRoute(routeUuid.uppercase(), "M"),
+            "foreign player cannot trust a publisher-chosen direct UUID",
+        )
+        val resolved = repo.getQuantumClimbByExternalRoute(
+            routeUuid.uppercase(), "M", allowDirectUuidFallback = true,
+        )
 
         assertNotNull(resolved)
         assertEquals(routeUuid, resolved.uuid)
         assertEquals("Direct M route", resolved.name)
-        assertNull(repo.getQuantumClimbByExternalRoute(routeUuid, "xl"))
+        assertNull(repo.getQuantumClimbByExternalRoute(routeUuid, "xl", true))
     }
 
     @Test

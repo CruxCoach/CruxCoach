@@ -19,6 +19,7 @@ import com.cruxcoach.domain.board.QuantumBoardModel
 import com.cruxcoach.domain.board.QuantumBoardBroadcastParser
 import com.cruxcoach.domain.board.QuantumBroadcast
 import com.cruxcoach.domain.board.QuantumActivePlayer
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -122,6 +123,51 @@ internal fun serviceDiscoveryCompletionAllowed(
     gattClosed: Boolean,
     alreadyHandled: Boolean,
 ): Boolean = connecting && currentGattMatches && !gattClosed && !alreadyHandled
+
+/** Vendor GATT implementations may throw instead of returning false when a
+ * permission changes or their operation queue is broken. Setup has already
+ * retired the overall connect timeout, so every such exception must become a
+ * normal setup failure rather than strand CONNECTING forever. */
+internal suspend fun quantumGattSetupSucceeded(
+    block: suspend () -> Boolean,
+): Boolean = quantumGattOperationSucceeded(block)
+
+/** Runtime refreshes use the same exception boundary as setup. Android vendor
+ * stacks can throw after a permission change instead of reporting a callback
+ * failure; cancellation remains structured and is never converted to false. */
+internal suspend fun quantumGattOperationSucceeded(
+    block: suspend () -> Boolean,
+): Boolean = try {
+    block()
+} catch (cancelled: CancellationException) {
+    throw cancelled
+} catch (_: Exception) {
+    false
+}
+
+internal enum class GattConnectionCallbackRole { CURRENT, RETIRING_DISCONNECT, STALE }
+
+internal enum class GattDisconnectRequestRole { RETIRE_ACTIVE, PRESERVE_RETIRING, NO_GATT }
+
+internal fun classifyGattDisconnectRequest(
+    activeGattPresent: Boolean,
+    retiringGattPresent: Boolean,
+): GattDisconnectRequestRole = when {
+    activeGattPresent -> GattDisconnectRequestRole.RETIRE_ACTIVE
+    retiringGattPresent -> GattDisconnectRequestRole.PRESERVE_RETIRING
+    else -> GattDisconnectRequestRole.NO_GATT
+}
+
+internal fun classifyGattConnectionCallback(
+    currentGattMatches: Boolean,
+    retiringGattMatches: Boolean,
+    newState: Int,
+): GattConnectionCallbackRole = when {
+    currentGattMatches -> GattConnectionCallbackRole.CURRENT
+    retiringGattMatches && newState == BluetoothProfile.STATE_DISCONNECTED ->
+        GattConnectionCallbackRole.RETIRING_DISCONNECT
+    else -> GattConnectionCallbackRole.STALE
+}
 
 internal data class QuantumControllerMetadata(
     val model: QuantumBoardModel,
@@ -287,22 +333,40 @@ internal fun quantumFff4PublishesSnapshot(broadcast: QuantumBroadcast?): Boolean
 internal fun genericBoardClearAllowed(connectedBrand: BoardBrand?): Boolean =
     connectedBrand != BoardBrand.QUANTUM
 
+internal fun moonBoardCommandAllowed(connectedBrand: BoardBrand?): Boolean =
+    connectedBrand == BoardBrand.MOONBOARD
+
+internal fun quantumRefreshFailureRequiresDisconnect(
+    currentGattMatches: Boolean,
+    connectedBrand: BoardBrand?,
+): Boolean = currentGattMatches && connectedBrand == BoardBrand.QUANTUM
+
 internal fun isQuantumProjectionConfirmed(
     state: QuantumControllerState,
+    playersBefore: List<QuantumActivePlayer>,
     routeId: String,
     userId: String,
     color: Int,
-): Boolean = state.authoritative && state.lastFailure == null && state.players.any {
-    it.userId.equals(userId, ignoreCase = true) &&
-        it.routeId.equals(routeId, ignoreCase = true) &&
-        it.color == (color and 0xffffff)
+): Boolean {
+    if (!state.authoritative || state.lastFailure != null) return false
+    val nonTargetBefore = playersBefore.filterNot { it.userId.equals(userId, ignoreCase = true) }
+    val nonTargetAfter = state.players.filterNot { it.userId.equals(userId, ignoreCase = true) }
+    return quantumPlayersMatch(nonTargetBefore, nonTargetAfter) && state.players.any {
+        it.userId.equals(userId, ignoreCase = true) &&
+            it.routeId.equals(routeId, ignoreCase = true) &&
+            it.color == (color and 0xffffff)
+    }
 }
 
 internal fun isQuantumScopedRemovalConfirmed(
     state: QuantumControllerState,
+    playersBefore: List<QuantumActivePlayer>,
     userId: String,
-): Boolean = state.authoritative && state.lastFailure == null && state.players.none {
-    it.userId.equals(userId, ignoreCase = true)
+): Boolean {
+    if (!state.authoritative || state.lastFailure != null) return false
+    val nonTargetBefore = playersBefore.filterNot { it.userId.equals(userId, ignoreCase = true) }
+    return state.players.none { it.userId.equals(userId, ignoreCase = true) } &&
+        quantumPlayersMatch(nonTargetBefore, state.players)
 }
 
 /**
@@ -519,9 +583,18 @@ class BoardBleConnection(
     @Volatile
     private var userDisconnecting = false
 
-    // Tracks whether close() has been called for the current GATT to prevent double-close.
+    // Identity-scoped close fence. A delayed callback for an older retry must
+    // never consume the close flag belonging to a newer GATT attempt.
     @Volatile
-    private var gattClosed = false
+    private var closedGatt: BluetoothGatt? = null
+
+    // disconnect() clears [gatt] immediately so callers see DISCONNECTED, but
+    // the old object still needs its eventual callback/close without being
+    // mistaken for a later retry attempt.
+    @Volatile
+    private var userDisconnectGatt: BluetoothGatt? = null
+
+    private fun isGattClosed(candidate: BluetoothGatt): Boolean = closedGatt === candidate
 
     // Signals when GATT close() completes. On Android <12, the BLE stack releases
     // client slots asynchronously — reconnecting before close() finishes causes
@@ -592,7 +665,7 @@ class BoardBleConnection(
     @SuppressLint("MissingPermission")
     private fun startServiceDiscovery(currentGatt: BluetoothGatt) {
         if (_connectionState.value != ConnectionState.CONNECTING ||
-            gatt !== currentGatt || gattClosed || serviceDiscoveryGatt === currentGatt
+            gatt !== currentGatt || isGattClosed(currentGatt) || serviceDiscoveryGatt === currentGatt
         ) return
         serviceDiscoveryGatt = currentGatt
         val queued = currentGatt.discoverServices()
@@ -608,7 +681,7 @@ class BoardBleConnection(
             if (!serviceDiscoveryCompletionAllowed(
                     connecting = _connectionState.value == ConnectionState.CONNECTING,
                     currentGattMatches = gatt === currentGatt,
-                    gattClosed = gattClosed,
+                    gattClosed = isGattClosed(currentGatt),
                     alreadyHandled = serviceDiscoveryHandledGatt === currentGatt,
                 )
             ) return@postDelayed
@@ -630,7 +703,7 @@ class BoardBleConnection(
     @SuppressLint("MissingPermission")
     private fun finishGattSetup(currentGatt: BluetoothGatt) {
         if (_connectionState.value != ConnectionState.CONNECTING ||
-            gatt !== currentGatt || gattClosed || writeCharacteristic == null
+            gatt !== currentGatt || isGattClosed(currentGatt) || writeCharacteristic == null
         ) return
         quantumMtuGatt = null
         if (_connectedBoardBrand.value != BoardBrand.QUANTUM) {
@@ -648,23 +721,20 @@ class BoardBleConnection(
         // the subscription or the first route-list request on real stacks.
         quantumSetupJob?.cancel()
         quantumSetupJob = scope.launch {
-            // Android GATT permits one outstanding operation. Read and verify
-            // the model before queueing the CCCD write, then expose the link as
-            // writable only after both operations have completed in order.
-            val metadata = readQuantumMetadata(currentGatt)
-            if (metadata == null || gatt !== currentGatt || gattClosed) {
-                Log.w(TAG, "Quantum fff5 metadata missing or malformed; refusing writable connection")
-                if (_connectFailureReason.value == null) {
-                    _connectFailureReason.value = R.string.board_ble_connect_failed_hint
+            val ready = quantumGattSetupSucceeded {
+                // Android GATT permits one outstanding operation. Read and
+                // verify the model before queueing the CCCD write, then expose
+                // the link as writable only after both operations complete.
+                val metadata = readQuantumMetadata(currentGatt) ?: return@quantumGattSetupSucceeded false
+                if (gatt !== currentGatt || isGattClosed(currentGatt)) {
+                    return@quantumGattSetupSucceeded false
                 }
-                disconnect()
-                onRestartScannersAfterConnect?.invoke()
-                return@launch
+                _connectedQuantumModel.value = metadata.model
+                val notificationsReady = enableQuantumNotifications(currentGatt)
+                notificationsReady && gatt === currentGatt && !isGattClosed(currentGatt)
             }
-            _connectedQuantumModel.value = metadata.model
-            val notificationsReady = enableQuantumNotifications(currentGatt)
-            if (!notificationsReady || gatt !== currentGatt || gattClosed) {
-                Log.w(TAG, "Quantum notification setup failed; refusing writable connection")
+            if (!ready) {
+                Log.w(TAG, "Quantum fff5/notification setup failed; refusing writable connection")
                 if (_connectFailureReason.value == null) {
                     _connectFailureReason.value = R.string.board_ble_connect_failed_hint
                 }
@@ -728,7 +798,7 @@ class BoardBleConnection(
 
     private fun markGattReady(currentGatt: BluetoothGatt) {
         if (_connectionState.value != ConnectionState.CONNECTING ||
-            gatt !== currentGatt || gattClosed || writeCharacteristic == null
+            gatt !== currentGatt || isGattClosed(currentGatt) || writeCharacteristic == null
         ) return
         connectionTimeoutJob?.cancel()
         connectionTimeoutJob = null
@@ -743,12 +813,12 @@ class BoardBleConnection(
                 // structurally valid complete snapshot avoids an unnecessary
                 // controller command; unsupported/delta evidence falls back to
                 // REQUEST_USER_ROUTE_LIST.
-                refreshQuantumState()
+                if (!refreshQuantumState()) return@launch
                 while (gatt === currentGatt &&
                     _connectedBoardBrand.value == BoardBrand.QUANTUM
                 ) {
                     delay(QUANTUM_REFRESH_INTERVAL_MS)
-                    refreshQuantumState()
+                    if (!refreshQuantumState()) return@launch
                 }
             }
         }
@@ -758,6 +828,36 @@ class BoardBleConnection(
         @SuppressLint("MissingPermission")
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
             Log.d(TAG, "onConnectionStateChange status=0x${status.toString(16)} newState=$newState userDisc=$userDisconnecting SDK=${Build.VERSION.SDK_INT}")
+
+            when (classifyGattConnectionCallback(
+                currentGattMatches = this@BoardBleConnection.gatt === gatt,
+                retiringGattMatches = userDisconnectGatt === gatt,
+                newState = newState,
+            )) {
+                GattConnectionCallbackRole.CURRENT -> Unit
+                // A normal disconnect deliberately clears the active field
+                // before its callback. Allow that exact retiring object to
+                // finish closing, but never let it cancel/retry a newer GATT.
+                GattConnectionCallbackRole.RETIRING_DISCONNECT -> {
+                    val finishRetiredClose = {
+                        if (userDisconnectGatt === gatt) userDisconnectGatt = null
+                        closeGatt(gatt)
+                        closeSafetyJob?.cancel()
+                        closeSafetyJob = null
+                        userDisconnecting = false
+                    }
+                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+                        mainHandler.postDelayed(finishRetiredClose, DELAY_CLOSE_AFTER_DISCONNECT_MS)
+                    } else {
+                        finishRetiredClose()
+                    }
+                    return
+                }
+                GattConnectionCallbackRole.STALE -> {
+                    Log.w(TAG, "Ignoring stale connection-state callback from an older GATT attempt")
+                    return
+                }
+            }
 
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
@@ -783,7 +883,9 @@ class BoardBleConnection(
                         // Give legacy stacks a beat after STATE_CONNECTED.
                         // The attempt timeout keeps covering this window.
                         mainHandler.postDelayed({
-                            if (_connectionState.value == ConnectionState.CONNECTING && !gattClosed) {
+                            if (_connectionState.value == ConnectionState.CONNECTING &&
+                                this@BoardBleConnection.gatt === gatt && !isGattClosed(gatt)
+                            ) {
                                 startServiceDiscovery(gatt)
                             }
                         }, DELAY_PRE_DISCOVERY_LEGACY_MS)
@@ -824,7 +926,7 @@ class BoardBleConnection(
             if (!serviceDiscoveryCompletionAllowed(
                     connecting = _connectionState.value == ConnectionState.CONNECTING,
                     currentGattMatches = this@BoardBleConnection.gatt === gatt,
-                    gattClosed = gattClosed,
+                    gattClosed = isGattClosed(gatt),
                     alreadyHandled = serviceDiscoveryHandledGatt === gatt,
                 )
             ) return
@@ -1097,16 +1199,16 @@ class BoardBleConnection(
 
     /**
      * Close a GATT object: refresh() → close() → null.
-     * Guards against double-close via [gattClosed] flag.
+     * Guards against double-close by GATT object identity.
      */
     @SuppressLint("MissingPermission")
     private fun closeGatt(g: BluetoothGatt) {
-        if (gattClosed) {
+        if (isGattClosed(g)) {
             Log.d(TAG, "closeGatt: already closed, skipping")
             pendingClose?.complete(Unit)
             return
         }
-        gattClosed = true
+        closedGatt = g
 
         // refresh() clears cached GATT handles. Call BEFORE close(), AFTER disconnect.
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
@@ -1154,7 +1256,6 @@ class BoardBleConnection(
         _connectedQuantumModel.value = null
         attemptBudget = maxAttempts.coerceIn(1, MAX_CONNECT_ATTEMPTS)
         userDisconnecting = false
-        gattClosed = false
         _connectionState.value = ConnectionState.CONNECTING
         if (board.boardBrand == BoardBrand.QUANTUM) {
             quantumNotificationAccumulator.reset()
@@ -1254,7 +1355,6 @@ class BoardBleConnection(
      *  timeout. Called from connect()'s prelude and again by scheduleRetry(). */
     @SuppressLint("MissingPermission")
     private fun startGattAttempt(board: DiscoveredBoard) {
-        gattClosed = false
         _connectedQuantumModel.value = null
 
         // Abort if state changed during the wait
@@ -1407,6 +1507,11 @@ class BoardBleConnection(
         expectedQuantumBoard: BoardLayerBoardIdentity? = null,
     ): Boolean = writeMutex.withLock {
         if (_connectionState.value != ConnectionState.CONNECTED) return false
+        val quantumPlayersBefore = if (_connectedBoardBrand.value == BoardBrand.QUANTUM) {
+            expectedQuantumPlayers ?: return false
+        } else {
+            emptyList()
+        }
 
         if (_connectedBoardBrand.value == BoardBrand.QUANTUM &&
             !quantumBoardWriteFenceMatches(
@@ -1428,12 +1533,11 @@ class BoardBleConnection(
             return false
         }
         if (_connectedBoardBrand.value == BoardBrand.QUANTUM) {
-            val expectedPlayers = expectedQuantumPlayers ?: return false
             // The controller list is shared mutable state. Re-read under the
             // same mutex as TURN_OFF_USER and reject any occupancy change since
             // the caller's conflict/capacity preflight.
             if (!requestQuantumRouteListLocked(expectedQuantumBoard) ||
-                !quantumPlayersMatch(expectedPlayers, _quantumControllerState.value.players)
+                !quantumPlayersMatch(quantumPlayersBefore, _quantumControllerState.value.players)
             ) return false
         }
         if (_connectedBoardBrand.value == BoardBrand.QUANTUM &&
@@ -1495,6 +1599,7 @@ class BoardBleConnection(
                 val snapshot = _quantumControllerState.value
                 return isQuantumProjectionConfirmed(
                     state = snapshot,
+                    playersBefore = quantumPlayersBefore,
                     routeId = routeId ?: QuantumBoardPacketEncoder.ZERO_UUID,
                     userId = quantumUserId,
                     color = quantumColor,
@@ -1635,11 +1740,25 @@ class BoardBleConnection(
     }
 
     /** Pull the controller's authoritative active-player list. */
-    suspend fun refreshQuantumState(): Boolean = writeMutex.withLock {
-        if (_connectionState.value != ConnectionState.CONNECTED ||
-            _connectedBoardBrand.value != BoardBrand.QUANTUM
-        ) return false
-        return refreshQuantumStateLocked()
+    suspend fun refreshQuantumState(): Boolean {
+        val operationGatt = gatt
+        val refreshed = quantumGattOperationSucceeded {
+            writeMutex.withLock {
+                if (_connectionState.value != ConnectionState.CONNECTED ||
+                    _connectedBoardBrand.value != BoardBrand.QUANTUM
+                ) return@withLock false
+                refreshQuantumStateLocked()
+            }
+        }
+        if (!refreshed && quantumRefreshFailureRequiresDisconnect(
+                currentGattMatches = operationGatt != null && gatt === operationGatt,
+                connectedBrand = _connectedBoardBrand.value,
+            )
+        ) {
+            Log.w(TAG, "Quantum authoritative refresh failed; retiring GATT")
+            disconnect()
+        }
+        return refreshed
     }
 
     /** Remove exactly one installation-owned Quantum layer, never all users. */
@@ -1667,6 +1786,7 @@ class BoardBleConnection(
         val currentPlayer = _quantumControllerState.value.players.firstOrNull {
             it.userId.equals(userId, ignoreCase = true)
         } ?: return true
+        val playersBefore = _quantumControllerState.value.players
         if (!currentPlayer.routeId.equals(expectedRouteId, ignoreCase = true)) return false
         _connectionState.value = ConnectionState.SENDING
         disconnectJob?.cancel()
@@ -1680,7 +1800,11 @@ class BoardBleConnection(
             // Confirmation is a fresh complete snapshot, not an optimistic
             // local deletion or a delta copied over an older player list.
             if (!requestQuantumRouteListLocked(expectedQuantumBoard)) return false
-            return isQuantumScopedRemovalConfirmed(_quantumControllerState.value, userId)
+            return isQuantumScopedRemovalConfirmed(
+                state = _quantumControllerState.value,
+                playersBefore = playersBefore,
+                userId = userId,
+            )
         } finally {
             if (_connectionState.value == ConnectionState.SENDING) {
                 _connectionState.value = ConnectionState.CONNECTED
@@ -1754,7 +1878,9 @@ class BoardBleConnection(
         variant: com.cruxcoach.domain.board.MoonBoardVariant,
         ledMode: MoonBoardLedMode = MoonBoardLedMode.BELOW,
     ): Boolean = writeMutex.withLock {
-        if (_connectionState.value != ConnectionState.CONNECTED) return false
+        if (_connectionState.value != ConnectionState.CONNECTED ||
+            !moonBoardCommandAllowed(_connectedBoardBrand.value)
+        ) return false
 
         _connectionState.value = ConnectionState.SENDING
         // Park any pending idle-disconnect so it can't fire mid-send.
@@ -1868,7 +1994,20 @@ class BoardBleConnection(
         connectionTimeoutJob = null
         disconnectJob?.cancel()
         disconnectJob = null
-        closeSafetyJob?.cancel()
+        // A repeated disconnect while the previous GATT is already retiring
+        // must not cancel its only remaining force-close path.
+        val activeGatt = gatt
+        when (classifyGattDisconnectRequest(
+            activeGattPresent = activeGatt != null,
+            retiringGattPresent = userDisconnectGatt != null,
+        )) {
+            GattDisconnectRequestRole.PRESERVE_RETIRING -> Unit
+            GattDisconnectRequestRole.RETIRE_ACTIVE,
+            GattDisconnectRequestRole.NO_GATT -> {
+                closeSafetyJob?.cancel()
+                closeSafetyJob = null
+            }
+        }
         cancelQuantumGattOperations()
 
         run {
@@ -1877,8 +2016,8 @@ class BoardBleConnection(
             pending?.result?.complete(BluetoothGatt.GATT_FAILURE)
         }
 
-        val g = gatt
         gatt = null
+        if (activeGatt != null) userDisconnectGatt = activeGatt
         writeCharacteristic = null
         currentBoard = null
         _connectedBoardDescriptor.value = null
@@ -1890,22 +2029,38 @@ class BoardBleConnection(
         serviceDiscoveryHandledGatt = null
         quantumMtuGatt = null
 
-        if (g != null) {
+        if (activeGatt != null) {
             userDisconnecting = true
-            gattClosed = false
             pendingClose = CompletableDeferred()
-            g.disconnect()
+            val disconnectQueued = runCatching {
+                activeGatt.disconnect()
+                true
+            }.getOrElse { error ->
+                Log.w(TAG, "GATT disconnect() threw; force-closing", error)
+                false
+            }
+            if (!disconnectQueued) {
+                if (userDisconnectGatt === activeGatt) userDisconnectGatt = null
+                closeGatt(activeGatt)
+                userDisconnecting = false
+                return
+            }
             Log.d(TAG, "GATT disconnect() called, waiting for callback")
 
             // Safety timeout: if STATE_DISCONNECTED callback doesn't fire,
             // force-close the GATT to prevent leaked client slots.
             closeSafetyJob = scope.launch {
                 delay(CLOSE_SAFETY_TIMEOUT_MS)
-                if (!gattClosed) {
+                if (userDisconnectGatt === activeGatt) userDisconnectGatt = null
+                if (!isGattClosed(activeGatt)) {
                     Log.w(TAG, "STATE_DISCONNECTED callback didn't fire, force-closing GATT")
-                    closeGatt(g)
-                    userDisconnecting = false
+                    // Clear the retiring identity before closeGatt completes
+                    // pendingClose and allows a new connection to begin. A late
+                    // callback from this object is stale and cannot cancel a
+                    // later connection's safety job.
+                    closeGatt(activeGatt)
                 }
+                userDisconnecting = false
             }
         }
     }

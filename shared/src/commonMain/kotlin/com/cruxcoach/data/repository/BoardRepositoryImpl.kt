@@ -119,13 +119,21 @@ class BoardRepositoryImpl(
     override fun getQuantumExternalRouteUuid(appUuid: String): String? =
         q.getQuantumExternalRouteUuid(appUuid).executeAsOneOrNull()
 
-    override fun getQuantumClimbByExternalRoute(routeUuid: String, model: String): ClimbWithStats? {
+    override fun getQuantumClimbByExternalRoute(
+        routeUuid: String,
+        model: String,
+        allowDirectUuidFallback: Boolean,
+    ): ClimbWithStats? {
         val expectedModel = QuantumBoardModel.fromWire(model.lowercase()) ?: return null
         val bridgedUuid = q.getQuantumAppUuidByExternalRoute(routeUuid, model).executeAsOneOrNull()
-        val appUuid = bridgedUuid ?: q.getQuantumDirectAppUuidByExternalRoute(
-            routeUuid = routeUuid,
-            layoutId = expectedModel.layoutId,
-        ).executeAsOneOrNull() ?: return null
+        val appUuid = bridgedUuid ?: if (allowDirectUuidFallback) {
+            q.getQuantumDirectAppUuidByExternalRoute(
+                routeUuid = routeUuid,
+                layoutId = expectedModel.layoutId,
+            ).executeAsOneOrNull()
+        } else {
+            null
+        } ?: return null
         // Use the base-climb LEFT JOIN rather than climb_browse: a retained
         // controller route can legitimately be known before any stats row has
         // been imported, and conflict hydration still needs its frames.
@@ -1583,6 +1591,7 @@ class BoardRepositoryImpl(
                 createdAt = row.created_at,
                 description = row.description,
                 moveCount = row.move_count,
+                isListed = row.is_listed != 0L,
                 source = row.source,
                 syncStatus = row.sync_status,
                 createdByPubkey = row.created_by_pubkey,
@@ -1631,6 +1640,7 @@ class BoardRepositoryImpl(
                 description = row.description,
                 hsm = if (row.boardBrand == BoardBrand.QUANTUM.wireValue) 31L else 0L,
                 move_count = row.moveCount,
+                is_listed = if (row.isListed) 1L else 0L,
                 source = row.source,
                 sync_status = row.syncStatus,
                 created_by_pubkey = row.createdByPubkey,
@@ -1654,7 +1664,9 @@ class BoardRepositoryImpl(
             val freshlyInserted = q.lastClimbsChangeCount().executeAsOne() > 0L
             q.restoreOwnClimbCoalesceFill(
                 uuid = row.uuid,
+                source = row.source,
                 sync_status = row.syncStatus,
+                is_listed = if (row.isListed) 1L else 0L,
                 created_by_pubkey = row.createdByPubkey,
                 frames_hash = row.framesHash,
                 nostr_event_id = row.nostrEventId,

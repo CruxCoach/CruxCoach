@@ -139,6 +139,13 @@ internal object QuantumLayerUiPolicy {
                 replacingSlot = slot,
             )
         }
+        val knownSharedHoldCount = candidateSlot?.let { slot ->
+            knownSharedHoldCount(
+                state = state,
+                candidate = currentPlacements,
+                replacingSlot = slot,
+            )
+        } ?: 0
         val block = when {
             currentPlacements.isEmpty() -> QuantumLayerSuggestionBlock.NO_HOLDS
             currentPlacements.size > com.cruxcoach.domain.board.QuantumBoardPacketEncoder.ACTIVATE_CHUNK_LIMIT ->
@@ -146,7 +153,7 @@ internal object QuantumLayerUiPolicy {
             candidateSlot == null -> QuantumLayerSuggestionBlock.NO_SLOT
             !hasCapacity -> QuantumLayerSuggestionBlock.BOARD_FULL
             assessment?.unknownLayerCount != 0 -> QuantumLayerSuggestionBlock.UNKNOWN_LAYER
-            assessment?.sharedHoldCount?.let { it != 0 } == true ->
+            knownSharedHoldCount != 0 ->
                 QuantumLayerSuggestionBlock.HOLD_CONFLICT
             freeColor == null -> QuantumLayerSuggestionBlock.NO_COLOR
             else -> null
@@ -216,6 +223,30 @@ internal object QuantumLayerUiPolicy {
             }
         }
         return null
+    }
+
+    /**
+     * Known diode conflicts for planning UI, including both sides of a staged
+     * replacement. [BoardLayerConflictPolicy] intentionally models physical
+     * controller occupancy, so an unsent preview is absent from that answer.
+     * The rack has a second responsibility: it must not recommend or describe
+     * two local plans as compatible when Send All will later reject them.
+     */
+    fun knownSharedHoldCount(
+        state: BoardLayerState,
+        candidate: Set<Int>,
+        replacingSlot: Int?,
+    ): Int {
+        val occupied = buildSet {
+            state.layers.filterNot { it.slot == replacingSlot }.forEach { layer ->
+                layer.holds.mapTo(this, BoardHold::placementId)
+                layer.confirmedHolds?.mapTo(this, BoardHold::placementId)
+            }
+            state.externalLayers.forEach { layer ->
+                layer.holds?.mapTo(this, BoardHold::placementId)
+            }
+        }
+        return candidate.count { it in occupied }
     }
 
     private fun visualState(layer: BoardClimbLayer?): QuantumLayerVisualState = when {

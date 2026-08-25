@@ -99,6 +99,31 @@ class CruxCoachBackupValidationTest {
     }
 
     @Test
+    fun rejects_ascent_that_claims_quantum_with_another_boards_layout() {
+        assertFailsWith<IllegalArgumentException> {
+            CruxCoachBackup.preview(ascent(boardBrand = "quantum", layoutId = 1))
+        }
+    }
+
+    @Test
+    fun rejects_quantum_bid_without_a_quantum_layout() {
+        val json = """{
+            "version":3,
+            "exportedAt":"2026-08-25",
+            "boardBids":[{
+                "uuid":"11111111-2222-4333-8444-555555555555",
+                "climbUuid":"aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+                "angle":40,
+                "bidCount":1,
+                "climbedAt":"2026-08-25T12:00:00Z",
+                "boardBrand":"quantum"
+            }]
+        }"""
+
+        assertFailsWith<IllegalArgumentException> { CruxCoachBackup.preview(json) }
+    }
+
+    @Test
     fun rejects_ascent_with_bad_uuid() {
         assertFailsWith<IllegalArgumentException> {
             CruxCoachBackup.preview(ascent(uuid = "not-a-uuid"))
@@ -276,6 +301,26 @@ class CruxCoachBackupValidationTest {
                 "climbUuid":"aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
                 "angle":40,
                 "ascensionistCount":1
+            }]
+        }"""
+
+        assertFailsWith<IllegalArgumentException> { CruxCoachBackup.preview(json) }
+    }
+
+    @Test
+    fun rejects_own_climb_that_claims_quantum_with_another_boards_layout() {
+        val json = """{
+            "version":3,
+            "exportedAt":"2026-08-25",
+            "boardClimbs":[{
+                "uuid":"aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+                "layoutId":1,
+                "name":"Invalid Quantum geometry",
+                "frames":"p100r15",
+                "source":"local",
+                "origin":"cruxcoach",
+                "syncStatus":"draft",
+                "boardBrand":"quantum"
             }]
         }"""
 

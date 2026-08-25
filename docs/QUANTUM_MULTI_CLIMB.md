@@ -10,9 +10,10 @@ one layer and keeps its existing wire format and send semantics.
 
 The rack has four local staging slots. Assigning the current climb only changes
 the preview; it performs no BLE write. Each slot has its own lamp button and a
-separate **send all** lamp transmits every staged slot sequentially. Opening,
-swiping or reconnecting on a detail page never sends. The legacy automatic mode
-is limited to explicit playlist/playback progression outside detail browsing.
+separate **send all** lamp transmits every staged slot sequentially. For Quantum,
+opening, swiping or reconnecting on a detail page never sends; the retained wall
+always starts at an explicit lamp action. Other board families keep their
+pre-0.2.2 automatic/explicit detail-send preference unchanged.
 
 Removing an unsent preview is local-only. Removing a physically active layer
 sends `TURN_OFF_USER` for that installation-owned UUID. Normal switching never
@@ -80,7 +81,8 @@ Projection is a conservative transaction:
    fragmented into 15-byte Android writes
 3. `REQUEST_USER_ROUTE_LIST`
 4. success only after an authoritative snapshot contains the exact
-   route/user/colour tuple
+   route/user/colour tuple and every non-target player from the pre-write
+   snapshot is still present with the same route/user/colour tuple
 
 Every climb hold must resolve to a diode before the first Quantum command.
 Unlike route/user/colour, diode membership is absent from controller readback;
@@ -107,6 +109,15 @@ confirmed. The separate clear-entire-wall action likewise requires controller
 readback (an authoritative empty snapshot); successful BLE transport alone no
 longer clears local truth optimistically.
 
+Every staged plan also has a process-local compare-and-set token. Detail and
+playlist operations capture it before they suspend for catalogue reads or BLE.
+Their later send, fail, confirm, or remove completion is ignored if another
+surface has replaced that numbered slot, so an old operation cannot confirm or
+delete the newer plan. Connection callbacks are similarly fenced to the exact
+GATT attempt; a delayed disconnect from an older retry may close only that
+retired object and cannot cancel setup for the current attempt. Exceptions
+thrown by vendor GATT setup calls take the ordinary failed/disconnected path.
+
 ## Catalogue identity and offline migration
 
 Quantum's app climb UUID is not the controller route UUID. The local catalogue
@@ -115,6 +126,12 @@ route metadata. Reverse lookup hydrates a foreign controller route to its known
 climb name and hold set; known holds participate in overlap checks. Missing,
 blank, malformed, wrong-model, or otherwise unresolved geometry remains
 unknown and blocks another projection conservatively.
+
+Foreign-player hydration requires the imported official route bridge. A direct
+UUID match is allowed only for one of this installation's four controller user
+identities, because community climb UUIDs are publisher-chosen and are not a
+wire binding to an unrelated eWalls user. Thus a community UUID collision can
+never make unknown foreign geometry appear safe.
 
 Local share keeps two permanent compatibility views. A v1 receiver receives
 the same Quantum-free legacy logical artifact at `/board.db.gz`; it never sees
@@ -130,8 +147,12 @@ Pre-0.2.2 modern databases are also accepted. Additive geometry tables may be
 missing, and geometry without a `board_brand` column is interpreted as Kilter;
 present tables still have their required columns probed before any write.
 Backup format 3 already carries the additive brand/layout fields used by
-Quantum ascents, bids, own climbs, and own-climb stats, so 0.2.1 restores and
-current round trips require no format bump.
+Quantum ascents, bids, own climbs, and own-climb stats. The 0.2.2 own-climb
+visibility field is additive and defaults to listed when absent, while current
+backups preserve hidden climbs. Public catalogue-only copies are not exported
+as private own-climb lifecycle rows; a same-owner private restore can safely
+promote that catalogue-first row without overwriting its public content. Thus
+0.2.1 restores and current round trips require no format bump.
 
 ## Conflict and overlay UX
 
@@ -189,11 +210,12 @@ physical removal remains an explicit `TURN_OFF_USER` action.
 
 ## Extension path for other boards
 
-A future adapter opts into more than one layer through `BoardBrand`, then
-implements independent identity/removal/confirmation in its transport. The
-UI and layer state do not depend on Quantum opcodes. Boards without these
-capabilities do not render the rack and continue through the legacy single-
-projection path byte-for-byte.
+The capability and state boundary can support a future independent-layer
+adapter, but the 0.2.2 rack rendering and four-colour/four-slot policy are
+deliberately Quantum-specific. Another board would need its own verified
+capacity, palette, identity, removal, confirmation and UI adapter. Boards
+without Quantum's capability do not render the rack and continue through the
+legacy single-projection path byte-for-byte.
 
 BoardCell/mesh still carries one canonical `BoardProjection`; multi-layer
 ownership is intentionally local to a direct physical controller in this
@@ -229,4 +251,7 @@ The remaining hardware matrix also includes whether `fff4` is a fresh snapshot
 or a cached last event, notify-versus-indicate behavior across controller
 generations, `TURN_OFF_USER` to activation timing, atomic append/failure
 semantics for routes above 92 diodes, no-response write callback behavior,
-read-after-write visibility, and multi-client interleaving/polling impact.
+read-after-write visibility, duplicate or delayed un-tokened route-list
+responses, and multi-client interleaving/polling impact. Direct community UUID
+matches intentionally remain unknown for foreign users unless future protocol
+evidence establishes a controller-user-to-publisher binding.
