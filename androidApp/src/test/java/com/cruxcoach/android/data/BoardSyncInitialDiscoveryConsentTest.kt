@@ -159,4 +159,36 @@ class BoardSyncInitialDiscoveryConsentTest {
         assertNull(absent.state.value.pendingDiscoveredShare)
         assertFalse(absent.state.value.isSyncing)
     }
+
+    @Test
+    fun `offline permission result can consume only the invitation the user saw`() = runTest {
+        val manager = manager(discover = { null })
+        runCurrent()
+        val first = LocalShareProtocol.Invitation(
+            baseUrl = "http://192.168.49.1:4949",
+            ssid = "CruxCoach-A",
+            password = "password-a",
+        )
+        val replacement = LocalShareProtocol.Invitation(
+            baseUrl = "http://192.168.50.1:4949",
+            ssid = "CruxCoach-B",
+            password = "password-b",
+        )
+
+        manager.stageOfflineShare(first)
+        manager.stageOfflineShare(replacement)
+
+        assertEquals(first, manager.state.value.pendingOfflineShare)
+        manager.confirmOfflineShare(replacement)
+        assertEquals(
+            "an asynchronous permission answer for another invitation is a no-op",
+            first,
+            manager.state.value.pendingOfflineShare,
+        )
+        assertFalse(manager.state.value.isSyncing)
+        assertFalse(manager.state.value.localShareInProgress)
+
+        manager.dismissOfflineShare()
+        assertNull(manager.state.value.pendingOfflineShare)
+    }
 }

@@ -25,6 +25,12 @@
     <!-- Installation-scoped Quantum layer user UUIDs and physical-board
          binding. Restoring these would claim another installation's users. -->
     <exclude domain="sharedpref" path="board_layer_identity.xml"/>
+    <!-- Device-global Bluetooth name snapshot and dirty recovery flag.
+         Restoring these onto another phone could rename that device to the
+         previous phone's identity. -->
+    <exclude domain="sharedpref" path="cruxrelay.xml"/>
+    <!-- local_share_resume_v1 is intentionally portable: it contains only
+         self-clearing cache-relative resume paths, never peer credentials. -->
 
     <!-- DataStore files under filesDir/datastore/ — holds FEAT-002
          BackupPreferences (wrapped dataKey, d-tag HMACs, previous-blob

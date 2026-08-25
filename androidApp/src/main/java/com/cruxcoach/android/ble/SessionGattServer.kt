@@ -61,6 +61,8 @@ class SessionGattServer(private val context: Context) {
     // Android must never acknowledge a command that the app then drops.
     private val commandChannel = Channel<GattCommand>(512)
     val commands = commandChannel.receiveAsFlow()
+    /** Serializes the running gate with enqueue/drain at session boundaries. */
+    private val commandLock = Any()
 
     private val _connectionEvents = MutableSharedFlow<GattConnectionEvent>(extraBufferCapacity = 32)
     val connectionEvents: SharedFlow<GattConnectionEvent> = _connectionEvents.asSharedFlow()
@@ -174,7 +176,7 @@ class SessionGattServer(private val context: Context) {
         ) {
             if (characteristic.uuid == SessionGattUuids.QUEUE_COMMAND && value != null) {
                 Log.d(TAG, "Write request: QUEUE_COMMAND ${value.size} bytes from ${device.address}")
-                val queued = commandChannel.trySend(GattCommand(device.address, value)).isSuccess
+                val queued = enqueueCommand(device.address, value)
                 if (!queued) Log.w(TAG, "command queue full — rejecting ${value.size}B write")
                 if (responseNeeded) {
                     gattServer?.sendResponse(device, requestId,
@@ -267,7 +269,7 @@ class SessionGattServer(private val context: Context) {
             return false
         }
 
-        _isRunning.value = true
+        synchronized(commandLock) { _isRunning.value = true }
 
         // Periodic liveness check: detect stale entries when onConnectionStateChange(DISCONNECTED)
         // doesn't fire (e.g., device goes out of range without graceful disconnect)
@@ -285,7 +287,10 @@ class SessionGattServer(private val context: Context) {
 
     @SuppressLint("MissingPermission")
     fun stop() {
-        if (!_isRunning.value) return
+        if (!_isRunning.value) {
+            discardPendingCommands()
+            return
+        }
         val deviceCount = synchronized(lock) { connectedDevices.size }
         Log.d(TAG, "stop() called, $deviceCount connected devices")
         livenessJob?.cancel()
@@ -297,11 +302,45 @@ class SessionGattServer(private val context: Context) {
             connectedDevices.clear()
             subscribedDevices.clear()
         }
+        // Close the acceptance gate before the platform server. A binder
+        // callback already in flight either enqueues before this lock (and is
+        // drained below) or observes stopped and is rejected.
+        synchronized(commandLock) { _isRunning.value = false }
         gattServer?.close()
         gattServer = null
-        _isRunning.value = false
+        // Close first so no binder callback can enqueue behind the drain.
+        discardPendingCommands()
         Log.d(TAG, "GATT server stopped")
     }
+
+    /**
+     * Commands are scoped to the host session that accepted them, while this
+     * server and its channel are process-wide. Drop any orphaned backlog at a
+     * session boundary so it cannot mutate the next queue.
+     */
+    internal fun discardPendingCommands(): Int {
+        val dropped = synchronized(commandLock) {
+            var count = 0
+            while (commandChannel.tryReceive().isSuccess) count++
+            count
+        }
+        if (dropped > 0) {
+            Log.w(TAG, "Dropped $dropped command(s) queued outside a host session")
+        }
+        return dropped
+    }
+
+    private fun enqueueCommand(deviceAddress: String, data: ByteArray): Boolean =
+        synchronized(commandLock) {
+            _isRunning.value &&
+                commandChannel.trySend(GattCommand(deviceAddress, data)).isSuccess
+        }
+
+    /** Narrow test seam for constructing an orphaned pre-fix backlog. */
+    internal fun enqueueOrphanedCommandForTest(deviceAddress: String, data: ByteArray): Boolean =
+        synchronized(commandLock) {
+            commandChannel.trySend(GattCommand(deviceAddress, data)).isSuccess
+        }
 
     /**
      * Notify all subscribed devices of a characteristic change.
@@ -371,6 +410,10 @@ class SessionGattServer(private val context: Context) {
     }
 
     fun getConnectedCount(): Int = synchronized(lock) { connectedDevices.size }
+
+    fun isConnected(deviceAddress: String): Boolean = synchronized(lock) {
+        connectedDevices.contains(deviceAddress)
+    }
 
     /**
      * Proactively disconnect a device from the server side.

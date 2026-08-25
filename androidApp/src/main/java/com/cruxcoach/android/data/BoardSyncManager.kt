@@ -118,6 +118,10 @@ class BoardSyncManager(
         const val LOCAL_SHARE_NETWORK_RECHECK_MS = 2_500L
     }
 
+    /** Serializes the invitation shown in the trusted app UI with the exact
+     *  invitation consumed after Android's asynchronous permission result. */
+    private val offlineShareConsentLock = Any()
+
     private var deferralWatchdog: Job? = null
     /** True only for the onboarding fallback. Dismissing its mobile-data
      * consent queues the catalogue for Wi-Fi instead of cancelling it. */
@@ -736,18 +740,36 @@ class BoardSyncManager(
     }
 
     fun stageOfflineShare(invitation: LocalShareProtocol.Invitation) {
-        if (_state.value.isSyncing) return
-        _state.update { it.copy(pendingOfflineShare = invitation) }
+        synchronized(offlineShareConsentLock) {
+            val current = _state.value
+            if (current.isSyncing || current.pendingOfflineShare != null) return
+            _state.update { state ->
+                if (state.isSyncing || state.pendingOfflineShare != null) state
+                else state.copy(pendingOfflineShare = invitation)
+            }
+        }
     }
 
-    fun confirmOfflineShare() {
-        val invitation = _state.value.pendingOfflineShare ?: return
-        _state.update { it.copy(pendingOfflineShare = null) }
-        performOfflineShare(invitation)
+    fun confirmOfflineShare(approved: LocalShareProtocol.Invitation) {
+        synchronized(offlineShareConsentLock) {
+            val current = _state.value
+            if (current.isSyncing || current.pendingOfflineShare != approved) return
+            _state.update { state ->
+                if (!state.isSyncing && state.pendingOfflineShare == approved) {
+                    state.copy(pendingOfflineShare = null)
+                } else {
+                    state
+                }
+            }
+            if (_state.value.pendingOfflineShare == approved) return
+            performOfflineShare(approved)
+        }
     }
 
     fun dismissOfflineShare() {
-        _state.update { it.copy(pendingOfflineShare = null) }
+        synchronized(offlineShareConsentLock) {
+            _state.update { it.copy(pendingOfflineShare = null) }
+        }
     }
 
     fun dismissLocalShareUpdate() {

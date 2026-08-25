@@ -10,6 +10,7 @@ import com.cruxcoach.android.data.PlaylistPlaybackCoordinator
 import com.cruxcoach.android.data.SessionGattBridge
 import com.cruxcoach.android.data.SessionQueueManager
 import com.cruxcoach.android.data.SessionRole
+import com.cruxcoach.android.data.SessionVisibility
 import com.cruxcoach.android.ui.board.LocalPlaylistBrowserCard
 import com.cruxcoach.android.ui.board.SessionQueueSheet
 
@@ -65,6 +66,7 @@ fun BleStatusArea(
 
     // Bug 3: Session join handled internally via CompositionLocals — works on every screen
     val sessionQueueManager = LocalSessionQueueManager.current
+    val sessionGattBridge = LocalSessionGattBridge.current
     val queueState by sessionQueueManager.state.collectAsStateWithLifecycle()
     val isLocalPlaylist = queueState.isActive && queueState.isPlaylist
     val currentPlaylistClimbName by sessionQueueManager.currentClimbName.collectAsStateWithLifecycle()
@@ -73,6 +75,24 @@ fun BleStatusArea(
     val displayState = if (isLocalPlaylist) state.copy(ownSession = null) else state
     val relayManager = LocalCruxRelayManager.current
     val relayState by relayManager.state.collectAsStateWithLifecycle()
+
+    // A participant promoted after host loss keeps the queue but stays local
+    // until this one explicit decision. Render it above the early-return below
+    // so the choice cannot disappear merely because the status chip has no
+    // other BLE content yet.
+    if (queueState.pendingHostVisibilityDecision) {
+        SessionVisibilityDialog(
+            onDismiss = {
+                sessionQueueManager.setVisibilityRequested(SessionVisibility.LOCAL_ONLY)
+            },
+            onSelect = { visibility ->
+                sessionQueueManager.setVisibilityRequested(visibility)
+                if (visibility == SessionVisibility.JOINABLE) {
+                    sessionGattBridge.startSharing()
+                }
+            },
+        )
+    }
 
     // One universal Playlist-UX banner on every screen. It replaces the old
     // session mini-player everywhere, not just in the board browser.

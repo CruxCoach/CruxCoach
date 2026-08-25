@@ -2,13 +2,18 @@ package com.cruxcoach.android.data
 
 import android.annotation.SuppressLint
 import android.app.NotificationManager
+import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.AdvertisingSetCallback
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.os.SystemClock
 import android.util.Log
 import androidx.annotation.StringRes
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.BoardConnectionOwner
@@ -32,6 +37,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 /** Why the relay failed or stopped — mapped to localized strings in the UI
@@ -97,20 +103,22 @@ class CruxRelayManager(
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
     private val monotonicNowMs: () -> Long = SystemClock::elapsedRealtime,
     private val relayIdleTimeoutMs: Long = RELAY_IDLE_TIMEOUT_MS,
+    private val adapterProvider: () -> BluetoothAdapter? = {
+        (context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
+    },
 ) {
     companion object {
         private const val TAG = "CruxRelay/Manager"
-        private const val PREFS = "cruxrelay"
-        private const val KEY_NAME_DIRTY = "adapter_name_dirty"
-        private const val KEY_ORIGINAL_NAME = "adapter_name_original"
+        internal const val PREFS = "cruxrelay"
+        internal const val KEY_NAME_DIRTY = "adapter_name_dirty"
+        internal const val KEY_ORIGINAL_NAME = "adapter_name_original"
         private const val NAME_PROPAGATE_TIMEOUT_MS = 2_000L
         private const val ADVERTISE_START_TIMEOUT_MS = 3_000L
         private const val STOPPED_NOTIFICATION_ID = 4402
         internal const val RELAY_IDLE_TIMEOUT_MS = 90_000L
     }
 
-    private val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
-    private val adapter get() = bluetoothManager?.adapter
+    private val adapter get() = adapterProvider()
     private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     private val _state = MutableStateFlow(CruxRelayState())
     val state: StateFlow<CruxRelayState> = _state.asStateFlow()
@@ -128,6 +136,19 @@ class CruxRelayManager(
     /** Board identity for the disclosure currently shown. A consent answer
      * must never carry across a disconnect/reconnect to a different wall. */
     private var pendingDisclosureBoardAddress: String? = null
+    private val bluetoothStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(receiverContext: Context?, intent: Intent?) {
+            if (intent?.action != BluetoothAdapter.ACTION_STATE_CHANGED) return
+            if (intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR) ==
+                BluetoothAdapter.STATE_ON
+            ) {
+                // The first process-start restore can legitimately run while
+                // Bluetooth is off. Retain the recovery record and retry once
+                // the adapter is authoritative again.
+                restoreAdapterNameIfDirty()
+            }
+        }
+    }
     private val idleWatchdog = RelayIdleWatchdog(
         scope = scope,
         timeoutMs = relayIdleTimeoutMs,
@@ -149,6 +170,12 @@ class CruxRelayManager(
         // Crash-safe: a previous run may have died with the adapter name still
         // changed. Restore it before anything else.
         restoreAdapterNameIfDirty()
+        ContextCompat.registerReceiver(
+            context,
+            bluetoothStateReceiver,
+            IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED),
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
         // React to BOTH the runtime toggle AND the board connection: the relay
         // runs only while enabled AND the real board link is up
         // (WAIT_BEFORE_ADVERTISE). A falling board link disables sharing
@@ -512,32 +539,58 @@ class CruxRelayManager(
     /** @return true once [desired] is live on the adapter — false on Bluetooth
      *  off or a setName that never propagated (surfaced as NAME_SET_FAILED). */
     @SuppressLint("MissingPermission")
-    private suspend fun snapshotAndSetAdapterName(desired: String): Boolean {
+    internal suspend fun snapshotAndSetAdapterName(desired: String): Boolean {
         val a = adapter ?: return false
-        val original = a.name
-        if (!prefs.getBoolean(KEY_NAME_DIRTY, false)) {
-            prefs.edit().putString(KEY_ORIGINAL_NAME, original).putBoolean(KEY_NAME_DIRTY, true).apply()
+        val dirty = prefs.getBoolean(KEY_NAME_DIRTY, false)
+        val original = if (dirty) {
+            prefs.getString(KEY_ORIGINAL_NAME, null)
+        } else {
+            runCatching { a.name }.getOrNull()
         }
-        if (a.name == desired) return true
-        a.name = desired
+        // Never mutate a device-global setting unless its exact prior value is
+        // durably known. Otherwise even an orderly stop cannot restore it.
+        if (original.isNullOrBlank()) return false
+        if (!dirty) {
+            val persisted = withContext(Dispatchers.IO) {
+                prefs.edit()
+                    .putString(KEY_ORIGINAL_NAME, original)
+                    .putBoolean(KEY_NAME_DIRTY, true)
+                    .commit()
+            }
+            if (!persisted) return false
+        }
+        if (runCatching { a.name }.getOrNull() == desired) return true
+        if (!runCatching { a.setName(desired) }.getOrDefault(false)) return false
         // setName is async — wait (bounded) for it to propagate before advertising,
         // since the scan-response name is read from the adapter.
         withTimeoutOrNull(NAME_PROPAGATE_TIMEOUT_MS) {
-            while (adapter?.name != desired) delay(100)
+            while (runCatching { adapter?.name }.getOrNull() != desired) delay(100)
         }
-        return adapter?.name == desired
+        return runCatching { adapter?.name }.getOrNull() == desired
     }
 
     @SuppressLint("MissingPermission")
-    private fun restoreAdapterName() {
-        if (!prefs.getBoolean(KEY_NAME_DIRTY, false)) return
+    internal fun restoreAdapterName(): Boolean {
+        if (!prefs.getBoolean(KEY_NAME_DIRTY, false)) return true
         val original = prefs.getString(KEY_ORIGINAL_NAME, null)
-        if (original != null) runCatching { adapter?.name = original }
-        prefs.edit().putBoolean(KEY_NAME_DIRTY, false).remove(KEY_ORIGINAL_NAME).apply()
+        if (original.isNullOrBlank()) return false
+        val a = adapter ?: return false
+        val before = runCatching { a.name }.getOrNull()
+        val restored = before == original ||
+            (runCatching { a.setName(original) }.getOrDefault(false) &&
+                runCatching { a.name }.getOrNull() == original)
+        if (!restored) {
+            Log.w(TAG, "Adapter-name restore did not apply; retaining recovery record")
+            return false
+        }
+        return prefs.edit()
+            .remove(KEY_NAME_DIRTY)
+            .remove(KEY_ORIGINAL_NAME)
+            .commit()
     }
 
     @SuppressLint("MissingPermission")
-    private fun restoreAdapterNameIfDirty() {
+    internal fun restoreAdapterNameIfDirty() {
         // On a fresh process, a set dirty flag means a prior run died without
         // restoring — put the phone's real Bluetooth name back.
         restoreAdapterName()

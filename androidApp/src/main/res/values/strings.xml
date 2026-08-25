@@ -1304,15 +1304,15 @@
     <string name="ble_ready_to_resend">Ready to resend</string>
     <string name="ble_session_climb">Playlist climb</string>
     <string name="ble_session_label">PLAYLIST</string>
-    <string name="ble_session_visibility_title">Start playlist</string>
-    <string name="ble_session_visibility_message">Choose the visibility for this playlist.</string>
+    <string name="ble_session_visibility_title">Continue shared queue</string>
+    <string name="ble_session_visibility_message">The previous host left. Choose whether this queue stays here or is visible nearby.</string>
     <string name="ble_session_visibility_joinable">Joinable</string>
-    <string name="ble_session_visibility_joinable_desc">Nearby CruxCoach users can see the playlist and join without a code.</string>
+    <string name="ble_session_visibility_joinable_desc">Nearby CruxCoach users can see the queue and join without a code.</string>
     <string name="ble_session_visibility_local">Local only</string>
-    <string name="ble_session_visibility_local_desc">The playlist stays on this device and is not advertised.</string>
-    <string name="ble_session_visibility_permission_denied">Bluetooth permission is required to publish a joinable playlist.</string>
+    <string name="ble_session_visibility_local_desc">The queue stays on this device and is not advertised.</string>
+    <string name="ble_session_visibility_permission_denied">Bluetooth permission is required to publish a joinable queue.</string>
     <string name="ble_session_visibility_status_joinable">Joinable · visible to nearby users</string>
-    <string name="ble_session_visibility_status_local">Local only · playlist is not published</string>
+    <string name="ble_session_visibility_status_local">Local only · queue is not published</string>
     <string name="ble_sharing_title">BLE Sharing</string>
     <!-- Shown under the queue line only while the wall disagrees with it. -->
     <!-- Session errors: shown only when sharing cannot start. -->

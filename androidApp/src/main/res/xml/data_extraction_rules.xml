@@ -12,6 +12,7 @@
         <exclude domain="sharedpref" path="kilter_secure_prefs.xml"/>
         <exclude domain="sharedpref" path="amber_config.xml"/>
         <exclude domain="sharedpref" path="board_layer_identity.xml"/>
+        <exclude domain="sharedpref" path="cruxrelay.xml"/>
         <exclude domain="file" path="datastore"/>
         <!-- Plain board catalog DB — see backup_rules.xml for rationale. -->
         <exclude domain="database" path="cruxcoach.db"/>
@@ -23,6 +24,7 @@
         <exclude domain="sharedpref" path="kilter_secure_prefs.xml"/>
         <exclude domain="sharedpref" path="amber_config.xml"/>
         <exclude domain="sharedpref" path="board_layer_identity.xml"/>
+        <exclude domain="sharedpref" path="cruxrelay.xml"/>
         <exclude domain="file" path="datastore"/>
         <exclude domain="database" path="cruxcoach.db"/>
     </device-transfer>

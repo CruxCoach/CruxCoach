@@ -126,6 +126,33 @@ class SessionQueueManagerTest {
         assertEquals(SessionVisibility.JOINABLE, queueManager.state.value.visibility)
     }
 
+    @Test
+    fun `promoted host stays local until one explicit visibility decision`() {
+        queueManager.setParticipantRole(77, "Old host")
+        queueManager.applyRemoteState(
+            currentIndex = 0,
+            items = listOf(QueueItem("kept", 40)),
+        )
+
+        queueManager.promoteToHost("New host")
+
+        val promoted = queueManager.state.value
+        assertEquals(SessionRole.HOST, promoted.role)
+        assertEquals(listOf("kept"), promoted.queue.map { it.climbUuid })
+        assertEquals(SessionVisibility.LOCAL_ONLY, promoted.visibility)
+        assertEquals(SessionVisibility.LOCAL_ONLY, promoted.visibilityRequested)
+        assertTrue(promoted.pendingHostVisibilityDecision)
+
+        queueManager.setVisibilityRequested(SessionVisibility.JOINABLE)
+        assertFalse(queueManager.state.value.pendingHostVisibilityDecision)
+        assertEquals(SessionVisibility.JOINABLE, queueManager.state.value.visibilityRequested)
+        assertEquals(
+            "request alone must not claim that publication is already active",
+            SessionVisibility.LOCAL_ONLY,
+            queueManager.state.value.visibility,
+        )
+    }
+
     // ===== Participant count consistency =====
 
     @Test

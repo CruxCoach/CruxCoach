@@ -26,6 +26,14 @@ class BoardLayerBackupExclusionTest {
         assertEquals(2, exclusions(R.xml.data_extraction_rules).count { it == target })
     }
 
+    @Test
+    fun `relay Bluetooth name recovery never crosses backup or device transfer`() {
+        val target = "sharedpref" to "cruxrelay.xml"
+
+        assertEquals(1, exclusions(R.xml.backup_rules).count { it == target })
+        assertEquals(2, exclusions(R.xml.data_extraction_rules).count { it == target })
+    }
+
     private fun exclusions(@XmlRes resourceId: Int): List<Pair<String, String>> {
         val parser = context.resources.getXml(resourceId)
         return try {
