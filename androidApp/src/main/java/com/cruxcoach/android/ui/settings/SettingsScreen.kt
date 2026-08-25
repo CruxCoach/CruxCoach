@@ -491,6 +491,7 @@ fun SettingsScreen(
     backupState.pendingRestore?.let { info ->
         BackupRestoreDialog(
             info = info,
+            boardImportInProgress = backupState.boardImportInProgress,
             onConfirm = { backupViewModel.confirmRestore() },
             onDismiss = { backupViewModel.dismissRestoreDialog() },
         )
