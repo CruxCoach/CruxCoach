@@ -219,4 +219,19 @@ class CommunityClimbSubscriberTest {
             ),
         )
     }
+
+    @Test
+    fun safeLookbackAdjustedSeed_rejects_future_cursor_poisoning_but_keeps_boundary() {
+        val now = 1_700_000_000L
+        val skew = CommunityClimbValidation.MAX_FUTURE_SKEW_SECONDS
+
+        assertEquals(
+            CommunityClimbSubscriber.lookbackAdjustedSeed(now + skew),
+            CommunityClimbSubscriber.safeLookbackAdjustedSeed(now + skew, now),
+        )
+        assertEquals(
+            null,
+            CommunityClimbSubscriber.safeLookbackAdjustedSeed(now + skew + 1, now),
+        )
+    }
 }

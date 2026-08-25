@@ -2,6 +2,7 @@ package com.cruxcoach.android.data.blossom
 
 import android.app.Application
 import android.content.Context
+import com.cruxcoach.android.nostr.NostrEventPolicy
 import okhttp3.OkHttpClient
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -18,6 +19,7 @@ import org.robolectric.RuntimeEnvironment
 @RunWith(RobolectricTestRunner::class)
 @org.robolectric.annotation.Config(application = Application::class)
 class BlossomManifestRollbackTest {
+    private val nowSeconds = 1_700_000_000L
     private lateinit var context: Context
     private val prefsNames = listOf("rollback_kilter_test", "rollback_quantum_test")
 
@@ -43,10 +45,10 @@ class BlossomManifestRollbackTest {
 
         assertEquals(200L, BlossomSyncManager.effectiveTimestamp(envelopeWins))
         assertEquals(150L, BlossomSyncManager.effectiveTimestamp(contentFallback))
-        assertFalse(BlossomSyncManager.isManifestAcceptable(envelopeWins, 201L))
-        assertTrue(BlossomSyncManager.isManifestAcceptable(envelopeWins, 200L))
-        assertTrue(BlossomSyncManager.isManifestAcceptable(envelopeWins, 199L))
-        assertTrue(BlossomSyncManager.isManifestAcceptable(envelopeWins, null))
+        assertFalse(BlossomSyncManager.isManifestAcceptable(envelopeWins, 201L, nowSeconds))
+        assertTrue(BlossomSyncManager.isManifestAcceptable(envelopeWins, 200L, nowSeconds))
+        assertTrue(BlossomSyncManager.isManifestAcceptable(envelopeWins, 199L, nowSeconds))
+        assertTrue(BlossomSyncManager.isManifestAcceptable(envelopeWins, null, nowSeconds))
 
         val selected = BlossomSyncManager.selectPreferredManifest(
             listOf(envelopeWins, contentFallback),
@@ -110,11 +112,84 @@ class BlossomManifestRollbackTest {
         assertTrue(kilter.canApplyManifest(older))
     }
 
+    @Test
+    fun `far future envelope cannot advance watermark or persist chunk hashes`() {
+        val manager = manager(prefsNames[0], BlossomSyncManager.MANIFEST_D_TAG)
+        val accepted = manifest(
+            contentCreatedAt = nowSeconds,
+            eventCreatedAt = nowSeconds,
+            hash = "a".repeat(64),
+        )
+        manager.saveCompletedManifest(accepted, accepted.chunks)
+
+        val future = manifest(
+            contentCreatedAt = nowSeconds,
+            eventCreatedAt = nowSeconds + NostrEventPolicy.MAX_FUTURE_SKEW_SECONDS + 1,
+            hash = "b".repeat(64),
+        )
+        assertFalse(manager.canApplyManifest(future))
+        manager.saveCompletedManifest(future, future.chunks)
+
+        val prefs = context.getSharedPreferences(prefsNames[0], Context.MODE_PRIVATE)
+        assertEquals(nowSeconds, manager.lastAcceptedManifestTimestamp())
+        assertEquals("a".repeat(64), prefs.getString("chunk_sha256_snapshot", null))
+    }
+
+    @Test
+    fun `future content timestamp cannot poison the separate cursor seed`() {
+        val manager = manager(prefsNames[0], BlossomSyncManager.MANIFEST_D_TAG)
+        val futureContent = manifest(
+            contentCreatedAt = nowSeconds + NostrEventPolicy.MAX_FUTURE_SKEW_SECONDS + 1,
+            eventCreatedAt = nowSeconds,
+        )
+
+        assertFalse(manager.canApplyManifest(futureContent))
+        manager.saveAcceptedManifestTimestamp(futureContent)
+        assertNull(manager.lastAcceptedManifestTimestamp())
+    }
+
+    @Test
+    fun `timestamps at the future skew boundary remain acceptable`() {
+        val boundary = nowSeconds + NostrEventPolicy.MAX_FUTURE_SKEW_SECONDS
+        val manager = manager(prefsNames[0], BlossomSyncManager.MANIFEST_D_TAG)
+        val manifest = manifest(contentCreatedAt = boundary, eventCreatedAt = boundary)
+
+        assertTrue(manager.canApplyManifest(manifest))
+        manager.saveAcceptedManifestTimestamp(manifest)
+        assertEquals(boundary, manager.lastAcceptedManifestTimestamp())
+    }
+
+    @Test
+    fun `upgrade removes poisoned stored watermark but retains chunk hashes`() {
+        val prefs = context.getSharedPreferences(prefsNames[0], Context.MODE_PRIVATE)
+        prefs.edit()
+            .putLong(
+                "last_manifest_created_at",
+                nowSeconds + NostrEventPolicy.MAX_FUTURE_SKEW_SECONDS + 1,
+            )
+            .putString("chunk_sha256_snapshot", "a".repeat(64))
+            .commit()
+        val manager = manager(prefsNames[0], BlossomSyncManager.MANIFEST_D_TAG)
+        val current = manifest(
+            contentCreatedAt = nowSeconds,
+            eventCreatedAt = nowSeconds,
+            hash = "b".repeat(64),
+        )
+
+        assertTrue(manager.canApplyManifest(current))
+        assertEquals("a".repeat(64), prefs.getString("chunk_sha256_snapshot", null))
+
+        manager.saveAcceptedManifestTimestamp(current)
+        assertEquals(nowSeconds, manager.lastAcceptedManifestTimestamp())
+        assertEquals("a".repeat(64), prefs.getString("chunk_sha256_snapshot", null))
+    }
+
     private fun manager(prefsName: String, dTag: String) = BlossomSyncManager(
         context = context,
         okHttpClient = OkHttpClient(),
         manifestDTag = dTag,
         prefsName = prefsName,
+        nowSeconds = { nowSeconds },
     )
 
     private fun manifest(

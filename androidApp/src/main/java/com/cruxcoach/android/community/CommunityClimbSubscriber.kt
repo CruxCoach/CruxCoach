@@ -240,12 +240,15 @@ class CommunityClimbSubscriber @Inject constructor(
      * to defer to.
      *
      * Skipped when:
-     *  - cursor is already set (we've persisted at least one event)
+     *  - an acceptable cursor is already set (we've persisted at least one event)
      *  - no Blossom manifest fetched within the timeout (= board-sync
      *    failed; we accept the cold-start cost as the lesser evil)
      */
     private suspend fun seedCursorFromManifestIfFirstRun() {
-        val cursor = userPreferences.communityClimbSince.first()
+        val startupNowSec = System.currentTimeMillis() / 1000L
+        val cursor = userPreferences.sanitizeCommunityClimbSince(
+            maximumEpochSeconds = startupNowSec + CommunityClimbValidation.MAX_FUTURE_SKEW_SECONDS,
+        )
         if (cursor != null && cursor > 0) return
         val manifestEpoch = withTimeoutOrNull(SEED_MANIFEST_TIMEOUT_MS) {
             userPreferences.blossomManifestCreatedAt
@@ -270,7 +273,16 @@ class CommunityClimbSubscriber @Inject constructor(
         // events are absorbed idempotently by handleClimbEvent's
         // stale-event guard, and community-climb volume keeps a week of
         // re-sync in the tens-of-KB range.
-        val seed = lookbackAdjustedSeed(manifestEpoch)
+        val nowSec = System.currentTimeMillis() / 1000L
+        val seed = safeLookbackAdjustedSeed(manifestEpoch, nowSec)
+        if (seed == null) {
+            Log.w(
+                TAG,
+                "ignoring future-dated blossom manifest cursor seed: " +
+                    "epoch=$manifestEpoch now=$nowSec",
+            )
+            return
+        }
         Log.i(TAG, "seeding cursor from blossom manifest: $manifestEpoch (lookback-adjusted to $seed)")
         userPreferences.setCommunityClimbSince(seed)
     }
@@ -1276,6 +1288,20 @@ class CommunityClimbSubscriber @Inject constructor(
          *  zero-clamp without standing up the subscriber's dependencies. */
         fun lookbackAdjustedSeed(manifestEpoch: Long): Long =
             (manifestEpoch - SEED_SAFETY_LOOKBACK_SEC).coerceAtLeast(0L)
+
+        /**
+         * Fail open to an unseeded first subscription when the publisher clock
+         * is implausibly far ahead. A wider one-time backfill is recoverable;
+         * persisting a future monotonic cursor is not.
+         */
+        internal fun safeLookbackAdjustedSeed(
+            manifestEpoch: Long,
+            nowSeconds: Long,
+        ): Long? = if (CommunityClimbValidation.isWithinClockSkew(manifestEpoch, nowSeconds)) {
+            lookbackAdjustedSeed(manifestEpoch)
+        } else {
+            null
+        }
 
         /** d-tag prefix that the publisher embeds for [pubkey] (FEAT-003 §4.2). */
         fun communityClimbDTagPrefix(pubkey: String): String =

@@ -68,6 +68,7 @@ fun BleStatusArea(
     val sessionQueueManager = LocalSessionQueueManager.current
     val sessionGattBridge = LocalSessionGattBridge.current
     val queueState by sessionQueueManager.state.collectAsStateWithLifecycle()
+    val pendingSuccessor by sessionGattBridge.pendingSuccessorJoin.collectAsStateWithLifecycle()
     val isLocalPlaylist = queueState.isActive && queueState.isPlaylist
     val currentPlaylistClimbName by sessionQueueManager.currentClimbName.collectAsStateWithLifecycle()
     val playback = LocalPlaylistPlayback.current
@@ -75,6 +76,14 @@ fun BleStatusArea(
     val displayState = if (isLocalPlaylist) state.copy(ownSession = null) else state
     val relayManager = LocalCruxRelayManager.current
     val relayState by relayManager.state.collectAsStateWithLifecycle()
+
+    pendingSuccessor?.let { successor ->
+        SuccessorJoinDialog(
+            hostName = successor.hostName,
+            onJoin = sessionGattBridge::confirmPendingSuccessorJoin,
+            onKeepQueue = sessionGattBridge::declinePendingSuccessorJoin,
+        )
+    }
 
     // A participant promoted after host loss keeps the queue but stays local
     // until this one explicit decision. Render it above the early-return below

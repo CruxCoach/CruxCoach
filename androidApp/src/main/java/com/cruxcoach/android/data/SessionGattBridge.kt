@@ -30,6 +30,20 @@ data class PlaylistCommandFeedback(
     val action: String,
 )
 
+enum class PendingSuccessorOrigin { HOST_MIGRATION, BLUETOOTH_RECOVERY }
+
+/**
+ * An unsigned nearby advertisement offered to the user after a host handover.
+ * The address and session id identify what may be re-resolved from the live
+ * scanner; they do not authenticate the peer.
+ */
+data class PendingSuccessorJoin(
+    val sessionId: Int,
+    val deviceAddress: String,
+    val hostName: String,
+    val origin: PendingSuccessorOrigin,
+)
+
 /**
  * Bridges [SessionQueueManager] with BLE GATT for shared sessions.
  *
@@ -64,6 +78,7 @@ class SessionGattBridge(
         private const val TAG = "CruxBLE/Session"
         private const val MIGRATION_BASE_DELAY_MS = 1000L
         private const val MIGRATION_INDEX_STEP_MS = 3000L
+        private const val HANDOFF_SENTINEL_DELAY_MS = 500L
         private const val COMMAND_RESULT_TIMEOUT_MS = 5000L
         private const val COMMAND_RESULT_CACHE_SIZE = 256
     }
@@ -91,6 +106,8 @@ class SessionGattBridge(
     @Volatile var onRemotePrev: (() -> Unit)? = null
 
     private var migrationJob: Job? = null
+    private val migrationGeneration = AtomicLong(0L)
+    private var recoveryHandoffJob: Job? = null
     private var joinJob: Job? = null
     private var hostJob: Job? = null
     @Volatile private var isSharing = false
@@ -102,13 +119,16 @@ class SessionGattBridge(
     val pendingCommandCount = _pendingCommandCount.asStateFlow()
     private val _commandFeedback = MutableSharedFlow<PlaylistCommandFeedback>(extraBufferCapacity = 32)
     val commandFeedback = _commandFeedback.asSharedFlow()
+    private val pendingSuccessorLock = Any()
+    private val _pendingSuccessorJoin = MutableStateFlow<PendingSuccessorJoin?>(null)
+    val pendingSuccessorJoin = _pendingSuccessorJoin.asStateFlow()
     private val handledCommandResults = object : LinkedHashMap<String, SessionCommandResult>(
         COMMAND_RESULT_CACHE_SIZE + 1, 0.75f, true,
     ) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, SessionCommandResult>?): Boolean =
             size > COMMAND_RESULT_CACHE_SIZE
     }
-    /** SessionId of the host we just left — used to ignore stale advertisements during migration. */
+    /** Session id learned from the advertisement for the host we explicitly joined. */
     private var lastHostSessionId: Int = 0
 
     private fun projectionSurvivesCurrentBoardDisconnect(): Boolean =
@@ -125,6 +145,11 @@ class SessionGattBridge(
                 if (!state.isActive && pendingCommands.isNotEmpty()) {
                     pendingCommands.clear()
                     _pendingCommandCount.value = 0
+                }
+                if (!state.isActive) {
+                    cancelHostMigration()
+                    cancelRecoveryHandoff()
+                    clearPendingSuccessorJoin()
                 }
             }
         }
@@ -438,6 +463,8 @@ class SessionGattBridge(
      *   the only option and the UI called it "end session".
      */
     fun stopSharing(allowBoardRelease: Boolean, endForEveryone: Boolean = false) {
+        cancelRecoveryHandoff()
+        clearPendingSuccessorJoin()
         Log.d(TAG, "stopSharing() called, isSharing=$isSharing, " +
             "connectedClients=${gattServer.getConnectedCount()}, " +
             "boardConnected=${bleConnection.connectionState.value}")
@@ -541,9 +568,10 @@ class SessionGattBridge(
     }
 
     /**
-     * Called when Bluetooth comes back on. If we were hosting a session,
-     * check if another participant already took over as host (migration).
-     * If not, restart our own GATT server and advertising.
+     * Called when Bluetooth comes back on. A joinable host first restores its
+     * own authoritative transport. An unsigned nearby advertisement may then
+     * be offered as an explicit switch, but can never change the host role on
+     * its own.
      */
     internal fun recoverAfterBluetoothRestart() {
         val state = queueManager.state.value
@@ -565,42 +593,198 @@ class SessionGattBridge(
             return
         }
 
-        // Check if someone else already promoted to host during our BT outage
-        val nearbySessions = nearbyScanner.nearbySessions.value
-        if (nearbySessions.isNotEmpty()) {
-            val newHost = nearbySessions.first()
-            val device = newHost.device
-            if (device != null) {
-                Log.d(TAG, "BT recovered but another host exists — joining as participant")
-                isSharing = false
-                gattServer.stop()
-                joinSession(device)
-                return
-            }
-        }
-
         Log.d(TAG, "BT recovered — restarting GATT server + session advertising")
         isSharing = false
         gattServer.stop()
         startSharing()
+
+        strongestConnectableSuccessor(excludedSessionId = state.sessionId)?.let { candidate ->
+            Log.d(
+                TAG,
+                "BT recovered with an unverified nearby session; awaiting explicit join consent",
+            )
+            stageSuccessorJoin(candidate, PendingSuccessorOrigin.BLUETOOTH_RECOVERY)
+        }
+    }
+
+    private fun strongestConnectableSuccessor(excludedSessionId: Int): NearbySession? =
+        nearbyScanner.nearbySessions.value
+            .asSequence()
+            .filter { session ->
+                session.sessionId != excludedSessionId &&
+                    session.deviceAddress.isNotBlank() &&
+                    session.device != null
+            }
+            .maxByOrNull { it.rssi }
+
+    private fun stageSuccessorJoin(
+        candidate: NearbySession,
+        origin: PendingSuccessorOrigin,
+    ) {
+        val pending = PendingSuccessorJoin(
+            sessionId = candidate.sessionId,
+            deviceAddress = candidate.deviceAddress,
+            hostName = candidate.hostName.trim(),
+            origin = origin,
+        )
+        synchronized(pendingSuccessorLock) {
+            // Never let a later unauthenticated advertisement replace the
+            // exact offer the user is currently reading.
+            if (_pendingSuccessorJoin.value == null) {
+                _pendingSuccessorJoin.value = pending
+            }
+        }
+    }
+
+    /** Joins only the exact still-live advertisement the user approved once. */
+    fun confirmPendingSuccessorJoin() {
+        val pending = consumePendingSuccessorJoin() ?: return
+        val state = queueManager.state.value
+        val originStillValid = when (pending.origin) {
+            PendingSuccessorOrigin.HOST_MIGRATION ->
+                state.role == SessionRole.PARTICIPANT && state.queue.isNotEmpty()
+            PendingSuccessorOrigin.BLUETOOTH_RECOVERY ->
+                state.role == SessionRole.HOST
+        }
+        if (!originStillValid) return
+
+        val live = nearbyScanner.nearbySessions.value.firstOrNull { session ->
+            session.sessionId == pending.sessionId &&
+                session.deviceAddress == pending.deviceAddress &&
+                session.device != null
+        }
+        val device = live?.device
+        if (device == null) {
+            Log.w(TAG, "Approved successor vanished or changed before connection; preserving queue")
+            preserveQueueAfterSuccessorDeclined(pending.origin)
+            return
+        }
+
+        when (pending.origin) {
+            PendingSuccessorOrigin.HOST_MIGRATION -> {
+                cancelHostMigration()
+                joinSession(device, pending.sessionId)
+            }
+            PendingSuccessorOrigin.BLUETOOTH_RECOVERY -> {
+                beginRecoveredHostHandoff(pending, device)
+            }
+        }
+    }
+
+    /** Keeps the current queue/host and consumes the untrusted offer once. */
+    fun declinePendingSuccessorJoin() {
+        val pending = consumePendingSuccessorJoin() ?: return
+        preserveQueueAfterSuccessorDeclined(pending.origin)
+    }
+
+    private fun preserveQueueAfterSuccessorDeclined(origin: PendingSuccessorOrigin) {
+        when (origin) {
+            PendingSuccessorOrigin.HOST_MIGRATION -> {
+                val state = queueManager.state.value
+                if (state.role == SessionRole.PARTICIPANT && state.queue.isNotEmpty()) {
+                    cancelHostMigration()
+                    queueManager.promoteToHost(
+                        context.getString(R.string.ble_session_name_promoted),
+                    )
+                    Log.d(TAG, "Unverified successor declined; queue promoted locally")
+                }
+            }
+            PendingSuccessorOrigin.BLUETOOTH_RECOVERY -> {
+                // recoverAfterBluetoothRestart() restored this host before it
+                // exposed the offer, so declining requires no state change.
+                Log.d(TAG, "Unverified successor declined; recovered host retained")
+            }
+        }
+    }
+
+    private fun stopRecoveredHostTransportForExplicitJoin() {
+        isSharing = false
+        hostJob?.cancel()
+        hostJob = null
+        commandGate.clear()
+        gattServer.stop()
+        queueManager.onQueueChanged = null
+        queueManager.onCurrentClimbChanged = null
+        queueManager.onParticipantsChanged = null
+        queueManager.onSessionInfoChanged = null
+        queueManager.onFirstQueueClimbSent = null
+        advertiser.stopSessionAdvertising()
+        advertiser.stopAdvertising()
+        queueManager.setVisibility(SessionVisibility.LOCAL_ONLY)
+    }
+
+    /**
+     * Give participants the same reliable migration sentinel used by ordinary
+     * host teardown before a user-approved switch. The advertisement was
+     * re-resolved at the click boundary above; the captured address/session-id
+     * pair is frozen for this bounded delivery window so radio churn cannot
+     * silently retarget the answer.
+     */
+    private fun beginRecoveredHostHandoff(
+        pending: PendingSuccessorJoin,
+        device: BluetoothDevice,
+    ) {
+        cancelRecoveryHandoff()
+        val hostedSessionId = queueManager.state.value.sessionId
+        gattServer.notifyAll(
+            SessionGattUuids.SESSION_INFO,
+            SessionQueueProtocol.encodeSessionEnded(migrate = true),
+        )
+        recoveryHandoffJob = scope.launch {
+            try {
+                delay(HANDOFF_SENTINEL_DELAY_MS)
+                val state = queueManager.state.value
+                if (state.role != SessionRole.HOST || state.sessionId != hostedSessionId) {
+                    Log.w(TAG, "Recovered-host handoff cancelled because the local session changed")
+                    return@launch
+                }
+                stopRecoveredHostTransportForExplicitJoin()
+                joinSession(device, pending.sessionId)
+            } finally {
+                recoveryHandoffJob = null
+            }
+        }
+    }
+
+    private fun cancelRecoveryHandoff() {
+        recoveryHandoffJob?.cancel()
+        recoveryHandoffJob = null
+    }
+
+    private fun consumePendingSuccessorJoin(): PendingSuccessorJoin? =
+        synchronized(pendingSuccessorLock) {
+            _pendingSuccessorJoin.value.also { _pendingSuccessorJoin.value = null }
+        }
+
+    private fun clearPendingSuccessorJoin() {
+        synchronized(pendingSuccessorLock) {
+            _pendingSuccessorJoin.value = null
+        }
     }
 
     // ===== Participant mode =====
 
     fun joinSession(device: BluetoothDevice) {
+        cancelHostMigration()
+        cancelRecoveryHandoff()
+        joinSession(device, expectedSessionId = null)
+    }
+
+    private fun joinSession(device: BluetoothDevice, expectedSessionId: Int?) {
+        clearPendingSuccessorJoin()
         Log.d(TAG, "joinSession() called, device=${device.address}, " +
             "isRejoining=$isRejoining, joinJob=${joinJob != null}, " +
             "clientState=${gattClient.connectionState.value}")
-        // Record the host's advertised session ID. Migration filters stale ads
-        // with it, and it is also what the participant carries as their own
-        // session identity from here on — the JOIN handshake never sends it
-        // back, so the scan is the only place it exists.
-        nearbyScanner.nearbySessions.value
-            .firstOrNull { it.device?.address == device.address }
-            ?.let { session ->
-                lastHostSessionId = session.sessionId
-                Log.d(TAG, "joinSession: tracking host sessionId=$lastHostSessionId for stale filter")
-            }
+        // Record the host's advertised session ID. It is what the participant
+        // carries as session identity from here on — the JOIN handshake never
+        // sends it back, so the user-selected scan row is the only source.
+        val selectedSessionId = expectedSessionId ?: nearbyScanner.nearbySessions.value
+            .firstOrNull { session -> session.device?.address == device.address }
+            ?.sessionId
+        selectedSessionId?.let { sessionId ->
+            lastHostSessionId = sessionId
+            Log.d(TAG, "joinSession: tracking host sessionId=$lastHostSessionId for stale filter")
+        }
         // Cancel any previous join collectors to avoid stacking.
         // Set isRejoining so the old collector's DISCONNECTED event doesn't trigger migration.
         isRejoining = true
@@ -625,7 +809,7 @@ class SessionGattBridge(
                     Log.d(TAG, "joinSession: connectionState changed to $state")
                     when (state) {
                         SessionClientState.CONNECTED -> {
-                            migrationJob?.cancel()
+                            cancelHostMigration()
                             Log.d(TAG, "Connected to host, sending JOIN command")
                             val joinSent = gattClient.sendCommand(SessionQueueProtocol.encodeJoin(""))
                             Log.d(TAG, "JOIN command sent: success=$joinSent")
@@ -759,6 +943,9 @@ class SessionGattBridge(
     }
 
     fun leaveSession() {
+        cancelHostMigration()
+        cancelRecoveryHandoff()
+        clearPendingSuccessorJoin()
         Log.d(TAG, "leaveSession() called, joinJob=${joinJob != null}, " +
             "clientState=${gattClient.connectionState.value}, " +
             "role=${queueManager.state.value.role}")
@@ -1165,9 +1352,11 @@ class SessionGattBridge(
      * Strategy — deterministic election by join order:
      * 1. Each participant knows their position via [SessionQueueState.participantIndex]
      * 2. Participant at index 0 waits 1s, index 1 waits 4s, index 2 waits 7s, etc.
-     * 3. During the wait, check periodically if a new session appeared (higher-priority
-     *    participant already promoted) → join that instead
-     * 4. If no new session after the wait → promote to host
+     * 3. The first participant promotes locally after its delay. A later
+     *    participant may then stage a visible successor's unsigned
+     *    advertisement for one explicit answer; it never joins automatically.
+     * 4. Decline/vanish/no candidate → preserve the queue under a local-only
+     *    promoted host. Publication remains a separate explicit answer.
      *
      * Privacy: No personal data is transmitted. Election uses only the locally stored
      * participant index (join order). No device addresses or names are exchanged.
@@ -1181,6 +1370,10 @@ class SessionGattBridge(
         // (both sentinel + GATT disconnect can trigger this)
         if (migrationJob?.isActive == true) {
             Log.d(TAG, "attemptHostMigration: already migrating, skipping")
+            return
+        }
+        if (_pendingSuccessorJoin.value != null) {
+            Log.d(TAG, "attemptHostMigration: explicit successor decision already pending")
             return
         }
         if (queueState.queue.isEmpty()) {
@@ -1215,33 +1408,47 @@ class SessionGattBridge(
         Log.d(TAG, "Host disconnected — migration election " +
             "(index=$myIndex, wait=${waitMs}ms, queue=${queueState.queue.size} items)")
 
+        val generation = migrationGeneration.incrementAndGet()
         migrationJob = scope.launch {
-            Log.d(TAG, "Migration job started, waiting ${waitMs}ms before promoting")
-            val pollInterval = 500L
-            var elapsed = 0L
-            while (elapsed < waitMs) {
-                delay(pollInterval)
-                elapsed += pollInterval
+            Log.d(TAG, "Migration job started, waiting ${waitMs}ms for a possible successor")
+            delay(waitMs)
 
-                val nearbySessions = nearbyScanner.nearbySessions.value
-                    .filter { it.sessionId != lastHostSessionId }
-                if (nearbySessions.isNotEmpty()) {
-                    val newHost = nearbySessions.first()
-                    val device = newHost.device
-                    Log.d(TAG, "Migration: found new session during wait " +
-                        "(id=${newHost.sessionId}, host='${newHost.hostName}', device=${device?.address}, lastHostId=$lastHostSessionId)")
-                    if (device != null) {
-                        Log.d(TAG, "Migration: joining new host instead of promoting")
-                        joinSession(device)
-                    } else {
-                        Log.w(TAG, "Migration: new host has no BluetoothDevice — cannot join")
-                    }
-                    return@launch
-                }
-                Log.d(TAG, "Migration: ${elapsed}ms/${waitMs}ms elapsed, no new session found")
+            val liveState = queueManager.state.value
+            if (migrationGeneration.get() != generation ||
+                liveState.role != SessionRole.PARTICIPANT ||
+                liveState.queue.isEmpty()
+            ) {
+                Log.d(TAG, "Migration cancelled because the participant queue changed")
+                return@launch
+            }
+
+            // Index 0 is the designated first successor, so no ambient radio
+            // can divert it. Later indices may see index 0's newly published
+            // session, but membership still requires an explicit answer.
+            val candidate = if (myIndex > 0) {
+                strongestConnectableSuccessor(lastHostSessionId)
+            } else {
+                null
+            }
+            if (candidate != null) {
+                if (migrationGeneration.get() != generation) return@launch
+                Log.d(
+                    TAG,
+                    "Migration: unverified successor appeared; awaiting explicit join consent " +
+                        "(id=${candidate.sessionId}, address=${candidate.deviceAddress})",
+                )
+                stageSuccessorJoin(candidate, PendingSuccessorOrigin.HOST_MIGRATION)
+                return@launch
             }
 
             // No new session detected — promote self
+            if (migrationGeneration.get() != generation ||
+                queueManager.state.value.role != SessionRole.PARTICIPANT ||
+                queueManager.state.value.queue.isEmpty()
+            ) {
+                Log.d(TAG, "Migration promotion cancelled because the participant queue changed")
+                return@launch
+            }
             Log.d(TAG, "Migration: no new host found after ${waitMs}ms, promoting self to host")
             queueManager.promoteToHost(
                 // Was a German literal here, so an English-locale user who happened
@@ -1267,16 +1474,23 @@ class SessionGattBridge(
      * promoted because nobody is meant to continue.
      */
     private fun handleSessionEndedForEveryone() {
+        cancelHostMigration()
+        cancelRecoveryHandoff()
+        clearPendingSuccessorJoin()
         joinJob?.cancel()
         joinJob = null
-        migrationJob?.cancel()
-        migrationJob = null
         gattClient.disconnect()
         queueManager.remoteAddClimb = null
         advertiser.suppressClimbAdvertising = false
         restartClimbAdvertisingIfConnected()
         queueManager.endQueue()
         boardSessionManager.endSession()
+    }
+
+    private fun cancelHostMigration() {
+        migrationGeneration.incrementAndGet()
+        migrationJob?.cancel()
+        migrationJob = null
     }
 
     private fun handleSessionEndedByHost() {
@@ -1296,7 +1510,7 @@ class SessionGattBridge(
         Log.d(TAG, "handleSessionEndedByHost: GATT client disconnected, starting migration")
         // Don't end queue or unsuppress advertising — attemptHostMigration()
         // either preserves it under a local promoted host awaiting a visibility
-        // choice, joins a successor, or ends an empty queue.
+        // choice, offers an exact successor for consent, or ends an empty queue.
         attemptHostMigration()
     }
 

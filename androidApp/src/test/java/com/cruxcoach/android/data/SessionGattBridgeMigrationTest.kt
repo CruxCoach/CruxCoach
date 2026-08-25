@@ -16,6 +16,7 @@ import com.cruxcoach.android.ble.QueueItem
 import com.cruxcoach.android.ble.SessionClientState
 import com.cruxcoach.android.ble.SessionGattClient
 import com.cruxcoach.android.ble.SessionGattServer
+import com.cruxcoach.android.ble.SessionGattUuids
 import com.cruxcoach.android.ble.SessionCommand
 import com.cruxcoach.android.ble.SessionQueueProtocol
 import com.cruxcoach.data.repository.BoardRepository
@@ -26,6 +27,7 @@ import io.mockk.just
 import io.mockk.mockk
 import io.mockk.Runs
 import io.mockk.verify
+import io.mockk.verifyOrder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -44,7 +46,6 @@ import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -53,21 +54,18 @@ import org.junit.Test
 /**
  * Regression tests for host migration in [SessionGattBridge].
  *
- * Covers three bugs fixed in the host-handover feature:
+ * Covers the host-handover identity and consent boundaries:
  *
  * 1. **Stale session filter used wrong ID** — participants always have `sessionId=0`
  *    in [SessionQueueState]. The filter `it.sessionId != lastHostSessionId` was a no-op
  *    (no session has id=0). Fix: set `lastHostSessionId` from [NearbyClimbScanner.nearbySessions]
  *    (the host's real advertised ID) inside [SessionGattBridge.joinSession].
  *
- * 2. **Migration retried the same dying session** — after the stale-session join failed
- *    (`isConnecting=true`, DISCONNECTED), the old code called `setError()` instead of
- *    retrying migration. Fix: DISCONNECTED + `isConnecting` + non-empty queue → retry.
+ * 2. **Unsigned nearby sessions require consent** — an advertisement can identify an
+ *    exact live candidate but cannot authenticate membership or trigger GATT by itself.
  *
- * 3. **Stale session still visible during retry** — even with retry, `lastHostSessionId`
- *    wasn't updated on failed joins, so retries found the same session. Fix: `joinSession()`
- *    always updates `lastHostSessionId`, so retries automatically filter the previously
- *    failed session.
+ * 3. **Host recovery remains authoritative** — Bluetooth restart restores this host
+ *    before it offers any explicitly approved switch to another group.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class SessionGattBridgeMigrationTest {
@@ -376,8 +374,8 @@ class SessionGattBridgeMigrationTest {
      * advertisement from a stranger's, and a member with an empty queue was
      * shown someone else's climb as their own session's.
      *
-     * Migration is unaffected — it filters stale ads on the bridge's own
-     * `lastHostSessionId`, captured at join time, not on this field.
+     * Migration also uses the captured id to ignore the departed host's stale
+     * advertisement while it looks for a successor candidate.
      */
     @Test
     fun `a participant carries the host session id`() {
@@ -439,45 +437,184 @@ class SessionGattBridgeMigrationTest {
         verify(exactly = 1) { mockGattServer.start() }
     }
 
-    // ===== Test 3: migration joins a genuinely new host =====
+    // ===== Test 3: migration requires explicit inbound membership consent =====
+
+    @Test
+    fun `first elected successor cannot be diverted by foreign advertisement`() =
+        runTest(testDispatcher.scheduler) {
+            val oldHostDevice = mockDevice("AA:BB:CC:DD:EE:01")
+            val foreignDevice = mockDevice("FF:EE:DD:CC:BB:AA")
+            participantJoinsSession(oldHostDevice, 11111)
+            queueManager.setParticipantIndex(0)
+            nearbySessionsFlow.value = listOf(
+                makeSession(11111, "AA:BB:CC:DD:EE:01", oldHostDevice),
+                makeSession(99999, "FF:EE:DD:CC:BB:AA", foreignDevice),
+            )
+
+            sessionInfoFlow.emit(sentinelBytes())
+            advanceTimeBy(1_100)
+
+            verify(exactly = 0) { mockGattClient.connect(foreignDevice) }
+            assertNull(bridge.pendingSuccessorJoin.value)
+            assertEquals(SessionRole.HOST, queueManager.state.value.role)
+            assertTrue(queueManager.state.value.pendingHostVisibilityDecision)
+        }
 
     /**
-     * When a NEW session (different ID, different device) appears during migration,
-     * the participant must join it instead of self-promoting.
+     * A new advertisement is unsigned. It may be shown as an exact candidate,
+     * but it must not open GATT until the user explicitly approves it.
      */
     @Test
-    fun `migration joins new host session instead of self-promoting`() = runTest(testDispatcher.scheduler) {
-        val oldHostDevice = mockDevice("AA:BB:CC:DD:EE:01")
-        val oldHostSessionId = 11111
+    fun `migration stages exact successor and joins only after confirmation`() =
+        runTest(testDispatcher.scheduler) {
+            val oldHostDevice = mockDevice("AA:BB:CC:DD:EE:01")
+            val oldHostSessionId = 11111
 
-        val newHostDevice = mockDevice("FF:EE:DD:CC:BB:AA")
-        val newHostSessionId = 22222
+            val newHostDevice = mockDevice("FF:EE:DD:CC:BB:AA")
+            val newHostSessionId = 22222
 
-        // Join the old host's session
-        participantJoinsSession(oldHostDevice, oldHostSessionId)
+            // Join the old host's session
+            participantJoinsSession(oldHostDevice, oldHostSessionId)
+            queueManager.setParticipantIndex(1)
 
-        // During migration, a NEW session from a different host appears alongside the stale one
-        nearbySessionsFlow.value = listOf(
-            makeSession(oldHostSessionId, "AA:BB:CC:DD:EE:01", oldHostDevice), // stale, must be filtered
-            makeSession(newHostSessionId, "FF:EE:DD:CC:BB:AA", newHostDevice)  // new host
-        )
+            // A different session appears alongside the stale old-host advertisement.
+            nearbySessionsFlow.value = listOf(
+                makeSession(oldHostSessionId, "AA:BB:CC:DD:EE:01", oldHostDevice),
+                makeSession(newHostSessionId, "FF:EE:DD:CC:BB:AA", newHostDevice),
+            )
 
-        // Host sends sentinel
-        sessionInfoFlow.emit(sentinelBytes())
+            sessionInfoFlow.emit(sentinelBytes())
 
-        // Advance through first poll (500ms) — migration should find the new session
-        advanceTimeBy(600)
+            // Index 1 waits 4s, allowing index 0 to become the real successor first.
+            advanceTimeBy(4_100)
 
-        // Migration joined the new host → connect() must have been called for new device
-        verify { mockGattClient.connect(newHostDevice) }
+            assertEquals(
+                PendingSuccessorJoin(
+                    sessionId = newHostSessionId,
+                    deviceAddress = "FF:EE:DD:CC:BB:AA",
+                    hostName = "TestHost",
+                    origin = PendingSuccessorOrigin.HOST_MIGRATION,
+                ),
+                bridge.pendingSuccessorJoin.value,
+            )
+            verify(exactly = 0) { mockGattClient.connect(newHostDevice) }
+            assertEquals(SessionRole.PARTICIPANT, queueManager.state.value.role)
 
-        // Role is PARTICIPANT (connecting to new host), NOT HOST
-        assertNotEquals(
-            "Migration must join the new host, not self-promote, when a fresh session is available",
-            SessionRole.HOST,
-            queueManager.state.value.role
-        )
-    }
+            bridge.confirmPendingSuccessorJoin()
+
+            verify(exactly = 1) { mockGattClient.connect(newHostDevice) }
+            assertNull(bridge.pendingSuccessorJoin.value)
+        }
+
+    @Test
+    fun `declining unverified successor promotes the preserved queue locally once`() =
+        runTest(testDispatcher.scheduler) {
+            val oldHostDevice = mockDevice("AA:BB:CC:DD:EE:01")
+            val newHostDevice = mockDevice("FF:EE:DD:CC:BB:AA")
+            participantJoinsSession(oldHostDevice, 11111)
+            queueManager.setParticipantIndex(1)
+            nearbySessionsFlow.value = listOf(
+                makeSession(22222, "FF:EE:DD:CC:BB:AA", newHostDevice),
+            )
+            sessionInfoFlow.emit(sentinelBytes())
+            advanceTimeBy(4_100)
+
+            bridge.declinePendingSuccessorJoin()
+            bridge.declinePendingSuccessorJoin()
+
+            verify(exactly = 0) { mockGattClient.connect(newHostDevice) }
+            assertNull(bridge.pendingSuccessorJoin.value)
+            assertEquals(SessionRole.HOST, queueManager.state.value.role)
+            assertEquals(2, queueManager.state.value.queue.size)
+            assertTrue(queueManager.state.value.pendingHostVisibilityDecision)
+            assertEquals(SessionVisibility.LOCAL_ONLY, queueManager.state.value.visibility)
+        }
+
+    @Test
+    fun `confirmation cannot follow a replaced advertisement at the same address`() =
+        runTest(testDispatcher.scheduler) {
+            val oldHostDevice = mockDevice("AA:BB:CC:DD:EE:01")
+            val offeredDevice = mockDevice("FF:EE:DD:CC:BB:AA")
+            val replacementDevice = mockDevice("FF:EE:DD:CC:BB:AA")
+            participantJoinsSession(oldHostDevice, 11111)
+            queueManager.setParticipantIndex(1)
+            nearbySessionsFlow.value = listOf(
+                makeSession(22222, "FF:EE:DD:CC:BB:AA", offeredDevice),
+            )
+            sessionInfoFlow.emit(sentinelBytes())
+            advanceTimeBy(4_100)
+
+            nearbySessionsFlow.value = listOf(
+                makeSession(33333, "FF:EE:DD:CC:BB:AA", replacementDevice),
+            )
+            bridge.confirmPendingSuccessorJoin()
+
+            verify(exactly = 0) { mockGattClient.connect(offeredDevice) }
+            verify(exactly = 0) { mockGattClient.connect(replacementDevice) }
+            assertEquals(SessionRole.HOST, queueManager.state.value.role)
+            assertTrue(queueManager.state.value.pendingHostVisibilityDecision)
+        }
+
+    @Test
+    fun `queue teardown clears successor offer so a late answer cannot connect`() =
+        runTest(testDispatcher.scheduler) {
+            val oldHostDevice = mockDevice("AA:BB:CC:DD:EE:01")
+            val offeredDevice = mockDevice("FF:EE:DD:CC:BB:AA")
+            participantJoinsSession(oldHostDevice, 11111)
+            queueManager.setParticipantIndex(1)
+            nearbySessionsFlow.value = listOf(
+                makeSession(22222, "FF:EE:DD:CC:BB:AA", offeredDevice),
+            )
+            sessionInfoFlow.emit(sentinelBytes())
+            advanceTimeBy(4_100)
+            assertTrue(bridge.pendingSuccessorJoin.value != null)
+
+            bridge.leaveSession()
+            bridge.confirmPendingSuccessorJoin()
+
+            verify(exactly = 0) { mockGattClient.connect(offeredDevice) }
+            assertNull(bridge.pendingSuccessorJoin.value)
+            assertEquals(SessionRole.NONE, queueManager.state.value.role)
+        }
+
+    @Test
+    fun `explicit leave during election cannot resurrect the queue`() =
+        runTest(testDispatcher.scheduler) {
+            val oldHostDevice = mockDevice("AA:BB:CC:DD:EE:01")
+            participantJoinsSession(oldHostDevice, 11111)
+            queueManager.setParticipantIndex(0)
+            sessionInfoFlow.emit(sentinelBytes())
+            advanceTimeBy(500)
+
+            bridge.leaveSession()
+            advanceTimeBy(1_000)
+
+            assertEquals(SessionRole.NONE, queueManager.state.value.role)
+            assertFalse(queueManager.state.value.isActive)
+            assertNull(bridge.pendingSuccessorJoin.value)
+        }
+
+    @Test
+    fun `manual join during election cancels delayed promotion`() =
+        runTest(testDispatcher.scheduler) {
+            val oldHostDevice = mockDevice("AA:BB:CC:DD:EE:01")
+            val chosenDevice = mockDevice("11:22:33:44:55:66")
+            participantJoinsSession(oldHostDevice, 11111)
+            queueManager.setParticipantIndex(0)
+            sessionInfoFlow.emit(sentinelBytes())
+            advanceTimeBy(500)
+
+            nearbySessionsFlow.value = listOf(
+                makeSession(33333, "11:22:33:44:55:66", chosenDevice),
+            )
+            bridge.joinSession(chosenDevice)
+            advanceTimeBy(1_000)
+
+            verify(exactly = 1) { mockGattClient.connect(chosenDevice) }
+            assertEquals(SessionRole.PARTICIPANT, queueManager.state.value.role)
+            assertEquals(33333, queueManager.state.value.sessionId)
+            assertNull(bridge.pendingSuccessorJoin.value)
+        }
 
     // ===== Test 4: DISCONNECTED with isConnecting retries migration, not error =====
 
@@ -635,6 +772,73 @@ class SessionGattBridgeMigrationTest {
             verify(exactly = 2) { mockGattServer.start() }
             verify(atLeast = 1) { mockGattServer.stop() }
             assertEquals(SessionVisibility.JOINABLE, queueManager.state.value.visibility)
+        }
+
+    @Test
+    fun `Bluetooth recovery keeps own host and stages foreign session for consent`() =
+        runTest(testDispatcher.scheduler) {
+            val foreignDevice = mockDevice("FF:EE:DD:CC:BB:AA")
+            queueManager.startQueue("Host", SessionVisibility.JOINABLE)
+            bridge.startSharing()
+            nearbySessionsFlow.value = listOf(
+                makeSession(22222, "FF:EE:DD:CC:BB:AA", foreignDevice),
+            )
+
+            bridge.recoverAfterBluetoothRestart()
+
+            verify(exactly = 0) { mockGattClient.connect(foreignDevice) }
+            verify(exactly = 2) { mockGattServer.start() }
+            assertEquals(SessionRole.HOST, queueManager.state.value.role)
+            assertEquals(SessionVisibility.JOINABLE, queueManager.state.value.visibility)
+            assertEquals(
+                PendingSuccessorOrigin.BLUETOOTH_RECOVERY,
+                bridge.pendingSuccessorJoin.value?.origin,
+            )
+
+            bridge.declinePendingSuccessorJoin()
+            bridge.declinePendingSuccessorJoin()
+
+            verify(exactly = 0) { mockGattClient.connect(foreignDevice) }
+            verify(exactly = 2) { mockGattServer.start() }
+            assertNull(bridge.pendingSuccessorJoin.value)
+            assertEquals(SessionRole.HOST, queueManager.state.value.role)
+        }
+
+    @Test
+    fun `Bluetooth recovery switches groups only after exact live confirmation`() =
+        runTest(testDispatcher.scheduler) {
+            val foreignDevice = mockDevice("FF:EE:DD:CC:BB:AA")
+            every { mockGattServer.getConnectedCount() } returns 1
+            queueManager.startQueue("Host", SessionVisibility.JOINABLE)
+            bridge.startSharing()
+            nearbySessionsFlow.value = listOf(
+                makeSession(22222, "FF:EE:DD:CC:BB:AA", foreignDevice),
+            )
+            bridge.recoverAfterBluetoothRestart()
+
+            bridge.confirmPendingSuccessorJoin()
+
+            verify(exactly = 0) { mockGattClient.connect(foreignDevice) }
+            verify(exactly = 1) {
+                mockGattServer.notifyAll(
+                    SessionGattUuids.SESSION_INFO,
+                    any(),
+                )
+            }
+            advanceTimeBy(600)
+
+            verify(exactly = 1) { mockGattClient.connect(foreignDevice) }
+            verify(atLeast = 2) { mockGattServer.stop() }
+            verifyOrder {
+                mockGattServer.notifyAll(SessionGattUuids.SESSION_INFO, any())
+                mockGattServer.stop()
+                mockGattClient.connect(foreignDevice)
+            }
+            assertNull(bridge.pendingSuccessorJoin.value)
+
+            clientStateFlow.value = SessionClientState.CONNECTED
+            assertEquals(SessionRole.PARTICIPANT, queueManager.state.value.role)
+            assertEquals(22222, queueManager.state.value.sessionId)
         }
 
     @Test

@@ -219,6 +219,19 @@ default 20-byte ATT payload; the existing MTU negotiation continues to carry
 the semantic request extension and paged full-state frames.
 
 Host migration preserves the queue but does not inherit publication consent.
+A newly advertised successor is also only an unauthenticated BLE hint. The
+first elected participant always promotes locally and cannot be diverted by an
+ambient advertisement. A later participant may see that new host; the app
+shows its name with an explicit warning and does not open GATT until the user
+chooses **Join session**. Confirmation re-resolves the exact live session-id and
+device-address pair once; a decline, dismissal, vanished offer, or replaced
+advertisement keeps/promotes the preserved queue locally. Bluetooth recovery
+first restores the existing host's own authoritative transport and applies the
+same one-answer boundary before any deliberate switch to another group. A
+confirmed recovery switch sends the ordinary migrate sentinel and keeps the
+server alive for its bounded delivery window before stopping GATT and joining;
+explicit leave/manual join cancels any older delayed election generation.
+
 A promoted participant becomes a local-only host and receives one persistent
 local/joinable choice. The transport refuses a local-only `startSharing()` call;
 only an explicit joinable request can open GATT and advertising. The chosen

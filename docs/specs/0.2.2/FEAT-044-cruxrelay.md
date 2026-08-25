@@ -163,7 +163,9 @@ Order of operations (release the real board FIRST, tear down the relay SECOND):
 
 **NUS clients do NOT migrate** — the transparent name deliberately differs from
 the real board, so the user re-selects the (now-free) real board. CruxCoach
-participants use the existing host migration unchanged.
+participants retain the existing staggered host migration, with its explicit
+membership boundary: an unsigned nearby successor is offered by name but is
+never joined until the user approves that exact still-live advertisement.
 
 ## 8. Liveness / fail-safe
 
