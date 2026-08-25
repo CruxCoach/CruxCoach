@@ -1,14 +1,19 @@
 ---
-status: planned
-queue: queued
-base: auto
+status: implemented
+queue: done
+base: 0.2.2
 depends_on: []
 created: 2026-08-09
+implemented: 2026-08-25
 ---
 
 # Feature Spec: Blossom Manifest Rollback Guard
 
-> **Status:** queued for autonomous implementation
+> **Status:** implemented for the 0.2.2 release-logbook branch after the
+> frozen RepoLens security gate reproduced the rollback gap. Pure and
+> Robolectric persistence coverage is automated; an APK is intentionally not
+> installed on an ADB device by the release agent, so criterion 10 remains a
+> manual hardware smoke check rather than a publication prerequisite.
 > **Depends on:** none
 > **Relates to:** none
 

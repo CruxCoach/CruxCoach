@@ -184,13 +184,81 @@ class BlossomSyncManager(
     /**
      * Returns chunk names that have changed compared to stored hashes.
      * On first run, all chunks are returned.
+     *
+     * A stale signed manifest is a normal no-update result: keep the verified
+     * catalogue already on disk and do not expose any of its rollback hashes
+     * to callers. Callers also check [canApplyManifest] before auxiliary
+     * side-effects, but this guard keeps a future call site fail-safe.
      */
     fun getChangedChunks(manifest: BlossomManifest): List<BlossomChunk> {
+        if (!canApplyManifest(manifest)) return emptyList()
         return manifest.chunks.filter { chunk ->
             val storedHash = prefs.getString("chunk_sha256_${chunk.name}", null)
             storedHash != chunk.sha256
         }
     }
+
+    /**
+     * Returns whether [manifest] is at least as new as the last manifest this
+     * per-board sync track completely applied. Equal timestamps remain valid so
+     * an interrupted import can resume from the same signed event.
+     */
+    fun canApplyManifest(manifest: BlossomManifest): Boolean {
+        val lastAccepted = lastAcceptedManifestTimestamp()
+        val acceptable = isManifestAcceptable(manifest, lastAccepted)
+        if (!acceptable) {
+            Log.w(
+                TAG,
+                "[$manifestDTag] rejected stale manifest: " +
+                    "${effectiveTimestamp(manifest)} < accepted $lastAccepted"
+            )
+        }
+        return acceptable
+    }
+
+    /**
+     * Advances this track's rollback watermark after a complete successful
+     * application (or after confirming that every chunk already matches).
+     * Never lowers an existing mark, even if a caller accidentally presents a
+     * stale manifest after the fail-safe check.
+     */
+    fun saveAcceptedManifestTimestamp(manifest: BlossomManifest) {
+        saveCompletedManifest(manifest, emptyList())
+    }
+
+    /**
+     * Atomically persists every successfully imported chunk hash together with
+     * the completed manifest watermark. Call this only after the importer has
+     * applied every changed chunk; partial Kilter runs intentionally continue
+     * to use [saveChunkHash] without advancing the watermark.
+     */
+    fun saveCompletedManifest(
+        manifest: BlossomManifest,
+        importedChunks: Iterable<BlossomChunk>,
+    ) {
+        val incoming = effectiveTimestamp(manifest)
+        val lastAccepted = lastAcceptedManifestTimestamp()
+        if (lastAccepted == null || incoming >= lastAccepted) {
+            val editor = prefs.edit()
+            importedChunks.forEach { chunk ->
+                editor.putString("chunk_sha256_${chunk.name}", chunk.sha256)
+            }
+            editor.putLong(KEY_LAST_MANIFEST_CREATED_AT, incoming).apply()
+        } else {
+            Log.w(
+                TAG,
+                "[$manifestDTag] refused to lower manifest watermark: " +
+                    "$incoming < accepted $lastAccepted"
+            )
+        }
+    }
+
+    internal fun lastAcceptedManifestTimestamp(): Long? =
+        if (prefs.contains(KEY_LAST_MANIFEST_CREATED_AT)) {
+            prefs.getLong(KEY_LAST_MANIFEST_CREATED_AT, 0L)
+        } else {
+            null
+        }
 
     /**
      * Downloads a chunk, verifies SHA-256, decompresses zstd, and writes the
@@ -354,7 +422,10 @@ class BlossomSyncManager(
         prefs.edit().putString("chunk_sha256_$chunkName", sha256).apply()
     }
 
-    /** Clears all stored chunk hashes, forcing a full re-download on next sync. */
+    /**
+     * Clears chunk hashes and the coupled manifest watermark, forcing a full
+     * re-download and deliberately re-arming first-run manifest acceptance.
+     */
     fun clearStoredHashes() {
         prefs.edit().clear().apply()
     }
@@ -510,6 +581,7 @@ class BlossomSyncManager(
         // the typical "transient 5xx clears within a second" failure mode.
         private const val DOWNLOAD_BACKOFF_BASE_MS = 750L
         private const val DOWNLOAD_BACKOFF_JITTER_MS = 500L
+        private const val KEY_LAST_MANIFEST_CREATED_AT = "last_manifest_created_at"
         // Chunk names are joined into filesystem paths; restrict to a strict
         // allowlist so values like "../x" or "a/b" cannot escape cacheDir.
         private val CHUNK_NAME_REGEX = Regex("^[A-Za-z0-9_-]{1,64}$")
@@ -533,13 +605,24 @@ class BlossomSyncManager(
         internal fun selectPreferredManifest(
             manifests: Iterable<BlossomManifest>,
         ): BlossomManifest? = manifests.reduceOrNull { selected, candidate ->
-            val selectedAt = selected.eventCreatedAt.takeIf { it > 0 } ?: selected.createdAt
-            val candidateAt = candidate.eventCreatedAt.takeIf { it > 0 } ?: candidate.createdAt
+            val selectedAt = effectiveTimestamp(selected)
+            val candidateAt = effectiveTimestamp(candidate)
             val candidateWins = candidateAt > selectedAt ||
                 (candidateAt == selectedAt && candidate.eventId.isNotBlank() &&
                     (selected.eventId.isBlank() || candidate.eventId < selected.eventId))
             if (candidateWins) candidate else selected
         }
+
+        /** Timestamp semantics shared by relay selection and rollback defence. */
+        internal fun effectiveTimestamp(manifest: BlossomManifest): Long =
+            manifest.eventCreatedAt.takeIf { it > 0 } ?: manifest.createdAt
+
+        /** Pure rollback decision seam; `null` means this track has never synced. */
+        internal fun isManifestAcceptable(
+            manifest: BlossomManifest,
+            lastAcceptedCreatedAt: Long?,
+        ): Boolean = lastAcceptedCreatedAt == null ||
+            effectiveTimestamp(manifest) >= lastAcceptedCreatedAt
 
         /**
          * Validates chunk names and URL schemes after the manifest is parsed.

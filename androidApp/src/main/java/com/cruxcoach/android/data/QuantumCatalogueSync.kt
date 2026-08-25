@@ -50,8 +50,15 @@ class QuantumCatalogueSync @Inject constructor(
                 ) {
                     "Quantum manifest must contain exactly one quantum chunk"
                 }
+                if (!blossom.canApplyManifest(manifest)) {
+                    Log.w(TAG, "Quantum stale manifest rejected — keeping current catalogue")
+                    return@withContext Result.AlreadyCurrent
+                }
                 val chunk = manifest.chunks.single()
-                if (blossom.getChangedChunks(manifest).isEmpty()) return@withContext Result.AlreadyCurrent
+                if (blossom.getChangedChunks(manifest).isEmpty()) {
+                    blossom.saveAcceptedManifestTimestamp(manifest)
+                    return@withContext Result.AlreadyCurrent
+                }
                 val output = File(context.cacheDir, "quantum_${chunk.name}.sqlite3")
                 try {
                     blossom.downloadAndDecompressChunk(chunk, output) { done, total ->
@@ -66,7 +73,7 @@ class QuantumCatalogueSync @Inject constructor(
                             onProgress?.invoke(step)
                         }
                     }
-                    blossom.saveChunkHash(chunk.name, chunk.sha256)
+                    blossom.saveCompletedManifest(manifest, listOf(chunk))
                     Result.Imported(count)
                 } finally {
                     output.delete()
