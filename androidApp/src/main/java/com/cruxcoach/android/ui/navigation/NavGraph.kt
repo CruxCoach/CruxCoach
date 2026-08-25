@@ -1078,16 +1078,7 @@ private fun CruxRelayDisclosureEffect(relayManager: CruxRelayManager) {
         onDismissRequest = relayManager::dismissDisclosure,
         modifier = Modifier.testTag("relay_disclosure_dialog"),
         title = { Text(stringResource(com.cruxcoach.android.R.string.relay_disclosure_title)) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(stringResource(com.cruxcoach.android.R.string.relay_disclosure_text))
-                Text(
-                    stringResource(com.cruxcoach.android.R.string.relay_disclosure_disclaimer),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        },
+        text = { Text(stringResource(com.cruxcoach.android.R.string.relay_disclosure_text)) },
         confirmButton = {
             Button(onClick = relayManager::confirmDisclosureAndEnable) {
                 Text(stringResource(com.cruxcoach.android.R.string.relay_disclosure_confirm))
