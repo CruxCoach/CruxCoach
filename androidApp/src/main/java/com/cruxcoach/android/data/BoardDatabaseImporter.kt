@@ -660,6 +660,28 @@ class BoardDatabaseImporter(
             }
             require(present.containsAll(required)) { "Quantum snapshot is missing required tables" }
 
+            // eWalls encodes the LED address as text in autocad_id. It is sent
+            // over the controller's two-byte position field, so accepting a
+            // negative, non-integral, or wider value here would silently turn
+            // untrusted catalogue data into a different hardware address. Do
+            // this before beginning any target refresh so a malformed snapshot
+            // cannot remove the last known-good Quantum catalogue.
+            val invalidLedPositionCount = queryLong(
+                db,
+                """
+                SELECT COUNT(*)
+                FROM qb.quantum_diodes d
+                JOIN qb.quantum_models m USING(model)
+                WHERE d.autocad_id IS NULL
+                   OR TRIM(CAST(d.autocad_id AS TEXT)) = ''
+                   OR TRIM(CAST(d.autocad_id AS TEXT)) GLOB '*[^0-9]*'
+                   OR CAST(TRIM(CAST(d.autocad_id AS TEXT)) AS INTEGER) NOT BETWEEN 0 AND 65535
+                """.trimIndent(),
+            )
+            require(invalidLedPositionCount == 0L) {
+                "Quantum snapshot contains an invalid LED position"
+            }
+
             db.beginTransaction()
             try {
                 // Refresh only Quantum catalogue rows. Personal/log/list rows
@@ -2410,6 +2432,15 @@ class BoardDatabaseImporter(
         val climbsTable = resolveClimbsTable(rawDb)
         val statsTable = resolveStatsTable(rawDb)
         val hasPlacements = hasTable(rawDb, "placements")
+        val placementsHaveBrand = hasPlacements && rawDb.rawQuery(
+            "PRAGMA table_info(placements)", null,
+        ).use { cursor ->
+            var found = false
+            while (cursor.moveToNext()) {
+                if (cursor.getString(1) == "board_brand") found = true
+            }
+            found
+        }
         val climbColumns = rawDb.rawQuery(
             "PRAGMA table_info($climbsTable)", null,
         ).use { cursor -> buildSet { while (cursor.moveToNext()) add(cursor.getString(1)) } }
@@ -2458,7 +2489,12 @@ class BoardDatabaseImporter(
                 }
                 statements.forEach { statement -> targetDb.execSQL(statement) }
                 val placements = if (hasPlacements) {
-                    queryLong(targetDb, "SELECT COUNT(*) FROM src.placements").toInt()
+                    val filter = if (!includeQuantum && placementsHaveBrand) {
+                        " WHERE LOWER(TRIM(COALESCE(board_brand,'kilter')))!='quantum'"
+                    } else {
+                        ""
+                    }
+                    queryLong(targetDb, "SELECT COUNT(*) FROM src.placements$filter").toInt()
                 } else {
                     0
                 }
@@ -2491,6 +2527,12 @@ class BoardDatabaseImporter(
             }
         }
         fun brand(table: String) = if ("board_brand" in columns(table)) "board_brand" else "'kilter'"
+        fun legacyGeometryFilter(table: String): String =
+            if (!includeQuantum && "board_brand" in columns(table)) {
+                " WHERE LOWER(TRIM(COALESCE(board_brand,'kilter')))!='quantum'"
+            } else {
+                ""
+            }
 
         requireColumns("placements", setOf("placement_id", "hole_id", "set_id", "x", "y"))
         requireColumns("holes", setOf("id", "product_size_id", "x", "y", "mirrored_hole_id"))
@@ -2514,27 +2556,33 @@ class BoardDatabaseImporter(
         val statements = buildList {
             if (has("placements")) add(
                 "INSERT OR REPLACE INTO placements(board_brand,placement_id,hole_id,set_id,x,y) " +
-                    "SELECT ${brand("placements")},placement_id,hole_id,set_id,x,y FROM src.placements"
+                    "SELECT ${brand("placements")},placement_id,hole_id,set_id,x,y FROM src.placements" +
+                    legacyGeometryFilter("placements")
             )
             if (has("holes")) add(
                 "INSERT OR REPLACE INTO holes(board_brand,id,product_size_id,x,y,mirrored_hole_id) " +
-                    "SELECT ${brand("holes")},id,product_size_id,x,y,mirrored_hole_id FROM src.holes"
+                    "SELECT ${brand("holes")},id,product_size_id,x,y,mirrored_hole_id FROM src.holes" +
+                    legacyGeometryFilter("holes")
             )
             if (has("product_sizes")) add(
                 "INSERT OR REPLACE INTO product_sizes(board_brand,id,product_id,name,edge_left,edge_right,edge_bottom,edge_top,image_filename) " +
-                    "SELECT ${brand("product_sizes")},id,product_id,name,edge_left,edge_right,edge_bottom,edge_top,image_filename FROM src.product_sizes"
+                    "SELECT ${brand("product_sizes")},id,product_id,name,edge_left,edge_right,edge_bottom,edge_top,image_filename FROM src.product_sizes" +
+                    legacyGeometryFilter("product_sizes")
             )
             if (has("board_images")) add(
                 "INSERT OR REPLACE INTO board_images(board_brand,id,product_size_id,layout_id,set_id,image_filename) " +
-                    "SELECT ${brand("board_images")},id,product_size_id,layout_id,set_id,image_filename FROM src.board_images"
+                    "SELECT ${brand("board_images")},id,product_size_id,layout_id,set_id,image_filename FROM src.board_images" +
+                    legacyGeometryFilter("board_images")
             )
             if (has("leds")) add(
                 "INSERT OR REPLACE INTO leds(board_brand,hole_id,product_size_id,position) " +
-                    "SELECT ${brand("leds")},hole_id,product_size_id,position FROM src.leds"
+                    "SELECT ${brand("leds")},hole_id,product_size_id,position FROM src.leds" +
+                    legacyGeometryFilter("leds")
             )
             if (has("placement_roles")) add(
                 "INSERT OR REPLACE INTO placement_roles(board_brand,id,name,led_color,screen_color) " +
-                    "SELECT ${brand("placement_roles")},id,name,led_color,screen_color FROM src.placement_roles"
+                    "SELECT ${brand("placement_roles")},id,name,led_color,screen_color FROM src.placement_roles" +
+                    legacyGeometryFilter("placement_roles")
             )
             if (includeQuantum) {
                 val hasRefs = has("quantum_route_refs")

@@ -924,6 +924,50 @@ class LocalShareModernSchemaTest {
     }
 
     @Test
+    fun legacyV1FiltersQuantumOnlyGeometryButStillImportsPublicNonQuantumRows() {
+        SQLiteDatabase.openDatabase(srcPath.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            // A malicious or partially scrubbed v1 source can carry branded
+            // geometry without carrying a listed Quantum climb. The climb-only
+            // bridge guard must not let that geometry cross the legacy boundary.
+            db.execSQL(
+                "INSERT INTO product_sizes(board_brand,id,product_id,name,edge_left,edge_right,edge_bottom,edge_top,image_filename) " +
+                    "VALUES ('quantum',9301,91,'XL',0,1000,0,1000,'quantum.png')",
+            )
+            db.execSQL(
+                "INSERT INTO holes(board_brand,id,product_size_id,x,y,mirrored_hole_id) " +
+                    "VALUES ('quantum',19300001,9301,100,100,NULL)",
+            )
+            db.execSQL(
+                "INSERT INTO placements(board_brand,placement_id,hole_id,set_id,x,y) " +
+                    "VALUES ('quantum',19300001,19300001,9101,100,100)",
+            )
+            db.execSQL(
+                "INSERT INTO board_images(board_brand,id,product_size_id,layout_id,set_id,image_filename) " +
+                    "VALUES ('quantum',9301,9301,9101,9101,'quantum.png')",
+            )
+            db.execSQL(
+                "INSERT INTO leds(board_brand,hole_id,product_size_id,position) " +
+                    "VALUES ('quantum',19300001,9301,65535)",
+            )
+            db.execSQL(
+                "INSERT INTO placement_roles(board_brand,id,name,led_color,screen_color) " +
+                    "VALUES ('quantum',55,'finish','FF00FF','FF00FF')",
+            )
+        }
+
+        importer.importFromLocalDb(srcPath, includeQuantum = false)
+
+        openTarget().use { db ->
+            assertEquals(1, countWhere(db, "climbs", "uuid='$kilterUuid' AND board_brand='kilter'"))
+            assertEquals(1, countWhere(db, "climbs", "uuid='$moonUuid' AND board_brand='moonboard'"))
+            for (table in listOf("placements", "holes", "product_sizes", "board_images", "leds", "placement_roles")) {
+                assertEquals("v1 filters Quantum-only $table", 0, countWhere(db, table, "board_brand='quantum'"))
+                assertTrue("v1 retains non-Quantum $table", countWhere(db, table, "board_brand!='quantum'") > 0)
+            }
+        }
+    }
+
+    @Test
     fun incompleteQuantumBridgeFailsBeforeGenericCatalogueWrites() {
         seedQuantumBridge(model = "xl")
         SQLiteDatabase.openDatabase(srcPath.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
@@ -1317,7 +1361,7 @@ class LocalShareModernSchemaTest {
             db.execSQL("DROP TABLE climbs_current")
         }
 
-        importer.importFromLocalDb(srcPath)
+        importer.importFromLocalDb(srcPath, includeQuantum = false)
 
         openTarget().use { db ->
             assertEquals(1, countWhere(db, "climbs", "uuid='$kilterUuid' AND board_brand='kilter'"))

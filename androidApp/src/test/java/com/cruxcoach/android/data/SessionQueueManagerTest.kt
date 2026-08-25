@@ -743,6 +743,21 @@ class SessionQueueManagerTest {
     }
 
     @Test
+    fun `saved playlist rejects later attempts to become joinable`() {
+        queueManager.loadPlaylist(
+            "Private",
+            listOf(QueueItem("a", 40)),
+        )
+
+        queueManager.setVisibility(SessionVisibility.JOINABLE)
+        queueManager.setVisibilityRequested(SessionVisibility.JOINABLE)
+
+        assertEquals(SessionVisibility.LOCAL_ONLY, queueManager.state.value.visibility)
+        assertEquals(SessionVisibility.LOCAL_ONLY, queueManager.state.value.visibilityRequested)
+        assertTrue(queueManager.state.value.isPlaylist)
+    }
+
+    @Test
     fun `loadPlaylist cannot repurpose an active joinable session`() {
         queueManager.startQueue("Shared host", SessionVisibility.JOINABLE)
         queueManager.addClimb("shared", 40)

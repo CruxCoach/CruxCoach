@@ -404,7 +404,9 @@ interface BoardClimbQueries {
     fun getQuantumExternalRouteUuid(appUuid: String): String? = null
     /** Resolve a controller-reported Quantum route for one physical model.
      * The model is mandatory because its app UUID and placement ids are
-     * model-local even when the upstream route UUID is shared. */
+     * model-local even when the upstream route UUID is shared. A direct UUID
+     * fallback is accepted only for a known Quantum, model-layout-matched,
+     * single-frame climb; bridge rows are checked against the same boundary. */
     fun getQuantumClimbByExternalRoute(routeUuid: String, model: String): ClimbWithStats? = null
     /** Defensive fallback for [getClimbByUuid]: resolves a stored row whose
      *  uuid matches [uuid] only after normalization (strip hyphens +

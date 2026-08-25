@@ -4,6 +4,7 @@ import android.bluetooth.BluetoothGatt
 import com.cruxcoach.domain.board.QuantumActivePlayer
 import com.cruxcoach.domain.board.QuantumBoardBroadcastParser
 import com.cruxcoach.domain.board.QuantumBoardPacketEncoder
+import com.cruxcoach.domain.board.QuantumBoardModel
 import com.cruxcoach.domain.board.QuantumBroadcast
 import com.cruxcoach.domain.board.QuantumCommand
 import com.cruxcoach.domain.board.BoardBrand
@@ -25,6 +26,58 @@ class QuantumControllerEvidenceTest {
         assertFalse(quantumNotificationSetupConfirmed(true, null))
         assertFalse(quantumNotificationSetupConfirmed(true, BluetoothGatt.GATT_FAILURE))
         assertTrue(quantumNotificationSetupConfirmed(true, BluetoothGatt.GATT_SUCCESS))
+    }
+
+    @Test
+    fun `service discovery callback or fallback can complete each GATT only once`() {
+        assertTrue(
+            serviceDiscoveryCompletionAllowed(
+                connecting = true,
+                currentGattMatches = true,
+                gattClosed = false,
+                alreadyHandled = false,
+            ),
+        )
+        // Represents either the real callback after fallback, or the delayed
+        // fallback after the real callback claimed this GATT attempt.
+        assertFalse(
+            serviceDiscoveryCompletionAllowed(
+                connecting = true,
+                currentGattMatches = true,
+                gattClosed = false,
+                alreadyHandled = true,
+            ),
+        )
+        assertFalse(serviceDiscoveryCompletionAllowed(false, true, false, false))
+        assertFalse(serviceDiscoveryCompletionAllowed(true, false, false, false))
+        assertFalse(serviceDiscoveryCompletionAllowed(true, true, true, false))
+    }
+
+    @Test
+    fun `fff5 metadata maps every verified controller type and dimensions`() {
+        val cases = listOf(
+            Triple(0, QuantumBoardModel.XL, 15 to 15),
+            Triple(1, QuantumBoardModel.M, 12 to 12),
+            Triple(2, QuantumBoardModel.S, 8 to 12),
+            Triple(3, QuantumBoardModel.BELAY, 8 to 12),
+            Triple(4, QuantumBoardModel.L, 15 to 12),
+        )
+
+        cases.forEach { (type, model, dimensions) ->
+            val parsed = parseQuantumControllerMetadata(
+                metadata(type, dimensions.first, dimensions.second),
+            )
+            assertEquals(model, parsed?.model)
+            assertEquals(dimensions.first, parsed?.columns)
+            assertEquals(dimensions.second, parsed?.rows)
+        }
+    }
+
+    @Test
+    fun `fff5 metadata rejects missing unknown and internally inconsistent records`() {
+        assertEquals(null, parseQuantumControllerMetadata(ByteArray(40)))
+        assertEquals(null, parseQuantumControllerMetadata(metadata(99, 15, 15)))
+        assertEquals(null, parseQuantumControllerMetadata(metadata(1, 15, 15)))
     }
 
     @Test
@@ -116,12 +169,15 @@ class QuantumControllerEvidenceTest {
         )
         val boardB = boardA.copy(serial = "controller-b", address = "BB:BB:BB:BB:BB:BB")
 
-        assertTrue(quantumBoardWriteFenceMatches(boardA, expected))
-        assertFalse(quantumBoardWriteFenceMatches(boardB, expected))
-        assertFalse(quantumBoardWriteFenceMatches(boardA, null))
+        assertTrue(quantumBoardWriteFenceMatches(boardA, QuantumBoardModel.XL, expected))
+        assertFalse(quantumBoardWriteFenceMatches(boardB, QuantumBoardModel.XL, expected))
+        assertFalse(quantumBoardWriteFenceMatches(boardA, QuantumBoardModel.M, expected))
+        assertFalse(quantumBoardWriteFenceMatches(boardA, null, expected))
+        assertFalse(quantumBoardWriteFenceMatches(boardA, QuantumBoardModel.XL, null))
         assertFalse(
             quantumBoardWriteFenceMatches(
                 boardA.copy(boardBrand = BoardBrand.KILTER),
+                QuantumBoardModel.XL,
                 expected,
             ),
         )
@@ -147,6 +203,8 @@ class QuantumControllerEvidenceTest {
 
         assertTrue(hasCompleteQuantumLedMapping(holds, mapOf(10 to 100, 20 to 200)))
         assertFalse(hasCompleteQuantumLedMapping(holds, mapOf(10 to 100)))
+        assertFalse(hasCompleteQuantumLedMapping(holds, mapOf(10 to -1, 20 to 200)))
+        assertFalse(hasCompleteQuantumLedMapping(holds, mapOf(10 to 100, 20 to 65_536)))
         assertFalse(hasCompleteQuantumLedMapping(emptyList(), emptyMap()))
     }
 
@@ -159,33 +217,45 @@ class QuantumControllerEvidenceTest {
     }
 
     @Test
-    fun `only complete fff4 evidence avoids route-list fallback`() {
+    fun `only complete fff4 route list publishes state and avoids explicit fallback`() {
         val full = QuantumBroadcast.RouteList(
             QuantumCommand.REQUEST_USER_ROUTE_LIST,
             listOf(player(ownUser)),
         )
-        assertFalse(quantumReadRequiresRouteListFallback(classifyQuantumControllerEvidence(full)))
-        assertFalse(
+        assertTrue(quantumFff4PublishesSnapshot(full))
+        assertFalse(quantumReadRequiresRouteListFallback(classifyQuantumFff4Evidence(full)))
+        assertTrue(
             quantumReadRequiresRouteListFallback(
-                classifyQuantumControllerEvidence(QuantumBroadcast.BoardCleared),
+                classifyQuantumFff4Evidence(QuantumBroadcast.BoardCleared),
             ),
+        )
+        assertFalse(quantumFff4PublishesSnapshot(QuantumBroadcast.BoardCleared))
+        // The same event is authoritative when received as the direct
+        // notification acknowledgement to an explicit global clear.
+        assertEquals(
+            QuantumControllerEvidence.AUTHORITATIVE,
+            classifyQuantumControllerEvidence(QuantumBroadcast.BoardCleared),
+        )
+        assertEquals(
+            QuantumControllerEvidence.INFORMATIONAL,
+            classifyQuantumFff4Evidence(QuantumBroadcast.BoardCleared),
         )
 
         assertTrue(
             quantumReadRequiresRouteListFallback(
-                classifyQuantumControllerEvidence(QuantumBroadcast.UserTurnedOff(ownUser)),
+                classifyQuantumFff4Evidence(QuantumBroadcast.UserTurnedOff(ownUser)),
             ),
         )
         assertTrue(
             quantumReadRequiresRouteListFallback(
-                classifyQuantumControllerEvidence(
+                classifyQuantumFff4Evidence(
                     QuantumBroadcast.Exception(QuantumCommand.ACTIVATE_WALL, 7),
                 ),
             ),
         )
         assertTrue(
             quantumReadRequiresRouteListFallback(
-                classifyQuantumControllerEvidence(
+                classifyQuantumFff4Evidence(
                     QuantumBoardBroadcastParser.parse(byteArrayOf(1, 0x47, 1, 0)),
                 ),
             ),
@@ -303,4 +373,13 @@ class QuantumControllerEvidenceTest {
         remainingSeconds = 0,
         color = 0x00ffff,
     )
+
+    private fun metadata(type: Int, columns: Int, rows: Int): ByteArray =
+        ByteArray(41).apply {
+            this[34] = type.toByte()
+            this[35] = (columns ushr 8).toByte()
+            this[36] = columns.toByte()
+            this[37] = (rows ushr 8).toByte()
+            this[38] = rows.toByte()
+        }
 }

@@ -141,6 +141,36 @@ class QuantumSnapshotImportTest {
         }
     }
 
+    @Test fun rejectsOutOfRangeLedPositionsBeforeRefreshingKnownGoodQuantumRows() {
+        val existingUuid = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+        openTarget().use { db ->
+            db.execSQL(
+                """INSERT INTO climbs(uuid,layout_id,name,frames,board_brand,origin,source)
+                   VALUES(?,9101,'Known good Quantum','p1000001r12','quantum','quantum','quantum')""",
+                arrayOf<Any?>(existingUuid),
+            )
+        }
+        SQLiteDatabase.openDatabase(snapshot.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { source ->
+            source.execSQL("UPDATE quantum_diodes SET autocad_id='-1' WHERE diode_uuid='d1'")
+            source.execSQL("UPDATE quantum_diodes SET autocad_id='65536' WHERE diode_uuid='d2'")
+        }
+
+        val error = runCatching { importer.importQuantumSnapshot(snapshot) }.exceptionOrNull()
+
+        assertTrue(error is IllegalArgumentException)
+        openTarget().use { db ->
+            assertEquals(
+                1,
+                count(db, "SELECT COUNT(*) FROM climbs WHERE uuid='$existingUuid'"),
+            )
+            assertEquals(
+                0,
+                count(db, "SELECT COUNT(*) FROM climbs WHERE board_brand='quantum' AND uuid!='$existingUuid'"),
+            )
+            assertEquals(0, count(db, "SELECT COUNT(*) FROM leds WHERE board_brand='quantum'"))
+        }
+    }
+
     @Test fun mapsEwallsGradeIdsToCruxCoachScaleIncludingRangeGrades() {
         val cases: List<Pair<String, Double?>> = listOf(
             "[6]" to 10.0, "[7]" to 10.0, "[8]" to 11.0,

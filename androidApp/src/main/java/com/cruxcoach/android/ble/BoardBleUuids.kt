@@ -11,7 +11,8 @@ object BoardBleUuids {
     val QUANTUM_NOTIFY_CHAR: UUID = UUID.fromString("0000FFF1-0000-1000-8000-00805F9B34FB")
     val QUANTUM_WRITE_CHAR: UUID = UUID.fromString("0000FFF2-0000-1000-8000-00805F9B34FB")
     val QUANTUM_STATE_CHAR: UUID = UUID.fromString("0000FFF4-0000-1000-8000-00805F9B34FB")
-    /** 41-byte controller identity/firmware/dimensions record in 2.0.14. */
+    /** 41-byte eWalls 2.0.14 controller record: type at byte 34, then
+     * big-endian columns/rows at bytes 35..38. */
     val QUANTUM_METADATA_CHAR: UUID = UUID.fromString("0000FFF5-0000-1000-8000-00805F9B34FB")
     val CLIENT_CHARACTERISTIC_CONFIG: UUID = UUID.fromString("00002902-0000-1000-8000-00805F9B34FB")
 

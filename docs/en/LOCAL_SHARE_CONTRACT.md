@@ -60,7 +60,9 @@ content or assert community authorship. A peer stats row is eligible only when
 its source climb passes that same filter and joins a receiver climb of the same
 board brand. It may fill a missing `(climb_uuid, angle)` aggregate, but cannot
 replace an existing aggregate after a same-brand UUID collision. Brand geometry
-remains shareable.
+remains shareable in v2. A v1 import filters branded Quantum geometry as a
+receiver-side backstop even if a malformed legacy artifact contains no Quantum
+climb row that would otherwise reveal it.
 
 For v2 and direct full-database injection, every accepted official Quantum
 climb (`source=quantum`) must have exactly one syntactically valid app UUID to

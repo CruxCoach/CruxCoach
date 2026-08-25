@@ -134,6 +134,19 @@ WHERE LOWER(route_uuid) = LOWER(:routeUuid)
   AND LOWER(model) = LOWER(:model)
 LIMIT 1;
 
+-- A locally known Quantum climb can already use the vendor UUID directly
+-- (for example an imported pre-bridge database). Keep this fallback narrow:
+-- the connected model's layout, Quantum brand, and single-frame catalogue
+-- contract must all agree before its holds can be trusted for coexistence.
+getQuantumDirectAppUuidByExternalRoute:
+SELECT uuid FROM climbs
+WHERE LOWER(uuid) = LOWER(:routeUuid)
+  AND board_brand = 'quantum'
+  AND layout_id = :layoutId
+  AND frames_count = 1
+  AND is_deleted = 0
+LIMIT 1;
+
 deleteAllQuantumRouteRefs:
 DELETE FROM quantum_route_refs;
 

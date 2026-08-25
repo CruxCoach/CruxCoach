@@ -23,6 +23,7 @@ import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardHold
 import com.cruxcoach.domain.board.MoonBoardLedMode
 import com.cruxcoach.domain.board.MoonBoardVariant
+import com.cruxcoach.domain.board.QuantumBoardModel
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -217,6 +218,82 @@ class BoardSendControllerTest {
         }
 
     @Test
+    fun `explicit target never silently moves a climb already assigned to another identity`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val climb = moonClimb.copy(
+                uuid = "11111111-2222-3333-4444-555555555555",
+                boardBrand = BoardBrand.QUANTUM.wireValue,
+                layoutId = 9101,
+            )
+            val existing = BoardClimbLayer(
+                slot = 0,
+                climbUuid = climb.uuid,
+                routeUuid = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+                climbName = climb.name,
+                angle = 40,
+                userUuid = "10000000-0000-4000-8000-000000000000",
+                color = BoardLayerManager.LAYER_COLORS[0],
+                holds = listOf(BoardHold(10, 1)),
+                status = com.cruxcoach.android.ble.BoardLayerStatus.CONFIRMED,
+                confirmedRouteUuid = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+                confirmedColor = BoardLayerManager.LAYER_COLORS[0],
+            )
+            val detailState = MutableStateFlow(
+                ClimbDetailState(
+                    climb = climb,
+                    holds = existing.holds,
+                    selectedBoardLayerSlot = 2,
+                    selectedBoardLayerColor = BoardLayerManager.LAYER_COLORS[2],
+                    ble = BoardSendState(connectionState = ConnectionState.CONNECTED),
+                ),
+            )
+            val layers = mockk<BoardLayerManager>(relaxed = true) {
+                every { state } returns MutableStateFlow(
+                    BoardLayerState(brand = BoardBrand.QUANTUM, layers = listOf(existing)),
+                )
+                every { layerForClimb(climb.uuid) } returns existing
+            }
+            val ble = mockk<BoardBleConnection>(relaxed = true)
+            val queue = mockk<SessionQueueManager>(relaxed = true) {
+                every { state } returns MutableStateFlow(SessionQueueState())
+            }
+            val controller = BoardSendController(
+                scope = this,
+                state = detailState,
+                boardRepository = mockk(relaxed = true),
+                personalBoardRepo = mockk(relaxed = true),
+                bleConnection = ble,
+                userPreferences = mockk(relaxed = true),
+                climbAdvertiser = mockk(relaxed = true),
+                sessionQueueManager = queue,
+                isSharingEnabled = { false },
+                boardLayerManager = layers,
+                ioDispatcher = UnconfinedTestDispatcher(testScheduler),
+            )
+
+            controller.assignCurrentToBoardLayer()
+            advanceUntilIdle()
+
+            assertEquals(
+                R.string.quantum_layer_already_assigned_error,
+                detailState.value.ble.error,
+            )
+            verify(exactly = 0) { layers.assignPreview(any()) }
+
+            detailState.update { it.copy(ble = it.ble.copy(error = null)) }
+            controller.sendToBoard()
+            advanceUntilIdle()
+
+            assertEquals(
+                R.string.quantum_layer_already_assigned_error,
+                detailState.value.ble.error,
+            )
+            coVerify(exactly = 0) {
+                ble.sendClimb(any(), any(), any(), any(), any(), any(), any(), any())
+            }
+        }
+
+    @Test
     fun `explicit Quantum send allocates independent identity color and confirms layer`() =
         runTest(UnconfinedTestDispatcher()) {
             val climb = moonClimb.copy(
@@ -264,6 +341,7 @@ class BoardSendControllerTest {
                         boardBrand = BoardBrand.QUANTUM,
                     )
                 )
+                every { connectedQuantumModel } returns MutableStateFlow(QuantumBoardModel.XL)
                 coEvery {
                     sendClimb(
                         holds, any(), any(), routeId, userId,
@@ -334,6 +412,226 @@ class BoardSendControllerTest {
                 })
                 layerManager.beginProjection(1)
                 layerManager.confirmProjection(1)
+            }
+        }
+
+    @Test
+    fun `Quantum encoder exception cannot strand a sending layer or spinner`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val climb = moonClimb.copy(
+                uuid = "11111111-2222-3333-4444-555555555555",
+                boardBrand = BoardBrand.QUANTUM.wireValue,
+                layoutId = 9101,
+            )
+            val holds = listOf(BoardHold(10, 1))
+            val expectedBoard = BoardLayerBoardIdentity("quantum:serial:ser-1", 9201)
+            val layer = BoardClimbLayer(
+                slot = 0,
+                climbUuid = climb.uuid,
+                routeUuid = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+                climbName = climb.name,
+                angle = 40,
+                userUuid = "10000000-0000-4000-8000-000000000000",
+                color = BoardLayerManager.LAYER_COLORS[0],
+                holds = holds,
+                status = com.cruxcoach.android.ble.BoardLayerStatus.PREVIEW,
+            )
+            val detailState = MutableStateFlow(
+                ClimbDetailState(
+                    climb = climb,
+                    holds = holds,
+                    ble = BoardSendState(connectionState = ConnectionState.CONNECTED),
+                ),
+            )
+            val layerState = MutableStateFlow(
+                BoardLayerState(
+                    brand = BoardBrand.QUANTUM,
+                    board = expectedBoard,
+                    layers = listOf(layer),
+                ),
+            )
+            val layers = mockk<BoardLayerManager>(relaxed = true) {
+                every { state } returns layerState
+                every { isBoundTo(expectedBoard) } returns true
+                every { hasControllerCapacityFor(0, any()) } returns true
+                every { beginProjection(0) } answers {
+                    layerState.update { current ->
+                        current.copy(
+                            layers = current.layers.map {
+                                it.copy(status = com.cruxcoach.android.ble.BoardLayerStatus.SENDING)
+                            },
+                        )
+                    }
+                }
+                every { failProjection(0) } answers {
+                    layerState.update { current ->
+                        current.copy(
+                            layers = current.layers.map {
+                                it.copy(status = com.cruxcoach.android.ble.BoardLayerStatus.FAILED)
+                            },
+                        )
+                    }
+                }
+            }
+            val repository = mockk<BoardRepository>(relaxed = true) {
+                every { getPlacementLedMap(9201, BoardBrand.QUANTUM.wireValue) } returns
+                    mapOf(10 to 100)
+            }
+            val ble = mockk<BoardBleConnection>(relaxed = true) {
+                every { connectedBoardBrand } returns MutableStateFlow(BoardBrand.QUANTUM)
+                every { connectionState } returns MutableStateFlow(ConnectionState.CONNECTED)
+                every { quantumControllerState } returns MutableStateFlow(
+                    QuantumControllerState(authoritative = true, authoritativeRevision = 1),
+                )
+                every { connectedBoardDescriptor } returns MutableStateFlow(
+                    DiscoveredBoard(
+                        displayName = "Quantum",
+                        serial = "SER-1",
+                        apiLevel = 3,
+                        address = "AA:BB:CC:DD:EE:FF",
+                        rssi = -40,
+                        boardBrand = BoardBrand.QUANTUM,
+                    ),
+                )
+                every { connectedQuantumModel } returns MutableStateFlow(QuantumBoardModel.XL)
+                coEvery { refreshQuantumState() } returns true
+                coEvery {
+                    sendClimb(any(), any(), any(), any(), any(), any(), any(), any())
+                } throws IllegalStateException("encoder failed")
+            }
+            val preferences = mockk<UserPreferences>(relaxed = true) {
+                every { boardBrand } returns flowOf(BoardBrand.QUANTUM.wireValue)
+                every { boardProductSizeId } returns flowOf(9201)
+            }
+            val queue = mockk<SessionQueueManager>(relaxed = true) {
+                every { state } returns MutableStateFlow(SessionQueueState())
+            }
+            val controller = BoardSendController(
+                scope = this,
+                state = detailState,
+                boardRepository = repository,
+                personalBoardRepo = mockk(relaxed = true),
+                bleConnection = ble,
+                userPreferences = preferences,
+                climbAdvertiser = mockk(relaxed = true),
+                sessionQueueManager = queue,
+                isSharingEnabled = { false },
+                boardLayerManager = layers,
+                ioDispatcher = UnconfinedTestDispatcher(testScheduler),
+            )
+
+            controller.sendBoardLayer(0)
+            advanceUntilIdle()
+
+            assertFalse(detailState.value.ble.isSending)
+            assertEquals(R.string.board_send_error_generic, detailState.value.ble.error)
+            assertEquals(
+                com.cruxcoach.android.ble.BoardLayerStatus.FAILED,
+                layerState.value.layers.single().status,
+            )
+        }
+
+    @Test
+    fun `Quantum removal hydration exception always lowers the spinner`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val climb = moonClimb.copy(
+                uuid = "11111111-2222-3333-4444-555555555555",
+                boardBrand = BoardBrand.QUANTUM.wireValue,
+                layoutId = 9101,
+            )
+            val expectedBoard = BoardLayerBoardIdentity("quantum:serial:ser-1", 9201)
+            val confirmed = BoardClimbLayer(
+                slot = 0,
+                climbUuid = climb.uuid,
+                routeUuid = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+                climbName = climb.name,
+                angle = 40,
+                userUuid = "10000000-0000-4000-8000-000000000000",
+                color = BoardLayerManager.LAYER_COLORS[0],
+                holds = listOf(BoardHold(10, 1)),
+                status = com.cruxcoach.android.ble.BoardLayerStatus.CONFIRMED,
+                confirmedRouteUuid = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+                confirmedColor = BoardLayerManager.LAYER_COLORS[0],
+                confirmedHolds = listOf(BoardHold(10, 1)),
+            )
+            val detailState = MutableStateFlow(
+                ClimbDetailState(
+                    climb = climb,
+                    holds = confirmed.holds,
+                    ble = BoardSendState(connectionState = ConnectionState.CONNECTED),
+                ),
+            )
+            val layerState = MutableStateFlow(
+                BoardLayerState(
+                    brand = BoardBrand.QUANTUM,
+                    board = expectedBoard,
+                    layers = listOf(confirmed),
+                ),
+            )
+            val layers = mockk<BoardLayerManager>(relaxed = true) {
+                every { state } returns layerState
+                every { isBoundTo(expectedBoard) } returns true
+                every { failProjection(0) } answers {
+                    layerState.update { current ->
+                        current.copy(
+                            layers = current.layers.map {
+                                it.copy(status = com.cruxcoach.android.ble.BoardLayerStatus.FAILED)
+                            },
+                        )
+                    }
+                }
+            }
+            val repository = mockk<BoardRepository>(relaxed = true) {
+                every { getPlacementLedMap(9201, BoardBrand.QUANTUM.wireValue) } throws
+                    IllegalStateException("catalogue failed")
+            }
+            val ble = mockk<BoardBleConnection>(relaxed = true) {
+                every { connectedBoardBrand } returns MutableStateFlow(BoardBrand.QUANTUM)
+                every { connectionState } returns MutableStateFlow(ConnectionState.CONNECTED)
+                every { quantumControllerState } returns MutableStateFlow(
+                    QuantumControllerState(authoritative = true, authoritativeRevision = 1),
+                )
+                every { connectedBoardDescriptor } returns MutableStateFlow(
+                    DiscoveredBoard(
+                        displayName = "Quantum",
+                        serial = "SER-1",
+                        apiLevel = 3,
+                        address = "AA:BB:CC:DD:EE:FF",
+                        rssi = -40,
+                        boardBrand = BoardBrand.QUANTUM,
+                    ),
+                )
+                every { connectedQuantumModel } returns MutableStateFlow(QuantumBoardModel.XL)
+                coEvery { refreshQuantumState() } returns true
+            }
+            val preferences = mockk<UserPreferences>(relaxed = true) {
+                every { boardBrand } returns flowOf(BoardBrand.QUANTUM.wireValue)
+                every { boardProductSizeId } returns flowOf(9201)
+            }
+            val queue = mockk<SessionQueueManager>(relaxed = true) {
+                every { state } returns MutableStateFlow(SessionQueueState())
+            }
+            val controller = BoardSendController(
+                scope = this,
+                state = detailState,
+                boardRepository = repository,
+                personalBoardRepo = mockk(relaxed = true),
+                bleConnection = ble,
+                userPreferences = preferences,
+                climbAdvertiser = mockk(relaxed = true),
+                sessionQueueManager = queue,
+                isSharingEnabled = { false },
+                boardLayerManager = layers,
+                ioDispatcher = UnconfinedTestDispatcher(testScheduler),
+            )
+
+            controller.removeBoardLayer(0)
+            advanceUntilIdle()
+
+            assertFalse(detailState.value.ble.isSending)
+            assertEquals(R.string.board_send_error_generic, detailState.value.ble.error)
+            coVerify(exactly = 0) {
+                ble.removeQuantumLayer(any(), any(), any())
             }
         }
 

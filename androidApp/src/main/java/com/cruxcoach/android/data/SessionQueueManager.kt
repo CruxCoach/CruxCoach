@@ -173,10 +173,8 @@ class SessionQueueManager(
                     ?: return@collectLatest
                 val physical = runCatching { PhysicalBoardIdentity.resolve(descriptor) }.getOrNull()
                     ?: return@collectLatest
-                val productSizeId = userPreferences.boardProductSizeId.first().toLong()
-                val model = QuantumBoardModel.fromProductSizeId(productSizeId)?.wireValue
-                    ?: return@collectLatest
-                layers.bindBoard(BoardLayerBoardIdentity(physical.value, productSizeId))
+                val model = bleConnection.connectedQuantumModel.value ?: return@collectLatest
+                layers.bindBoard(BoardLayerBoardIdentity(physical.value, model.productSizeId))
                 applyQuantumPlaylistControllerState(layers, model, controller)
             }
         }
@@ -569,7 +567,13 @@ class SessionQueueManager(
     /** The state in force. Does not touch [SessionQueueState.visibilityRequested]. */
     fun setVisibility(visibility: SessionVisibility) {
         _state.update { state ->
-            if (state.role == SessionRole.HOST) state.copy(visibility = visibility) else state
+            if (state.role != SessionRole.HOST) state
+            else if (state.isPlaylist && visibility == SessionVisibility.JOINABLE) {
+                // A saved/running playlist is private by product contract. Keep
+                // this invariant at the state boundary, not only in the one UI
+                // entry point that currently creates it.
+                state.copy(visibility = SessionVisibility.LOCAL_ONLY)
+            } else state.copy(visibility = visibility)
         }
     }
 
@@ -577,7 +581,8 @@ class SessionQueueManager(
     fun setVisibilityRequested(visibility: SessionVisibility) {
         _state.update { state ->
             if (state.role == SessionRole.HOST) {
-                state.copy(visibility = visibility, visibilityRequested = visibility)
+                val allowed = if (state.isPlaylist) SessionVisibility.LOCAL_ONLY else visibility
+                state.copy(visibility = allowed, visibilityRequested = allowed)
             } else {
                 state
             }
@@ -831,11 +836,12 @@ class SessionQueueManager(
         val layers = boardLayerManager ?: return false
         if (!hasConfirmableQuantumDiodeCount(holds)) return false
         val descriptor = bleConnection.connectedBoardDescriptor.value ?: return false
+        if (descriptor.boardBrand != BoardBrand.QUANTUM) return false
         val physical = runCatching { PhysicalBoardIdentity.resolve(descriptor) }.getOrNull()
             ?: return false
-        val productSizeId = userPreferences.boardProductSizeId.first().toLong()
-        val model = QuantumBoardModel.fromProductSizeId(productSizeId)?.wireValue ?: return false
-        val expectedBoard = BoardLayerBoardIdentity(physical.value, productSizeId)
+        val model = bleConnection.connectedQuantumModel.value ?: return false
+        if (climb.layoutId != model.layoutId) return false
+        val expectedBoard = BoardLayerBoardIdentity(physical.value, model.productSizeId)
         layers.bindBoard(expectedBoard)
 
         // A retained controller is shared mutable state. Refresh immediately
@@ -915,7 +921,7 @@ class SessionQueueManager(
 
     private suspend fun refreshQuantumPlaylistState(
         layers: BoardLayerManager,
-        model: String,
+        model: QuantumBoardModel,
     ): Boolean {
         if (!bleConnection.refreshQuantumState()) return false
         val controller = bleConnection.quantumControllerState.value
@@ -925,12 +931,12 @@ class SessionQueueManager(
 
     private suspend fun applyQuantumPlaylistControllerState(
         layers: BoardLayerManager,
-        model: String,
+        model: QuantumBoardModel,
         controller: com.cruxcoach.android.ble.QuantumControllerState,
     ): Boolean {
         val expectedBoard = layers.state.value.board ?: return false
-        val productSizeId = userPreferences.boardProductSizeId.first().toLong()
-        if (QuantumBoardModel.fromProductSizeId(productSizeId)?.wireValue != model ||
+        val productSizeId = model.productSizeId
+        if (bleConnection.connectedQuantumModel.value != model ||
             !layers.isBoundTo(expectedBoard)
         ) return false
         layers.reconcile(controller.players)
@@ -939,7 +945,7 @@ class SessionQueueManager(
                 productSizeId.toInt(), BoardBrand.QUANTUM.wireValue,
             )
             controller.players.mapNotNull { player ->
-                boardRepository.getQuantumClimbByExternalRoute(player.routeId, model)?.let { known ->
+                boardRepository.getQuantumClimbByExternalRoute(player.routeId, model.wireValue)?.let { known ->
                     val holds = BoardClimbParser.parseFrames(known.frames)
                     if (!hasCompleteQuantumLedMapping(holds, ledMap)) return@let null
                     player.routeId to BoardLayerRouteDetails(
@@ -953,10 +959,9 @@ class SessionQueueManager(
         val latestDescriptor = bleConnection.connectedBoardDescriptor.value ?: return false
         val latestPhysical = runCatching { PhysicalBoardIdentity.resolve(latestDescriptor) }.getOrNull()
             ?: return false
-        val latestProductSize = userPreferences.boardProductSizeId.first().toLong()
         if (bleConnection.quantumControllerState.value.authoritativeRevision !=
                 controller.authoritativeRevision ||
-            latestProductSize != productSizeId ||
+            bleConnection.connectedQuantumModel.value != model ||
             latestPhysical.value != expectedBoard.physicalBoardId ||
             !layers.isBoundTo(expectedBoard)
         ) return false

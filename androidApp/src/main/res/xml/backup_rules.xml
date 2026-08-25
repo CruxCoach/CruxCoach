@@ -22,6 +22,9 @@
     <!-- Amber signer config: pubkey hex + Amber package name. Would
          cross-device-leak the user's npub on a Google-Drive restore. -->
     <exclude domain="sharedpref" path="amber_config.xml"/>
+    <!-- Installation-scoped Quantum layer user UUIDs and physical-board
+         binding. Restoring these would claim another installation's users. -->
+    <exclude domain="sharedpref" path="board_layer_identity.xml"/>
 
     <!-- DataStore files under filesDir/datastore/ — holds FEAT-002
          BackupPreferences (wrapped dataKey, d-tag HMACs, previous-blob
