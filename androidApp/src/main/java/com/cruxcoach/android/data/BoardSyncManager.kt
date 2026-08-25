@@ -74,6 +74,9 @@ class BoardSyncManager(
     private val discoverInitialShare: suspend () -> LocalShareDiscovery.Found? = {
         LocalShareDiscovery(appContext).discover()
     },
+    private val discoverConnectedShare: suspend (String) -> LocalShareDiscovery.Found? = { baseUrl ->
+        LocalShareDiscovery(appContext).discoverAt(baseUrl)
+    },
     /** Narrow deterministic test seam; production uses [startApiSync]. */
     private val initialOnlineFallback: ((BoardSyncManager) -> Unit)? = null,
     /** Narrow deterministic test seam; production runs the real bound peer. */
@@ -575,6 +578,7 @@ class BoardSyncManager(
                     localShareInProgress = false,
                     localShareBoardSteps = emptyMap(),
                     pendingDiscoveredShare = found,
+                    pendingDiscoveredShareFallsBackOnline = true,
                 )
             }
         }
@@ -608,6 +612,7 @@ class BoardSyncManager(
                     auroraSteps = emptyMap(),
                     syncGeneration = current.syncGeneration + 1,
                     pendingDiscoveredShare = null,
+                    pendingDiscoveredShareFallsBackOnline = false,
                 )
             }
         }
@@ -626,18 +631,21 @@ class BoardSyncManager(
         }
     }
 
-    /** Declining the unauthenticated LAN peer is also the user's one answer
-     * to continue onboarding over the ordinary Internet catalogue path. */
+    /** Onboarding decline continues with the ordinary Internet catalogue;
+     * dismissing an explicit landing-page request is only cancellation. */
     fun dismissDiscoveredShare() {
-        var dismissed = false
+        var fallBackOnline = false
         _state.update { current ->
             if (current.pendingDiscoveredShare == null) current
             else {
-                dismissed = true
-                current.copy(pendingDiscoveredShare = null)
+                fallBackOnline = current.pendingDiscoveredShareFallsBackOnline
+                current.copy(
+                    pendingDiscoveredShare = null,
+                    pendingDiscoveredShareFallsBackOnline = false,
+                )
             }
         }
-        if (dismissed) startInitialOnlineFallback()
+        if (fallBackOnline) startInitialOnlineFallback()
     }
 
     private fun interactiveBoardBrands(): List<BoardBrand> =
@@ -746,6 +754,40 @@ class BoardSyncManager(
             _state.update { state ->
                 if (state.isSyncing || state.pendingOfflineShare != null) state
                 else state.copy(pendingOfflineShare = invitation)
+            }
+        }
+    }
+
+    /**
+     * The browser landing page carries no hotspot credential. It can only
+     * name the exact private origin on the Wi-Fi the device already joined.
+     * Probe that origin through Wi-Fi, then stage the same authenticated-by-
+     * user (not by peer) manifest dialog used by onboarding. Existing installs
+     * are intentionally eligible; dismissing this explicit request is cancel,
+     * never permission to start an unrelated Internet sync.
+     */
+    fun stageConnectedShare(invitation: LocalShareProtocol.ConnectedInvitation) {
+        val current = _state.value
+        if (current.pendingDiscoveredShare != null || current.pendingOfflineShare != null) return
+        if (!claimSyncSlot(ImportStep.CheckingUpdate, localShare = true)) return
+
+        scope.launch {
+            val found = runCatching { discoverConnectedShare(invitation.baseUrl) }
+                .onFailure { Log.w(TAG, "Connected local-share probe failed", it) }
+                .getOrNull()
+            if (found == null) {
+                failOfflineShare(java.io.IOException("Connected local share unavailable"))
+                return@launch
+            }
+            _state.update { state ->
+                state.copy(
+                    isSyncing = false,
+                    importStep = null,
+                    localShareInProgress = false,
+                    localShareBoardSteps = emptyMap(),
+                    pendingDiscoveredShare = found,
+                    pendingDiscoveredShareFallsBackOnline = false,
+                )
             }
         }
     }
@@ -2125,6 +2167,8 @@ data class BoardSyncState(
     /** A bounded first-run LAN probe awaiting explicit in-app consent. No
      * artifact request has been made while this is non-null. */
     val pendingDiscoveredShare: LocalShareDiscovery.Found? = null,
+    /** True only for first-run discovery, where decline means ordinary sync. */
+    val pendingDiscoveredShareFallsBackOnline: Boolean = false,
     /** A newer, hash- and signer-verified APK downloaded from the peer. */
     val localShareUpdate: LocalShareUpdate? = null,
     /** True from local sender discovery through the final local DB refresh. */

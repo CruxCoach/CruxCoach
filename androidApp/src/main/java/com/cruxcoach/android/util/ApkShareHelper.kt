@@ -11,7 +11,10 @@ import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
 import java.io.BufferedOutputStream
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.IOException
+import java.io.InputStream
 import java.io.RandomAccessFile
 import java.net.Inet4Address
 import java.net.InetAddress
@@ -185,8 +188,6 @@ class LocalApkServer(
     private val snapshotDir: File? = null,
     private val apkVersionCode: Long = 1L,
     private val apkVersionName: String = "unknown",
-    /** Session-specific deep link attempted by a direct landing-page visit. */
-    private val openAppUri: String? = null,
     /** Fixed lifetime of a share. Requests must never extend this deadline. */
     private val autoShutdownMs: Long = AUTO_SHUTDOWN_MS,
 ) {
@@ -387,20 +388,36 @@ class LocalApkServer(
     private fun handleClient(socket: Socket) {
         thread(isDaemon = true, name = "apk-client") {
             try {
-                val reader = socket.getInputStream().bufferedReader()
-                val requestLine = reader.readLine() ?: ""
+                val input = socket.getInputStream()
+                var requestHeadBytes = 0
+                fun readHeadLine(): String? {
+                    val line = readBoundedAsciiLine(input, MAX_REQUEST_LINE_BYTES)
+                    if (line != null) {
+                        requestHeadBytes += line.toByteArray(Charsets.US_ASCII).size + 2
+                        if (requestHeadBytes > MAX_REQUEST_HEAD_BYTES) {
+                            throw IOException("HTTP request head too large")
+                        }
+                    }
+                    return line
+                }
+
+                val requestLine = readHeadLine() ?: ""
                 val requestParts = requestLine.split(" ")
                 val method = requestParts.getOrNull(0)?.uppercase().orEmpty()
                 val rawPath = requestParts.getOrNull(1) ?: "/"
                 val headers = mutableMapOf<String, String>()
-                var line = reader.readLine()
+                var headerCount = 0
+                var line = readHeadLine()
                 while (!line.isNullOrBlank()) {
+                    if (++headerCount > MAX_REQUEST_HEADERS) {
+                        throw IOException("Too many HTTP request headers")
+                    }
                     val separator = line.indexOf(':')
                     if (separator > 0) {
                         headers[line.substring(0, separator).trim().lowercase()] =
                             line.substring(separator + 1).trim()
                     }
-                    line = reader.readLine()
+                    line = readHeadLine()
                 }
 
                 val out = BufferedOutputStream(socket.getOutputStream(), STREAM_BUFFER_SIZE)
@@ -453,6 +470,24 @@ class LocalApkServer(
                 synchronized(clientLock) { clientSockets.remove(socket) }
                 runCatching { socket.close() }
             }
+        }
+    }
+
+    /** A read timeout bounds silence; this additionally bounds live clients
+     * that continuously send a request line or header without a newline. */
+    private fun readBoundedAsciiLine(input: InputStream, maxBytes: Int): String? {
+        val bytes = ByteArrayOutputStream()
+        while (true) {
+            val value = input.read()
+            if (value < 0) {
+                if (bytes.size() == 0) return null
+                return bytes.toString(Charsets.US_ASCII.name()).removeSuffix("\r")
+            }
+            if (value == '\n'.code) {
+                return bytes.toString(Charsets.US_ASCII.name()).removeSuffix("\r")
+            }
+            if (bytes.size() >= maxBytes) throw IOException("HTTP request head line too long")
+            bytes.write(value)
         }
     }
 
@@ -520,10 +555,17 @@ class LocalApkServer(
 
     private fun serveLandingPage(out: java.io.OutputStream) {
         val apkSizeMb = "%.1f".format(java.util.Locale.US, apkFile.length() / 1_048_576.0)
+        // A browser can be reached by any app on the sender itself, and a
+        // custom-scheme handler is not exclusive. The landing page therefore
+        // carries only the local origin. Legacy credential invitations remain
+        // accepted by receivers, but are never emitted over HTTP.
+        val safeOpenAppUri = baseUrl
+            ?.let { runCatching { LocalShareProtocol.connectedInvitationUri(it) }.getOrNull() }
+            .orEmpty()
         val html = LANDING_HTML
             .replace("{{VERSION_NAME}}", escapeHtml(apkVersionName))
             .replace("{{APK_SIZE_MB}}", apkSizeMb)
-            .replace("{{OPEN_APP_URI_HTML}}", escapeHtml(openAppUri.orEmpty()))
+            .replace("{{OPEN_APP_URI_HTML}}", escapeHtml(safeOpenAppUri))
         val headers = "HTTP/1.1 200 OK\r\n" +
             "Content-Type: text/html; charset=utf-8\r\n" +
             "Content-Length: ${html.toByteArray().size}\r\n" +
@@ -1111,6 +1153,9 @@ class LocalApkServer(
         const val AUTO_SHUTDOWN_MS = 15 * 60 * 1000L
         private const val CLIENT_READ_TIMEOUT_MS = 30_000
         private const val MAX_CONCURRENT_CLIENTS = 8
+        private const val MAX_REQUEST_LINE_BYTES = 8 * 1024
+        private const val MAX_REQUEST_HEADERS = 32
+        private const val MAX_REQUEST_HEAD_BYTES = 16 * 1024
         private const val STREAM_BUFFER_SIZE = 512 * 1024
         private const val SOCKET_BUFFER_SIZE = 1024 * 1024
         /** Checkpointed board-DB copy in cacheDir; see [buildBoardDbSnapshot]. */

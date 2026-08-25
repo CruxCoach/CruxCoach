@@ -187,7 +187,17 @@ fun BoardSyncInlineCard(
                 TextButton(
                     onClick = { viewModel.dismissDiscoveredShare() },
                     modifier = Modifier.testTag("board_sync_discovered_share_internet"),
-                ) { Text(stringResource(R.string.board_sync_discovered_share_internet)) }
+                ) {
+                    Text(
+                        stringResource(
+                            if (state.pendingDiscoveredShareFallsBackOnline) {
+                                R.string.board_sync_discovered_share_internet
+                            } else {
+                                R.string.action_cancel
+                            },
+                        ),
+                    )
+                }
             },
         )
     }

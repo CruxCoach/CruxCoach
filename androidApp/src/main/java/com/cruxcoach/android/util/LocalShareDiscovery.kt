@@ -17,28 +17,22 @@ import kotlinx.coroutines.withTimeoutOrNull
  * import" step: the first onboarding screen probes the Wi-Fi gateway and
  * validates the share manifest itself.
  */
-class LocalShareDiscovery(context: Context) {
+class LocalShareDiscovery(
+    context: Context,
+    private val connectivityManager: ConnectivityManager =
+        context.applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager,
+) {
     data class Found(
         val network: Network,
         val baseUrl: String,
         val manifest: LocalShareProtocol.Manifest,
     )
 
-    private val connectivityManager = context.applicationContext
-        .getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-
     suspend fun discover(client: LocalShareClient = LocalShareClient()): Found? =
         withContext(Dispatchers.IO) {
             withTimeoutOrNull(DISCOVERY_BUDGET_MS) {
                 repeat(MAX_NETWORK_DISCOVERY_ATTEMPTS) { attempt ->
-                    val activeNetwork = connectivityManager.activeNetwork
-                    val wifiNetworks = connectivityManager.allNetworks
-                        .filter { network ->
-                            connectivityManager.getNetworkCapabilities(network)
-                                ?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
-                        }
-                        .sortedByDescending { it == activeNetwork }
-                    for (network in wifiNetworks) {
+                    for (network in wifiNetworks()) {
                         for (host in candidateHosts(network)) {
                             val baseUrl = "http://$host:${LocalApkServer.LOCAL_SHARE_PORT}"
                             val manifest = runCatching {
@@ -61,6 +55,51 @@ class LocalShareDiscovery(context: Context) {
                 null
             }
         }
+
+    /**
+     * Resolve a credential-free landing-page hand-off on the Wi-Fi to which
+     * the browser is already connected. The exact validated origin is probed
+     * only through Wi-Fi [Network] objects, never through the process default
+     * (which may be cellular on a local-only hotspot).
+     */
+    suspend fun discoverAt(
+        requestedBaseUrl: String,
+        client: LocalShareClient = LocalShareClient(),
+    ): Found? = withContext(Dispatchers.IO) {
+        val baseUrl = LocalShareProtocol.normalizeHttpOrigin(requestedBaseUrl)
+            ?: return@withContext null
+        val host = android.net.Uri.parse(baseUrl).host
+        if (!LocalShareProtocol.isPrivateIpv4(host)) return@withContext null
+        withTimeoutOrNull(DISCOVERY_BUDGET_MS) {
+            repeat(MAX_NETWORK_DISCOVERY_ATTEMPTS) { attempt ->
+                for (network in wifiNetworks()) {
+                    val manifest = runCatching {
+                        client.fetchManifest(
+                            network = network,
+                            baseUrl = baseUrl,
+                            connectTimeoutMs = PROBE_CONNECT_TIMEOUT_MS,
+                            readTimeoutMs = PROBE_READ_TIMEOUT_MS,
+                        )
+                    }.onFailure {
+                        Log.d(TAG, "No connected local share at $baseUrl: ${it.javaClass.simpleName}")
+                    }.getOrNull()
+                    if (manifest != null) return@withTimeoutOrNull Found(network, baseUrl, manifest)
+                }
+                if (attempt + 1 < MAX_NETWORK_DISCOVERY_ATTEMPTS) delay(NETWORK_SETTLE_MS)
+            }
+            null
+        }
+    }
+
+    private fun wifiNetworks(): List<Network> {
+        val activeNetwork = connectivityManager.activeNetwork
+        return connectivityManager.allNetworks
+            .filter { network ->
+                connectivityManager.getNetworkCapabilities(network)
+                    ?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+            }
+            .sortedByDescending { it == activeNetwork }
+    }
 
     private fun candidateHosts(network: Network): List<String> {
         val gateways = connectivityManager.getLinkProperties(network)

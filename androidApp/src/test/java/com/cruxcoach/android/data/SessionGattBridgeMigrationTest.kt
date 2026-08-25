@@ -16,6 +16,7 @@ import com.cruxcoach.android.ble.QueueItem
 import com.cruxcoach.android.ble.SessionClientState
 import com.cruxcoach.android.ble.SessionGattClient
 import com.cruxcoach.android.ble.SessionGattServer
+import com.cruxcoach.android.ble.SessionCommand
 import com.cruxcoach.android.ble.SessionQueueProtocol
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.domain.board.BoardBrand
@@ -699,6 +700,59 @@ class SessionGattBridgeMigrationTest {
             queueManager.state.value.participants.single().displayName,
         )
         assertEquals(1, queueManager.state.value.queue.size)
+    }
+
+    @Test
+    fun `context capable peer cannot downgrade a later command to legacy`() =
+        runTest(testDispatcher.scheduler) {
+            val address = "CE:CE:CE:CE:CE:CE"
+            val first = "550e8400-e29b-41d4-a716-446655440000"
+            val second = "650e8400-e29b-41d4-a716-446655440001"
+            queueManager.startQueue("Host", SessionVisibility.JOINABLE)
+            queueManager.addClimb(first, 40)
+            queueManager.addClimb(second, 40)
+            bridge.startSharing()
+            serverCommandsFlow.emit(GattCommand(address, SessionQueueProtocol.encodeJoin("")))
+
+            val state = queueManager.state.value
+            val modern = SessionCommand.SetCurrent(0)
+            val context = requireNotNull(
+                SessionCommandRebaser.context(
+                    modern,
+                    state.sessionId,
+                    state.currentIndex,
+                    state.queue,
+                ),
+            )
+            serverCommandsFlow.emit(
+                GattCommand(
+                    address,
+                    SessionQueueProtocol.encodeCommandRequest(7L, modern, context),
+                ),
+            )
+            serverCommandsFlow.emit(
+                GattCommand(address, SessionQueueProtocol.encodeRemove(0)),
+            )
+
+            assertEquals(listOf(first, second), queueManager.state.value.queue.map { it.climbUuid })
+        }
+
+    @Test
+    fun `never modern peer retains legacy queue behavior`() = runTest(testDispatcher.scheduler) {
+        val address = "AB:AB:AB:AB:AB:AB"
+        val first = "550e8400-e29b-41d4-a716-446655440000"
+        val second = "650e8400-e29b-41d4-a716-446655440001"
+        queueManager.startQueue("Host", SessionVisibility.JOINABLE)
+        queueManager.addClimb(first, 40)
+        queueManager.addClimb(second, 40)
+        bridge.startSharing()
+        serverCommandsFlow.emit(GattCommand(address, SessionQueueProtocol.encodeJoin("")))
+
+        serverCommandsFlow.emit(
+            GattCommand(address, SessionQueueProtocol.encodeRemove(0)),
+        )
+
+        assertEquals(listOf(second), queueManager.state.value.queue.map { it.climbUuid })
     }
 
     @Test

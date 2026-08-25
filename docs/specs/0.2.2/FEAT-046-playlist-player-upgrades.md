@@ -205,6 +205,14 @@ conflicts. A result indicator expires after five seconds without retry when
 talking to an older host: retrying an add against a host that does not
 understand request ids could duplicate it.
 
+Legacy capability is connection-scoped, not selectable per command. A peer
+that has never sent a valid semantic context keeps the historical raw-command
+fallback (including Android 9 links whose MTU cannot carry the extension).
+Once a joined connection has proved context support, every later mutation on
+that connection must retain it; a context-free downgrade is dropped. The
+capability bit is cleared with JOIN authority on disconnect, LEAVE, server stop,
+or host restart, so a legacy peer is never permanently classified by address.
+
 The authoritative full queue broadcast remains the recovery mechanism after a
 dropped notification or reconnect. Command-result notifications fit the
 default 20-byte ATT payload; the existing MTU negotiation continues to carry

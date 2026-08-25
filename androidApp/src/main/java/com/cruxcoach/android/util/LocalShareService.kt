@@ -80,18 +80,12 @@ class LocalShareService : Service() {
                     val apk = File(applicationInfo.sourceDir)
                     val boardDb = getDatabasePath("cruxcoach.db")
                     val baseUrl = "http://${info.ip}:${LocalApkServer.LOCAL_SHARE_PORT}"
-                    val invitation = LocalShareProtocol.Invitation(
-                        baseUrl = baseUrl,
-                        ssid = info.ssid,
-                        password = info.password,
-                    )
                     val localServer = LocalApkServer(
                         apkFile = apk,
                         boardDbFile = boardDb.takeIf { it.exists() },
                         snapshotDir = cacheDir,
                         apkVersionCode = BuildConfig.VERSION_CODE.toLong(),
                         apkVersionName = BuildConfig.VERSION_NAME,
-                        openAppUri = LocalShareProtocol.invitationUri(invitation),
                     )
                     localServer.onAutoShutdown = {
                         mainHandler.post {

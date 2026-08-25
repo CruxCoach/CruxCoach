@@ -124,6 +124,46 @@ class LocalShareProtocolTest {
     }
 
     @Test
+    fun connectedInvitation_roundTripsOnlyThePrivateOrigin() {
+        val uri = LocalShareProtocol.connectedInvitationUri("http://192.168.49.1:4949/")
+
+        assertEquals(
+            LocalShareProtocol.ConnectedInvitation("http://192.168.49.1:4949"),
+            LocalShareProtocol.parseConnectedInvitation(Uri.parse(uri)),
+        )
+        assertTrue(uri.contains("base="))
+        assertFalse(uri.contains("ssid", ignoreCase = true))
+        assertFalse(uri.contains("password", ignoreCase = true))
+        assertFalse(uri.contains("sentinel-secret"))
+    }
+
+    @Test
+    fun connectedInvitation_rejectsCredentialsAndNonLocalOrNonOriginBases() {
+        assertNull(
+            LocalShareProtocol.parseConnectedInvitation(
+                Uri.parse(LocalShareProtocol.invitationUri(
+                    LocalShareProtocol.Invitation(
+                        "http://192.168.49.1:4949", "CruxCoach", "sentinel-secret",
+                    ),
+                )),
+            ),
+        )
+        assertNull(
+            LocalShareProtocol.parseConnectedInvitation(
+                Uri.parse("cruxcoach://offline-share?base=https%3A%2F%2Fexample.com"),
+            ),
+        )
+        assertNull(
+            LocalShareProtocol.parseConnectedInvitation(
+                Uri.parse("cruxcoach://offline-share?base=http%3A%2F%2F192.168.49.1%3A4949%2Fpath"),
+            ),
+        )
+        assertFailsWith<IllegalArgumentException> {
+            LocalShareProtocol.connectedInvitationUri("http://8.8.8.8:4949")
+        }
+    }
+
+    @Test
     fun invitation_rejectsInvalidCredentials() {
         assertNull(
             LocalShareProtocol.parseInvitation(
@@ -165,7 +205,6 @@ class LocalShareProtocolTest {
             snapshotDir = tempDir,
             apkVersionCode = 8,
             apkVersionName = "0.2.2",
-            openAppUri = "cruxcoach://offline-share?base=http%3A%2F%2F127.0.0.1%3A4949&amp=x",
         )
         val port = server!!.start(port = 0, hostIp = "127.0.0.1")
 
@@ -199,10 +238,22 @@ class LocalShareProtocolTest {
         assertTrue(landing.contains("Already installed? Open CruxCoach"))
         assertTrue(landing.contains("aria-label=\"CruxCoach\""))
         assertTrue(landing.contains("href=\"cruxcoach://offline-share"))
+        assertTrue(landing.contains("base="))
+        assertFalse(landing.contains("ssid=", ignoreCase = true))
+        assertFalse(landing.contains("password=", ignoreCase = true))
+        assertFalse(landing.contains("sentinel-secret"))
         assertFalse(landing.contains("location.href=openAppUri"))
         assertTrue(landing.contains("No need to return to this page"))
         assertFalse(landing.contains("/board.db"))
         assertFalse(landing.contains("import-board-db"))
+
+        val catchAllConnection = URL("http://127.0.0.1:$port/unrecognised")
+            .openConnection() as HttpURLConnection
+        val catchAllLanding = catchAllConnection.inputStream.bufferedReader().use { it.readText() }
+        catchAllConnection.disconnect()
+        assertTrue(catchAllLanding.contains("href=\"cruxcoach://offline-share"))
+        assertFalse(catchAllLanding.contains("ssid=", ignoreCase = true))
+        assertFalse(catchAllLanding.contains("password=", ignoreCase = true))
 
         val completion = CountDownLatch(1)
         server!!.onReceiverComplete = { completion.countDown() }
@@ -266,6 +317,78 @@ class LocalShareProtocolTest {
         stalled.close()
 
         assertTrue(closedByServer)
+    }
+
+    @Test
+    fun overlongRequestLineIsClosedBeforeItCanGrowWithoutBound() {
+        val apk = File(tempDir, "bounded-request.apk").apply { writeText("apk") }
+        server = LocalApkServer(apkFile = apk)
+        val port = server!!.start(port = 0, hostIp = "127.0.0.1")
+        val client = Socket("127.0.0.1", port).apply { soTimeout = 2_000 }
+
+        runCatching {
+            client.getOutputStream().apply {
+                write(ByteArray(9 * 1024) { 'A'.code.toByte() })
+                flush()
+            }
+        }
+        val closedWithoutResponse = runCatching { client.getInputStream().read() }
+            .fold(onSuccess = { it == -1 }, onFailure = { true })
+        client.close()
+
+        assertTrue(closedWithoutResponse)
+    }
+
+    @Test
+    fun excessiveHeaderCountIsRejectedWithoutServingTheRequest() {
+        val apk = File(tempDir, "bounded-headers.apk").apply { writeText("apk") }
+        server = LocalApkServer(apkFile = apk)
+        val port = server!!.start(port = 0, hostIp = "127.0.0.1")
+        val client = Socket("127.0.0.1", port).apply { soTimeout = 2_000 }
+        val request = buildString {
+            append("GET / HTTP/1.1\r\n")
+            repeat(33) { append("X-Test-$it: value\r\n") }
+            append("\r\n")
+        }
+
+        client.getOutputStream().apply {
+            write(request.toByteArray(Charsets.US_ASCII))
+            flush()
+        }
+        val closedWithoutResponse = runCatching { client.getInputStream().read() }
+            .fold(onSuccess = { it == -1 }, onFailure = { true })
+        client.close()
+
+        assertTrue(closedWithoutResponse)
+    }
+
+    @Test
+    fun totalRequestHeadIsBoundedEvenWhenLinesAndCountAreIndividuallyValid() {
+        val apk = File(tempDir, "bounded-total-head.apk").apply { writeText("apk") }
+        server = LocalApkServer(apkFile = apk)
+        val port = server!!.start(port = 0, hostIp = "127.0.0.1")
+        val client = Socket("127.0.0.1", port).apply { soTimeout = 2_000 }
+        val request = buildString {
+            append("GET / HTTP/1.1\r\n")
+            repeat(32) { index ->
+                append("X-Test-$index: ")
+                append("v".repeat(600))
+                append("\r\n")
+            }
+            append("\r\n")
+        }
+
+        runCatching {
+            client.getOutputStream().apply {
+                write(request.toByteArray(Charsets.US_ASCII))
+                flush()
+            }
+        }
+        val closedWithoutResponse = runCatching { client.getInputStream().read() }
+            .fold(onSuccess = { it == -1 }, onFailure = { true })
+        client.close()
+
+        assertTrue(closedWithoutResponse)
     }
 
     @Test

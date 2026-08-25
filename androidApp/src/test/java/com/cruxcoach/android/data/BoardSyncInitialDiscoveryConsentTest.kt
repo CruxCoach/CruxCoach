@@ -59,11 +59,13 @@ class BoardSyncInitialDiscoveryConsentTest {
 
     private fun TestScope.manager(
         discover: suspend () -> LocalShareDiscovery.Found?,
+        discoverConnected: suspend (String) -> LocalShareDiscovery.Found? = { null },
         fallback: (BoardSyncManager) -> Unit = {},
         runner: suspend (LocalShareDiscovery.Found) -> Unit = {},
+        alreadyImported: Boolean = false,
     ): BoardSyncManager {
         val importer = mockk<BoardDatabaseImporter>(relaxed = true)
-        every { importer.isImported() } returns false
+        every { importer.isImported() } returns alreadyImported
         val preferences = mockk<UserPreferences>(relaxed = true)
         every { preferences.lastSyncTimestamp } returns flowOf(null)
         return BoardSyncManager(
@@ -80,6 +82,7 @@ class BoardSyncInitialDiscoveryConsentTest {
             integrityVerifier = mockk<IntegrityVerifier>(relaxed = true),
             scope = backgroundScope,
             discoverInitialShare = discover,
+            discoverConnectedShare = discoverConnected,
             initialOnlineFallback = fallback,
             initialShareRunner = runner,
         )
@@ -190,5 +193,71 @@ class BoardSyncInitialDiscoveryConsentTest {
 
         manager.dismissOfflineShare()
         assertNull(manager.state.value.pendingOfflineShare)
+    }
+
+    @Test
+    fun `connected landing link works after import and stages one exact peer`() = runTest {
+        val first = LocalShareProtocol.ConnectedInvitation("http://192.168.49.1:4949")
+        val replacement = LocalShareProtocol.ConnectedInvitation("http://192.168.50.1:4949")
+        val found = LocalShareDiscovery.Found(
+            network = mockk<Network>(),
+            baseUrl = first.baseUrl,
+            manifest = manifest(),
+        )
+        val probes = mutableListOf<String>()
+        var transfers = 0
+        val manager = manager(
+            discover = { null },
+            discoverConnected = { baseUrl -> probes += baseUrl; found },
+            runner = { transfers++ },
+            alreadyImported = true,
+        )
+        runCurrent()
+
+        manager.stageConnectedShare(first)
+        runCurrent()
+        manager.stageConnectedShare(replacement)
+        runCurrent()
+
+        assertTrue(manager.state.value.alreadyImported)
+        assertEquals(listOf(first.baseUrl), probes)
+        assertSame(found, manager.state.value.pendingDiscoveredShare)
+        assertFalse(manager.state.value.pendingDiscoveredShareFallsBackOnline)
+        assertEquals(0, transfers)
+
+        manager.confirmDiscoveredShare()
+        manager.confirmDiscoveredShare()
+        runCurrent()
+
+        assertEquals(1, transfers)
+        assertNull(manager.state.value.pendingDiscoveredShare)
+    }
+
+    @Test
+    fun `dismissing explicit connected share never starts online fallback`() = runTest {
+        val invitation = LocalShareProtocol.ConnectedInvitation("http://192.168.49.1:4949")
+        val found = LocalShareDiscovery.Found(
+            network = mockk<Network>(),
+            baseUrl = invitation.baseUrl,
+            manifest = manifest(),
+        )
+        var fallbacks = 0
+        val manager = manager(
+            discover = { null },
+            discoverConnected = { found },
+            fallback = { fallbacks++ },
+            alreadyImported = true,
+        )
+        runCurrent()
+
+        manager.stageConnectedShare(invitation)
+        runCurrent()
+        manager.dismissDiscoveredShare()
+        manager.dismissDiscoveredShare()
+        runCurrent()
+
+        assertEquals(0, fallbacks)
+        assertNull(manager.state.value.pendingDiscoveredShare)
+        assertFalse(manager.state.value.isSyncing)
     }
 }
