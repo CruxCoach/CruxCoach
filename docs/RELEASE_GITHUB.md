@@ -30,11 +30,26 @@ on the local filesystem, and uploads nothing. The workflow declares
 `permissions: contents: read` and defines no secrets — nothing in the GitHub
 secret store is load-bearing, so a GitHub-side compromise cannot reach the key.
 
-The trade is different, not free: a self-hosted runner executes whatever the
-dispatched ref contains, on a host that holds the signing key. Keep the runner
-off pull-request triggers, keep write access to `main` as narrow as it is
-today, and keep the dispatch permission with it — starting a run is starting a
-signature.
+The trade is different, not free: a self-hosted runner executes repository
+code on a host that holds the signing key. The release job therefore has three
+independent main-only fences: a job-level ref condition evaluated before runner
+assignment, a first-step ref assertion before checkout, and a checkout pinned
+to `refs/heads/main`. More importantly, it targets the GitHub `release`
+environment, whose server-side custom deployment branch policy allows only the
+`main` branch. That environment and policy are operational configuration, not
+workflow-file decoration; deleting or broadening them reopens the signing-host
+boundary. Verify them with:
+
+```bash
+gh api repos/CruxCoach/CruxCoach/environments/release
+gh api repos/CruxCoach/CruxCoach/environments/release/deployment-branch-policies
+```
+
+Keep the runner off pull-request triggers, keep write access to `main` as
+narrow as it is today, and keep the dispatch permission with it — starting a
+run is starting a signature. The Codeberg fallback has the in-workflow
+main-only fences too; it must be armed only where the forge supplies an
+equivalent server-side protected-runner or deployment policy.
 
 ## One implementation, two callers
 
