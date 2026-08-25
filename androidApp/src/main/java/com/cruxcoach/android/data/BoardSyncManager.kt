@@ -334,6 +334,10 @@ class BoardSyncManager(
                 _locationsBackfilling.value = true
                 val completed = withTimeoutOrNull(BACKFILL_TIMEOUT_MS) {
                     val manifest = blossomSyncManager.fetchManifest()
+                    if (!blossomSyncManager.canApplyManifest(manifest)) {
+                        Log.w(TAG, "Locations backfill: stale manifest rejected — keeping current data")
+                        return@withTimeoutOrNull true
+                    }
                     val locationChunks = manifest.chunks.filter { chunk ->
                         val type = chunk.type.takeIf { it != "unknown" && it.isNotEmpty() }
                             ?: inferType(chunk.name)
@@ -459,9 +463,14 @@ class BoardSyncManager(
             Log.d(TAG, "Data stale, checking Blossom manifest...")
             try {
                 val manifest = blossomSyncManager.fetchManifest()
+                if (!blossomSyncManager.canApplyManifest(manifest)) {
+                    Log.w(TAG, "Auto-sync: stale manifest rejected — keeping current data")
+                    return@safeLaunch
+                }
                 userPreferences.setBlossomManifestCreatedAt(manifest.createdAt)
                 val changedChunks = blossomSyncManager.getChangedChunks(manifest)
                 if (changedChunks.isEmpty()) {
+                    blossomSyncManager.saveAcceptedManifestTimestamp(manifest)
                     Log.d(TAG, "All chunks up to date — skipping auto-sync")
                     val timestamp = DateTimeUtil.nowIso()
                     userPreferences.setLastSyncTimestamp(timestamp)
@@ -904,15 +913,28 @@ class BoardSyncManager(
         prioritisedBrand?.let { syncCatalogue(it) }
         Log.d(TAG, "Fetching Blossom manifest...")
         val manifest = blossomSyncManager.fetchManifest()
-        // Persist manifest timestamp so CommunityClimbSubscriber can seed
-        // its cursor on first run — avoids pulling the entire historical
-        // Nostr tail when the cron has already merged it into the blob.
-        userPreferences.setBlossomManifestCreatedAt(manifest.createdAt)
+        val manifestAcceptable = blossomSyncManager.canApplyManifest(manifest)
+        if (manifestAcceptable) {
+            // Persist manifest timestamp so CommunityClimbSubscriber can seed
+            // its cursor on first run — avoids pulling the entire historical
+            // Nostr tail when the cron has already merged it into the blob.
+            // A rejected rollback must not move this separate cursor seed.
+            userPreferences.setBlossomManifestCreatedAt(manifest.createdAt)
+        }
         Log.d(TAG, "Manifest fetched: ${manifest.chunks.size} chunks")
 
         // 2. Determine which chunks need downloading
-        val chunksToDownload = blossomSyncManager.getChangedChunks(manifest)
+        val chunksToDownload = if (manifestAcceptable) {
+            blossomSyncManager.getChangedChunks(manifest)
+        } else {
+            emptyList()
+        }
         if (chunksToDownload.isEmpty()) {
+            if (manifestAcceptable) {
+                // Existing installs seed the new per-track watermark without
+                // re-downloading chunks whose hashes already match.
+                blossomSyncManager.saveAcceptedManifestTimestamp(manifest)
+            }
             Log.d(TAG, "All Kilter Blossom chunks are up to date")
             // Kilter catalogue unchanged — mark its checklist section
             // complete so the MoonBoard section is the only one still
@@ -1054,27 +1076,28 @@ class BoardSyncManager(
             ) }
             refreshDenormalizedData()
 
-            // 6. Save chunk hashes for incremental updates — ONLY for chunks that
-            // actually downloaded + imported this pass. A skipped (failed) chunk
-            // keeps its old/absent hash so the next sync's getChangedChunks still
-            // reports it as changed and re-fetches just that chunk.
-            chunksToDownload.forEach { chunk ->
-                if (chunkFiles.containsKey(chunk.name)) {
-                    blossomSyncManager.saveChunkHash(chunk.name, chunk.sha256)
-                }
-            }
             if (failedChunks.isNotEmpty()) {
                 // Partial success: the imported chunks + their saved hashes are
                 // durable, so the sync still reports complete (the user sees the
                 // data that arrived). getChangedChunks will re-report the skipped
                 // chunks on the next sync and the catalogue converges — no full
                 // re-download, no hard failure.
+                chunksToDownload.forEach { chunk ->
+                    if (chunkFiles.containsKey(chunk.name)) {
+                        blossomSyncManager.saveChunkHash(chunk.name, chunk.sha256)
+                    }
+                }
                 Log.w(
                     TAG,
                     "Kilter sync imported ${chunkFiles.size}/${chunksToDownload.size} chunks; " +
                         "${failedChunks.size} failed all mirrors, will retry next sync: " +
                         failedChunks.take(8).joinToString()
                 )
+            } else {
+                // Persist all hashes and advance their manifest watermark in
+                // one preferences edit only after every changed chunk imported.
+                // A partial run above remains resumable from the same manifest.
+                blossomSyncManager.saveCompletedManifest(manifest, chunksToDownload)
             }
 
             // 7. MoonBoard catalogue — synced as part of the board-data sync.
