@@ -52,11 +52,30 @@ concurrency:
 
 jobs:
   release:
+    # Evaluated by Actions before a self-hosted runner is assigned. A manual
+    # dispatch on a feature ref must never reach the signing host.
+    if: github.ref == 'refs/heads/main'
+    # The server-side environment deployment policy independently permits
+    # only main. Keep this environment load-bearing: its policy is configured
+    # in GitHub, outside repository-controlled workflow code.
+    environment: release
     runs-on: self-hosted
     steps:
+      - name: Require protected main ref
+        env:
+          RELEASE_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          [ "$RELEASE_REF" = "refs/heads/main" ] || {
+            echo "::error::Releases run from protected main only"
+            exit 1
+          }
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          # Never follow the dispatcher's selectable ref on the signing host.
+          ref: refs/heads/main
           fetch-depth: 0
 
       # Run unit tests BEFORE anything else (signing config copy, APK build,
