@@ -10,7 +10,6 @@ import android.util.Log
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ble.*
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -20,7 +19,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import com.cruxcoach.android.ble.QueueItem
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
@@ -60,7 +58,6 @@ class SessionGattBridge(
         BlePermissionHelper.hasAdvertisingPermission(context) &&
             BlePermissionHelper.hasConnectionPermission(context)
     },
-    private val hostSetupDispatcher: CoroutineDispatcher = Dispatchers.Default,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
 ) {
     companion object {
@@ -165,6 +162,7 @@ class SessionGattBridge(
             Log.w(TAG, "Cannot share: not in HOST mode")
             return
         }
+        if (isSharing) return
         if (state.isPlaylist) {
             // Saved/running playlists are intentionally private. This guard is
             // independent of SessionQueueManager's visibility coercion so a
@@ -175,7 +173,10 @@ class SessionGattBridge(
             return
         }
 
-        queueManager.setVisibilityRequested(SessionVisibility.JOINABLE)
+        if (state.visibilityRequested != SessionVisibility.JOINABLE) {
+            Log.w(TAG, "Cannot share: host has not selected joinable visibility")
+            return
+        }
 
         // A participant can receive BLUETOOTH_CONNECT without ADVERTISE and
         // therefore be promoted successfully but be unable to host. Do not
@@ -188,6 +189,10 @@ class SessionGattBridge(
             return
         }
         commandGate.clear()
+        // This server is a process singleton and its bounded channel outlives
+        // one host session. Never let commands accepted during an earlier
+        // teardown become the first commands of this session.
+        gattServer.discardPendingCommands()
 
         // Before start(): Android hands a freshly opened server every device
         // already on the adapter, and our own board arrives before start()
@@ -410,6 +415,7 @@ class SessionGattBridge(
             return
         }
         isSharing = true
+        queueManager.setVisibility(SessionVisibility.JOINABLE)
 
         // Stop the disconnect request after a brief pulse. The primary advertising set
         // (disconnect request, 20s timeout) runs in parallel with the session set —
@@ -539,7 +545,7 @@ class SessionGattBridge(
      * check if another participant already took over as host (migration).
      * If not, restart our own GATT server and advertising.
      */
-    private fun recoverAfterBluetoothRestart() {
+    internal fun recoverAfterBluetoothRestart() {
         val state = queueManager.state.value
         if (state.role != SessionRole.HOST) return
         // Asked of the wish, not the state: a failed startSharing() sets the
@@ -574,6 +580,7 @@ class SessionGattBridge(
         }
 
         Log.d(TAG, "BT recovered — restarting GATT server + session advertising")
+        isSharing = false
         gattServer.stop()
         startSharing()
     }
@@ -902,6 +909,11 @@ class SessionGattBridge(
         val receivedCommand = request.command
 
         if (receivedCommand is SessionCommand.Join) {
+            if (!gattServer.isConnected(deviceAddress)) {
+                Log.w(TAG, "Rejecting JOIN from a disconnected GATT address")
+                rejectClient(deviceAddress)
+                return
+            }
             if (commandGate.join(deviceAddress)) {
                 val count = queueManager.state.value.participants.size
                 // The host names participants and hands the names out over GATT,
@@ -1220,12 +1232,8 @@ class SessionGattBridge(
                 // to outlive the host ended up in a session called "Warteschlange".
                 context.getString(R.string.ble_session_name_promoted)
             )
-            Log.d(TAG, "Migration: promoteToHost complete, role=${queueManager.state.value.role}, " +
-                "queue=${queueManager.state.value.queue.size}, calling startSharing()")
-            // Host migration already performs a GATT client-to-server role
-            // switch. Keep vendor Bluetooth stack latency off the UI thread.
-            withContext(hostSetupDispatcher) { startSharing() }
-            Log.d(TAG, "Migration complete — now hosting with ${queueState.queue.size} queued climbs")
+            Log.d(TAG, "Migration complete — queue preserved locally with " +
+                "${queueState.queue.size} climbs; awaiting host visibility choice")
         }
     }
 
@@ -1270,8 +1278,9 @@ class SessionGattBridge(
         // during migration (GATT is disconnected, remote sends would fail silently).
         queueManager.remoteAddClimb = null
         Log.d(TAG, "handleSessionEndedByHost: GATT client disconnected, starting migration")
-        // Don't end queue or unsuppress advertising — attemptHostMigration() handles both
-        // (promotes to host with startSharing(), or calls endQueue() if queue is empty)
+        // Don't end queue or unsuppress advertising — attemptHostMigration()
+        // either preserves it under a local promoted host awaiting a visibility
+        // choice, joins a successor, or ends an empty queue.
         attemptHostMigration()
     }
 

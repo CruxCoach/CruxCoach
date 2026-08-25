@@ -95,7 +95,12 @@ Listing needs only the 4488B571 service UUID, so:
 - **Mechanism:** there is no per-advertiser local-name API →
   `BluetoothAdapter.setName(desired)` (GLOBAL, persistent, racy) +
   `setIncludeDeviceName(true)` in the SCAN_RESPONSE. Snapshot the original name
-  and persist a `relay_name_dirty` flag → crash-safe restore on next launch.
+  and synchronously persist a `relay_name_dirty` flag before changing it. A
+  missing/blank original name aborts relay startup. Restore clears the record
+  only after the adapter reports the original name; adapter-off, permission,
+  service, or `setName` failures retain it and retry on `STATE_ON`/next launch.
+  `cruxrelay.xml` is excluded from cloud backup and device transfer so one
+  phone's recovery record can never rename another phone.
 
 ## 4. Relay GATT server + reassembly
 
@@ -172,7 +177,8 @@ participants use the existing host migration unchanged.
   final user-visible notification before transport teardown.
 - Run the relay under a `dataSync` foreground service (Android 12+ throttles
   background advertising).
-- Crash-safe adapter-name restore on next launch via `relay_name_dirty`.
+- Crash-safe adapter-name restore on next launch and Bluetooth `STATE_ON` via
+  `relay_name_dirty`; failed/unverified restores retain the record.
 
 ## 9. Integration seams (0.2.2)
 

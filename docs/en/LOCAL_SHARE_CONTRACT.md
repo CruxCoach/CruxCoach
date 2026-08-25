@@ -48,6 +48,13 @@ a one-answer dialog. **Use nearby share** starts the bound transfer; **Use
 internet** discards it and follows the normal online catalogue path. Repeated
 composition, confirmation, or dismissal cannot probe or act twice.
 
+The QR/deep-link offline invitation follows the same consent rule across the
+Android Wi-Fi permission dialog. Only one pending invitation may be staged. The
+permission result carries the exact immutable invitation that was displayed;
+if it no longer equals the pending offer, confirmation is a no-op. A second
+deep link cannot replace the SSID, password, or HTTP origin while the first
+answer is outstanding.
+
 Resume records written across an APK replacement persist both protocol and
 artifact path. Records written before 0.2.2 have neither field and are treated
 as v1. A persisted protocol/path mismatch is discarded.

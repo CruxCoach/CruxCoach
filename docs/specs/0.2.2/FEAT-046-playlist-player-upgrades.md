@@ -193,7 +193,12 @@ safe:
 
 Commands are consumed from a bounded GATT channel. If it is full, Android
 returns a failed characteristic write instead of acknowledging and silently
-dropping the action. The host caches recent request results to make a repeated
+dropping the action. That channel belongs logically to one host session even
+though its server object is process-wide: server stop and the next host start
+discard any orphaned backlog, and JOIN is accepted only from an address still
+present in the server's authoritative connected set. Commands accepted during
+teardown therefore cannot create a participant or mutate the next queue. The
+host caches recent request results to make a repeated
 write idempotent and sends the result only to the requesting device. The UI
 shows outstanding changes and reports transport failures or semantic
 conflicts. A result indicator expires after five seconds without retry when
@@ -204,3 +209,10 @@ The authoritative full queue broadcast remains the recovery mechanism after a
 dropped notification or reconnect. Command-result notifications fit the
 default 20-byte ATT payload; the existing MTU negotiation continues to carry
 the semantic request extension and paged full-state frames.
+
+Host migration preserves the queue but does not inherit publication consent.
+A promoted participant becomes a local-only host and receives one persistent
+local/joinable choice. The transport refuses a local-only `startSharing()` call;
+only an explicit joinable request can open GATT and advertising. The chosen
+state stays visible in both compact and expanded session status. Saved/running
+playlists remain local-only and never show this choice.

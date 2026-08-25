@@ -37,6 +37,7 @@ import androidx.core.content.FileProvider
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.BoardDatabaseImporter.ImportStep
 import com.cruxcoach.android.data.BoardSyncState
+import com.cruxcoach.android.util.LocalShareProtocol
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.android.ui.settings.BoardPickerDialog
 import com.cruxcoach.android.ui.settings.GymBoardSearchSheet
@@ -72,10 +73,17 @@ fun BoardSyncInlineCard(
     val activeBrand by viewModel.activeBrand.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val syncBugReportTitle = stringResource(R.string.error_bug_report_sync_title)
+    var permissionApprovedInvitation by remember {
+        mutableStateOf<LocalShareProtocol.Invitation?>(null)
+    }
     val wifiPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { grants ->
-        if (grants.values.all { it }) viewModel.confirmOfflineShare()
+        val approved = permissionApprovedInvitation
+        permissionApprovedInvitation = null
+        if (approved != null && grants.isNotEmpty() && grants.values.all { it }) {
+            viewModel.confirmOfflineShare(approved)
+        }
     }
 
     LaunchedEffect(Unit) { viewModel.checkNetwork() }
@@ -221,7 +229,10 @@ fun BoardSyncInlineCard(
 
     state.pendingOfflineShare?.let { invitation ->
         AlertDialog(
-            onDismissRequest = { viewModel.dismissOfflineShare() },
+            onDismissRequest = {
+                permissionApprovedInvitation = null
+                viewModel.dismissOfflineShare()
+            },
             icon = {
                 Icon(
                     Icons.Default.NetworkWifi,
@@ -253,8 +264,9 @@ fun BoardSyncInlineCard(
                                     PackageManager.PERMISSION_GRANTED
                             }
                         ) {
-                            viewModel.confirmOfflineShare()
+                            viewModel.confirmOfflineShare(invitation)
                         } else {
+                            permissionApprovedInvitation = invitation
                             wifiPermissionLauncher.launch(permissions)
                         }
                     },
@@ -263,7 +275,10 @@ fun BoardSyncInlineCard(
                 ) { Text(stringResource(R.string.board_sync_offline_share_confirm)) }
             },
             dismissButton = {
-                TextButton(onClick = { viewModel.dismissOfflineShare() }) {
+                TextButton(onClick = {
+                    permissionApprovedInvitation = null
+                    viewModel.dismissOfflineShare()
+                }) {
                     Text(stringResource(R.string.action_cancel))
                 }
             },

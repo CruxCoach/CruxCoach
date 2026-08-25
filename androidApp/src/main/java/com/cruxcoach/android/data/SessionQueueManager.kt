@@ -73,6 +73,12 @@ data class SessionQueueState(
      */
     val visibilityRequested: SessionVisibility = SessionVisibility.LOCAL_ONLY,
     /**
+     * Host migration must not silently turn a participant into a published
+     * open-join server. While true, the promoted host keeps the queue locally
+     * and the root UI asks for one explicit visibility choice.
+     */
+    val pendingHostVisibilityDecision: Boolean = false,
+    /**
      * The current climb is not on the wall and will not go there on its own.
      *
      * Set only under the explicit send mode, where advancing deliberately does
@@ -561,6 +567,8 @@ class SessionQueueManager(
             hostName = hostName,
             isConnecting = false,
             visibility = SessionVisibility.JOINABLE,
+            visibilityRequested = SessionVisibility.LOCAL_ONLY,
+            pendingHostVisibilityDecision = false,
         ) }
     }
 
@@ -582,7 +590,15 @@ class SessionQueueManager(
         _state.update { state ->
             if (state.role == SessionRole.HOST) {
                 val allowed = if (state.isPlaylist) SessionVisibility.LOCAL_ONLY else visibility
-                state.copy(visibility = allowed, visibilityRequested = allowed)
+                state.copy(
+                    visibility = if (allowed == SessionVisibility.LOCAL_ONLY) {
+                        SessionVisibility.LOCAL_ONLY
+                    } else {
+                        state.visibility
+                    },
+                    visibilityRequested = allowed,
+                    pendingHostVisibilityDecision = false,
+                )
             } else {
                 state
             }
@@ -599,7 +615,10 @@ class SessionQueueManager(
             participants = emptyList(),
             participantCount = 1,  // just the host
             isConnecting = false,
-            error = null
+            visibility = SessionVisibility.LOCAL_ONLY,
+            visibilityRequested = SessionVisibility.LOCAL_ONLY,
+            pendingHostVisibilityDecision = true,
+            error = null,
         ) }
         bleConnection.acquireKeepAlive(BoardConnectionOwner.SESSION)
         Log.d(TAG, "Promoted to host (sessionId=$newSessionId, queue=${_state.value.queue.size} items)")

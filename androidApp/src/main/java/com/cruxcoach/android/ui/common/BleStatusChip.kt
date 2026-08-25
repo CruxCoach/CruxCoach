@@ -39,6 +39,7 @@ import com.cruxcoach.android.data.BleShareUiState
 import com.cruxcoach.android.data.OnBoardClimbEntry
 import com.cruxcoach.android.data.OnBoardSource
 import com.cruxcoach.android.data.OwnSessionState
+import com.cruxcoach.android.data.SessionVisibility
 import com.cruxcoach.android.ui.board.QueueDeliveryPolicy
 import com.cruxcoach.android.ui.theme.ErrorRed
 import com.cruxcoach.android.ui.theme.OrangeAccent
@@ -271,6 +272,19 @@ internal fun SessionChipContent(
                 Spacer(Modifier.width(4.dp))
             }
         }
+
+        Text(
+            stringResource(
+                if (session.visibility == SessionVisibility.JOINABLE) {
+                    R.string.ble_session_visibility_status_joinable
+                } else {
+                    R.string.ble_session_visibility_status_local
+                },
+            ),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
 
         // Second line: the wall, and only when it disagrees with the queue.
         // These two were the other way round — the queue was banished here and

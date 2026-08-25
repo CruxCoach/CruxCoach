@@ -91,7 +91,8 @@ class BoardSyncViewModel @Inject constructor(
     fun clearError() = syncManager.clearError()
     fun confirmLocalImport() = syncManager.confirmLocalImport()
     fun dismissLocalImport() = syncManager.dismissLocalImport()
-    fun confirmOfflineShare() = syncManager.confirmOfflineShare()
+    fun confirmOfflineShare(invitation: com.cruxcoach.android.util.LocalShareProtocol.Invitation) =
+        syncManager.confirmOfflineShare(invitation)
     fun dismissOfflineShare() = syncManager.dismissOfflineShare()
     fun confirmDiscoveredShare() = syncManager.confirmDiscoveredShare()
     fun dismissDiscoveredShare() = syncManager.dismissDiscoveredShare()

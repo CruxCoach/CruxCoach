@@ -21,6 +21,7 @@ import com.cruxcoach.android.data.BleShareUiState
 import com.cruxcoach.android.data.OnBoardClimbEntry
 import com.cruxcoach.android.data.OnBoardSource
 import com.cruxcoach.android.data.OwnSessionState
+import com.cruxcoach.android.data.SessionVisibility
 import com.cruxcoach.android.ui.theme.OrangeAccent
 
 @Composable
@@ -139,6 +140,17 @@ private fun SessionQueueSection(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                stringResource(
+                    if (session.visibility == SessionVisibility.JOINABLE) {
+                        R.string.ble_session_visibility_status_joinable
+                    } else {
+                        R.string.ble_session_visibility_status_local
+                    },
+                ),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             // Only when the wall disagrees with the queue. While they match, the
             // line above already says what is on the board, and saying it twice

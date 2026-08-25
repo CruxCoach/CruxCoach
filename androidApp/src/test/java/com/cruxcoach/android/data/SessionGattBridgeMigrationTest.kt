@@ -160,6 +160,7 @@ class SessionGattBridgeMigrationTest {
         every { mockGattServer.connectionEvents } returns serverConnectionEventsFlow
         every { mockGattServer.start() } returns true
         every { mockGattServer.getConnectedCount() } returns 0
+        every { mockGattServer.isConnected(any()) } returns true
         every {
             mockAdvertiser.advertiseSession(any(), any(), any(), any(), any())
         } returns "started"
@@ -184,7 +185,6 @@ class SessionGattBridgeMigrationTest {
             boardStateManager = mockBoardStateManager,
             boardSessionManager = mockBoardSessionManager,
             hasHostingPermissions = { hostingPermissionsGranted },
-            hostSetupDispatcher = testDispatcher,
             scope = managerScope,
         )
     }
@@ -272,7 +272,7 @@ class SessionGattBridgeMigrationTest {
     @Test
     fun `solo MoonBoard host keeps physical connection when sharing ends`() {
         mockConnectedBoard(BoardBrand.MOONBOARD, advertisesWhileConnected = true)
-        queueManager.startQueue("Host")
+        queueManager.startQueue("Host", SessionVisibility.JOINABLE)
         bleConnectionStateFlow.value = ConnectionState.CONNECTED
         bridge.startSharing()
 
@@ -285,7 +285,7 @@ class SessionGattBridgeMigrationTest {
     fun `MoonBoard host releases exclusive controller for a real successor`() {
         mockConnectedBoard(BoardBrand.MOONBOARD, advertisesWhileConnected = true)
         every { mockGattServer.getConnectedCount() } returns 1
-        queueManager.startQueue("Host")
+        queueManager.startQueue("Host", SessionVisibility.JOINABLE)
         queueManager.addParticipant("AA:BB:CC:DD:EE:02", "Teilnehmer 1")
         bleConnectionStateFlow.value = ConnectionState.CONNECTED
         bridge.startSharing()
@@ -302,7 +302,7 @@ class SessionGattBridgeMigrationTest {
     fun `stale participant count does not release a solo MoonBoard`() {
         mockConnectedBoard(BoardBrand.MOONBOARD, advertisesWhileConnected = true)
         every { mockGattServer.getConnectedCount() } returns 0
-        queueManager.startQueue("Host")
+        queueManager.startQueue("Host", SessionVisibility.JOINABLE)
         queueManager.addParticipant("AA:BB:CC:DD:EE:02", "Teilnehmer 1")
         bleConnectionStateFlow.value = ConnectionState.CONNECTED
         bridge.startSharing()
@@ -319,7 +319,7 @@ class SessionGattBridgeMigrationTest {
             advertisesWhileConnected = false,
             apiLevel = 2,
         )
-        queueManager.startQueue("Host")
+        queueManager.startQueue("Host", SessionVisibility.JOINABLE)
         bleConnectionStateFlow.value = ConnectionState.CONNECTED
         bridge.startSharing()
 
@@ -335,7 +335,7 @@ class SessionGattBridgeMigrationTest {
             advertisesWhileConnected = false,
             apiLevel = 2,
         )
-        queueManager.startQueue("Host")
+        queueManager.startQueue("Host", SessionVisibility.JOINABLE)
         bleConnectionStateFlow.value = ConnectionState.CONNECTED
         bridge.startSharing()
 
@@ -351,7 +351,7 @@ class SessionGattBridgeMigrationTest {
             advertisesWhileConnected = false,
             apiLevel = 2,
         )
-        queueManager.startQueue("Host")
+        queueManager.startQueue("Host", SessionVisibility.JOINABLE)
         queueManager.addClimb("305ecf35-4ab5-4c9c-afd5-91af0848004b", 40)
         queueManager.markExternalBoardWrite()
         bleConnectionStateFlow.value = ConnectionState.CONNECTED
@@ -425,6 +425,17 @@ class SessionGattBridgeMigrationTest {
             queueManager.state.value.role
         )
         assertEquals("Queue must be preserved after promotion", 2, queueManager.state.value.queue.size)
+        assertTrue(queueManager.state.value.pendingHostVisibilityDecision)
+        assertEquals(SessionVisibility.LOCAL_ONLY, queueManager.state.value.visibility)
+        assertEquals(SessionVisibility.LOCAL_ONLY, queueManager.state.value.visibilityRequested)
+        verify(exactly = 0) { mockGattServer.start() }
+
+        // Publication starts only after the promoted host's explicit answer.
+        queueManager.setVisibilityRequested(SessionVisibility.JOINABLE)
+        bridge.startSharing()
+        assertFalse(queueManager.state.value.pendingHostVisibilityDecision)
+        assertEquals(SessionVisibility.JOINABLE, queueManager.state.value.visibility)
+        verify(exactly = 1) { mockGattServer.start() }
     }
 
     // ===== Test 3: migration joins a genuinely new host =====
@@ -598,6 +609,34 @@ class SessionGattBridgeMigrationTest {
         }
 
     @Test
+    fun `local host cannot self grant joinable publication by calling startSharing`() =
+        runTest(testDispatcher.scheduler) {
+            queueManager.startQueue("Local host")
+
+            bridge.startSharing()
+
+            assertEquals(SessionVisibility.LOCAL_ONLY, queueManager.state.value.visibility)
+            assertEquals(SessionVisibility.LOCAL_ONLY, queueManager.state.value.visibilityRequested)
+            verify(exactly = 0) { mockGattServer.start() }
+            verify(exactly = 0) {
+                mockAdvertiser.advertiseSession(any(), any(), any(), any(), any())
+            }
+        }
+
+    @Test
+    fun `Bluetooth recovery restarts an explicitly joinable host transport`() =
+        runTest(testDispatcher.scheduler) {
+            queueManager.startQueue("Host", SessionVisibility.JOINABLE)
+            bridge.startSharing()
+
+            bridge.recoverAfterBluetoothRestart()
+
+            verify(exactly = 2) { mockGattServer.start() }
+            verify(atLeast = 1) { mockGattServer.stop() }
+            assertEquals(SessionVisibility.JOINABLE, queueManager.state.value.visibility)
+        }
+
+    @Test
     fun `failed publication keeps the queue running but marks it local-only`() =
         runTest(testDispatcher.scheduler) {
             every {
@@ -619,7 +658,7 @@ class SessionGattBridgeMigrationTest {
 
     @Test
     fun `host drops state-changing command before authorized join`() = runTest(testDispatcher.scheduler) {
-        queueManager.startQueue("Host")
+        queueManager.startQueue("Host", SessionVisibility.JOINABLE)
         bridge.startSharing()
 
         serverCommandsFlow.emit(
@@ -635,7 +674,7 @@ class SessionGattBridgeMigrationTest {
 
     @Test
     fun `open join admits subsequent queue command`() = runTest(testDispatcher.scheduler) {
-        queueManager.startQueue("Host")
+        queueManager.startQueue("Host", SessionVisibility.JOINABLE)
         bridge.startSharing()
         val address = "CC:CC:CC:CC:CC:CC"
 
@@ -661,4 +700,21 @@ class SessionGattBridgeMigrationTest {
         )
         assertEquals(1, queueManager.state.value.queue.size)
     }
+
+    @Test
+    fun `join from disconnected address cannot create a phantom participant`() =
+        runTest(testDispatcher.scheduler) {
+            val address = "DD:DD:DD:DD:DD:DD"
+            every { mockGattServer.isConnected(address) } returns false
+            queueManager.startQueue("Host", SessionVisibility.JOINABLE)
+            bridge.startSharing()
+
+            serverCommandsFlow.emit(
+                GattCommand(address, SessionQueueProtocol.encodeJoin("")),
+            )
+
+            assertTrue(queueManager.state.value.participants.isEmpty())
+            assertEquals(1, queueManager.state.value.participantCount)
+            verify { mockGattServer.cancelDevice(address) }
+        }
 }
