@@ -122,7 +122,10 @@ data class BoardSendState(
     /** Non-blocking post-send warning (string-resource id), e.g. holds
      *  without an LED mapping on the configured board size — the send
      *  succeeded but the wall shows a partial climb. Null = no warning. */
-    @androidx.annotation.StringRes val warning: Int? = null
+    @androidx.annotation.StringRes val warning: Int? = null,
+    /** Present only for identity/configuration failures that the shared board
+     * picker can correct. Generic transport errors intentionally have no CTA. */
+    val mismatch: com.cruxcoach.android.ui.settings.BoardConfigurationMismatch? = null,
 )
 
 /** Climb list / favorites dialog state. */
@@ -1345,6 +1348,10 @@ class BoardClimbDetailViewModel @Inject constructor(
     // --- BLE send delegation ---
 
     fun sendToBoard() = sendController.sendToBoard()
+
+    fun clearBoardMismatch() {
+        _state.update { it.copy(ble = it.ble.copy(error = null, mismatch = null)) }
+    }
 
     fun selectBoardLayer(slot: Int) {
         val existing = _state.value.boardLayers.layers.firstOrNull { it.slot == slot }

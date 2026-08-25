@@ -93,6 +93,10 @@ internal fun BoardSelectionDialog(
      *  call sites that leave it off (e.g. the browse filter's quick board
      *  switch) stay Kilter/MoonBoard-only rather than showing a dead-end chip. */
     showAuroraBoards: Boolean = false,
+    /** Trusted identity evidence for guided mismatch recovery. When present,
+     *  unknown detail fields stay unselected until the user chooses them. */
+    prefill: BoardPickerPrefill? = null,
+    mismatch: BoardConfigurationMismatch? = null,
     frequency: Map<Int, Long> = emptyMap(),
     /** "Don't know your board? find it via your gym" — FEAT-007 gym
      *  search. Shown in the Kilter categories only; null hides it. */
@@ -107,26 +111,43 @@ internal fun BoardSelectionDialog(
     // or, worse, CONFIRM — a nonexistent or wrong option, so each tier only
     // honours the prefs when the active brand owns them, else falls to that
     // tier's default. 0 = "no selection yet".
-    val seedKilterSizeId = if (activeBrand == BoardBrand.KILTER) selectedKilterSizeId else 0
+    val seedKilterSizeId = when {
+        prefill?.brand == BoardBrand.KILTER -> prefill.productSizeId ?: 0
+        activeBrand == BoardBrand.KILTER -> selectedKilterSizeId
+        else -> 0
+    }
     val initialCategory = remember(initialBrand, selectedKilterSizeId, productSizes) {
         when {
-            activeBrand == BoardBrand.MOONBOARD -> BoardCategory.MOONBOARD
-            activeBrand == BoardBrand.QUANTUM -> BoardCategory.QUANTUM
+            prefill?.brand == BoardBrand.KILTER -> when (prefill.layoutId) {
+                1L -> BoardCategory.KILTER_ORIGINAL
+                8L -> BoardCategory.KILTER_HOMEWALL
+                else -> null
+            }
+            prefill?.brand == BoardBrand.MOONBOARD || activeBrand == BoardBrand.MOONBOARD -> BoardCategory.MOONBOARD
+            prefill?.brand == BoardBrand.QUANTUM || activeBrand == BoardBrand.QUANTUM -> BoardCategory.QUANTUM
             productSizes.firstOrNull { it.id.toInt() == seedKilterSizeId }
                 ?.productId?.toInt() == BoardConstants.KILTER_HOMEWALL_PRODUCT_ID ->
                 BoardCategory.KILTER_HOMEWALL
             else -> BoardCategory.KILTER_ORIGINAL
         }
     }
-    var category by remember { mutableStateOf(initialCategory) }
+    var category by remember { mutableStateOf<BoardCategory?>(initialCategory) }
     var kilterSelection by remember { mutableIntStateOf(seedKilterSizeId) }
-    var mbVariant by remember {
-        mutableStateOf(selectedMoonBoardVariant ?: MoonBoardVariant.entries.first())
-    }
-    var quantumModel by remember {
+    var mbVariant by remember(prefill) {
         mutableStateOf(
-            QuantumBoardModel.fromLayoutId(selectedAuroraLayoutId.toLong())
-                ?: QuantumBoardModel.XL
+            if (prefill?.brand == BoardBrand.MOONBOARD) {
+                prefill.layoutId?.let(MoonBoardVariant::fromLayoutId)
+            } else selectedMoonBoardVariant ?: MoonBoardVariant.entries.first()
+        )
+    }
+    var quantumModel by remember(prefill) {
+        mutableStateOf(
+            if (prefill?.brand == BoardBrand.QUANTUM) {
+                prefill.layoutId?.let(QuantumBoardModel::fromLayoutId)
+            } else {
+                QuantumBoardModel.fromLayoutId(selectedAuroraLayoutId.toLong())
+                    ?: QuantumBoardModel.XL
+            }
         )
     }
     // FEAT-031: an Aurora-family board (Tension etc.) as the active pick. When
@@ -149,9 +170,14 @@ internal fun BoardSelectionDialog(
             // Honour the persisted layout only when THIS brand is the active
             // one — layout ids collide across brands (Kilter Original layout 1
             // would otherwise pre-select Decoy Dots).
-            variants.takeIf { b == activeBrand }
-                ?.firstOrNull { it.layoutId == selectedAuroraLayoutId }
-                ?: variants.firstOrNull()
+            if (prefill?.brand == b) {
+                prefill.layoutId?.let { id -> variants.firstOrNull { it.layoutId.toLong() == id } }
+                    ?: variants.singleOrNull()
+            } else {
+                variants.takeIf { b == activeBrand }
+                    ?.firstOrNull { it.layoutId == selectedAuroraLayoutId }
+                    ?: variants.firstOrNull()
+            }
         }
     }
     // FEAT-031: the chosen product size for the active Aurora variant. Seeded to
@@ -161,6 +187,8 @@ internal fun BoardSelectionDialog(
     LaunchedEffect(auroraVariant, auroraBrand, auroraBrandSizes) {
         val brand = auroraBrand
         val variant = auroraVariant
+        val guidedPrefill = prefill
+        val guidedSizeId = guidedPrefill?.productSizeId
         val sizes = if (brand == null) emptyList() else {
             val all = auroraBrandSizes[brand.wireValue].orEmpty()
             // Variant boards: only that variant's product. Single-layout
@@ -172,6 +200,9 @@ internal fun BoardSelectionDialog(
             // Honour the persisted size only when THIS brand is the active one
             // — size ids collide across brands (So iLL 2 vs Decoy 2), so a
             // stale foreign id must not mis-seed the tier.
+            guidedPrefill?.brand == brand && guidedSizeId != null &&
+                sizes.any { it.id.toInt() == guidedSizeId } -> guidedSizeId
+            guidedPrefill?.brand == brand -> null
             brand == activeBrand && sizes.any { it.id.toInt() == selectedAuroraProductSizeId } ->
                 selectedAuroraProductSizeId
             variant != null -> variant.defaultSizeId
@@ -183,7 +214,10 @@ internal fun BoardSelectionDialog(
 
     val isAurora = auroraBrand != null
     val isQuantum = !isAurora && category == BoardCategory.QUANTUM
-    val isKilter = !isAurora && category != BoardCategory.MOONBOARD && !isQuantum
+    val isKilter = !isAurora && category in setOf(
+        BoardCategory.KILTER_ORIGINAL,
+        BoardCategory.KILTER_HOMEWALL,
+    )
     val kilterProductId = if (category == BoardCategory.KILTER_HOMEWALL) {
         BoardConstants.KILTER_HOMEWALL_PRODUCT_ID
     } else {
@@ -202,7 +236,7 @@ internal fun BoardSelectionDialog(
     // [category] unchanged, but kilterSelection (0 or a foreign id) still
     // needs the same correction or Confirm would persist an invalid size.
     LaunchedEffect(category, auroraBrand) {
-        if (isKilter && shownSizes.none { it.id.toInt() == kilterSelection }) {
+        if (isKilter && prefill?.brand != BoardBrand.KILTER && shownSizes.none { it.id.toInt() == kilterSelection }) {
             shownSizes.firstOrNull()?.let { kilterSelection = it.id.toInt() }
         }
     }
@@ -215,14 +249,19 @@ internal fun BoardSelectionDialog(
             (auroraSizeId ?: auroraVariant?.defaultSizeId ?: 0).toLong(),
             auroraVariant?.layoutId?.toLong(),
         )
-        isQuantum -> Triple(BoardBrand.QUANTUM, quantumModel.productSizeId, quantumModel.layoutId)
+        isQuantum -> Triple(
+            BoardBrand.QUANTUM,
+            quantumModel?.productSizeId ?: 0L,
+            quantumModel?.layoutId,
+        )
         category == BoardCategory.MOONBOARD ->
-            Triple(BoardBrand.MOONBOARD, 0L, mbVariant.layoutId)
-        else -> Triple(
+            Triple(BoardBrand.MOONBOARD, 0L, mbVariant?.layoutId)
+        isKilter -> Triple(
             BoardBrand.KILTER,
             kilterSelection.toLong(),
             if (category == BoardCategory.KILTER_HOMEWALL) 8L else 1L,
         )
+        else -> Triple(prefill?.brand ?: activeBrand, 0L, null)
     }
 
     AlertDialog(
@@ -258,6 +297,9 @@ internal fun BoardSelectionDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                mismatch?.let {
+                    BoardMismatchExplanation(it)
+                }
                 // Board-image preview of the current selection — a visual match
                 // beats interpreting a cryptic size code (FEAT-007).
                 Surface(
@@ -294,18 +336,19 @@ internal fun BoardSelectionDialog(
                 val kilterHomewallLabel = stringResource(R.string.board_category_kilter_homewall)
                 val moonBoardLabel = stringResource(R.string.board_category_moonboard)
                 val quantumLabel = BoardBrand.QUANTUM.displayName
+                val chooseBoardLabel = stringResource(R.string.board_mismatch_choose_detail)
                 val boardOptions = buildList {
                     add(kilterOriginalLabel to {
-                        category = BoardCategory.KILTER_ORIGINAL; auroraBrand = null
+                        category = BoardCategory.KILTER_ORIGINAL; auroraBrand = null; kilterSelection = 0
                     })
                     add(kilterHomewallLabel to {
-                        category = BoardCategory.KILTER_HOMEWALL; auroraBrand = null
+                        category = BoardCategory.KILTER_HOMEWALL; auroraBrand = null; kilterSelection = 0
                     })
                     add(moonBoardLabel to {
-                        category = BoardCategory.MOONBOARD; auroraBrand = null
+                        category = BoardCategory.MOONBOARD; auroraBrand = null; mbVariant = null
                     })
                     add(quantumLabel to {
-                        category = BoardCategory.QUANTUM; auroraBrand = null
+                        category = BoardCategory.QUANTUM; auroraBrand = null; quantumModel = null
                     })
                     if (showAuroraBoards) {
                         AURORA_PICK_BRANDS.forEach { brand ->
@@ -320,7 +363,8 @@ internal fun BoardSelectionDialog(
                     category == BoardCategory.KILTER_ORIGINAL -> kilterOriginalLabel
                     category == BoardCategory.KILTER_HOMEWALL -> kilterHomewallLabel
                     category == BoardCategory.QUANTUM -> quantumLabel
-                    else -> moonBoardLabel
+                    category == BoardCategory.MOONBOARD -> moonBoardLabel
+                    else -> chooseBoardLabel
                 }
                 var boardMenuExpanded by remember { mutableStateOf(false) }
                 ExposedDropdownMenuBox(
@@ -446,10 +490,10 @@ internal fun BoardSelectionDialog(
                         fontWeight = FontWeight.SemiBold,
                     )
                     QuantumBoardModel.entries.forEach { model ->
-                        RadioRow(
-                            label = model.displayName,
-                            selected = quantumModel == model,
-                            onSelect = { quantumModel = model },
+                            RadioRow(
+                                label = model.displayName,
+                                selected = quantumModel == model,
+                                onSelect = { quantumModel = model },
                         )
                     }
                     Text(
@@ -457,7 +501,7 @@ internal fun BoardSelectionDialog(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                } else {
+                } else if (category == BoardCategory.MOONBOARD) {
                     Text(
                         stringResource(R.string.board_selection_moonboard_variant_label),
                         style = MaterialTheme.typography.bodyMedium,
@@ -470,6 +514,12 @@ internal fun BoardSelectionDialog(
                             onSelect = { mbVariant = variant },
                         )
                     }
+                } else {
+                    Text(
+                        stringResource(R.string.board_mismatch_choose_detail),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
                 }
             }
         },
@@ -479,11 +529,23 @@ internal fun BoardSelectionDialog(
                     when {
                         isAurora -> onConfirmAurora(auroraBrand!!, auroraVariant, auroraSizeId)
                         isKilter -> onConfirmKilter(kilterSelection)
-                        isQuantum -> onConfirmQuantum(quantumModel)
-                        else -> onConfirmMoonBoard(mbVariant)
+                        isQuantum -> quantumModel?.let(onConfirmQuantum)
+                        category == BoardCategory.MOONBOARD -> mbVariant?.let(onConfirmMoonBoard)
                     }
                 },
-                enabled = !kilterEmpty,
+                enabled = when {
+                    isKilter -> !kilterEmpty && shownSizes.any { it.id.toInt() == kilterSelection }
+                    isQuantum -> quantumModel != null
+                    !isAurora && category == BoardCategory.MOONBOARD -> mbVariant != null
+                    isAurora -> {
+                        val variants = BoardConstants.auroraVariants(auroraBrand!!)
+                        val sizes = auroraBrandSizes[auroraBrand!!.wireValue].orEmpty().let { all ->
+                            auroraVariant?.let { variant -> all.filter { it.productId.toInt() == variant.productId } } ?: all
+                        }
+                        (variants.size <= 1 || auroraVariant != null) && (sizes.size <= 1 || auroraSizeId != null)
+                    }
+                    else -> false
+                },
                 colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
                 shape = RoundedCornerShape(12.dp),
             ) {
@@ -499,6 +561,54 @@ internal fun BoardSelectionDialog(
             }
         },
     )
+}
+
+@Composable
+private fun BoardMismatchExplanation(mismatch: BoardConfigurationMismatch) {
+    val mismatchText = when (mismatch.kind) {
+        BoardMismatchKind.CONNECTED_BRAND -> stringResource(
+            R.string.board_mismatch_connected_brand,
+            mismatch.connectedBrand?.displayName ?: mismatch.expectedBrand.displayName,
+            mismatch.climbBrand.displayName,
+        )
+        BoardMismatchKind.ACTIVE_BRAND -> stringResource(
+            R.string.board_mismatch_active_brand,
+            mismatch.activeBrand?.displayName ?: mismatch.expectedBrand.displayName,
+            mismatch.expectedBrand.displayName,
+        )
+        BoardMismatchKind.CONNECTED_MODEL -> stringResource(R.string.board_mismatch_connected_model)
+        BoardMismatchKind.ACTIVE_LAYOUT -> stringResource(R.string.board_mismatch_active_layout)
+        BoardMismatchKind.ACTIVE_SIZE -> stringResource(R.string.board_mismatch_active_size)
+    }
+    Surface(
+        color = MaterialTheme.colorScheme.errorContainer,
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                stringResource(R.string.board_mismatch_title),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(mismatchText, style = MaterialTheme.typography.bodySmall)
+            Text(
+                stringResource(
+                    when (mismatch.prefill.source) {
+                        BoardPickerPrefillSource.CONNECTED_CONTROLLER -> R.string.board_mismatch_detected_controller
+                        BoardPickerPrefillSource.CLIMB -> R.string.board_mismatch_detected_climb
+                        BoardPickerPrefillSource.CONTROLLER_AND_CLIMB -> R.string.board_mismatch_detected_both
+                    },
+                    mismatch.prefill.brand.displayName,
+                ),
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Text(
+                stringResource(R.string.board_mismatch_confirmation_notice),
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+    }
 }
 
 /** A single radio-selectable row — shared by the Kilter + MoonBoard tiers. */
