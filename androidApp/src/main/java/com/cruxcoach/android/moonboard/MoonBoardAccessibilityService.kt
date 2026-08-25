@@ -47,6 +47,15 @@ class MoonBoardAccessibilityService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper())
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var stage = Stage.IDLE
+    private val idleLease = IdleAccessibilityLease(
+        handler = handler,
+        timeoutMs = MOON_IDLE_ACCESSIBILITY_LEASE_MS,
+        isIdle = { stage == Stage.IDLE },
+        relinquish = {
+            Log.i(TAG, "relinquishing unused accessibility lease")
+            relinquishAccessibilityAccess()
+        },
+    )
 
     private val traversal = MoonBoardListTraversal(LIST_END_CONFIRMATIONS)
     private var collector: MoonBoardSessionCollector? = null
@@ -82,6 +91,9 @@ class MoonBoardAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         MoonBoardAccessibilityBridge.connected(this)
+        // Also covers an Android rebind after process death: the new service
+        // begins IDLE and cannot inherit an unbounded screen-reading grant.
+        idleLease.arm()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -91,6 +103,7 @@ class MoonBoardAccessibilityService : AccessibilityService() {
     override fun onInterrupt() = Unit
 
     override fun onDestroy() {
+        idleLease.cancel()
         handler.removeCallbacksAndMessages(null)
         driveScheduledAt = NO_DRIVE_SCHEDULED
         scope.cancel()
@@ -105,6 +118,7 @@ class MoonBoardAccessibilityService : AccessibilityService() {
 
     fun startScan() {
         if (stage != Stage.IDLE) return
+        idleLease.cancel()
         collector = null
         tally.reset()
         existingByDate = emptyMap()
@@ -699,8 +713,19 @@ class MoonBoardAccessibilityService : AccessibilityService() {
      * service removes its own grant. */
     private fun returnAndRelinquishAccess() {
         returnToCruxCoach()
+        // Keep a bounded retry armed until Android destroys the successfully
+        // disabled service. onDestroy cancels it; an OEM failure leaves the
+        // service IDLE and gets one more bounded attempt.
+        idleLease.arm()
+        relinquishAccessibilityAccess()
+    }
+
+    private fun relinquishAccessibilityAccess() {
         runCatching { disableSelf() }
-            .onFailure { Log.w(TAG, "could not relinquish accessibility access", it) }
+            .onFailure {
+                Log.w(TAG, "could not relinquish accessibility access", it)
+                idleLease.arm()
+            }
     }
 
     private fun warn(deviation: MoonBoardDeviation) {

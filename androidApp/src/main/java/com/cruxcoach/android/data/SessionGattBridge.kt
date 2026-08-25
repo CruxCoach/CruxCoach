@@ -964,6 +964,22 @@ class SessionGattBridge(
             return
         }
 
+        if (request.context != null) {
+            commandGate.markContextCapable(deviceAddress)
+        } else if (receivedCommand !is SessionCommand.Leave &&
+            commandGate.isContextCapable(deviceAddress)
+        ) {
+            // A genuinely legacy peer never sets this bit and keeps its old
+            // behavior. A peer that already proved modern support cannot opt
+            // out of the session/rebase guard one command at a time.
+            Log.i(
+                TAG,
+                "event=command_conflict action=${receivedCommand.javaClass.simpleName} " +
+                    "reason=context_downgrade",
+            )
+            return
+        }
+
         // A participant may repeat a write after an Android 9 GATT failure.
         // Return the original decision without applying the mutation twice.
         request.requestId?.let { requestId ->

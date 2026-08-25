@@ -400,13 +400,20 @@ class MainActivity : AppCompatActivity() {
     /** Validate and forward the one-scan local-share invitation. */
     private fun extractOfflineShareDeepLink(intent: Intent?): String? {
         val data = intent?.data ?: return null
-        val invitation = com.cruxcoach.android.util.LocalShareProtocol.parseInvitation(data)
-            ?: return null
-        if (!isAllowedLocalImportUrl(invitation.baseUrl)) {
-            android.util.Log.w("MainActivity", "Rejected offline-share invitation outside private IPv4")
+        com.cruxcoach.android.util.LocalShareProtocol.parseInvitation(data)?.let { invitation ->
+            if (!isAllowedLocalImportUrl(invitation.baseUrl)) {
+                android.util.Log.w("MainActivity", "Rejected offline-share invitation outside private IPv4")
+                return null
+            }
+            return "board_sync?offlineShare=${android.net.Uri.encode(data.toString())}"
+        }
+        val connected = com.cruxcoach.android.util.LocalShareProtocol
+            .parseConnectedInvitation(data) ?: return null
+        if (!isAllowedLocalImportUrl(connected.baseUrl)) {
+            android.util.Log.w("MainActivity", "Rejected connected share outside private IPv4")
             return null
         }
-        return "board_sync?offlineShare=${android.net.Uri.encode(data.toString())}"
+        return "board_sync?connectedShare=${android.net.Uri.encode(data.toString())}"
     }
 
     /**

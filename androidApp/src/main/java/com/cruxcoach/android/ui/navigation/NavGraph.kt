@@ -288,6 +288,17 @@ fun CruxCoachNavHost(
                 if (offlineShare != null) {
                     startViewModel.syncManager.stageOfflineShare(offlineShare)
                 }
+                val connectedShare = android.net.Uri.parse("nav://$route")
+                    .getQueryParameter("connectedShare")
+                    ?.let { android.net.Uri.decode(it) }
+                    ?.let { android.net.Uri.parse(it) }
+                    ?.let {
+                        com.cruxcoach.android.util.LocalShareProtocol
+                            .parseConnectedInvitation(it)
+                    }
+                if (connectedShare != null) {
+                    startViewModel.syncManager.stageConnectedShare(connectedShare)
+                }
                 navController.navigate(Routes.BOARD_SYNC) { launchSingleTop = true }
             }
         }

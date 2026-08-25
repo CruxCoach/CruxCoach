@@ -38,8 +38,10 @@ ignore the additive request header.
 The sender lifetime is an absolute 15 minutes from server start. Requests and
 active transfers cannot postpone it. Accepted sockets are bounded, receive a
 read timeout, and are all closed at shutdown so a stalled header or non-reading
-download cannot keep the share alive. Explicit and timed shutdown are
-idempotent.
+download cannot keep the share alive. Request lines and individual header lines
+are capped at 8 KiB; the complete request head is capped at 16 KiB and 32
+headers. A peer that keeps transmitting without a newline therefore cannot grow
+the sender heap without bound. Explicit and timed shutdown are idempotent.
 
 On first-run discovery, a valid LAN manifest is only an unauthenticated offer.
 The app stages the exact network, base URL, manifest, and session while no
@@ -48,12 +50,22 @@ a one-answer dialog. **Use nearby share** starts the bound transfer; **Use
 internet** discards it and follows the normal online catalogue path. Repeated
 composition, confirmation, or dismissal cannot probe or act twice.
 
-The QR/deep-link offline invitation follows the same consent rule across the
-Android Wi-Fi permission dialog. Only one pending invitation may be staged. The
-permission result carries the exact immutable invitation that was displayed;
-if it no longer equals the pending offer, confirmation is a no-op. A second
-deep link cannot replace the SSID, password, or HTTP origin while the first
-answer is outstanding.
+Two backwards-compatible deep-link lanes use that same consent boundary:
+
+- A legacy/full QR invitation contains the exact SSID, passphrase, and HTTP
+  origin. Receivers continue to accept it and bind the asynchronous Android
+  Wi-Fi permission result to the immutable invitation displayed in-app. Only
+  one may be pending; a second link cannot replace it.
+- The sender's browser landing page never contains or dispatches the SSID or
+  passphrase. Its installed-app link carries only the normalized private HTTP
+  origin. The receiver probes that exact origin through an already-associated
+  Wi-Fi `Network` (never the cellular/default route), stages the returned
+  network + manifest + session, and transfers only after the same in-app peer
+  confirmation. This explicit lane remains available after an earlier import;
+  dismiss means cancel, not permission for an Internet fallback.
+
+New senders never emit a credential-bearing custom-scheme link over HTTP.
+Legacy senders and QR invitations remain accepted for compatibility.
 
 Resume records written across an APK replacement persist both protocol and
 artifact path. Records written before 0.2.2 have neither field and are treated

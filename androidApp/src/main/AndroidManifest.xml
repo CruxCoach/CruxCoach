@@ -113,9 +113,9 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="cruxcoach" android:host="import-board-db" />
             </intent-filter>
-            <!-- One-scan path when CruxCoach is already installed. The QR
-                 carries the ephemeral hotspot credentials and local server
-                 address; the receiving app requests that exact Wi-Fi. -->
+            <!-- Local-share hand-off. Legacy QR invitations may carry the
+                 ephemeral hotspot credentials; sender landing pages emit only
+                 a credential-free local origin for an already-connected Wi-Fi. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -153,9 +153,9 @@
             <meta-data android:name="autoStoreLocales" android:value="true" />
         </service>
 
-        <!-- User-enabled, one-shot MoonBoard logbook migration. The service is
-             package-filtered to the official Moon app and never observes text
-             from other applications. -->
+        <!-- User-enabled, one-shot MoonBoard logbook migration. Events are
+             package-filtered to the official Moon app; the driver also rejects
+             foreign roots and expires an unused or rebound idle lease. -->
         <service
             android:name=".moonboard.MoonBoardAccessibilityService"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"

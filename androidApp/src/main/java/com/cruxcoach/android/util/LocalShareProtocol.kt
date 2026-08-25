@@ -29,6 +29,15 @@ object LocalShareProtocol {
         val password: String,
     )
 
+    /**
+     * Landing-page hand-off for a device that is already associated with the
+     * sender's local-only Wi-Fi. Unlike [Invitation], this value never carries
+     * a network credential: the receiver probes [baseUrl] through its existing
+     * Wi-Fi [android.net.Network] and still asks for in-app consent before any
+     * artifact transfer.
+     */
+    data class ConnectedInvitation(val baseUrl: String)
+
     data class Artifact(
         val path: String,
         val sizeBytes: Long,
@@ -70,6 +79,21 @@ object LocalShareProtocol {
         .build()
         .toString()
 
+    fun connectedInvitationUri(baseUrl: String): String {
+        val origin = requireNotNull(normalizeHttpOrigin(baseUrl)) {
+            "Invalid local-share origin"
+        }
+        require(isPrivateIpv4(Uri.parse(origin).host)) {
+            "Local-share origin must use private IPv4"
+        }
+        return Uri.Builder()
+            .scheme("cruxcoach")
+            .authority("offline-share")
+            .appendQueryParameter("base", origin)
+            .build()
+            .toString()
+    }
+
     fun parseInvitation(uri: Uri): Invitation? {
         if (uri.scheme != "cruxcoach" || uri.host != "offline-share") return null
         val base = normalizeHttpOrigin(uri.getQueryParameter("base") ?: return null) ?: return null
@@ -78,6 +102,15 @@ object LocalShareProtocol {
         if (ssid.isBlank() || ssid.length > 32) return null
         if (password.length !in 8..63) return null
         return Invitation(baseUrl = base, ssid = ssid, password = password)
+    }
+
+    /** Parse only the credential-free installed-app form emitted by a sender. */
+    fun parseConnectedInvitation(uri: Uri): ConnectedInvitation? {
+        if (uri.scheme != "cruxcoach" || uri.host != "offline-share") return null
+        if (uri.queryParameterNames != setOf("base")) return null
+        val base = normalizeHttpOrigin(uri.getQueryParameter("base") ?: return null) ?: return null
+        if (!isPrivateIpv4(Uri.parse(base).host)) return null
+        return ConnectedInvitation(base)
     }
 
     fun parseManifest(json: String): Manifest {
