@@ -165,16 +165,15 @@ class SessionQueueManager(
 
     init {
         // The Quantum controller refreshes independently every ten seconds.
-        // Keep a running local playlist's compact rack live even while climb
-        // detail is closed; collectLatest prevents a slow catalogue lookup
-        // from applying an older controller revision over a newer one.
+        // Keep the process-wide physical rack live regardless of which screen
+        // or session mode is open. eWalls/other-device players are controller
+        // truth too: reconcile them, resolve their catalogue routes, and let
+        // every layer UI/conflict check/browser filter consume the same state.
+        // collectLatest prevents a slow lookup from applying an old revision.
         val layers = boardLayerManager
         if (layers != null) scope.launch {
             bleConnection.quantumControllerState.collectLatest { controller ->
-                val queue = _state.value
-                if (!queue.isPlaylist ||
-                    queue.visibility != SessionVisibility.LOCAL_ONLY ||
-                    !controller.authoritative ||
+                if (!controller.authoritative ||
                     bleConnection.connectedBoardBrand.value != BoardBrand.QUANTUM
                 ) return@collectLatest
                 val descriptor = bleConnection.connectedBoardDescriptor.value
@@ -183,7 +182,7 @@ class SessionQueueManager(
                     ?: return@collectLatest
                 val model = bleConnection.connectedQuantumModel.value ?: return@collectLatest
                 layers.bindBoard(BoardLayerBoardIdentity(physical.value, model.productSizeId))
-                applyQuantumPlaylistControllerState(layers, model, controller)
+                applyQuantumControllerState(layers, model, controller)
             }
         }
     }
@@ -949,10 +948,10 @@ class SessionQueueManager(
         if (!bleConnection.refreshQuantumState()) return false
         val controller = bleConnection.quantumControllerState.value
         if (!controller.authoritative) return false
-        return applyQuantumPlaylistControllerState(layers, model, controller)
+        return applyQuantumControllerState(layers, model, controller)
     }
 
-    private suspend fun applyQuantumPlaylistControllerState(
+    private suspend fun applyQuantumControllerState(
         layers: BoardLayerManager,
         model: QuantumBoardModel,
         controller: com.cruxcoach.android.ble.QuantumControllerState,

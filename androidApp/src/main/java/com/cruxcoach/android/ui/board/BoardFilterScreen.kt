@@ -58,6 +58,8 @@ import com.cruxcoach.android.ui.settings.GymBoardSearchSheet
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.MoonBoardVariant
 import com.cruxcoach.android.ui.theme.OrangeAccent
+import com.cruxcoach.android.ui.theme.WarningYellow
+import com.cruxcoach.domain.board.QuantumOverlapFilter
 import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.data.repository.ClimbSortField
 import com.cruxcoach.data.repository.ClimbTypeFilter
@@ -587,6 +589,61 @@ fun BoardFilterScreen(
                             )
                         }
                     }
+
+                    Text(
+                        stringResource(R.string.board_filter_quantum_overlap_title),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    ) {
+                        val overlapOptions = listOf(
+                            QuantumOverlapFilter.OFF to
+                                stringResource(R.string.board_filter_quantum_overlap_off),
+                            QuantumOverlapFilter.NONE to
+                                stringResource(R.string.board_filter_quantum_overlap_none),
+                            QuantumOverlapFilter.AT_MOST_ONE to
+                                stringResource(R.string.board_filter_quantum_overlap_one),
+                        )
+                        overlapOptions.forEach { (option, label) ->
+                            FilterChip(
+                                selected = state.filter.quantumOverlapFilter == option,
+                                onClick = { viewModel.setQuantumOverlapFilter(option) },
+                                enabled = option == QuantumOverlapFilter.OFF ||
+                                    state.quantumLayers.available,
+                                label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
+                                    selectedLabelColor = OrangeAccent,
+                                ),
+                                modifier = Modifier
+                                    .height(32.dp)
+                                    .testTag("board_filter_quantum_overlap_${option.name}"),
+                            )
+                        }
+                    }
+                    Text(
+                        when {
+                            !state.quantumLayers.available ->
+                                stringResource(R.string.board_filter_quantum_overlap_inert)
+                            !state.quantumLayers.complete ->
+                                stringResource(R.string.board_filter_quantum_overlap_incomplete)
+                            state.filter.quantumOverlapFilter.active &&
+                                state.quantumLayers.matchCount >= 0 -> stringResource(
+                                R.string.board_filter_quantum_overlap_count,
+                                state.quantumLayers.matchCount.toInt(),
+                            )
+                            else -> stringResource(R.string.board_filter_quantum_overlap_hint)
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (!state.quantumLayers.complete &&
+                            state.quantumLayers.available
+                        ) WarningYellow else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.testTag("board_filter_quantum_overlap_hint"),
+                    )
                 }
 
                 // Provenance filter — schema column `origin`. CruxCoach
