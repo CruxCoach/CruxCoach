@@ -11,10 +11,11 @@ waiting for a human — and the second prompt falls after the GitHub release is
 already public. There are no dev prereleases: the pipeline builds full releases
 only.
 
-Codeberg is a fallback. `.forgejo/workflows/release.yml` still exists and still
-works, but it is no longer the path a release takes. Codeberg's ToU now bans
-predominantly LLM-generated projects, so its availability was never fully ours
-to schedule — that is the dependency this move sheds.
+The old Codeberg/Forgejo fallback has been retired. Forgejo cannot enforce the
+same server-side protected-environment policy as GitHub here, so a workflow
+dispatched from an attacker-controlled ref could rewrite its own in-file
+guards before reaching the signing runner. The manual script remains the
+forge-independent break-glass path.
 
 ## Why GitHub Actions is acceptable, given the signing key
 
@@ -47,20 +48,19 @@ gh api repos/CruxCoach/CruxCoach/environments/release/deployment-branch-policies
 
 Keep the runner off pull-request triggers, keep write access to `main` as
 narrow as it is today, and keep the dispatch permission with it — starting a
-run is starting a signature. The Codeberg fallback has the in-workflow
-main-only fences too; it must be armed only where the forge supplies an
-equivalent server-side protected-runner or deployment policy.
+run is starting a signature. Do not restore a forge fallback unless it can
+enforce an equivalent server-side protected-runner or deployment policy.
 
-## One implementation, two callers
+## One implementation for CI and break-glass use
 
 `scripts/publish-github-release.sh` is the only place the release logic lives.
 The workflow **calls** it; it does not reimplement it. That matters because the
 subtle part is an ordering constraint, not a step list — see below — and an
 ordering constraint kept in two files is an ordering constraint that will
-eventually differ in one of them. The Forgejo workflow is where that duplicate
-used to be, which is the reason it is now marked fallback-only at the top.
+eventually differ in one of them. The retired Forgejo workflow was the former
+duplicate; deleting it leaves the shared script as the sole implementation.
 
-The same script is the **break-glass path**. Run by hand it takes an APK that
+The script is also the **break-glass path**. Run by hand it takes an APK that
 is already built and signed on a machine we control and needs nothing but a
 token and a network path to GitHub — no forge has to be willing to run a
 pipeline for us:

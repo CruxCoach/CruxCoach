@@ -16,8 +16,8 @@
 #
 # The workflow CALLS this script rather than reimplementing it. The upload
 # ORDER in particular (sidecar first, APK last — see section 5) is far too
-# subtle to keep correct in two places; .forgejo/workflows/release.yml is
-# where that duplicate used to live, and it is now a fallback only.
+# subtle to keep correct in two places; the retired Forgejo workflow is where
+# that duplicate used to live.
 #
 # USAGE
 #   scripts/publish-github-release.sh v0.2.2 [options]

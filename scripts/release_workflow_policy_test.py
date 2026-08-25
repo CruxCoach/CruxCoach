@@ -22,16 +22,8 @@ class ReleaseWorkflowPolicyTest(unittest.TestCase):
         self.assertLess(guard, checkout)
         self.assertLess(checkout, tests)
 
-    def test_forgejo_fallback_rejects_non_main_before_checkout(self):
-        workflow = (ROOT / ".forgejo/workflows/release.yml").read_text()
-        job = workflow.split("\n  release:\n", 1)[1]
-
-        self.assertIn("if: github.ref == 'refs/heads/main'", job)
-        self.assertIn("ref: refs/heads/main", job)
-        self.assertLess(
-            job.index("- name: Require protected main ref"),
-            job.index("- name: Checkout"),
-        )
+    def test_unprotected_forgejo_release_fallback_is_retired(self):
+        self.assertFalse((ROOT / ".forgejo/workflows/release.yml").exists())
 
 
 if __name__ == "__main__":
