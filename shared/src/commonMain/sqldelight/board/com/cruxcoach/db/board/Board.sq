@@ -134,10 +134,13 @@ WHERE LOWER(route_uuid) = LOWER(:routeUuid)
   AND LOWER(model) = LOWER(:model)
 LIMIT 1;
 
--- A locally known Quantum climb can already use the vendor UUID directly
--- (for example an imported pre-bridge database). Keep this fallback narrow:
--- the connected model's layout, Quantum brand, and single-frame catalogue
--- contract must all agree before its holds can be trusted for coexistence.
+-- An installation-owned Quantum player can already use the app/vendor UUID
+-- directly (for example an imported pre-bridge database). The repository
+-- exposes this query only after the caller proves the controller user id is
+-- one of this installation's derived identities. A foreign player's UUID is
+-- publisher-controlled community data and must use the official bridge.
+-- Keep the remaining fallback narrow: connected model layout, Quantum brand,
+-- single frame and non-deleted must all agree.
 getQuantumDirectAppUuidByExternalRoute:
 SELECT uuid FROM climbs
 WHERE LOWER(uuid) = LOWER(:routeUuid)
@@ -2255,7 +2258,7 @@ WHERE frames_hash = ? AND layout_id = ? AND board_brand = ?;
 -- tripped through backups.
 getOwnClimbsForBackup:
 SELECT uuid, layout_id, setter_username, name, frames,
-       edge_left, edge_right, edge_bottom, edge_top, created_at, description,
+       is_listed, edge_left, edge_right, edge_bottom, edge_top, created_at, description,
        move_count, source, sync_status, created_by_pubkey, frames_hash,
        nostr_event_id, nostr_d_tag, nostr_publish_via,
        kilter_status, kilter_synced_at, kilter_publish_via, kilter_error,
@@ -2317,7 +2320,7 @@ SELECT MIN(angle) AS angle FROM climb_stats WHERE climb_uuid = ?;
 --     in the WHERE is belt-and-suspenders against a malformed backup
 --     trying to flip Kilter-blob rows.
 --
--- Bookkeeping defaults on the INSERT branch: is_listed=1, is_nomatch=0,
+-- Bookkeeping defaults on the INSERT branch: is_nomatch=0,
 -- frames_pace=0, hsm=0, is_deleted=0, frames_count=1 (boulders only —
 -- multi-frame routes are FEAT-012 / 0.2.0+). `origin='cruxcoach'` is
 -- hardcoded on the INSERT; the export side filters by it so any row
@@ -2346,7 +2349,7 @@ INSERT OR IGNORE INTO climbs(
     board_brand, kilter_author_uuid)
 VALUES (
     :uuid, :layout_id, :setter_username, :name, :frames,
-    1, 1, :edge_left, :edge_right, :edge_bottom, :edge_top, :created_at,
+    1, :is_listed, :edge_left, :edge_right, :edge_bottom, :edge_top, :created_at,
     :description, 0, 0, :hsm, :move_count, 0,
     :source, 'cruxcoach', :sync_status,
     :created_by_pubkey, :frames_hash,
@@ -2364,7 +2367,16 @@ VALUES (
 -- the (possibly older) backup snapshot.
 restoreOwnClimbCoalesceFill:
 UPDATE climbs SET
-    sync_status         = COALESCE(sync_status,         :sync_status),
+    -- A signed CruxCoach catalogue can arrive before the owner's private
+    -- backup. Such a row has the importer defaults source='kilter' and
+    -- sync_status='synced', even though its origin and author identify it as
+    -- the same own climb. Only for that exact catalogue-first shape, promote
+    -- the backup's private lifecycle and visibility. Existing local/nostr
+    -- state remains authoritative and the ownership WHERE guard below keeps
+    -- unrelated UUID collisions untouched.
+    source              = CASE WHEN source = 'kilter' THEN :source ELSE source END,
+    sync_status         = CASE WHEN source = 'kilter' THEN :sync_status ELSE sync_status END,
+    is_listed           = CASE WHEN source = 'kilter' THEN :is_listed ELSE is_listed END,
     created_by_pubkey   = COALESCE(created_by_pubkey,   :created_by_pubkey),
     frames_hash         = COALESCE(frames_hash,         :frames_hash),
     nostr_event_id      = COALESCE(nostr_event_id,      :nostr_event_id),

@@ -4,6 +4,7 @@ import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ble.BoardConnectionCapacity
 import com.cruxcoach.android.data.BoardSendMode
 import com.cruxcoach.android.data.SessionRole
+import com.cruxcoach.domain.board.BoardBrand
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -90,23 +91,35 @@ class BoardDeliveryPolicyTest {
     }
 
     @Test
-    fun `legacy automatic preference still requires the visible detail lamp`() {
-        val decision = BoardDeliveryPolicy.resolve(
-            sendMode = BoardSendMode.AUTOMATIC,
-            sessionRole = SessionRole.NONE,
-            boardConnected = true,
-            hasDirectPayload = true,
-        )
+    fun `automatic detail delivery is explicit only for independent layer boards`() {
+        BoardBrand.entries.filter { it.isInteractive }.forEach { brand ->
+            val decision = BoardDeliveryPolicy.resolve(
+                sendMode = BoardSendMode.AUTOMATIC,
+                boardBrand = brand,
+                sessionRole = SessionRole.NONE,
+                boardConnected = true,
+                hasDirectPayload = true,
+            )
 
-        assertEquals(BoardDeliveryTarget.DIRECT_BOARD, decision.target)
-        assertFalse(decision.dispatchAutomatically)
-        assertTrue(decision.showAction)
+            assertEquals(BoardDeliveryTarget.DIRECT_BOARD, decision.target)
+            assertEquals(
+                "$brand automatic dispatch",
+                !brand.supportsIndependentClimbLayers,
+                decision.dispatchAutomatically,
+            )
+            assertEquals(
+                "$brand visible action",
+                brand.supportsIndependentClimbLayers,
+                decision.showAction,
+            )
+        }
     }
 
     @Test
     fun `explicit mode exposes direct board action without auto dispatch`() {
         val decision = BoardDeliveryPolicy.resolve(
             sendMode = BoardSendMode.EXPLICIT,
+            boardBrand = BoardBrand.KILTER,
             sessionRole = SessionRole.NONE,
             boardConnected = true,
             hasDirectPayload = true,
@@ -118,9 +131,10 @@ class BoardDeliveryPolicyTest {
     }
 
     @Test
-    fun `a relay guest also sends only from the visible lamp`() {
+    fun `a non-Quantum relay guest keeps the resolved send mode`() {
         val automatic = BoardDeliveryPolicy.resolve(
             sendMode = BoardSendMode.AUTOMATIC,
+            boardBrand = BoardBrand.KILTER,
             sessionRole = SessionRole.NONE,
             boardConnected = true,
             hasDirectPayload = true,
@@ -128,11 +142,12 @@ class BoardDeliveryPolicyTest {
         )
 
         assertEquals(BoardDeliveryTarget.DIRECT_BOARD, automatic.target)
-        assertFalse(automatic.dispatchAutomatically)
-        assertTrue(automatic.showAction)
+        assertTrue(automatic.dispatchAutomatically)
+        assertFalse(automatic.showAction)
 
         val explicit = BoardDeliveryPolicy.resolve(
             sendMode = BoardSendMode.EXPLICIT,
+            boardBrand = BoardBrand.KILTER,
             sessionRole = SessionRole.NONE,
             boardConnected = true,
             hasDirectPayload = true,
@@ -144,16 +159,17 @@ class BoardDeliveryPolicyTest {
     }
 
     @Test
-    fun `hosting never turns detail browsing into a board command`() {
+    fun `non-Quantum automatic mode still dispatches after upstream hosting policy resolves it`() {
         val decision = BoardDeliveryPolicy.resolve(
             sendMode = BoardSendMode.AUTOMATIC,
+            boardBrand = BoardBrand.KILTER,
             sessionRole = SessionRole.NONE,
             boardConnected = true,
             hasDirectPayload = true,
         )
 
-        assertFalse(decision.dispatchAutomatically)
-        assertTrue(decision.showAction)
+        assertTrue(decision.dispatchAutomatically)
+        assertFalse(decision.showAction)
     }
 
     @Test
@@ -162,6 +178,7 @@ class BoardDeliveryPolicyTest {
             SessionRole.entries.filter { it != SessionRole.NONE }.forEach { role ->
                 val decision = BoardDeliveryPolicy.resolve(
                     sendMode = mode,
+                    boardBrand = BoardBrand.QUANTUM,
                     sessionRole = role,
                     boardConnected = true,
                     hasDirectPayload = true,
@@ -178,6 +195,7 @@ class BoardDeliveryPolicyTest {
     fun `private local playlist keeps the detail lamp on direct board delivery`() {
         val decision = BoardDeliveryPolicy.resolve(
             sendMode = BoardSendMode.EXPLICIT,
+            boardBrand = BoardBrand.QUANTUM,
             sessionRole = SessionRole.HOST,
             localPlaylist = true,
             boardConnected = true,
@@ -203,6 +221,7 @@ class BoardDeliveryPolicyTest {
     fun `shared queue does not depend on participant having board payload`() {
         val decision = BoardDeliveryPolicy.resolve(
             sendMode = BoardSendMode.AUTOMATIC,
+            boardBrand = BoardBrand.QUANTUM,
             sessionRole = SessionRole.PARTICIPANT,
             boardConnected = false,
             hasDirectPayload = false,
@@ -216,6 +235,7 @@ class BoardDeliveryPolicyTest {
     fun `joining session suppresses direct and queue actions until GATT is ready`() {
         val decision = BoardDeliveryPolicy.resolve(
             sendMode = BoardSendMode.AUTOMATIC,
+            boardBrand = BoardBrand.QUANTUM,
             sessionRole = SessionRole.NONE,
             sessionConnecting = true,
             boardConnected = true,
@@ -232,6 +252,7 @@ class BoardDeliveryPolicyTest {
         listOf(false to true, true to false).forEach { (connected, payload) ->
             val decision = BoardDeliveryPolicy.resolve(
                 sendMode = BoardSendMode.EXPLICIT,
+                boardBrand = BoardBrand.KILTER,
                 sessionRole = SessionRole.NONE,
                 boardConnected = connected,
                 hasDirectPayload = payload,

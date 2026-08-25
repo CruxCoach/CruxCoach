@@ -330,7 +330,7 @@ class CruxCoachBackupOwnClimbsRoundTripTest {
     }
 
     @Test
-    fun `quantum own climb stats and hsm round-trip in backup version 3`() {
+    fun `hidden published Quantum own climb lifecycle stats and hsm round-trip in backup version 3`() {
         val uuid = "4f06c97d-a92f-5ec0-a02f-b19f5db0ce45"
         seedDraft(
             uuid = uuid,
@@ -338,6 +338,19 @@ class CruxCoachBackupOwnClimbsRoundTripTest {
             boardBrand = "quantum",
             layoutId = 9101L,
             hsm = 31L,
+        )
+        db.boardQueries.markClimbPublishedNostr(
+            nostr_event_id = "1".repeat(64),
+            nostr_d_tag = "cruxcoach:climb:${ownPubkey.take(8)}:$uuid",
+            pubkey = ownPubkey,
+            created_at = "2026-08-24T12:00:00Z",
+            uuid = uuid,
+        )
+        driver.execute(
+            null,
+            "UPDATE climbs SET is_listed = 0, kilter_status = 'failed', " +
+                "kilter_error = 'not eligible on Quantum' WHERE uuid = '$uuid'",
+            0,
         )
         db.boardQueries.upsertClimbStat(
             climb_uuid = uuid,
@@ -369,6 +382,12 @@ class CruxCoachBackupOwnClimbsRoundTripTest {
         assertEquals("quantum", climb.board_brand)
         assertEquals(9101L, climb.layout_id)
         assertEquals(31L, climb.hsm)
+        assertEquals(0L, climb.is_listed, "hidden own climb must not be resurrected as listed")
+        assertEquals("local", climb.source)
+        assertEquals("published_nostr", climb.sync_status)
+        assertEquals("1".repeat(64), climb.nostr_event_id)
+        assertEquals("failed", climb.kilter_status)
+        assertEquals("not eligible on Quantum", climb.kilter_error)
         val stats = statFor(uuid)
         assertEquals(9101L, statLayoutId(uuid))
         assertEquals(18.0, stats.displayDifficulty)
@@ -438,6 +457,7 @@ class CruxCoachBackupOwnClimbsRoundTripTest {
         assertEquals("synced", climb.kilter_status)
         assertEquals("self", climb.kilter_publish_via)
         assertEquals("3fc3c2bc-0000-1111-2222-333333333333", climb.kilter_author_uuid)
+        assertEquals(1L, climb.is_listed, "missing v0.2.1 field keeps the legacy default")
         val stat = statFor(uuid)
         assertEquals(18.0, stat.displayDifficulty)
         assertEquals(18.5, stat.difficultyAverage)
@@ -457,6 +477,91 @@ class CruxCoachBackupOwnClimbsRoundTripTest {
             Json.parseToJsonElement(reExported).jsonObject
                 .getValue("boardClimbStats").jsonArray.size,
         )
+    }
+
+    @Test
+    fun `catalogue-first own climb is excluded from export then promoted by its signed backup`() {
+        val uuid = "674ff8bd-f702-4ba4-8aa9-cc529aa33333"
+        driver.execute(null, """
+            INSERT INTO climbs(
+                uuid, layout_id, setter_username, name, frames, frames_count,
+                is_listed, created_at, description, hsm, move_count, is_deleted,
+                source, origin, sync_status, created_by_pubkey, board_brand
+            ) VALUES (
+                '$uuid', 1, 'alice', 'Public catalogue copy', X'', 1,
+                1, '2026-08-23T00:00:00Z', 'public fields only', 0, 3, 0,
+                'kilter', 'cruxcoach', 'synced', '$ownPubkey', 'kilter'
+            )
+        """.trimIndent(), 0)
+        db.boardQueries.upsertClimbStat(
+            climb_uuid = uuid,
+            angle = 40L,
+            display_difficulty = 18.0,
+            difficulty_average = null,
+            quality_average = null,
+            ascensionist_count = 0L,
+            benchmark_difficulty = null,
+            fa_username = null,
+            fa_at = null,
+            official_kilter_difficulty = null,
+        )
+
+        val catalogueOnlyExport = Json.parseToJsonElement(mockedExport(boardRepo)).jsonObject
+        assertEquals(0, catalogueOnlyExport.getValue("boardClimbs").jsonArray.size)
+        assertEquals(0, catalogueOnlyExport.getValue("boardClimbStats").jsonArray.size)
+
+        val privateBackup = """
+            {
+              "version": 3,
+              "exportedAt": "2026-08-24T00:00:00Z",
+              "nostrPubkey": "$ownPubkey",
+              "boardClimbs": [{
+                "uuid": "$uuid",
+                "layoutId": 1,
+                "name": "Private lifecycle snapshot",
+                "frames": "p100r15",
+                "description": "content must not replace the catalogue copy",
+                "isListed": false,
+                "source": "nostr",
+                "syncStatus": "published_nostr",
+                "createdByPubkey": "$ownPubkey",
+                "framesHash": "${"f".repeat(64)}",
+                "nostrEventId": "${"e".repeat(64)}",
+                "nostrDTag": "cruxcoach:climb:${ownPubkey.take(8)}:$uuid",
+                "nostrPublishVia": "direct",
+                "kilterStatus": "failed",
+                "kilterPublishVia": "self",
+                "kilterError": "retry me",
+                "boardBrand": "kilter"
+              }],
+              "boardClimbStats": [{
+                "climbUuid": "$uuid",
+                "angle": 40,
+                "displayDifficulty": 19.0,
+                "difficultyAverage": 19.5,
+                "qualityAverage": 2.1,
+                "ascensionistCount": 4
+              }]
+            }
+        """.trimIndent()
+
+        val result = mockedImport(boardRepo, privateBackup)
+
+        assertEquals(0, result.ownClimbs, "catalogue UUID remains an existing row")
+        assertEquals(1, result.ownClimbStats, "same-owner catalogue UUID accepts its private stats")
+        val promoted = rowFor(uuid)
+        assertEquals("Public catalogue copy", promoted.name, "public content is not overwritten")
+        assertEquals("nostr", promoted.source)
+        assertEquals("published_nostr", promoted.sync_status)
+        assertEquals(0L, promoted.is_listed)
+        assertEquals("failed", promoted.kilter_status)
+        assertEquals("retry me", promoted.kilter_error)
+        assertEquals(listOf(uuid), boardRepo.getClimbsAwaitingKilterRetry(ownPubkey).map { it.uuid })
+
+        val promotedExport = mockedExport(boardRepo)
+        assertEquals(1, CruxCoachBackup.preview(promotedExport).ownClimbs)
+        assertEquals(1, Json.parseToJsonElement(promotedExport).jsonObject
+            .getValue("boardClimbStats").jsonArray.size)
     }
 
     @Test

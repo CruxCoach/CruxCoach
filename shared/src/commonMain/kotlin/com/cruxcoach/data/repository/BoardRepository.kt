@@ -405,9 +405,15 @@ interface BoardClimbQueries {
     /** Resolve a controller-reported Quantum route for one physical model.
      * The model is mandatory because its app UUID and placement ids are
      * model-local even when the upstream route UUID is shared. A direct UUID
-     * fallback is accepted only for a known Quantum, model-layout-matched,
-     * single-frame climb; bridge rows are checked against the same boundary. */
-    fun getQuantumClimbByExternalRoute(routeUuid: String, model: String): ClimbWithStats? = null
+     * fallback is accepted only for an installation-owned controller player:
+     * community UUIDs are publisher-chosen and cannot identify a foreign
+     * vendor route without the imported bridge. Bridge rows are checked
+     * against the same model/brand/frame boundary. */
+    fun getQuantumClimbByExternalRoute(
+        routeUuid: String,
+        model: String,
+        allowDirectUuidFallback: Boolean = false,
+    ): ClimbWithStats? = null
     /** Defensive fallback for [getClimbByUuid]: resolves a stored row whose
      *  uuid matches [uuid] only after normalization (strip hyphens +
      *  lowercase on both sides). The board DB mixes uuid formats (legacy
@@ -982,7 +988,7 @@ sealed class KilterClaim {
  * envelope (FEAT-008 Phase B). Carries every persisted column that
  * matters for restore: the editor-domain fields, the Nostr publish
  * provenance, and the Kilter-side lifecycle. Derived columns
- * (frames_count, is_listed, is_nomatch, frames_pace, hsm) and the
+ * (frames_count, is_nomatch, frames_pace, hsm) and the
  * tombstone flag are intentionally omitted — `restoreOwnClimb` writes
  * sane defaults for those.
  */
@@ -999,6 +1005,8 @@ data class OwnClimbBackupRow(
     val createdAt: String?,
     val description: String,
     val moveCount: Long,
+    // Additive v3 field. Defaults true when importing a pre-0.2.2 backup.
+    val isListed: Boolean = true,
     val source: String,             // 'local' | 'nostr'
     val syncStatus: String,         // 'draft' | 'failed' | 'published_nostr' | …
     val createdByPubkey: String?,

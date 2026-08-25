@@ -86,8 +86,11 @@ climb row that would otherwise reveal it.
 For v2 and direct full-database injection, every accepted official Quantum
 climb (`source=quantum`) must have exactly one syntactically valid app UUID to
 route UUID/model mapping and one metadata row. Public community Quantum climbs
-(`source=nostr`) import as generic rows without vendor metadata and use their app
-UUID as the controller fallback. Models are trimmed, lowercased, and restricted to the known
+(`source=nostr`) import as generic rows without vendor metadata. Their app UUID
+may be used as a direct controller fallback only for a player identity derived
+by this installation (a route it selected itself); it never hydrates a foreign
+player, because community UUIDs are publisher-chosen and are not an eWalls
+identity binding. Models are trimmed, lowercased, and restricted to the known
 `xl`, `l`, `m`, `s`, and `belay` wire values. Bridge rows for filtered/private
 or non-Quantum climbs are ignored. The mapped model must identify the climb's
 Quantum layout. Existing receiver mappings are authoritative: an identical
@@ -104,8 +107,11 @@ if a table is present but lacks a required non-additive column, import fails
 without partial catalogue writes.
 
 Backup support remains format version 3. Quantum ascents, bids, own climbs,
-own-climb stats, brand, and layout use the existing additive, defaulted fields;
-the restore derives Quantum's hold-set mask from the restored brand. When an
+own-climb stats, brand, layout, and own-climb visibility use additive, defaulted
+fields; a missing pre-0.2.2 visibility field defaults to listed, while current
+round trips preserve hidden climbs. Public catalogue-only rows are excluded
+from the private own-climb envelope until a same-owner backup promotes their
+lifecycle. The restore derives Quantum's hold-set mask from the restored brand. When an
 active signer is supplied, selected own-climb data must carry that exact
 `nostrPubkey` envelope identity; an absent or different identity fails before
 database writes. No backup-version bump is required.

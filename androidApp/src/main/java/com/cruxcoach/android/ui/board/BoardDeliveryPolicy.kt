@@ -4,6 +4,7 @@ import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ble.BoardConnectionCapacity
 import com.cruxcoach.android.data.BoardSendMode
 import com.cruxcoach.android.data.SessionRole
+import com.cruxcoach.domain.board.BoardBrand
 
 /** The user-facing route for the primary action on a climb detail. */
 internal enum class BoardDeliveryTarget {
@@ -58,6 +59,7 @@ internal object BoardDeliveryPolicy {
 
     fun resolve(
         sendMode: BoardSendMode,
+        boardBrand: BoardBrand?,
         sessionRole: SessionRole,
         sessionConnecting: Boolean = false,
         /** A playlist uses queue mechanics locally but is not a shared
@@ -94,15 +96,21 @@ internal object BoardDeliveryPolicy {
             )
         }
 
-        // Detail browsing is never a board command. The user can swipe, open a
-        // deep link or reconnect without replacing what somebody is climbing.
-        // Every directly projected climb now starts at the visible lamp. The
-        // legacy preference is still consumed by explicit playlist/playback
-        // flows, but it no longer hides this action or dispatches page changes.
+        // A retained multi-layer wall is shared mutable controller state. Merely
+        // browsing a Quantum climb must not select/replace a slot, so that
+        // capability always starts at the visible lamp. Single-projection boards
+        // keep their established send-mode behavior: AUTOMATIC dispatches and
+        // EXPLICIT shows the action. Keeping this branch capability-scoped is the
+        // compatibility fence that prevents Quantum UX from changing Kilter,
+        // MoonBoard, or Aurora-family delivery semantics.
+        val requiresExplicitLayerSelection =
+            boardBrand?.supportsIndependentClimbLayers == true
         return BoardDeliveryDecision(
             target = BoardDeliveryTarget.DIRECT_BOARD,
-            dispatchAutomatically = false,
-            showAction = true,
+            dispatchAutomatically = !requiresExplicitLayerSelection &&
+                sendMode == BoardSendMode.AUTOMATIC,
+            showAction = requiresExplicitLayerSelection ||
+                sendMode == BoardSendMode.EXPLICIT,
         )
     }
 

@@ -1,6 +1,7 @@
 package com.cruxcoach.android.ble
 
 import android.bluetooth.BluetoothGatt
+import android.bluetooth.BluetoothProfile
 import com.cruxcoach.domain.board.QuantumActivePlayer
 import com.cruxcoach.domain.board.QuantumBoardBroadcastParser
 import com.cruxcoach.domain.board.QuantumBoardPacketEncoder
@@ -13,6 +14,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlinx.coroutines.test.runTest
 
 class QuantumControllerEvidenceTest {
 
@@ -51,6 +53,48 @@ class QuantumControllerEvidenceTest {
         assertFalse(serviceDiscoveryCompletionAllowed(false, true, false, false))
         assertFalse(serviceDiscoveryCompletionAllowed(true, false, false, false))
         assertFalse(serviceDiscoveryCompletionAllowed(true, true, true, false))
+    }
+
+    @Test
+    fun `delayed connection callback from an older retry is stale`() {
+        assertEquals(
+            GattConnectionCallbackRole.CURRENT,
+            classifyGattConnectionCallback(true, false, BluetoothProfile.STATE_DISCONNECTED),
+        )
+        assertEquals(
+            GattConnectionCallbackRole.RETIRING_DISCONNECT,
+            classifyGattConnectionCallback(false, true, BluetoothProfile.STATE_DISCONNECTED),
+        )
+        assertEquals(
+            GattConnectionCallbackRole.STALE,
+            classifyGattConnectionCallback(false, false, BluetoothProfile.STATE_DISCONNECTED),
+        )
+        assertEquals(
+            GattConnectionCallbackRole.STALE,
+            classifyGattConnectionCallback(false, true, BluetoothProfile.STATE_CONNECTED),
+        )
+
+        assertEquals(
+            GattDisconnectRequestRole.RETIRE_ACTIVE,
+            classifyGattDisconnectRequest(activeGattPresent = true, retiringGattPresent = true),
+        )
+        assertEquals(
+            GattDisconnectRequestRole.PRESERVE_RETIRING,
+            classifyGattDisconnectRequest(activeGattPresent = false, retiringGattPresent = true),
+        )
+        assertEquals(
+            GattDisconnectRequestRole.NO_GATT,
+            classifyGattDisconnectRequest(activeGattPresent = false, retiringGattPresent = false),
+        )
+    }
+
+    @Test
+    fun `thrown Quantum GATT setup operation fails instead of stranding connect`() = runTest {
+        assertTrue(quantumGattSetupSucceeded { true })
+        assertFalse(quantumGattSetupSucceeded { false })
+        assertFalse(quantumGattSetupSucceeded { throw SecurityException("permission revoked") })
+        assertFalse(quantumGattSetupSucceeded { throw IllegalStateException("vendor queue") })
+        assertFalse(quantumGattOperationSucceeded { throw SecurityException("runtime permission") })
     }
 
     @Test
@@ -214,6 +258,12 @@ class QuantumControllerEvidenceTest {
         assertFalse(boardScopedCommandAllowed(BoardBrand.QUANTUM, BoardBrand.KILTER))
         assertTrue(genericBoardClearAllowed(BoardBrand.KILTER))
         assertFalse(genericBoardClearAllowed(BoardBrand.QUANTUM))
+        assertTrue(moonBoardCommandAllowed(BoardBrand.MOONBOARD))
+        assertFalse(moonBoardCommandAllowed(BoardBrand.QUANTUM))
+        assertFalse(moonBoardCommandAllowed(BoardBrand.KILTER))
+        assertTrue(quantumRefreshFailureRequiresDisconnect(true, BoardBrand.QUANTUM))
+        assertFalse(quantumRefreshFailureRequiresDisconnect(false, BoardBrand.QUANTUM))
+        assertFalse(quantumRefreshFailureRequiresDisconnect(true, BoardBrand.MOONBOARD))
     }
 
     @Test
@@ -291,12 +341,13 @@ class QuantumControllerEvidenceTest {
             authoritativeRevision = 4,
             authoritative = true,
         )
-        assertTrue(isQuantumProjectionConfirmed(confirmed, route.uppercase(), ownUser, 0xff00ffff.toInt()))
-        assertFalse(isQuantumProjectionConfirmed(confirmed, route, foreignUser, 0x00ffff))
-        assertFalse(isQuantumProjectionConfirmed(confirmed, route, ownUser, 0x00ff00))
+        assertTrue(isQuantumProjectionConfirmed(confirmed, emptyList(), route.uppercase(), ownUser, 0xff00ffff.toInt()))
+        assertFalse(isQuantumProjectionConfirmed(confirmed, emptyList(), route, foreignUser, 0x00ffff))
+        assertFalse(isQuantumProjectionConfirmed(confirmed, emptyList(), route, ownUser, 0x00ff00))
         assertFalse(
             isQuantumProjectionConfirmed(
                 confirmed.copy(lastFailure = QuantumCommandFailure.COLOR_TAKEN),
+                emptyList(),
                 route,
                 ownUser,
                 0x00ffff,
@@ -356,15 +407,35 @@ class QuantumControllerEvidenceTest {
             authoritativeRevision = 20,
             authoritative = true,
         )
-        assertFalse(isQuantumScopedRemovalConfirmed(before, ownUser))
+        assertFalse(isQuantumScopedRemovalConfirmed(before, before.players, ownUser))
 
         val after = before.copy(
             players = listOf(player(foreignUser)),
             revision = 21,
             authoritativeRevision = 21,
         )
-        assertTrue(isQuantumScopedRemovalConfirmed(after, ownUser))
-        assertFalse(isQuantumScopedRemovalConfirmed(after.copy(authoritative = false), ownUser))
+        assertTrue(isQuantumScopedRemovalConfirmed(after, before.players, ownUser))
+        assertFalse(isQuantumScopedRemovalConfirmed(after.copy(players = emptyList()), before.players, ownUser))
+        assertFalse(isQuantumScopedRemovalConfirmed(after.copy(authoritative = false), before.players, ownUser))
+    }
+
+    @Test
+    fun `projection confirmation rejects loss of a pre-existing foreign player`() {
+        val before = listOf(player(foreignUser))
+        val target = player(ownUser)
+        val complete = QuantumControllerState(
+            players = listOf(before.single(), target),
+            revision = 31,
+            authoritativeRevision = 31,
+            authoritative = true,
+        )
+
+        assertTrue(isQuantumProjectionConfirmed(complete, before, route, ownUser, 0x00ffff))
+        assertFalse(
+            isQuantumProjectionConfirmed(
+                complete.copy(players = listOf(target)), before, route, ownUser, 0x00ffff,
+            ),
+        )
     }
 
     private fun player(userId: String) = QuantumActivePlayer(

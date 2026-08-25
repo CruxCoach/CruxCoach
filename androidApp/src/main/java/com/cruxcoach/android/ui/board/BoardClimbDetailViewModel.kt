@@ -1388,6 +1388,7 @@ class BoardClimbDetailViewModel @Inject constructor(
         val queueState = sessionQueueManager.state.value
         val decision = BoardDeliveryPolicy.resolve(
             sendMode = climbState.boardSendMode,
+            boardBrand = climb.brand,
             sessionRole = queueState.role,
             sessionConnecting = queueState.isConnecting,
             localPlaylist = queueState.isPlaylist &&
@@ -1587,6 +1588,7 @@ class BoardClimbDetailViewModel @Inject constructor(
         val queueState = sessionQueueManager.state.value
         val decision = BoardDeliveryPolicy.resolve(
             sendMode = mode,
+            boardBrand = climbState.climb?.brand,
             sessionRole = queueState.role,
             sessionConnecting = queueState.isConnecting,
             localPlaylist = queueState.isPlaylist &&

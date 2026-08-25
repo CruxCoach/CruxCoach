@@ -85,7 +85,7 @@ class BoardLayerManagerTest {
         val manager = BoardLayerManager(context)
         val original = layer(manager, 0)
         manager.beginProjection(original)
-        manager.confirmProjection(0)
+        manager.confirmProjection(original.planKey())
 
         val replacement = layer(manager, 0).copy(
             climbUuid = "20000000-0000-0000-0000-000000000001",
@@ -109,7 +109,7 @@ class BoardLayerManagerTest {
             holds = listOf(BoardHold(10, 1), BoardHold(11, 2)),
         )
         manager.assignPreview(original)
-        manager.confirmProjection(0)
+        manager.confirmProjection(original.planKey())
         val replacement = layer(manager, 0, manager.defaultColor(1)).copy(
             climbUuid = "20000000-0000-0000-0000-000000000001",
             routeUuid = "30000000-0000-0000-0000-000000000001",
@@ -120,11 +120,12 @@ class BoardLayerManagerTest {
 
         manager.reconcile(listOf(playerFor(original)))
         manager.hydrateControllerRoutes(mapOf(
-            original.routeUuid to BoardLayerRouteDetails(
+            BoardLayerControllerRouteKey(original.routeUuid, original.userUuid) to
+                BoardLayerRouteDetails(
                 climbUuid = original.climbUuid,
                 climbName = original.climbName,
                 holds = original.holds,
-            ),
+                ),
         ))
 
         val layer = manager.state.value.layers.single()
@@ -191,7 +192,7 @@ class BoardLayerManagerTest {
         val firstColor = manager.defaultColor(0)
         manager.beginProjection(layer(manager, 0, firstColor))
         assertFalse(firstColor in manager.availableColors())
-        manager.removeOwned(0)
+        manager.state.value.layers.single().let { manager.removeOwned(it.planKey()) }
         assertTrue(firstColor in manager.availableColors())
         assertNotEquals(manager.defaultColor(0), manager.defaultColor(1))
     }
@@ -243,11 +244,12 @@ class BoardLayerManagerTest {
 
         manager.hydrateControllerRoutes(
             mapOf(
-                foreign.routeId to BoardLayerRouteDetails(
+                BoardLayerControllerRouteKey(foreign.routeId, foreign.userId) to
+                    BoardLayerRouteDetails(
                     climbUuid = "local-climb",
                     climbName = "Malformed climb",
                     holds = emptyList(),
-                ),
+                    ),
             ),
         )
 
@@ -268,7 +270,7 @@ class BoardLayerManagerTest {
         val manager = BoardLayerManager(context)
         val original = layer(manager, 0, manager.defaultColor(0))
         manager.assignPreview(original)
-        manager.confirmProjection(0)
+        manager.confirmProjection(original.planKey())
         manager.assignPreview(layer(manager, 0, manager.defaultColor(1)))
 
         assertEquals(
@@ -285,7 +287,7 @@ class BoardLayerManagerTest {
             holds = listOf(BoardHold(50, 1), BoardHold(51, 2)),
         )
         manager.assignPreview(original)
-        manager.confirmProjection(original.slot)
+        manager.confirmProjection(original.planKey())
         val replacement = layer(manager, 2, manager.defaultColor(3)).copy(
             climbUuid = "20000000-0000-0000-0000-000000000002",
             routeUuid = "30000000-0000-0000-0000-000000000002",
@@ -310,6 +312,92 @@ class BoardLayerManagerTest {
         assertEquals(original.holds, restored.confirmedHolds)
         assertTrue(restored.controllerDetailsKnown)
         assertFalse(manager.cancelReplacement(original.slot))
+    }
+
+    @Test fun `stale completion cannot confirm fail or remove a replacement plan`() {
+        val manager = BoardLayerManager(context)
+        val original = layer(manager, 1)
+        manager.assignPreview(original)
+        val originalKey = original.planKey()
+        assertTrue(manager.beginProjection(originalKey))
+
+        val replacement = original.copy(
+            climbUuid = "20000000-0000-0000-0000-000000000099",
+            routeUuid = "30000000-0000-0000-0000-000000000099",
+            planToken = java.util.UUID.randomUUID().toString(),
+        )
+        manager.assignPreview(replacement)
+
+        val staleAssignment = replacement.copy(
+            climbUuid = "20000000-0000-0000-0000-000000000100",
+            routeUuid = "30000000-0000-0000-0000-000000000100",
+            planToken = java.util.UUID.randomUUID().toString(),
+        )
+
+        assertFalse(manager.assignPreviewIfCurrent(staleAssignment, originalKey))
+        assertFalse(manager.assignPreviewIfCurrent(staleAssignment, expectedCurrent = null))
+        assertFalse(manager.confirmProjection(originalKey))
+        assertFalse(manager.failProjection(originalKey))
+        assertFalse(manager.removeOwned(originalKey))
+        assertEquals(replacement.planKey(), manager.state.value.layers.single().planKey())
+        assertEquals(BoardLayerStatus.PREVIEW, manager.state.value.layers.single().status)
+    }
+
+    @Test fun `owned direct route detail cannot hydrate a foreign duplicate UUID`() {
+        val manager = BoardLayerManager(context)
+        val owned = playerFor(layer(manager, 0))
+        val foreign = owned.copy(
+            userId = "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff",
+            color = 0x123456,
+        )
+        manager.reconcile(listOf(owned, foreign))
+
+        manager.hydrateControllerRoutes(
+            mapOf(
+                BoardLayerControllerRouteKey(owned.routeId, owned.userId) to
+                    BoardLayerRouteDetails(
+                        climbUuid = owned.routeId,
+                        climbName = "Owned community route",
+                        holds = listOf(BoardHold(42, 1)),
+                    ),
+            ),
+        )
+
+        val local = manager.state.value.layers.single()
+        val external = manager.state.value.externalLayers.single()
+        assertEquals(listOf(BoardHold(42, 1)), local.confirmedHolds)
+        assertTrue(local.controllerDetailsKnown)
+        assertNull(external.holds)
+        assertEquals(1, BoardLayerConflictPolicy.assess(
+            candidate = listOf(BoardHold(99, 1)),
+            activeLayers = manager.state.value.layers,
+            externalLayers = manager.state.value.externalLayers,
+            replacingSlot = local.slot,
+        ).unknownLayerCount)
+    }
+
+    @Test fun `rack state is retained only for the same physical board and model`() {
+        val manager = BoardLayerManager(context)
+        val firstBoard = BoardLayerBoardIdentity("quantum:serial:first", 9201)
+        manager.bindBoard(firstBoard)
+        manager.assignPreview(layer(manager, 0))
+        manager.reconcile(listOf(
+            QuantumActivePlayer(
+                routeId = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+                userId = "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff",
+                remainingSeconds = 12,
+                color = 0x123456,
+            ),
+        ))
+
+        manager.bindBoard(firstBoard)
+        assertEquals(1, manager.state.value.layers.size)
+        assertEquals(1, manager.state.value.externalLayers.size)
+
+        manager.bindBoard(firstBoard.copy(productSizeId = 9202))
+        assertTrue(manager.state.value.layers.isEmpty())
+        assertTrue(manager.state.value.externalLayers.isEmpty())
+        assertEquals(9202L, manager.state.value.board?.productSizeId)
     }
 
     private fun managerColor(slot: Int): Int = BoardLayerManager.LAYER_COLORS[slot]

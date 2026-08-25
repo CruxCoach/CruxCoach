@@ -441,6 +441,7 @@ fun BoardClimbDetailScreen(
     } == true
     val deliveryDecision = BoardDeliveryPolicy.resolve(
         sendMode = state.boardSendMode,
+        boardBrand = state.climb?.brand,
         sessionRole = detailQueueState.role,
         sessionConnecting = detailQueueState.isConnecting,
         localPlaylist = detailQueueState.isPlaylist &&
@@ -1121,7 +1122,11 @@ private fun BoardLayerRack(
         externalLayers = state.boardLayers.externalLayers,
         replacingSlot = selectedSlot,
     )
-    val sharedHoldCount = layerAssessment.sharedHoldCount
+    val sharedHoldCount = QuantumLayerUiPolicy.knownSharedHoldCount(
+        state = state.boardLayers,
+        candidate = state.holds.mapTo(HashSet()) { it.placementId },
+        replacingSlot = selectedSlot,
+    )
     val colorsOnOtherLayers = state.boardLayers.reservedLayerColors(selectedSlot)
     val selectedColorConflict = selectedColor != null && selectedColor in colorsOnOtherLayers
     val connected = state.ble.connectionState == ConnectionState.CONNECTED

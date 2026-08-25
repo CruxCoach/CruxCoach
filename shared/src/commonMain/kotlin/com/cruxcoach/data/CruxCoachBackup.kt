@@ -1,6 +1,7 @@
 package com.cruxcoach.data
 
 import com.cruxcoach.data.repository.*
+import com.cruxcoach.domain.board.QuantumBoardModel
 import com.cruxcoach.domain.model.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -68,6 +69,17 @@ object CruxCoachBackup {
 
     private fun requireFinite(name: String, value: Double?) {
         require(value == null || value.isFinite()) { "invalid backup: $name not finite" }
+    }
+
+    /** Quantum's layout ids are part of its fixed model/wire contract. Keep
+     * unknown future brands forward-compatible, but never restore a row that
+     * explicitly claims Quantum with geometry from another board family. */
+    private fun requireQuantumLayout(name: String, boardBrand: String?, layoutId: Long?) {
+        if (boardBrand?.equals("quantum", ignoreCase = true) == true) {
+            require(layoutId != null && QuantumBoardModel.fromLayoutId(layoutId) != null) {
+                "invalid backup: $name Quantum layoutId=$layoutId"
+            }
+        }
     }
 
     private fun requireFiniteFloat(name: String, value: Float) {
@@ -194,6 +206,7 @@ object CruxCoachBackup {
             // string from a crafted backup.
             requireLen("ascent.boardBrand", a.boardBrand, MAX_BRAND_LEN)
             requireRange("ascent.layoutId", a.layoutId, 0L..MAX_LAYOUT_ID)
+            requireQuantumLayout("ascent", a.boardBrand, a.layoutId)
             // Full-fidelity additions — cap, don't whitelist (same posture
             // as boardBrand): odd legacy values must not brick a restore.
             requireLen("ascent.gymUuid", a.gymUuid, MAX_EXTERNAL_ID_LEN)
@@ -214,6 +227,7 @@ object CruxCoachBackup {
             // Board context (FEAT-027 P2) — see the ascent loop above.
             requireLen("bid.boardBrand", b.boardBrand, MAX_BRAND_LEN)
             requireRange("bid.layoutId", b.layoutId, 0L..MAX_LAYOUT_ID)
+            requireQuantumLayout("bid", b.boardBrand, b.layoutId)
             requireLen("bid.gymUuid", b.gymUuid, MAX_EXTERNAL_ID_LEN)
             requireLen("bid.wallUuid", b.wallUuid, MAX_EXTERNAL_ID_LEN)
             requireLen("bid.productLayoutUuid", b.productLayoutUuid, MAX_EXTERNAL_ID_LEN)
@@ -328,6 +342,7 @@ object CruxCoachBackup {
             // but an odd legacy value must not brick the whole restore.
             requireLen("ownClimb.kilterAuthorUuid", c.kilterAuthorUuid, MAX_EXTERNAL_ID_LEN)
             requireRange("ownClimb.layoutId", c.layoutId, 0L..MAX_LAYOUT_ID)
+            requireQuantumLayout("ownClimb", c.boardBrand, c.layoutId)
             requireRange("ownClimb.moveCount", c.moveCount, 0L..1_000L)
             requireRange("ownClimb.kilterSyncedAt", c.kilterSyncedAt, 0L..Long.MAX_VALUE)
             // edge_* are pixel coords on the layout grid — generous range.
@@ -578,6 +593,9 @@ object CruxCoachBackup {
         val createdAt: String? = null,
         val description: String = "",
         val moveCount: Long = 0,
+        // Additive inside v3. A pre-0.2.2 envelope omitted this key and
+        // therefore keeps the historical listed-by-default behaviour.
+        val isListed: Boolean = true,
         val source: String,                   // 'local' | 'nostr'
         val origin: String = "cruxcoach",     // always 'cruxcoach' (validated)
         val syncStatus: String,               // 'draft' | 'failed' | 'published_nostr' | …
@@ -817,7 +835,14 @@ object CruxCoachBackup {
         // `created_by_pubkey IS NULL` orphans (signer-init-race drafts)
         // by binding them to the active pubkey on the export side.
         val ownClimbs = if (Category.OWN_CLIMBS in categories && nostrPubkey != null) {
-            boardRepository.getOwnClimbsForBackup(nostrPubkey).map { row ->
+            // Authenticated public catalogue imports can temporarily have
+            // origin='cruxcoach' with source='kilter'. They are downloadable
+            // public rows, not private lifecycle records, and `kilter` is not
+            // a valid OwnClimbExport source. Exclude them until a private
+            // backup promotes the row to local/nostr.
+            boardRepository.getOwnClimbsForBackup(nostrPubkey)
+                .filter { it.source == "local" || it.source == "nostr" }
+                .map { row ->
                 OwnClimbExport(
                     uuid = row.uuid, layoutId = row.layoutId,
                     setterUsername = row.setterUsername, name = row.name,
@@ -826,6 +851,7 @@ object CruxCoachBackup {
                     edgeBottom = row.edgeBottom, edgeTop = row.edgeTop,
                     createdAt = row.createdAt, description = row.description,
                     moveCount = row.moveCount,
+                    isListed = row.isListed,
                     source = row.source, syncStatus = row.syncStatus,
                     createdByPubkey = row.createdByPubkey,
                     framesHash = row.framesHash,
@@ -838,11 +864,14 @@ object CruxCoachBackup {
                     boardBrand = row.boardBrand,
                     kilterAuthorUuid = row.kilterAuthorUuid,
                 )
-            }
+                }
         } else emptyList()
 
         val ownClimbStats = if (Category.OWN_CLIMBS in categories && nostrPubkey != null) {
-            boardRepository.getOwnClimbStatsForBackup(nostrPubkey).map { row ->
+            val exportedOwnClimbUuids = ownClimbs.mapTo(hashSetOf()) { it.uuid }
+            boardRepository.getOwnClimbStatsForBackup(nostrPubkey)
+                .filter { it.climbUuid in exportedOwnClimbUuids }
+                .map { row ->
                 OwnClimbStatExport(
                     climbUuid = row.climbUuid, angle = row.angle,
                     displayDifficulty = row.displayDifficulty,
@@ -851,7 +880,7 @@ object CruxCoachBackup {
                     ascensionistCount = row.ascensionistCount,
                     benchmarkDifficulty = row.benchmarkDifficulty,
                 )
-            }
+                }
         } else emptyList()
 
         // Private notes. Cheap to read (one small table) and impossible to
@@ -1342,6 +1371,7 @@ object CruxCoachBackup {
                     edgeBottom = climb.edgeBottom, edgeTop = climb.edgeTop,
                     createdAt = climb.createdAt, description = climb.description,
                     moveCount = climb.moveCount,
+                    isListed = climb.isListed,
                     source = climb.source, syncStatus = climb.syncStatus,
                     createdByPubkey = climb.createdByPubkey,
                     framesHash = climb.framesHash,

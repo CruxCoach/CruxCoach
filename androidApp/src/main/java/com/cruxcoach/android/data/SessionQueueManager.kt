@@ -5,6 +5,7 @@ import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.BoardClimbLayer
 import com.cruxcoach.android.ble.BoardConnectionOwner
 import com.cruxcoach.android.ble.BoardLayerBoardIdentity
+import com.cruxcoach.android.ble.BoardLayerControllerRouteKey
 import com.cruxcoach.android.ble.BoardLayerConflictPolicy
 import com.cruxcoach.android.ble.BoardLayerManager
 import com.cruxcoach.android.ble.BoardLayerRouteDetails
@@ -14,6 +15,7 @@ import com.cruxcoach.android.ble.reservedLayerColors
 import com.cruxcoach.android.ble.hasCompleteQuantumLedMapping
 import com.cruxcoach.android.ble.hasConfirmableQuantumDiodeCount
 import com.cruxcoach.android.ble.matchesQuantumPlayers
+import com.cruxcoach.android.ble.planKey
 import com.cruxcoach.android.ui.board.BoardSendModePolicy
 import com.cruxcoach.android.ui.board.QueueDeliveryPolicy
 import com.cruxcoach.android.ble.BoardControllerProfiles
@@ -878,6 +880,7 @@ class SessionQueueManager(
 
         val existing = layers.layerForClimb(climb.uuid)
         val slot = existing?.slot ?: layers.nextAvailableSlot(BoardBrand.QUANTUM) ?: return false
+        val expectedCurrent = layers.state.value.layers.firstOrNull { it.slot == slot }?.planKey()
         if (!layers.hasControllerCapacityFor(slot)) return false
         val assessment = BoardLayerConflictPolicy.assess(
             candidate = holds,
@@ -900,13 +903,14 @@ class SessionQueueManager(
             holds = holds,
             status = BoardLayerStatus.PREVIEW,
         )
-        layers.assignPreview(layer)
+        if (!layers.assignPreviewIfCurrent(layer, expectedCurrent)) return false
+        val expectedPlan = layer.planKey()
 
         // Catalogue hydration above may take disk time. Pull truth again at
         // the write boundary and repeat every safety predicate so a second
         // client cannot occupy the last slot/colour/hold in that interval.
         if (!refreshQuantumPlaylistState(layers, model)) {
-            layers.failProjection(slot)
+            layers.failProjection(expectedPlan)
             return false
         }
         val expectedPlayers = bleConnection.quantumControllerState.value.players
@@ -920,10 +924,10 @@ class SessionQueueManager(
                 replacingSlot = slot,
             ).canProveConflictFree
         ) {
-            layers.failProjection(slot)
+            layers.failProjection(expectedPlan)
             return false
         }
-        layers.beginProjection(slot)
+        if (!layers.beginProjection(expectedPlan)) return false
         val sent = bleConnection.sendClimb(
             holds = holds,
             placementToLed = ledMap,
@@ -934,7 +938,7 @@ class SessionQueueManager(
             expectedQuantumPlayers = expectedPlayers,
             expectedQuantumBoard = expectedBoard,
         )
-        if (sent) layers.confirmProjection(slot) else layers.failProjection(slot)
+        if (sent) layers.confirmProjection(expectedPlan) else layers.failProjection(expectedPlan)
         return sent
     }
 
@@ -964,14 +968,20 @@ class SessionQueueManager(
                 productSizeId.toInt(), BoardBrand.QUANTUM.wireValue,
             )
             controller.players.mapNotNull { player ->
-                boardRepository.getQuantumClimbByExternalRoute(player.routeId, model.wireValue)?.let { known ->
-                    val holds = BoardClimbParser.parseFrames(known.frames)
+                boardRepository.getQuantumClimbByExternalRoute(
+                    routeUuid = player.routeId,
+                    model = model.wireValue,
+                    allowDirectUuidFallback = layers.ownsIdentity(player.userId),
+                )?.let { known ->
+                    val holds = BoardClimbParser.parseSingleFrameStrict(known.frames)
+                        ?: return@let null
                     if (!hasCompleteQuantumLedMapping(holds, ledMap)) return@let null
-                    player.routeId to BoardLayerRouteDetails(
-                        climbUuid = known.uuid,
-                        climbName = known.name,
-                        holds = holds,
-                    )
+                    BoardLayerControllerRouteKey(player.routeId, player.userId) to
+                        BoardLayerRouteDetails(
+                            climbUuid = known.uuid,
+                            climbName = known.name,
+                            holds = holds,
+                        )
                 }
             }.toMap()
         }
