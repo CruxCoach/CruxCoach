@@ -3,6 +3,8 @@ package com.cruxcoach.android.ui.board
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.ble.BoardBleConnection
+import com.cruxcoach.android.ble.BoardLayerManager
+import com.cruxcoach.android.ble.BoardLayerState
 import com.cruxcoach.android.ble.ConnectionState
 import android.util.Log
 import com.cruxcoach.android.ble.NearbySession
@@ -42,6 +44,8 @@ import com.cruxcoach.domain.board.HoldHeatmapComputer
 import com.cruxcoach.domain.board.HoldSetMask
 import com.cruxcoach.domain.board.HoldRole
 import com.cruxcoach.domain.board.MoonBoardHoldSets
+import com.cruxcoach.domain.board.QuantumOverlapFilter
+import com.cruxcoach.domain.board.QuantumOverlapIndex
 import com.cruxcoach.domain.board.KilterGradeMapper
 import com.cruxcoach.android.util.PerfLogger
 import com.cruxcoach.util.GradeConverter
@@ -222,6 +226,8 @@ data class BrowserFilterState(
     /** Required positive eWalls rules. Meaningful only for Quantum; ignored
      * and reset on every other board so invisible state cannot leak. */
     val quantumRuleMask: Long = 0L,
+    /** Quantum-only filter against controller-confirmed, physically lit layers. */
+    val quantumOverlapFilter: QuantumOverlapFilter = QuantumOverlapFilter.OFF,
     /** When true, restrict the browser list to climbs authored by the local
      *  user's Nostr pubkey (drafts + published). Bypasses angle/grade/asc
      *  filters at fetch time so drafts saved at any angle remain visible. */
@@ -297,6 +303,16 @@ internal object BoardBrowsePolicy {
 
     fun exclusionMask(brand: BoardBrand, holdSetMask: Long, quantumRuleMask: Long): Long =
         if (brand == BoardBrand.QUANTUM) quantumRuleMask else holdSetMask
+
+    fun overlapFilter(
+        brand: BoardBrand,
+        requested: QuantumOverlapFilter,
+        litPlacements: Set<Int>,
+    ): QuantumOverlapFilter = when {
+        brand != BoardBrand.QUANTUM -> QuantumOverlapFilter.OFF
+        litPlacements.isEmpty() -> QuantumOverlapFilter.OFF
+        else -> requested
+    }
 }
 
 data class BrowserBleState(
@@ -358,8 +374,37 @@ data class BoardBrowserState(
     val hsmExcludedMask: Long = 0,
     val filter: BrowserFilterState = BrowserFilterState(),
     val ble: BrowserBleState = BrowserBleState(),
-    val holdSearch: HoldSearchState = HoldSearchState()
+    val holdSearch: HoldSearchState = HoldSearchState(),
+    val quantumLayers: BrowserQuantumLayerState = BrowserQuantumLayerState(),
 )
+
+data class BrowserQuantumLayerState(
+    val litPlacements: Set<Int> = emptySet(),
+    val layerCount: Int = 0,
+    val complete: Boolean = true,
+    val matchCount: Long = -1,
+) {
+    val available: Boolean get() = litPlacements.isNotEmpty()
+}
+
+internal fun BoardLayerState.toBrowserQuantumLayers(): BrowserQuantumLayerState {
+    val lit = HashSet<Int>()
+    var complete = true
+    layers.filter { it.confirmedRouteUuid != null }.forEach { layer ->
+        val holds = layer.confirmedHolds
+        if (!layer.controllerDetailsKnown || holds == null) complete = false
+        else holds.mapTo(lit) { it.placementId }
+    }
+    externalLayers.forEach { layer ->
+        val holds = layer.holds
+        if (holds == null) complete = false else holds.mapTo(lit) { it.placementId }
+    }
+    return BrowserQuantumLayerState(
+        litPlacements = lit,
+        layerCount = occupiedCount,
+        complete = complete,
+    )
+}
 
 /**
  * The board switch as ONE state transition: the new brand / layout / angle
@@ -397,7 +442,10 @@ internal fun BoardBrowserState.onBoardSwitch(
         benchmarkOnly = BoardBrowsePolicy.benchmarkOnly(brand, filter.benchmarkOnly),
         originFilter = BoardBrowsePolicy.origin(brand, filter.originFilter),
         quantumRuleMask = if (brand == BoardBrand.QUANTUM) filter.quantumRuleMask else 0L,
+        quantumOverlapFilter = if (brand == BoardBrand.QUANTUM) filter.quantumOverlapFilter
+        else QuantumOverlapFilter.OFF,
     ),
+    quantumLayers = if (brand == BoardBrand.QUANTUM) quantumLayers else BrowserQuantumLayerState(),
 )
 }
 
@@ -407,6 +455,7 @@ class BoardBrowserViewModel @Inject constructor(
     private val personalBoardRepo: PersonalBoardRepository,
     private val userPreferences: UserPreferences,
     private val bleConnection: BoardBleConnection,
+    private val boardLayerManager: BoardLayerManager,
     private val sessionManager: BoardSessionManager,
     private val zoneManager: IntensityZoneManager,
     private val syncManager: BoardSyncManager,
@@ -521,6 +570,9 @@ class BoardBrowserViewModel @Inject constructor(
 
     init {
         PerfLogger.milestone("BoardBrowserVM.init START")
+        viewModelScope.safeLaunch(TAG) {
+            boardLayerManager.state.collect { layers -> refreshQuantumLayers(layers) }
+        }
         // Reactive creator-change trigger. The browser's nav entry stays
         // RESUMED while the detail/editor sits on top, so the lifecycle
         // ON_RESUME never re-fired on return and an in-place edit (rename,
@@ -577,6 +629,9 @@ class BoardBrowserViewModel @Inject constructor(
                         benchmarkOnly = BoardBrowsePolicy.benchmarkOnly(snapBrand, snap.benchmarkOnly),
                         originFilter = BoardBrowsePolicy.origin(snapBrand, originFilter),
                         quantumRuleMask = if (snapBrand == BoardBrand.QUANTUM) snap.quantumRuleMask else 0L,
+                        quantumOverlapFilter = if (snapBrand == BoardBrand.QUANTUM) {
+                            QuantumOverlapFilter.fromWire(snap.quantumOverlapFilter)
+                        } else QuantumOverlapFilter.OFF,
                         myClimbsOnly = snap.myClimbsOnly,
                         ungradedOnly = snap.ungradedOnly,
                     )
@@ -765,6 +820,7 @@ class BoardBrowserViewModel @Inject constructor(
 
     fun refreshBoardData(force: Boolean = false) {
         if (!filtersLoaded) return
+        refreshQuantumLayers(boardLayerManager.state.value)
         val dataChanged = climbNavState.statusDataChanged
         val changedUuids = if (dataChanged) {
             climbNavState.changedClimbUuids.toSet().also {
@@ -954,6 +1010,7 @@ class BoardBrowserViewModel @Inject constructor(
                 myClimbsOnly = f.myClimbsOnly,
                 ungradedOnly = f.ungradedOnly,
                 quantumRuleMask = f.quantumRuleMask,
+                quantumOverlapFilter = f.quantumOverlapFilter.name,
             )
         }
     }
@@ -1052,6 +1109,7 @@ class BoardBrowserViewModel @Inject constructor(
                 myClimbsOnly = false,
                 ungradedOnly = false,
                 quantumRuleMask = 0L,
+                quantumOverlapFilter = QuantumOverlapFilter.OFF,
             ))
         }
         persistFilters()
@@ -1098,6 +1156,15 @@ class BoardBrowserViewModel @Inject constructor(
             val current = state.filter.quantumRuleMask
             state.copy(filter = state.filter.copy(quantumRuleMask = current xor rule.bit))
         }
+        persistFilters()
+        searchClimbs()
+    }
+
+    fun setQuantumOverlapFilter(filter: QuantumOverlapFilter) {
+        if (BoardBrand.fromWire(_state.value.filter.boardBrand) != BoardBrand.QUANTUM) return
+        if (_state.value.filter.quantumOverlapFilter == filter) return
+        invalidateRandomCache()
+        _state.update { it.copy(filter = it.filter.copy(quantumOverlapFilter = filter)) }
         persistFilters()
         searchClimbs()
     }
@@ -1194,6 +1261,81 @@ class BoardBrowserViewModel @Inject constructor(
         return if (mask == 0L) climbs else climbs.filter { (it.hsm and mask) == 0L }
     }
 
+    private fun overlapIndex(f: BrowserFilterState): QuantumOverlapIndex? {
+        val layers = _state.value.quantumLayers
+        val effective = BoardBrowsePolicy.overlapFilter(
+            BoardBrand.fromWire(f.boardBrand),
+            f.quantumOverlapFilter,
+            layers.litPlacements,
+        )
+        return if (effective.active) {
+            QuantumOverlapIndex(layers.litPlacements, layers.complete)
+        } else null
+    }
+
+    private fun placementsOf(frames: String): Set<Int> =
+        BoardClimbParser.parseFrames(frames).mapTo(HashSet()) { it.placementId }
+
+    private fun applyQuantumOverlapFilter(
+        climbs: List<ClimbWithStats>,
+        f: BrowserFilterState,
+    ): List<ClimbWithStats> {
+        val index = overlapIndex(f) ?: return climbs
+        return climbs.filter { climb ->
+            index.matches(placementsOf(climb.frames), f.quantumOverlapFilter)
+        }
+    }
+
+    private fun refreshQuantumLayers(layerState: BoardLayerState) {
+        if (BoardBrand.fromWire(_state.value.filter.boardBrand) != BoardBrand.QUANTUM) {
+            if (_state.value.quantumLayers != BrowserQuantumLayerState()) {
+                _state.update { it.copy(quantumLayers = BrowserQuantumLayerState()) }
+            }
+            return
+        }
+        val next = layerState.toBrowserQuantumLayers()
+        val previous = _state.value.quantumLayers
+        if (previous.litPlacements == next.litPlacements &&
+            previous.layerCount == next.layerCount &&
+            previous.complete == next.complete
+        ) return
+        overlapCountKey = null
+        overlapCountValue = -1
+        _state.update { it.copy(quantumLayers = next) }
+        if (_state.value.filter.quantumOverlapFilter.active) searchClimbs()
+    }
+
+    private var overlapCountKey: String? = null
+    private var overlapCountValue: Long = -1
+
+    private fun overlapCountIsExact(f: BrowserFilterState): Boolean =
+        f.statusFilter.isEmpty() && !f.ungradedOnly && !f.benchmarkOnly && !f.myClimbsOnly &&
+            f.originFilter == OriginFilter.ALL && f.searchQuery.isBlank() &&
+            !_state.value.holdSearch.holdFilterActive
+
+    private suspend fun quantumOverlapCount(
+        f: BrowserFilterState,
+        index: QuantumOverlapIndex,
+    ): Long {
+        val gb = gradeBounds(f)
+        val key = listOf(
+            f.angle, f.layoutId, f.boardBrand, gb.minDiff, gb.maxDiff,
+            f.minAscensionists, f.climbTypeFilter, hsmMask(), f.quantumOverlapFilter,
+            index.litPlacements.sorted().joinToString(","),
+        ).joinToString("|")
+        if (key == overlapCountKey) return overlapCountValue
+        val count = boardRepository.getAllFramesForHeatmap(
+            f.angle, f.layoutId, f.boardBrand, gb.minDiff, gb.maxDiff,
+            f.minAscensionists, f.climbTypeFilter, hsmExcludedMask = hsmMask(),
+        ).count { row ->
+            index.matches(placementsOf(row.frames), f.quantumOverlapFilter)
+        }.toLong()
+        overlapCountKey = key
+        overlapCountValue = count
+        _state.update { it.copy(quantumLayers = it.quantumLayers.copy(matchCount = count)) }
+        return count
+    }
+
     private var firstContentReported = false
 
     /** Re-runs the browse query from page 0. [preserveDepth] is set by the
@@ -1261,6 +1403,10 @@ class BoardBrowserViewModel @Inject constructor(
         // filtering in the my-climbs branch of fetchFiltered.
         if (filter.myClimbsOnly) {
             return directCount.toLong()
+        }
+
+        overlapIndex(filter)?.takeIf { overlapCountIsExact(filter) }?.let { index ->
+            return quantumOverlapCount(filter, index)
         }
 
         // HOLD FILTER: directCount is accurate from getClimbsByUuids
@@ -1360,7 +1506,10 @@ class BoardBrowserViewModel @Inject constructor(
             val statusFiltered = applyStatusFilter(nameFiltered, f.statusFilter)
             val benchFiltered = applyBenchmarkFilter(statusFiltered, f.benchmarkOnly)
             val originFiltered = applyQuantumRuleFilter(applyOriginFilter(benchFiltered, f.originFilter), f)
-            val sorted = sortInKotlin(applyHiddenFilter(originFiltered), f.sortField, f.sortDirection)
+            val sorted = sortInKotlin(
+                applyQuantumOverlapFilter(applyHiddenFilter(originFiltered), f),
+                f.sortField, f.sortDirection,
+            )
             return Triple(sorted.take(PAGE_SIZE), sorted.size, sorted.size <= PAGE_SIZE)
         }
 
@@ -1384,7 +1533,12 @@ class BoardBrowserViewModel @Inject constructor(
                 else all.filter { it.name.contains(f.searchQuery, ignoreCase = true) }
             val statusFiltered = applyStatusFilter(nameFiltered, f.statusFilter)
             val benchFiltered = applyBenchmarkFilter(statusFiltered, f.benchmarkOnly)
-            val sorted = sortInKotlin(applyHiddenFilter(applyQuantumRuleFilter(benchFiltered, f)), f.sortField, f.sortDirection)
+            val sorted = sortInKotlin(
+                applyQuantumOverlapFilter(
+                    applyHiddenFilter(applyQuantumRuleFilter(benchFiltered, f)), f,
+                ),
+                f.sortField, f.sortDirection,
+            )
             return Triple(sorted.take(PAGE_SIZE), sorted.size, sorted.size <= PAGE_SIZE)
         }
 
@@ -1409,7 +1563,12 @@ class BoardBrowserViewModel @Inject constructor(
                 else all.filter { it.name.contains(f.searchQuery, ignoreCase = true) }
             val statusFiltered = applyStatusFilter(nameFiltered, f.statusFilter)
             val benchFiltered = applyBenchmarkFilter(statusFiltered, f.benchmarkOnly)
-            val sorted = sortInKotlin(applyHiddenFilter(applyQuantumRuleFilter(benchFiltered, f)), f.sortField, f.sortDirection)
+            val sorted = sortInKotlin(
+                applyQuantumOverlapFilter(
+                    applyHiddenFilter(applyQuantumRuleFilter(benchFiltered, f)), f,
+                ),
+                f.sortField, f.sortDirection,
+            )
             return Triple(sorted.take(PAGE_SIZE), sorted.size, sorted.size <= PAGE_SIZE)
         }
 
@@ -1434,7 +1593,10 @@ class BoardBrowserViewModel @Inject constructor(
                 nameFiltered.filter { it.uuid in hs.holdFilterUuids }
             } else nameFiltered
             val statusFiltered = applyStatusFilter(holdFiltered, f.statusFilter)
-            val sorted = sortInKotlin(applyHiddenFilter(statusFiltered), f.sortField, f.sortDirection)
+            val sorted = sortInKotlin(
+                applyQuantumOverlapFilter(applyHiddenFilter(statusFiltered), f),
+                f.sortField, f.sortDirection,
+            )
             // The query intentionally returned the complete official set; do
             // not truncate it and then advertise a continuation that cannot
             // page the already-consumed Kotlin list.
@@ -1454,7 +1616,10 @@ class BoardBrowserViewModel @Inject constructor(
                 hs.holdFilterUuids, f.angle, f.layoutId, f.boardBrand, gb.minDiff, gb.maxDiff, f.minAscensionists, f.climbTypeFilter
             )
             val filtered = applyQuantumRuleFilter(applyOriginFilter(applyBenchmarkFilter(applyStatusFilter(all, f.statusFilter), f.benchmarkOnly), f.originFilter), f)
-            val sorted = sortInKotlin(applyHiddenFilter(filtered), f.sortField, f.sortDirection)
+            val sorted = sortInKotlin(
+                applyQuantumOverlapFilter(applyHiddenFilter(filtered), f),
+                f.sortField, f.sortDirection,
+            )
             return Triple(sorted.take(PAGE_SIZE), sorted.size, sorted.size <= PAGE_SIZE)
         }
 
@@ -1471,14 +1636,24 @@ class BoardBrowserViewModel @Inject constructor(
                 uuids, f.angle, f.layoutId, f.boardBrand, gb.minDiff, gb.maxDiff, f.minAscensionists, f.climbTypeFilter
             )
             val filtered = applyQuantumRuleFilter(applyOriginFilter(applyBenchmarkFilter(all, f.benchmarkOnly), f.originFilter), f)
-            val sorted = sortInKotlin(applyHiddenFilter(filtered), f.sortField, f.sortDirection)
+            val sorted = sortInKotlin(
+                applyQuantumOverlapFilter(applyHiddenFilter(filtered), f),
+                f.sortField, f.sortDirection,
+            )
             return Triple(sorted.take(PAGE_SIZE), sorted.size, sorted.size <= PAGE_SIZE)
         }
 
         // ALLE (empty selection): no client-side status filtering (benchmark/origin only)
         if (f.statusFilter.isEmpty()) {
             val rawPage = fetchPage(f, dbOffset)
-            val filtered = applyHiddenFilter(applyQuantumRuleFilter(applyOriginFilter(applyBenchmarkFilter(rawPage, f.benchmarkOnly), f.originFilter), f))
+            val filtered = applyQuantumOverlapFilter(
+                applyHiddenFilter(
+                    applyQuantumRuleFilter(
+                        applyOriginFilter(applyBenchmarkFilter(rawPage, f.benchmarkOnly), f.originFilter), f,
+                    ),
+                ),
+                f,
+            )
             return Triple(filtered, dbOffset + rawPage.size, rawPage.size < PAGE_SIZE)
         }
 
@@ -1490,7 +1665,22 @@ class BoardBrowserViewModel @Inject constructor(
             val page = fetchPage(f, currentOffset)
             if (page.isEmpty()) return Triple(collected, currentOffset, true)
             currentOffset += page.size
-            collected.addAll(applyHiddenFilter(applyQuantumRuleFilter(applyOriginFilter(applyBenchmarkFilter(applyStatusFilter(page, f.statusFilter), f.benchmarkOnly), f.originFilter), f)))
+            collected.addAll(
+                applyQuantumOverlapFilter(
+                    applyHiddenFilter(
+                        applyQuantumRuleFilter(
+                            applyOriginFilter(
+                                applyBenchmarkFilter(
+                                    applyStatusFilter(page, f.statusFilter), f.benchmarkOnly,
+                                ),
+                                f.originFilter,
+                            ),
+                            f,
+                        ),
+                    ),
+                    f,
+                ),
+            )
             // Return EVERYTHING collected, not collected.take(PAGE_SIZE):
             // currentOffset has already advanced past the source rows of any
             // overflow, so truncating here would drop those climbs forever
@@ -1691,6 +1881,7 @@ class BoardBrowserViewModel @Inject constructor(
         val plainMode = f.statusFilter.isEmpty() &&
             f.originFilter == OriginFilter.ALL &&
             !f.myClimbsOnly &&
+            !f.quantumOverlapFilter.active &&
             !(hs.holdFilterActive && hs.holdFilterUuids.isNotEmpty())
         val count = _state.value.filteredCount
         if (plainMode && count > 0) {

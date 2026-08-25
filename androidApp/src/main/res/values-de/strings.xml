@@ -2648,6 +2648,14 @@
     <string name="quantum_layer_already_assigned">Dieser Climb nutzt bereits Layer %1$d. Entferne diesen Layer, bevor du eine andere Identität zuweist.</string>
     <string name="quantum_layer_already_assigned_error">Dieser Climb nutzt bereits einen anderen Layer. Entferne ihn, bevor du eine andere Identität zuweist.</string>
     <string name="board_playlist_add">Hinzufügen</string>
+    <string name="board_filter_quantum_overlap_title">Passt an die Wand</string>
+    <string name="board_filter_quantum_overlap_off">Aus</string>
+    <string name="board_filter_quantum_overlap_none">Ohne Überschneidung</string>
+    <string name="board_filter_quantum_overlap_one">Höchstens 1</string>
+    <string name="board_filter_quantum_overlap_hint">Gemessen an den Ebenen, die der Controller gerade bestätigt. „Ohne Überschneidung“ ist direkt sendbar; bei „höchstens 1“ muss ein gemeinsames Hold entfernt werden.</string>
+    <string name="board_filter_quantum_overlap_inert">Es liegt nichts an der Wand, also passt jeder Climb.</string>
+    <string name="board_filter_quantum_overlap_incomplete">Eine Ebene an der Wand konnte nicht aufgelöst werden. Die Liste filtert nur nach bekannten Holds; ein konfliktfreier Send ist daher nicht garantiert.</string>
+    <string name="board_filter_quantum_overlap_count">%1$d Climbs passen</string>
     <plurals name="board_playlist_already_queued">
         <item quantity="one">Schon einmal in der Playlist</item>
         <item quantity="other">Schon %1$d mal in der Playlist</item>

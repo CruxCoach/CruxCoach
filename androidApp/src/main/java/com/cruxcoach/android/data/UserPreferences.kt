@@ -399,6 +399,7 @@ object PreferenceKeys {
     // climbs while set; persisted like every other browse filter.
     val BOARD_UNGRADED_ONLY = booleanPreferencesKey("board_ungraded_only")
     val BOARD_QUANTUM_RULE_MASK = longPreferencesKey("board_quantum_rule_mask")
+    val BOARD_QUANTUM_OVERLAP_FILTER = stringPreferencesKey("board_quantum_overlap_filter")
     val ROUTE_FRAME_SPEED = floatPreferencesKey("route_frame_speed_f")
     // Auto-Note: when true, publishing a Kind-30078 climb also sends a
     // public Kind-1 note linking to it. Default false; the editor exposes
@@ -479,6 +480,8 @@ data class BoardFilterSnapshot(
     val ungradedOnly: Boolean = false,
     /** Required positive Quantum/eWalls route rules; ignored by every other board. */
     val quantumRuleMask: Long = 0L,
+    /** Quantum-only compatibility filter, stored by enum name for safe evolution. */
+    val quantumOverlapFilter: String = "OFF",
     /** Active board brand — "kilter" | "moonboard" (FEAT-027). */
     val boardBrand: String = "kilter",
 )
@@ -508,6 +511,7 @@ class UserPreferences(
             myClimbsOnly = prefs[PreferenceKeys.BOARD_MY_CLIMBS_ONLY] ?: false,
             ungradedOnly = prefs[PreferenceKeys.BOARD_UNGRADED_ONLY] ?: false,
             quantumRuleMask = prefs[PreferenceKeys.BOARD_QUANTUM_RULE_MASK] ?: 0L,
+            quantumOverlapFilter = prefs[PreferenceKeys.BOARD_QUANTUM_OVERLAP_FILTER] ?: "OFF",
         )
     }
 
@@ -1302,6 +1306,7 @@ class UserPreferences(
         myClimbsOnly: Boolean = false,
         ungradedOnly: Boolean = false,
         quantumRuleMask: Long = 0L,
+        quantumOverlapFilter: String = "OFF",
     ) {
         dataStore.edit { prefs ->
             prefs[PreferenceKeys.BOARD_ANGLE] = angle
@@ -1317,6 +1322,7 @@ class UserPreferences(
             prefs[PreferenceKeys.BOARD_MY_CLIMBS_ONLY] = myClimbsOnly
             prefs[PreferenceKeys.BOARD_UNGRADED_ONLY] = ungradedOnly
             prefs[PreferenceKeys.BOARD_QUANTUM_RULE_MASK] = quantumRuleMask
+            prefs[PreferenceKeys.BOARD_QUANTUM_OVERLAP_FILTER] = quantumOverlapFilter
         }
     }
 

@@ -223,6 +223,39 @@ class SessionQueueQuantumLayerTest {
     }
 
     @Test
+    fun `foreign eWalls climb hydrates globally without a local playlist`() {
+        val foreign = QuantumActivePlayer(
+            routeId = "99999999-8888-4777-8666-555555555555",
+            userId = "12345678-1234-4234-8234-123456789abc",
+            remainingSeconds = 120,
+            color = 0x123456,
+        )
+        every {
+            repository.getQuantumClimbByExternalRoute(foreign.routeId, "m", false)
+        } returns quantumClimb("bbbbbbbb-cccc-4ddd-8eee-ffffffffffff").copy(
+            name = "eWalls route",
+            frames = "p19100001r12",
+        )
+
+        controllerState.value = QuantumControllerState(
+            players = listOf(foreign),
+            authoritative = true,
+            authoritativeRevision = 1,
+        )
+
+        val external = runBlocking {
+            withTimeout(2_000) {
+                layers.state.first { state ->
+                    state.externalLayers.singleOrNull()?.holds != null
+                }.externalLayers.single()
+            }
+        }
+        assertEquals("eWalls route", external.climbName)
+        assertEquals(listOf(BoardHold(19_100_001, 12)), external.holds)
+        assertTrue(queue.state.value.role == SessionRole.NONE)
+    }
+
+    @Test
     fun `owned direct UUID proof does not hydrate a foreign duplicate route`() {
         val sharedRoute = climbUuid
         val owned = QuantumActivePlayer(

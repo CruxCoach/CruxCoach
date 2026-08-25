@@ -2649,6 +2649,14 @@
     <string name="quantum_layer_already_assigned">This climb already uses layer %1$d. Remove that layer before assigning another identity.</string>
     <string name="quantum_layer_already_assigned_error">This climb already uses another layer. Remove it before assigning another identity.</string>
     <string name="board_playlist_add">Add</string>
+    <string name="board_filter_quantum_overlap_title">Fits the wall</string>
+    <string name="board_filter_quantum_overlap_off">Off</string>
+    <string name="board_filter_quantum_overlap_none">No overlap</string>
+    <string name="board_filter_quantum_overlap_one">At most 1</string>
+    <string name="board_filter_quantum_overlap_hint">Measured against the layers the controller confirms right now. “No overlap” can be sent as it is; “at most 1” still needs one shared hold removed.</string>
+    <string name="board_filter_quantum_overlap_inert">Nothing is on the wall, so every climb fits.</string>
+    <string name="board_filter_quantum_overlap_incomplete">A layer on the wall could not be resolved. The list narrows on known holds only, so a conflict-free send is not guaranteed.</string>
+    <string name="board_filter_quantum_overlap_count">%1$d climbs fit</string>
     <plurals name="board_playlist_already_queued">
         <item quantity="one">Already on the playlist once</item>
         <item quantity="other">Already on the playlist %1$d times</item>

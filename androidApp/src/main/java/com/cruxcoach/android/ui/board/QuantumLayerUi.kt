@@ -549,7 +549,7 @@ private fun QuantumForeignStatusRow(layers: List<ExternalBoardLayer>) {
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        layers.take(BoardLayerManager.MAX_LAYER_IDENTITIES).forEachIndexed { index, layer ->
+        layers.take(BoardLayerManager.MAX_LAYER_IDENTITIES).forEach { layer ->
             val description = quantumForeignLayerDescription(layer)
             Surface(
                 modifier = Modifier.clearAndSetSemantics { contentDescription = description },
@@ -567,13 +567,12 @@ private fun QuantumForeignStatusRow(layers: List<ExternalBoardLayer>) {
                 ) {
                     Surface(Modifier.size(8.dp), CircleShape, color = Color(layer.color)) {}
                     Text(
-                        buildString {
-                            append("O")
-                            append(index + 1)
-                            if (layer.holds == null) append("?")
-                        },
+                        text = (layer.climbName ?: layer.routeUuid.take(8)) +
+                            if (layer.holds == null) " ?" else "",
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
