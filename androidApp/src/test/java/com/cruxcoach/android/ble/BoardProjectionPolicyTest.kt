@@ -126,5 +126,6 @@ class BoardProjectionPolicyTest {
         assertFalse(BoardProjectionPolicy.projectionSurvivesDisconnect(BoardBrand.MOONBOARD))
         assertTrue(BoardProjectionPolicy.projectionSurvivesDisconnect(BoardBrand.KILTER))
         assertTrue(BoardProjectionPolicy.projectionSurvivesDisconnect(BoardBrand.TENSION))
+        assertTrue(BoardProjectionPolicy.projectionSurvivesDisconnect(BoardBrand.QUANTUM))
     }
 }

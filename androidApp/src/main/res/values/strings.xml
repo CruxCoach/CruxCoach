@@ -406,7 +406,7 @@
 
     <!-- Settings: BLE -->
     <string name="settings_ble_auto_disconnect_title">Release board connection</string>
-    <string name="settings_ble_auto_disconnect_desc_retained">Used only for exclusive controllers whose lighting remains after disconnecting. Multi-client and unknown controllers stay connected.</string>
+    <string name="settings_ble_auto_disconnect_desc_retained">Optional for exclusive Kilter/Aurora and Quantum controllers whose lighting remains after disconnecting. MoonBoard, multi-client and unknown controllers always stay connected.</string>
     <string name="settings_ble_auto_disconnect_moonboard">Not used for MoonBoard: the lighting requires an active connection.</string>
     <string name="settings_ble_auto_disconnect_enable">Disconnect automatically</string>
     <string name="settings_ble_auto_disconnect_off_hint">The connection stays open until you disconnect it yourself.</string>
@@ -1712,6 +1712,8 @@
     <string name="settings_section_accounts_data">Accounts &amp; data</string>
     <string name="settings_group_appearance">Appearance &amp; language</string>
     <string name="settings_group_training_playback">Training &amp; playback</string>
+    <string name="settings_group_all_boards">All boards</string>
+    <string name="settings_group_selected_board">Selected board</string>
     <string name="settings_group_board_accounts_imports">Board accounts &amp; logbook imports</string>
     <string name="settings_group_board_catalogs">Board catalogs</string>
     <string name="settings_group_backup_transfer">Backup &amp; transfer</string>
@@ -1721,6 +1723,7 @@
     <string name="settings_board_viewing">Viewing settings for %1$s</string>
     <string name="settings_board_make_active">Configure and set active</string>
     <string name="settings_board_active_connection">Active board &amp; connection</string>
+    <string name="settings_board_specific">Board-specific settings</string>
     <string name="settings_board_inactive_hint">%1$s is not active. You can review its brand-specific options here; changing the active board always requires a separate confirmation.</string>
     <string name="settings_board_layout_title">Wall</string>
     <string name="settings_board_layout_desc">Pick which Kilter wall you have. Browse and climb-creator follow this choice.</string>

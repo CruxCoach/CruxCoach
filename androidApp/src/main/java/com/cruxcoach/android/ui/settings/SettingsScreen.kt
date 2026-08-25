@@ -236,6 +236,22 @@ fun SettingsScreen(
             ) { boardSettingsExpanded = !boardSettingsExpanded }
             AnimatedVisibility(visible = boardSettingsExpanded) {
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    SettingsGroupHeader(stringResource(R.string.settings_group_all_boards))
+                    BoardSendModeSection(
+                        singleConnectionMode = state.singleConnectionBoardSendMode,
+                        multiConnectionMode = state.multiConnectionBoardSendMode,
+                        onSingleConnectionModeChange =
+                            viewModel::updateSingleConnectionBoardSendMode,
+                        onMultiConnectionModeChange =
+                            viewModel::updateMultiConnectionBoardSendMode,
+                    )
+                    HorizontalDivider()
+                    BleAutoDisconnectSection(
+                        bleAutoDisconnectSeconds = state.bleAutoDisconnectSeconds,
+                        onAutoDisconnectChange = { viewModel.updateBleAutoDisconnect(it) },
+                    )
+                    HorizontalDivider()
+                    SettingsGroupHeader(stringResource(R.string.settings_group_selected_board))
                     Text(
                         stringResource(R.string.settings_board_hub_desc),
                         style = MaterialTheme.typography.bodySmall,
@@ -273,7 +289,21 @@ fun SettingsScreen(
                             Text(stringResource(R.string.settings_board_make_active))
                         }
                     }
-                    SettingsGroupHeader(stringResource(R.string.settings_board_active_connection))
+                    val hasSelectedBoardSettings =
+                        settingsBoardBrand == activeBoardBrand ||
+                            settingsBoardBrand == BoardBrand.MOONBOARD ||
+                            showsKilterLedColors(settingsBoardBrand)
+                    if (hasSelectedBoardSettings) {
+                        SettingsGroupHeader(
+                            stringResource(
+                                if (settingsBoardBrand == activeBoardBrand) {
+                                    R.string.settings_board_active_connection
+                                } else {
+                                    R.string.settings_board_specific
+                                },
+                            ),
+                        )
+                    }
                     // FEAT-027: for a MoonBoard show the variant name; else the
                     // Kilter board-size label. (0.1.5 dropped the standalone
                     // Original/Homewall toggle — the picker resolves layout.)
@@ -312,22 +342,7 @@ fun SettingsScreen(
                         )
                     }
                     if (settingsBoardBrand == activeBoardBrand) {
-                        HorizontalDivider()
-                        BoardSendModeSection(
-                            singleConnectionMode = state.singleConnectionBoardSendMode,
-                            multiConnectionMode = state.multiConnectionBoardSendMode,
-                            boardBrand = activeBoardBrand,
-                            onSingleConnectionModeChange =
-                                viewModel::updateSingleConnectionBoardSendMode,
-                            onMultiConnectionModeChange =
-                                viewModel::updateMultiConnectionBoardSendMode,
-                        )
-                        HorizontalDivider()
-                        BleAutoDisconnectSection(
-                            bleAutoDisconnectSeconds = state.bleAutoDisconnectSeconds,
-                            boardBrand = activeBoardBrand,
-                            onAutoDisconnectChange = { viewModel.updateBleAutoDisconnect(it) },
-                        )
+                        BoardProjectionLifecycleHint(activeBoardBrand)
                     }
                     if (showsKilterLedColors(settingsBoardBrand)) {
                         HorizontalDivider()

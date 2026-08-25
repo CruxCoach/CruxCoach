@@ -407,7 +407,7 @@
 
     <!-- Settings: BLE -->
     <string name="settings_ble_auto_disconnect_title">Board-Verbindung freigeben</string>
-    <string name="settings_ble_auto_disconnect_desc_retained">Gilt nur für exklusive Controller, deren Beleuchtung nach dem Trennen erhalten bleibt. Multi-Connect- und unbekannte Controller bleiben verbunden.</string>
+    <string name="settings_ble_auto_disconnect_desc_retained">Optional für exklusive Kilter-/Aurora- und Quantum-Controller, deren Beleuchtung nach dem Trennen erhalten bleibt. MoonBoard-, Multi-Connect- und unbekannte Controller bleiben immer verbunden.</string>
     <string name="settings_ble_auto_disconnect_moonboard">Nicht für MoonBoard verwendet: Die Beleuchtung benötigt eine aktive Verbindung.</string>
     <string name="settings_ble_auto_disconnect_enable">Automatisch trennen</string>
     <string name="settings_ble_auto_disconnect_off_hint">Die Verbindung bleibt bestehen, bis du sie selbst trennst.</string>
@@ -1755,6 +1755,8 @@
     <string name="settings_section_accounts_data">Konten &amp; Daten</string>
     <string name="settings_group_appearance">Darstellung &amp; Sprache</string>
     <string name="settings_group_training_playback">Training &amp; Wiedergabe</string>
+    <string name="settings_group_all_boards">Alle Boards</string>
+    <string name="settings_group_selected_board">Ausgewähltes Board</string>
     <string name="settings_group_board_accounts_imports">Board-Konten &amp; Logbuchimporte</string>
     <string name="settings_group_board_catalogs">Board-Kataloge</string>
     <string name="settings_group_backup_transfer">Sicherung &amp; Übertragung</string>
@@ -1764,6 +1766,7 @@
     <string name="settings_board_viewing">Einstellungen für %1$s</string>
     <string name="settings_board_make_active">Konfigurieren und aktiv setzen</string>
     <string name="settings_board_active_connection">Aktives Board &amp; Verbindung</string>
+    <string name="settings_board_specific">Boardspezifische Einstellungen</string>
     <string name="settings_board_inactive_hint">%1$s ist nicht aktiv. Markenspezifische Optionen kannst du hier ansehen; das aktive Board ändert sich immer erst nach einer eigenen Bestätigung.</string>
     <string name="settings_board_layout_title">Wand</string>
     <string name="settings_board_layout_desc">Wähle, welche Kilter-Wand du hast. Browse und Climb-Creator richten sich danach.</string>

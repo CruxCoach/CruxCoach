@@ -30,7 +30,7 @@ data class BleShareUiState(
     val nearbySessions: List<NearbySessionEntry> = emptyList(),
 
     /** Whether sharing is enabled in user preferences. */
-    val sharingEnabled: Boolean = false,
+    val sharingEnabled: Boolean = true,
 
     /** Own session state (null when no session active). */
     val ownSession: OwnSessionState? = null,
