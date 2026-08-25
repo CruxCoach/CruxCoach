@@ -580,6 +580,24 @@ class SessionGattBridgeMigrationTest {
         }
 
     @Test
+    fun `saved playlist cannot open host GATT publication`() =
+        runTest(testDispatcher.scheduler) {
+            queueManager.loadPlaylist("Private", listOf(QueueItem("climb-a", 40)))
+
+            bridge.startSharing()
+
+            assertEquals(SessionVisibility.LOCAL_ONLY, queueManager.state.value.visibility)
+            assertEquals(
+                SessionVisibility.LOCAL_ONLY,
+                queueManager.state.value.visibilityRequested,
+            )
+            verify(exactly = 0) { mockGattServer.start() }
+            verify(exactly = 0) {
+                mockAdvertiser.advertiseSession(any(), any(), any(), any(), any())
+            }
+        }
+
+    @Test
     fun `failed publication keeps the queue running but marks it local-only`() =
         runTest(testDispatcher.scheduler) {
             every {

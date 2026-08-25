@@ -46,12 +46,15 @@ the low 24 bits; Compose keeps the ordinary ARGB representation.
 ## Controller truth and failure handling
 
 Quantum setup is ordered as one GATT transaction: service discovery and MTU
-negotiation finish first, local `fff1` notification routing must enable, and the
-`fff1` CCCD write must complete successfully before the connection becomes
-writable. CruxCoach then reads eWalls' current-state characteristic at `fff4`.
-A structurally valid complete route list (or board-cleared record) is useful as
-observed state for the rack; a delta, informational record, malformed value,
-unavailable characteristic or failed read falls back to
+negotiation finish first, the 41-byte `fff5` controller record must identify a
+known type whose declared rows and columns match that model, local `fff1`
+notification routing must enable, and the `fff1` CCCD write must complete
+successfully before the connection becomes writable. CruxCoach then reads
+eWalls' current-state characteristic at `fff4`. A structurally valid complete
+route list is useful as observed state for the rack. A cached board-cleared
+record is only informational because it may be the last event rather than the
+current wall, so it—like a delta, malformed value, unavailable characteristic,
+or failed read—falls back to
 `REQUEST_USER_ROUTE_LIST`. While the direct Quantum link remains connected this
 observational refresh repeats every ten seconds. Because hardware evidence has
 not established whether `fff4` is fresh or a cached last event, every mutation
@@ -85,12 +88,13 @@ silently dropping one unmapped hold could otherwise produce a partial wall
 while the app reports the route as confirmed. Other board families retain their
 existing partial-map warning behavior.
 
-The diode plan also carries the physical controller identity and Quantum model
-that produced its LED map. Both detail and playlist capture that binding before
-loading geometry, revalidate after disk/controller refresh, and the transport
-checks the physical identity again under its write mutex. A disconnect/reconnect
-to another Quantum controller therefore cannot receive the previous board's
-plan even when both controller snapshots happen to be empty.
+The diode plan also carries the physical controller identity and the Quantum
+model proven from `fff5`, rather than trusting the configured preference. Both
+detail and playlist capture that binding before loading geometry, revalidate
+after disk/controller refresh, and the transport checks both fields again under
+its write mutex. A disconnect/reconnect to another Quantum controller therefore
+cannot receive the previous board's plan even when both controller snapshots
+happen to be empty.
 
 Although the recovered encoder can split a route across multiple 92-diode
 activation commands, route-list readback proves only route/user/colour, not that
@@ -131,12 +135,34 @@ current round trips require no format bump.
 
 ## Conflict and overlay UX
 
-The detail screen shows a four-position rack with route name, state, colour,
-replace/remove actions, a lamp per slot, a send-all lamp, physical controller
-occupancy and foreign-player count. Foreign users are displayed separately in
-their controller-reported colours and are read-only. Local staging remains
-available even when foreign users fill the controller; the send preflight then
-refuses to exceed four physical players instead of evicting one.
+The compact strip deliberately separates **your four local plans** from physical
+wall occupancy. A local slot can be free to plan while all four controller
+places are occupied by another app, so the strip names both answers: numbered
+local slots, `wall n/4 active`, and read-only foreign colour chips. A `?` on a
+foreign chip means its route geometry is unknown, not that the place is free.
+The full detail rack adds route names, replace/remove actions, a lamp per slot,
+a send-all lamp, and the same physical occupancy/foreign state.
+
+The seven local visual states are free-to-plan, planned, sending, confirmed,
+replacement planned, failed/not confirmed, and controller route unknown. A
+replacement or failed replacement shows two distinct colours: the planned
+colour for the new climb and the still-live controller colour for the previous
+climb. It never labels the new plan with the old wall colour. Assigning a climb
+that already owns another stable slot is blocked; a physically confirmed climb
+must be removed explicitly before it can move to another controller identity.
+
+For the current climb the rack offers exactly one conservative suggestion: its
+existing slot, otherwise the first free local slot and unused colour that pass
+capacity, geometry, overlap, and one-frame verification. Choosing the
+recommendation only selects the slot/colour; assignment remains local and a
+lamp remains the explicit write. Send-all uses the same aggregate conservative
+preflight over every staged layer, so a conflict belonging to a different
+detail page disables the action before the BLE path repeats the check.
+
+Foreign users are displayed separately in their controller-reported colours
+and are read-only. Local staging remains available even when foreign users fill
+the controller; the send preflight then refuses to exceed four physical players
+instead of evicting one.
 
 Known hold overlap is rejected before BLE because Quantum cannot assign two
 user colours to one diode. Send-all also validates capacity and overlap before
@@ -151,9 +177,13 @@ as adjacent ring segments rather than a blended colour. This preserves every
 layer's identity and makes the conflict legible. Layer numbers in the rack are
 the redundant cue for users who cannot distinguish a colour pair.
 
-The saved/running playlist remains local and non-joinable. It may use these
-same rack controls only while no shared session owns the wall; it does not make
-multi-layer state discoverable to another phone. A staged replacement can be
+The saved/running playlist remains local and non-joinable. Both queue visibility
+mutators and the GATT host-publication boundary reject attempts to publish it;
+this is not only a creation-screen convention. Its player shows the same compact
+strip and adjacent-segment Quantum overlay, and tapping the strip opens the
+current occurrence's detail page for assign/replace/remove controls. Those
+controls remain available only while no shared session owns the wall. The local
+rack is never made discoverable to another phone. A staged replacement can be
 discarded independently, preserving the previously confirmed live route, while
 physical removal remains an explicit `TURN_OFF_USER` action.
 
@@ -185,9 +215,9 @@ through the scoped layer controls on detail instead.
 
 ## Verification status
 
-The packet layouts, ordered `fff1` subscription, `fff4` read path and parser
-match the clean-room eWalls 2.0.14 analysis and BoardSimulator. Real Quantum
-hardware behaviour remains `hardware_verified: false` until the same four-user,
+The packet layouts, ordered `fff5` model read, `fff1` subscription, `fff4` read
+path and parser match the clean-room eWalls 2.0.14 analysis and BoardSimulator.
+Real Quantum hardware behaviour remains `hardware_verified: false` until the same four-user,
 conflict, reconnect, CCCD/readback and multi-chunk suite is captured against
 each controller generation. The implementation therefore accepts only strict
 known broadcast shapes, falls back to a route-list command when `fff4` does not

@@ -302,22 +302,28 @@ class CruxCoachBackupSecureRoundTripTest {
         source.personal.insertAscent(
             uuid = "11111111-2222-4333-8444-555555555555",
             climbUuid = climbUuid, angle = 40L,
-            isMirror = false, attemptId = 0L, bidCount = 1L,
-            quality = null, difficulty = null, isBenchmark = false,
-            comment = null, climbedAt = "2026-08-20 08:00:00",
-            synced = false, gymUuid = null, wallUuid = null, productLayoutUuid = null,
-            climbName = "Quantum Test", difficultyAverage = 18.0,
-            climbFrames = "p1000001r12p1000002r14", framesCount = 1L,
-            boardBrand = "quantum", layoutId = 9101L, externalId = null,
+            isMirror = true, attemptId = 0L, bidCount = 2L,
+            quality = 4L, difficulty = 19L, isBenchmark = true,
+            comment = "Quantum send", climbedAt = "2026-08-20 08:00:00",
+            synced = true,
+            gymUuid = "quantum-gym", wallUuid = "quantum-wall",
+            productLayoutUuid = "quantum-product-layout",
+            climbName = "Quantum Test", difficultyAverage = 18.75,
+            climbFrames = "p1000001r12p1000002r14", framesCount = 2L,
+            boardBrand = "quantum", layoutId = 9101L,
+            externalId = "quantum-log:ascent:11111111",
         )
         source.personal.insertBid(
             uuid = "22222222-3333-4444-8555-666666666666",
             climbUuid = climbUuid, angle = 45L,
-            isMirror = false, bidCount = 4L,
+            isMirror = true, bidCount = 4L,
             comment = "Quantum project", climbedAt = "2026-08-21 08:00:00",
-            synced = false, gymUuid = null, wallUuid = null, productLayoutUuid = null,
-            climbName = "Quantum Test", difficultyAverage = 18.0,
-            boardBrand = "quantum", layoutId = 9101L, externalId = null,
+            synced = true,
+            gymUuid = "quantum-gym", wallUuid = "quantum-wall",
+            productLayoutUuid = "quantum-product-layout",
+            climbName = "Quantum Test", difficultyAverage = 18.25,
+            boardBrand = "quantum", layoutId = 9101L,
+            externalId = "quantum-log:bid:22222222",
         )
 
         import(target, export(source))
@@ -326,10 +332,39 @@ class CruxCoachBackupSecureRoundTripTest {
         assertEquals("quantum", ascent.boardBrand)
         assertEquals(9101L, ascent.layoutId)
         assertEquals(climbUuid, ascent.climbUuid)
+        assertEquals(40L, ascent.angle)
+        assertTrue(ascent.isMirror)
+        assertEquals(2L, ascent.bidCount)
+        assertEquals(4L, ascent.quality)
+        assertEquals(19L, ascent.difficulty)
+        assertTrue(ascent.isBenchmark)
+        assertEquals("Quantum send", ascent.comment)
+        assertEquals("2026-08-20 08:00:00", ascent.climbedAt)
+        assertTrue(ascent.synced)
+        assertEquals("quantum-gym", ascent.gymUuid)
+        assertEquals("quantum-wall", ascent.wallUuid)
+        assertEquals("quantum-product-layout", ascent.productLayoutUuid)
+        assertEquals("Quantum Test", ascent.climbName)
+        assertEquals(18.75, ascent.difficultyAverage)
+        assertEquals("p1000001r12p1000002r14", ascent.climbFrames)
+        assertEquals(2L, ascent.framesCount)
+        assertEquals("quantum-log:ascent:11111111", ascent.externalId)
         val bid = target.personal.getBidsForBackup().single()
         assertEquals("quantum", bid.boardBrand)
         assertEquals(9101L, bid.layoutId)
         assertEquals(climbUuid, bid.climbUuid)
+        assertEquals(45L, bid.angle)
+        assertTrue(bid.isMirror)
+        assertEquals(4L, bid.bidCount)
+        assertEquals("Quantum project", bid.comment)
+        assertEquals("2026-08-21 08:00:00", bid.climbedAt)
+        assertTrue(bid.synced)
+        assertEquals("quantum-gym", bid.gymUuid)
+        assertEquals("quantum-wall", bid.wallUuid)
+        assertEquals("quantum-product-layout", bid.productLayoutUuid)
+        assertEquals("Quantum Test", bid.climbName)
+        assertEquals(18.25, bid.difficultyAverage)
+        assertEquals("quantum-log:bid:22222222", bid.externalId)
     }
 
     @Test

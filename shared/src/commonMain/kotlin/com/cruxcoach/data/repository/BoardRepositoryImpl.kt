@@ -2,6 +2,7 @@ package com.cruxcoach.data.repository
 
 import com.cruxcoach.db.board.BoardDatabase
 import com.cruxcoach.domain.board.BoardBrand
+import com.cruxcoach.domain.board.QuantumBoardModel
 import com.cruxcoach.domain.board.SupportedBoard
 
 class BoardRepositoryImpl(
@@ -119,12 +120,21 @@ class BoardRepositoryImpl(
         q.getQuantumExternalRouteUuid(appUuid).executeAsOneOrNull()
 
     override fun getQuantumClimbByExternalRoute(routeUuid: String, model: String): ClimbWithStats? {
-        val appUuid = q.getQuantumAppUuidByExternalRoute(routeUuid, model).executeAsOneOrNull()
-            ?: return null
+        val expectedModel = QuantumBoardModel.fromWire(model.lowercase()) ?: return null
+        val bridgedUuid = q.getQuantumAppUuidByExternalRoute(routeUuid, model).executeAsOneOrNull()
+        val appUuid = bridgedUuid ?: q.getQuantumDirectAppUuidByExternalRoute(
+            routeUuid = routeUuid,
+            layoutId = expectedModel.layoutId,
+        ).executeAsOneOrNull() ?: return null
         // Use the base-climb LEFT JOIN rather than climb_browse: a retained
         // controller route can legitimately be known before any stats row has
         // been imported, and conflict hydration still needs its frames.
-        return getClimbByUuid(appUuid, angle = 0)
+        val climb = getClimbByUuid(appUuid, angle = 0) ?: return null
+        if (climb.brand != BoardBrand.QUANTUM ||
+            climb.layoutId != expectedModel.layoutId ||
+            climb.framesCount != 1L
+        ) return null
+        return climb
     }
 
     override fun getClimbByUuidNormalized(uuid: String, angle: Int): ClimbWithStats? {

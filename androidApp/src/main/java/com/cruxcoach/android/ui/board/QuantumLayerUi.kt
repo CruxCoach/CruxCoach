@@ -27,6 +27,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ble.BoardClimbLayer
@@ -34,7 +35,9 @@ import com.cruxcoach.android.ble.BoardLayerManager
 import com.cruxcoach.android.ble.BoardLayerState
 import com.cruxcoach.android.ble.BoardLayerStatus
 import com.cruxcoach.android.ble.BoardLayerConflictPolicy
+import com.cruxcoach.android.ble.ExternalBoardLayer
 import com.cruxcoach.android.ble.reservedLayerColors
+import com.cruxcoach.domain.board.BoardHold
 import com.cruxcoach.android.ui.theme.ErrorRed
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.SuccessGreen
@@ -53,7 +56,10 @@ internal enum class QuantumLayerVisualState {
 internal data class QuantumLayerSlotUi(
     val slot: Int,
     val visualState: QuantumLayerVisualState,
-    val color: Int?,
+    /** Colour chosen for the local plan. */
+    val plannedColor: Int?,
+    /** Colour still reported by the controller, if any. */
+    val confirmedColor: Int?,
     val climbName: String?,
     val confirmedClimbName: String?,
     val currentClimb: Boolean,
@@ -79,6 +85,8 @@ internal data class QuantumLayerUiSummary(
     val suggestedColor: Int?,
     val suggestionUsesExistingSlot: Boolean,
     val suggestionBlock: QuantumLayerSuggestionBlock?,
+    /** Conservative preflight for every currently staged local layer. */
+    val sendAllBlock: QuantumLayerSuggestionBlock?,
 )
 
 /**
@@ -103,7 +111,8 @@ internal object QuantumLayerUiPolicy {
             QuantumLayerSlotUi(
                 slot = slot,
                 visualState = visualState(layer),
-                color = layer?.confirmedColor ?: layer?.color,
+                plannedColor = layer?.color,
+                confirmedColor = layer?.confirmedColor,
                 climbName = layer?.climbName,
                 confirmedClimbName = layer?.confirmedClimbName,
                 currentClimb = currentClimbUuid != null && layer?.climbUuid == currentClimbUuid,
@@ -151,7 +160,62 @@ internal object QuantumLayerUiPolicy {
             suggestedColor = freeColor.takeIf { block == null },
             suggestionUsesExistingSlot = existing != null && block == null,
             suggestionBlock = block,
+            sendAllBlock = state.layers.takeIf { it.isNotEmpty() }?.let { layers ->
+                planBlock(state, layers.map(BoardClimbLayer::slot), maxLayers)
+            },
         )
+    }
+
+    /**
+     * Validate the complete local plan against the latest hydrated controller
+     * snapshot without mutating it. The BLE path repeats this after an
+     * authoritative refresh; the UI uses it so an obviously unsafe "Light all"
+     * action is not presented as ready.
+     */
+    fun planBlock(
+        state: BoardLayerState,
+        slots: List<Int>,
+        maxLayers: Int = BoardLayerManager.MAX_LAYER_IDENTITIES,
+    ): QuantumLayerSuggestionBlock? {
+        val targets = slots.distinct().map { slot ->
+            state.layers.firstOrNull { it.slot == slot }
+                ?: return QuantumLayerSuggestionBlock.NO_SLOT
+        }
+        val newIdentityCount = targets.count { it.confirmedRouteUuid == null }
+        if (state.occupiedCount + newIdentityCount > maxLayers) {
+            return QuantumLayerSuggestionBlock.BOARD_FULL
+        }
+
+        val plannedPlacements = mutableSetOf<Int>()
+        for (target in targets) {
+            if (target.holds.isEmpty()) return QuantumLayerSuggestionBlock.NO_HOLDS
+            if (target.holds.size >
+                com.cruxcoach.domain.board.QuantumBoardPacketEncoder.ACTIVATE_CHUNK_LIMIT
+            ) return QuantumLayerSuggestionBlock.MULTI_FRAME_UNVERIFIED
+
+            val placements = target.holds.mapTo(mutableSetOf(), BoardHold::placementId)
+            if (placements.any { it in plannedPlacements }) {
+                return QuantumLayerSuggestionBlock.HOLD_CONFLICT
+            }
+            plannedPlacements += placements
+
+            val assessment = BoardLayerConflictPolicy.assess(
+                candidate = target.holds,
+                activeLayers = state.layers,
+                externalLayers = state.externalLayers,
+                replacingSlot = target.slot,
+            )
+            if (assessment.unknownLayerCount > 0) {
+                return QuantumLayerSuggestionBlock.UNKNOWN_LAYER
+            }
+            if (assessment.sharedHoldCount > 0) {
+                return QuantumLayerSuggestionBlock.HOLD_CONFLICT
+            }
+            if (target.color in state.reservedLayerColors(target.slot)) {
+                return QuantumLayerSuggestionBlock.NO_COLOR
+            }
+        }
+        return null
     }
 
     private fun visualState(layer: BoardClimbLayer?): QuantumLayerVisualState = when {
@@ -217,6 +281,19 @@ internal fun QuantumLayerStatusStrip(
 ) {
     val summary = QuantumLayerUiPolicy.summarize(state, currentClimbUuid, currentPlacements)
     val openLabel = stringResource(R.string.board_layers_open)
+    val wallStatus = stringResource(
+        R.string.quantum_wall_occupancy,
+        summary.activeCount,
+        summary.slots.size,
+    )
+    val slotDescriptions = summary.slots.map { quantumLayerSlotDescription(it) }
+    val foreignDescriptions = state.externalLayers.map { quantumForeignLayerDescription(it) }
+    val rackDescription = buildList {
+        add(openLabel)
+        add(wallStatus)
+        addAll(slotDescriptions)
+        addAll(foreignDescriptions)
+    }.joinToString(". ")
     val content: @Composable () -> Unit = {
         Column(
             modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp),
@@ -250,11 +327,7 @@ internal fun QuantumLayerStatusStrip(
                         Spacer(Modifier.width(7.dp))
                     }
                     Text(
-                        stringResource(
-                            R.string.board_layers_occupied,
-                            summary.activeCount,
-                            summary.slots.size,
-                        ),
+                        wallStatus,
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -268,6 +341,9 @@ internal fun QuantumLayerStatusStrip(
                     QuantumLayerSlotChip(slot, Modifier.weight(1f))
                 }
             }
+            if (state.externalLayers.isNotEmpty()) {
+                QuantumForeignStatusRow(state.externalLayers)
+            }
         }
     }
     if (onOpen != null) {
@@ -276,7 +352,10 @@ internal fun QuantumLayerStatusStrip(
             modifier = modifier
                 .fillMaxWidth()
                 .testTag(testTag)
-                .semantics { contentDescription = openLabel },
+                // The rack is one tap target. Give that merged target the wall
+                // and per-layer answer explicitly while retaining Surface's
+                // click action and unmerged child descriptions.
+                .semantics(mergeDescendants = true) { contentDescription = rackDescription },
             shape = RoundedCornerShape(12.dp),
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
         ) { content() }
@@ -291,23 +370,16 @@ internal fun QuantumLayerStatusStrip(
 
 @Composable
 private fun QuantumLayerSlotChip(slot: QuantumLayerSlotUi, modifier: Modifier) {
-    val statusLabel = stringResource(quantumLayerStatusResource(slot.visualState))
     val shortStatusLabel = stringResource(quantumLayerShortStatusResource(slot.visualState))
-    val colorLabel = slot.color?.let { stringResource(boardLayerColorName(it)) }
-    val description = buildString {
-        append(stringResource(R.string.board_layer_number, slot.slot + 1))
-        append(": ")
-        append(statusLabel)
-        colorLabel?.let { append(", "); append(it) }
-        slot.climbName?.let { append(", "); append(it) }
-        if (slot.layer?.confirmedRouteUuid != null &&
-            slot.visualState in setOf(QuantumLayerVisualState.REPLACING, QuantumLayerVisualState.FAILED)
-        ) {
-            slot.confirmedClimbName?.let { append(". "); append(
-                stringResource(R.string.quantum_layer_confirmed_previous, it)
-            ) }
-        }
+    val description = quantumLayerSlotDescription(slot)
+    val displayColor = when (slot.visualState) {
+        QuantumLayerVisualState.ON_BOARD, QuantumLayerVisualState.UNKNOWN ->
+            slot.confirmedColor ?: slot.plannedColor
+        else -> slot.plannedColor ?: slot.confirmedColor
     }
+    val showLiveColor = slot.confirmedColor != null &&
+        slot.layer?.confirmedRouteUuid != null &&
+        slot.visualState in setOf(QuantumLayerVisualState.REPLACING, QuantumLayerVisualState.FAILED)
     val borderColor = when (slot.visualState) {
         QuantumLayerVisualState.ON_BOARD -> SuccessGreen
         QuantumLayerVisualState.PLANNED, QuantumLayerVisualState.REPLACING,
@@ -330,18 +402,28 @@ private fun QuantumLayerSlotChip(slot: QuantumLayerSlotUi, modifier: Modifier) {
             horizontalArrangement = Arrangement.Center,
         ) {
             Box(
-                Modifier.size(9.dp),
+                Modifier.size(14.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 if (slot.visualState == QuantumLayerVisualState.SENDING) {
-                    CircularProgressIndicator(strokeWidth = 1.5.dp, modifier = Modifier.size(9.dp))
+                    CircularProgressIndicator(strokeWidth = 1.5.dp, modifier = Modifier.size(11.dp))
                 } else {
                     Surface(
-                        modifier = Modifier.size(8.dp),
+                        modifier = Modifier
+                            .size(if (showLiveColor) 10.dp else 9.dp)
+                            .align(if (showLiveColor) Alignment.TopStart else Alignment.Center),
                         shape = CircleShape,
-                        color = slot.color?.let(::Color)
+                        color = displayColor?.let(::Color)
                             ?: MaterialTheme.colorScheme.outlineVariant,
                     ) {}
+                    if (showLiveColor) {
+                        Surface(
+                            modifier = Modifier.size(7.dp).align(Alignment.BottomEnd),
+                            shape = CircleShape,
+                            color = Color(requireNotNull(slot.confirmedColor)),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.surface),
+                        ) {}
+                    }
                 }
             }
             Spacer(Modifier.width(4.dp))
@@ -364,7 +446,105 @@ private fun QuantumLayerSlotChip(slot: QuantumLayerSlotUi, modifier: Modifier) {
                     fontWeight = FontWeight.Medium,
                     color = borderColor,
                     maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun quantumLayerSlotDescription(slot: QuantumLayerSlotUi): String {
+    val statusLabel = stringResource(quantumLayerStatusResource(slot.visualState))
+    val plannedColorLabel = slot.plannedColor?.let { stringResource(boardLayerColorName(it)) }
+    val liveColorLabel = slot.confirmedColor?.let { stringResource(boardLayerColorName(it)) }
+    return buildString {
+        append(stringResource(R.string.board_layer_number, slot.slot + 1))
+        append(": ")
+        append(statusLabel)
+        if (slot.visualState in setOf(QuantumLayerVisualState.REPLACING, QuantumLayerVisualState.FAILED)) {
+            plannedColorLabel?.let {
+                append(", ")
+                append(stringResource(R.string.quantum_layer_planned_color, it))
+            }
+        } else {
+            (liveColorLabel ?: plannedColorLabel)?.let { append(", "); append(it) }
+        }
+        slot.climbName?.let { append(", "); append(it) }
+        if (slot.layer?.confirmedRouteUuid != null &&
+            slot.visualState in setOf(QuantumLayerVisualState.REPLACING, QuantumLayerVisualState.FAILED)
+        ) {
+            slot.confirmedClimbName?.let { name ->
+                append(". ")
+                append(
+                    if (liveColorLabel != null) {
+                        stringResource(
+                            R.string.quantum_layer_confirmed_previous_with_color,
+                            name,
+                            liveColorLabel,
+                        )
+                    } else {
+                        stringResource(R.string.quantum_layer_confirmed_previous, name)
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun quantumForeignLayerDescription(layer: ExternalBoardLayer): String {
+    val route = layer.climbName ?: layer.routeUuid.take(8)
+    val color = stringResource(boardLayerColorName(layer.color))
+    return stringResource(
+        if (layer.holds == null) R.string.quantum_layer_foreign_unknown
+        else R.string.quantum_layer_foreign_known,
+        route,
+        color,
+    )
+}
+
+@Composable
+private fun QuantumForeignStatusRow(layers: List<ExternalBoardLayer>) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("quantum_layer_foreign_status"),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        Text(
+            stringResource(R.string.quantum_wall_foreign_strip),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        layers.take(BoardLayerManager.MAX_LAYER_IDENTITIES).forEachIndexed { index, layer ->
+            val description = quantumForeignLayerDescription(layer)
+            Surface(
+                modifier = Modifier.clearAndSetSemantics { contentDescription = description },
+                shape = RoundedCornerShape(6.dp),
+                color = MaterialTheme.colorScheme.surface,
+                border = BorderStroke(
+                    1.dp,
+                    if (layer.holds == null) OrangeAccent else MaterialTheme.colorScheme.outlineVariant,
+                ),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    Surface(Modifier.size(8.dp), CircleShape, color = Color(layer.color)) {}
+                    Text(
+                        buildString {
+                            append("O")
+                            append(index + 1)
+                            if (layer.holds == null) append("?")
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
             }
         }
     }

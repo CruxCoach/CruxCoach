@@ -2558,7 +2558,7 @@
     <string name="board_layers_external_explanation">Diese Plätze gehören anderen Apps oder Kletternden. CruxCoach zeigt ihre Controllerfarbe, ersetzt oder entfernt sie aber niemals.</string>
     <string name="board_layer_external_player">Andere Person %1$d</string>
     <string name="board_layer_number">Layer %1$d</string>
-    <string name="board_layer_empty">Frei</string>
+    <string name="board_layer_empty">Frei planbar</string>
     <string name="board_layer_preview">Vorschau</string>
     <string name="board_layer_sending">Wird übertragen…</string>
     <string name="board_layer_confirmed">Am Board bestätigt</string>
@@ -2601,11 +2601,13 @@
     <string name="board_layer_color_yellow">Gelb</string>
     <string name="board_layer_color_unavailable">%1$s — auf dem Board bereits vergeben</string>
     <string name="board_layer_error_other_board">Diese Ebenen wurden für ein anderes Board zusammengestellt. Weise sie auf diesem neu zu.</string>
-    <string name="quantum_wall_title">Auf der Quantum-Wand</string>
+    <string name="quantum_wall_title">Deine Quantum-Layer-Pläne</string>
+    <string name="quantum_wall_occupancy">Wand: %1$d/%2$d aktiv</string>
     <string name="quantum_wall_foreign_known_short">%1$d fremd · bekannt</string>
     <string name="quantum_wall_foreign_unknown_short">%1$d fremd · %2$d unbekannt</string>
+    <string name="quantum_wall_foreign_strip">Andere Apps:</string>
     <string name="quantum_layer_short">L%1$d</string>
-    <string name="quantum_layer_status_free">frei</string>
+    <string name="quantum_layer_status_free">lokal frei planbar</string>
     <string name="quantum_layer_status_planned">lokal geplant</string>
     <string name="quantum_layer_status_sending">wird übertragen</string>
     <string name="quantum_layer_status_on_board">vom Board bestätigt</string>
@@ -2618,7 +2620,7 @@
     <string name="quantum_layer_status_short_on_board">aktiv</string>
     <string name="quantum_layer_status_short_replacing">Tausch</string>
     <string name="quantum_layer_status_short_failed">Fehler</string>
-    <string name="quantum_layer_status_short_unknown">unbekannt</string>
+    <string name="quantum_layer_status_short_unknown">?</string>
     <string name="quantum_layer_suggestion">Empfohlen: Layer %1$d · %2$s</string>
     <string name="quantum_layer_suggestion_reason">Frei und ohne bekannte Überschneidung. Die Lampe kann ihn direkt verwenden.</string>
     <string name="quantum_layer_suggestion_existing_reason">Dieser Climb nutzt diesen Layer bereits. Farbe und bekannte Holds können sicher wiederverwendet werden.</string>
@@ -2636,6 +2638,10 @@
     <string name="quantum_layer_cancel_replacement">Aktiven Climb behalten; Ersatz für Layer %1$d verwerfen</string>
     <string name="quantum_layer_cancel_replacement_one">Geplanten Ersatz für Layer %1$d verwerfen und aktiven Climb behalten</string>
     <string name="quantum_layer_confirmed_previous">Noch am Board: %1$s</string>
+    <string name="quantum_layer_planned_color">Geplante Farbe: %1$s</string>
+    <string name="quantum_layer_confirmed_previous_with_color">Noch am Board: %1$s · %2$s</string>
+    <string name="quantum_layer_already_assigned">Dieser Climb nutzt bereits Layer %1$d. Entferne diesen Layer, bevor du eine andere Identität zuweist.</string>
+    <string name="quantum_layer_already_assigned_error">Dieser Climb nutzt bereits einen anderen Layer. Entferne ihn, bevor du eine andere Identität zuweist.</string>
     <string name="board_playlist_add">Hinzufügen</string>
     <plurals name="board_playlist_already_queued">
         <item quantity="one">Schon einmal in der Playlist</item>

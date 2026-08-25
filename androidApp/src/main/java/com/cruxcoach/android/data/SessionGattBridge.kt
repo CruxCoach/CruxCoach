@@ -165,6 +165,15 @@ class SessionGattBridge(
             Log.w(TAG, "Cannot share: not in HOST mode")
             return
         }
+        if (state.isPlaylist) {
+            // Saved/running playlists are intentionally private. This guard is
+            // independent of SessionQueueManager's visibility coercion so a
+            // future caller cannot open a GATT server and advertise private
+            // queue contents while the state still reads LOCAL_ONLY.
+            Log.w(TAG, "Cannot share: saved playlist is local-only")
+            queueManager.setVisibilityRequested(SessionVisibility.LOCAL_ONLY)
+            return
+        }
 
         queueManager.setVisibilityRequested(SessionVisibility.JOINABLE)
 

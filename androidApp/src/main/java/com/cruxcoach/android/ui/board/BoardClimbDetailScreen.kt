@@ -1110,6 +1110,8 @@ private fun BoardLayerRack(
     val selectedSlot = explicitSlot
         ?: currentLayer?.slot
     val selectedLayer = selectedSlot?.let(ownBySlot::get)
+    val currentClimbAlreadyOnAnotherLayer = currentLayer != null &&
+        selectedSlot != null && currentLayer.slot != selectedSlot
     val selectedColor = state.selectedBoardLayerColor
         ?: selectedLayer?.color
         ?: selectedSlot?.let { BoardLayerManager.LAYER_COLORS[it] }
@@ -1123,11 +1125,7 @@ private fun BoardLayerRack(
     val colorsOnOtherLayers = state.boardLayers.reservedLayerColors(selectedSlot)
     val selectedColorConflict = selectedColor != null && selectedColor in colorsOnOtherLayers
     val connected = state.ble.connectionState == ConnectionState.CONNECTED
-    val duplicateHoldCount = state.boardLayers.layers
-        .flatMap { it.holds.map { hold -> hold.placementId } }
-        .groupingBy { it }.eachCount().count { it.value > 1 }
-    val newControllerIdentities = state.boardLayers.layers.count { it.confirmedRouteUuid == null }
-    val canSendAll = state.boardLayers.occupiedCount + newControllerIdentities <= maxLayers
+    val sendAllBlock = summary.sendAllBlock
 
     Card(
         modifier = Modifier.fillMaxWidth().testTag("board_layer_rack"),
@@ -1319,14 +1317,31 @@ private fun BoardLayerRack(
                             val statusLabel = stringResource(
                                 quantumLayerStatusResource(slotUi.visualState),
                             )
-                            val colorName = (layer?.confirmedColor ?: layer?.color)?.let {
+                            val plannedColorName = layer?.color?.let {
+                                stringResource(boardLayerColorName(it))
+                            }
+                            val liveColorName = layer?.confirmedColor?.let {
                                 stringResource(boardLayerColorName(it))
                             }
                             val slotDescription = buildString {
                                 append(stringResource(R.string.board_layer_number, slot + 1))
                                 append(": ")
                                 append(statusLabel)
-                                colorName?.let { append(", "); append(it) }
+                                if (slotUi.visualState in setOf(
+                                        QuantumLayerVisualState.REPLACING,
+                                        QuantumLayerVisualState.FAILED,
+                                    )
+                                ) {
+                                    plannedColorName?.let {
+                                        append(", ")
+                                        append(stringResource(R.string.quantum_layer_planned_color, it))
+                                    }
+                                } else {
+                                    (liveColorName ?: plannedColorName)?.let {
+                                        append(", ")
+                                        append(it)
+                                    }
+                                }
                                 layer?.climbName?.let { append(", "); append(it) }
                                 if (layer?.confirmedRouteUuid != null &&
                                     slotUi.visualState in setOf(
@@ -1335,10 +1350,22 @@ private fun BoardLayerRack(
                                     )
                                 ) {
                                     append(". ")
-                                    append(stringResource(
-                                        R.string.quantum_layer_confirmed_previous,
-                                        layer.confirmedClimbName ?: layer.confirmedRouteUuid.take(8),
-                                    ))
+                                    val confirmedName = layer.confirmedClimbName
+                                        ?: layer.confirmedRouteUuid.take(8)
+                                    append(
+                                        if (liveColorName != null) {
+                                            stringResource(
+                                                R.string.quantum_layer_confirmed_previous_with_color,
+                                                confirmedName,
+                                                liveColorName,
+                                            )
+                                        } else {
+                                            stringResource(
+                                                R.string.quantum_layer_confirmed_previous,
+                                                confirmedName,
+                                            )
+                                        },
+                                    )
                                 }
                             }
                             Surface(
@@ -1365,15 +1392,34 @@ private fun BoardLayerRack(
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
-                                    Box(
-                                        Modifier.size(16.dp).background(
-                                                    color = layer?.let {
-                                                        Color(it.confirmedColor ?: it.color)
-                                                    }
-                                                ?: MaterialTheme.colorScheme.outlineVariant,
-                                            shape = CircleShape,
-                                        ),
-                                    )
+                                    Box(Modifier.size(18.dp), contentAlignment = Alignment.Center) {
+                                        val showLiveColor = layer?.confirmedColor != null &&
+                                            slotUi.visualState in setOf(
+                                                QuantumLayerVisualState.REPLACING,
+                                                QuantumLayerVisualState.FAILED,
+                                            )
+                                        Box(
+                                            Modifier
+                                                .size(if (showLiveColor) 13.dp else 16.dp)
+                                                .align(if (showLiveColor) Alignment.TopStart else Alignment.Center)
+                                                .background(
+                                                    color = layer?.color?.let(::Color)
+                                                        ?: MaterialTheme.colorScheme.outlineVariant,
+                                                    shape = CircleShape,
+                                                ),
+                                        )
+                                        if (showLiveColor) {
+                                            Box(
+                                                Modifier
+                                                    .size(9.dp)
+                                                    .align(Alignment.BottomEnd)
+                                                    .background(
+                                                        Color(requireNotNull(layer?.confirmedColor)),
+                                                        CircleShape,
+                                                    ),
+                                            )
+                                        }
+                                    }
                                     Spacer(Modifier.width(8.dp))
                                     Column(Modifier.weight(1f)) {
                                         Text(
@@ -1403,12 +1449,32 @@ private fun BoardLayerRack(
                                                     QuantumLayerVisualState.FAILED,
                                                 )
                                             ) {
+                                                plannedColorName?.let {
+                                                    Text(
+                                                        stringResource(
+                                                            R.string.quantum_layer_planned_color,
+                                                            it,
+                                                        ),
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        maxLines = 1,
+                                                    )
+                                                }
                                                 Text(
-                                                    stringResource(
-                                                        R.string.quantum_layer_confirmed_previous,
-                                                        layer.confirmedClimbName
-                                                            ?: layer.confirmedRouteUuid.take(8),
-                                                    ),
+                                                    if (liveColorName != null) {
+                                                        stringResource(
+                                                            R.string.quantum_layer_confirmed_previous_with_color,
+                                                            layer.confirmedClimbName
+                                                                ?: layer.confirmedRouteUuid.take(8),
+                                                            liveColorName,
+                                                        )
+                                                    } else {
+                                                        stringResource(
+                                                            R.string.quantum_layer_confirmed_previous,
+                                                            layer.confirmedClimbName
+                                                                ?: layer.confirmedRouteUuid.take(8),
+                                                        )
+                                                    },
                                                     style = MaterialTheme.typography.labelSmall,
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                     maxLines = 1,
@@ -1486,7 +1552,8 @@ private fun BoardLayerRack(
                 )
                 OutlinedButton(
                     onClick = onAssignCurrent,
-                    enabled = controlsAllowed && !state.ble.isSending && !selectedColorConflict,
+                    enabled = controlsAllowed && !state.ble.isSending && !selectedColorConflict &&
+                        !currentClimbAlreadyOnAnotherLayer,
                     modifier = Modifier.fillMaxWidth().testTag("board_layer_assign_current"),
                 ) {
                     Icon(Icons.Default.Check, contentDescription = null)
@@ -1502,6 +1569,17 @@ private fun BoardLayerRack(
                             },
                             slot + 1,
                         ),
+                    )
+                }
+                if (currentClimbAlreadyOnAnotherLayer) {
+                    Text(
+                        stringResource(
+                            R.string.quantum_layer_already_assigned,
+                            requireNotNull(currentLayer).slot + 1,
+                        ),
+                        color = WarningYellow,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.testTag("quantum_layer_already_assigned"),
                     )
                 }
                 val hasSelectedReplacementPlan = selectedLayer?.confirmedRouteUuid != null &&
@@ -1546,25 +1624,19 @@ private fun BoardLayerRack(
             Button(
                 onClick = onSendAll,
                 enabled = controlsAllowed && connected && !state.ble.isSending &&
-                    state.boardLayers.layers.isNotEmpty() && canSendAll && duplicateHoldCount == 0 &&
-                    layerAssessment.unknownLayerCount == 0,
+                    state.boardLayers.layers.isNotEmpty() && sendAllBlock == null,
                 modifier = Modifier.fillMaxWidth().testTag("board_layer_send_all"),
             ) {
                 Icon(Icons.Default.Lightbulb, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
                 Text(stringResource(R.string.board_layer_send_all))
             }
-            if (!canSendAll) {
+            if (sendAllBlock != null) {
                 Text(
-                    stringResource(R.string.board_layer_send_all_capacity),
+                    stringResource(quantumLayerSuggestionBlockResource(sendAllBlock)),
                     color = ErrorRed,
                     style = MaterialTheme.typography.bodySmall,
-                )
-            } else if (duplicateHoldCount > 0) {
-                Text(
-                    stringResource(R.string.board_layer_send_all_overlap, duplicateHoldCount),
-                    color = ErrorRed,
-                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.testTag("board_layer_send_all_blocked"),
                 )
             }
         }

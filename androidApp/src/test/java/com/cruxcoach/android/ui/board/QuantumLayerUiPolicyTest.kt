@@ -185,9 +185,41 @@ class QuantumLayerUiPolicyTest {
 
         assertEquals(QuantumLayerVisualState.PLANNED, slots[0].visualState)
         assertEquals(QuantumLayerVisualState.REPLACING, slots[1].visualState)
+        assertEquals(BoardLayerManager.LAYER_COLORS[1], slots[1].plannedColor)
+        assertEquals(BoardLayerManager.LAYER_COLORS[0], slots[1].confirmedColor)
         assertEquals("Previous", slots[1].confirmedClimbName)
         assertEquals(QuantumLayerVisualState.UNKNOWN, slots[2].visualState)
         assertEquals(QuantumLayerVisualState.ON_BOARD, slots[3].visualState)
+    }
+
+    @Test fun `send all preflight includes a known foreign route not shown on detail`() {
+        val planned = layer(0).copy(holds = listOf(BoardHold(10, 1)))
+        val state = BoardLayerState(
+            brand = BoardBrand.QUANTUM,
+            layers = listOf(planned),
+            externalLayers = listOf(foreign(holds = listOf(BoardHold(10, 2)))),
+        )
+
+        val result = QuantumLayerUiPolicy.summarize(
+            state,
+            currentClimbUuid = "different-detail-climb",
+            currentPlacements = setOf(999),
+        )
+
+        assertEquals(QuantumLayerSuggestionBlock.HOLD_CONFLICT, result.sendAllBlock)
+    }
+
+    @Test fun `send all preflight fails closed for unknown foreign geometry`() {
+        val state = BoardLayerState(
+            brand = BoardBrand.QUANTUM,
+            layers = listOf(layer(0)),
+            externalLayers = listOf(foreign(holds = null)),
+        )
+
+        assertEquals(
+            QuantumLayerSuggestionBlock.UNKNOWN_LAYER,
+            QuantumLayerUiPolicy.summarize(state, null).sendAllBlock,
+        )
     }
 
     private fun layer(slot: Int) = BoardClimbLayer(

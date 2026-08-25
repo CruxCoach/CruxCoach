@@ -16,6 +16,7 @@ import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.MoonBoardLedMode
 import com.cruxcoach.domain.board.QuantumActivePlayer
 import com.cruxcoach.domain.board.QuantumBoardPacketEncoder
+import com.cruxcoach.domain.board.QuantumBoardModel
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -85,6 +86,7 @@ class SessionQueueQuantumLayerTest {
         every { ble.connectionState } returns MutableStateFlow(ConnectionState.CONNECTED)
         every { ble.connectedBoardBrand } returns MutableStateFlow(BoardBrand.QUANTUM)
         every { ble.connectedBoardDescriptor } returns MutableStateFlow(descriptor)
+        every { ble.connectedQuantumModel } returns MutableStateFlow(QuantumBoardModel.M)
         every { ble.connectedBoard } returns descriptor
         every { ble.quantumControllerState } returns controllerState
         every { repository.getClimbByUuid(any(), any()) } returns quantumClimb(climbUuid)

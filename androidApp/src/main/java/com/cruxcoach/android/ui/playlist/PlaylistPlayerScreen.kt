@@ -97,6 +97,14 @@ import com.cruxcoach.data.repository.brand
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.MoonBoardVariant
 import com.cruxcoach.android.ble.ConnectionState
+import com.cruxcoach.android.ble.BoardClimbLayer
+import com.cruxcoach.android.ble.BoardLayerState
+
+/** Preserve multi-layer overlays only for the board family that supports them. */
+internal fun playlistProjectionLayers(
+    brand: BoardBrand,
+    state: BoardLayerState,
+): List<BoardClimbLayer> = if (brand == BoardBrand.QUANTUM) state.layers else emptyList()
 
 /**
  * The playlist player — the one place a running playlist lives. Board
@@ -545,6 +553,10 @@ private fun ClimbingContent(
                                 boardImages = render.boardImages,
                                 ledColors = if (render.climb.brand == BoardBrand.KILTER) render.ledColors
                                             else LedHoldColors.standardFor(render.climb.brand),
+                                projectionLayers = playlistProjectionLayers(
+                                    render.climb.brand,
+                                    boardLayers,
+                                ),
                                 modifier = Modifier.fillMaxWidth(),
                             )
                         }

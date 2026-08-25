@@ -12,6 +12,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 /** Model-scoped controller UUID bridge used to hydrate foreign Quantum layers. */
@@ -43,7 +44,14 @@ class QuantumExternalRouteLookupTest {
         dbFile.parentFile?.delete()
     }
 
-    private fun insertClimb(appUuid: String, name: String, frames: String, layoutId: Long) {
+    private fun insertClimb(
+        appUuid: String,
+        name: String,
+        frames: String,
+        layoutId: Long,
+        boardBrand: String = "quantum",
+        framesCount: Long = 1,
+    ) {
         db.boardQueries.insertLocalDraft(
             uuid = appUuid,
             layout_id = layoutId,
@@ -60,8 +68,18 @@ class QuantumExternalRouteLookupTest {
             hsm = 0,
             created_by_pubkey = "a".repeat(64),
             frames_hash = "b".repeat(64),
-            board_brand = "quantum",
+            board_brand = boardBrand,
         )
+        if (framesCount != 1L) {
+            driver.execute(
+                null,
+                "UPDATE climbs SET frames_count = ? WHERE uuid = ?",
+                2,
+            ) {
+                bindLong(0, framesCount)
+                bindString(1, appUuid)
+            }
+        }
     }
 
     @Test
@@ -84,5 +102,43 @@ class QuantumExternalRouteLookupTest {
         assertEquals("M route", resolved?.name)
         assertEquals("p19100001r12p19100002r14", resolved?.frames)
         assertNull(repo.getQuantumClimbByExternalRoute(routeUuid, "belay"))
+    }
+
+    @Test
+    fun directVendorUuidFallbackRequiresQuantumSingleFrameInConnectedModelLayout() {
+        val routeUuid = "00112233-4455-6677-8899-aabbccddeeff"
+        insertClimb(routeUuid, "Direct M route", "p19100001r12", 9103)
+
+        val resolved = repo.getQuantumClimbByExternalRoute(routeUuid.uppercase(), "M")
+
+        assertNotNull(resolved)
+        assertEquals(routeUuid, resolved.uuid)
+        assertEquals("Direct M route", resolved.name)
+        assertNull(repo.getQuantumClimbByExternalRoute(routeUuid, "xl"))
+    }
+
+    @Test
+    fun bridgedRowsWithWrongBrandLayoutOrFrameCountRemainUnknown() {
+        val wrongBrandRoute = "10000000-0000-4000-8000-000000000001"
+        val wrongLayoutRoute = "10000000-0000-4000-8000-000000000002"
+        val multiFrameRoute = "10000000-0000-4000-8000-000000000003"
+        val wrongBrandUuid = "20000000-0000-4000-8000-000000000001"
+        val wrongLayoutUuid = "20000000-0000-4000-8000-000000000002"
+        val multiFrameUuid = "20000000-0000-4000-8000-000000000003"
+        insertClimb(wrongBrandUuid, "Wrong brand", "p1r12", 9103, boardBrand = "kilter")
+        insertClimb(wrongLayoutUuid, "Wrong layout", "p1r12", 9101)
+        insertClimb(multiFrameUuid, "Multi frame", "p1r12", 9103, framesCount = 2)
+        driver.execute(
+            null,
+            "INSERT INTO quantum_route_refs(app_uuid,route_uuid,model) VALUES " +
+                "('$wrongBrandUuid','$wrongBrandRoute','m')," +
+                "('$wrongLayoutUuid','$wrongLayoutRoute','m')," +
+                "('$multiFrameUuid','$multiFrameRoute','m')",
+            0,
+        )
+
+        assertNull(repo.getQuantumClimbByExternalRoute(wrongBrandRoute, "m"))
+        assertNull(repo.getQuantumClimbByExternalRoute(wrongLayoutRoute, "m"))
+        assertNull(repo.getQuantumClimbByExternalRoute(multiFrameRoute, "m"))
     }
 }

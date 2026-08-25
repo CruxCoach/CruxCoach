@@ -29,6 +29,7 @@ import com.cruxcoach.data.repository.AscentWithClimb
 import com.cruxcoach.data.repository.ClimbWithStats
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.MoonBoardVariant
+import com.cruxcoach.domain.board.QuantumBoardModel
 import com.cruxcoach.data.repository.brand
 import com.cruxcoach.data.repository.BoardPlacement
 import com.cruxcoach.data.repository.BoardImage
@@ -446,8 +447,8 @@ class BoardClimbDetailViewModel @Inject constructor(
         viewModelScope.launch {
             kotlinx.coroutines.flow.combine(
                 bleConnection.connectedBoardDescriptor,
-                userPreferences.boardProductSizeId,
-            ) { board, productSizeId -> connectedLayerBoard(board, productSizeId) }
+                bleConnection.connectedQuantumModel,
+            ) { board, model -> connectedLayerBoard(board, model) }
                 .distinctUntilChanged()
                 .collect(boardLayerManager::bindBoard)
         }
@@ -853,11 +854,11 @@ class BoardClimbDetailViewModel @Inject constructor(
      */
     private fun connectedLayerBoard(
         board: com.cruxcoach.android.ble.DiscoveredBoard?,
-        productSizeId: Int,
+        model: QuantumBoardModel?,
     ): BoardLayerBoardIdentity? {
-        if (board == null || board.boardBrand != BoardBrand.QUANTUM) return null
+        if (board == null || board.boardBrand != BoardBrand.QUANTUM || model == null) return null
         val physical = runCatching { PhysicalBoardIdentity.resolve(board) }.getOrNull() ?: return null
-        return BoardLayerBoardIdentity(physical.value, productSizeId.toLong())
+        return BoardLayerBoardIdentity(physical.value, model.productSizeId)
     }
 
     /**
