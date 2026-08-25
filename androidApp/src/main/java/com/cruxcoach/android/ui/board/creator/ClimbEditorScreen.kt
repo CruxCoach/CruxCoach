@@ -99,6 +99,7 @@ import com.cruxcoach.domain.community.encodeFrames
 fun ClimbEditorScreen(
     onBack: () -> Unit,
     onPublished: (uuid: String) -> Unit,
+    onNavigateToBoardBrowser: () -> Unit,
     onNavigateToKilterSettings: () -> Unit = {},
     onNavigateToNostrProfile: () -> Unit = {},
     viewModel: ClimbEditorViewModel = hiltViewModel(),
@@ -144,6 +145,7 @@ fun ClimbEditorScreen(
     if (showBleSheet) {
         BleConnectionSheet(
             onDismiss = { showBleSheet = false },
+            onBoardMismatchExit = onNavigateToBoardBrowser,
         )
     }
     if (editorMismatch != null && !mismatchDismissed && !showMismatchPicker) {
@@ -174,13 +176,16 @@ fun ClimbEditorScreen(
     if (showMismatchPicker) {
         editorMismatch?.let { mismatch ->
             BoardPickerDialog(
-                onDismiss = { showMismatchPicker = false },
+                onDismiss = {
+                    showMismatchPicker = false
+                    onNavigateToBoardBrowser()
+                },
                 onSelected = {
                     showMismatchPicker = false
                     // The editor owns geometry for the old board. Its autosave
                     // remains available, but continuing here after changing the
                     // active board would make the canvas lie about the wall.
-                    onBack()
+                    onNavigateToBoardBrowser()
                 },
                 prefill = mismatch.prefill,
                 mismatch = mismatch,

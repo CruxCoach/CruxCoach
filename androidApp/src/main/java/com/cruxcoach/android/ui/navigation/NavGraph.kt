@@ -583,6 +583,11 @@ fun CruxCoachNavHost(
                     com.cruxcoach.android.ui.board.creator.ClimbEditorScreen(
                         onBack = { navController.popBackStack() },
                         onPublished = { uuid -> navController.popBackStack() },
+                        onNavigateToBoardBrowser = {
+                            if (!navController.popBackStack(Routes.BOARD_BROWSER, false)) {
+                                navController.navigate(Routes.BOARD_BROWSER) { launchSingleTop = true }
+                            }
+                        },
                         onNavigateToKilterSettings = {
                             navController.popBackStack()
                             navController.navigate(Routes.SETTINGS)
@@ -627,6 +632,11 @@ fun CruxCoachNavHost(
                     onNavigateBack = {
                         PerfLogger.navStart("BoardClimbDetail", "BoardBrowser(back)")
                         navController.popBackStack()
+                    },
+                    onNavigateToBoardBrowser = {
+                        if (!navController.popBackStack(Routes.BOARD_BROWSER, false)) {
+                            navController.navigate(Routes.BOARD_BROWSER) { launchSingleTop = true }
+                        }
                     },
                     onNavigateToClimb = { uuid, angle ->
                         navController.navigate(Routes.boardClimbDetail(uuid, angle)) {
@@ -723,6 +733,11 @@ fun CruxCoachNavHost(
                         onNavigateBack = { navController.popBackStack() },
                         onNavigateToClimb = { climbUuid, angle ->
                             navController.navigate(Routes.boardClimbDetail(climbUuid, angle))
+                        },
+                        onNavigateToBrowser = {
+                            if (!navController.popBackStack(Routes.BOARD_BROWSER, false)) {
+                                navController.navigate(Routes.BOARD_BROWSER) { launchSingleTop = true }
+                            }
                         },
                         // The training-plan editor can also start directly.
                         onPlayed = {

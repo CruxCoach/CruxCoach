@@ -26,6 +26,7 @@ import com.cruxcoach.android.data.SessionQueueManager
 import com.cruxcoach.android.data.SessionRole
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.domain.board.BoardBrand
+import com.cruxcoach.domain.board.QuantumBoardModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -63,7 +64,11 @@ data class BleConnectionState(
     val connectionState: ConnectionState = ConnectionState.DISCONNECTED,
     val connectedBoardName: String? = null,
     val connectedBoardBrand: BoardBrand? = null,
+    val connectedQuantumModel: QuantumBoardModel? = null,
     val connectedBoard: DiscoveredBoard? = null,
+    /** One correction prompt per physical connection; the send fence remains
+     * active even after the user deliberately dismisses it. */
+    val connectionMismatchPromptDismissed: Boolean = false,
     val isRequestingDisconnect: Boolean = false,
     val disconnectRequestNoResponse: Boolean = false,
     val climbSharingEnabled: Boolean = false,
@@ -157,6 +162,10 @@ class BleConnectionViewModel @Inject constructor(
                 _state.update {
                     it.copy(
                         connectionState = connState,
+                        connectionMismatchPromptDismissed =
+                            if (connState == ConnectionState.CONNECTING ||
+                                connState == ConnectionState.DISCONNECTED
+                            ) false else it.connectionMismatchPromptDismissed,
                         connectedBoard = if (connState == ConnectionState.DISCONNECTED) {
                             null
                         } else {
@@ -211,6 +220,11 @@ class BleConnectionViewModel @Inject constructor(
         viewModelScope.safeLaunch(TAG) {
             bleConnection.connectedBoardBrand.collect { brand ->
                 _state.update { it.copy(connectedBoardBrand = brand) }
+            }
+        }
+        viewModelScope.safeLaunch(TAG) {
+            bleConnection.connectedQuantumModel.collect { model ->
+                _state.update { it.copy(connectedQuantumModel = model) }
             }
         }
         viewModelScope.safeLaunch(TAG) {
@@ -345,6 +359,10 @@ class BleConnectionViewModel @Inject constructor(
         capacityProbe.install()
 
         checkState()
+    }
+
+    fun dismissConnectionMismatchPrompt() {
+        _state.update { it.copy(connectionMismatchPromptDismissed = true) }
     }
 
     fun checkState() {

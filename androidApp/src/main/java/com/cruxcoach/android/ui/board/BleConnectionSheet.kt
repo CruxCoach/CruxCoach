@@ -48,6 +48,8 @@ import com.cruxcoach.android.data.SessionRole
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.*
+import com.cruxcoach.android.ui.settings.BoardPickerDialog
+import com.cruxcoach.android.ui.settings.connectedBoardConfigurationMismatch
 
 private enum class PendingScanStart {
     MANUAL,
@@ -59,9 +61,17 @@ private enum class PendingScanStart {
 fun BleConnectionSheet(
     onDismiss: () -> Unit,
     onNavigateToClimb: ((uuid: String, angle: Int) -> Unit)? = null,
+    /** A mismatch picker changes which catalogue is meaningful. Hosts outside
+     * the browser use this to discard a now-invalid detail/editor surface. */
+    onBoardMismatchExit: () -> Unit = {},
     viewModel: BleConnectionViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val connectionMismatch = connectedBoardConfigurationMismatch(
+        activeBrand = state.activeBoardBrand,
+        connectedBrand = state.connectedBoardBrand,
+        connectedQuantumModel = state.connectedQuantumModel,
+    )
     val rememberedBoard = state.rememberedBoardControllers[state.activeBoardBrand]
     var discoveryRequested by remember(state.activeBoardBrand) { mutableStateOf(false) }
     var pendingScanStart by remember(state.activeBoardBrand) {
@@ -118,9 +128,10 @@ fun BleConnectionSheet(
     // opened while already connected (user then wants the Disconnect UI).
     // Brief delay so the user catches a glimpse of the "Verbunden" state.
     val initialConnectionState = remember { state.connectionState }
-    LaunchedEffect(state.connectionState) {
+    LaunchedEffect(state.connectionState, connectionMismatch) {
         if (state.connectionState == ConnectionState.CONNECTED &&
-            initialConnectionState != ConnectionState.CONNECTED
+            initialConnectionState != ConnectionState.CONNECTED &&
+            connectionMismatch == null
         ) {
             kotlinx.coroutines.delay(400L)
             onDismiss()
@@ -264,6 +275,25 @@ fun BleConnectionSheet(
                 BlePermissionHelper.getRequiredPermissions()
             )
         }
+    }
+
+    if (state.connectionState == ConnectionState.CONNECTED &&
+        connectionMismatch != null &&
+        !state.connectionMismatchPromptDismissed
+    ) {
+        BoardPickerDialog(
+            prefill = connectionMismatch.prefill,
+            mismatch = connectionMismatch,
+            onSelected = {
+                onDismiss()
+                onBoardMismatchExit()
+            },
+            onDismiss = {
+                viewModel.dismissConnectionMismatchPrompt()
+                onDismiss()
+                onBoardMismatchExit()
+            },
+        )
     }
 
     ModalBottomSheet(
