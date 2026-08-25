@@ -1991,7 +1991,8 @@
     <string name="settings_backup_run_now">Back up now</string>
     <string name="settings_backup_run_now_progress">Backing up…</string>
     <string name="settings_backup_restore">Restore backup</string>
-    <string name="settings_backup_restore_checking">Checking…</string>
+    <string name="settings_backup_restore_checking">Looking for encrypted backup…</string>
+    <string name="settings_backup_restoring">Restoring backup…</string>
     <string name="settings_backup_restore_dialog_title">Backup found</string>
     <string name="settings_backup_restore_dialog_body">Size: %1$s.\nThe backup will be merged with your local data. Existing entries will not be duplicated.</string>
     <string name="settings_backup_restore_confirm">Restore</string>
@@ -2003,6 +2004,10 @@
     <string name="settings_backup_restore_failed">Backup could not be restored.</string>
     <string name="settings_backup_restored">Backup processed: %1$d logbook entries, %2$d lists. Existing data was not duplicated.</string>
     <string name="settings_backup_restore_wait_import">Boards are still loading — restore becomes available once that finishes.</string>
+    <string name="import_board_data_not_ready">Board data is still loading. Import becomes available once catalogue setup finishes.</string>
+    <string name="import_waiting_for_board_data">Import is waiting for the running catalogue setup. Your file stays selected and will be imported afterwards.</string>
+    <string name="import_waiting_for_board_data_short">Waiting for board data…</string>
+    <string name="import_in_progress_short">Importing data…</string>
     <string name="settings_backup_succeeded">Backup created.</string>
     <string name="settings_backup_failed">Backup failed. Check your connection and try again.</string>
     <string name="settings_backup_failed_detail">Backup failed: %1$s</string>

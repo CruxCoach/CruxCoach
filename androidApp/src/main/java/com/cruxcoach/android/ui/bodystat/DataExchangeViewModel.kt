@@ -50,6 +50,11 @@ data class DataExchangeState(
     val pendingImportJson: String? = null,
     val detectedWaistline: Boolean = false,
     val isImporting: Boolean = false,
+    /** Board catalogue writes and backup imports share the board DB writer.
+     *  Keep the reason for a disabled/waiting import visible instead of
+     *  presenting an unexplained spinner while the initial sync completes. */
+    val boardImportInProgress: Boolean = false,
+    val waitingForBoardSync: Boolean = false,
     /** Set when the preview detected that the backup's `nostrPubkey`
      *  envelope field doesn't match the active signer. Drives a one-shot
      *  warning dialog in the UI; the user picks "import anyway" or
@@ -105,6 +110,16 @@ class DataExchangeViewModel @Inject constructor(
 
     private val _state = MutableStateFlow(DataExchangeState())
     val state: StateFlow<DataExchangeState> = _state.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            boardSyncManager.state.collect { sync ->
+                _state.update {
+                    it.copy(boardImportInProgress = sync.isSyncing || !sync.alreadyImported)
+                }
+            }
+        }
+    }
 
     // ── Export format ───────────────────────────────────────────
 
@@ -256,6 +271,10 @@ class DataExchangeViewModel @Inject constructor(
         val s = _state.value
         val jsonString = s.pendingImportJson ?: return
         val categories = s.importCategories
+        // UI disables the action while catalogue setup is active. Keep the
+        // same invariant in the ViewModel so accessibility/rapid taps cannot
+        // start a known-blocked operation behind the disabled surface.
+        if (s.boardImportInProgress) return
         if (categories.isEmpty()) {
             _state.update { it.copy(error = context.getString(R.string.error_select_category)) }
             return
@@ -285,9 +304,11 @@ class DataExchangeViewModel @Inject constructor(
                 // Wait out any in-flight board-sync before writing — see
                 // BackupRepository.restore for the same pattern + rationale.
                 if (boardSyncManager.state.value.isSyncing) {
+                    _state.update { it.copy(waitingForBoardSync = true) }
                     Log.i(TAG, "import: awaiting board-sync to finish before write")
                     boardSyncManager.state.first { !it.isSyncing }
                     Log.i(TAG, "import: board-sync done, proceeding")
+                    _state.update { it.copy(waitingForBoardSync = false) }
                 }
                 val result = withContext(Dispatchers.IO) {
                     CruxCoachBackup.import(
@@ -325,6 +346,7 @@ class DataExchangeViewModel @Inject constructor(
 
                 _state.update { it.copy(
                     isImporting = false,
+                    waitingForBoardSync = false,
                     importPreview = null,
                     pendingImportJson = null,
                     importCategories = emptySet(),
@@ -333,7 +355,13 @@ class DataExchangeViewModel @Inject constructor(
                     message = context.getString(R.string.import_result_summary, "$summary$dupNote")
                 ) }
             } catch (e: Exception) {
-                _state.update { it.copy(isImporting = false, error = context.getString(R.string.error_import_failed, e.message ?: "")) }
+                _state.update {
+                    it.copy(
+                        isImporting = false,
+                        waitingForBoardSync = false,
+                        error = context.getString(R.string.error_import_failed, e.message ?: ""),
+                    )
+                }
             }
         }
     }

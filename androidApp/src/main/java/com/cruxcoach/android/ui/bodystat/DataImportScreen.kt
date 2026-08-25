@@ -168,7 +168,9 @@ fun DataImportScreen(
                     onToggleCategory = { viewModel.toggleImportCategory(it) },
                     onConfirm = { viewModel.confirmImport() },
                     onCancel = { viewModel.cancelImport() },
-                    isImporting = state.isImporting
+                    isImporting = state.isImporting,
+                    boardImportInProgress = state.boardImportInProgress,
+                    waitingForBoardSync = state.waitingForBoardSync,
                 )
             }
 
@@ -184,7 +186,9 @@ private fun ImportPreviewCard(
     onToggleCategory: (Category) -> Unit,
     onConfirm: () -> Unit,
     onCancel: () -> Unit,
-    isImporting: Boolean
+    isImporting: Boolean,
+    boardImportInProgress: Boolean,
+    waitingForBoardSync: Boolean,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -236,6 +240,20 @@ private fun ImportPreviewCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
+            if (boardImportInProgress || waitingForBoardSync) {
+                Text(
+                    text = stringResource(
+                        if (waitingForBoardSync) {
+                            R.string.import_waiting_for_board_data
+                        } else {
+                            R.string.import_board_data_not_ready
+                        },
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -250,7 +268,7 @@ private fun ImportPreviewCard(
                 Button(
                     onClick = onConfirm,
                     modifier = Modifier.weight(1f),
-                    enabled = !isImporting && selectedCategories.isNotEmpty(),
+                    enabled = !isImporting && !boardImportInProgress && selectedCategories.isNotEmpty(),
                     colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -258,6 +276,16 @@ private fun ImportPreviewCard(
                         CircularProgressIndicator(
                             modifier = Modifier.size(20.dp),
                             color = MaterialTheme.colorScheme.onPrimary
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            stringResource(
+                                if (waitingForBoardSync) {
+                                    R.string.import_waiting_for_board_data_short
+                                } else {
+                                    R.string.import_in_progress_short
+                                },
+                            ),
                         )
                     } else {
                         Text(stringResource(R.string.bodystat_import), fontWeight = FontWeight.Bold)

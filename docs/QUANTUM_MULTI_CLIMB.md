@@ -58,9 +58,14 @@ current wall, so it—like a delta, malformed value, unavailable characteristic,
 or failed read—falls back to
 `REQUEST_USER_ROUTE_LIST`. While the direct Quantum link remains connected this
 observational refresh repeats every ten seconds. Because hardware evidence has
-not established whether `fff4` is fresh or a cached last event, every mutation
-independently resets notification recovery and requires an explicit
-`REQUEST_USER_ROUTE_LIST` round trip under the BLE write lock.
+not established whether an unsolicited `fff4` value is fresh or a cached last
+event, every mutation independently resets notification recovery and requires
+an explicit `REQUEST_USER_ROUTE_LIST` round trip under the BLE write lock. A
+captured Quantum XL accepts that request without emitting an `fff1`
+notification and exposes the resulting complete `0x47` snapshot through a
+fresh `fff4` read. CruxCoach therefore reads `fff4` directly after the
+serialized request; notification delivery remains a compatibility fallback.
+Only the requested `0x47` shape advances the explicit route-list generation.
 
 `fff1` notifications are reassembled and decoded with strict device address,
 exact payload length and maximum-player checks. Unlike fff2 commands, the
@@ -239,7 +244,10 @@ through the scoped layer controls on detail instead.
 
 The packet layouts, ordered `fff5` model read, `fff1` subscription, `fff4` read
 path and parser match the clean-room eWalls 2.0.14 analysis and BoardSimulator.
-Real Quantum hardware behaviour remains `hardware_verified: false` until the same four-user,
+A real Quantum XL HCI capture additionally verifies the five-byte route-list
+write and the controller's complete `0x47` state response through `fff4`
+without an `fff1` notification. Real Quantum multi-layer behaviour remains
+`hardware_verified: false` until the same four-user,
 conflict, reconnect, CCCD/readback and multi-chunk suite is captured against
 each controller generation. The implementation therefore accepts only strict
 known broadcast shapes, falls back to a route-list command when `fff4` does not

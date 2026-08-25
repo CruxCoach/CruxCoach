@@ -1990,7 +1990,8 @@
     <string name="settings_backup_run_now">Jetzt sichern</string>
     <string name="settings_backup_run_now_progress">Backup läuft…</string>
     <string name="settings_backup_restore">Backup wiederherstellen</string>
-    <string name="settings_backup_restore_checking">Prüfe…</string>
+    <string name="settings_backup_restore_checking">Suche verschlüsseltes Backup…</string>
+    <string name="settings_backup_restoring">Backup wird wiederhergestellt…</string>
     <string name="settings_backup_restore_dialog_title">Backup gefunden</string>
     <string name="settings_backup_restore_dialog_body">Größe: %1$s.\nDas Backup wird mit deinen lokalen Daten zusammengeführt. Bereits vorhandene Einträge werden nicht dupliziert.</string>
     <string name="settings_backup_restore_confirm">Wiederherstellen</string>
@@ -2002,6 +2003,10 @@
     <string name="settings_backup_restore_failed">Backup konnte nicht wiederhergestellt werden.</string>
     <string name="settings_backup_restored">Backup verarbeitet: %1$d Logbucheinträge, %2$d Listen. Bereits vorhandene Daten wurden nicht dupliziert.</string>
     <string name="settings_backup_restore_wait_import">Boards werden noch geladen — Wiederherstellen ist verfügbar, sobald das fertig ist.</string>
+    <string name="import_board_data_not_ready">Die Board-Daten werden noch geladen. Der Import wird verfügbar, sobald der Katalogaufbau abgeschlossen ist.</string>
+    <string name="import_waiting_for_board_data">Der Import wartet auf den laufenden Katalogaufbau. Deine Datei bleibt ausgewählt und wird anschließend importiert.</string>
+    <string name="import_waiting_for_board_data_short">Warte auf Board-Daten…</string>
+    <string name="import_in_progress_short">Daten werden importiert…</string>
     <string name="settings_backup_succeeded">Backup erstellt.</string>
     <string name="settings_backup_failed">Backup fehlgeschlagen. Prüfe deine Verbindung und versuche es erneut.</string>
     <string name="settings_backup_failed_detail">Backup fehlgeschlagen: %1$s</string>

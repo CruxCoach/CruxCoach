@@ -275,7 +275,13 @@ class QuantumControllerEvidenceTest {
             listOf(player(ownUser)),
         )
         assertTrue(quantumFff4PublishesSnapshot(full))
+        assertTrue(quantumFff4ConfirmsExplicitRouteList(full))
         assertFalse(quantumReadRequiresRouteListFallback(classifyQuantumFff4Evidence(full)))
+        assertFalse(
+            quantumFff4ConfirmsExplicitRouteList(
+                QuantumBroadcast.RouteList(QuantumCommand.ACTIVATE_WALL, full.players),
+            ),
+        )
         assertTrue(
             quantumReadRequiresRouteListFallback(
                 classifyQuantumFff4Evidence(QuantumBroadcast.BoardCleared),

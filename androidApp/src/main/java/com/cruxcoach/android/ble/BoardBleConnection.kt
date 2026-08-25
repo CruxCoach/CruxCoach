@@ -330,6 +330,14 @@ internal fun classifyQuantumFff4Evidence(
 internal fun quantumFff4PublishesSnapshot(broadcast: QuantumBroadcast?): Boolean =
     broadcast is QuantumBroadcast.RouteList
 
+/** A read from fff4 immediately following our serialized route-list request is
+ * the controller's response on deployed Quantum XL firmware. Keep the command
+ * check: a cached ACTIVATE_WALL/BOARD_SWIPE snapshot is useful observation but
+ * must not confirm the explicit mutation fence. */
+internal fun quantumFff4ConfirmsExplicitRouteList(broadcast: QuantumBroadcast?): Boolean =
+    broadcast is QuantumBroadcast.RouteList &&
+        broadcast.command == com.cruxcoach.domain.board.QuantumCommand.REQUEST_USER_ROUTE_LIST
+
 internal fun genericBoardClearAllowed(connectedBrand: BoardBrand?): Boolean =
     connectedBrand != BoardBrand.QUANTUM
 
@@ -1669,7 +1677,9 @@ class BoardBleConnection(
     }
 
     @SuppressLint("MissingPermission")
-    private suspend fun readQuantumStateLocked(): QuantumControllerEvidence {
+    private suspend fun readQuantumStateLocked(
+        explicitRouteListResponse: Boolean = false,
+    ): QuantumControllerEvidence {
         if (!quantumStateReadUsable) return QuantumControllerEvidence.UNSUPPORTED
         val currentGatt = gatt ?: return QuantumControllerEvidence.UNSUPPORTED
         val service = currentGatt.getService(BoardBleUuids.QUANTUM_SERVICE)
@@ -1708,7 +1718,11 @@ class BoardBleConnection(
             // never advances routeListRevision: only the notification received
             // inside an explicit REQUEST_USER_ROUTE_LIST generation can
             // confirm a mutation precondition or postcondition.
-            applyQuantumBroadcast(broadcast, explicitRouteListResponse = false)
+            applyQuantumBroadcast(
+                broadcast,
+                explicitRouteListResponse = explicitRouteListResponse &&
+                    quantumFff4ConfirmsExplicitRouteList(broadcast),
+            )
         }
         return evidence
     }
@@ -1733,13 +1747,27 @@ class BoardBleConnection(
                     expectedQuantumBoard,
                 )
             ) return false
+            // Real Quantum XL controllers acknowledge the write transport but
+            // do not emit an fff1 notification for REQUEST_USER_ROUTE_LIST.
+            // They publish the requested complete 0x47 snapshot through fff4
+            // instead. Read it under the same GATT/write mutex and generation;
+            // notification-only controllers remain supported by the wait
+            // below (including a notification arriving during this read).
+            delay(50)
+            if (hasFreshExplicitQuantumRouteList(before, _quantumControllerState.value)) {
+                return true
+            }
+            readQuantumStateLocked(explicitRouteListResponse = true)
+            val afterRead = _quantumControllerState.value
+            if (hasFreshExplicitQuantumRouteList(before, afterRead)) return true
             val state = awaitQuantumState(before.revision) { snapshot ->
                 snapshot.lastFailure != null ||
                     snapshot.routeListRevision > before.routeListRevision
             }
             if (state == null) {
-                // Route-list notifications carry no request token. Retire the
-                // GATT so a late response can never confirm a later request.
+                // Neither the serialized fff4 read nor fff1 produced the
+                // requested 0x47 snapshot. Retire the GATT so a late response
+                // can never confirm a later request.
                 disconnect()
                 return false
             }
