@@ -983,7 +983,6 @@
     <string name="relay_notification_title">Board available to other apps</string>
     <string name="relay_notification_text">%d board-app connections</string>
     <string name="relay_notification_stop">Stop app sharing</string>
-    <string name="relay_stopped_idle">Sharing stopped after 90 seconds without a connected guest.</string>
 
     <!-- Board: Climb Card -->
     <string name="board_climb_by_setter">by %s</string>
@@ -2208,10 +2207,10 @@
     <string name="whatsnew_021_action_go">Got it</string>
     <string name="whatsnew_021_action_boards">See boards</string>
     <string name="whatsnew_022_title">New in 0.2.2</string>
-    <string name="whatsnew_022_body">• Play your lists — one climb at a time, with rests, one-tap logging and a summary at the end. Or let CruxCoach plan the session from your logbook.\n\n• CruxRelay — share your board so that everyone in the session can send from their own phone.\n\n• Two more MoonBoards (2010 and Mini 2025), problems that say when they are meant to be climbed footless, and a climb that stays lit while you work it.\n\n• Tap your last board to reconnect, choose when a climb goes to the wall, and get app updates from more than one download source.</string>
-    <string name="whatsnew_022_hint">Automatic updates are off by default. Choose your preferred update behavior in Settings; you always confirm installation in Android.</string>
-    <string name="whatsnew_022_action_go">Got it</string>
-    <string name="whatsnew_022_action_settings">Update settings</string>
+    <string name="whatsnew_022_body">• Play lists as workouts — with rests, one-tap logging, a final summary and planning from your logbook.\n\n• Bring over your logbook directly from the installed Moon app or from a CSV file.\n\n• Connect Quantum Boards, see occupied layers live and find climbs with zero or at most one overlap.\n\n• Share your connected board with other board apps through CruxRelay.</string>
+    <string name="whatsnew_022_hint">Also new: MoonBoard 2010 and Mini 2025, faster reconnecting, clearer board selection and more control over when a climb is sent to the wall.</string>
+    <string name="whatsnew_022_action_moon_import">Import Moon logbook</string>
+    <string name="whatsnew_022_action_later">Later</string>
     <!-- FEAT-031: Aurora-family boards what's-new -->
     <string name="whatsnew_aurora_title">New: Tension, Grasshopper &amp; more</string>
     <string name="whatsnew_aurora_body">0.2.0 also adds the Aurora-family boards — Tension, Grasshopper, Decoy, So iLL and Touchstone — alongside Kilter and MoonBoard. Browse each board\'s catalogue with the same grade, angle and setter filters, open a climb, and light it up on your board over Bluetooth.</string>
@@ -2419,7 +2418,6 @@
     <string name="relay_error_board_lost">Board connection lost — sharing stopped.</string>
     <string name="relay_error_unsupported_board">This board does not support compatible app sharing.</string>
     <string name="relay_error_forward_failed">A shared climb did not reach the board. Sharing is still on — ask them to send it again.</string>
-    <string name="relay_error_idle_timeout">Board sharing stopped after 90 seconds without a connected guest.</string>
     <string name="relay_chip_stop">Stop</string>
     <string name="relay_host_title">Shared CruxCoach session</string>
     <string name="relay_host_join_subtitle">%1$d in session · Tap to join</string>

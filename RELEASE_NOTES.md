@@ -1,13 +1,15 @@
-# CruxCoach 0.2.2 — 2026-08-15
+# CruxCoach 0.2.2 — 2026-08-25
 
-Your lists become training sessions you can play, the board connection adapts to the controller in front of you, two more MoonBoards join the list — and app updates no longer hang on a single download server.
+Your lists become training sessions you can play, your Moon logbook comes with you, Quantum Boards join CruxCoach, and CruxRelay lets the whole room use one connected wall.
 
 > **Android 8.0 and 8.1: this is the last version for your device.** 0.2.3 will need Android 9. CruxCoach now says so on affected devices instead of letting them wait for updates that can never arrive — the app keeps working and your data stays where it is.
 
 ## Highlights
 - **Playlists — play a list instead of scrolling it** — one climb at a time on a full-screen player, sent to the wall as it comes up, a rest countdown that already shows what's next, *Sent it* / *Attempt* logging without leaving the screen, and a summary with total, active and rest time at the end. Every list you already have can be played; sharing a playlist works like sharing a climb.
 - **Let CruxCoach plan the session** — pick a training type (pyramid, power endurance, volume, max strength, or working your projects), a duration, an angle and how warmed up you are. The grades come from your own logbook — the grade you repeat reliably and the one you flash — not from a fixed table. Or set the grade range, the number of climbs, the tries and the rests yourself and get exactly that.
-- **CruxRelay — everyone in the session sends to the board** — most controllers talk to one app at a time, so one phone owns the wall and everyone else watches. Switch sharing on and your phone stands in for the board: other CruxCoach users join and send from their own phones, and the official board apps can send through you too. It runs only while you have it on, shows a notification throughout, and restores your phone's Bluetooth name when you stop.
+- **Import your MoonBoard logbook** — transfer ascents and projects directly from the installed Moon app through a one-time, user-enabled on-device reader, or choose a Moon CSV file. CruxCoach keeps dates, angles, send/project state and exact attempt counts, and a repeated transfer updates instead of duplicating the same training days.
+- **Quantum Boards, with live coexistence** — connect and browse Quantum walls, see every layer currently reported by the controller — including climbs sent by other apps — and filter for climbs with either zero overlaps or at most one overlap with the occupied layers.
+- **CruxRelay — other board apps can use the connected wall** — most controllers talk to one app at a time, so CruxCoach can stand in for the board and forward climbs from compatible apps. Sharing starts with the direct board connection and stays available even when no guest is currently connected; disconnecting the host board or explicitly stopping sharing ends it and restores the phone's Bluetooth name.
 - **Two more MoonBoards** — the original **MoonBoard 2010** and the **Mini MoonBoard 2025**, each on its own measured board photo. Problems now also say when the setter meant them to be climbed *footless* or *without the kickboard*, and a MoonBoard climb stays lit while you are working it instead of going dark.
 - **One tap back to your last board** — the board you used last is offered as a card in the connect sheet; tapping it reconnects without scanning the room again. CruxCoach also works out on connecting whether your controller takes one app or several, and you choose per case whether a climb goes to the wall the moment you open it or only when you tap.
 - **Updates no longer depend on one server** — CruxCoach asks every known source for the newest version and takes whichever has it, and that list is fetched at runtime, so a download server can be added or retired without anyone installing a new version first. An APK is still installed only after its checksum and signature match. You can also choose to have updates download or install themselves — off unless you turn it on.
@@ -25,6 +27,13 @@ Your lists become training sessions you can play, the board connection adapts to
 - **Small things** — a climb's published/draft state now looks the same in the browser and on its detail screen, and browsing a board right after adding it on its own is quicker.
 
 ## Fixes & reliability
+- **“Complete backup” really is complete** — JSON export/import now carries
+  every supported CruxCoach data category, including profile and training
+  history, instead of silently limiting the file to three board categories.
+- **Older Quantum controller state reads no longer break sending** — when the
+  optional live-state characteristic stays silent, CruxCoach keeps the healthy
+  connection and asks for the authoritative route list through the supported
+  command path.
 - **Nobody is told to climb during a shared rest** — in a session you had joined, your phone could show the next climb as ready while the host was still resting and the wall showed something else. Rests now reach everyone, including anyone joining mid-rest.
 - **No more downloading an update that cannot be installed** — after an interrupted update, CruxCoach could re-download and re-verify an older version on every check, only for Android to refuse it at the last step — a 34 MB download for a guaranteed failure, on mobile data too.
 - **Sharing CruxCoach handed out an old app** — the share QR was built from the sharing phone's own version, so an older build pointed everyone at that older build. It now opens a download page that always resolves to the current release, with a fallback host.

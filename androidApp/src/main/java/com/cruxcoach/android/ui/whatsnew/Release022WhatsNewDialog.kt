@@ -13,15 +13,17 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.R
 
 @Composable
 internal fun Release022WhatsNewDialog(
     onDismiss: () -> Unit,
-    onNavigateToSettings: () -> Unit,
+    onNavigateToMoonBoardImport: () -> Unit,
 ) {
     AlertDialog(
+        modifier = Modifier.testTag("whatsnew_022_dialog"),
         onDismissRequest = onDismiss,
         properties = androidx.compose.ui.window.DialogProperties(
             dismissOnClickOutside = false,
@@ -47,16 +49,22 @@ internal fun Release022WhatsNewDialog(
             }
         },
         confirmButton = {
-            Button(onClick = onDismiss) {
-                Text(stringResource(R.string.whatsnew_022_action_go))
+            Button(
+                onClick = {
+                    onDismiss()
+                    onNavigateToMoonBoardImport()
+                },
+                modifier = Modifier.testTag("whatsnew_022_moon_import"),
+            ) {
+                Text(stringResource(R.string.whatsnew_022_action_moon_import))
             }
         },
         dismissButton = {
-            TextButton(onClick = {
-                onDismiss()
-                onNavigateToSettings()
-            }) {
-                Text(stringResource(R.string.whatsnew_022_action_settings))
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.testTag("whatsnew_022_confirm"),
+            ) {
+                Text(stringResource(R.string.whatsnew_022_action_later))
             }
         },
     )

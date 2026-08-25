@@ -4,18 +4,16 @@ All notable changes to CruxCoach will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [0.2.2] - 2026-08-15
+## [0.2.2] - 2026-08-25
 
 Training playlists you can actually play — climb by climb, with rests,
 one-tap logging and a summary at the end — either from a list of your own
-or generated from your logbook. Underneath, the board connection got a lot
-more attentive: it works out what your controller can do, reconnects to
-your last board with a single tap, and with CruxRelay your phone can stand
-in for the board so everyone in the session sends to the same wall. Two
-more MoonBoards, problems that say how they are meant to be climbed, and a
-MoonBoard climb that stays lit while you work it. Plus deleting the data of
-a single board, and app updates that no longer depend on one download
-server.
+or generated from your logbook. Bring that logbook across directly from the
+installed Moon app or its CSV export. Quantum Boards join CruxCoach with
+authoritative live layers and overlap-aware browsing, while CruxRelay keeps
+compatible board apps on one connected wall. Two more MoonBoards, clearer
+board selection and sending, per-board data deletion, and app updates that
+no longer depend on one download server round out the release.
 
 ### Added
 - **Import your MoonBoard logbook** — bring the ascents and attempts you
@@ -24,6 +22,10 @@ server.
   you switch on yourself and switch off again afterwards. Entries land on
   the right MoonBoard problem, at the right angle, on the day you climbed
   them, and re-running a day updates it instead of duplicating it.
+- **Quantum Board support** — connect to Quantum controllers, browse their
+  catalogues and keep the layer rack synchronized with the controller's
+  authoritative readback, including climbs sent by other apps. The browser
+  can restrict results to no occupied-layer overlaps or allow at most one.
 - **Training playlists** — a playlist is a session you can play. One climb
   at a time on a full-screen player, sent to the wall as it comes up, a
   rest countdown that already shows what's next, *Sent it* / *Attempt*
@@ -70,15 +72,13 @@ server.
   LEDs below the holds, above them, or both should light. Finish holds and
   positions without an upper LED safely stay lit below. Existing installs keep
   the previous below-only behaviour.
-- **CruxRelay — everyone in the session can send to the board** — most
-  board controllers only talk to one app at a time, so one phone owns the
-  wall and everyone else watches. Switch sharing on and your phone stands
-  in for the board: other CruxCoach users join your session and send from
-  their own phones, and the official board apps can send through you too.
-  CruxCoach even names the climb that lands on the wall when the sending
-  app doesn't say what it is. Sharing runs only while you have it on, it
-  shows a notification the whole time, and your phone's Bluetooth name is
-  put back when you stop.
+- **CruxRelay — compatible board apps can use the connected wall** — most
+  board controllers only talk to one app at a time, so CruxCoach stands in
+  for the board and forwards their climbs. Sharing follows the host's direct
+  board connection and stays available even with no guest connected; a host
+  disconnect or explicit stop ends it. CruxCoach names a relayed climb when
+  it can resolve it, shows a notification throughout, and restores the
+  phone's Bluetooth name when sharing ends.
 - **Tap your last board to reconnect** — the board you used last is
   remembered and offered as a card in the connect sheet. Tapping it
   connects straight away instead of scanning the room again.
@@ -144,6 +144,15 @@ server.
   the key is unchanged and updates behave exactly as before.
 
 ### Fixed
+- **A complete JSON backup now means all CruxCoach data** — manual export
+  and import include every category supported by the backup format, not just
+  board sends, lists and authored climbs. Profiles, assessments, body data,
+  workouts, training plans, sessions and private notes can therefore be
+  recovered from an offline file as well as from encrypted cloud backup.
+- **Quantum controllers that do not answer the optional live-state read stay
+  usable** — CruxCoach now falls back to the controller's explicit route-list
+  command on the same connection instead of dropping an otherwise healthy
+  link before a climb can be sent or live layers can be resolved.
 - **No "matching allowed" badge where nobody was ever asked** — that is a
   Kilter setting. On MoonBoard problems and on community climbs CruxCoach
   was showing an answer to a question the setter never got, so the badge

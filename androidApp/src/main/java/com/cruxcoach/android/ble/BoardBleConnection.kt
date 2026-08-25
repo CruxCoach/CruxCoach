@@ -570,6 +570,13 @@ class BoardBleConnection(
     private var quantumReadDeferred: CompletableDeferred<QuantumGattRead>? = null
     @Volatile
     private var quantumMetadataReadDeferred: CompletableDeferred<QuantumGattRead>? = null
+    /** Some deployed Quantum controllers expose fff4 in their GATT table but
+     * never answer reads. Once that is observed for the current GATT, skip the
+     * optional characteristic and use the explicit route-list command. This
+     * also prevents a late, tokenless read callback from being mistaken for a
+     * later fff4 read without throwing away an otherwise writable link. */
+    @Volatile
+    private var quantumStateReadUsable = true
     private val writeMutex = Mutex()
 
     private val _quantumControllerState = MutableStateFlow(QuantumControllerState())
@@ -1253,6 +1260,7 @@ class BoardBleConnection(
         if (_connectionState.value != ConnectionState.DISCONNECTED) return
 
         cancelQuantumGattOperations()
+        quantumStateReadUsable = true
         _connectedQuantumModel.value = null
         attemptBudget = maxAttempts.coerceIn(1, MAX_CONNECT_ATTEMPTS)
         userDisconnecting = false
@@ -1662,6 +1670,7 @@ class BoardBleConnection(
 
     @SuppressLint("MissingPermission")
     private suspend fun readQuantumStateLocked(): QuantumControllerEvidence {
+        if (!quantumStateReadUsable) return QuantumControllerEvidence.UNSUPPORTED
         val currentGatt = gatt ?: return QuantumControllerEvidence.UNSUPPORTED
         val service = currentGatt.getService(BoardBleUuids.QUANTUM_SERVICE)
             ?: currentGatt.getService(BoardBleUuids.QUANTUM_SERVICE_OLD)
@@ -1673,17 +1682,23 @@ class BoardBleConnection(
         val queued = currentGatt.readCharacteristic(stateCharacteristic)
         if (!queued) {
             quantumReadDeferred = null
+            quantumStateReadUsable = false
             return QuantumControllerEvidence.UNSUPPORTED
         }
         val result = withTimeoutOrNull(WRITE_TIMEOUT_MS) { deferred.await() }
         if (quantumReadDeferred === deferred) quantumReadDeferred = null
         if (result == null) {
             // Android does not attach an operation token to read callbacks.
-            // Retire this GATT before another read can consume a late callback.
-            disconnect()
+            // Never issue another fff4 read on this GATT; a late callback is
+            // then harmless. The explicit route-list notification path is a
+            // separate callback and remains safe to use on the current link.
+            quantumStateReadUsable = false
+            Log.w(TAG, "Quantum fff4 read timed out; using explicit route-list requests")
             return QuantumControllerEvidence.UNSUPPORTED
         }
         if (result.status != BluetoothGatt.GATT_SUCCESS) {
+            quantumStateReadUsable = false
+            Log.w(TAG, "Quantum fff4 read failed with status=${result.status}; using explicit route-list requests")
             return QuantumControllerEvidence.UNSUPPORTED
         }
         val broadcast = result.value?.let(QuantumBoardBroadcastParser::parse)

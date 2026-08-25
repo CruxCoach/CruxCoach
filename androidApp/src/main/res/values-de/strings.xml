@@ -1027,7 +1027,6 @@
     <string name="relay_notification_title">Board für andere Apps freigegeben</string>
     <string name="relay_notification_text">%d Board-App-Verbindungen</string>
     <string name="relay_notification_stop">App-Freigabe beenden</string>
-    <string name="relay_stopped_idle">Freigabe nach 90 Sekunden ohne verbundenen Gast beendet.</string>
 
     <!-- Board: Climb Card -->
     <string name="board_climb_by_setter">von %s</string>
@@ -2207,10 +2206,10 @@
     <string name="whatsnew_021_action_go">Alles klar</string>
     <string name="whatsnew_021_action_boards">Boards ansehen</string>
     <string name="whatsnew_022_title">Neu in 0.2.2</string>
-    <string name="whatsnew_022_body">• Spiel deine Listen ab — ein Climb nach dem anderen, mit Pausen, Loggen per Tipp und einer Zusammenfassung am Ende. Oder lass CruxCoach die Session aus deinem Logbuch planen.\n\n• CruxRelay — teile dein Board, damit alle in der Session von ihrem eigenen Handy senden können.\n\n• Zwei weitere MoonBoards (2010 und Mini 2025), Probleme mit Angabe wie „footless“, und ein Climb, der beim Ausbouldern angeleuchtet bleibt.\n\n• Tippe dein letztes Board an, um dich wieder zu verbinden, wähle, wann ein Climb aufs Board geht, und hol dir App-Updates aus mehreren Quellen.</string>
-    <string name="whatsnew_022_hint">Automatische Updates sind standardmäßig aus. Das gewünschte Update-Verhalten lässt sich in den Einstellungen wählen; die Installation bestätigst du immer in Android.</string>
-    <string name="whatsnew_022_action_go">Alles klar</string>
-    <string name="whatsnew_022_action_settings">Update-Einstellungen</string>
+    <string name="whatsnew_022_body">• Spiele Listen als Training ab – mit Pausen, Loggen per Tipp, Abschlussübersicht und Planung aus deinem Logbuch.\n\n• Übernimm dein Logbuch direkt aus der installierten Moon-App oder aus einer CSV-Datei.\n\n• Verbinde Quantum Boards, sieh die belegten Layer live und finde Climbs mit keiner oder höchstens einer Überschneidung.\n\n• Teile dein verbundenes Board per CruxRelay mit anderen Board-Apps.</string>
+    <string name="whatsnew_022_hint">Außerdem: MoonBoard 2010 und Mini 2025, schneller Wiederverbinden, klarere Board-Auswahl und mehr Kontrolle darüber, wann ein Climb an die Wand gesendet wird.</string>
+    <string name="whatsnew_022_action_moon_import">Moon-Logbuch importieren</string>
+    <string name="whatsnew_022_action_later">Später</string>
     <!-- FEAT-031: Aurora-Boards (What's New) -->
     <string name="whatsnew_aurora_title">Neu: Tension, Grasshopper &amp; mehr</string>
     <string name="whatsnew_aurora_body">0.2.0 bringt zusätzlich die Aurora-Boards — Tension, Grasshopper, Decoy, So iLL und Touchstone — neben Kilter und MoonBoard. Durchsuche den Katalog jedes Boards mit denselben Filtern für Grad, Winkel und Setter, öffne einen Boulder und lass ihn per Bluetooth auf deinem Board aufleuchten.</string>
@@ -2418,7 +2417,6 @@
     <string name="relay_error_board_lost">Board-Verbindung verloren — Teilen beendet.</string>
     <string name="relay_error_unsupported_board">Dieses Board unterstützt die Freigabe für kompatible Board-Apps nicht.</string>
     <string name="relay_error_forward_failed">Ein geteilter Boulder hat das Board nicht erreicht. Die Freigabe läuft weiter — bitte noch einmal senden lassen.</string>
-    <string name="relay_error_idle_timeout">Die Board-Freigabe wurde nach 90 Sekunden ohne verbundenen Gast beendet.</string>
     <string name="relay_chip_stop">Beenden</string>
     <string name="relay_host_title">Geteilte CruxCoach-Session</string>
     <string name="relay_host_join_subtitle">%1$d in der Session · Antippen zum Beitreten</string>

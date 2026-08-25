@@ -178,7 +178,6 @@ internal fun relayErrorText(error: RelayError, detail: String?): String {
         RelayError.BOARD_LOST -> stringResource(R.string.relay_error_board_lost)
         RelayError.UNSUPPORTED_BOARD -> stringResource(R.string.relay_error_unsupported_board)
         RelayError.FORWARD_FAILED -> stringResource(R.string.relay_error_forward_failed)
-        RelayError.IDLE_TIMEOUT -> stringResource(R.string.relay_error_idle_timeout)
     }
     return if (detail != null) "$base ($detail)" else base
 }

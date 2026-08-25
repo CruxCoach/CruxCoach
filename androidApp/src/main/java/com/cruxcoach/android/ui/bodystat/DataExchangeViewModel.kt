@@ -27,34 +27,15 @@ import javax.inject.Inject
 
 enum class ExportFormat { CRUXCOACH, WAISTLINE_JSON, WAISTLINE_CSV }
 
-/**
- * Categories visible in the manual JSON export/import UI — gated to
- * what the user can actually access via 0.1.4's app surface.
+/** Categories available in the manual JSON export/import UI.
  *
- * Hidden in 0.1.4 (no user-facing UI yet, so no point exporting):
- * - PROFILE (carries the fitness UserProfile only, age/weight/grade —
- *   that data has no UI in 0.1.4 to set or view; the label
- *   "Profil & Einstellungen" is misleading because app preferences
- *   are NOT in the wire format at all)
- * - CLIMB_LOGS (generic ClimbLog diary, part of the hidden bottom-bar
- *   training surface — no Add-form exposed in 0.1.4)
- * - ASSESSMENTS, BODY_STATS, WORKOUT_LOGS, TRAINING_PLANS,
- *   BOARD_SESSIONS — same "no UI yet" reason.
- *
- * Re-add them here as their UI lands so the wire format stays in sync
- * with the visible feature surface.
- *
- * Note: the Nostr-backup path (BackupRepository) deliberately uses
- * `Category.entries.toSet()` instead — the cloud-backup is a true
- * snapshot of *everything* the wire format supports, so a future build
- * that re-enables one of the hidden categories doesn't lose the user's
- * old hidden-but-still-stored data on the next backup cycle.
+ * A file labelled as a complete CruxCoach backup must preserve every category
+ * understood by the v3 codec, including data whose editing surface is not
+ * currently prominent. Keeping the manual path aligned with Nostr backup also
+ * makes JSON a real offline recovery option and prevents future UI changes from
+ * exposing data that older "complete" exports silently dropped.
  */
-val VISIBLE_CATEGORIES: Set<Category> = setOf(
-    Category.BOARD_LOGBOOK,
-    Category.CLIMB_LISTS,
-    Category.OWN_CLIMBS,
-)
+val VISIBLE_CATEGORIES: Set<Category> = Category.entries.toSet()
 
 data class DataExchangeState(
     // Export
