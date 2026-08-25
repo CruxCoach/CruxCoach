@@ -1028,6 +1028,9 @@ fun CruxCoachNavHost(
         onNavigateToAuroraMigration = { navController.navigate(Routes.AURORA_MIGRATION) },
         onNavigateToBoardMap = { navController.navigate(Routes.BOARD_MAP) },
         onNavigateToSettings = { navController.navigate(Routes.SETTINGS) },
+        onNavigateToMoonBoardImport = {
+            navController.navigate(Routes.MOONBOARD_CSV_IMPORT) { launchSingleTop = true }
+        },
     )
     } // CompositionLocalProvider
 }

@@ -277,6 +277,9 @@ this replaced and why.)*
   per-session toggle the user has to find: `CruxRelayManager` keeps an
   in-memory enabled flag, `WAIT_BEFORE_ADVERTISE` stays, and the standing
   choice lives in the app-scoped `relay_manual_start_v022` preference.
+- Guest connections do not own the relay lifecycle. Sharing remains available
+  with zero guests for as long as the host keeps the physical board connected;
+  guests may join, leave and rejoin without restarting the relay.
 - Settings offers an explicit **manual start** opt-in. It is off by default;
   enabling it restores the old behaviour where the connection sheet's action
   must be used for each board connection.

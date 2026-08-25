@@ -64,7 +64,7 @@ object WhatsNewItems {
      *  separate recap item would double-fire for the direct-upgrade cohort. */
     val RELEASE_021 = WhatsNewItem(id = "release-0.2.1", sinceVersionCode = 7)
 
-    /** 0.2.2 highlights: playable lists, unified board delivery and optional OTA. */
+    /** 0.2.2 highlights: playable lists, Moon import, Quantum and CruxRelay. */
     val RELEASE_022 = WhatsNewItem(id = "release-0.2.2", sinceVersionCode = 8)
 
 
@@ -181,6 +181,7 @@ fun WhatsNewHost(
     onNavigateToAuroraMigration: () -> Unit = {},
     onNavigateToBoardMap: () -> Unit = {},
     onNavigateToSettings: () -> Unit = {},
+    onNavigateToMoonBoardImport: () -> Unit = {},
     vm: WhatsNewViewModel = hiltViewModel(),
 ) {
     val pending by vm.pending.collectAsState()
@@ -195,7 +196,7 @@ fun WhatsNewHost(
         WhatsNewItems.RELEASE_022.id ->
             Release022WhatsNewDialog(
                 onDismiss = { vm.dismissCurrent() },
-                onNavigateToSettings = onNavigateToSettings,
+                onNavigateToMoonBoardImport = onNavigateToMoonBoardImport,
             )
         WhatsNewItems.MOONBOARD_SUPPORT.id ->
             MoonBoardWhatsNewDialog(

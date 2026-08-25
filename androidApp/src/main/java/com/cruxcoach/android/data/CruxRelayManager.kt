@@ -1,7 +1,6 @@
 package com.cruxcoach.android.data
 
 import android.annotation.SuppressLint
-import android.app.NotificationManager
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.AdvertisingSetCallback
@@ -9,10 +8,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.os.SystemClock
 import android.util.Log
-import androidx.annotation.StringRes
-import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ble.BoardBleConnection
@@ -56,8 +52,6 @@ enum class RelayError {
      * simply stayed dark on both sides of a relay that looked healthy.
      */
     FORWARD_FAILED,
-    /** No official-app client remained for the bounded sharing window. */
-    IDLE_TIMEOUT,
 }
 
 data class CruxRelayState(
@@ -101,8 +95,6 @@ class CruxRelayManager(
     private val projectionCoordinator: BoardProjectionCoordinator,
     private val userPreferences: UserPreferences,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
-    private val monotonicNowMs: () -> Long = SystemClock::elapsedRealtime,
-    private val relayIdleTimeoutMs: Long = RELAY_IDLE_TIMEOUT_MS,
     private val adapterProvider: () -> BluetoothAdapter? = {
         (context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
     },
@@ -114,8 +106,6 @@ class CruxRelayManager(
         internal const val KEY_ORIGINAL_NAME = "adapter_name_original"
         private const val NAME_PROPAGATE_TIMEOUT_MS = 2_000L
         private const val ADVERTISE_START_TIMEOUT_MS = 3_000L
-        private const val STOPPED_NOTIFICATION_ID = 4402
-        internal const val RELAY_IDLE_TIMEOUT_MS = 90_000L
     }
 
     private val adapter get() = adapterProvider()
@@ -149,23 +139,6 @@ class CruxRelayManager(
             }
         }
     }
-    private val idleWatchdog = RelayIdleWatchdog(
-        scope = scope,
-        timeoutMs = relayIdleTimeoutMs,
-        nowMs = monotonicNowMs,
-        clientCount = relayServer::getConnectedCount,
-        onTimeout = {
-            if (running && relayServer.getConnectedCount() == 0) {
-                Log.i(TAG, "CruxRelay stopped after zero-client idle timeout")
-                postStoppedNotification(R.string.relay_stopped_idle)
-                _state.update {
-                    it.copy(error = RelayError.IDLE_TIMEOUT, errorDetail = null)
-                }
-                disableInternal()
-            }
-        },
-    )
-
     init {
         // Crash-safe: a previous run may have died with the adapter name still
         // changed. Restore it before anything else.
@@ -394,7 +367,6 @@ class CruxRelayManager(
                 // guest write in order and byte-for-byte; there is no Aurora
                 // packet grouping for RelayFrameReassembler to perform.
                 relayServer.writes.collect { inbound ->
-                    idleWatchdog.activity()
                     if (bleConnection.sendRawChunks(
                             listOf(inbound.value),
                             expectedBrand = board.boardBrand,
@@ -408,7 +380,6 @@ class CruxRelayManager(
                 }
             } else {
                 relayServer.climbs.collect { inbound ->
-                    idleWatchdog.activity()
                     val ok = bleConnection.sendRawChunks(
                         inbound.climb.chunks,
                         expectedBrand = board.boardBrand,
@@ -432,7 +403,6 @@ class CruxRelayManager(
         eventJob = scope.launch {
             relayServer.connectionEvents.collect { event ->
                 _state.update { it.copy(clientCount = relayServer.getConnectedCount()) }
-                idleWatchdog.activity()
                 if (event is GattConnectionEvent.Connected) {
                     // A connectable legacy advertising set may stop after one
                     // connection. Restart it so further clients can join the
@@ -451,7 +421,6 @@ class CruxRelayManager(
             "${board.displayName} #${board.serial}"
         } else board.displayName
         _state.update { it.copy(advertising = true, advertisedName = desired, boardName = boardLabel) }
-        idleWatchdog.start()
 
         // FGS keeps advertising alive (Android 12+ throttles background
         // advertising) + shows the mandatory persistent sharing notification.
@@ -502,7 +471,6 @@ class CruxRelayManager(
     private suspend fun stopRelay() {
         if (!running) return
         running = false
-        idleWatchdog.stop()
         forwardJob?.cancel(); forwardJob = null
         eventJob?.cancel(); eventJob = null
         identifyJob?.cancel(); identifyJob = null
@@ -514,24 +482,6 @@ class CruxRelayManager(
         restoreAdapterName()
         _state.update { it.copy(advertising = false, clientCount = 0, advertisedName = null, boardName = null) }
         Log.i(TAG, "CruxRelay stopped; direct board connection preserved")
-    }
-
-    /** Final, auto-dismissible "sharing stopped" notification (FEAT-044 §12:
-     *  never fail/stop silently). Posted BEFORE the enabled=false state change
-     *  tears down [CruxRelayService]'s persistent notification, on the same
-     *  channel (which the service created when sharing started). Best-effort:
-     *  POST_NOTIFICATIONS may have been revoked. */
-    private fun postStoppedNotification(@StringRes textRes: Int) {
-        runCatching {
-            val mgr = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            val notification = NotificationCompat.Builder(context, CruxRelayService.CHANNEL_ID)
-                .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
-                .setContentTitle(context.getString(R.string.relay_notification_title))
-                .setContentText(context.getString(textRes))
-                .setAutoCancel(true)
-                .build()
-            mgr.notify(STOPPED_NOTIFICATION_ID, notification)
-        }.onFailure { Log.w(TAG, "failed to post relay-stopped notification", it) }
     }
 
     // --- Adapter name snapshot / restore (crash-safe) ---
