@@ -18,6 +18,10 @@ import com.cruxcoach.android.ble.matchesQuantumPlayers
 import com.cruxcoach.android.ble.planKey
 import com.cruxcoach.android.ui.board.BoardSendModePolicy
 import com.cruxcoach.android.ui.board.QueueDeliveryPolicy
+import com.cruxcoach.android.ui.settings.BoardConfigurationMismatch
+import com.cruxcoach.android.ui.settings.BoardSendIdentity
+import com.cruxcoach.android.ui.settings.boardSizeMismatch
+import com.cruxcoach.android.ui.settings.resolveBoardConfigurationMismatch
 import com.cruxcoach.android.ble.BoardControllerProfiles
 import com.cruxcoach.android.data.BoardSendMode
 import com.cruxcoach.android.ble.ConnectionState
@@ -29,6 +33,7 @@ import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardClimbParser
 import com.cruxcoach.domain.board.QuantumBoardModel
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -93,6 +98,8 @@ data class SessionQueueState(
     val participantIndex: Int = -1,
     /** A compatible external board app last wrote the physical board through CruxRelay. */
     val externalBoardOverride: Boolean = false,
+    /** Recoverable board identity/configuration failure from playlist delivery. */
+    val boardMismatch: BoardConfigurationMismatch? = null,
 ) {
     val isActive: Boolean get() = role != SessionRole.NONE
     val currentClimb: QueueItem? get() = queue.getOrNull(currentIndex)
@@ -137,6 +144,14 @@ class SessionQueueManager(
             data.size >= 2 &&
                 (data[0].toInt() and 0xFF) == NO_CURRENT_CLIMB_INDEX &&
                 (data[1].toInt() and 0xFF) == EXTERNAL_BOARD_OVERRIDE_FLAG
+    }
+
+    private suspend fun <T> preferenceEvidence(read: suspend () -> T): T? = try {
+        read()
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        null
     }
 
     private val _state = MutableStateFlow(SessionQueueState())
@@ -705,6 +720,10 @@ class SessionQueueManager(
         forceResend = true,
     )
 
+    fun clearBoardMismatch() {
+        _state.update { it.copy(boardMismatch = null) }
+    }
+
     /** A joined peer may ask the host to resend, but cannot manufacture the
      *  host user's explicit wall-write authority. AUTOMATIC mode may resend;
      *  EXPLICIT mode raises the host's lamp prompt instead. */
@@ -781,6 +800,23 @@ class SessionQueueManager(
                     Log.w(TAG, "Climb not found: ${item.climbUuid}")
                     return@withLock
                 }
+                val activeBrand = preferenceEvidence { userPreferences.boardBrand.first() }
+                    ?.let(BoardBrand::fromWire)
+                val identity = BoardSendIdentity(
+                    climbBrand = climb.brand,
+                    climbLayoutId = climb.layoutId,
+                    activeBrand = activeBrand,
+                    activeLayoutId = preferenceEvidence { userPreferences.boardLayoutId.first().toLong() },
+                    activeProductSizeId = preferenceEvidence { userPreferences.boardProductSizeId.first() },
+                    connectedBrand = runCatching { bleConnection.connectedBoardBrand.value }.getOrNull(),
+                    connectedQuantumModel = runCatching { bleConnection.connectedQuantumModel.value }.getOrNull(),
+                )
+                resolveBoardConfigurationMismatch(identity)?.let { mismatch ->
+                    _state.update { it.copy(boardMismatch = mismatch) }
+                    onSessionInfoChanged?.invoke()
+                    Log.w(TAG, "sendCurrentClimbToBoard: board mismatch ${mismatch.kind}")
+                    return@withLock
+                }
                 // Board-match guard against the CONNECTED board (when known):
                 // switching the active board in Settings never disconnects, so
                 // the queue could otherwise push wrong-brand frames to the
@@ -824,11 +860,21 @@ class SessionQueueManager(
                     // Kilter's LED partition and the wrong per-board colours.
                     val brandWire = climb.brand.wireValue
                     val ledMap = boardRepository.getPlacementLedMap(productSizeId, brandWire)
+                    if (ledMap.isNotEmpty() && holds.none { it.placementId in ledMap }) {
+                        _state.update { it.copy(boardMismatch = boardSizeMismatch(identity)) }
+                        onSessionInfoChanged?.invoke()
+                        return@withLock
+                    }
                     val roleColors = boardRepository.getRoleColorMapForBrand(brandWire).ifEmpty {
                         (if (climb.brand == BoardBrand.KILTER) userPreferences.ledHoldColors.first()
                          else LedHoldColors.standardFor(climb.brand)).toRoleColorMap()
                     }
-                    bleConnection.sendClimb(holds, ledMap, roleColors)
+                    bleConnection.sendClimb(
+                        holds,
+                        ledMap,
+                        roleColors,
+                        expectedBrand = climb.brand,
+                    )
                 }
                 if (sent) {
                     markCurrentClimbProjected(key)
@@ -1026,7 +1072,7 @@ class SessionQueueManager(
     private fun markCurrentClimbProjected(key: String) {
         lastSentClimbKey = key
         val changed = _state.value.awaitingExplicitSend
-        _state.update { it.copy(awaitingExplicitSend = false) }
+        _state.update { it.copy(awaitingExplicitSend = false, boardMismatch = null) }
         if (changed) onSessionInfoChanged?.invoke()
         val hadExternalOverride = _state.value.externalBoardOverride
         if (hadExternalOverride) {

@@ -71,6 +71,9 @@ import com.cruxcoach.android.ui.board.BleConnectionViewModel
 import com.cruxcoach.android.ui.board.KilterBoardVisualization
 import com.cruxcoach.android.ui.board.MoonBoardVisualization
 import com.cruxcoach.android.ui.board.rememberMoonBoardAsset
+import com.cruxcoach.android.ui.settings.BoardPickerDialog
+import com.cruxcoach.android.ui.settings.BoardSendIdentity
+import com.cruxcoach.android.ui.settings.resolveBoardConfigurationMismatch
 import com.cruxcoach.android.ui.theme.SuccessGreen
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardHold
@@ -120,10 +123,69 @@ fun ClimbEditorScreen(
         it == ConnectionState.CONNECTED || it == ConnectionState.SENDING
     }
     var showBleSheet by remember { mutableStateOf(false) }
+    val editorMismatch = remember(
+        state.editor.brand,
+        state.layoutId,
+        bleConnState.connectedBoardBrand,
+    ) {
+        resolveBoardConfigurationMismatch(
+            BoardSendIdentity(
+                climbBrand = state.editor.brand,
+                climbLayoutId = state.layoutId,
+                activeBrand = state.editor.brand,
+                activeLayoutId = state.layoutId,
+                activeProductSizeId = null,
+                connectedBrand = bleConnState.connectedBoardBrand,
+            )
+        )
+    }
+    var mismatchDismissed by remember(editorMismatch) { mutableStateOf(false) }
+    var showMismatchPicker by remember { mutableStateOf(false) }
     if (showBleSheet) {
         BleConnectionSheet(
             onDismiss = { showBleSheet = false },
         )
+    }
+    if (editorMismatch != null && !mismatchDismissed && !showMismatchPicker) {
+        AlertDialog(
+            onDismissRequest = { mismatchDismissed = true },
+            title = { Text(stringResource(R.string.board_mismatch_title)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.board_mismatch_connected_brand,
+                        editorMismatch.expectedBrand.displayName,
+                        editorMismatch.climbBrand.displayName,
+                    )
+                )
+            },
+            confirmButton = {
+                Button(onClick = { showMismatchPicker = true }) {
+                    Text(stringResource(R.string.board_mismatch_fix_action))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { mismatchDismissed = true }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            },
+        )
+    }
+    if (showMismatchPicker) {
+        editorMismatch?.let { mismatch ->
+            BoardPickerDialog(
+                onDismiss = { showMismatchPicker = false },
+                onSelected = {
+                    showMismatchPicker = false
+                    // The editor owns geometry for the old board. Its autosave
+                    // remains available, but continuing here after changing the
+                    // active board would make the canvas lie about the wall.
+                    onBack()
+                },
+                prefill = mismatch.prefill,
+                mismatch = mismatch,
+            )
+        } ?: run { showMismatchPicker = false }
     }
     // Editor-side equivalent of BoardSendController.kt's CONNECTED-collector:
     // every transition into CONNECTED pushes the current hold map. Covers

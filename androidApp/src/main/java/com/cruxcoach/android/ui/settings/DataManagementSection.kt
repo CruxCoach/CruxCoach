@@ -30,23 +30,70 @@ import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.SuccessGreen
 import com.cruxcoach.domain.board.BoardBrand
 
-/**
- * File-based import / export — the "manual backup" variant that sits
- * next to the Nostr-driven BackupSettingsSection. Split off from the
- * original DataManagementSection so Import + Export can live near
- * the other backup UI while the destructive Delete actions stay at
- * the very bottom of the settings panel.
- */
 @Composable
-internal fun DataImportExportSection(
+internal fun BoardLogbookImportSection(
+    onNavigateToAuroraMigration: () -> Unit,
+    onNavigateToMoonBoardCsvImport: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable { onNavigateToMoonBoardCsvImport() },
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = OrangeAccent.copy(alpha = 0.08f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(Icons.Default.FileDownload, contentDescription = null, tint = OrangeAccent)
+            Column {
+                Text(stringResource(R.string.settings_moon_csv_title), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.settings_moon_csv_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+
+    Spacer(modifier = Modifier.height(8.dp))
+
+    // Aurora migration — for users coming from the old Kilter / Tension /
+    // Aurora-shared logbook.
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onNavigateToAuroraMigration() },
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = OrangeAccent.copy(alpha = 0.08f))
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Icon(Icons.Default.SwapHoriz, contentDescription = null, tint = OrangeAccent)
+            Column {
+                Text(
+                    stringResource(R.string.settings_aurora_migration_title),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    stringResource(R.string.settings_aurora_migration_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+/** File-based whole-app import/export, kept beside encrypted backup. */
+@Composable
+internal fun AppDataTransferSection(
     deleteSuccess: String?,
     onNavigateToImport: () -> Unit,
     onNavigateToExport: () -> Unit,
-    onNavigateToAuroraMigration: () -> Unit,
-    onNavigateToMoonBoardCsvImport: () -> Unit,
     onDismissDeleteSuccess: () -> Unit,
 ) {
-    // Import banner
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -77,7 +124,6 @@ internal fun DataImportExportSection(
 
     Spacer(modifier = Modifier.height(8.dp))
 
-    // Export banner
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -99,59 +145,6 @@ internal fun DataImportExportSection(
                 )
                 Text(
                     stringResource(R.string.settings_data_export_desc),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-    }
-
-    Spacer(modifier = Modifier.height(8.dp))
-
-    Card(
-        modifier = Modifier.fillMaxWidth().clickable { onNavigateToMoonBoardCsvImport() },
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = OrangeAccent.copy(alpha = 0.08f)),
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Icon(Icons.Default.FileDownload, contentDescription = null, tint = OrangeAccent)
-            Column {
-                Text(stringResource(R.string.settings_moon_csv_title), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                Text(stringResource(R.string.settings_moon_csv_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-    }
-
-    Spacer(modifier = Modifier.height(8.dp))
-
-    // Aurora migration — for users coming from the old Kilter / Tension /
-    // Aurora-shared logbook. FEAT-005: imports the email-export JSON
-    // Aurora support sends after a data-request.
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onNavigateToAuroraMigration() },
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = OrangeAccent.copy(alpha = 0.08f))
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Icon(Icons.Default.SwapHoriz, contentDescription = null, tint = OrangeAccent)
-            Column {
-                Text(
-                    stringResource(R.string.settings_aurora_migration_title),
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    stringResource(R.string.settings_aurora_migration_desc),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

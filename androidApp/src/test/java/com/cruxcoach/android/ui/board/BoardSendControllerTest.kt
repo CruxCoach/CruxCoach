@@ -430,6 +430,7 @@ class BoardSendControllerTest {
                     sendClimb(
                         holds, any(), any(), routeId, userId,
                         BoardLayerManager.LAYER_COLORS[1], any(), expectedBoard,
+                        BoardBrand.QUANTUM,
                     )
                 } returns true
                 coEvery { refreshQuantumState() } returns true
@@ -488,6 +489,7 @@ class BoardSendControllerTest {
                     BoardLayerManager.LAYER_COLORS[1],
                     any(),
                     expectedBoard,
+                    BoardBrand.QUANTUM,
                 )
             }
             coVerify(exactly = 2) { ble.refreshQuantumState() }
@@ -587,7 +589,7 @@ class BoardSendControllerTest {
                 every { connectedQuantumModel } returns MutableStateFlow(QuantumBoardModel.XL)
                 coEvery { refreshQuantumState() } returns true
                 coEvery {
-                    sendClimb(any(), any(), any(), any(), any(), any(), any(), any())
+                    sendClimb(any(), any(), any(), any(), any(), any(), any(), any(), BoardBrand.QUANTUM)
                 } throws IllegalStateException("encoder failed")
             }
             val preferences = mockk<UserPreferences>(relaxed = true) {
@@ -833,7 +835,9 @@ class BoardSendControllerTest {
                 every { connectionState } returns MutableStateFlow(ConnectionState.CONNECTED)
                 // The user flips the mirror while the controller is still
                 // answering — exactly what toggleMirror() writes, reset included.
-                coEvery { sendClimb(any(), any(), any(), any(), any(), any()) } answers {
+                coEvery {
+                    sendClimb(any(), any(), any(), any(), any(), any(), any(), any(), BoardBrand.KILTER)
+                } answers {
                     detailState.update { current ->
                         current.copy(
                             isMirrored = true,
@@ -910,7 +914,9 @@ class BoardSendControllerTest {
                 every { connectionState } returns MutableStateFlow(ConnectionState.CONNECTED)
                 // The user changes the angle while the controller is still
                 // answering: by the time this returns, the screen has moved on.
-                coEvery { sendClimb(any(), any(), any(), any(), any(), any()) } answers {
+                coEvery {
+                    sendClimb(any(), any(), any(), any(), any(), any(), any(), any(), BoardBrand.KILTER)
+                } answers {
                     // Exactly what onAngleSelected() writes, including its
                     // reset of the send flags.
                     detailState.update { current ->

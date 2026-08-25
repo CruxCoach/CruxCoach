@@ -68,6 +68,8 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.cruxcoach.android.ui.settings.BoardPickerDialog
+import com.cruxcoach.android.ui.settings.BoardMismatchFixAction
 import com.cruxcoach.android.ble.BoardProjectionPolicy
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ble.BoardLayerManager
@@ -120,6 +122,7 @@ fun BoardClimbDetailScreen(
     val addToListViewModel: AddToListViewModel = hiltViewModel()
     var showBleSheet by remember { mutableStateOf(false) }
     var showRestTimerDialog by remember { mutableStateOf(false) }
+    var showMismatchPicker by remember { mutableStateOf(false) }
 
     // BLE sheet lives here (once), not inside per-page content
     val detailQueueManager = com.cruxcoach.android.ui.common.LocalSessionQueueManager.current
@@ -179,6 +182,19 @@ fun BoardClimbDetailScreen(
         BleConnectionSheet(
             onDismiss = { showBleSheet = false },
         )
+    }
+    if (showMismatchPicker) {
+        state.ble.mismatch?.let { mismatch ->
+            BoardPickerDialog(
+                onDismiss = { showMismatchPicker = false },
+                onSelected = {
+                    showMismatchPicker = false
+                    viewModel.clearBoardMismatch()
+                },
+                prefill = mismatch.prefill,
+                mismatch = mismatch,
+            )
+        } ?: run { showMismatchPicker = false }
     }
 
     // Dialogs — driven by active-page state, only need one instance
@@ -935,6 +951,7 @@ fun BoardClimbDetailScreen(
                     onNavigateToBugReport = onNavigateToBugReport,
                     onNavigateToSetter = onNavigateToSetter,
                     layerControlsAllowed = layerControlsAllowed,
+                    onFixBoardMismatch = { showMismatchPicker = true },
                 )
             }
         } else {
@@ -946,6 +963,7 @@ fun BoardClimbDetailScreen(
                 onNavigateToBugReport = onNavigateToBugReport,
                 onNavigateToSetter = onNavigateToSetter,
                 layerControlsAllowed = layerControlsAllowed,
+                onFixBoardMismatch = { showMismatchPicker = true },
                 modifier = Modifier.padding(padding)
             )
         }
@@ -1659,6 +1677,7 @@ private fun ClimbDetailPageContent(
     onNavigateToBugReport: (title: String, description: String) -> Unit = { _, _ -> },
     onNavigateToSetter: (pubkey: String) -> Unit = {},
     layerControlsAllowed: Boolean,
+    onFixBoardMismatch: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val climbBugReportTitle = stringResource(R.string.error_bug_report_climb_title)
@@ -1894,17 +1913,26 @@ private fun ClimbDetailPageContent(
                             }
                             state.ble.error != null -> {
                                 val bleErrorText = stringResource(state.ble.error)
-                                Text(
-                                    bleErrorText,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = ErrorRed,
-                                    modifier = Modifier.clickable {
-                                        onNavigateToBugReport(
-                                            bleBugReportTitle,
-                                            bleErrorText
+                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(
+                                        bleErrorText,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = ErrorRed,
+                                        modifier = Modifier.clickable {
+                                            onNavigateToBugReport(
+                                                bleBugReportTitle,
+                                                bleErrorText
+                                            )
+                                        }
+                                    )
+                                    state.ble.mismatch?.let { mismatch ->
+                                        BoardMismatchFixAction(
+                                            mismatch = mismatch,
+                                            onOpenPicker = { onFixBoardMismatch() },
+                                            compact = true,
                                         )
                                     }
-                                )
+                                }
                             }
                         }
                     }

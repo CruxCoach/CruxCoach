@@ -1281,7 +1281,14 @@ class ClimbEditorViewModel @Inject constructor(
         // the unchanged factory palette. Same pattern as
         // BoardSendController.kt:83.
         val roleColors = cur.ledColors.toRoleColorMap()
-        val result = runCatching { bleConnection.sendClimb(holds, ledMap, roleColors) }
+        val result = runCatching {
+            bleConnection.sendClimb(
+                holds,
+                ledMap,
+                roleColors,
+                expectedBrand = cur.editor.brand,
+            )
+        }
         result.fold(
             onSuccess = { Log.i(TAG, "syncLeds: sendClimb returned ok=$it holds=${holds.size}") },
             onFailure = { Log.w(TAG, "syncLeds: sendClimb threw holds=${holds.size}", it) },

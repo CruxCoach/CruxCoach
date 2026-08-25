@@ -56,6 +56,8 @@ import com.cruxcoach.android.ui.common.BleStatusArea
 import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
 import com.cruxcoach.android.ui.board.sync.BoardSyncInlineCard
 import com.cruxcoach.android.ui.theme.*
+import com.cruxcoach.android.ui.settings.BoardPickerDialog
+import com.cruxcoach.android.ui.settings.BoardMismatchFixAction
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.util.GradeConverter
@@ -92,6 +94,7 @@ fun BoardBrowserScreen(
     var showBleSheet by remember { mutableStateOf(false) }
     var showEndSessionDialog by remember { mutableStateOf(false) }
     var searchVisible by remember { mutableStateOf(false) }
+    var showMismatchPicker by remember { mutableStateOf(false) }
     val queueManager = LocalSessionQueueManager.current
     val queueState by queueManager.state.collectAsStateWithLifecycle()
     var lastEndedSession by remember { mutableStateOf<com.cruxcoach.data.repository.Board_sessions?>(null) }
@@ -210,6 +213,19 @@ fun BoardBrowserScreen(
                 onNavigateToClimb(uuid, angle)
             },
         )
+    }
+    if (showMismatchPicker) {
+        queueState.boardMismatch?.let { mismatch ->
+            BoardPickerDialog(
+                onDismiss = { showMismatchPicker = false },
+                onSelected = {
+                    showMismatchPicker = false
+                    queueManager.clearBoardMismatch()
+                },
+                prefill = mismatch.prefill,
+                mismatch = mismatch,
+            )
+        } ?: run { showMismatchPicker = false }
     }
 
     // Hold search sheet — pure hold-filter UI now (heatmaps moved to logbook stats)
@@ -425,6 +441,30 @@ fun BoardBrowserScreen(
                 },
                 onRandomToQueue = { viewModel.addRandomClimbToQueue() },
             )
+
+            queueState.boardMismatch?.let {
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            stringResource(R.string.board_mismatch_title),
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        BoardMismatchFixAction(
+                            mismatch = it,
+                            onOpenPicker = { showMismatchPicker = true },
+                        )
+                    }
+                }
+            }
 
             // Connecting indicator while GATT connection is being established
             if (queueState.isConnecting) {

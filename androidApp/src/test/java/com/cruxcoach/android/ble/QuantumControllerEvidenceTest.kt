@@ -256,6 +256,8 @@ class QuantumControllerEvidenceTest {
     fun `board scoped cleanup cannot cross a board swap or globally clear Quantum`() {
         assertTrue(boardScopedCommandAllowed(BoardBrand.KILTER, BoardBrand.KILTER))
         assertFalse(boardScopedCommandAllowed(BoardBrand.QUANTUM, BoardBrand.KILTER))
+        assertFalse(boardScopedCommandAllowed(BoardBrand.TENSION, BoardBrand.KILTER))
+        assertTrue(boardScopedCommandAllowed(BoardBrand.TENSION, null))
         assertTrue(genericBoardClearAllowed(BoardBrand.KILTER))
         assertFalse(genericBoardClearAllowed(BoardBrand.QUANTUM))
         assertTrue(moonBoardCommandAllowed(BoardBrand.MOONBOARD))

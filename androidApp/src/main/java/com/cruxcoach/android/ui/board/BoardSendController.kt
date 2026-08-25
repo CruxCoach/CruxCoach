@@ -27,6 +27,11 @@ import com.cruxcoach.android.data.SessionQueueManager
 import com.cruxcoach.android.data.SessionRole
 import com.cruxcoach.android.data.SessionVisibility
 import com.cruxcoach.android.data.UserPreferences
+import com.cruxcoach.android.ui.settings.BoardConfigurationMismatch
+import com.cruxcoach.android.ui.settings.BoardMismatchKind
+import com.cruxcoach.android.ui.settings.BoardSendIdentity
+import com.cruxcoach.android.ui.settings.boardSizeMismatch
+import com.cruxcoach.android.ui.settings.resolveBoardConfigurationMismatch
 import com.cruxcoach.util.DateTimeUtil
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.PersonalBoardRepository
@@ -113,6 +118,50 @@ internal class BoardSendController(
     )
 
     private fun ClimbDetailState.variant() = SendVariant(climb?.uuid, angle, holds)
+
+    private suspend fun sendIdentity(snapshot: ClimbDetailState): BoardSendIdentity? {
+        val climb = snapshot.climb ?: return null
+        val activeBrand = preferenceEvidence { userPreferences.boardBrand.first() }
+            ?.let(BoardBrand::fromWire)
+        return BoardSendIdentity(
+            climbBrand = climb.brand,
+            climbLayoutId = climb.layoutId,
+            activeBrand = activeBrand,
+            activeLayoutId = preferenceEvidence { userPreferences.boardLayoutId.first().toLong() },
+            activeProductSizeId = preferenceEvidence { userPreferences.boardProductSizeId.first() },
+            connectedBrand = runCatching { bleConnection.connectedBoardBrand.value }.getOrNull(),
+            connectedQuantumModel = runCatching { bleConnection.connectedQuantumModel.value }.getOrNull(),
+        )
+    }
+
+    private suspend fun <T> preferenceEvidence(read: suspend () -> T): T? = try {
+        read()
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        null
+    }
+
+    private fun mismatchError(mismatch: BoardConfigurationMismatch): Int = when (mismatch.kind) {
+        BoardMismatchKind.CONNECTED_BRAND,
+        BoardMismatchKind.CONNECTED_MODEL -> R.string.board_send_error_connected_board_mismatch
+        BoardMismatchKind.ACTIVE_SIZE -> R.string.board_send_error_climb_off_board
+        BoardMismatchKind.ACTIVE_BRAND,
+        BoardMismatchKind.ACTIVE_LAYOUT -> R.string.board_send_error_brand_mismatch
+    }
+
+    private fun updateMismatch(fence: SendFence, mismatch: BoardConfigurationMismatch) {
+        updateForVariant(fence) {
+            it.copy(
+                ble = it.ble.copy(
+                    isSending = false,
+                    error = mismatchError(mismatch),
+                    mismatch = mismatch,
+                ),
+                nearby = it.nearby.copy(debugInfo = "board configuration mismatch: ${mismatch.kind}"),
+            )
+        }
+    }
 
     /** One send, and the variant it was started for. */
     private data class SendFence(val id: Long, val variant: SendVariant)
@@ -220,6 +269,7 @@ internal class BoardSendController(
                 success = false,
                 error = null,
                 warning = null,
+                mismatch = null,
             ),
             nearby = it.nearby.copy(debugInfo = "sending...")
         ) }
@@ -232,12 +282,9 @@ internal class BoardSendController(
                 // the pref can diverge from the board still on the link — the
                 // pref-only check below would happily send a Tension climb to
                 // a still-connected Kilter board, lighting the wrong holds.
-                val connectedBrand = bleConnection.connectedBoardBrand.value
-                if (connectedBrand != null && s.climb != null && s.climb.brand != connectedBrand) {
-                    updateForVariant(variant) { it.copy(
-                        ble = it.ble.copy(isSending = false, error = R.string.board_send_error_connected_board_mismatch),
-                        nearby = it.nearby.copy(debugInfo = "connected-board brand mismatch")
-                    ) }
+                val identity = sendIdentity(s) ?: return@launch
+                resolveBoardConfigurationMismatch(identity)?.let {
+                    updateMismatch(variant, it)
                     return@launch
                 }
                 // Board-match guard, part 2: you can only send a climb to a
@@ -246,14 +293,8 @@ internal class BoardSendController(
                 // board; sending it would light the wrong holds. (This Kilter
                 // branch is only reached for non-MoonBoard climbs, so the
                 // check catches the "active board is a MoonBoard" mismatch.)
-                val activeBrand = userPreferences.boardBrand.first()
-                if (s.climb != null && s.climb.brand != BoardBrand.fromWire(activeBrand)) {
-                    updateForVariant(variant) { it.copy(
-                        ble = it.ble.copy(isSending = false, error = R.string.board_send_error_brand_mismatch),
-                        nearby = it.nearby.copy(debugInfo = "board-brand mismatch")
-                    ) }
-                    return@launch
-                }
+                val activeBrand = identity.activeBrand?.wireValue
+                    ?: userPreferences.boardBrand.first()
                 updateForVariant(variant) { it.copy(nearby = it.nearby.copy(debugInfo = "loading LED map...")) }
                 val productSizeId = userPreferences.boardProductSizeId.first()
                 val placementToLed = withContext(ioDispatcher) {
@@ -303,13 +344,15 @@ internal class BoardSendController(
                 // Refuse with a clear message instead of firing an empty frame
                 // + a vague "some holds not lit" warning.
                 if (unmappedHolds == s.holds.size) {
-                    updateForVariant(variant) { it.copy(
-                        ble = it.ble.copy(isSending = false, error = R.string.board_send_error_climb_off_board),
-                        nearby = it.nearby.copy(debugInfo = "all holds unmapped — wrong board/size")
-                    ) }
+                    updateMismatch(variant, boardSizeMismatch(identity))
                     return@launch
                 }
-                val success = bleConnection.sendClimb(s.holds, placementToLed, roleColorMap)
+                val success = bleConnection.sendClimb(
+                    s.holds,
+                    placementToLed,
+                    roleColorMap,
+                    expectedBrand = brand,
+                )
                 Log.i(TAG, "sendToBoard: writes done success=$success unmapped=$unmappedHolds")
                 updateForVariant(variant) { it.copy(
                     ble = it.ble.copy(
@@ -437,6 +480,11 @@ internal class BoardSendController(
         sendJob?.cancel()
         val variant = beginSendFence(snapshot)
         sendJob = scope.launch {
+            val identity = sendIdentity(snapshot) ?: return@launch
+            resolveBoardConfigurationMismatch(identity)?.let {
+                updateMismatch(variant, it)
+                return@launch
+            }
             val connectedBrand = bleConnection.connectedBoardBrand.value
             if (connectedBrand != null && connectedBrand != BoardBrand.QUANTUM) {
                 updateForVariant(variant) { it.copy(
@@ -794,6 +842,7 @@ internal class BoardSendController(
             quantumColor = layer.color,
             expectedQuantumPlayers = expectedPlayers,
             expectedQuantumBoard = expectedBoard,
+            expectedBrand = BoardBrand.QUANTUM,
         )
         if (written) boardLayerManager.confirmProjection(expectedPlan)
         else boardLayerManager.failProjection(expectedPlan)
@@ -901,6 +950,7 @@ internal class BoardSendController(
                 success = false,
                 error = null,
                 warning = null,
+                mismatch = null,
             ),
             nearby = it.nearby.copy(debugInfo = "sending (moonboard)...")
         ) }
@@ -912,12 +962,9 @@ internal class BoardSendController(
                 // MoonBoard. Switching the active board in Settings never
                 // disconnects, so the pref check below alone would let a
                 // MoonBoard ASCII frame go to a still-connected Aurora board.
-                val connectedBrand = bleConnection.connectedBoardBrand.value
-                if (connectedBrand != null && connectedBrand != BoardBrand.MOONBOARD) {
-                    updateForVariant(sendVariant) { it.copy(
-                        ble = it.ble.copy(isSending = false, error = R.string.board_send_error_connected_board_mismatch),
-                        nearby = it.nearby.copy(debugInfo = "connected board not moonboard")
-                    ) }
+                val identity = sendIdentity(s) ?: return@launch
+                resolveBoardConfigurationMismatch(identity)?.let {
+                    updateMismatch(sendVariant, it)
                     return@launch
                 }
                 // Board-match guard, part 2: a MoonBoard climb can only go to a
@@ -925,22 +972,6 @@ internal class BoardSendController(
                 // / deep link can surface a MoonBoard climb while a Kilter (or
                 // a different MoonBoard variant) is configured; sending it
                 // would light wrong/garbled holds. Refuse with a clear message.
-                val activeBrand = userPreferences.boardBrand.first()
-                if (BoardBrand.fromWire(activeBrand) != BoardBrand.MOONBOARD) {
-                    updateForVariant(sendVariant) { it.copy(
-                        ble = it.ble.copy(isSending = false, error = R.string.board_send_error_active_not_moonboard),
-                        nearby = it.nearby.copy(debugInfo = "active board not moonboard")
-                    ) }
-                    return@launch
-                }
-                val activeLayout = userPreferences.boardLayoutId.first().toLong()
-                if (climb.layoutId != activeLayout) {
-                    updateForVariant(sendVariant) { it.copy(
-                        ble = it.ble.copy(isSending = false, error = R.string.board_send_error_moonboard_variant_mismatch),
-                        nearby = it.nearby.copy(debugInfo = "moonboard variant mismatch")
-                    ) }
-                    return@launch
-                }
                 // Resolve the MoonBoard variant from the CLIMB being sent,
                 // not the active-board pref — the encoder's per-column-height
                 // serpentine differs (18 for standard 11×18 boards, 12 for

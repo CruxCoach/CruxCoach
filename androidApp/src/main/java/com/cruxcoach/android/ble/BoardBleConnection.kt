@@ -1505,8 +1505,13 @@ class BoardBleConnection(
         quantumColor: Int = 0x00ffff,
         expectedQuantumPlayers: List<QuantumActivePlayer>? = null,
         expectedQuantumBoard: BoardLayerBoardIdentity? = null,
+        expectedBrand: BoardBrand? = null,
     ): Boolean = writeMutex.withLock {
         if (_connectionState.value != ConnectionState.CONNECTED) return false
+        if (!boardScopedCommandAllowed(_connectedBoardBrand.value, expectedBrand)) {
+            Log.w(TAG, "Refusing projection for $expectedBrand on ${_connectedBoardBrand.value}")
+            return false
+        }
         val quantumPlayersBefore = if (_connectedBoardBrand.value == BoardBrand.QUANTUM) {
             expectedQuantumPlayers ?: return false
         } else {

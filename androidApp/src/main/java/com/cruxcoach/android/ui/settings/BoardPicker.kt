@@ -231,6 +231,8 @@ internal fun BoardPickerDialog(
     onDismiss: () -> Unit,
     onSelected: () -> Unit = {},
     onFindViaGym: (() -> Unit)? = null,
+    prefill: BoardPickerPrefill? = null,
+    mismatch: BoardConfigurationMismatch? = null,
 ) {
     val viewModel: BoardPickerViewModel = hiltViewModel()
     val state by viewModel.state.collectAsState()
@@ -238,7 +240,7 @@ internal fun BoardPickerDialog(
     // selection once (unkeyed remember), so it must not see the placeholder.
     if (!state.loaded) return
     BoardSelectionDialog(
-        initialBrand = state.initialBrand,
+        initialBrand = prefill?.brand?.wireValue ?: state.initialBrand,
         productSizes = state.productSizes,
         selectedKilterSizeId = state.selectedKilterSizeId,
         selectedMoonBoardVariant = state.selectedMoonBoardVariant,
@@ -248,6 +250,8 @@ internal fun BoardPickerDialog(
         auroraBrandSizes = state.auroraBrandSizes,
         frequency = BoardConstants.DEFAULT_SIZE_FREQUENCY,
         showAuroraBoards = true,
+        prefill = prefill,
+        mismatch = mismatch,
         onConfirmKilter = { viewModel.selectKilter(it); onSelected() },
         onConfirmMoonBoard = { viewModel.selectMoonBoard(it); onSelected() },
         onConfirmQuantum = { viewModel.selectQuantum(it); onSelected() },
