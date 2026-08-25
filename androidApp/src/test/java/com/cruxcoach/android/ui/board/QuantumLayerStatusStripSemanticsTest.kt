@@ -92,7 +92,7 @@ class QuantumLayerStatusStripSemanticsTest {
         compose.onNodeWithText("Your Quantum layer plans").assertExists()
         compose.onNodeWithText("Wall 1/4 active").assertExists()
         compose.onNodeWithText("Other apps:").assertExists()
-        compose.onNodeWithText("O1?", useUnmergedTree = true).assertExists()
+        compose.onNodeWithText("foreign- ?", useUnmergedTree = true).assertExists()
     }
 
     @Test

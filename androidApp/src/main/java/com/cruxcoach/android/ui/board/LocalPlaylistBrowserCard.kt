@@ -49,7 +49,7 @@ internal fun LocalPlaylistBrowserCard(
     onLight: () -> Unit,
     onNext: () -> Unit,
     onOpen: () -> Unit,
-    modifier: Modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+    modifier: Modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
 ) {
     Card(
         modifier = modifier
@@ -57,7 +57,7 @@ internal fun LocalPlaylistBrowserCard(
             .clickable(onClick = onOpen)
             .testTag("board_playlist_browser_card"),
         colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(14.dp),
     ) {
         Column(
             modifier = Modifier
@@ -69,92 +69,78 @@ internal fun LocalPlaylistBrowserCard(
                         ),
                     ),
                 )
-                .padding(start = 12.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
+                .padding(start = 10.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Surface(
                     color = OrangeAccent.copy(alpha = 0.16f),
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(8.dp),
                 ) {
                     Icon(
                         Icons.AutoMirrored.Filled.QueueMusic,
                         contentDescription = null,
                         tint = OrangeAccent,
-                        modifier = Modifier.padding(6.dp).size(21.dp),
+                        modifier = Modifier.padding(5.dp).size(18.dp),
                     )
                 }
-                Spacer(Modifier.width(10.dp))
-                Column(Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            stringResource(R.string.playlist_banner_label),
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f),
-                        )
-                        if (currentIndex >= 0 && totalCount > 0) {
-                            Text(
-                                "${currentIndex + 1}/$totalCount",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = OrangeAccent,
-                            )
-                        }
-                        Icon(
-                            Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                            contentDescription = stringResource(R.string.cd_open),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(22.dp),
-                        )
-                    }
-                    Spacer(Modifier.size(2.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            currentClimbName ?: stringResource(R.string.playlist_player_title),
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f),
-                        )
-                        IconButton(
-                            onClick = onPrevious,
-                            enabled = hasPrevious,
-                            modifier = Modifier.size(36.dp).testTag("playlist_banner_previous"),
-                        ) {
-                            Icon(
-                                Icons.Default.SkipPrevious,
-                                contentDescription = stringResource(R.string.cd_previous),
-                                modifier = Modifier.size(22.dp),
-                            )
-                        }
-                        IconButton(
-                            onClick = onLight,
-                            enabled = canLight,
-                            modifier = Modifier.size(36.dp).testTag("playlist_banner_light"),
-                        ) {
-                            Icon(
-                                Icons.Default.Lightbulb,
-                                contentDescription = stringResource(R.string.playlist_send_to_board),
-                                tint = if (canLight) OrangeAccent else MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(21.dp),
-                            )
-                        }
-                        IconButton(
-                            onClick = onNext,
-                            enabled = hasNext,
-                            modifier = Modifier.size(36.dp).testTag("playlist_banner_next"),
-                        ) {
-                            Icon(
-                                Icons.Default.SkipNext,
-                                contentDescription = stringResource(R.string.cd_next),
-                                modifier = Modifier.size(22.dp),
-                            )
-                        }
-                    }
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    currentClimbName ?: stringResource(R.string.playlist_player_title),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                if (currentIndex >= 0 && totalCount > 0) {
+                    Text(
+                        "${currentIndex + 1}/$totalCount",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = OrangeAccent,
+                    )
+                    Spacer(Modifier.width(2.dp))
                 }
+                IconButton(
+                    onClick = onPrevious,
+                    enabled = hasPrevious,
+                    modifier = Modifier.size(32.dp).testTag("playlist_banner_previous"),
+                ) {
+                    Icon(
+                        Icons.Default.SkipPrevious,
+                        contentDescription = stringResource(R.string.cd_previous),
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+                IconButton(
+                    onClick = onLight,
+                    enabled = canLight,
+                    modifier = Modifier.size(32.dp).testTag("playlist_banner_light"),
+                ) {
+                    Icon(
+                        Icons.Default.Lightbulb,
+                        contentDescription = stringResource(R.string.playlist_send_to_board),
+                        tint = if (canLight) OrangeAccent else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(19.dp),
+                    )
+                }
+                IconButton(
+                    onClick = onNext,
+                    enabled = hasNext,
+                    modifier = Modifier.size(32.dp).testTag("playlist_banner_next"),
+                ) {
+                    Icon(
+                        Icons.Default.SkipNext,
+                        contentDescription = stringResource(R.string.cd_next),
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+                Icon(
+                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = stringResource(R.string.cd_open),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp),
+                )
             }
         }
     }
