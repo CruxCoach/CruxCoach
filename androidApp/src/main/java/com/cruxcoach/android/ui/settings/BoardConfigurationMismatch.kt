@@ -45,6 +45,28 @@ data class BoardSendIdentity(
     val connectedQuantumModel: QuantumBoardModel? = null,
 )
 
+/** Build the guided correction shown as soon as a controller connects under
+ * a different active board. Controller evidence can safely select the brand;
+ * only Quantum currently proves its exact model over BLE. */
+fun connectedBoardConfigurationMismatch(
+    activeBrand: BoardBrand,
+    connectedBrand: BoardBrand?,
+    connectedQuantumModel: QuantumBoardModel? = null,
+): BoardConfigurationMismatch? {
+    val controllerBrand = connectedBrand ?: return null
+    if (controllerBrand == activeBrand) return null
+    return BoardConfigurationMismatch(
+        kind = BoardMismatchKind.ACTIVE_BRAND,
+        climbBrand = controllerBrand,
+        expectedBrand = controllerBrand,
+        activeBrand = activeBrand,
+        connectedBrand = controllerBrand,
+        climbLayoutId = connectedQuantumModel?.layoutId,
+        activeLayoutId = null,
+        prefill = controllerPrefill(controllerBrand, connectedQuantumModel),
+    )
+}
+
 /**
  * Resolve all identity mismatches that can be proven before an LED-map lookup.
  * Controller evidence wins over climb metadata. In particular, a Quantum

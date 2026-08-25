@@ -102,6 +102,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun BoardClimbDetailScreen(
     onNavigateBack: () -> Unit,
+    onNavigateToBoardBrowser: () -> Unit,
     onNavigateToClimb: ((climbUuid: String, angle: Int) -> Unit)? = null,
     onNavigateToBugReport: (title: String, description: String) -> Unit = { _, _ -> },
     onNavigateToFork: (climbUuid: String) -> Unit = {},
@@ -181,15 +182,21 @@ fun BoardClimbDetailScreen(
     if (showBleSheet) {
         BleConnectionSheet(
             onDismiss = { showBleSheet = false },
+            onBoardMismatchExit = onNavigateToBoardBrowser,
         )
     }
     if (showMismatchPicker) {
         state.ble.mismatch?.let { mismatch ->
             BoardPickerDialog(
-                onDismiss = { showMismatchPicker = false },
+                onDismiss = {
+                    showMismatchPicker = false
+                    viewModel.clearBoardMismatch()
+                    onNavigateToBoardBrowser()
+                },
                 onSelected = {
                     showMismatchPicker = false
                     viewModel.clearBoardMismatch()
+                    onNavigateToBoardBrowser()
                 },
                 prefill = mismatch.prefill,
                 mismatch = mismatch,

@@ -99,6 +99,7 @@ import kotlinx.coroutines.launch
 fun PlaylistDetailScreen(
     onNavigateBack: () -> Unit,
     onNavigateToClimb: (String, Int) -> Unit,
+    onNavigateToBrowser: () -> Unit,
     /** Called after the plan was loaded into the session queue. */
     onPlayed: () -> Unit,
     viewModel: PlaylistDetailViewModel = hiltViewModel(),
@@ -188,6 +189,7 @@ fun PlaylistDetailScreen(
         BleConnectionSheet(
             onDismiss = { showBleSheet = false },
             onNavigateToClimb = onNavigateToClimb,
+            onBoardMismatchExit = onNavigateToBrowser,
             viewModel = bleConnectionViewModel,
         )
     }

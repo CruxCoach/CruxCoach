@@ -10,6 +10,44 @@ import kotlin.test.assertNotNull
 
 class BoardConfigurationMismatchTest {
     @Test
+    fun `connection mismatch immediately prefills safely known MoonBoard brand`() {
+        val mismatch = connectedBoardConfigurationMismatch(
+            activeBrand = BoardBrand.KILTER,
+            connectedBrand = BoardBrand.MOONBOARD,
+        )
+
+        assertNotNull(mismatch)
+        assertEquals(BoardMismatchKind.ACTIVE_BRAND, mismatch.kind)
+        assertEquals(BoardBrand.MOONBOARD, mismatch.prefill.brand)
+        assertEquals(BoardPickerPrefillSource.CONNECTED_CONTROLLER, mismatch.prefill.source)
+        assertNull(mismatch.prefill.layoutId)
+        assertNull(mismatch.prefill.productSizeId)
+    }
+
+    @Test
+    fun `matching connection does not interrupt the user`() {
+        assertNull(
+            connectedBoardConfigurationMismatch(
+                activeBrand = BoardBrand.TENSION,
+                connectedBrand = BoardBrand.TENSION,
+            ),
+        )
+    }
+
+    @Test
+    fun `connection mismatch trusts verified Quantum model`() {
+        val mismatch = connectedBoardConfigurationMismatch(
+            activeBrand = BoardBrand.KILTER,
+            connectedBrand = BoardBrand.QUANTUM,
+            connectedQuantumModel = QuantumBoardModel.XL,
+        )
+
+        assertNotNull(mismatch)
+        assertEquals(QuantumBoardModel.XL.layoutId, mismatch.prefill.layoutId)
+        assertEquals(QuantumBoardModel.XL.productSizeId.toInt(), mismatch.prefill.productSizeId)
+    }
+
+    @Test
     fun `connected controller brand wins and unknown fields stay unconfirmed`() {
         val mismatch = resolveBoardConfigurationMismatch(
             BoardSendIdentity(

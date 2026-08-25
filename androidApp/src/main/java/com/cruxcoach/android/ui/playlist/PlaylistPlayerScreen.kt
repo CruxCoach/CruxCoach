@@ -86,7 +86,9 @@ import com.cruxcoach.android.ui.board.SessionQueueSheet
 import com.cruxcoach.android.ui.board.SessionSummarySheet
 import com.cruxcoach.android.ui.board.rememberMoonBoardAsset
 import com.cruxcoach.android.ui.common.RestTimerBannerSlot
+import com.cruxcoach.android.ui.common.LocalSessionQueueManager
 import com.cruxcoach.android.ui.navigation.ClimbNavigationSource
+import com.cruxcoach.android.ui.settings.BoardPickerDialog
 import com.cruxcoach.android.ui.theme.DarkBackground
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.SuccessGreen
@@ -132,6 +134,8 @@ fun PlaylistPlayerScreen(
     var showBleSheet by remember { mutableStateOf(false) }
     val bleConnectionViewModel: BleConnectionViewModel = hiltViewModel()
     val bleConnectionState by bleConnectionViewModel.state.collectAsStateWithLifecycle()
+    val queueManager = LocalSessionQueueManager.current
+    val queueState by queueManager.state.collectAsStateWithLifecycle()
     val isBleConnected =
         bleConnectionState.connectionState == ConnectionState.CONNECTED ||
             bleConnectionState.connectionState == ConnectionState.SENDING
@@ -188,7 +192,27 @@ fun PlaylistPlayerScreen(
         BleConnectionSheet(
             onDismiss = { showBleSheet = false },
             onNavigateToClimb = onNavigateToClimb,
+            onBoardMismatchExit = onNavigateToBrowser,
             viewModel = bleConnectionViewModel,
+        )
+    }
+
+    // The queue's send fence is transport-level and remains authoritative.
+    // Surface its typed mismatch here as well as in the browser: a playlist
+    // user should never get a silent no-op just because the browser is not in
+    // the composition tree.
+    queueState.boardMismatch?.let { mismatch ->
+        BoardPickerDialog(
+            prefill = mismatch.prefill,
+            mismatch = mismatch,
+            onSelected = {
+                queueManager.clearBoardMismatch()
+                onNavigateToBrowser()
+            },
+            onDismiss = {
+                queueManager.clearBoardMismatch()
+                onNavigateToBrowser()
+            },
         )
     }
 
