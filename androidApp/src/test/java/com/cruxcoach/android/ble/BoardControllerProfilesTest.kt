@@ -55,6 +55,15 @@ class BoardControllerProfilesTest {
     }
 
     @Test
+    fun `Quantum is exclusive and retains its projection after disconnect`() {
+        val profile = BoardControllerProfiles.resolve(BoardBrand.QUANTUM)
+
+        assertEquals(BoardConnectionCapacity.SINGLE, profile.connectionCapacity)
+        assertEquals(BoardProjectionLifetime.RETAINED_AFTER_DISCONNECT, profile.projectionLifetime)
+        assertTrue(profile.relaySupported)
+    }
+
+    @Test
     fun `CruxRelay is a multi-client endpoint and cannot be nested`() {
         val profile = BoardControllerProfiles.resolve(
             BoardBrand.KILTER,

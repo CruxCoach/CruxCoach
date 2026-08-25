@@ -76,7 +76,7 @@ data class RestTimerSettings(
 )
 
 data class ClimbSharingSettings(
-    val enabled: Boolean = false,
+    val enabled: Boolean = true,
     val allowRemoteDisconnect: Boolean = false,
     val advertisingSupported: Boolean? = null
 )
@@ -101,7 +101,7 @@ data class SettingsState(
     val lastSyncTimestamp: String? = null,
     val hasAssessment: Boolean = false,
     val ledColors: LedHoldColors = LedHoldColors(),
-    val bleAutoDisconnectSeconds: Int = 60,
+    val bleAutoDisconnectSeconds: Int = 0,
     val singleConnectionBoardSendMode: BoardSendMode = BoardSendMode.AUTOMATIC,
     /** Mirrors UserPreferences.multiConnectionBoardSendMode's default — a
      *  shared board is not swiped onto by accident. */

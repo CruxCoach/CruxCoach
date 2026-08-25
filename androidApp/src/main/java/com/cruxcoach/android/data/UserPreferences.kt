@@ -1020,13 +1020,14 @@ class UserPreferences(
      * BLE idle-disconnect timeout in seconds. New storage key since
      * 0.1.3; old installs had whole-minute granularity under
      * [PreferenceKeys.BLE_AUTO_DISCONNECT_MINUTES]. The fallback read
-     * multiplies the legacy value by 60 so upgrading users keep their
-     * chosen timeout to the second — the next write lands in the new
-     * seconds key and the legacy entry eventually becomes dead bytes.
+     * multiplies an explicitly stored legacy value by 60 so upgrading users
+     * keep their chosen timeout. With neither key present the safe default is
+     * off; releasing an exclusive controller is always an explicit opt-in.
      */
     val bleAutoDisconnectSeconds: Flow<Int> = dataStore.data.map { prefs ->
         prefs[PreferenceKeys.BLE_AUTO_DISCONNECT_SECONDS]
-            ?: ((prefs[PreferenceKeys.BLE_AUTO_DISCONNECT_MINUTES] ?: 1) * 60)
+            ?: prefs[PreferenceKeys.BLE_AUTO_DISCONNECT_MINUTES]?.times(60)
+            ?: 0
     }
 
     suspend fun setBleAutoDisconnectSeconds(seconds: Int) {
@@ -1371,7 +1372,10 @@ class UserPreferences(
 
     // Nearby climb sharing
     val nearbyClimbSharing: Flow<Boolean> = dataStore.data.map {
-        it[PreferenceKeys.NEARBY_CLIMB_SHARING] ?: false
+        // Nearby board awareness is part of the normal connected-board
+        // experience. Preserve an explicit opt-out, but do not make fresh or
+        // upgrading users discover and enable this prerequisite manually.
+        it[PreferenceKeys.NEARBY_CLIMB_SHARING] ?: true
     }
     val allowRemoteDisconnect: Flow<Boolean> = dataStore.data.map {
         it[PreferenceKeys.ALLOW_REMOTE_DISCONNECT] ?: false
