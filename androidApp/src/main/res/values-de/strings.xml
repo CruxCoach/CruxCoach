@@ -418,8 +418,8 @@
     <string name="settings_ble_keep_screen_on_desc">Bildschirm bleibt auf Board-Screens an, damit du nicht ständig entsperren musst.</string>
 
     <!-- Settings: LED Colors -->
-    <string name="settings_led_title">LED-Farben</string>
-    <string name="settings_led_desc">Farben für die Griff-Rollen auf dem Board.</string>
+    <string name="settings_led_title">Kilter LED-Farben</string>
+    <string name="settings_led_desc">Farben, die Kilter-Boards für die einzelnen Griffrollen verwenden.</string>
     <string name="settings_led_role_start">Start</string>
     <string name="settings_led_role_hand">Hand</string>
     <string name="settings_led_role_foot">Fuß</string>
@@ -1751,6 +1751,21 @@
     <string name="settings_app_share_title">App teilen</string>
     <string name="settings_profile_assessment_title">Profil &amp; Assessment</string>
     <string name="settings_section_board">Board-Einstellungen</string>
+    <string name="settings_section_general">Allgemein</string>
+    <string name="settings_section_current_board">Aktuelles Board · %1$s</string>
+    <string name="settings_section_accounts_data">Konten &amp; Daten</string>
+    <string name="settings_group_appearance">Darstellung &amp; Sprache</string>
+    <string name="settings_group_training_playback">Training &amp; Wiedergabe</string>
+    <string name="settings_group_board_accounts_imports">Board-Konten &amp; Logbuchimporte</string>
+    <string name="settings_group_board_catalogs">Board-Kataloge</string>
+    <string name="settings_group_backup_transfer">Sicherung &amp; Übertragung</string>
+    <string name="settings_group_delete_data">Daten löschen</string>
+    <string name="settings_board_hub_desc">Tippe eine Karte an, um die Einstellungen dieses Boards anzusehen. Dadurch ändert sich das aktive Board nicht.</string>
+    <string name="settings_board_active_badge">Aktiv</string>
+    <string name="settings_board_viewing">Einstellungen für %1$s</string>
+    <string name="settings_board_make_active">Konfigurieren und aktiv setzen</string>
+    <string name="settings_board_active_connection">Aktives Board &amp; Verbindung</string>
+    <string name="settings_board_inactive_hint">%1$s ist nicht aktiv. Markenspezifische Optionen kannst du hier ansehen; das aktive Board ändert sich immer erst nach einer eigenen Bestätigung.</string>
     <string name="settings_board_layout_title">Wand</string>
     <string name="settings_board_layout_desc">Wähle, welche Kilter-Wand du hast. Browse und Climb-Creator richten sich danach.</string>
     <string name="settings_board_layout_original">Kilter Original</string>
@@ -2138,6 +2153,18 @@
     <string name="board_send_error_moonboard_variant_mismatch">Dieser Climb gehört zu einer anderen MoonBoard-Variante als dein aktives Board.</string>
     <string name="board_send_warning_holds_not_lit">Einige Griffe liegen außerhalb deiner Board-Größe und wurden nicht beleuchtet.</string>
     <string name="board_send_error_climb_off_board">Die Griffe dieses Climbs passen nicht auf dein aktives Board — wechsle Board oder Größe in den Einstellungen, um ihn zu senden.</string>
+    <string name="board_mismatch_title">Board-Konfiguration passt nicht</string>
+    <string name="board_mismatch_connected_brand">Verbunden ist ein %1$s, dieser Climb gehört aber zu %2$s.</string>
+    <string name="board_mismatch_active_brand">CruxCoach ist auf %1$s eingestellt, während Board oder Climb %2$s benötigen.</string>
+    <string name="board_mismatch_connected_model">Das verbundene Quantum-Modell und dieser Climb verwenden unterschiedliche Layouts.</string>
+    <string name="board_mismatch_active_layout">Das gewählte Layout oder die Generation passt nicht zum Climb oder Controller.</string>
+    <string name="board_mismatch_active_size">Kein Griff dieses Climbs lässt sich der eingestellten Board-Größe zuordnen.</string>
+    <string name="board_mismatch_detected_controller">Über BLE sicher erkannt und vorausgewählt: %1$s. Unbekanntes Modell, Layout oder Größe musst du noch wählen.</string>
+    <string name="board_mismatch_detected_climb">Aus dem Climb sicher vorausgewählt: %1$s. Eine nicht eindeutig ableitbare Größe musst du noch wählen.</string>
+    <string name="board_mismatch_detected_both">Über BLE wurde %1$s sicher erkannt; das Layout stammt aus dem Climb. Eine nicht eindeutig ableitbare Größe musst du noch wählen.</string>
+    <string name="board_mismatch_confirmation_notice">Prüfe die übrigen Angaben. Erst Bestätigen ändert das aktive Board; Abbrechen ändert nichts.</string>
+    <string name="board_mismatch_fix_action">Board-Konfiguration korrigieren</string>
+    <string name="board_mismatch_choose_detail">Modell, Layout oder Größe wählen</string>
     <string name="board_sync_error_download">Download fehlgeschlagen. Bitte prüfe deine Internetverbindung und versuche es erneut.</string>
     <string name="board_sync_error_update_offline">Aktualisierung nicht möglich. Bestehende Daten bleiben erhalten.</string>
     <string name="board_sync_error_import">Import fehlgeschlagen. Bitte später erneut versuchen.</string>
@@ -2324,6 +2351,9 @@
     <string name="playlist_default_name_projecting">Projekt-Training</string>
     <string name="ble_queue_resend">Queue-Climb erneut ans Board senden</string>
     <string name="playlist_import_error">Dieser Trainingslisten-Link ist ungültig oder beschädigt.</string>
+    <string name="playlist_import_preview_title">Geteiltes Training importieren?</string>
+    <string name="playlist_import_preview_summary">%1$d Climbs · %2$d Pausen</string>
+    <string name="playlist_import_preview_body">Prüfe das geteilte Training, bevor es in deinen Listen gespeichert wird.</string>
     <string name="playlist_player_title">Training</string>
     <string name="playlist_banner_label">Playlist</string>
     <string name="playlist_player_hosted_by">Training von %1$s</string>
