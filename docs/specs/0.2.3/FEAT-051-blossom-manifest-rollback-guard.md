@@ -50,10 +50,17 @@ against.
   use; no wipe, no crash, no blocked future sync.
 - Reuse the timestamp semantics the code already applies in
   `selectPreferredManifest`, so the two cannot disagree.
+- Reject both envelope and manifest-content timestamps more than one hour in
+  the future before either can advance a persistent monotonic watermark or
+  seed the community-climb subscription cursor.
+- On upgrade, remove an already-persisted future watermark without deleting
+  chunk hashes, and remove an already-persisted future community cursor so the
+  next safe manifest can reseed it (or the subscriber can backfill unseeded).
 
 **Non-goals:**
 - Multi-publisher support / configurable trust anchor.
-- Manifest freshness (`expires`) enforcement.
+- Manifest staleness-in-the-past / `expires` enforcement. The future-skew
+  ceiling above is an ordering safety bound, not an expiry policy.
 - Declared row counts and shrink limits.
   (These three are "Stufe 1" in the same analysis and are separate work.)
 - Any UI. A rejected stale manifest is a silent no-op plus a log line.
@@ -114,8 +121,10 @@ existing `validateManifest` / `extractDTag` seams:
 internal fun isManifestAcceptable(
     manifest: BlossomManifest,
     lastAcceptedCreatedAt: Long?,
-): Boolean = lastAcceptedCreatedAt == null ||
-    effectiveTimestamp(manifest) >= lastAcceptedCreatedAt
+    nowSeconds: Long,
+): Boolean = hasAcceptableTimestamps(manifest, nowSeconds) &&
+    (lastAcceptedCreatedAt == null ||
+        effectiveTimestamp(manifest) >= lastAcceptedCreatedAt)
 ```
 
 Note the deliberate difference from the two existing counter-patterns, which
@@ -208,6 +217,16 @@ Each maps to a JVM unit test on the pure seams (`effectiveTimestamp`,
    stale set; the guard then rejects it and the client keeps its current data.
    The user sees no update, which is the intended fail-safe outcome, not an
    error.
+8. **Publisher clock far ahead.** A valid signature does not make
+   `created_at` a safe persistent clock. An envelope or content timestamp at
+   `now + 3600 s` is accepted for ordinary skew; `now + 3601 s` is rejected at
+   relay ingestion, at the apply decision, and again before the atomic
+   chunk-hash/watermark write. The community cursor independently fails open to
+   an unseeded first request rather than persisting a future `since` value.
+9. **Previously poisoned install.** Reading a stored watermark/cursor above the
+   same ceiling repairs only that ordering value. Existing chunk hashes and
+   catalogue data remain intact; a current signed manifest can immediately
+   establish the replacement watermark and safe subscription seed.
 
 ## 7. Testing
 
@@ -216,7 +235,8 @@ Each maps to a JVM unit test on the pure seams (`effectiveTimestamp`,
   no Android dependencies, fixtures built with the same local `manifestWith(...)`
   / `chunk(...)` helper shape.
 - Cover acceptance criteria 1–5 directly against `isManifestAcceptable` and
-  `effectiveTimestamp`.
+  `effectiveTimestamp`, plus the exact future-skew boundary for both envelope
+  and content timestamps and the fail-open community cursor seed.
 - Criteria 6–9 concern persistence ordering. Cover whatever is reachable
   without an Android runtime by extracting the advance decision into a pure
   function if needed; anything that genuinely requires `SharedPreferences`

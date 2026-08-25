@@ -1360,6 +1360,11 @@
     <string name="ble_session_visibility_permission_denied">Zum Veröffentlichen einer joinbaren Queue ist die Bluetooth-Berechtigung erforderlich.</string>
     <string name="ble_session_visibility_status_joinable">Joinbar · für Nutzer in der Nähe sichtbar</string>
     <string name="ble_session_visibility_status_local">Nur lokal · Queue wird nicht veröffentlicht</string>
+    <string name="ble_successor_join_title">Mit Gruppe in der Nähe fortfahren?</string>
+    <string name="ble_successor_join_message">„%1$s“ ist in der Nähe aufgetaucht. Session-Namen sind nicht verifiziert. Tritt nur bei, wenn du diese Gruppe erkennst.</string>
+    <string name="ble_successor_join_unknown_name">Unbenannte Session</string>
+    <string name="ble_successor_join_confirm">Session beitreten</string>
+    <string name="ble_successor_join_keep_queue">Meine Queue behalten</string>
     <string name="ble_sharing_title">BLE Sharing</string>
     <string name="ble_error_gatt_server">Freigabe-Server konnte nicht gestartet werden</string>
     <string name="ble_error_publish_failed">Playlist konnte nicht veröffentlicht werden</string>

@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
 import com.cruxcoach.android.nostr.NostrConfig
+import com.cruxcoach.android.nostr.NostrEventPolicy
 import com.cruxcoach.android.util.ZstdNative
 import com.vitorpamplona.quartz.nip01Core.core.Event
 import com.vitorpamplona.quartz.nip01Core.crypto.verifyId
@@ -61,6 +62,8 @@ class BlossomSyncManager(
      * incremental-sync state across the upgrade.
      */
     prefsName: String = DEFAULT_PREFS_NAME,
+    /** Injectable wall clock for future-skew trust-boundary tests. */
+    private val nowSeconds: () -> Long = { System.currentTimeMillis() / 1000L },
 ) {
     private val prefs: SharedPreferences =
         context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
@@ -138,10 +141,19 @@ class BlossomSyncManager(
                                         return
                                     }
                                     val parsed = json.decodeFromString<BlossomManifest>(event.content)
-                                    result = Companion.validateManifest(parsed).copy(
+                                    val candidate = Companion.validateManifest(parsed).copy(
                                         eventCreatedAt = event.createdAt,
                                         eventId = event.id,
                                     )
+                                    if (!Companion.hasAcceptableTimestamps(candidate, nowSeconds())) {
+                                        Log.w(
+                                            TAG,
+                                            "Manifest timestamp too far in the future from $relayUrl: " +
+                                                "event=${candidate.eventCreatedAt} content=${candidate.createdAt}",
+                                        )
+                                        return
+                                    }
+                                    result = candidate
                                 }
                                 "EOSE" -> {
                                     ws.close(1000, "done")
@@ -205,13 +217,22 @@ class BlossomSyncManager(
      */
     fun canApplyManifest(manifest: BlossomManifest): Boolean {
         val lastAccepted = lastAcceptedManifestTimestamp()
-        val acceptable = isManifestAcceptable(manifest, lastAccepted)
+        val currentTime = nowSeconds()
+        val acceptable = isManifestAcceptable(manifest, lastAccepted, currentTime)
         if (!acceptable) {
-            Log.w(
-                TAG,
-                "[$manifestDTag] rejected stale manifest: " +
-                    "${effectiveTimestamp(manifest)} < accepted $lastAccepted"
-            )
+            if (!hasAcceptableTimestamps(manifest, currentTime)) {
+                Log.w(
+                    TAG,
+                    "[$manifestDTag] rejected future-dated manifest: " +
+                        "event=${manifest.eventCreatedAt} content=${manifest.createdAt}",
+                )
+            } else {
+                Log.w(
+                    TAG,
+                    "[$manifestDTag] rejected stale manifest: " +
+                        "${effectiveTimestamp(manifest)} < accepted $lastAccepted",
+                )
+            }
         }
         return acceptable
     }
@@ -238,7 +259,13 @@ class BlossomSyncManager(
     ) {
         val incoming = effectiveTimestamp(manifest)
         val lastAccepted = lastAcceptedManifestTimestamp()
-        if (lastAccepted == null || incoming >= lastAccepted) {
+        if (!hasAcceptableTimestamps(manifest, nowSeconds())) {
+            Log.w(
+                TAG,
+                "[$manifestDTag] refused future-dated completed manifest: " +
+                    "event=${manifest.eventCreatedAt} content=${manifest.createdAt}",
+            )
+        } else if (lastAccepted == null || incoming >= lastAccepted) {
             val editor = prefs.edit()
             importedChunks.forEach { chunk ->
                 editor.putString("chunk_sha256_${chunk.name}", chunk.sha256)
@@ -253,12 +280,19 @@ class BlossomSyncManager(
         }
     }
 
-    internal fun lastAcceptedManifestTimestamp(): Long? =
-        if (prefs.contains(KEY_LAST_MANIFEST_CREATED_AT)) {
-            prefs.getLong(KEY_LAST_MANIFEST_CREATED_AT, 0L)
-        } else {
-            null
-        }
+    internal fun lastAcceptedManifestTimestamp(): Long? {
+        if (!prefs.contains(KEY_LAST_MANIFEST_CREATED_AT)) return null
+        val stored = prefs.getLong(KEY_LAST_MANIFEST_CREATED_AT, 0L)
+        if (NostrEventPolicy.isCreatedAtAcceptable(stored, nowSeconds())) return stored
+
+        // Upgrade repair for clients that accepted an unbounded future
+        // envelope before 0.2.2. Remove only the poisoned ordering floor;
+        // retained chunk hashes still prevent unnecessary downloads, and the
+        // next safe signed manifest can establish a corrected watermark.
+        Log.w(TAG, "[$manifestDTag] removing implausibly future stored manifest watermark: $stored")
+        prefs.edit().remove(KEY_LAST_MANIFEST_CREATED_AT).apply()
+        return null
+    }
 
     /**
      * Downloads a chunk, verifies SHA-256, decompresses zstd, and writes the
@@ -621,8 +655,27 @@ class BlossomSyncManager(
         internal fun isManifestAcceptable(
             manifest: BlossomManifest,
             lastAcceptedCreatedAt: Long?,
-        ): Boolean = lastAcceptedCreatedAt == null ||
-            effectiveTimestamp(manifest) >= lastAcceptedCreatedAt
+            nowSeconds: Long,
+        ): Boolean = hasAcceptableTimestamps(manifest, nowSeconds) &&
+            (lastAcceptedCreatedAt == null ||
+                effectiveTimestamp(manifest) >= lastAcceptedCreatedAt)
+
+        /**
+         * Both timestamps cross persistence trust boundaries: the signed-event
+         * time orders rollback watermarks, while the manifest-content time
+         * seeds the community-climb cursor. A publisher clock mistake must not
+         * permanently pin either monotonic value in the future.
+         */
+        internal fun hasAcceptableTimestamps(
+            manifest: BlossomManifest,
+            nowSeconds: Long,
+        ): Boolean = NostrEventPolicy.isCreatedAtAcceptable(
+            effectiveTimestamp(manifest),
+            nowSeconds,
+        ) && NostrEventPolicy.isCreatedAtAcceptable(
+            manifest.createdAt,
+            nowSeconds,
+        )
 
         /**
          * Validates chunk names and URL schemes after the manifest is parsed.

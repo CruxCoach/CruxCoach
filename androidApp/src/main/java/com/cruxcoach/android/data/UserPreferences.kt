@@ -933,6 +933,24 @@ class UserPreferences(
     }
 
     /**
+     * Atomically removes an implausibly future cursor left by an older build
+     * while preserving every acceptable cursor. Returns the retained value,
+     * or `null` when absent/removed so the caller can perform a safe backfill.
+     */
+    suspend fun sanitizeCommunityClimbSince(maximumEpochSeconds: Long): Long? {
+        var retained: Long? = null
+        keyScoped.edit { prefs ->
+            val stored = prefs[KeyScopedKeys.COMMUNITY_CLIMB_SINCE]
+            if (stored != null && stored > maximumEpochSeconds) {
+                prefs.remove(KeyScopedKeys.COMMUNITY_CLIMB_SINCE)
+            } else {
+                retained = stored
+            }
+        }
+        return retained
+    }
+
+    /**
      * Last `created_at` of a successfully-fetched Blossom manifest. Written
      * by BoardSyncManager. Read once by CommunityClimbSubscriber to seed
      * the live-sub cursor on a fresh install — see start() in that class.

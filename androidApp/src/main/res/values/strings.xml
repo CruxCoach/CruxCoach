@@ -1313,6 +1313,11 @@
     <string name="ble_session_visibility_permission_denied">Bluetooth permission is required to publish a joinable queue.</string>
     <string name="ble_session_visibility_status_joinable">Joinable · visible to nearby users</string>
     <string name="ble_session_visibility_status_local">Local only · queue is not published</string>
+    <string name="ble_successor_join_title">Continue with nearby group?</string>
+    <string name="ble_successor_join_message">“%1$s” appeared nearby. Session names are not verified. Join only if you recognize this group.</string>
+    <string name="ble_successor_join_unknown_name">Unnamed session</string>
+    <string name="ble_successor_join_confirm">Join session</string>
+    <string name="ble_successor_join_keep_queue">Keep my queue</string>
     <string name="ble_sharing_title">BLE Sharing</string>
     <!-- Shown under the queue line only while the wall disagrees with it. -->
     <!-- Session errors: shown only when sharing cannot start. -->
