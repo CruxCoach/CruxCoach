@@ -178,11 +178,15 @@ class SessionQueueQuantumLayerTest {
 
         queue.loadPlaylist("Local playlist", listOf(QueueItem(climbUuid, 30)))
 
-        verify(timeout = 2_000) {
-            repository.getQuantumClimbByExternalRoute(foreign.routeId, "m", false)
+        val projected = runBlocking {
+            withTimeout(2_000) {
+                layers.state.first { state ->
+                    state.externalLayers.singleOrNull()?.routeUuid == foreign.routeId
+                }
+            }
         }
-        assertEquals(1, layers.state.value.externalLayers.size)
-        assertTrue(layers.state.value.layers.isEmpty())
+        assertEquals(1, projected.externalLayers.size)
+        assertTrue(projected.layers.isEmpty())
         coVerify(exactly = 0) {
             ble.sendClimb(any(), any(), any(), any(), any(), any())
         }
@@ -211,10 +215,13 @@ class SessionQueueQuantumLayerTest {
 
         queue.loadPlaylist("Local playlist", listOf(QueueItem(climbUuid, 30)))
 
-        verify(timeout = 2_000) {
-            repository.getQuantumClimbByExternalRoute(foreign.routeId, "m", false)
+        val external = runBlocking {
+            withTimeout(2_000) {
+                layers.state.first { state ->
+                    state.externalLayers.singleOrNull()?.climbName == "Known foreign route"
+                }.externalLayers.single()
+            }
         }
-        val external = layers.state.value.externalLayers.single()
         assertEquals("Known foreign route", external.climbName)
         assertEquals(listOf(BoardHold(19_100_001, 12)), external.holds)
         coVerify(exactly = 0) {
