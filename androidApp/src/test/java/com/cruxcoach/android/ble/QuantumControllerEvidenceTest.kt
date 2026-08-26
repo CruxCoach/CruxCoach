@@ -13,6 +13,7 @@ import com.cruxcoach.domain.board.BoardHold
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertArrayEquals
 import org.junit.Test
 import kotlinx.coroutines.test.runTest
 
@@ -28,6 +29,23 @@ class QuantumControllerEvidenceTest {
         assertFalse(quantumNotificationSetupConfirmed(true, null))
         assertFalse(quantumNotificationSetupConfirmed(true, BluetoothGatt.GATT_FAILURE))
         assertTrue(quantumNotificationSetupConfirmed(true, BluetoothGatt.GATT_SUCCESS))
+    }
+
+    @Test
+    fun `Quantum frames remain atomic and must fit the negotiated ATT payload`() {
+        assertEquals(20, quantumAttPayloadBytes(23))
+        assertEquals(509, quantumAttPayloadBytes(512))
+        assertTrue(quantumFrameFitsMtu(frameSize = 5, mtu = 23))
+        assertFalse(quantumFrameFitsMtu(frameSize = 21, mtu = 23))
+        assertTrue(quantumFrameFitsMtu(frameSize = 227, mtu = 512))
+        assertFalse(quantumFrameFitsMtu(frameSize = 510, mtu = 512))
+        assertFalse(quantumFrameFitsMtu(frameSize = 0, mtu = 512))
+
+        val completeFrame = ByteArray(227) { it.toByte() }
+        val writes = quantumGattWrites(completeFrame, mtu = 512)
+        assertEquals(1, writes?.size)
+        assertArrayEquals(completeFrame, writes?.single())
+        assertEquals(null, quantumGattWrites(completeFrame, mtu = 23))
     }
 
     @Test
