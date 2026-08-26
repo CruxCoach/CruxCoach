@@ -78,6 +78,11 @@ class QuantumBoardPacketEncoderTest {
             byteArrayOf(0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88.toByte(), 0x99.toByte(), 0xaa.toByte(), 0xbb.toByte(), 0xcc.toByte(), 0xdd.toByte(), 0xee.toByte(), 0xff.toByte()),
             frames.first().copyOfRange(2, 18),
         )
+        assertContentEquals(
+            byteArrayOf(0x01, 0x2c),
+            frames.first().copyOfRange(37, 39),
+            "the real controller only lists timed routes as active players",
+        )
     }
 
     @Test fun `request list uses row byte and big endian crc`() {

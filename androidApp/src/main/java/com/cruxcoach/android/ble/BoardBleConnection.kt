@@ -430,6 +430,7 @@ class BoardBleConnection(
         const val DELAY_SCAN_SETTLE_MS = 500L
         const val DELAY_PRE_DISCOVERY_LEGACY_MS = 300L
         const val QUANTUM_MTU_TIMEOUT_MS = 3_000L
+        const val QUANTUM_MUTATION_SETTLE_MS = 250L
         const val DEFAULT_ATT_MTU = 23
         const val SERVICE_DISCOVERY_CALLBACK_FALLBACK_MS = 3_500L
     }
@@ -1638,6 +1639,10 @@ class BoardBleConnection(
                 if (!writeQuantumFrames(transition.take(1), expectedQuantumBoard)) return false
                 delay(50)
                 if (!writeQuantumFrames(transition.drop(1), expectedQuantumBoard)) return false
+                // The acknowledged ATT write only proves transport delivery.
+                // Real XL firmware updates its active-player roster shortly
+                // afterwards, so do not snapshot the old list immediately.
+                delay(QUANTUM_MUTATION_SETTLE_MS)
                 if (!requestQuantumRouteListLocked(expectedQuantumBoard)) return false
                 val snapshot = _quantumControllerState.value
                 return isQuantumProjectionConfirmed(
@@ -1808,12 +1813,13 @@ class BoardBleConnection(
         }
     }
 
-    /** Prefer eWalls' fff4 state characteristic. Only a complete supported
-     * snapshot is sufficient; deltas, informational records, malformed reads
-     * and unavailable fff4 all fall back to an explicit route-list request. */
+    /** Ask the controller to publish current truth through fff4/fff1. */
     private suspend fun refreshQuantumStateLocked(): Boolean {
-        val readEvidence = readQuantumStateLocked()
-        if (!quantumReadRequiresRouteListFallback(readEvidence)) return true
+        // fff4 is a cached last response on deployed XL firmware. Reading it
+        // every ten seconds can therefore keep returning an old empty list
+        // after eWalls (or another client) changed the wall. Always trigger a
+        // fresh controller query; requestQuantumRouteListLocked still supports
+        // both the fff4 response path and fff1 notification fallback.
         return requestQuantumRouteListLocked()
     }
 

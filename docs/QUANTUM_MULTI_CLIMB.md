@@ -50,17 +50,15 @@ Quantum setup is ordered as one GATT transaction: service discovery and MTU
 negotiation finish first, the 41-byte `fff5` controller record must identify a
 known type whose declared rows and columns match that model, local `fff1`
 notification routing must enable, and the `fff1` CCCD write must complete
-successfully before the connection becomes writable. CruxCoach then reads
-eWalls' current-state characteristic at `fff4`. A structurally valid complete
-route list is useful as observed state for the rack. A cached board-cleared
-record is only informational because it may be the last event rather than the
-current wall, so it—like a delta, malformed value, unavailable characteristic,
-or failed read—falls back to
-`REQUEST_USER_ROUTE_LIST`. While the direct Quantum link remains connected this
-observational refresh repeats every ten seconds. Because hardware evidence has
-not established whether an unsolicited `fff4` value is fresh or a cached last
-event, every mutation independently resets notification recovery and requires
-an explicit `REQUEST_USER_ROUTE_LIST` round trip under the BLE write lock. A
+successfully before the connection becomes writable. CruxCoach then queries
+controller state with `REQUEST_USER_ROUTE_LIST` and reads the resulting state
+at `fff4`. A bare `fff4` read is not current-state evidence: real XL firmware
+can keep returning an old empty snapshot after another client changed the wall.
+While the direct Quantum link remains connected the explicit query/read round
+trip therefore repeats every ten seconds, so eWalls and other clients' routes
+replace the local rack from controller truth. Every mutation likewise resets
+notification recovery and requires an explicit `REQUEST_USER_ROUTE_LIST` round
+trip under the BLE write lock. A
 captured Quantum XL accepts that request without emitting an `fff1`
 notification and exposes the resulting complete `0x47` snapshot through a
 fresh `fff4` read. CruxCoach therefore reads `fff4` directly after the
@@ -82,7 +80,7 @@ uncorrelatable GATT so its late callback cannot confirm a later operation.
 Projection is a conservative transaction:
 
 1. `TURN_OFF_USER(ownSlotUuid)`
-2. `ACTIVATE_WALL(route, ownSlotUuid, colour, diodes)` for at most 92 diodes,
+2. `ACTIVATE_WALL(route, ownSlotUuid, colour, 300 seconds, diodes)` for at most 92 diodes,
    sent atomically as one GATT write-with-response after MTU negotiation
 3. `REQUEST_USER_ROUTE_LIST`
 4. success only after an authoritative snapshot contains the exact
@@ -246,18 +244,20 @@ The packet layouts, ordered `fff5` model read, `fff1` subscription, `fff4` read
 path and parser match the clean-room eWalls 2.0.14 analysis and BoardSimulator.
 A real Quantum XL HCI capture additionally verifies the five-byte route-list
 write and the controller's complete `0x47` state response through `fff4`
-without an `fff1` notification. Real Quantum multi-layer behaviour remains
-`hardware_verified: false` until the same four-user,
-conflict, reconnect, CCCD/readback and multi-chunk suite is captured against
-each controller generation. The implementation therefore accepts only strict
-known broadcast shapes, falls back to a route-list command when `fff4` does not
-prove a complete snapshot, and fails closed when notification setup cannot be
-confirmed. In particular, `BOARD_SWIPE` remains unused until its atomic
+without an `fff1` notification. The capture for build 1000032 additionally
+confirms that a zero-duration activation lights the LEDs but remains absent
+from the active-player list; CruxCoach therefore uses eWalls' five-minute
+active-player duration and waits for the roster mutation before readback. Full
+Quantum multi-layer behaviour remains `hardware_verified: false` until the
+same four-user, conflict, reconnect, CCCD/readback and multi-chunk suite is
+captured against each controller generation. The implementation therefore
+accepts only strict known broadcast shapes and fails closed when a requested
+`fff4` snapshot or notification setup cannot be confirmed. In particular,
+`BOARD_SWIPE` remains unused until its atomic
 semantics are hardware-verified.
 
-The remaining hardware matrix also includes whether `fff4` is a fresh snapshot
-or a cached last event, notify-versus-indicate behavior across controller
-generations, `TURN_OFF_USER` to activation timing, atomic append/failure
+The remaining hardware matrix includes notify-versus-indicate behavior across
+controller generations, `TURN_OFF_USER` to activation timing, atomic append/failure
 semantics for routes above 92 diodes, no-response write callback behavior,
 read-after-write visibility, duplicate or delayed un-tokened route-list
 responses, and multi-client interleaving/polling impact. Direct community UUID
