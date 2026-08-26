@@ -83,7 +83,7 @@ Projection is a conservative transaction:
 
 1. `TURN_OFF_USER(ownSlotUuid)`
 2. `ACTIVATE_WALL(route, ownSlotUuid, colour, diodes)` for at most 92 diodes,
-   fragmented into 15-byte Android writes
+   sent atomically as one GATT write-with-response after MTU negotiation
 3. `REQUEST_USER_ROUTE_LIST`
 4. success only after an authoritative snapshot contains the exact
    route/user/colour tuple and every non-target player from the pre-write

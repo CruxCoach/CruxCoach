@@ -114,6 +114,17 @@ internal fun quantumNotificationSetupConfirmed(
     descriptorStatus: Int?,
 ): Boolean = localNotificationsEnabled && descriptorStatus == BluetoothGatt.GATT_SUCCESS
 
+/** Quantum commands are framed messages, not a byte stream. A controller
+ * validates a command (including its CRC) per characteristic write, so the
+ * complete frame must fit in one ATT write payload. */
+internal fun quantumAttPayloadBytes(mtu: Int): Int = (mtu - 3).coerceAtLeast(0)
+
+internal fun quantumFrameFitsMtu(frameSize: Int, mtu: Int): Boolean =
+    frameSize > 0 && frameSize <= quantumAttPayloadBytes(mtu)
+
+internal fun quantumGattWrites(frame: ByteArray, mtu: Int): List<ByteArray>? =
+    if (quantumFrameFitsMtu(frame.size, mtu)) listOf(frame) else null
+
 /** One service-discovery completion may advance a GATT attempt. Some Android
  * stacks deliver the callback after our populated-services fallback has fired;
  * others deliver the callback first and leave the fallback runnable queued. */
@@ -419,6 +430,7 @@ class BoardBleConnection(
         const val DELAY_SCAN_SETTLE_MS = 500L
         const val DELAY_PRE_DISCOVERY_LEGACY_MS = 300L
         const val QUANTUM_MTU_TIMEOUT_MS = 3_000L
+        const val DEFAULT_ATT_MTU = 23
         const val SERVICE_DISCOVERY_CALLBACK_FALLBACK_MS = 3_500L
     }
 
@@ -456,6 +468,7 @@ class BoardBleConnection(
     private var serviceDiscoveryGatt: BluetoothGatt? = null
     private var serviceDiscoveryHandledGatt: BluetoothGatt? = null
     private var quantumMtuGatt: BluetoothGatt? = null
+    private var quantumMtu: Int = DEFAULT_ATT_MTU
     private var writeCharacteristic: BluetoothGattCharacteristic? = null
     private var encoder: BoardPacketEncoder = BoardPacketEncoder(3)
 
@@ -956,7 +969,12 @@ class BoardBleConnection(
                     val quantumService = gatt.getService(BoardBleUuids.QUANTUM_SERVICE)
                         ?: gatt.getService(BoardBleUuids.QUANTUM_SERVICE_OLD)
                     quantumService?.getCharacteristic(BoardBleUuids.QUANTUM_WRITE_CHAR)?.also {
-                        it.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+                        // eWalls 2.0.14 treats Quantum as a framed binary
+                        // protocol: every complete command is a single GATT
+                        // write-with-response. WRITE_NO_RESPONSE plus 15-byte
+                        // fragments is transport-successful but the controller
+                        // discards those partial protocol frames.
+                        it.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
                     }
                 } else service?.getCharacteristic(BoardBleUuids.DATA_TRANSFER_CHAR)
                 if (writeCharacteristic != null) {
@@ -1026,7 +1044,10 @@ class BoardBleConnection(
 
         override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
             Log.d(TAG, "onMtuChanged mtu=$mtu status=$status")
-            if (quantumMtuGatt === gatt) finishGattSetup(gatt)
+            if (quantumMtuGatt === gatt) {
+                quantumMtu = if (status == BluetoothGatt.GATT_SUCCESS) mtu else DEFAULT_ATT_MTU
+                finishGattSetup(gatt)
+            }
         }
 
         override fun onCharacteristicWrite(
@@ -1372,6 +1393,7 @@ class BoardBleConnection(
     @SuppressLint("MissingPermission")
     private fun startGattAttempt(board: DiscoveredBoard) {
         _connectedQuantumModel.value = null
+        quantumMtu = DEFAULT_ATT_MTU
 
         // Abort if state changed during the wait
         if (_connectionState.value != ConnectionState.CONNECTING) {
@@ -1666,11 +1688,19 @@ class BoardBleConnection(
                     expectedQuantumBoard,
                 )
             ) return false
-            // 2.0.14 passes 15 as Android's native write fragment size.
-            // This is transport fragmentation, independent of the 92-diode
-            // logical command limit enforced by the encoder.
-            val transportChunks = frame.toList().chunked(15).map { it.toByteArray() }
-            if (!writeChunks(transportChunks)) return false
+            val writes = quantumGattWrites(frame, quantumMtu)
+            if (writes == null) {
+                Log.w(
+                    TAG,
+                    "Quantum frame does not fit negotiated ATT payload: " +
+                        "frame=${frame.size} mtu=$quantumMtu",
+                )
+                return false
+            }
+            // The CRC terminates one protocol frame and the controller parses
+            // one such frame per fff2 characteristic write. Do not fragment a
+            // frame into otherwise successful but semantically invalid writes.
+            if (!writeChunks(writes)) return false
             if (index != frames.lastIndex) delay(100)
         }
         return true
@@ -2076,6 +2106,7 @@ class BoardBleConnection(
         serviceDiscoveryGatt = null
         serviceDiscoveryHandledGatt = null
         quantumMtuGatt = null
+        quantumMtu = DEFAULT_ATT_MTU
 
         if (activeGatt != null) {
             userDisconnecting = true
