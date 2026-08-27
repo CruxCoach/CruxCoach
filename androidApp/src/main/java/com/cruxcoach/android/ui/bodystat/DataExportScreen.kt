@@ -52,7 +52,7 @@ fun DataExportScreen(
         uri?.let { viewModel.exportBackup(it) }
     }
     val csvExportLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("text/csv")
+        ActivityResultContracts.CreateDocument("application/zip")
     ) { uri: Uri? ->
         uri?.let { viewModel.exportBackup(it) }
     }
@@ -141,8 +141,8 @@ fun DataExportScreen(
                     label = { Text(stringResource(R.string.export_format_json)) },
                 )
                 FilterChip(
-                    selected = state.exportFormat == DataExchangeFormat.CSV,
-                    onClick = { viewModel.setExportFormat(DataExchangeFormat.CSV) },
+                    selected = state.exportFormat == DataExchangeFormat.CSV_ZIP,
+                    onClick = { viewModel.setExportFormat(DataExchangeFormat.CSV_ZIP) },
                     label = { Text(stringResource(R.string.export_format_csv)) },
                 )
             }
@@ -185,7 +185,7 @@ fun DataExportScreen(
                 onClick = {
                     when (state.exportFormat) {
                         DataExchangeFormat.JSON -> jsonExportLauncher.launch(viewModel.exportFilename())
-                        DataExchangeFormat.CSV -> csvExportLauncher.launch(viewModel.exportFilename())
+                        DataExchangeFormat.CSV_ZIP -> csvExportLauncher.launch(viewModel.exportFilename())
                     }
                 },
                 modifier = Modifier
