@@ -1680,6 +1680,8 @@
     <string name="export_format_title">Format</string>
     <string name="export_format_json">JSON</string>
     <string name="export_format_csv">CSV-ZIP</string>
+    <string name="export_format_excel">Excel</string>
+    <string name="export_excel_not_backup">Excel ist nur eine gut lesbare Kopie. Die Datei kann nicht importiert oder zur Wiederherstellung deiner Daten verwendet werden. Wähle JSON, wenn du ein Backup brauchst.</string>
     <string name="export_save_file">Auf Gerät speichern</string>
     <string name="export_share_app">Mit App teilen</string>
     <string name="export_share_chooser">CruxCoach-Daten teilen</string>

@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.CruxCoachCsvArchive
+import com.cruxcoach.android.data.CruxCoachExcelWorkbook
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.data.CruxCoachBackup
 import com.cruxcoach.data.CruxCoachBackup.Category
@@ -27,7 +28,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import javax.inject.Inject
 
-enum class DataExchangeFormat { JSON, CSV_ZIP }
+enum class DataExchangeFormat { JSON, CSV_ZIP, EXCEL }
 
 /** Categories available in the manual JSON/CSV export/import UI.
  *
@@ -247,6 +248,10 @@ class DataExchangeViewModel @Inject constructor(
                 json,
                 state.exportCategories.withBundledClimbNotes(),
             )
+            DataExchangeFormat.EXCEL -> CruxCoachExcelWorkbook.fromJson(
+                json,
+                state.exportCategories.withBundledClimbNotes(),
+            )
         }
     }
 
@@ -256,6 +261,7 @@ class DataExchangeViewModel @Inject constructor(
     private fun exportFilename(format: DataExchangeFormat): String = when (format) {
         DataExchangeFormat.JSON -> "cruxcoach_export.json"
         DataExchangeFormat.CSV_ZIP -> CruxCoachCsvArchive.FILE_NAME
+        DataExchangeFormat.EXCEL -> CruxCoachExcelWorkbook.FILE_NAME
     }
 
     /** MIME type for the file picker. */
@@ -264,6 +270,7 @@ class DataExchangeViewModel @Inject constructor(
     private fun exportMimeType(format: DataExchangeFormat): String = when (format) {
         DataExchangeFormat.JSON -> "application/json"
         DataExchangeFormat.CSV_ZIP -> CruxCoachCsvArchive.MIME_TYPE
+        DataExchangeFormat.EXCEL -> CruxCoachExcelWorkbook.MIME_TYPE
     }
 
     // ── Import: Phase 1 — Preview / detect format ───────────────

@@ -56,6 +56,13 @@ fun DataExportScreen(
     ) { uri: Uri? ->
         uri?.let { viewModel.exportBackup(it) }
     }
+    val excelExportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+    ) { uri: Uri? ->
+        uri?.let { viewModel.exportBackup(it) }
+    }
 
     LaunchedEffect(state.pendingShare) {
         state.pendingShare?.let { share ->
@@ -145,6 +152,29 @@ fun DataExportScreen(
                     onClick = { viewModel.setExportFormat(DataExchangeFormat.CSV_ZIP) },
                     label = { Text(stringResource(R.string.export_format_csv)) },
                 )
+                FilterChip(
+                    selected = state.exportFormat == DataExchangeFormat.EXCEL,
+                    onClick = { viewModel.setExportFormat(DataExchangeFormat.EXCEL) },
+                    label = { Text(stringResource(R.string.export_format_excel)) },
+                )
+            }
+
+            if (state.exportFormat == DataExchangeFormat.EXCEL) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("excel_not_backup_notice"),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    ),
+                ) {
+                    Text(
+                        text = stringResource(R.string.export_excel_not_backup),
+                        modifier = Modifier.padding(12.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                }
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -186,6 +216,7 @@ fun DataExportScreen(
                     when (state.exportFormat) {
                         DataExchangeFormat.JSON -> jsonExportLauncher.launch(viewModel.exportFilename())
                         DataExchangeFormat.CSV_ZIP -> csvExportLauncher.launch(viewModel.exportFilename())
+                        DataExchangeFormat.EXCEL -> excelExportLauncher.launch(viewModel.exportFilename())
                     }
                 },
                 modifier = Modifier
