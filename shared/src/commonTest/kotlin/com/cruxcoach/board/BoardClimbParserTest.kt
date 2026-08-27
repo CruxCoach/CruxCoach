@@ -49,6 +49,8 @@ class BoardClimbParserTest {
         )
         assertNull(BoardClimbParser.parseSingleFrameStrict("p100r12BROKEN"))
         assertNull(BoardClimbParser.parseSingleFrameStrict("BROKENp100r12"))
+        assertNull(BoardClimbParser.parseSingleFrameStrict("p100r12p"))
+        assertNull(BoardClimbParser.parseSingleFrameStrict("p100r12r13"))
         assertNull(BoardClimbParser.parseSingleFrameStrict("p100r12,p200r14"))
         assertNull(BoardClimbParser.parseSingleFrameStrict("p999999999999999999999r12"))
         assertNull(BoardClimbParser.parseSingleFrameStrict(""))

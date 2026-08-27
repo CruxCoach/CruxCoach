@@ -93,20 +93,19 @@ object BoardClimbParser {
      */
     fun parseSingleFrameStrict(frames: String): List<BoardHold>? {
         if (frames.isBlank() || ',' in frames) return null
-        val pattern = if (frames.startsWith('h')) RANGE_PATTERN else DELTA_PATTERN
-        val holds = ArrayList<BoardHold>()
-        var expectedStart = 0
-        for (match in pattern.findAll(frames)) {
-            // findAll normally skips malformed bytes. Requiring contiguous
-            // matches keeps this trust-boundary parser fail closed while
-            // avoiding the mutable scanner miscompiled in Android debug APKs.
-            if (match.range.first != expectedStart) return null
-            val placement = match.groupValues[1].toIntOrNull() ?: return null
-            val rawRole = match.groupValues[2].toIntOrNull() ?: return null
-            holds += BoardHold(placement, HoldRole.normalize(rawRole))
-            expectedStart = match.range.last + 1
+        val holds = parseHoldEntries(frames)
+        if (holds.isEmpty()) return null
+        // parseHoldEntries is deliberately lenient for legacy rendering. Make
+        // the controller boundary strict by re-encoding every parsed entry and
+        // requiring an exact round trip. This uses the same parser that already
+        // renders catalogue climbs on Android and avoids platform differences
+        // observed while walking Regex MatchResult ranges in feature APKs.
+        val canonical = if (frames.startsWith('h')) {
+            holds.joinToString("") { "h${it.placementId}p${it.roleId}" }
+        } else {
+            encodeFrames(holds)
         }
-        return holds.takeIf { it.isNotEmpty() && expectedStart == frames.length }
+        return holds.takeIf { canonical == frames }
     }
 
     /** Detect whether a frames string uses Kilter climbConcat format. */
