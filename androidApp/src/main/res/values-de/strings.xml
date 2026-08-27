@@ -453,9 +453,9 @@
     <!-- Settings: Data Management -->
     <string name="settings_data_title">Datenverwaltung</string>
     <string name="settings_data_export">Daten exportieren</string>
-    <string name="settings_data_export_desc">Vollständiges Backup oder Waistline-Export</string>
+    <string name="settings_data_export_desc">Ausgewählte CruxCoach-Daten als JSON oder CSV speichern oder teilen</string>
     <string name="settings_data_import">Daten importieren</string>
-    <string name="settings_data_import_desc">Backup oder Waistline-Daten importieren</string>
+    <string name="settings_data_import_desc">CruxCoach-Daten aus JSON oder CSV importieren</string>
     <string name="settings_data_delete_board">Board-Daten löschen</string>
     <string name="settings_data_delete_board_desc">Entfernt heruntergeladene Climbs, Statistiken und Layout-Daten — für alle Boards oder nur ausgewählte. Können jederzeit neu synchronisiert werden. Eigene und Community-Climbs bleiben erhalten.</string>
     <string name="settings_data_delete_board_dialog_title">Board-Daten löschen?</string>
@@ -1659,6 +1659,7 @@
     <string name="error_select_category">Wähle mindestens eine Kategorie</string>
     <string name="error_cannot_open_file">Kann Datei nicht öffnen</string>
     <string name="error_cannot_read_file">Kann Datei nicht lesen</string>
+    <string name="error_not_cruxcoach_export">Wähle einen CruxCoach-JSON- oder CSV-Export</string>
     <string name="error_file_not_readable">Datei nicht lesbar: %1$s</string>
     <string name="error_export_failed">Export fehlgeschlagen: %1$s</string>
     <string name="error_import_failed">Import fehlgeschlagen: %1$s</string>
@@ -1675,17 +1676,12 @@
     <string name="error_bug_report_share_title">App-Sharing-Fehler</string>
     <string name="error_bug_report_ble_title">BLE-Verbindungsfehler</string>
     <string name="action_dismiss">Schließen</string>
-    <string name="export_backup_label">CruxCoach-Backup</string>
-    <string name="export_format_cruxcoach">CruxCoach</string>
-    <string name="export_format_cruxcoach_desc">Vollständiges Backup</string>
-    <string name="export_format_title">Format wählen</string>
-    <string name="export_format_waistline_csv">Waistline CSV</string>
-    <string name="export_format_waistline_csv_desc">Nur Körperdaten, Semikolon-getrennt</string>
-    <string name="export_format_waistline_json">Waistline JSON</string>
-    <string name="export_format_waistline_json_desc">Nur Körperdaten, Waistline-kompatibel</string>
-    <string name="export_waistline_csv_label">Waistline CSV</string>
-    <string name="export_waistline_hint">Für den Import in die Waistline-App</string>
-    <string name="export_waistline_json_label">Waistline JSON</string>
+    <string name="export_format_title">Format</string>
+    <string name="export_format_json">JSON</string>
+    <string name="export_format_csv">CSV (lesbar)</string>
+    <string name="export_save_file">Auf Gerät speichern</string>
+    <string name="export_share_app">Mit App teilen</string>
+    <string name="export_share_chooser">CruxCoach-Daten teilen</string>
     <string name="export_categories_exported">%1$d Kategorie(n) exportiert</string>
     <string name="export_category_profile">Profil &amp; Einstellungen</string>
     <string name="export_category_assessments">Fitness-Assessments</string>
@@ -1697,10 +1693,8 @@
     <string name="export_category_board_sessions">Board-Sessions</string>
     <string name="export_category_climb_lists">Climb-Listen &amp; Favoriten</string>
     <string name="export_category_own_climbs">Eigene Climbs &amp; Drafts</string>
-    <string name="export_waistline_json_success">Waistline JSON exportiert</string>
-    <string name="export_waistline_csv_success">Waistline CSV exportiert</string>
-    <string name="import_auto_detect_hint">Format wird automatisch erkannt</string>
-    <string name="import_backup_detected">CruxCoach-Backup erkannt</string>
+    <string name="import_auto_detect_hint">Wähle einen CruxCoach-JSON- oder CSV-Export</string>
+    <string name="import_backup_detected">CruxCoach-Daten erkannt</string>
     <string name="import_duplicate_hint">Duplikate werden automatisch übersprungen</string>
     <string name="import_no_data">Keine Daten gefunden</string>
     <string name="import_result_profile">Profil</string>
@@ -1717,7 +1711,6 @@
     <string name="import_result_no_data">Keine Daten</string>
     <string name="import_result_summary">Importiert: %1$s</string>
     <string name="import_result_duplicates_skipped"> (%1$d Duplikate übersprungen)</string>
-    <string name="import_waistline_success">Waistline-Import: %1$d Wert(e) importiert</string>
     <string name="import_select_categories">Kategorien zum Importieren auswählen:</string>
     <string name="import_pubkey_mismatch_title">Anderer CruxCoach Account</string>
     <string name="import_pubkey_mismatch_body">Dieses Backup wurde mit einem anderen CruxCoach-Schlüssel erstellt (%1$s). Die Daten werden in deinen aktuellen Account übernommen. Genau richtig, wenn du deinen alten nsec verloren hast oder bewusst die Identität wechselst. Hinweis: Climbs, die du importierst und später erneut zu Kilter publishst, erscheinen unter deinem aktuellen Kilter-Account.</string>

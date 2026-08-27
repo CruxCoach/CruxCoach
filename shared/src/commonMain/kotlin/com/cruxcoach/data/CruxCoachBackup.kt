@@ -109,6 +109,7 @@ object CruxCoachBackup {
         // v3:      0.1.4+ adds boardClimbs + boardClimbStats. 0.1.3 clients
         //          reject v3 explicitly — by-design forward-incompatibility,
         //          documented at the export side.
+        require(app == "CruxCoach") { "invalid backup: app" }
         require(version in 1..3) { "invalid backup: unsupported version $version" }
         requireLen("exportedAt", exportedAt, MAX_DATE_LEN)
         nostrPubkey?.let { require(HEX64_REGEX.matches(it)) { "invalid backup: nostrPubkey" } }
