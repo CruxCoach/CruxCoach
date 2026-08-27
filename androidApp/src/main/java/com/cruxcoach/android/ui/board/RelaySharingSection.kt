@@ -32,7 +32,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ble.DiscoveredBoard
 import com.cruxcoach.android.data.RelayError
-import com.cruxcoach.domain.board.BoardBrand
+import com.cruxcoach.android.data.BoardRelayAvailability
+import com.cruxcoach.android.data.BoardRelayPolicy
 import com.cruxcoach.android.ui.theme.ErrorRed
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.SuccessGreen
@@ -52,10 +53,34 @@ fun RelaySharingSection(
     board: DiscoveredBoard?,
     viewModel: RelayShareViewModel = hiltViewModel()
 ) {
+    val connectedBoard = board ?: return
+    val availability = BoardRelayPolicy.availability(connectedBoard)
+    if (availability == BoardRelayAvailability.NO_BOARD ||
+        availability == BoardRelayAvailability.RELAY_ENDPOINT
+    ) return
+
+    if (availability == BoardRelayAvailability.MULTI_CONNECT_NOT_NEEDED) {
+        Text(
+            stringResource(R.string.relay_multi_connect_direct),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.testTag("relay_multi_connect_direct"),
+        )
+        return
+    }
+
     // Quantum writes require a scoped route/user identity plus authoritative
-    // readback. CruxRelay currently carries only raw Aurora/Kilter streams, so
-    // it must not expose a path around the layer coexistence boundary.
-    if (board == null || board.isCruxRelay || board.boardBrand == BoardBrand.QUANTUM) return
+    // readback. Explain that boundary instead of silently omitting or showing
+    // a button whose manager must reject the request.
+    if (availability == BoardRelayAvailability.UNSUPPORTED_PROTOCOL) {
+        Text(
+            stringResource(R.string.relay_unsupported_explanation),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.testTag("relay_unsupported_explanation"),
+        )
+        return
+    }
 
     val state by viewModel.relayState.collectAsStateWithLifecycle()
 
@@ -105,7 +130,7 @@ fun RelaySharingSection(
         RelayActiveCard(
             clientCount = state.clientCount,
             advertisedName = state.advertisedName,
-            boardName = state.boardName ?: board.displayName,
+            boardName = state.boardName ?: connectedBoard.displayName,
             onStop = { viewModel.disableSharing() }
         )
     }

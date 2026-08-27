@@ -33,6 +33,9 @@ class ClimbBleAdvertiser(
     private val boardStateManager: com.cruxcoach.android.data.BoardStateManager
 ) {
 
+    /** Stable for this process; never persisted and not a user/device identifier. */
+    val localPresenceToken: Int = java.security.SecureRandom().nextInt()
+
     companion object {
         private const val TAG = "CruxBLE/Advertiser"
         private const val DISCONNECT_REQUEST_TIMEOUT_MS = 20_000L
@@ -233,6 +236,7 @@ class ClimbBleAdvertiser(
         val payload = NearbyClimbProtocol.encodeBoardConnected(
             acceptsDisconnect,
             supportsConcurrentConnections,
+            localPresenceToken,
         )
         val data = buildAdvertiseData(payload)
         return updateOrStartAdvertising(data)
@@ -253,6 +257,7 @@ class ClimbBleAdvertiser(
             val payload = NearbyClimbProtocol.encodeBoardConnected(
                 acceptsDisconnectRequests,
                 supportsConcurrentConnections,
+                localPresenceToken,
             )
             val data = buildAdvertiseData(payload)
             updateOrStartAdvertising(data)

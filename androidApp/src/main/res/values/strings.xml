@@ -2405,6 +2405,8 @@
     <!-- FEAT-044 CruxRelay: host "share board" surface -->
     <string name="relay_share_description">This phone stays connected to the board and forwards climbs sent from other phones.</string>
     <string name="relay_share_button">Share with other board apps</string>
+    <string name="relay_multi_connect_direct">This board accepts multiple direct app connections. Connect the other board app directly to the wall; CruxRelay is not needed.</string>
+    <string name="relay_unsupported_explanation">Quantum already manages multiple apps through its own layers. CruxRelay cannot safely forward those layer identities yet; connect additional apps directly to the board.</string>
     <string name="relay_chip_text">Relay for %1$s · %2$d connected</string>
     <string name="relay_advertised_as">Visible to others as \"%1$s\"</string>
     <string name="settings_relay_manual_start">Start CruxRelay manually</string>
@@ -2510,6 +2512,7 @@
     <string name="moon_csv_intro">Move your existing MoonBoard history into CruxCoach. The direct on-device transfer is fastest; CSV remains available as a fallback.</string>
     <string name="moon_device_title">Copy from the installed Moon app</string>
     <string name="moon_device_explanation">Android will ask you to enable a one-time accessibility service. After you start the transfer, CruxCoach opens Moon and reads only Moon’s visible Logbook labels on this device. It cannot read other apps and never asks for your Moon password. CruxCoach automatically relinquishes accessibility access when the transfer ends.</string>
+    <string name="moon_device_leave_alone">Important: Once started, leave this device unlocked and alone until the transfer is complete. Do not switch apps or operate Moon manually.</string>
     <string name="moon_device_enable">Enable one-time access</string>
     <string name="moon_device_restricted_title">Allow access in two steps</string>
     <string name="moon_device_restricted_explanation">Android currently reports that accessibility access is restricted for CruxCoach. Open App info and choose “Allow restricted settings” (on some devices this is in the overflow menu), then return. CruxCoach checks the result and opens only the remaining setting. If access is already allowed, this step is skipped automatically.</string>

@@ -303,6 +303,14 @@ fun MoonBoardCsvImportScreen(
                         ),
                         style = MaterialTheme.typography.bodyMedium,
                     )
+                    if (moonInstalled) {
+                        Text(
+                            stringResource(R.string.moon_device_leave_alone),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = OrangeAccent,
+                        )
+                    }
                     Button(
                         onClick = {
                             when {

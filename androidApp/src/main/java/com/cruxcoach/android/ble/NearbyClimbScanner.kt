@@ -54,6 +54,8 @@ data class NearbyClimb(
     val supportsConcurrentConnections: Boolean = false,
     /** Whether the board family retains this projection after the sender disconnects. */
     val projectionSurvivesDisconnect: Boolean = true,
+    /** Sender identity for BoardConnected; null for legacy peers and climb payloads. */
+    val senderToken: Int? = null,
 )
 
 class NearbyClimbScanner(private val context: Context) {
@@ -212,6 +214,7 @@ class NearbyClimbScanner(private val context: Context) {
                         connectedOnly = true,
                         acceptsDisconnectRequests = payload.acceptsDisconnect,
                         supportsConcurrentConnections = payload.supportsConcurrentConnections,
+                        senderToken = payload.senderToken,
                     )
                     synchronized(rawEntries) {
                         convertOrRemoveStale(now, result.device.address)
@@ -521,11 +524,17 @@ class NearbyClimbScanner(private val context: Context) {
         }
     }
 
-    /** Deduplicates by climbUuid, keeping the entry with the strongest RSSI.
+    /** Deduplicates climb projections by UUID, keeping the strongest RSSI.
+     *  BoardConnected has no climb UUID, so each sender must remain distinct;
+     *  otherwise one nearby device can hide all other occupants (or our own
+     *  loopback can hide a real peer).
      *  Only emits when the list structurally changed to avoid unnecessary
      *  combine re-triggers that cause UI flicker. */
     private fun publishDeduped() {
-        val byUuid = rawEntries.values.groupBy { it.climbUuid }
+        val byUuid = rawEntries.values.groupBy {
+            if (it.connectedOnly) "connected:${it.senderToken ?: it.deviceAddress}"
+            else "climb:${it.climbUuid}"
+        }
         val deduped = byUuid.map { (_, entries) ->
             entries.maxBy { it.rssi }
         }
@@ -533,7 +542,8 @@ class NearbyClimbScanner(private val context: Context) {
         if (deduped.size == current.size && deduped.zip(current).all { (a, b) ->
             a.climbUuid == b.climbUuid && a.angle == b.angle &&
             a.isLastClimb == b.isLastClimb && a.connectedOnly == b.connectedOnly &&
-            a.projectionSurvivesDisconnect == b.projectionSurvivesDisconnect
+            a.projectionSurvivesDisconnect == b.projectionSurvivesDisconnect &&
+            a.senderToken == b.senderToken && a.deviceAddress == b.deviceAddress
         }) return
         _nearbyClimbs.value = deduped
         val sessionCount = rawSessionEntries.size

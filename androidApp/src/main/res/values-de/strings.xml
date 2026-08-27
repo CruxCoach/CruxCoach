@@ -2404,6 +2404,8 @@
     <!-- FEAT-044 CruxRelay: Host-„Board teilen"-Fläche -->
     <string name="relay_share_description">Dieses Handy bleibt mit dem Board verbunden und leitet Boulder von anderen Handys an die Wand weiter.</string>
     <string name="relay_share_button">Für andere Board-Apps freigeben</string>
+    <string name="relay_multi_connect_direct">Dieses Board erlaubt mehrere direkte App-Verbindungen. Verbinde die andere Board-App direkt mit der Wand; ein CruxRelay ist nicht nötig.</string>
+    <string name="relay_unsupported_explanation">Quantum verwaltet mehrere Apps bereits über eigene Layer. CruxRelay kann diese Layer-Identitäten derzeit nicht sicher weiterleiten; verbinde weitere Apps direkt mit dem Board.</string>
     <string name="relay_chip_text">Relay für %1$s · %2$d verbunden</string>
     <string name="relay_advertised_as">Für andere sichtbar als \"%1$s\"</string>
     <string name="settings_relay_manual_start">CruxRelay manuell starten</string>
@@ -2509,6 +2511,7 @@
     <string name="moon_csv_intro">Übernimm deinen vorhandenen MoonBoard-Verlauf in CruxCoach. Die direkte Übertragung auf dem Gerät ist am schnellsten; CSV bleibt als Ausweichweg verfügbar.</string>
     <string name="moon_device_title">Aus der installierten Moon-App übernehmen</string>
     <string name="moon_device_explanation">Android bittet dich einmalig, eine Bedienungshilfe zu aktivieren. Nach dem Start öffnet CruxCoach Moon und liest ausschließlich die sichtbaren Logbook-Beschriftungen der Moon-App auf diesem Gerät. Andere Apps können nicht gelesen werden; dein Moon-Passwort wird nie abgefragt. Am Ende der Übertragung gibt CruxCoach den Bedienungshilfen-Zugriff automatisch wieder frei.</string>
+    <string name="moon_device_leave_alone">Wichtig: Lass das Gerät nach dem Start entsperrt und bis zum Abschluss der Übertragung in Ruhe. Wechsle nicht die App und bediene Moon nicht selbst.</string>
     <string name="moon_device_enable">Einmaligen Zugriff aktivieren</string>
     <string name="moon_device_restricted_title">Zugriff in zwei Schritten erlauben</string>
     <string name="moon_device_restricted_explanation">Android meldet aktuell, dass der Bedienungshilfen-Zugriff für CruxCoach eingeschränkt ist. Öffne die App-Info und wähle „Eingeschränkte Einstellungen zulassen“ (auf manchen Geräten im Überlaufmenü), dann kehre zurück. CruxCoach prüft das Ergebnis und öffnet nur noch die tatsächlich fehlende Einstellung. Ist der Zugriff bereits erlaubt, wird dieser Schritt automatisch übersprungen.</string>

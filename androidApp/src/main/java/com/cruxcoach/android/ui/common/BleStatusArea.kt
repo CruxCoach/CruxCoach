@@ -4,7 +4,6 @@ import androidx.compose.runtime.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import android.util.Log
 import com.cruxcoach.android.data.BleShareManager
-import com.cruxcoach.android.data.CruxRelayManager
 import com.cruxcoach.android.data.OnBoardSource
 import com.cruxcoach.android.data.PlaylistPlaybackCoordinator
 import com.cruxcoach.android.data.SessionGattBridge
@@ -26,10 +25,6 @@ val LocalSessionQueueManager = staticCompositionLocalOf<SessionQueueManager> {
 
 val LocalSessionGattBridge = staticCompositionLocalOf<SessionGattBridge> {
     error("SessionGattBridge not provided")
-}
-
-val LocalCruxRelayManager = staticCompositionLocalOf<CruxRelayManager> {
-    error("CruxRelayManager not provided")
 }
 
 /** Opens the playlist player from anywhere (mini-player tap, join flow).
@@ -74,8 +69,6 @@ fun BleStatusArea(
     val playback = LocalPlaylistPlayback.current
     val playbackState by playback.state.collectAsStateWithLifecycle()
     val displayState = if (isLocalPlaylist) state.copy(ownSession = null) else state
-    val relayManager = LocalCruxRelayManager.current
-    val relayState by relayManager.state.collectAsStateWithLifecycle()
 
     pendingSuccessor?.let { successor ->
         SuccessorJoinDialog(
@@ -157,9 +150,6 @@ fun BleStatusArea(
             onRequestDisconnect = { bleShareManager.requestDisconnect() },
             onAddToQueue = onAddToQueue,
             onOpenQueueSheet = { showQueueSheet = true },
-            relayClientCount = relayState.clientCount.takeIf { relayState.enabled },
-            relayBoardName = relayState.boardName,
-            onStopRelay = { relayManager.disable() },
         )
     } else {
         BleStatusChip(

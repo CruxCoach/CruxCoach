@@ -14,21 +14,12 @@ import kotlin.test.assertEquals
 import org.junit.Assert.assertEquals as assertEqualsWithMessage
 
 class UserPreferencesBoardSendModeTest {
-    /**
-     * Manual on both, now.
-     *
-     * A board only you can hold used to default to AUTOMATIC on the argument
-     * that nobody else was affected. The wall changing while you page through
-     * a list is a surprise whoever owns it, so the tap is what makes it an
-     * intention. They still persist independently: choosing automatic for one
-     * capacity is not choosing it for the other.
-     */
     @Test
-    fun `both capacities default to manual and persist independently`() = runTest {
+    fun `single defaults automatic and multi defaults manual`() = runTest {
         val preferences = createTestUserPreferences(backgroundScope)
 
         assertEquals(
-            BoardSendMode.EXPLICIT,
+            BoardSendMode.AUTOMATIC,
             preferences.singleConnectionBoardSendMode.first(),
         )
         assertEquals(
@@ -36,10 +27,10 @@ class UserPreferencesBoardSendModeTest {
             preferences.multiConnectionBoardSendMode.first(),
         )
 
-        preferences.setSingleConnectionBoardSendMode(BoardSendMode.AUTOMATIC)
+        preferences.setSingleConnectionBoardSendMode(BoardSendMode.EXPLICIT)
 
         assertEquals(
-            BoardSendMode.AUTOMATIC,
+            BoardSendMode.EXPLICIT,
             preferences.singleConnectionBoardSendMode.first(),
         )
         assertEqualsWithMessage(
@@ -71,7 +62,7 @@ class UserPreferencesBoardSendModeTest {
      * none, which used to read as AUTOMATIC. Both have to become manual once.
      */
     @Test
-    fun `the upgrade moves an existing automatic install to manual`() = runTest {
+    fun `the upgrade preserves an existing automatic choice`() = runTest {
         val (preferences, dataStore) = createPreferencesWithStore(backgroundScope)
         dataStore.edit { prefs ->
             prefs[PreferenceKeys.BOARD_SEND_MODE] = BoardSendMode.AUTOMATIC.name
@@ -79,8 +70,8 @@ class UserPreferencesBoardSendModeTest {
 
         preferences.migrateToManualSendDefaultIfNeeded()
 
-        assertEquals(BoardSendMode.EXPLICIT, preferences.singleConnectionBoardSendMode.first())
-        assertEquals(BoardSendMode.EXPLICIT, preferences.multiConnectionBoardSendMode.first())
+        assertEquals(BoardSendMode.AUTOMATIC, preferences.singleConnectionBoardSendMode.first())
+        assertEquals(BoardSendMode.AUTOMATIC, preferences.multiConnectionBoardSendMode.first())
     }
 
     /**
@@ -104,12 +95,13 @@ class UserPreferencesBoardSendModeTest {
     }
 
     @Test
-    fun `a fresh install is already manual and the upgrade changes nothing`() = runTest {
+    fun `a fresh install keeps capacity-specific defaults through migration`() = runTest {
         val preferences = createTestUserPreferences(backgroundScope)
 
-        assertEquals(BoardSendMode.EXPLICIT, preferences.singleConnectionBoardSendMode.first())
+        assertEquals(BoardSendMode.AUTOMATIC, preferences.singleConnectionBoardSendMode.first())
         preferences.migrateToManualSendDefaultIfNeeded()
-        assertEquals(BoardSendMode.EXPLICIT, preferences.singleConnectionBoardSendMode.first())
+        assertEquals(BoardSendMode.AUTOMATIC, preferences.singleConnectionBoardSendMode.first())
+        assertEquals(BoardSendMode.EXPLICIT, preferences.multiConnectionBoardSendMode.first())
     }
 
     @Test

@@ -315,6 +315,19 @@ internal object BoardBrowsePolicy {
     }
 }
 
+/** Rejects pages produced for a browse query that has since been replaced.
+ * A slow device can still be resolving an unfiltered `loadMore` page after a
+ * filter change. Cancellation does not stop an already-running SQLite query,
+ * so the completion needs an explicit generation check before mutating UI
+ * state. */
+internal class BrowseRequestGate {
+    private var generation = 0L
+
+    fun current(): Long = generation
+    fun invalidate(): Long = ++generation
+    fun accepts(requestGeneration: Long): Boolean = requestGeneration == generation
+}
+
 data class BrowserBleState(
     val connectionState: ConnectionState = ConnectionState.DISCONNECTED,
     val connectedBoardName: String? = null
@@ -498,6 +511,7 @@ class BoardBrowserViewModel @Inject constructor(
     private var hiddenLoaded = false
     private var filtersLoaded = false
     private var searchJob: Job? = null
+    private val browseRequestGate = BrowseRequestGate()
     // Latest-wins guard for refreshBoardData. A board switch fans out from
     // several pref/sync collectors and the user can switch rapidly; without
     // this each call launched its own coroutine running the full query set
@@ -1347,6 +1361,7 @@ class BoardBrowserViewModel @Inject constructor(
     fun searchClimbs(preserveDepth: Boolean = false) {
         if (!_state.value.hasBoardData) return
 
+        val requestGeneration = browseRequestGate.invalidate()
         val targetSize = if (preserveDepth) _state.value.climbs.size else 0
         searchJob?.cancel()
         searchJob = viewModelScope.safeLaunch(TAG) {
@@ -1365,6 +1380,7 @@ class BoardBrowserViewModel @Inject constructor(
                         refillBrowsePages(targetSize) { offset -> fetchFiltered(filter, dbOffset = offset) }
                     }
                 }
+                if (!browseRequestGate.accepts(requestGeneration)) return@safeLaunch
                 // Show results IMMEDIATELY — don't block on count query
                 _state.update { it.copy(
                     isLoading = false,
@@ -1383,7 +1399,9 @@ class BoardBrowserViewModel @Inject constructor(
                 // Fire-and-forget: resolve count in separate coroutine (non-blocking)
                 viewModelScope.safeLaunch(TAG) {
                     val count = resolveCount(filter, newDbOffset)
-                    _state.update { it.copy(filteredCount = count) }
+                    if (browseRequestGate.accepts(requestGeneration)) {
+                        _state.update { it.copy(filteredCount = count) }
+                    }
                 }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
@@ -1463,6 +1481,7 @@ class BoardBrowserViewModel @Inject constructor(
     fun loadMore() {
         val s = _state.value
         if (!s.hasBoardData || s.isLoadingMore || !s.canLoadMore) return
+        val requestGeneration = browseRequestGate.current()
 
         viewModelScope.safeLaunch(TAG) {
             _state.update { it.copy(isLoadingMore = true) }
@@ -1470,6 +1489,7 @@ class BoardBrowserViewModel @Inject constructor(
                 val (nextFiltered, newDbOffset, dbExhausted) = withContext(Dispatchers.IO) {
                     fetchFiltered(s.filter, dbOffset = s.dbOffset)
                 }
+                if (!browseRequestGate.accepts(requestGeneration)) return@safeLaunch
                 _state.update { it.copy(
                     isLoadingMore = false,
                     climbs = it.climbs + nextFiltered,

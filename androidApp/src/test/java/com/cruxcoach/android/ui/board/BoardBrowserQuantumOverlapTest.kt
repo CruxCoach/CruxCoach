@@ -103,4 +103,16 @@ class BoardBrowserQuantumOverlapTest {
         assertEquals(QuantumOverlapFilter.OFF, switched.filter.quantumOverlapFilter)
         assertEquals(BrowserQuantumLayerState(), switched.quantumLayers)
     }
+
+    @Test
+    fun `page from query before filter change is rejected`() {
+        val gate = BrowseRequestGate()
+        val unfilteredPage = gate.current()
+
+        val filteredSearch = gate.invalidate()
+
+        assertFalse(gate.accepts(unfilteredPage))
+        assertTrue(gate.accepts(filteredSearch))
+        assertTrue(gate.accepts(gate.current()))
+    }
 }

@@ -68,6 +68,7 @@ class BleShareManagerTest {
     }
     private val climbAdvertiser = mockk<ClimbBleAdvertiser>(relaxed = true) {
         every { hasActiveClimb() } returns false
+        every { localPresenceToken } returns 1234
     }
     private val sessionQueueManager = mockk<SessionQueueManager>(relaxed = true) {
         every { state } returns queueStateFlow
@@ -109,10 +110,12 @@ class BleShareManagerTest {
         connectedOnly: Boolean = false, isLastClimb: Boolean = false,
         acceptsDisconnectRequests: Boolean = true,
         projectionSurvivesDisconnect: Boolean = true,
+        senderToken: Int? = null,
     ) = NearbyClimb(uuid, angle, rssi, System.currentTimeMillis(), "AA:BB:CC:DD:EE:FF",
         connectedOnly, isLastClimb,
         acceptsDisconnectRequests = acceptsDisconnectRequests,
-        projectionSurvivesDisconnect = projectionSurvivesDisconnect)
+        projectionSurvivesDisconnect = projectionSurvivesDisconnect,
+        senderToken = senderToken)
 
     private fun session(
         sessionId: Int = 12345, hostName: String = "TestHost",
@@ -410,6 +413,18 @@ class BleShareManagerTest {
             nearbyClimb("", connectedOnly = true),
             nearbyClimb("", connectedOnly = true),
             nearbyClimb(UUID_A, connectedOnly = false)
+        )
+        advanceUntilIdle()
+
+        assertEquals(2, manager.uiState.value.boardOccupiedCount)
+    }
+
+    @Test
+    fun `boardOccupiedCount excludes own connected advertisement`() = runTest {
+        nearbyClimbsFlow.value = listOf(
+            nearbyClimb("", connectedOnly = true, senderToken = 1234),
+            nearbyClimb("", connectedOnly = true, senderToken = 5678),
+            nearbyClimb("", connectedOnly = true),
         )
         advanceUntilIdle()
 

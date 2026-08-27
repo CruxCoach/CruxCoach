@@ -21,6 +21,8 @@ sealed class NearbyPayload {
     data class BoardConnected(
         val acceptsDisconnect: Boolean = true,
         val supportsConcurrentConnections: Boolean = false,
+        /** Per-process sender identity used only to suppress a scanner's own advertisement. */
+        val senderToken: Int? = null,
     ) : NearbyPayload()
     /** Signals that the sender is going away — scanner should remove entries immediately. */
     data object Gone : NearbyPayload()
@@ -140,8 +142,10 @@ object NearbyClimbProtocol {
     fun encodeBoardConnected(
         acceptsDisconnect: Boolean = true,
         supportsConcurrentConnections: Boolean = false,
+        senderToken: Int? = null,
     ): ByteArray {
-        val buf = ByteArray(DISCONNECT_SIZE) // same size: [4 magic][1 type][1 flags]
+        // Legacy readers consume the first six bytes and ignore the optional token.
+        val buf = ByteArray(if (senderToken == null) DISCONNECT_SIZE else DISCONNECT_SIZE + 4)
         MAGIC.copyInto(buf, 0)
         buf[4] = TYPE_BOARD_CONNECTED
         // 0x00 remains the legacy "unspecified/accept" value. Use the
@@ -150,6 +154,12 @@ object NearbyClimbProtocol {
         val disconnectFlag = if (acceptsDisconnect) 0x01 else 0x02
         val capacityFlag = if (supportsConcurrentConnections) CONCURRENT_CONNECTIONS_FLAG else 0
         buf[5] = (disconnectFlag or capacityFlag).toByte()
+        senderToken?.let { token ->
+            buf[6] = (token and 0xFF).toByte()
+            buf[7] = ((token ushr 8) and 0xFF).toByte()
+            buf[8] = ((token ushr 16) and 0xFF).toByte()
+            buf[9] = ((token ushr 24) and 0xFF).toByte()
+        }
         return buf
     }
 
@@ -211,6 +221,12 @@ object NearbyClimbProtocol {
                     acceptsDisconnect = (flags and DISCONNECT_REJECTED_FLAG) == 0,
                     supportsConcurrentConnections =
                         (flags and CONCURRENT_CONNECTIONS_FLAG) != 0,
+                    senderToken = if (data.size >= DISCONNECT_SIZE + 4) {
+                        (data[6].toInt() and 0xFF) or
+                            ((data[7].toInt() and 0xFF) shl 8) or
+                            ((data[8].toInt() and 0xFF) shl 16) or
+                            ((data[9].toInt() and 0xFF) shl 24)
+                    } else null,
                 )
             }
             TYPE_GONE -> NearbyPayload.Gone

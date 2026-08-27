@@ -352,7 +352,11 @@ class BleShareManager @Inject constructor(
             ?.let { BoardMismatch(climbUuid = it.climbUuid, name = it.name, grade = it.grade) }
 
         // Count connected-only entries (board occupied without climb)
-        val boardOccupiedCount = nearbyClimbs.count { it.connectedOnly }
+        // Some Android controllers report their own BLE advertisement back to their
+        // scanner. Do not present that loopback as another person occupying the board.
+        val boardOccupiedCount = nearbyClimbs.count {
+            it.connectedOnly && it.senderToken != climbAdvertiser.localPresenceToken
+        }
 
         // Map nearby sessions
         val nearbySessionEntries = sessions.map { session ->
@@ -378,7 +382,8 @@ class BleShareManager @Inject constructor(
             nearbySessions = nearbySessionEntries,
             sharingEnabled = sharingEnabled,
             canRequestDisconnect = sharingEnabled && nearbyClimbs.any {
-                !it.isLastClimb && it.acceptsDisconnectRequests
+                !it.isLastClimb && it.acceptsDisconnectRequests &&
+                    it.senderToken != climbAdvertiser.localPresenceToken
             }
         )
     }
