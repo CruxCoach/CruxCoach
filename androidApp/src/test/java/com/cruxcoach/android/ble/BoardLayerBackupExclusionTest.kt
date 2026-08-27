@@ -34,6 +34,23 @@ class BoardLayerBackupExclusionTest {
         assertEquals(2, exclusions(R.xml.data_extraction_rules).count { it == target })
     }
 
+    @Test
+    fun `crash reports never cross backup or device transfer`() {
+        listOf("crash_log.txt", "crash_log_prev.txt").forEach { fileName ->
+            val target = "file" to fileName
+            assertEquals(1, exclusions(R.xml.backup_rules).count { it == target })
+            assertEquals(2, exclusions(R.xml.data_extraction_rules).count { it == target })
+        }
+    }
+
+    @Test
+    fun `all databases including identity scoped database stay on device`() {
+        val target = "database" to "."
+
+        assertEquals(1, exclusions(R.xml.backup_rules).count { it == target })
+        assertEquals(2, exclusions(R.xml.data_extraction_rules).count { it == target })
+    }
+
     private fun exclusions(@XmlRes resourceId: Int): List<Pair<String, String>> {
         val parser = context.resources.getXml(resourceId)
         return try {
