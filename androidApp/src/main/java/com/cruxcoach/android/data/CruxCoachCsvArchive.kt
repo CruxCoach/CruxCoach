@@ -47,6 +47,12 @@ object CruxCoachCsvArchive {
         CLIMBS_FILE,
     )
 
+    internal data class ExportTable(
+        val fileName: String,
+        val sheetName: String,
+        val rows: JsonArray,
+    )
+
     fun fromJson(jsonString: String, categories: Set<Category>): ByteArray {
         val root = json.parseToJsonElement(jsonString) as? JsonObject
             ?: error("CruxCoach export root must be an object")
@@ -54,18 +60,8 @@ object CruxCoachCsvArchive {
         ZipOutputStream(output).use { zip ->
             val manifest = JsonObject(root.filterValues { it !is JsonArray && it !is JsonObject })
             writeEntry(zip, MANIFEST_FILE, manifest.toString())
-            if (Category.BOARD_LOGBOOK in categories) {
-                writeEntry(zip, LOGBOOK_FILE, encodeArray(combineLogbook(root)))
-            }
-            if (Category.BOARD_LOGBOOK in categories || Category.CLIMB_NOTES in categories) {
-                val notes = root["climbNotes"] as? JsonArray ?: JsonArray(emptyList())
-                writeEntry(zip, NOTES_FILE, encodeArray(notes))
-            }
-            if (Category.CLIMB_LISTS in categories) {
-                writeEntry(zip, LISTS_FILE, encodeArray(combineLists(root)))
-            }
-            if (Category.OWN_CLIMBS in categories) {
-                writeEntry(zip, CLIMBS_FILE, encodeArray(combineOwnClimbs(root)))
+            tablesFromRoot(root, categories).forEach { table ->
+                writeEntry(zip, table.fileName, encodeArray(table.rows))
             }
         }
         return output.toByteArray().also {
@@ -96,6 +92,29 @@ object CruxCoachCsvArchive {
     fun looksLikeZip(bytes: ByteArray): Boolean =
         bytes.size >= 4 && bytes[0] == 0x50.toByte() && bytes[1] == 0x4b.toByte() &&
             bytes[2] == 0x03.toByte() && bytes[3] == 0x04.toByte()
+
+    internal fun tablesFromJson(jsonString: String, categories: Set<Category>): List<ExportTable> {
+        val root = json.parseToJsonElement(jsonString) as? JsonObject
+            ?: error("CruxCoach export root must be an object")
+        return tablesFromRoot(root, categories)
+    }
+
+    private fun tablesFromRoot(root: JsonObject, categories: Set<Category>): List<ExportTable> =
+        buildList {
+            if (Category.BOARD_LOGBOOK in categories) {
+                add(ExportTable(LOGBOOK_FILE, "Logbook", combineLogbook(root)))
+            }
+            if (Category.BOARD_LOGBOOK in categories || Category.CLIMB_NOTES in categories) {
+                val notes = root["climbNotes"] as? JsonArray ?: JsonArray(emptyList())
+                add(ExportTable(NOTES_FILE, "Climb notes", notes))
+            }
+            if (Category.CLIMB_LISTS in categories) {
+                add(ExportTable(LISTS_FILE, "Climb lists", combineLists(root)))
+            }
+            if (Category.OWN_CLIMBS in categories) {
+                add(ExportTable(CLIMBS_FILE, "Own climbs", combineOwnClimbs(root)))
+            }
+        }
 
     private fun combineLogbook(root: JsonObject): JsonArray {
         val ascents = root["boardAscents"] as? JsonArray ?: JsonArray(emptyList())
