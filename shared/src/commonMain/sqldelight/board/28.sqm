@@ -1,0 +1,2 @@
+CREATE INDEX IF NOT EXISTS idx_climbs_brand_deleted_name_nocase
+ON climbs(board_brand, is_deleted, name COLLATE NOCASE);

@@ -2572,7 +2572,6 @@
     <string name="moon_device_cancel">Übertragung stoppen</string>
     <string name="moon_device_cancelling">Wird gestoppt…</string>
     <string name="moon_import_result_replaced">Wegen Änderungen in Moon aktualisierte Einträge: %1$d</string>
-    <string name="moon_scan_status_catalogue">Lokaler MoonBoard-Katalog wird durchsucht…</string>
     <string name="moon_scan_deviation_kept">%1$s: %2$d Eintrag/Einträge behalten, die Moon nicht mehr listet — sie tragen in CruxCoach ergänzte Notizen</string>
     <string name="moon_import_result_kept">Behalten, weil du sie in CruxCoach bearbeitet hast: %1$d</string>
     <string name="moon_scan_deviation_unrecognised">CruxCoach hat in der Moon-App nichts wiedererkannt. Das hat Moon angezeigt:</string>

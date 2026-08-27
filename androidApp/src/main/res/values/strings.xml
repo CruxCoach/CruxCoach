@@ -2573,7 +2573,6 @@
     <string name="moon_device_cancel">Stop transfer</string>
     <string name="moon_device_cancelling">Stopping…</string>
     <string name="moon_import_result_replaced">Entries updated because Moon changed them: %1$d</string>
-    <string name="moon_scan_status_catalogue">Searching the local MoonBoard catalogue…</string>
     <string name="moon_scan_deviation_kept">%1$s: kept %2$d entry/entries Moon no longer lists — they carry notes added in CruxCoach</string>
     <string name="moon_import_result_kept">Kept because you edited them in CruxCoach: %1$d</string>
     <string name="moon_scan_deviation_unrecognised">CruxCoach did not recognise anything in the Moon app. This is what Moon showed:</string>

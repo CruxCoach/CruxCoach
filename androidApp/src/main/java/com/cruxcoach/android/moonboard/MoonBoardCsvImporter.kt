@@ -18,29 +18,6 @@ class MoonBoardCsvImporter @Inject constructor(
     private val secureDb: SecureDatabase,
     private val boardDb: BoardDatabase,
 ) {
-    /**
-     * Catalogue index for the on-device scan currently running, one entry per
-     * board angle. Built lazily and kept for the whole scan because the
-     * underlying query is a full catalogue scan (see Board.sq
-     * listMoonScreenIndex) — roughly 20 s and six figures of rows.
-     *
-     * Per angle rather than for every angle a MoonBoard can be built at: a
-     * logbook is usually entirely 40°, and loading the 25° half of the
-     * catalogue for it would double both the time and the retained memory for
-     * nothing. A 25° entry later in the same scan simply builds that index too.
-     */
-    private val screenIndex = HashMap<Long, Map<String, Any>>()
-
-    /**
-     * How many training days were resolved with a targeted name lookup so far.
-     * A delta run usually re-reads one or two days; paying a full catalogue
-     * scan (~28 s on a 226k-problem MoonBoard catalogue) to resolve a handful
-     * of entries is the difference between "instant" and "looks frozen". Once a
-     * run turns out to be large, the full index is cheaper overall and takes
-     * over.
-     */
-    private var targetedLookups = 0
-
     private data class ScreenIndexRow(val uuid: String, val setter: String?)
 
     /**
@@ -49,8 +26,6 @@ class MoonBoardCsvImporter @Inject constructor(
      * complete instead of re-reading them.
      */
     suspend fun beginScreenImport(): Map<String, MoonBoardImportedDay> = withContext(Dispatchers.IO) {
-        screenIndex.clear()
-        targetedLookups = 0
         finalizePendingIfCatalogueReady()
         val days = HashMap<String, MoonBoardImportedDay>()
         fun merge(date: String, entries: Int, sends: Int, tries: Int) {
@@ -68,10 +43,8 @@ class MoonBoardCsvImporter @Inject constructor(
         days
     }
 
-    /** Releases the cached catalogue index once a scan is over. */
-    fun endScreenImport() {
-        screenIndex.clear()
-    }
+    /** Kept as an explicit import lifecycle boundary for callers. */
+    fun endScreenImport() = Unit
 
     /**
      * Imports one Moon training day as soon as it has been read.
@@ -83,7 +56,6 @@ class MoonBoardCsvImporter @Inject constructor(
     suspend fun importScreenSession(
         entries: List<MoonBoardScreenEntry>,
         complete: Boolean = false,
-        onCatalogueScan: () -> Unit = {},
     ): MoonBoardCsvImportResult =
         withContext(Dispatchers.IO) {
             if (entries.isEmpty()) return@withContext MoonBoardCsvImportResult()
@@ -103,7 +75,7 @@ class MoonBoardCsvImporter @Inject constructor(
             // Resolve against the catalogue *before* opening the write
             // transaction. Catalogue lookups inside it held the secure database
             // for the entire import and froze every other screen with it.
-            val catalogue = resolveScreenEntries(entries, onCatalogueScan)
+            val catalogue = resolveScreenEntries(entries)
             val catalogueComplete = catalogueIsComplete()
 
             val prepared = entries.mapNotNull { entry ->
@@ -355,35 +327,6 @@ class MoonBoardCsvImporter @Inject constructor(
         }
     }
 
-    /**
-     * Name -> candidate(s) for one board angle. A name with a single candidate
-     * stores that row directly instead of a one-element list: at six figures of
-     * names the per-list object overhead alone is tens of megabytes.
-     */
-    private fun indexForAngle(angle: Long, onCatalogueScan: () -> Unit): Map<String, Any> =
-        screenIndex.getOrPut(angle) {
-        onCatalogueScan()
-        val startedAt = SystemClock.elapsedRealtime()
-        val index = HashMap<String, Any>()
-        boardDb.boardQueries.listMoonScreenIndex(listOf(angle)).executeAsList().forEach { row ->
-            val name = row.name.lowercase(Locale.ROOT)
-            val entry = ScreenIndexRow(row.uuid, row.setter_username)
-            when (val existing = index[name]) {
-                null -> index[name] = entry
-                is ScreenIndexRow -> index[name] = arrayListOf(existing, entry)
-                else -> {
-                    @Suppress("UNCHECKED_CAST")
-                    (existing as ArrayList<ScreenIndexRow>).add(entry)
-                }
-            }
-        }
-        Log.i(
-            TAG,
-            "catalogue index @${angle}°: ${index.size} names in ${SystemClock.elapsedRealtime() - startedAt} ms",
-        )
-        index
-    }
-
     private fun screenKey(entry: MoonBoardScreenEntry): String =
         "${entry.name.lowercase(Locale.ROOT)}|${entry.setter.lowercase(Locale.ROOT)}|${entry.angle}"
 
@@ -397,36 +340,17 @@ class MoonBoardCsvImporter @Inject constructor(
      */
     private fun resolveScreenEntries(
         entries: List<MoonBoardScreenEntry>,
-        onCatalogueScan: () -> Unit,
     ): Map<String, Resolved> {
         val wanted = entries.associateBy(::screenKey)
         if (wanted.isEmpty()) return emptyMap()
 
         val angles = entries.map { it.angle.toLong() }.distinct()
-        val targeted = if (screenIndex.keys.containsAll(angles) ||
-            targetedLookups >= TARGETED_LOOKUP_LIMIT
-        ) {
-            null
-        } else {
-            targetedLookups++
-            lookupByNames(entries, angles)
-        }
+        val targeted = lookupByNames(entries, angles)
 
         val chosen = LinkedHashMap<String, String>()
         wanted.forEach { (key, entry) ->
             val name = entry.name.lowercase(Locale.ROOT)
-            val rows = if (targeted != null) {
-                targeted["$name|${entry.angle}"].orEmpty()
-            } else {
-                when (val hit = indexForAngle(entry.angle.toLong(), onCatalogueScan)[name]) {
-                    null -> emptyList()
-                    is ScreenIndexRow -> listOf(hit)
-                    else -> {
-                        @Suppress("UNCHECKED_CAST")
-                        hit as List<ScreenIndexRow>
-                    }
-                }
-            }
+            val rows = targeted["$name|${entry.angle}"].orEmpty()
             val exact = rows.filter { it.setter?.equals(entry.setter, ignoreCase = true) == true }
             val row = when {
                 exact.size == 1 -> exact.single()
@@ -467,11 +391,6 @@ class MoonBoardCsvImporter @Inject constructor(
         withContext(Dispatchers.IO) {
             if (catalogueReady) {
                 boardDb.boardQueries.upsertSyncState(CATALOGUE_READY_MARKER, "complete")
-                // A preceding scan may have cached a partial/empty catalogue.
-                // Never resolve newly staged rows against that stale view after
-                // the catalogue sync has just completed.
-                screenIndex.clear()
-                targetedLookups = 0
             }
             if (!catalogueIsComplete()) return@withContext 0
             val pending = secureDb.moonImportStagingQueries.selectStagedMoonImports().executeAsList()
@@ -484,7 +403,7 @@ class MoonBoardCsvImporter @Inject constructor(
                 val angle = row.angle?.toInt() ?: return@mapNotNull null
                 MoonBoardScreenEntry(name, setter, angle, row.climbed_at, "", row.attempts.toInt(), row.is_send != 0L)
             }
-            val screenResolved = resolveScreenEntries(screenEntries) {}
+            val screenResolved = resolveScreenEntries(screenEntries)
             var finalized = 0
             secureDb.transaction {
                 pending.forEach { row ->
@@ -658,7 +577,6 @@ class MoonBoardCsvImporter @Inject constructor(
     private companion object {
         const val TAG = "MoonBoardCsvImporter"
         const val SCREEN_PREFIX = "moon-screen:%"
-        const val TARGETED_LOOKUP_LIMIT = 4
         const val CATALOGUE_READY_MARKER = "moonboard_catalogue_complete_v1"
     }
 }

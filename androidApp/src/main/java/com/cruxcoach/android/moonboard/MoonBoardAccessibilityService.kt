@@ -503,14 +503,7 @@ class MoonBoardAccessibilityService : AccessibilityService() {
                     notImported = result.observed,
                 )
             } else runCatching {
-                importer.importScreenSession(result.entries, result.complete) {
-                    // The one-off catalogue scan takes tens of seconds on a
-                    // full MoonBoard catalogue. Without this the screen keeps
-                    // showing the last training day and looks frozen.
-                    MoonBoardAccessibilityBridge.update {
-                        it.copy(status = getString(R.string.moon_scan_status_catalogue))
-                    }
-                }
+                importer.importScreenSession(result.entries, result.complete)
             }
                 .getOrElse {
                     Log.w(TAG, "storing ${session.label.lineOne()} failed", it)

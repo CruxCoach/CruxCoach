@@ -5,6 +5,7 @@ import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.cruxcoach.db.board.BoardDatabase
 import com.cruxcoach.db.board.Climbs
 import com.cruxcoach.db.secure.SecureDatabase
+import com.cruxcoach.data.repository.PersonalBoardRepositoryImpl
 import com.cruxcoach.domain.board.FramesBinaryCodec
 import kotlinx.coroutines.test.runTest
 import kotlin.test.AfterTest
@@ -126,5 +127,39 @@ class MoonBoardDeferredImportTest {
         assertEquals(realUuid, reconciled.climb_uuid)
         assertEquals("p10r12p20r14", reconciled.climb_frames)
         assertEquals(0L, secureDb.moonImportStagingQueries.countStagedMoonImports().executeAsOne())
+    }
+
+    @Test fun `clearing logbook prevents a deferred screen row from reappearing`() = runTest {
+        val entry = MoonBoardScreenEntry(
+            name = "Previously Staged", setter = "Alice", angle = 40,
+            climbedAt = "2026-08-03T12:00:00Z", tries = "Flash", attempts = 1,
+            isSend = true,
+        )
+        val importer = MoonBoardCsvImporter(secureDb, boardDb)
+        assertEquals(1, importer.importScreenSession(listOf(entry), complete = true).stagedEntries)
+
+        val realUuid = "87654321-4321-4321-8321-cba987654321"
+        boardDb.boardQueries.insertLocalDraft(
+            uuid = realUuid, layout_id = 2, setter_username = entry.setter, name = entry.name,
+            frames = "p10r12p20r14", edge_left = 0, edge_right = 100,
+            edge_bottom = 0, edge_top = 100, created_at = "2026-08-03",
+            description = "", move_count = 1, hsm = 0,
+            created_by_pubkey = null, frames_hash = null, board_brand = "moonboard",
+        )
+        boardDb.boardQueries.upsertClimbStat(
+            climb_uuid = realUuid, angle = 40, display_difficulty = 15.0,
+            difficulty_average = 15.0, quality_average = null, ascensionist_count = 0,
+            benchmark_difficulty = null, fa_username = null, fa_at = null,
+            official_kilter_difficulty = null,
+        )
+
+        PersonalBoardRepositoryImpl(secureDb).deleteAllUserBoardData()
+
+        assertEquals(0, importer.finalizePendingIfCatalogueReady(catalogueReady = true))
+        assertEquals(0L, secureDb.moonImportStagingQueries.countStagedMoonImports().executeAsOne())
+        assertEquals(
+            0L,
+            secureDb.ascentsQueries.countAscentsWithExternalIdPrefix("moon-screen:%").executeAsOne(),
+        )
     }
 }

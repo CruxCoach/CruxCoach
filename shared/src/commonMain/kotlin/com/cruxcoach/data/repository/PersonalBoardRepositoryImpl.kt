@@ -1150,6 +1150,10 @@ class PersonalBoardRepositoryImpl(
         database.transaction {
             database.ascentsQueries.deleteAllAscents()
             database.bidsQueries.deleteAllBids()
+            // Staged Moon rows are deferred logbook data, not a catalogue
+            // cache. Keeping them after a full wipe silently recreated rows
+            // at the next import and reported them as already present.
+            database.moonImportStagingQueries.deleteAllMoonImportStaging()
             database.boardSessionsQueries.deleteAllBoardSessions()
             database.climbListsQueries.deleteAllPlaybackSteps()
             database.climbListsQueries.deleteAllClimbListEntries()
@@ -1171,6 +1175,11 @@ class PersonalBoardRepositoryImpl(
             for (brand in brands) {
                 database.ascentsQueries.deleteAscentsForBrand(brand)
                 database.bidsQueries.deleteBidsForBrand(brand)
+            }
+            if ("moonboard" in brands) {
+                // The staging table contains Moon data exclusively and has no
+                // separate brand column. A Moon-scoped wipe clears it whole.
+                database.moonImportStagingQueries.deleteAllMoonImportStaging()
             }
             // Sessions stay: brand-less aggregates, see BoardSessions.sq.
             // Each uuid binds one SQLite host parameter — chunk well below
