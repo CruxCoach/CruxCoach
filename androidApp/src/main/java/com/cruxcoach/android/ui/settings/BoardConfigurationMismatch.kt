@@ -1,11 +1,13 @@
 package com.cruxcoach.android.ui.settings
 
+import com.cruxcoach.android.data.BoardConstants
 import com.cruxcoach.domain.board.BoardBrand
+import com.cruxcoach.domain.board.MoonBoardVariant
 import com.cruxcoach.domain.board.QuantumBoardModel
 
-/** Information the picker may trust without guessing. Null detail fields are
- * deliberately left for the user to choose; they are never replaced by an
- * arbitrary first model while handling a mismatch. */
+/** Information used to guide mismatch recovery. Exact controller evidence is
+ * preferred; brands whose BLE identity cannot expose a physical variant use a
+ * documented, common landing choice that the user can still change. */
 data class BoardPickerPrefill(
     val brand: BoardBrand,
     val layoutId: Long? = null,
@@ -46,8 +48,8 @@ data class BoardSendIdentity(
 )
 
 /** Build the guided correction shown as soon as a controller connects under
- * a different active board. Controller evidence can safely select the brand;
- * only Quantum currently proves its exact model over BLE. */
+ * a different active board. Quantum proves its exact model over BLE; Kilter
+ * and MoonBoard land on their most useful common configurations. */
 fun connectedBoardConfigurationMismatch(
     activeBrand: BoardBrand,
     connectedBrand: BoardBrand?,
@@ -70,8 +72,9 @@ fun connectedBoardConfigurationMismatch(
 /**
  * Resolve all identity mismatches that can be proven before an LED-map lookup.
  * Controller evidence wins over climb metadata. In particular, a Quantum
- * controller's verified model is safe to preselect; a generic Aurora BLE name
- * proves only the brand, so layout and size remain null.
+ * controller's verified model is safe to preselect. Generic Kilter and
+ * MoonBoard BLE names prove only the brand, so their detail choice is a
+ * user-editable default rather than claimed controller evidence.
  */
 fun resolveBoardConfigurationMismatch(
     identity: BoardSendIdentity,
@@ -144,12 +147,25 @@ fun boardSizeMismatch(identity: BoardSendIdentity): BoardConfigurationMismatch =
 private fun controllerPrefill(
     brand: BoardBrand,
     quantumModel: QuantumBoardModel?,
-) = BoardPickerPrefill(
-    brand = brand,
-    layoutId = quantumModel?.layoutId,
-    productSizeId = quantumModel?.productSizeId?.toInt(),
-    source = BoardPickerPrefillSource.CONNECTED_CONTROLLER,
-)
+): BoardPickerPrefill {
+    val layoutId = when (brand) {
+        BoardBrand.KILTER -> BoardConstants.KILTER_ORIGINAL_LAYOUT.toLong()
+        BoardBrand.MOONBOARD -> MoonBoardVariant.MOONBOARD_2016.layoutId
+        BoardBrand.QUANTUM -> quantumModel?.layoutId
+        else -> null
+    }
+    val productSizeId = when (brand) {
+        BoardBrand.KILTER -> BoardConstants.KILTER_DEFAULT_SIZE
+        BoardBrand.QUANTUM -> quantumModel?.productSizeId?.toInt()
+        else -> null
+    }
+    return BoardPickerPrefill(
+        brand = brand,
+        layoutId = layoutId,
+        productSizeId = productSizeId,
+        source = BoardPickerPrefillSource.CONNECTED_CONTROLLER,
+    )
+}
 
 private fun BoardSendIdentity.prefillForExpected(expectedBrand: BoardBrand): BoardPickerPrefill {
     val quantum = connectedQuantumModel.takeIf { expectedBrand == BoardBrand.QUANTUM }

@@ -10,7 +10,7 @@ import kotlin.test.assertNotNull
 
 class BoardConfigurationMismatchTest {
     @Test
-    fun `connection mismatch immediately prefills safely known MoonBoard brand`() {
+    fun `connection mismatch prefills common MoonBoard 2016 landing choice`() {
         val mismatch = connectedBoardConfigurationMismatch(
             activeBrand = BoardBrand.KILTER,
             connectedBrand = BoardBrand.MOONBOARD,
@@ -20,7 +20,7 @@ class BoardConfigurationMismatchTest {
         assertEquals(BoardMismatchKind.ACTIVE_BRAND, mismatch.kind)
         assertEquals(BoardBrand.MOONBOARD, mismatch.prefill.brand)
         assertEquals(BoardPickerPrefillSource.CONNECTED_CONTROLLER, mismatch.prefill.source)
-        assertNull(mismatch.prefill.layoutId)
+        assertEquals(MoonBoardVariant.MOONBOARD_2016.layoutId, mismatch.prefill.layoutId)
         assertNull(mismatch.prefill.productSizeId)
     }
 
@@ -48,7 +48,7 @@ class BoardConfigurationMismatchTest {
     }
 
     @Test
-    fun `connected controller brand wins and unknown fields stay unconfirmed`() {
+    fun `connected Kilter controller wins and prefills 12x12 with kickboard`() {
         val mismatch = resolveBoardConfigurationMismatch(
             BoardSendIdentity(
                 climbBrand = BoardBrand.MOONBOARD,
@@ -64,8 +64,8 @@ class BoardConfigurationMismatchTest {
         assertEquals(BoardMismatchKind.CONNECTED_BRAND, mismatch.kind)
         assertEquals(BoardBrand.KILTER, mismatch.prefill.brand)
         assertEquals(BoardPickerPrefillSource.CONNECTED_CONTROLLER, mismatch.prefill.source)
-        assertNull(mismatch.prefill.layoutId)
-        assertNull(mismatch.prefill.productSizeId)
+        assertEquals(1L, mismatch.prefill.layoutId)
+        assertEquals(10, mismatch.prefill.productSizeId)
     }
 
     @Test

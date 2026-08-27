@@ -627,10 +627,10 @@ fun BoardFilterScreen(
                     }
                     Text(
                         when {
-                            !state.quantumLayers.available ->
-                                stringResource(R.string.board_filter_quantum_overlap_inert)
-                            !state.quantumLayers.complete ->
+                            state.quantumLayers.occupied && !state.quantumLayers.complete ->
                                 stringResource(R.string.board_filter_quantum_overlap_incomplete)
+                            !state.quantumLayers.occupied ->
+                                stringResource(R.string.board_filter_quantum_overlap_inert)
                             state.filter.quantumOverlapFilter.active &&
                                 state.quantumLayers.matchCount >= 0 -> stringResource(
                                 R.string.board_filter_quantum_overlap_count,
@@ -640,7 +640,7 @@ fun BoardFilterScreen(
                         },
                         style = MaterialTheme.typography.labelSmall,
                         color = if (!state.quantumLayers.complete &&
-                            state.quantumLayers.available
+                            state.quantumLayers.occupied
                         ) WarningYellow else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.testTag("board_filter_quantum_overlap_hint"),
                     )
