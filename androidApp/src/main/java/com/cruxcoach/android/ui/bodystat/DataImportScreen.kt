@@ -143,7 +143,9 @@ fun DataImportScreen(
                 )
 
                 OutlinedButton(
-                    onClick = { importLauncher.launch(arrayOf("application/json", "text/csv", "text/*")) },
+                    onClick = {
+                        importLauncher.launch(arrayOf("application/json", "text/csv", "text/*"))
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(48.dp)

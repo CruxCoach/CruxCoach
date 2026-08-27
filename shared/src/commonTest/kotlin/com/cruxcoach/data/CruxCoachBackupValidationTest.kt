@@ -21,6 +21,12 @@ class CruxCoachBackupValidationTest {
     }
 
     @Test
+    fun rejects_envelope_from_another_app() {
+        val json = """{"app":"OtherApp","exportedAt":"2026-04-21T00:00:00Z"}"""
+        assertFailsWith<IllegalArgumentException> { CruxCoachBackup.preview(json) }
+    }
+
+    @Test
     fun rejects_unsupported_version() {
         val json = """{"version":99,"exportedAt":"2026-04-21"}"""
         assertFailsWith<IllegalArgumentException> { CruxCoachBackup.preview(json) }
