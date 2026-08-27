@@ -128,7 +128,7 @@ androidApp/                # Android app (Jetpack Compose)
 
 ### Releases & CI (maintainer only)
 
-The release workflow is `.github/workflows/release.yml`, and it runs **exclusively** on the maintainer's self-hosted runner — which is the whole reason GitHub Actions is acceptable for a signed release at all: the keystore stays on our own filesystem and never enters GitHub's secret store. The former Forgejo fallback was retired because its in-file branch guards were not an immutable server-side trust boundary. The manual publishing script remains the forge-independent break-glass path. Full rationale and migration order: [`docs/RELEASE_GITHUB.md`](docs/RELEASE_GITHUB.md).
+The release workflow is `.github/workflows/release.yml`, and it runs **exclusively** on the maintainer's self-hosted runner — which is the whole reason GitHub Actions is acceptable for a signed release at all: the keystore stays on our own filesystem and never enters GitHub's secret store. It builds and signs once, publishes those bytes to GitHub, then mirrors the exact same APK and SHA-256 sidecar to Codeberg. The former Forgejo fallback was retired because its in-file branch guards were not an immutable server-side trust boundary. The manual publishing scripts remain the forge-independent break-glass path. Full rationale and migration order: [`docs/RELEASE_GITHUB.md`](docs/RELEASE_GITHUB.md).
 
 Pull requests do **not** receive automated build or test feedback — the maintainer runs Gradle locally during review. Keep the self-hosted runner off pull-request triggers: it executes whatever a push contains, on the host that holds the signing key.
 
@@ -149,6 +149,7 @@ Files the runner reads off its own filesystem, none of which is a forge secret:
 | `$CRUXCOACH_SECRETS_DIR/.signing/` | Release keystore |
 | `$CRUXCOACH_SECRETS_DIR/.env` | Zapstore publishing. Mode 600; must define a headless `SIGN_WITH` (`nsec1…`, hex private key, or a provisioned `bunker://` NIP-46 signer) whose public key matches `zapstore.yaml`. A bare `npub1…` only creates unsigned output. The file uses raw zsp `KEY=value` syntax and is never sourced as shell. See [`.env.example`](.env.example) |
 | `~/.config/cruxcoach/github-release-token` | Mode 600, `Contents: Read and write` on `CruxCoach/CruxCoach`. Authenticates both the GitHub API calls and the tag push. Override with `GITHUB_TOKEN` / `GITHUB_TOKEN_FILE`, or `GITHUB_RELEASE_TOKEN` for the dev-release cleanup step |
+| `~/.config/cruxcoach/codeberg-release-token` | Mode 600, repository write access on `CruxCoach/CruxCoach`. Pushes the identical tag and mirrors the already-built GitHub APK plus sidecar to Codeberg. Override with `CODEBERG_TOKEN` / `CODEBERG_TOKEN_FILE` |
 
 **No GitHub repository secret is required, and none is load-bearing** — that is deliberate, so a GitHub-side compromise cannot reach the signing key or the publisher identity.
 
