@@ -48,7 +48,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -99,11 +98,11 @@ fun NostrProfileScreen(
     // a result handler doesn't have to disambiguate which image was picked.
     val bannerPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia(),
-        onResult = { uri: Uri? -> uri?.let { viewModel.uploadBanner(it) } },
+        onResult = { uri: Uri? -> uri?.let { viewModel.selectBanner(it) } },
     )
     val picturePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia(),
-        onResult = { uri: Uri? -> uri?.let { viewModel.uploadPicture(it) } },
+        onResult = { uri: Uri? -> uri?.let { viewModel.selectPicture(it) } },
     )
 
     if (showPublishWarning.value) {
@@ -181,7 +180,7 @@ fun NostrProfileScreen(
                         PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
                     )
                 },
-                onRemoveClick = { viewModel.setBannerUrl("") },
+                onRemoveClick = viewModel::removeBanner,
             )
 
             ProfilePictureArea(
@@ -192,7 +191,7 @@ fun NostrProfileScreen(
                         PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
                     )
                 },
-                onRemoveClick = { viewModel.setPictureUrl("") },
+                onRemoveClick = viewModel::removePicture,
             )
 
             Text(
@@ -274,18 +273,11 @@ fun NostrProfileScreen(
                 },
                 trailingIcon = { LnurlVerificationIcon(state.lnurlVerification) },
                 singleLine = true,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .onFocusChanged { focus ->
-                        if (!focus.isFocused) viewModel.verifyLightningNow()
-                    },
+                modifier = Modifier.fillMaxWidth(),
             )
 
-            // Banner + picture URL fields removed — the image-edit areas
-            // at the top of this screen own those URLs now (FEAT-010 Tier 3
-            // image upload). The state still carries the URLs and the
-            // setBannerUrl / setPictureUrl setters remain, used by the
-            // ProfileImageUploader callback path on a successful upload.
+            // Banner + picture URL fields are intentionally absent. The image areas own either a
+            // private local reference or the URL produced by a confirmed global publication.
 
             OutlinedTextField(
                 value = state.nip05,
@@ -296,11 +288,7 @@ fun NostrProfileScreen(
                 },
                 trailingIcon = { Nip05VerificationIcon(state.nip05Verification) },
                 singleLine = true,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .onFocusChanged { focus ->
-                        if (!focus.isFocused) viewModel.verifyNip05Now()
-                    },
+                modifier = Modifier.fillMaxWidth(),
             )
 
             OutlinedTextField(
@@ -379,10 +367,8 @@ fun NostrProfileScreen(
 
 private const val ABOUT_CHAR_LIMIT = 500
 
-/** 3:1 banner image edit area at the top of the profile editor. Tap →
- *  system gallery picker; ViewModel takes over on result. While an
- *  upload is in flight the area shows a centred spinner over the
- *  existing image (or gradient placeholder). */
+/** 3:1 banner editor. A selection is processed into private app storage; Blossom is touched only
+ *  after the user confirms public profile publication. */
 @Composable
 private fun BannerImageArea(
     url: String,
@@ -452,9 +438,7 @@ private fun BannerImageArea(
     }
 }
 
-/** 1:1 circular profile-picture edit area. Same upload semantics as
- *  the banner — the two pickers are independent so the user can
- *  re-upload one without the other. */
+/** 1:1 circular profile-picture editor with the same local-first semantics as the banner. */
 @Composable
 private fun ProfilePictureArea(
     url: String,
@@ -530,7 +514,7 @@ private fun AboutMarkdownPreview(content: String) {
 
 /** Trailing-icon for the NIP-05 field — green ✓ on Verified, red ✗ on
  *  Mismatch, amber ? on Unreachable, small spinner while verifying.
- *  Idle renders nothing (so the field looks clean before first blur). */
+ *  Idle renders nothing; verification starts only after confirmed publication. */
 @Composable
 private fun Nip05VerificationIcon(state: Nip05Verifier.State) {
     when (state) {
