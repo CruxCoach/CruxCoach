@@ -18,7 +18,6 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.automirrored.filled.Login
@@ -448,15 +447,6 @@ private fun PrivacyStep(
 
         BackupCard(state, viewModel, onNavigateToKeyManagement)
 
-        PrivacyToggleCard(
-            icon = { Icon(Icons.Default.Forum, null, tint = OrangeAccent, modifier = Modifier.size(32.dp)) },
-            title = stringResource(R.string.onboarding_privacy_community_title),
-            description = stringResource(R.string.onboarding_privacy_community_desc),
-            checked = state.communityFeatures,
-            onCheckedChange = { viewModel.updateCommunityFeatures(it) },
-            testTag = "onboarding_community_switch",
-        )
-
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = InfoBlue.copy(alpha = 0.1f)),
@@ -689,48 +679,6 @@ private fun RestoreSubSection(state: OnboardingState, viewModel: OnboardingViewM
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-        }
-    }
-}
-
-@Composable
-private fun PrivacyToggleCard(
-    icon: @Composable () -> Unit,
-    title: String,
-    description: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-    testTag: String,
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-        ),
-        shape = RoundedCornerShape(16.dp),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            icon()
-            Column(modifier = Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                Text(
-                    description,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Switch(
-                checked = checked,
-                onCheckedChange = onCheckedChange,
-                modifier = Modifier.testTag(testTag),
-                colors = SwitchDefaults.colors(checkedTrackColor = OrangeAccent),
-            )
         }
     }
 }

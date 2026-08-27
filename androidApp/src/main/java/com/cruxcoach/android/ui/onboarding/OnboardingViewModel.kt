@@ -68,10 +68,6 @@ enum class BackupChoice { FRESH, RESTORE }
 data class OnboardingState(
     val currentStep: OnboardingStep = OnboardingStep.BOARD_SETUP,
 
-    // Privacy preferences
-    val bleSharing: Boolean = true,
-    val communityFeatures: Boolean = true,
-
     // Kilter login (inline in kilter step)
     val kilterEmail: String = "",
     val kilterPassword: String = "",
@@ -278,15 +274,6 @@ class OnboardingViewModel @Inject constructor(
             OnboardingStep.KILTER -> OnboardingStep.BOARD_SETUP
         }
         _state.update { it.copy(currentStep = prev) }
-    }
-
-    // Privacy toggles
-    fun updateBleSharing(enabled: Boolean) {
-        _state.update { it.copy(bleSharing = enabled) }
-    }
-
-    fun updateCommunityFeatures(enabled: Boolean) {
-        _state.update { it.copy(communityFeatures = enabled) }
     }
 
     // Kilter login
