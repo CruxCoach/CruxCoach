@@ -418,8 +418,26 @@ class BoardLayerManager @Inject constructor(
                         controllerDetailsKnown = false,
                     )
                 }
-            val external = players.filterNot { it.userId.lowercase() in ownedIds }.map {
-                ExternalBoardLayer(it.routeId, it.userId, it.color.asOpaqueArgb(), it.remainingSeconds)
+            val previousExternal = current.externalLayers.associateBy {
+                BoardLayerControllerRouteKey(it.routeUuid, it.userUuid).normalized()
+            }
+            val external = players.filterNot { it.userId.lowercase() in ownedIds }.map { player ->
+                val previous = previousExternal[
+                    BoardLayerControllerRouteKey(player.routeId, player.userId).normalized()
+                ]
+                ExternalBoardLayer(
+                    routeUuid = player.routeId,
+                    userUuid = player.userId,
+                    color = player.color.asOpaqueArgb(),
+                    remainingSeconds = player.remainingSeconds,
+                    // A countdown refresh for the same exact controller player
+                    // must not erase catalogue knowledge while the next disk
+                    // lookup is in flight (or when two UI observers reconcile
+                    // the same snapshot concurrently).
+                    climbUuid = previous?.climbUuid,
+                    climbName = previous?.climbName,
+                    holds = previous?.holds,
+                )
             }
             current.copy(
                 brand = BoardBrand.QUANTUM,

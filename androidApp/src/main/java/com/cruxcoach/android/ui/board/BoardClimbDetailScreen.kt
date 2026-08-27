@@ -1280,7 +1280,7 @@ private fun BoardLayerRack(
                 }
             }
 
-            if (state.boardLayers.externalLayers.isNotEmpty()) {
+            if (summary.unplacedExternalLayers.isNotEmpty()) {
                 Text(
                     stringResource(R.string.quantum_layer_foreign_title),
                     style = MaterialTheme.typography.labelMedium,
@@ -1291,7 +1291,7 @@ private fun BoardLayerRack(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                state.boardLayers.externalLayers.forEachIndexed { index, external ->
+                summary.unplacedExternalLayers.forEachIndexed { index, external ->
                     val colorName = stringResource(boardLayerColorName(external.color))
                     val routeLabel = external.climbName ?: external.routeUuid.take(8)
                     val foreignDescription = if (external.holds != null) {
