@@ -892,21 +892,33 @@ internal class BoardSendController(
                 productSizeId.toInt(), BoardBrand.QUANTUM.wireValue,
             )
             controller.players.mapNotNull { player ->
-                boardRepository.getQuantumClimbByExternalRoute(
+                val climb = boardRepository.getQuantumClimbByExternalRoute(
                     routeUuid = player.routeId,
                     model = model,
                     allowDirectUuidFallback = boardLayerManager.ownsIdentity(player.userId),
-                )?.let { climb ->
-                    val holds = BoardClimbParser.parseSingleFrameStrict(climb.frames)
-                        ?: return@let null
-                    if (!hasCompleteQuantumLedMapping(holds, ledMap)) return@let null
-                    BoardLayerControllerRouteKey(player.routeId, player.userId) to
-                        BoardLayerRouteDetails(
-                            climbUuid = climb.uuid,
-                            climbName = climb.name,
-                            holds = holds,
-                        )
+                ) ?: run {
+                    Log.d(TAG, "Quantum route absent: ${player.routeId} model=$model")
+                    return@mapNotNull null
                 }
+                val holds = BoardClimbParser.parseSingleFrameStrict(climb.frames) ?: run {
+                    Log.w(TAG, "Quantum route has invalid frames: ${player.routeId} app=${climb.uuid}")
+                    return@mapNotNull null
+                }
+                if (!hasCompleteQuantumLedMapping(holds, ledMap)) {
+                    val missing = holds.map(BoardHold::placementId).filterNot(ledMap::containsKey)
+                    Log.w(
+                        TAG,
+                        "Quantum route has incomplete LED mapping: ${player.routeId} " +
+                            "map=${ledMap.size} missing=$missing",
+                    )
+                    return@mapNotNull null
+                }
+                BoardLayerControllerRouteKey(player.routeId, player.userId) to
+                    BoardLayerRouteDetails(
+                        climbUuid = climb.uuid,
+                        climbName = climb.name,
+                        holds = holds,
+                    )
             }.toMap()
         }
         val latestDescriptor = bleConnection.connectedBoardDescriptor.value
