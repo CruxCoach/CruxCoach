@@ -224,6 +224,7 @@ jobs:
             --track "$TRACK" \
             --branch "$BRANCH" \
             --commit "$COMMIT" \
+            --wait-timeout 2700 \
             | tee "$RUNNER_TEMP/apktrack-job.json"
           python3 - "$RUNNER_TEMP/apktrack-job.json" "$GITHUB_OUTPUT" <<'PY'
           import json
