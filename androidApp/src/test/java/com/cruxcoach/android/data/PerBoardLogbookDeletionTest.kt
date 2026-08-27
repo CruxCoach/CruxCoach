@@ -74,6 +74,22 @@ class PerBoardLogbookDeletionTest {
         )
     }
 
+    private fun stagedMoonEntry(id: String = "moon-screen:staged") {
+        db.moonImportStagingQueries.stageMoonImport(
+            external_id = id,
+            source_type = "screen",
+            problem_id = null,
+            problem_name = "Staged Moon Problem",
+            setter_name = "Setter",
+            angle = 40L,
+            climbed_at = "2026-07-03T12:00:00Z",
+            attempts = 1L,
+            rating = null,
+            is_send = 1L,
+            resolution_state = "pending",
+        )
+    }
+
     /** Favorites + one custom list; ck (kilter) in both, ct (tension) in
      *  favorites only; one finished board session. Returns (favId, customId). */
     private fun seedLogbook(): Pair<Long, Long> {
@@ -122,6 +138,7 @@ class PerBoardLogbookDeletionTest {
     @Test
     fun `brand-scoped deletion removes one brand's ascents, bids and list entries only`() {
         val (favId, customId) = seedLogbook()
+        stagedMoonEntry()
         assertEquals(setOf("ck", "ct"), repo.getAllListEntryClimbUuids())
 
         // The caller (SettingsViewModel) resolves entry uuids → brand via
@@ -141,6 +158,20 @@ class PerBoardLogbookDeletionTest {
 
         // Sessions are brand-less aggregates — a partial selection keeps them.
         assertEquals(1, repo.getRecentBoardSessions().size)
+        assertEquals(
+            1L,
+            db.moonImportStagingQueries.countStagedMoonImports().executeAsOne(),
+            "deleting an unrelated brand must preserve deferred Moon logbook rows",
+        )
+    }
+
+    @Test
+    fun `moon-scoped deletion also removes deferred Moon logbook rows`() {
+        stagedMoonEntry()
+
+        repo.deleteUserBoardDataForBrands(setOf("moonboard"), emptyList())
+
+        assertEquals(0L, db.moonImportStagingQueries.countStagedMoonImports().executeAsOne())
     }
 
     @Test
@@ -161,6 +192,7 @@ class PerBoardLogbookDeletionTest {
     @Test
     fun `deleteAllUserBoardData still wipes ascents, bids, sessions and whole lists`() {
         seedLogbook()
+        stagedMoonEntry()
 
         repo.deleteAllUserBoardData()
 
@@ -169,5 +201,10 @@ class PerBoardLogbookDeletionTest {
         assertTrue(repo.getAllClimbLists().isEmpty(), "full wipe removes the list rows too")
         assertTrue(repo.getRecentBoardSessions().isEmpty())
         assertTrue(repo.getAllListEntryClimbUuids().isEmpty())
+        assertEquals(
+            0L,
+            db.moonImportStagingQueries.countStagedMoonImports().executeAsOne(),
+            "a full wipe must not allow deferred Moon rows to reappear at the next import",
+        )
     }
 }

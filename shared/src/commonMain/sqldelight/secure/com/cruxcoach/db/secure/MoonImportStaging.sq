@@ -29,3 +29,6 @@ UPDATE moon_import_staging SET resolution_state = 'unresolved' WHERE external_id
 
 countStagedMoonImports:
 SELECT COUNT(*) FROM moon_import_staging;
+
+deleteAllMoonImportStaging:
+DELETE FROM moon_import_staging;

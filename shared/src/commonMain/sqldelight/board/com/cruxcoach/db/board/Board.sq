@@ -281,6 +281,11 @@ CREATE INDEX idx_climbs_origin ON climbs(origin);
 CREATE INDEX idx_climbs_kilter_status ON climbs(kilter_status);
 CREATE INDEX idx_climbs_nostr_via ON climbs(nostr_publish_via);
 CREATE INDEX idx_climbs_board_brand ON climbs(board_brand);
+-- Moon logbook screen imports resolve a bounded set of names repeatedly.
+-- Match the query's case-insensitive predicate so SQLite can seek directly
+-- instead of scanning the six-figure Moon catalogue for every training day.
+CREATE INDEX idx_climbs_brand_deleted_name_nocase
+ON climbs(board_brand, is_deleted, name COLLATE NOCASE);
 
 -- FEAT-006 Kilter publish per-attempt audit trail. Augments the
 -- single-value `climbs.kilter_*` columns (which carry latest-status only)
@@ -2535,32 +2540,17 @@ WHERE c.uuid IN :uuids
 -- Accessibility migration fallback. The official app exposes no ProblemId,
 -- but does expose exact problem name, setter and angle in its semantic tree.
 --
--- Deliberately one narrow projection for the whole import instead of a lookup
--- per entry: `c.name = ? COLLATE NOCASE` matches no index, so a per-entry
--- lookup is a full scan of climbs ⋈ climb_stats — measured at ~2.3 s each on a
--- real catalogue, i.e. a quarter of an hour for one 382-entry logbook. The
--- importer reads this once, matches name/setter in memory, and then fetches the
--- full rows for the handful of resolved uuids via lookupMoonCsvCandidates.
--- Same projection for the case where only a handful of names are wanted — a
--- delta run that re-reads one training day should not pay a full catalogue
--- scan to resolve a single entry. COLLATE NOCASE is only a prefilter; the
--- importer still matches Unicode-correctly in Kotlin afterwards.
+-- Resolve one bounded batch of names through
+-- idx_climbs_brand_deleted_name_nocase. COLLATE NOCASE is only a prefilter;
+-- the importer still matches Unicode-correctly in Kotlin afterwards.
 lookupMoonScreenByNames:
 SELECT c.uuid, c.name, c.setter_username, cs.angle
-FROM climbs c
+FROM climbs c INDEXED BY idx_climbs_brand_deleted_name_nocase
 INNER JOIN climb_stats cs ON cs.climb_uuid = c.uuid
 WHERE c.board_brand = 'moonboard'
   AND c.is_deleted = 0
   AND cs.angle IN :angles
   AND c.name COLLATE NOCASE IN :names;
-
-listMoonScreenIndex:
-SELECT c.uuid, c.name, c.setter_username, cs.angle
-FROM climbs c
-INNER JOIN climb_stats cs ON cs.climb_uuid = c.uuid
-WHERE c.board_brand = 'moonboard'
-  AND c.is_deleted = 0
-  AND cs.angle IN :angles;
 
 
 -- ─── Community-Climb Dead-Letter Queue ────────────────────────────
