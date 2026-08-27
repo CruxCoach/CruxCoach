@@ -154,10 +154,11 @@ object QuantumBoardBroadcastParser {
 /** Clean-room encoder for the Quantum binary controller protocol. */
 object QuantumBoardPacketEncoder {
     const val ACTIVATE_CHUNK_LIMIT = 92
-    /** eWalls' normal active-player window. A zero duration lights the LEDs on
-     * real XL firmware but is omitted from REQUEST_USER_ROUTE_LIST, so it
-     * cannot participate in the controller's four-player/layer contract. */
-    const val DEFAULT_ROUTE_DURATION_SECONDS = 300
+    /** eWalls 2.0.14's normal route-play duration. Real XL firmware lights
+     * finite-duration routes but omits both 0 and 300 seconds from
+     * REQUEST_USER_ROUTE_LIST; the original app uses 0xffff for its tracked
+     * active-player slots. */
+    const val DEFAULT_ROUTE_DURATION_SECONDS = 0xffff
     const val ZERO_UUID = "00000000-0000-0000-0000-000000000000"
 
     fun crc16Modbus(bytes: ByteArray): Int {

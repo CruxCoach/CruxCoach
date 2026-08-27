@@ -79,9 +79,9 @@ class QuantumBoardPacketEncoderTest {
             frames.first().copyOfRange(2, 18),
         )
         assertContentEquals(
-            byteArrayOf(0x01, 0x2c),
+            byteArrayOf(0xff.toByte(), 0xff.toByte()),
             frames.first().copyOfRange(37, 39),
-            "the real controller only lists timed routes as active players",
+            "match the eWalls 2.0.14 route-play default used for active players",
         )
     }
 
