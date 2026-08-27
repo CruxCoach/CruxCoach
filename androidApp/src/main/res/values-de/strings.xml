@@ -453,7 +453,7 @@
     <!-- Settings: Data Management -->
     <string name="settings_data_title">Datenverwaltung</string>
     <string name="settings_data_export">Daten exportieren</string>
-    <string name="settings_data_export_desc">Ausgewählte CruxCoach-Daten als JSON oder ZIP mit CSV-Dateien speichern oder teilen</string>
+    <string name="settings_data_export_desc">Ausgewählte CruxCoach-Daten als JSON, CSV-ZIP oder gut lesbare Excel-Datei speichern oder teilen</string>
     <string name="settings_data_import">Daten importieren</string>
     <string name="settings_data_import_desc">CruxCoach-Daten aus JSON oder einem CSV-ZIP importieren</string>
     <string name="settings_data_delete_board">Board-Daten löschen</string>
@@ -1680,7 +1680,7 @@
     <string name="export_format_title">Format</string>
     <string name="export_format_json">JSON</string>
     <string name="export_format_csv">CSV-ZIP</string>
-    <string name="export_format_excel">Excel</string>
+    <string name="export_format_excel">Excel (nur Export)</string>
     <string name="export_excel_not_backup">Excel ist nur eine gut lesbare Kopie. Die Datei kann nicht importiert oder zur Wiederherstellung deiner Daten verwendet werden. Wähle JSON, wenn du ein Backup brauchst.</string>
     <string name="export_save_file">Auf Gerät speichern</string>
     <string name="export_share_app">Mit App teilen</string>

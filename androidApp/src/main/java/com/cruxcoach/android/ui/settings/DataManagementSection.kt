@@ -9,8 +9,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.FileDownload
-import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -45,7 +45,7 @@ internal fun BoardLogbookImportSection(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Icon(Icons.Default.FileDownload, contentDescription = null, tint = OrangeAccent)
+            Icon(Icons.Default.FolderOpen, contentDescription = null, tint = OrangeAccent)
             Column {
                 Text(stringResource(R.string.settings_moon_csv_title), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
                 Text(stringResource(R.string.settings_moon_csv_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -106,7 +106,7 @@ internal fun AppDataTransferSection(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Icon(Icons.Default.FileDownload, contentDescription = null, tint = OrangeAccent)
+            Icon(Icons.Default.FolderOpen, contentDescription = null, tint = OrangeAccent)
             Column {
                 Text(
                     stringResource(R.string.settings_data_import),
@@ -136,7 +136,7 @@ internal fun AppDataTransferSection(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Icon(Icons.Default.FileUpload, contentDescription = null, tint = OrangeAccent)
+            Icon(Icons.Default.Save, contentDescription = null, tint = OrangeAccent)
             Column {
                 Text(
                     stringResource(R.string.settings_data_export),

@@ -11,8 +11,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -34,7 +35,7 @@ import com.cruxcoach.android.ui.theme.*
 import com.cruxcoach.data.CruxCoachBackup.Category
 import kotlinx.coroutines.delay
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun DataExportScreen(
     onNavigateBack: () -> Unit,
@@ -69,12 +70,7 @@ fun DataExportScreen(
             try {
                 context.startActivity(
                     Intent.createChooser(
-                        Intent(Intent.ACTION_SEND).apply {
-                            type = share.mimeType
-                            putExtra(Intent.EXTRA_STREAM, share.uri)
-                            clipData = ClipData.newRawUri("CruxCoach export", share.uri)
-                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        },
+                        dataExportShareIntent(share),
                         context.getString(R.string.export_share_chooser),
                     ),
                 )
@@ -141,7 +137,11 @@ fun DataExportScreen(
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
                 FilterChip(
                     selected = state.exportFormat == DataExchangeFormat.JSON,
                     onClick = { viewModel.setExportFormat(DataExchangeFormat.JSON) },
@@ -168,12 +168,22 @@ fun DataExportScreen(
                         containerColor = MaterialTheme.colorScheme.secondaryContainer,
                     ),
                 ) {
-                    Text(
-                        text = stringResource(R.string.export_excel_not_backup),
+                    Row(
                         modifier = Modifier.padding(12.dp),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer,
-                    )
+                        verticalAlignment = Alignment.Top,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Icon(
+                            Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                        )
+                        Text(
+                            text = stringResource(R.string.export_excel_not_backup),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        )
+                    }
                 }
             }
 
@@ -221,7 +231,7 @@ fun DataExportScreen(
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(52.dp)
+                    .heightIn(min = 52.dp)
                     .testTag("full_export_button"),
                 enabled = exportEnabled,
                 colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen),
@@ -233,7 +243,7 @@ fun DataExportScreen(
                         color = MaterialTheme.colorScheme.onPrimary
                     )
                 } else {
-                    Icon(Icons.Default.CloudUpload, contentDescription = null)
+                    Icon(Icons.Default.Save, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(stringResource(R.string.export_save_file), fontWeight = FontWeight.Bold)
                 }
@@ -243,7 +253,7 @@ fun DataExportScreen(
                 onClick = { viewModel.shareExport() },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(52.dp)
+                    .heightIn(min = 52.dp)
                     .testTag("share_export_button"),
                 enabled = exportEnabled,
                 shape = RoundedCornerShape(16.dp),
@@ -257,6 +267,19 @@ fun DataExportScreen(
         }
     }
 }
+
+/**
+ * Use a broad resolver type so Android offers all installed file-sharing apps.
+ * The exact file type remains attached as metadata for targets that inspect it.
+ */
+internal fun dataExportShareIntent(share: ExportShare): Intent =
+    Intent(Intent.ACTION_SEND).apply {
+        type = "*/*"
+        putExtra(Intent.EXTRA_MIME_TYPES, arrayOf(share.mimeType))
+        putExtra(Intent.EXTRA_STREAM, share.uri)
+        clipData = ClipData.newRawUri("CruxCoach export", share.uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
 
 @Composable
 internal fun CategoryCheckboxRow(

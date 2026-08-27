@@ -9,7 +9,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -152,7 +152,7 @@ fun DataImportScreen(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(48.dp)
+                        .heightIn(min = 48.dp)
                         .testTag("import_pick_file"),
                     enabled = !state.isLoadingPreview,
                     shape = RoundedCornerShape(16.dp)
@@ -162,7 +162,7 @@ fun DataImportScreen(
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(stringResource(R.string.bodystat_analyzing_file))
                     } else {
-                        Icon(Icons.Default.CloudDownload, contentDescription = null)
+                        Icon(Icons.Default.FolderOpen, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(stringResource(R.string.bodystat_choose_file))
                     }
