@@ -2638,6 +2638,9 @@
     <string name="board_layer_error_other_board">These layers were put together for a different board. Assign them again on this one.</string>
     <string name="quantum_wall_title">Your Quantum layer plans</string>
     <string name="quantum_wall_occupancy">Wall %1$d/%2$d active</string>
+    <string name="quantum_wall_occupancy_stale">Last known: %1$d/%2$d active</string>
+    <string name="quantum_wall_unsynced">Connect to read board state</string>
+    <string name="quantum_wall_syncing">Reading board state…</string>
     <string name="quantum_wall_foreign_known_short">%1$d other · known</string>
     <string name="quantum_wall_foreign_unknown_short">%1$d other · %2$d unknown</string>
     <string name="quantum_wall_foreign_strip">Other apps:</string>

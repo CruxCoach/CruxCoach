@@ -188,15 +188,29 @@ class SessionQueueManager(
         val layers = boardLayerManager
         if (layers != null) scope.launch {
             bleConnection.quantumControllerState.collectLatest { controller ->
-                if (!controller.authoritative ||
-                    bleConnection.connectedBoardBrand.value != BoardBrand.QUANTUM
-                ) return@collectLatest
+                if (controller.syncStatus ==
+                    com.cruxcoach.android.ble.QuantumControllerSyncStatus.STALE
+                ) {
+                    layers.setQuantumSyncStatus(controller.syncStatus)
+                    return@collectLatest
+                }
+                if (bleConnection.connectedBoardBrand.value != BoardBrand.QUANTUM) {
+                    return@collectLatest
+                }
                 val descriptor = bleConnection.connectedBoardDescriptor.value
-                    ?: return@collectLatest
+                val model = bleConnection.connectedQuantumModel.value
+                if (descriptor == null || model == null) {
+                    layers.setQuantumSyncStatus(controller.syncStatus)
+                    return@collectLatest
+                }
                 val physical = runCatching { PhysicalBoardIdentity.resolve(descriptor) }.getOrNull()
                     ?: return@collectLatest
-                val model = bleConnection.connectedQuantumModel.value ?: return@collectLatest
+                // Bind as soon as fff5 identifies the controller, before the
+                // first route-list response. A different Quantum must never
+                // display the previous board's retained roster while loading.
                 layers.bindBoard(BoardLayerBoardIdentity(physical.value, model.productSizeId))
+                layers.setQuantumSyncStatus(controller.syncStatus)
+                if (!controller.authoritative) return@collectLatest
                 applyQuantumControllerState(layers, model, controller)
             }
         }

@@ -36,6 +36,7 @@ import com.cruxcoach.android.ble.BoardLayerState
 import com.cruxcoach.android.ble.BoardLayerStatus
 import com.cruxcoach.android.ble.BoardLayerConflictPolicy
 import com.cruxcoach.android.ble.ExternalBoardLayer
+import com.cruxcoach.android.ble.QuantumControllerSyncStatus
 import com.cruxcoach.android.ble.reservedLayerColors
 import com.cruxcoach.domain.board.BoardHold
 import com.cruxcoach.android.ui.theme.ErrorRed
@@ -312,11 +313,20 @@ internal fun QuantumLayerStatusStrip(
 ) {
     val summary = QuantumLayerUiPolicy.summarize(state, currentClimbUuid, currentPlacements)
     val openLabel = stringResource(R.string.board_layers_open)
-    val wallStatus = stringResource(
-        R.string.quantum_wall_occupancy,
-        summary.activeCount,
-        summary.slots.size,
-    )
+    val wallStatus = when (state.quantumSyncStatus) {
+        QuantumControllerSyncStatus.LIVE -> stringResource(
+            R.string.quantum_wall_occupancy,
+            summary.activeCount,
+            summary.slots.size,
+        )
+        QuantumControllerSyncStatus.STALE -> stringResource(
+            R.string.quantum_wall_occupancy_stale,
+            summary.activeCount,
+            summary.slots.size,
+        )
+        QuantumControllerSyncStatus.UNSYNCED -> stringResource(R.string.quantum_wall_unsynced)
+        QuantumControllerSyncStatus.SYNCING -> stringResource(R.string.quantum_wall_syncing)
+    }
     val slotDescriptions = summary.slots.map { quantumLayerSlotDescription(it) }
     val foreignDescriptions = state.externalLayers.map { quantumForeignLayerDescription(it) }
     val rackDescription = buildList {
@@ -356,6 +366,13 @@ internal fun QuantumLayerStatusStrip(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Spacer(Modifier.width(7.dp))
+                    }
+                    if (state.quantumSyncStatus == QuantumControllerSyncStatus.SYNCING) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(12.dp),
+                            strokeWidth = 1.5.dp,
+                        )
+                        Spacer(Modifier.width(5.dp))
                     }
                     Text(
                         wallStatus,
