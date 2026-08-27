@@ -526,8 +526,16 @@ object AppModule {
         sessionQueueManager: SessionQueueManager,
         boardStateManager: BoardStateManager,
         climbIdentifier: RelayClimbIdentifier,
+        advertiser: ClimbBleAdvertiser,
+        userPreferences: UserPreferences,
     ): BoardProjectionCoordinator =
-        BoardProjectionCoordinator(sessionQueueManager, boardStateManager, climbIdentifier)
+        BoardProjectionCoordinator(
+            sessionQueueManager,
+            boardStateManager,
+            climbIdentifier,
+            advertiser,
+            userPreferences,
+        )
 
     @Provides
     @Singleton

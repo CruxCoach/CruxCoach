@@ -98,11 +98,18 @@ data class SessionQueueState(
     val participantIndex: Int = -1,
     /** A compatible external board app last wrote the physical board through CruxRelay. */
     val externalBoardOverride: Boolean = false,
+    /** Identity recovered from that write, when the relay could match its LED
+     *  frame to the local catalogue. Kept outside [queue]: an external app
+     *  must never silently mutate the host's playlist. */
+    val externalBoardClimb: QueueItem? = null,
     /** Recoverable board identity/configuration failure from playlist delivery. */
     val boardMismatch: BoardConfigurationMismatch? = null,
 ) {
     val isActive: Boolean get() = role != SessionRole.NONE
     val currentClimb: QueueItem? get() = queue.getOrNull(currentIndex)
+    /** What is physically projected, including an identified external write. */
+    val projectedClimb: QueueItem?
+        get() = if (externalBoardOverride) externalBoardClimb else currentClimb
 }
 
 /**
@@ -568,7 +575,11 @@ class SessionQueueManager(
     fun applyRemoteCurrentIndex(index: Int) {
         _state.update { s ->
             if (index in s.queue.indices) {
-                s.copy(currentIndex = index, externalBoardOverride = false)
+                s.copy(
+                    currentIndex = index,
+                    externalBoardOverride = false,
+                    externalBoardClimb = null,
+                )
             } else {
                 Log.w(
                     TAG,
@@ -580,11 +591,16 @@ class SessionQueueManager(
         }
     }
 
-    /** Marks a successful raw relay write whose climb ID is unknown to CruxCoach. */
-    fun markExternalBoardWrite() {
+    /** Marks a successful raw relay write without adding it to the host queue. */
+    fun markExternalBoardWrite(climbUuid: String? = null, angle: Int = 0) {
         if (_state.value.role != SessionRole.HOST) return
         lastSentClimbKey = null
-        _state.update { it.copy(externalBoardOverride = true) }
+        _state.update {
+            it.copy(
+                externalBoardOverride = true,
+                externalBoardClimb = climbUuid?.let { uuid -> QueueItem(uuid, angle) },
+            )
+        }
         onCurrentClimbChanged?.invoke()
     }
 
@@ -1113,7 +1129,9 @@ class SessionQueueManager(
         if (changed) onSessionInfoChanged?.invoke()
         val hadExternalOverride = _state.value.externalBoardOverride
         if (hadExternalOverride) {
-            _state.update { it.copy(externalBoardOverride = false) }
+            _state.update {
+                it.copy(externalBoardOverride = false, externalBoardClimb = null)
+            }
             onCurrentClimbChanged?.invoke()
         }
         onFirstQueueClimbSent?.invoke()

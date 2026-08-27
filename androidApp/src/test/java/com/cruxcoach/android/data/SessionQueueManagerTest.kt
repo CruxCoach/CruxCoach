@@ -925,6 +925,22 @@ class SessionQueueManagerTest {
     }
 
     @Test
+    fun `identified external write becomes projected climb without entering host queue`() {
+        queueManager.startQueue("Host")
+        queueManager.addClimb("playlist-climb", 40)
+
+        queueManager.markExternalBoardWrite("external-climb", 35)
+
+        val state = queueManager.state.value
+        assertTrue(state.externalBoardOverride)
+        assertEquals(1, state.queue.size)
+        assertEquals("playlist-climb", state.currentClimb?.climbUuid)
+        assertEquals("external-climb", state.projectedClimb?.climbUuid)
+        assertEquals(35, state.projectedClimb?.angle)
+        assertTrue(SessionQueueManager.isExternalBoardOverride(queueManager.encodeCurrentClimb()))
+    }
+
+    @Test
     fun `participant applies external override without writing the physical board`() {
         every { bleConnection.connectionState } returns MutableStateFlow(ConnectionState.CONNECTED)
         queueManager.setParticipantRole(0, "Host")
@@ -970,6 +986,7 @@ class SessionQueueManagerTest {
         queueManager.applyRemoteCurrentIndex(1)
 
         assertFalse(queueManager.state.value.externalBoardOverride)
+        assertNull(queueManager.state.value.externalBoardClimb)
         assertEquals(1, queueManager.state.value.currentIndex)
     }
 }
