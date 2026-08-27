@@ -27,10 +27,9 @@ internal object BoardRelayPolicy {
         // to fff2. Keep it unavailable until the relay protocol can carry the
         // complete Quantum transaction.
         board.boardBrand == BoardBrand.QUANTUM -> BoardRelayAvailability.UNSUPPORTED_PROTOCOL
-        // Physical controllers are relayable regardless of family or inferred
-        // capacity. Continued
-        // advertising cannot prove that a second GATT central is accepted,
-        // and an exclusive board is exactly what the relay is for.
+        // Capacity is inferred at runtime for every physical controller. A
+        // controller that remains connectably visible does not need a relay;
+        // an exclusive or not-yet-probed controller can still be shared.
         else -> when (BoardControllerProfiles.forBoard(board).connectionCapacity) {
             BoardConnectionCapacity.MULTIPLE -> BoardRelayAvailability.MULTI_CONNECT_NOT_NEEDED
             BoardConnectionCapacity.SINGLE,

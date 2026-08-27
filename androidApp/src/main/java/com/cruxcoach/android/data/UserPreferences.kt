@@ -1147,6 +1147,13 @@ class UserPreferences(
     suspend fun setRememberedBoardController(controller: RememberedBoardController) {
         dataStore.edit { prefs ->
             val brand = controller.boardBrand
+            val previousAddress = prefs[PreferenceKeys.lastUsedBoardAddress(brand)]
+            if (previousAddress?.equals(controller.address, ignoreCase = true) != true) {
+                // Capacity belongs to a physical controller, not to a brand.
+                // Never carry an observation from one Kilter/Moon/etc. board
+                // over to a different controller that happens to share it.
+                prefs.remove(PreferenceKeys.lastUsedBoardAdvertisesWhileConnected(brand))
+            }
             prefs[PreferenceKeys.lastUsedBoardAddress(brand)] = controller.address
             prefs[PreferenceKeys.lastUsedBoardDisplayName(brand)] = controller.displayName
             prefs[PreferenceKeys.lastUsedBoardSerial(brand)] = controller.serial
@@ -1162,8 +1169,9 @@ class UserPreferences(
     }
 
     /**
-     * Records a controller-capacity observation for [brand] — positive by
-     * default, negative when the probe completed a scan and saw nothing.
+     * Records a controller-capacity observation for the exact [address] of the
+     * remembered [brand] — positive by default, negative when the probe
+     * completed a scan and saw nothing.
      *
      * Both directions are stored. Writing only the positive made "accepts
      * several clients" permanent, so a controller switched back to
@@ -1175,10 +1183,15 @@ class UserPreferences(
      */
     suspend fun setRememberedBoardAdvertisesWhileConnected(
         brand: BoardBrand,
+        address: String,
         observed: Boolean = true,
     ) {
         dataStore.edit { prefs ->
-            prefs[PreferenceKeys.lastUsedBoardAdvertisesWhileConnected(brand)] = observed
+            if (prefs[PreferenceKeys.lastUsedBoardAddress(brand)]
+                    ?.equals(address, ignoreCase = true) == true
+            ) {
+                prefs[PreferenceKeys.lastUsedBoardAdvertisesWhileConnected(brand)] = observed
+            }
         }
     }
 
