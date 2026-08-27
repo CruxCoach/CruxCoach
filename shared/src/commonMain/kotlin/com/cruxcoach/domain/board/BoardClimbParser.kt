@@ -93,26 +93,20 @@ object BoardClimbParser {
      */
     fun parseSingleFrameStrict(frames: String): List<BoardHold>? {
         if (frames.isBlank() || ',' in frames) return null
-        val range = frames.startsWith('h')
-        val placementMarker = if (range) 'h' else 'p'
-        val roleMarker = if (range) 'p' else 'r'
+        val pattern = if (frames.startsWith('h')) RANGE_PATTERN else DELTA_PATTERN
         val holds = ArrayList<BoardHold>()
-        var index = 0
-        while (index < frames.length) {
-            if (frames[index++] != placementMarker) return null
-            val placementStart = index
-            while (index < frames.length && frames[index].isDigit()) index++
-            if (index == placementStart || index >= frames.length || frames[index++] != roleMarker) {
-                return null
-            }
-            val roleStart = index
-            while (index < frames.length && frames[index].isDigit()) index++
-            if (index == roleStart) return null
-            val placement = frames.substring(placementStart, roleStart - 1).toIntOrNull() ?: return null
-            val rawRole = frames.substring(roleStart, index).toIntOrNull() ?: return null
+        var expectedStart = 0
+        for (match in pattern.findAll(frames)) {
+            // findAll normally skips malformed bytes. Requiring contiguous
+            // matches keeps this trust-boundary parser fail closed while
+            // avoiding the mutable scanner miscompiled in Android debug APKs.
+            if (match.range.first != expectedStart) return null
+            val placement = match.groupValues[1].toIntOrNull() ?: return null
+            val rawRole = match.groupValues[2].toIntOrNull() ?: return null
             holds += BoardHold(placement, HoldRole.normalize(rawRole))
+            expectedStart = match.range.last + 1
         }
-        return holds.takeIf { it.isNotEmpty() }
+        return holds.takeIf { it.isNotEmpty() && expectedStart == frames.length }
     }
 
     /** Detect whether a frames string uses Kilter climbConcat format. */
