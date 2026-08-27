@@ -58,6 +58,7 @@ class MoonBoardAccessibilityService : AccessibilityService() {
     )
 
     private val traversal = MoonBoardListTraversal(LIST_END_CONFIRMATIONS)
+    private val backRetryGate = MoonBoardBackRetryGate(BACK_RETRY_MIN_INTERVAL_MS)
     private var collector: MoonBoardSessionCollector? = null
     private val tally = MoonBoardImportTally()
     /** Moon entries already in the logbook per training day — the delta filter. */
@@ -137,6 +138,7 @@ class MoonBoardAccessibilityService : AccessibilityService() {
         rewinding = false
         rewinds = 0
         datesAtTop = false
+        backRetryGate.reset()
         cancelRequested = false
         scanStartedAt = SystemClock.elapsedRealtime()
         stage = Stage.PREPARING
@@ -491,8 +493,14 @@ class MoonBoardAccessibilityService : AccessibilityService() {
         result.deviations.forEach(::warn)
         collector = null
         progress()
-        navigateBack(nodes)
+        // Mark SAVING before the click: Moon emits accessibility events while
+        // processing BACK, and none of them may re-enter DETAIL on this stale
+        // node tree. Record the request so LEAVE_DETAIL can observe a finished
+        // date page immediately but cannot enqueue another BACK behind it.
         stage = Stage.SAVING
+        if (navigateBack(nodes)) {
+            backRetryGate.backRequested(SystemClock.elapsedRealtime())
+        }
         scope.launch {
             val stored = if (!result.complete) {
                 // Only Moon's exact three-way contract (problem count, sends,
@@ -530,14 +538,19 @@ class MoonBoardAccessibilityService : AccessibilityService() {
             enterStage(Stage.DATES)
             return scheduleDrive(300)
         }
+        val retryDelay = backRetryGate.remainingDelay(SystemClock.elapsedRealtime())
+        if (retryDelay > 0) return scheduleDrive(retryDelay)
         leavePasses++
         if (leavePasses > LEAVE_DETAIL_LIMIT) {
             enterStage(Stage.OPEN_HUB)
             return scheduleDrive(700)
         }
-        // Re-send BACK sparingly: a second press that arrives while the first
-        // transition is still running leaves the Logbook entirely.
-        if (leavePasses % BACK_RETRY_EVERY == 0) performGlobalAction(GLOBAL_ACTION_BACK)
+        // Moon can take hundreds of milliseconds to drain its Flutter input
+        // queue. Retry at most once per gate interval; normal transitions are
+        // recognized above immediately and never pay this delay.
+        if (navigateBack(nodes)) {
+            backRetryGate.backRequested(SystemClock.elapsedRealtime())
+        }
         scheduleDrive(BACK_SETTLE_MS)
     }
 
@@ -873,7 +886,7 @@ class MoonBoardAccessibilityService : AccessibilityService() {
         const val MOON_RESTART_MS = 1_800L
         const val EMPTY_SCREEN_LIMIT = 8
         const val LEAVE_DETAIL_LIMIT = 12
-        const val BACK_RETRY_EVERY = 3
+        const val BACK_RETRY_MIN_INTERVAL_MS = 1_200L
         const val NO_PROGRESS_MS = 150_000L
         const val SCAN_TIMEOUT_MS = 75L * 60_000L
         const val TAG = "MoonBoardImport"

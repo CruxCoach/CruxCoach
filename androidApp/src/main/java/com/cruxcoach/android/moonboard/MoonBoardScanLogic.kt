@@ -79,6 +79,27 @@ class MoonBoardListTraversal(private val confirmations: Int = 4) {
 }
 
 /**
+ * Prevents a second BACK from being queued while Moon is still processing the
+ * first one. Recognition of the destination page is deliberately not gated:
+ * a normal transition can therefore continue on its first accessibility event
+ * with no added delay, while only a destructive retry has to wait.
+ */
+class MoonBoardBackRetryGate(private val minimumIntervalMs: Long) {
+    private var retryNotBefore = 0L
+
+    fun reset() {
+        retryNotBefore = 0L
+    }
+
+    fun backRequested(nowMs: Long) {
+        retryNotBefore = nowMs + minimumIntervalMs
+    }
+
+    /** Zero means a retry is safe now; otherwise the remaining wait in ms. */
+    fun remainingDelay(nowMs: Long): Long = (retryNotBefore - nowMs).coerceAtLeast(0L)
+}
+
+/**
  * What the CruxCoach logbook already holds for one Moon training day.
  *
  * All three numbers have a counterpart in Moon's own date row, which is what

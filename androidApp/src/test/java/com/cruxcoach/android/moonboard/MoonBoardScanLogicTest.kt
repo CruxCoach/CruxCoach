@@ -64,6 +64,31 @@ class MoonBoardListTraversalTest {
     }
 }
 
+class MoonBoardBackRetryGateTest {
+    @Test
+    fun `event bursts cannot queue a second back during Moon transition`() {
+        val gate = MoonBoardBackRetryGate(minimumIntervalMs = 1_200)
+        gate.backRequested(nowMs = 10_000)
+
+        assertEquals(1_120L, gate.remainingDelay(nowMs = 10_080))
+        assertEquals(700L, gate.remainingDelay(nowMs = 10_500))
+        assertEquals(1L, gate.remainingDelay(nowMs = 11_199))
+        assertEquals(0L, gate.remainingDelay(nowMs = 11_200))
+    }
+
+    @Test
+    fun `reset and a later request form independent retry windows`() {
+        val gate = MoonBoardBackRetryGate(minimumIntervalMs = 1_200)
+        gate.backRequested(nowMs = 5_000)
+        gate.reset()
+        assertEquals(0L, gate.remainingDelay(nowMs = 5_001))
+
+        gate.backRequested(nowMs = 8_000)
+        assertEquals(1_200L, gate.remainingDelay(nowMs = 8_000))
+        assertEquals(0L, gate.remainingDelay(nowMs = 9_500))
+    }
+}
+
 class MoonBoardSessionCollectorTest {
     // 19 Aug 2025 as the Moon app lists it: 4 problems, 1 completed, 7 tries.
     private val session = MoonBoardScreenParser.parseSession(
