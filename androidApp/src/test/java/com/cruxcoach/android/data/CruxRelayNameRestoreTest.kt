@@ -53,6 +53,7 @@ class CruxRelayNameRestoreTest {
     private fun TestScope.manager(adapter: () -> BluetoothAdapter?): CruxRelayManager {
         val connection = mockk<BoardBleConnection>(relaxed = true)
         every { connection.connectionState } returns MutableStateFlow(ConnectionState.DISCONNECTED)
+        every { connection.connectedBoardDescriptor } returns MutableStateFlow(null)
         val preferences = mockk<UserPreferences>(relaxed = true)
         every { preferences.relayManualStart } returns flowOf(true)
         every { preferences.relayDisclosureSeen } returns flowOf(true)

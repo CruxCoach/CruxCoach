@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class UserPreferencesLastUsedBoardTest {
@@ -67,5 +68,59 @@ class UserPreferencesLastUsedBoardTest {
         preferences.setLastUsedBoardAddress(BoardBrand.KILTER, "BB:00:00:00:00:02")
 
         assertTrue(preferences.rememberedBoardControllers.first().isEmpty())
+    }
+
+    @Test
+    fun `capacity observation never crosses between controllers of one brand`() = runTest {
+        val preferences = createTestUserPreferences(backgroundScope)
+        val first = RememberedBoardController(
+            displayName = "Kilter Board A",
+            serial = "A",
+            apiLevel = 3,
+            address = "AA:00:00:00:00:01",
+            boardBrand = BoardBrand.KILTER,
+        )
+        val second = first.copy(
+            displayName = "Kilter Board B",
+            serial = "B",
+            address = "BB:00:00:00:00:02",
+        )
+
+        preferences.setRememberedBoardController(first)
+        preferences.setRememberedBoardAdvertisesWhileConnected(
+            brand = BoardBrand.KILTER,
+            address = first.address,
+        )
+        assertEquals(
+            true,
+            preferences.rememberedBoardControllers.first()[BoardBrand.KILTER]
+                ?.advertisesWhileConnected,
+        )
+
+        preferences.setRememberedBoardController(second)
+        assertNull(
+            preferences.rememberedBoardControllers.first()[BoardBrand.KILTER]
+                ?.advertisesWhileConnected,
+        )
+
+        // A late result from the old connection must not modify the new one.
+        preferences.setRememberedBoardAdvertisesWhileConnected(
+            brand = BoardBrand.KILTER,
+            address = first.address,
+        )
+        assertNull(
+            preferences.rememberedBoardControllers.first()[BoardBrand.KILTER]
+                ?.advertisesWhileConnected,
+        )
+
+        preferences.setRememberedBoardAdvertisesWhileConnected(
+            brand = BoardBrand.KILTER,
+            address = second.address,
+        )
+        assertEquals(
+            true,
+            preferences.rememberedBoardControllers.first()[BoardBrand.KILTER]
+                ?.advertisesWhileConnected,
+        )
     }
 }

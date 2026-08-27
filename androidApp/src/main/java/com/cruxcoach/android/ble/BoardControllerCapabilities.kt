@@ -37,7 +37,7 @@ internal data class BoardControllerProfile(
 /**
  * One capability registry for connection, queue and relay UX.
  *
- * **Every physical controller counts as exclusive.**
+ * **Every physical controller counts as exclusive until observed otherwise.**
  * That is not a guess about firmware, it is how the boards behave and how their
  * own apps treat them: the Kilter app tries each of a wall's endpoints in turn
  * and, when none accepts, can only say "both signals are busy or out of range"
@@ -45,12 +45,10 @@ internal data class BoardControllerProfile(
  * an inactivity auto-disconnect for the same reason: the board has to be handed
  * back before the next climber can use it.
  *
- * Advertising while connected is not proof of spare connection capacity. Some
- * controllers keep publishing connectable advertisements but reject a second
- * GATT central. A single phone cannot distinguish that from genuine multi-client
- * support without another device actually connecting, so using the advertisement
- * as proof produced a dangerous false positive. Physical boards therefore stay
- * conservative regardless of that legacy observation.
+ * After connecting, CruxCoach checks whether the same controller continues to
+ * publish a connectable advertisement. That is the generic runtime signal used
+ * by the app for another central being able to discover and connect; absent or
+ * inconclusive observations retain the conservative single-client behaviour.
  *
  * CruxRelay is our own endpoint, so its multi-client capacity is known outright.
  */
@@ -74,9 +72,11 @@ internal object BoardControllerProfiles {
             )
         }
 
-        // A continued advertisement does not prove that a second central will
-        // be accepted. Only CruxRelay's capacity is known by construction.
-        val capacity = BoardConnectionCapacity.SINGLE
+        val capacity = if (advertisesWhileConnected == true) {
+            BoardConnectionCapacity.MULTIPLE
+        } else {
+            BoardConnectionCapacity.SINGLE
+        }
         return BoardControllerProfile(
             connectionCapacity = capacity,
             projectionLifetime = if (brand == BoardBrand.MOONBOARD) {
@@ -84,7 +84,8 @@ internal object BoardControllerProfiles {
             } else {
                 BoardProjectionLifetime.RETAINED_AFTER_DISCONNECT
             },
-            relaySupported = brand?.isInteractive == true,
+            relaySupported = brand?.isInteractive == true &&
+                capacity == BoardConnectionCapacity.SINGLE,
         )
     }
 }

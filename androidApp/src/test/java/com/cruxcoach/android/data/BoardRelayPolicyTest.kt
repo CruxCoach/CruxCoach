@@ -7,13 +7,13 @@ import org.junit.Test
 
 class BoardRelayPolicyTest {
     @Test
-    fun `continued advertising does not suppress relay for a physical board`() {
+    fun `relay follows the completed runtime capacity observation`() {
         assertEquals(
             BoardRelayAvailability.AVAILABLE,
             BoardRelayPolicy.availability(board(advertisesWhileConnected = false)),
         )
         assertEquals(
-            BoardRelayAvailability.AVAILABLE,
+            BoardRelayAvailability.MULTI_CONNECT_NOT_NEEDED,
             BoardRelayPolicy.availability(board(advertisesWhileConnected = true)),
         )
     }
@@ -34,6 +34,19 @@ class BoardRelayPolicyTest {
         assertEquals(
             BoardRelayAvailability.AVAILABLE,
             BoardRelayPolicy.availability(board(brand = BoardBrand.MOONBOARD)),
+        )
+    }
+
+    @Test
+    fun `MoonBoard with observed multi-connect does not need relay`() {
+        assertEquals(
+            BoardRelayAvailability.MULTI_CONNECT_NOT_NEEDED,
+            BoardRelayPolicy.availability(
+                board(
+                    brand = BoardBrand.MOONBOARD,
+                    advertisesWhileConnected = true,
+                ),
+            ),
         )
     }
 

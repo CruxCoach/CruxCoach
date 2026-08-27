@@ -281,7 +281,7 @@ class SessionGattBridgeMigrationTest {
     }
 
     @Test
-    fun `MoonBoard host releases exclusive controller for a real successor`() {
+    fun `multi-connect MoonBoard host stays connected for a real successor`() {
         mockConnectedBoard(BoardBrand.MOONBOARD, advertisesWhileConnected = true)
         every { mockGattServer.getConnectedCount() } returns 1
         queueManager.startQueue("Host", SessionVisibility.JOINABLE)
@@ -291,10 +291,7 @@ class SessionGattBridgeMigrationTest {
 
         bridge.stopSharing()
 
-        // Advertising while connected is no longer treated as proof that a
-        // second central can actually establish GATT. A live joined successor
-        // therefore requires the current host to release the controller.
-        verify(exactly = 1) { mockBleConnection.disconnect() }
+        verify(exactly = 0) { mockBleConnection.disconnect() }
     }
 
     @Test

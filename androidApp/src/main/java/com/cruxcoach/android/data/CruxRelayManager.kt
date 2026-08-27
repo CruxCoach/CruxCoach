@@ -16,6 +16,7 @@ import com.cruxcoach.android.ble.BoardConnectionOwner
 import com.cruxcoach.android.ble.BlePermissionHelper
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.ConnectionState
+import com.cruxcoach.android.ble.DiscoveredBoard
 import com.cruxcoach.android.ble.GattConnectionEvent
 import com.cruxcoach.android.ble.RelayGattServer
 import com.cruxcoach.domain.board.BoardBrand
@@ -149,14 +150,27 @@ class CruxRelayManager(
             IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED),
             ContextCompat.RECEIVER_NOT_EXPORTED,
         )
-        // React to BOTH the runtime toggle AND the board connection: the relay
-        // runs only while enabled AND the real board link is up
+        // The relay runs only while enabled AND the real board link is up
         // (WAIT_BEFORE_ADVERTISE). A falling board link disables sharing
         // entirely, so it never outlives the connection it was started for.
         scope.launch {
             combine(enabledFlow, bleConnection.connectionState) { enabled, st ->
                 enabled to st
             }.collect { (enabled, st) -> reconcile(enabled, st) }
+        }
+        // The capacity probe updates the live descriptor a few seconds after
+        // connect. Observe it independently so an already-running relay or an
+        // in-flight disclosure is withdrawn as soon as it proves unnecessary.
+        scope.launch {
+            bleConnection.connectedBoardDescriptor.collect { board ->
+                if (bleConnection.connectionState.value == ConnectionState.CONNECTED &&
+                    BoardRelayPolicy.availability(board) ==
+                    BoardRelayAvailability.MULTI_CONNECT_NOT_NEEDED
+                ) {
+                    if (running) stopRelay()
+                    settleMultiConnectCapacity()
+                }
+            }
         }
         // Normal mode follows the physical board connection. Users who opt in
         // to manual start keep the explicit button in the connection sheet.
@@ -179,9 +193,13 @@ class CruxRelayManager(
      * paths. No caller can enable transport before the persisted disclosure. */
     fun requestEnable() {
         val board = bleConnection.connectedBoard ?: return
+        val availability = BoardRelayPolicy.availability(board)
+        if (availability == BoardRelayAvailability.MULTI_CONNECT_NOT_NEEDED) {
+            settleMultiConnectCapacity()
+            return
+        }
         if (bleConnection.connectionState.value != ConnectionState.CONNECTED ||
-            BoardRelayPolicy.availability(board) != BoardRelayAvailability.AVAILABLE
-        ) {
+            availability != BoardRelayAvailability.AVAILABLE) {
             rejectEnable(RelayError.UNSUPPORTED_BOARD)
             return
         }
@@ -267,18 +285,32 @@ class CruxRelayManager(
         _state.update { it.copy(error = null, errorDetail = null) }
     }
 
-    private suspend fun reconcile(enabled: Boolean, boardState: ConnectionState) {
+    private suspend fun reconcile(
+        enabled: Boolean,
+        boardState: ConnectionState,
+    ) {
         _state.update { it.copy(enabled = enabled) }
+        val board: DiscoveredBoard? = bleConnection.connectedBoard
+        val availability = BoardRelayPolicy.availability(board)
+        if (boardState == ConnectionState.CONNECTED &&
+            availability == BoardRelayAvailability.MULTI_CONNECT_NOT_NEEDED
+        ) {
+            // The observation may arrive while transport startup or the
+            // disclosure is already in flight. Settle every such race as a
+            // normal capability result, never as a relay failure.
+            if (running) stopRelay()
+            settleMultiConnectCapacity()
+            return
+        }
         // Only front the board while actually CONNECTED to it. (SENDING is a
         // transient connected sub-state during a write — neither starts nor
         // stops the relay, so a relayed send never tears itself down.)
         if (enabled && boardState == ConnectionState.CONNECTED && !running) {
-            when (BoardRelayPolicy.availability(
-                board = bleConnection.connectedBoard,
-            )) {
+            when (availability) {
                 BoardRelayAvailability.AVAILABLE -> startRelay()
+                BoardRelayAvailability.MULTI_CONNECT_NOT_NEEDED ->
+                    settleMultiConnectCapacity()
                 BoardRelayAvailability.UNSUPPORTED_PROTOCOL,
-                BoardRelayAvailability.MULTI_CONNECT_NOT_NEEDED,
                 BoardRelayAvailability.RELAY_ENDPOINT,
                 ->
                     rejectEnable(RelayError.UNSUPPORTED_BOARD)
@@ -295,6 +327,21 @@ class CruxRelayManager(
                 disableInternal()
                 _state.update { it.copy(enabled = false, boardName = null, error = null, errorDetail = null) }
             }
+        }
+    }
+
+    private fun settleMultiConnectCapacity() {
+        disclosureJob?.cancel()
+        disclosureJob = null
+        pendingDisclosureBoardAddress = null
+        disableInternal()
+        _state.update {
+            it.copy(
+                enabled = false,
+                boardName = null,
+                error = null,
+                errorDetail = null,
+            )
         }
     }
 
