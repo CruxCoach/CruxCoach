@@ -8,24 +8,24 @@ import kotlin.test.assertTrue
 class RelayBoardNameTest {
 
     @Test
-    fun transparent_prefixesCruxRelay_keepsProductAndApiSuffix() {
-        assertEquals("CruxRelay·Kilter Board@3", RelayBoardName.transparent("Kilter Board@3"))
+    fun transparent_prefixesCruxCoach_keepsProductAndApiSuffix() {
+        assertEquals("CruxCoach·Kilter Board@3", RelayBoardName.transparent("Kilter Board@3"))
     }
 
     @Test
     fun transparent_dropsSerial_fromHashForm() {
-        assertEquals("CruxRelay·Kilter Board@3", RelayBoardName.transparent("Kilter Board#A1B2@3"))
+        assertEquals("CruxCoach·Kilter Board@3", RelayBoardName.transparent("Kilter Board#A1B2@3"))
     }
 
     @Test
     fun transparent_noApiSuffix_whenAbsent() {
-        assertEquals("CruxRelay·MoonBoard", RelayBoardName.transparent("MoonBoard"))
+        assertEquals("CruxCoach·MoonBoard", RelayBoardName.transparent("MoonBoard"))
     }
 
     @Test
     fun transparentBoard_restoresScannerSeparatedApiLevel() {
         assertEquals(
-            "CruxRelay·Kilter Board@3",
+            "CruxCoach·Kilter Board@3",
             RelayBoardName.transparentBoard("Kilter Board", 3),
         )
     }
@@ -40,6 +40,7 @@ class RelayBoardNameTest {
 
     @Test
     fun isRelayName_recognisesOurRelays_notRealBoards() {
+        assertTrue(RelayBoardName.isRelayName("CruxCoach·Kilter Board@3"))
         assertTrue(RelayBoardName.isRelayName("CruxRelay·Kilter Board@3"))
         assertTrue(RelayBoardName.isRelayName(RelayBoardName.transparent("Kilter Board@3")))
         assertTrue(!RelayBoardName.isRelayName("Kilter Board@3"))
@@ -48,6 +49,10 @@ class RelayBoardNameTest {
 
     @Test
     fun unwrap_restoresBoardName_forNormalScannerParsing() {
+        assertEquals(
+            "Kilter Board@2",
+            RelayBoardName.unwrap("CruxCoach·Kilter Board@2"),
+        )
         assertEquals(
             "Kilter Board@2",
             RelayBoardName.unwrap("CruxRelay·Kilter Board@2"),

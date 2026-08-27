@@ -1,19 +1,27 @@
 package com.cruxcoach.android.data
 
+import android.Manifest
 import android.content.Context
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.le.AdvertisingSetCallback
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ble.DiscoveredBoard
+import com.cruxcoach.android.ble.GattConnectionEvent
+import com.cruxcoach.android.ble.RelayInboundClimb
 import com.cruxcoach.android.ble.RelayGattServer
 import com.cruxcoach.domain.board.BoardBrand
 import io.mockk.coVerify
+import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertFalse
@@ -150,5 +158,63 @@ class CruxRelayDisclosureTest {
         assertFalse(manager.state.value.pendingDisclosure)
         assertTrue(manager.state.value.error == null)
         coVerify(exactly = 0) { server.start() }
+    }
+
+    @Test
+    fun `physical board disconnect always stops relay advertising`() = runTest {
+        org.robolectric.Shadows.shadowOf(context as android.app.Application)
+            .grantPermissions(Manifest.permission.BLUETOOTH_ADVERTISE)
+        val connection = mockk<BoardBleConnection>(relaxed = true)
+        val connectionState = MutableStateFlow(ConnectionState.CONNECTED)
+        val connectedBoard = MutableStateFlow<DiscoveredBoard?>(board("00:11:22:33:44:55"))
+        every { connection.connectionState } returns connectionState
+        every { connection.connectedBoardDescriptor } returns connectedBoard
+        every { connection.connectedBoard } answers { connectedBoard.value }
+
+        val preferences = mockk<UserPreferences>(relaxed = true)
+        every { preferences.relayManualStart } returns flowOf(true)
+        every { preferences.relayDisclosureSeen } returns flowOf(true)
+        val server = mockk<RelayGattServer>(relaxed = true)
+        coEvery { server.start() } returns true
+        every { server.climbs } returns MutableSharedFlow<RelayInboundClimb>()
+        every { server.connectionEvents } returns MutableSharedFlow<GattConnectionEvent>()
+        val advertiser = mockk<ClimbBleAdvertiser>(relaxed = true)
+        every { advertiser.startRelayAdvertising() } returns "started"
+        coEvery { advertiser.awaitRelayAdvertisingStart() } returns
+            AdvertisingSetCallback.ADVERTISE_SUCCESS
+
+        var adapterName = "Test phone"
+        val adapter = mockk<BluetoothAdapter>(relaxed = true)
+        every { adapter.name } answers { adapterName }
+        every { adapter.setName(any()) } answers {
+            adapterName = firstArg()
+            true
+        }
+        val manager = CruxRelayManager(
+            context = context,
+            relayServer = server,
+            advertiser = advertiser,
+            bleConnection = connection,
+            projectionCoordinator = mockk<BoardProjectionCoordinator>(relaxed = true),
+            userPreferences = preferences,
+            scope = backgroundScope,
+            adapterProvider = { adapter },
+        )
+        runCurrent()
+
+        manager.requestEnable()
+        manager.state.first { it.advertising }
+        verify(exactly = 1) { advertiser.startRelayAdvertising() }
+
+        connectedBoard.value = null
+        connectionState.value = ConnectionState.DISCONNECTED
+        manager.state.first { !it.enabled && !it.advertising }
+
+        verify(exactly = 1) { advertiser.stopRelayAdvertising() }
+        coVerify(exactly = 1) { server.stop() }
+        assertFalse(manager.state.value.enabled)
+        assertFalse(manager.state.value.advertising)
+        assertTrue(manager.state.value.advertisedName == null)
+        assertTrue(adapterName == "Test phone")
     }
 }

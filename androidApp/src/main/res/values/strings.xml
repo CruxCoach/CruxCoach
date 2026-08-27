@@ -2412,7 +2412,7 @@
     <string name="settings_relay_manual_start">Start CruxRelay manually</string>
     <string name="settings_relay_manual_start_desc">Off by default: CruxRelay starts and stops with the board connection. Turn this on only if you want to start it manually.</string>
     <string name="relay_disclosure_title">Share with board apps</string>
-    <string name="relay_disclosure_text">Your phone temporarily appears as a compatible board named \"CruxRelay…\". Other board apps can send climbs through CruxCoach. The latest successful send controls the lights. Your Bluetooth name is restored when sharing stops.</string>
+    <string name="relay_disclosure_text">Your phone temporarily appears as a compatible board named \"CruxCoach…\". Other board apps can send climbs through CruxCoach. The latest successful send controls the lights. Your Bluetooth name is restored when sharing stops.</string>
     <string name="relay_disclosure_confirm">Allow board apps</string>
     <string name="relay_error_server">Couldn\'t start sharing. Please try again.</string>
     <string name="relay_error_advertise">Couldn\'t make this board discoverable.</string>

@@ -2411,7 +2411,7 @@
     <string name="settings_relay_manual_start">CruxRelay manuell starten</string>
     <string name="settings_relay_manual_start_desc">Standardmäßig aus: CruxRelay startet und endet mit der Board-Verbindung. Nur aktivieren, wenn du es manuell starten möchtest.</string>
     <string name="relay_disclosure_title">Für Board-Apps freigeben</string>
-    <string name="relay_disclosure_text">Dein Handy erscheint vorübergehend als kompatibles Board namens \"CruxRelay…\". Andere Board-Apps können Climbs über CruxCoach senden. Der zuletzt erfolgreich gesendete Boulder steuert die Beleuchtung. Beim Beenden wird dein Bluetooth-Name wiederhergestellt.</string>
+    <string name="relay_disclosure_text">Dein Handy erscheint vorübergehend als kompatibles Board namens \"CruxCoach…\". Andere Board-Apps können Climbs über CruxCoach senden. Der zuletzt erfolgreich gesendete Boulder steuert die Beleuchtung. Beim Beenden wird dein Bluetooth-Name wiederhergestellt.</string>
     <string name="relay_disclosure_confirm">Board-Apps zulassen</string>
     <string name="relay_error_server">Teilen konnte nicht starten. Bitte erneut versuchen.</string>
     <string name="relay_error_advertise">Board konnte nicht sichtbar gemacht werden.</string>

@@ -64,7 +64,7 @@ confidence (device test still owed):
 
 - **Discovery keys on the advertising service UUID
   `4488B571-7806-4DF6-BCFF-A2897E4953FF`, not on the device name.** The name is
-  therefore free, and a fully transparent "CruxRelay" name works — which
+  therefore free, and a clearly branded "CruxCoach" name works — which
   dissolves the transparency-vs-discovery tension in our favour. (This UUID is
   visible to any BLE scanner and already appears in our own source; it is
   recorded here because our advertiser must set it, not as a finding about
@@ -75,15 +75,15 @@ confidence (device test still owed):
   board central link (verified against CruxCoach's own SessionGattServer +
   ClimbBleAdvertiser + BoardBleConnection running together).
 - **Trademark:** "KILTER" is a registered mark (USPTO 4231332); Kilter enforced
-  it against Aurora (C&D, Mar-2026). => lead with the CruxRelay brand + an
+  it against Aurora (C&D, Mar-2026). => lead with the CruxCoach app brand + an
   explicit non-affiliation disclaimer; never advertise a bare product name.
 
 ## 3. Advertised name
 
 Listing needs only the 4488B571 service UUID, so:
 
-- **Primary (transparency-first):** `CruxRelay·<Product>@<apiLevel>`, e.g.
-  `CruxRelay·Kilter Board@3`, derived from the real connected board's product
+- **Primary (transparency-first):** `CruxCoach·<Product>@<apiLevel>`, e.g.
+  `CruxCoach·Kilter Board@3`, derived from the real connected board's product
   words + its real apiLevel (`@3` preserved so the app applies V2 LED-kit
   behaviour, no spurious V1 auto-disconnect). Serial dropped.
 - **Byte budget (binding):** a connectable legacy ADV_IND is 31 B; Flags (3 B)
@@ -253,7 +253,8 @@ Coexistence rules:
   out of a board the host is holding.
 - **CruxCoach shows a relay host as a JOIN entry, not a board — not hidden.**
   CruxCoach recognises its own relays by the transparent-name marker
-  (`RelayBoardName.isRelayName`, "CruxRelay…" prefix) and correlates them with
+  (`RelayBoardName.isRelayName`, "CruxCoach…" prefix; legacy "CruxRelay…"
+  remains accepted) and correlates them with
   the host's "CRUX" session advertisement. In the connection picker it renders
   ONE entry — "Playlist von \<host\> — beitreten" — and a tap routes to the
   session/playlist join flow, never a board connect. The relay's presence IS
@@ -299,7 +300,7 @@ connected to one — without requiring the tap.
 
 **Disclosure (mandatory) — the phone's GLOBAL Bluetooth name changes.**
 - Before the first share, a one-time explainer dialog: while sharing, the phone
-  appears to other Bluetooth devices as "CruxRelay…", restored on stop. Persist
+  appears to other Bluetooth devices as "CruxCoach…", restored on stop. Persist
   "explainer seen" (app-scoped, not identity-scoped).
 - Include a short non-affiliation disclaimer (not affiliated with Kilter/Aurora;
   board names are compatibility references only).
