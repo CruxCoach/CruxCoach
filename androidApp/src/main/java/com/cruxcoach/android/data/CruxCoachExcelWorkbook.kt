@@ -22,6 +22,7 @@ object CruxCoachExcelWorkbook {
     fun fromJson(jsonString: String, categories: Set<Category>): ByteArray {
         val tables = CruxCoachCsvArchive.tablesFromJson(jsonString, categories)
         require(tables.isNotEmpty()) { "No categories selected for Excel export" }
+        val sharedStrings = sharedStrings(tables)
         val output = ByteArrayOutputStream()
         ZipOutputStream(output).use { zip ->
             write(zip, "[Content_Types].xml", contentTypes(tables.size))
@@ -29,19 +30,21 @@ object CruxCoachExcelWorkbook {
             write(zip, "xl/workbook.xml", workbook(tables))
             write(zip, "xl/_rels/workbook.xml.rels", workbookRelationships(tables.size))
             write(zip, "xl/styles.xml", styles)
+            write(zip, "xl/sharedStrings.xml", sharedStrings.xml)
             tables.forEachIndexed { index, table ->
-                write(zip, "xl/worksheets/sheet${index + 1}.xml", worksheet(table.rows))
+                write(
+                    zip,
+                    "xl/worksheets/sheet${index + 1}.xml",
+                    worksheet(table.rows, sharedStrings.indexByValue),
+                )
             }
         }
         return output.toByteArray()
     }
 
-    private fun worksheet(array: JsonArray): String {
+    private fun worksheet(array: JsonArray, sharedStrings: Map<String, Int>): String {
         val objects = array.map { it as? JsonObject ?: error("Excel row must be an object") }
-        val headers = objects.flatMap { it.keys }.distinct().sortedWith(
-            compareBy<String> { headerPriority.indexOf(it).takeIf { index -> index >= 0 } ?: Int.MAX_VALUE }
-                .thenBy { it },
-        ).ifEmpty { listOf("No data") }
+        val headers = headers(objects)
         require(headers.size <= MAX_EXCEL_COLUMNS) { "Too many Excel columns" }
         require(objects.size + 1 <= MAX_EXCEL_ROWS) { "Too many Excel rows" }
 
@@ -61,6 +64,7 @@ object CruxCoachExcelWorkbook {
             append("<sheetViews><sheetView workbookViewId=\"0\">")
             append("<pane ySplit=\"1\" topLeftCell=\"A2\" activePane=\"bottomLeft\" state=\"frozen\"/>")
             append("</sheetView></sheetViews>")
+            append("<sheetFormatPr baseColWidth=\"10\" defaultRowHeight=\"15\"/>")
             append("<cols>")
             widths.forEachIndexed { index, width ->
                 val column = index + 1
@@ -69,7 +73,7 @@ object CruxCoachExcelWorkbook {
             append("</cols><sheetData>")
             append("<row r=\"1\">")
             headers.forEachIndexed { index, header ->
-                append(inlineStringCell(columnName(index + 1) + "1", header, style = 1))
+                append(sharedStringCell(columnName(index + 1) + "1", header, sharedStrings, 1))
             }
             append("</row>")
             objects.forEachIndexed { rowIndex, row ->
@@ -77,7 +81,7 @@ object CruxCoachExcelWorkbook {
                 append("<row r=\"$excelRow\">")
                 headers.forEachIndexed { columnIndex, header ->
                     row[header]?.takeUnless { it is JsonNull }?.let { value ->
-                        append(cell(columnName(columnIndex + 1) + excelRow, value))
+                        append(cell(columnName(columnIndex + 1) + excelRow, value, sharedStrings))
                     }
                 }
                 append("</row>")
@@ -88,29 +92,84 @@ object CruxCoachExcelWorkbook {
         }
     }
 
-    private fun cell(reference: String, value: JsonElement): String = when (value) {
+    private fun cell(
+        reference: String,
+        value: JsonElement,
+        sharedStrings: Map<String, Int>,
+    ): String = when (value) {
         JsonNull -> ""
         is JsonPrimitive -> when {
-            value.isString -> inlineStringCell(reference, value.content)
+            value.isString -> sharedStringCell(reference, value.content, sharedStrings)
             value.booleanOrNull != null ->
                 "<c r=\"$reference\" t=\"b\"><v>${if (value.booleanOrNull == true) 1 else 0}</v></c>"
             value.content.toDoubleOrNull()?.isFinite() == true ->
                 "<c r=\"$reference\"><v>${xmlText(value.content)}</v></c>"
-            else -> inlineStringCell(reference, value.content)
+            else -> sharedStringCell(reference, value.content, sharedStrings)
         }
-        else -> inlineStringCell(reference, value.toString())
+        else -> sharedStringCell(reference, value.toString(), sharedStrings)
     }
 
-    private fun inlineStringCell(reference: String, value: String, style: Int? = null): String {
+    private fun sharedStringCell(
+        reference: String,
+        value: String,
+        sharedStrings: Map<String, Int>,
+        style: Int? = null,
+    ): String {
         val styleAttribute = style?.let { " s=\"$it\"" }.orEmpty()
-        return "<c r=\"$reference\" t=\"inlineStr\"$styleAttribute>" +
-            "<is><t xml:space=\"preserve\">${xmlText(value)}</t></is></c>"
+        val stringIndex = requireNotNull(sharedStrings[value]) { "Missing shared Excel string" }
+        return "<c r=\"$reference\" t=\"s\"$styleAttribute><v>$stringIndex</v></c>"
     }
 
     private fun displayValue(value: JsonElement): String = when (value) {
         JsonNull -> ""
         is JsonPrimitive -> value.content
         else -> value.toString()
+    }
+
+    private fun sharedStrings(
+        tables: List<CruxCoachCsvArchive.ExportTable>,
+    ): SharedStrings {
+        val values = linkedSetOf<String>()
+        var count = 0
+        tables.forEach { table ->
+            val objects = table.rows.map { it as JsonObject }
+            val headers = headers(objects)
+            headers.forEach { values += it; count++ }
+            objects.forEach { row ->
+                headers.forEach { header ->
+                    val value = row[header]?.takeUnless { it is JsonNull } ?: return@forEach
+                    if (isStringCell(value)) {
+                        values += displayValue(value)
+                        count++
+                    }
+                }
+            }
+        }
+        val indexByValue = values.withIndex().associate { (index, value) -> value to index }
+        val xml = buildString {
+            append(xmlDeclaration)
+            append("<sst xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" ")
+            append("count=\"$count\" uniqueCount=\"${values.size}\">")
+            values.forEach { value ->
+                append("<si><t xml:space=\"preserve\">${xmlText(value)}</t></si>")
+            }
+            append("</sst>")
+        }
+        return SharedStrings(indexByValue, xml)
+    }
+
+    private fun headers(objects: List<JsonObject>): List<String> =
+        objects.flatMap { it.keys }.distinct().sortedWith(
+            compareBy<String> {
+                headerPriority.indexOf(it).takeIf { index -> index >= 0 } ?: Int.MAX_VALUE
+            }.thenBy { it },
+        ).ifEmpty { listOf("No data") }
+
+    private fun isStringCell(value: JsonElement): Boolean = when (value) {
+        JsonNull -> false
+        is JsonPrimitive -> value.isString || value.booleanOrNull == null &&
+            value.content.toDoubleOrNull()?.isFinite() != true
+        else -> true
     }
 
     private fun contentTypes(sheetCount: Int): String = buildString {
@@ -120,6 +179,7 @@ object CruxCoachExcelWorkbook {
         append("<Default Extension=\"xml\" ContentType=\"application/xml\"/>")
         append("<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>")
         append("<Override PartName=\"/xl/styles.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml\"/>")
+        append("<Override PartName=\"/xl/sharedStrings.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml\"/>")
         repeat(sheetCount) { index ->
             append("<Override PartName=\"/xl/worksheets/sheet${index + 1}.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>")
         }
@@ -130,11 +190,12 @@ object CruxCoachExcelWorkbook {
         append(xmlDeclaration)
         append("<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" ")
         append("xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">")
+        append("<workbookPr/><bookViews><workbookView activeTab=\"0\"/></bookViews>")
         append("<sheets>")
         tables.forEachIndexed { index, table ->
             append("<sheet name=\"${xmlAttribute(table.sheetName)}\" sheetId=\"${index + 1}\" r:id=\"rId${index + 1}\"/>")
         }
-        append("</sheets></workbook>")
+        append("</sheets><calcPr calcId=\"124519\" fullCalcOnLoad=\"1\"/></workbook>")
     }
 
     private fun workbookRelationships(sheetCount: Int): String = buildString {
@@ -147,6 +208,8 @@ object CruxCoachExcelWorkbook {
         }
         append("<Relationship Id=\"rId${sheetCount + 1}\" ")
         append("Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" Target=\"styles.xml\"/>")
+        append("<Relationship Id=\"rId${sheetCount + 2}\" ")
+        append("Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings\" Target=\"sharedStrings.xml\"/>")
         append("</Relationships>")
     }
 
@@ -196,6 +259,11 @@ object CruxCoachExcelWorkbook {
         "updatedAt",
     )
 
+    private data class SharedStrings(
+        val indexByValue: Map<String, Int>,
+        val xml: String,
+    )
+
     private val packageRelationships = xmlDeclaration +
         "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">" +
         "<Relationship Id=\"rId1\" " +
@@ -205,13 +273,20 @@ object CruxCoachExcelWorkbook {
 
     private val styles = xmlDeclaration +
         "<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">" +
-        "<fonts count=\"2\"><font/><font><b/></font></fonts>" +
+        "<fonts count=\"2\">" +
+        "<font><sz val=\"11\"/><name val=\"Arial\"/><family val=\"2\"/></font>" +
+        "<font><b/><sz val=\"11\"/><name val=\"Arial\"/><family val=\"2\"/></font>" +
+        "</fonts>" +
         "<fills count=\"2\"><fill><patternFill patternType=\"none\"/></fill>" +
         "<fill><patternFill patternType=\"gray125\"/></fill></fills>" +
-        "<borders count=\"1\"><border/></borders>" +
+        "<borders count=\"1\"><border><left/><right/><top/><bottom/><diagonal/></border></borders>" +
         "<cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs>" +
         "<cellXfs count=\"2\">" +
         "<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\"/>" +
         "<xf numFmtId=\"0\" fontId=\"1\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyFont=\"1\"/>" +
-        "</cellXfs></styleSheet>"
+        "</cellXfs>" +
+        "<cellStyles count=\"1\"><cellStyle name=\"Normal\" xfId=\"0\" builtinId=\"0\"/></cellStyles>" +
+        "<dxfs count=\"0\"/>" +
+        "<tableStyles count=\"0\" defaultTableStyle=\"TableStyleMedium2\" defaultPivotStyle=\"PivotStyleLight16\"/>" +
+        "</styleSheet>"
 }
