@@ -376,6 +376,34 @@ class BoardLayerManagerTest {
         ).unknownLayerCount)
     }
 
+    @Test fun `countdown refresh retains hydrated foreign route details`() {
+        val manager = BoardLayerManager(context)
+        val foreign = QuantumActivePlayer(
+            routeId = "34c40e5c-0e0e-4c28-b431-c6deeab90a42",
+            userId = "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff",
+            remainingSeconds = 120,
+            color = 0xffff00,
+        )
+        manager.reconcile(listOf(foreign))
+        manager.hydrateControllerRoutes(
+            mapOf(
+                BoardLayerControllerRouteKey(foreign.routeId, foreign.userId) to
+                    BoardLayerRouteDetails(
+                        climbUuid = "6811ba23-fd90-5191-bb43-8a2a7610366f",
+                        climbName = "safety FIRST",
+                        holds = listOf(BoardHold(1004019, 12)),
+                    ),
+            ),
+        )
+
+        manager.reconcile(listOf(foreign.copy(remainingSeconds = 110)))
+
+        val retained = manager.state.value.externalLayers.single()
+        assertEquals("safety FIRST", retained.climbName)
+        assertEquals(listOf(BoardHold(1004019, 12)), retained.holds)
+        assertEquals(110, retained.remainingSeconds)
+    }
+
     @Test fun `rack state is retained only for the same physical board and model`() {
         val manager = BoardLayerManager(context)
         val firstBoard = BoardLayerBoardIdentity("quantum:serial:first", 9201)

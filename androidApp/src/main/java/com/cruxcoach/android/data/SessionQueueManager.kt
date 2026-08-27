@@ -15,7 +15,6 @@ import com.cruxcoach.android.ble.reservedLayerColors
 import com.cruxcoach.android.ble.hasCompleteQuantumLedMapping
 import com.cruxcoach.android.ble.hasConfirmableQuantumDiodeCount
 import com.cruxcoach.android.ble.matchesQuantumPlayers
-import com.cruxcoach.android.ble.quantumPlayersMatch
 import com.cruxcoach.android.ble.planKey
 import com.cruxcoach.android.ui.board.BoardSendModePolicy
 import com.cruxcoach.android.ui.board.QueueDeliveryPolicy
@@ -1051,13 +1050,20 @@ class SessionQueueManager(
         val latestDescriptor = bleConnection.connectedBoardDescriptor.value ?: return false
         val latestPhysical = runCatching { PhysicalBoardIdentity.resolve(latestDescriptor) }.getOrNull()
             ?: return false
-        val latestController = bleConnection.quantumControllerState.value
-        if (!latestController.authoritative ||
-            !quantumPlayersMatch(controller.players, latestController.players) ||
-            bleConnection.connectedQuantumModel.value != model ||
+        // hydrateControllerRoutes applies by the exact route/user tuple to the
+        // rack's *current* entries. It therefore cannot resurrect a removed
+        // player or attach details to a replacement. Do not reject useful
+        // catalogue results merely because another poll entered SYNCING or a
+        // different player changed while this lookup was running.
+        if (bleConnection.connectedQuantumModel.value != model ||
             latestPhysical.value != expectedBoard.physicalBoardId ||
             !layers.isBoundTo(expectedBoard)
         ) return false
+        Log.d(
+            TAG,
+            "Quantum catalogue hydration: model=${model.wireValue} " +
+                "players=${controller.players.size} resolved=${details.size}",
+        )
         layers.hydrateControllerRoutes(details)
         return true
     }
