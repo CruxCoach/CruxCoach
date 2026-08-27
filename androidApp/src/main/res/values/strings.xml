@@ -793,7 +793,7 @@
 
     <!-- Crash Reporting -->
     <string name="crash_dialog_title">CruxCoach has stopped unexpectedly</string>
-    <string name="crash_dialog_message">Would you like to send an encrypted crash report to the developer? You can review it first.</string>
+    <string name="crash_dialog_message">Would you like to send an encrypted crash report to the developer? It is sent with your CruxCoach Nostr identity, so the developer can recognize its public key. You can review the report first.</string>
     <string name="crash_dialog_send">Send</string>
     <string name="crash_dialog_view">View report</string>
     <string name="crash_dialog_dismiss">No, thanks</string>
@@ -1588,7 +1588,7 @@
     <string name="devcontact_notifications">Background announcements</string>
     <string name="devcontact_notifications_desc">Automatically fetch and notify about announcements. When off, opening Announcements remains a manual refresh.</string>
     <string name="devcontact_send_crash_reports">Send Crash Reports</string>
-    <string name="devcontact_send_crash_reports_desc">Automatically send anonymous crash reports to the developer</string>
+    <string name="devcontact_send_crash_reports_desc">Automatically send encrypted crash reports to the developer, linked to your CruxCoach Nostr public key</string>
     <string name="devcontact_send_failed">Sending failed</string>
     <string name="devcontact_status_delivered">✓ Delivered · %1$s</string>
     <string name="devcontact_status_not_delivered">✗ Not delivered</string>

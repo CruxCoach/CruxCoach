@@ -79,6 +79,7 @@ spec file so other branches see the reservation.
 | FEAT-051 | Blossom Manifest Rollback Guard | v0.2.3 | planned | `0.2.3/FEAT-051-blossom-manifest-rollback-guard.md` |
 | FEAT-058 | CruxCoach Competitions (app + web + protocol) | v0.2.3 | planned | `0.2.3/FEAT-058-competitions.md` |
 | FEAT-059 | Offline BoardCell over FIPS | v0.2.3 | planned | `0.2.3/FEAT-059-offline-board-cell-fips-mesh.md` |
+| FEAT-063 | Nostr Background Privacy Control | v0.2.3 | planned | `0.2.3/FEAT-063-nostr-background-privacy-control.md` |
 
 The architecture guide for FEAT-059 is
 [`0.2.3/OFFLINE-BOARDCELL-FIPS-ARCHITECTURE.md`](0.2.3/OFFLINE-BOARDCELL-FIPS-ARCHITECTURE.md).
@@ -153,9 +154,10 @@ renumbering those is likely cheaper than renumbering the shipped side.
 
 ## Next free
 
-**FEAT-060** is the next unallocated ID. Verify against unmerged branches
-before allocating — the reconciliation below closed the previously listed
-gaps, but a branch this worktree cannot see may still hold one.
+**FEAT-064** is the next unallocated ID. FEAT-060 and FEAT-061 are reserved in
+the parallel `social-layer-specs` worktree; FEAT-062 is reserved by the
+personal-sharing worktrees. Verify against unmerged branches before allocating
+— a branch this worktree cannot see may still hold the next apparent gap.
 
 ### Allocation of FEAT-058 (2026-08-09) — and why not FEAT-051
 
