@@ -234,10 +234,6 @@
     <string name="onboarding_progress_import">Your history</string>
     <string name="onboarding_privacy_title">Your data, your choices</string>
     <string name="onboarding_privacy_subtitle">Personal training data stays on this device by default. Enable only the extras you want; every choice remains editable in settings.</string>
-    <string name="onboarding_privacy_ble_title">Nearby board features</string>
-    <string name="onboarding_privacy_ble_desc">Share the climb you are viewing with people nearby and use CruxRelay when you choose to connect a board.</string>
-    <string name="onboarding_privacy_community_title">Community &amp; feedback</string>
-    <string name="onboarding_privacy_community_desc">Community climbs, release announcements and developer chat. Your profile stays local until you explicitly publish it.</string>
     <string name="onboarding_privacy_hint">Your personal data stays on this device by default. The optional cloud backup uploads only an end-to-end encrypted copy that only you can decrypt.</string>
     <string name="onboarding_lets_go">Let\'s go</string>
     <string name="onboarding_board_setup_title">Make climbs available offline</string>

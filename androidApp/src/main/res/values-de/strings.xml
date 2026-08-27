@@ -234,10 +234,6 @@
     <string name="onboarding_progress_import">Dein Verlauf</string>
     <string name="onboarding_privacy_title">Deine Daten, deine Entscheidung</string>
     <string name="onboarding_privacy_subtitle">Persönliche Trainingsdaten bleiben standardmäßig auf diesem Gerät. Aktiviere nur, was du möchtest; alles bleibt später in den Einstellungen änderbar.</string>
-    <string name="onboarding_privacy_ble_title">Board-Funktionen in der Nähe</string>
-    <string name="onboarding_privacy_ble_desc">Teile den gerade geöffneten Climb mit Leuten in der Nähe und nutze CruxRelay, wenn du ein Board verbindest.</string>
-    <string name="onboarding_privacy_community_title">Community &amp; Feedback</string>
-    <string name="onboarding_privacy_community_desc">Community-Climbs, Release-Ankündigungen und Entwickler-Chat. Dein Profil bleibt lokal, bis du es ausdrücklich veröffentlichst.</string>
     <string name="onboarding_privacy_hint">Deine persönlichen Daten bleiben standardmäßig auf diesem Gerät. Das optionale Cloud-Backup lädt nur eine Ende-zu-Ende verschlüsselte Kopie hoch — nur du kannst sie entschlüsseln.</string>
     <string name="onboarding_lets_go">Los geht\'s</string>
     <string name="onboarding_board_setup_title">Climbs offline verfügbar machen</string>
