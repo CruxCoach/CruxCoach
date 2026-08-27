@@ -2651,6 +2651,7 @@
     <string name="quantum_layer_status_replacing">Ersatz geplant; bisheriger Climb ist noch am Board</string>
     <string name="quantum_layer_status_failed">nicht bestätigt</string>
     <string name="quantum_layer_status_unknown">am Board; Routendetails unbekannt</string>
+    <string name="quantum_layer_status_foreign">von anderer App; nur lesbar</string>
     <string name="quantum_layer_status_short_free">frei</string>
     <string name="quantum_layer_status_short_planned">Plan</string>
     <string name="quantum_layer_status_short_sending">senden</string>
@@ -2658,6 +2659,7 @@
     <string name="quantum_layer_status_short_replacing">Tausch</string>
     <string name="quantum_layer_status_short_failed">Fehler</string>
     <string name="quantum_layer_status_short_unknown">?</string>
+    <string name="quantum_layer_status_short_foreign">fremd</string>
     <string name="quantum_layer_suggestion">Empfohlen: Layer %1$d · %2$s</string>
     <string name="quantum_layer_suggestion_reason">Frei und ohne bekannte Überschneidung. Die Lampe kann ihn direkt verwenden.</string>
     <string name="quantum_layer_suggestion_existing_reason">Dieser Climb nutzt diesen Layer bereits. Farbe und bekannte Holds können sicher wiederverwendet werden.</string>

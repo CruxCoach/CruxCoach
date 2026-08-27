@@ -14,6 +14,26 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class QuantumLayerUiPolicyTest {
+    @Test fun `foreign palette color occupies its matching read only visual layer`() {
+        val cyan = foreign(holds = listOf(BoardHold(10, 1))).copy(
+            color = BoardLayerManager.LAYER_COLORS[1],
+            climbName = "The Board",
+        )
+
+        val result = QuantumLayerUiPolicy.summarize(
+            BoardLayerState(brand = BoardBrand.QUANTUM, externalLayers = listOf(cyan)),
+            currentClimbUuid = "candidate",
+            currentPlacements = setOf(20),
+        )
+
+        assertEquals(QuantumLayerVisualState.FOREIGN, result.slots[1].visualState)
+        assertEquals(cyan, result.slots[1].externalLayer)
+        assertEquals("The Board", result.slots[1].climbName)
+        assertEquals(0, result.suggestedSlot)
+        assertEquals(BoardLayerManager.LAYER_COLORS[0], result.suggestedColor)
+        assertTrue(result.unplacedExternalLayers.isEmpty())
+    }
+
     @Test fun `known foreign overlap blocks the one-answer suggestion`() {
         val state = BoardLayerState(
             brand = BoardBrand.QUANTUM,

@@ -169,11 +169,13 @@ promote that catalogue-first row without overwriting its public content. Thus
 
 ## Conflict and overlay UX
 
-The compact strip deliberately separates **your four local plans** from physical
-wall occupancy. A local slot can be free to plan while all four controller
-places are occupied by another app, so the strip names both answers: numbered
-local slots, `wall n/4 active`, and read-only foreign colour chips. A `?` on a
-foreign chip means its route geometry is unknown, not that the place is free.
+The compact strip presents one coherent four-place wall. Controller entries
+using one of CruxCoach's four palette colours occupy that colour's numbered
+visual place even when another app owns the player; such a place is labelled
+read-only rather than free. A non-palette colour, or a legacy local slot/colour
+collision, falls into the first genuinely empty visual place. This is a UI
+convention: the protocol reports unique player colours but no numeric slot.
+A `?` means route geometry is unknown, not that the place is free.
 The full detail rack adds route names, replace/remove actions, a lamp per slot,
 a send-all lamp, and the same physical occupancy/foreign state.
 
@@ -193,10 +195,11 @@ lamp remains the explicit write. Send-all uses the same aggregate conservative
 preflight over every staged layer, so a conflict belonging to a different
 detail page disables the action before the BLE path repeats the check.
 
-Foreign users are displayed separately in their controller-reported colours
-and are read-only. Local staging remains available even when foreign users fill
-the controller; the send preflight then refuses to exceed four physical players
-instead of evicting one.
+Foreign users are displayed in the shared rack with their controller-reported
+colours and are read-only. Only an entry that cannot be placed without hiding a
+local plan gets the secondary overflow row. Local staging remains available in
+the remaining places; the send preflight refuses to exceed four physical
+players instead of evicting one.
 
 Known hold overlap is rejected before BLE because Quantum cannot assign two
 user colours to one diode. Send-all also validates capacity and overlap before
