@@ -464,32 +464,13 @@ class ClimbBleAdvertiser(
 
     // --- CruxRelay board-emulation advertising (FEAT-044) ---
     private var relaySet: AdvertisingSet? = null
+    private var relaySetCallback: AdvertisingSetCallback? = null
     /** Async start result of the current [startRelayAdvertising] attempt —
      *  completed with the controller status from [relaySetCallback] so the
      *  relay manager can surface a failure instead of assuming success. */
     private var relayStartResult: CompletableDeferred<Int>? = null
-    private val relaySetCallback = object : AdvertisingSetCallback() {
-        override fun onAdvertisingSetStarted(advertisingSet: AdvertisingSet?, txPower: Int, status: Int) {
-            if (status == ADVERTISE_SUCCESS) {
-                relaySet = advertisingSet
-                Log.d(TAG, "Relay advertising started (txPower=$txPower)")
-            } else {
-                Log.e(TAG, "Relay advertising failed: status=$status")
-                relaySet = null
-            }
-            relayStartResult?.complete(status)
-        }
-        override fun onAdvertisingEnabled(advertisingSet: AdvertisingSet?, enable: Boolean, status: Int) {
-            if (!enable && relaySet === advertisingSet) {
-                Log.d(TAG, "Relay advertising disabled by controller (client connected?)")
-                relaySet = null
-            }
-        }
-        override fun onAdvertisingSetStopped(advertisingSet: AdvertisingSet?) { relaySet = null }
-    }
-
     /**
-     * Advertise as a board so the OFFICIAL Kilter app lists CruxRelay. The
+     * Advertise as a board so compatible official apps list CruxCoach. The
      * listing gate is the board ADVERTISING service UUID (4488B571), placed in
      * the connectable ADV_IND; the transparent name (set on the adapter by
      * [com.cruxcoach.android.data.CruxRelayManager]) rides the SCAN_RESPONSE —
@@ -517,12 +498,59 @@ class ClimbBleAdvertiser(
             .build()
         val started = CompletableDeferred<Int>()
         relayStartResult = started
+        // A fresh callback per attempt is intentional. Android may deliver a
+        // late start callback after stopAdvertisingSet(). With one shared
+        // callback that stale success could resurrect a relay after the real
+        // board disconnected. An obsolete callback immediately stops only its
+        // own set and can never become the current relay.
+        val callback = object : AdvertisingSetCallback() {
+            override fun onAdvertisingSetStarted(
+                advertisingSet: AdvertisingSet?,
+                txPower: Int,
+                status: Int,
+            ) {
+                if (relaySetCallback !== this) {
+                    if (status == ADVERTISE_SUCCESS) {
+                        runCatching { adv.stopAdvertisingSet(this) }
+                            .onFailure { Log.e(TAG, "Error stopping stale relay advertising", it) }
+                    }
+                    return
+                }
+                if (status == ADVERTISE_SUCCESS) {
+                    relaySet = advertisingSet
+                    Log.d(TAG, "Relay advertising started (txPower=$txPower)")
+                } else {
+                    Log.e(TAG, "Relay advertising failed: status=$status")
+                    relaySet = null
+                }
+                started.complete(status)
+            }
+
+            override fun onAdvertisingEnabled(
+                advertisingSet: AdvertisingSet?,
+                enable: Boolean,
+                status: Int,
+            ) {
+                if (relaySetCallback === this && !enable && relaySet === advertisingSet) {
+                    Log.d(TAG, "Relay advertising disabled by controller (client connected?)")
+                    relaySet = null
+                }
+            }
+
+            override fun onAdvertisingSetStopped(advertisingSet: AdvertisingSet?) {
+                if (relaySetCallback === this) relaySet = null
+            }
+        }
+        relaySetCallback = callback
         return try {
-            adv.startAdvertisingSet(params, advData, scanResponse, null, null, relaySetCallback)
+            adv.startAdvertisingSet(params, advData, scanResponse, null, null, callback)
             "started"
         } catch (e: Exception) {
             Log.e(TAG, "startRelayAdvertising failed", e)
-            relayStartResult = null
+            if (relaySetCallback === callback) {
+                relaySetCallback = null
+                relayStartResult = null
+            }
             "failed: ${e.message}"
         }
     }
@@ -538,12 +566,14 @@ class ClimbBleAdvertiser(
 
     @SuppressLint("MissingPermission")
     private fun stopRelayAdvertisingInternal() {
-        val adv = advertiser ?: return
-        // Unconditional stop: relaySet is only assigned in the ASYNC start
-        // callback, so a stop racing that callback would otherwise skip
-        // stopAdvertisingSet and leak a live advertising set.
-        try { adv.stopAdvertisingSet(relaySetCallback) } catch (e: Exception) {
-            Log.e(TAG, "Error stopping relay advertising", e)
+        val callback = relaySetCallback
+        // Invalidate before asking Android to stop. A late start callback sees
+        // that it is obsolete and stops its own set instead of reviving it.
+        relaySetCallback = null
+        if (callback != null) {
+            try { advertiser?.stopAdvertisingSet(callback) } catch (e: Exception) {
+                Log.e(TAG, "Error stopping relay advertising", e)
+            }
         }
         relaySet = null
         relayStartResult = null

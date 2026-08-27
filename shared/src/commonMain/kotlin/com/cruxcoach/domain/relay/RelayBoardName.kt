@@ -3,7 +3,7 @@ package com.cruxcoach.domain.relay
 /**
  * Derives CruxRelay's transparent advertised name from the REAL connected
  * board's name, so the official app resolves the right product + LED-kit
- * protocol while a human clearly sees this is a CruxRelay, not the board.
+ * protocol while a human clearly sees this belongs to CruxCoach, not the board.
  *
  * The listing gate is the advertising service UUID (4488B571), NOT the name, so
  * any marker is safe for discovery. The name lives in the SCAN_RESPONSE (the
@@ -13,14 +13,15 @@ package com.cruxcoach.domain.relay
  */
 object RelayBoardName {
 
-    const val PREFIX = "CruxRelay·"
+    const val PREFIX = "CruxCoach·"
+    private const val LEGACY_PREFIX = "CruxRelay"
     /** Conservative UTF-8 byte budget for the scan-response local name. */
     const val MAX_NAME_BYTES = 29
 
     /**
      * @param realBoardName the board's advertised name as scanned, e.g.
      *   "Kilter Board Original#A1B2@3" or "Kilter Board@3".
-     * @return e.g. "CruxRelay·Kilter Board Original@3", trimmed to fit
+     * @return e.g. "CruxCoach·Kilter Board Original@3", trimmed to fit
      *   [MAX_NAME_BYTES], product shortened before the "@<api>" suffix is lost.
      */
     fun transparent(realBoardName: String, maxBytes: Int = MAX_NAME_BYTES): String {
@@ -58,15 +59,19 @@ object RelayBoardName {
         else trimToBytes(product, maxBytes - byteLen("#CR$apiSuffix")) + "#CR" + apiSuffix
     }
 
-    /** True if [name] is one of our relays. */
-    fun isRelayName(name: String): Boolean = name.trimStart().startsWith("CruxRelay")
+    /** True if [name] is one of our relays, including the pre-0.2.2 marker. */
+    fun isRelayName(name: String): Boolean {
+        val trimmed = name.trimStart()
+        return trimmed.startsWith("CruxCoach") || trimmed.startsWith(LEGACY_PREFIX)
+    }
 
     /** Restores the protocol-relevant board name for normal scanner parsing. */
     fun unwrap(name: String): String {
         val trimmed = name.trimStart()
         if (!isRelayName(trimmed)) return name
         return trimmed.removePrefix(PREFIX)
-            .removePrefix("CruxRelay")
+            .removePrefix("CruxCoach")
+            .removePrefix(LEGACY_PREFIX)
             .trimStart('·', ':', '-', ' ')
     }
 

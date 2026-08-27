@@ -316,9 +316,11 @@ class CruxRelayManager(
                     rejectEnable(RelayError.UNSUPPORTED_BOARD)
                 BoardRelayAvailability.NO_BOARD -> Unit
             }
-        } else if (running && (!enabled || boardState == ConnectionState.DISCONNECTED)) {
+        } else if (running &&
+            (!enabled || boardState !in setOf(ConnectionState.CONNECTED, ConnectionState.SENDING))
+        ) {
             stopRelay()
-            if (boardState == ConnectionState.DISCONNECTED && enabled) {
+            if (boardState !in setOf(ConnectionState.CONNECTED, ConnectionState.SENDING) && enabled) {
                 // Board loss while sharing: hard-disable so a later reconnect
                 // never re-activates sharing without a fresh user action, and
                 // surface the loss (never silent — §12). The persistent FGS
