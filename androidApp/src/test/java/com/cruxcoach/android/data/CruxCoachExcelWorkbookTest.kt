@@ -38,6 +38,7 @@ class CruxCoachExcelWorkbookTest {
                 "xl/workbook.xml",
                 "xl/_rels/workbook.xml.rels",
                 "xl/styles.xml",
+                "xl/sharedStrings.xml",
                 "xl/worksheets/sheet1.xml",
                 "xl/worksheets/sheet2.xml",
                 "xl/worksheets/sheet3.xml",
@@ -51,12 +52,15 @@ class CruxCoachExcelWorkbookTest {
         assertTrue(workbookXml.contains("name=\"Climb lists\""))
         assertTrue(workbookXml.contains("name=\"Own climbs\""))
 
-        val logbookSheet = files.getValue("xl/worksheets/sheet1.xml")
-        assertTrue(logbookSheet.contains("Felt &lt;easy&gt; &amp; fun"))
-        assertTrue(logbookSheet.contains("=not a formula"))
-        assertFalse(logbookSheet.contains("<f>"))
-        assertTrue(files.getValue("xl/worksheets/sheet2.xml").contains("Use heel"))
-        assertTrue(files.getValue("xl/worksheets/sheet4.xml").contains("stat_angle"))
+        val sharedStrings = files.getValue("xl/sharedStrings.xml")
+        assertTrue(sharedStrings.contains("Felt &lt;easy&gt; &amp; fun"))
+        assertTrue(sharedStrings.contains("=not a formula"))
+        assertTrue(sharedStrings.contains("Use heel"))
+        assertTrue(sharedStrings.contains("stat_angle"))
+        assertTrue(files.getValue("xl/worksheets/sheet1.xml").contains("t=\"s\""))
+        assertFalse(files.values.any { it.contains("<f>") })
+        assertFalse(files.values.any { it.contains("inlineStr") })
+        assertTrue(files.getValue("xl/styles.xml").contains("name=\"Normal\""))
 
         files.filterKeys { it.endsWith(".xml") || it.endsWith(".rels") }.values.forEach { xml ->
             DocumentBuilderFactory.newInstance().newDocumentBuilder()
