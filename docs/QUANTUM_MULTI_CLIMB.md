@@ -80,7 +80,7 @@ uncorrelatable GATT so its late callback cannot confirm a later operation.
 Projection is a conservative transaction:
 
 1. `TURN_OFF_USER(ownSlotUuid)`
-2. `ACTIVATE_WALL(route, ownSlotUuid, colour, 300 seconds, diodes)` for at most 92 diodes,
+2. `ACTIVATE_WALL(route, ownSlotUuid, colour, 65535 seconds, diodes)` for at most 92 diodes,
    sent atomically as one GATT write-with-response after MTU negotiation
 3. `REQUEST_USER_ROUTE_LIST`
 4. success only after an authoritative snapshot contains the exact
