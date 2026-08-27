@@ -8,67 +8,55 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.contentOrNull
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 
-/** A spreadsheet-friendly ZIP containing one conventional CSV per record type. */
+/** A spreadsheet-friendly ZIP containing at most one CSV per UI category. */
 object CruxCoachCsvArchive {
     const val MIME_TYPE = "application/zip"
     const val FILE_NAME = "cruxcoach_csv_export.zip"
     const val MAX_ARCHIVE_BYTES = 64 * 1024 * 1024
 
-    private const val MAX_ENTRIES = 16
+    private const val MANIFEST_FILE = "manifest.json"
+    private const val LOGBOOK_FILE = "board_logbook.csv"
+    private const val LISTS_FILE = "climb_lists.csv"
+    private const val CLIMBS_FILE = "own_climbs.csv"
+    private const val MAX_ENTRIES = 4
     private const val MAX_ROWS_PER_FILE = 250_000
     private const val NULL_CELL = "\\N"
     private const val ROW_COLUMN = "_row"
+    private const val ENTRY_TYPE = "entryType"
+    private const val ROW_TYPE = "rowType"
+    private const val LIST_ROW = "listRow"
+    private const val POSITION = "position"
+    private const val CLIMB_ROW = "climbRow"
+    private const val STAT_ROW = "statRow"
+    private const val STAT_PREFIX = "stat_"
+    private const val PERSONAL_NOTE = "personalNote"
+    private const val NOTE_UPDATED_AT = "noteUpdatedAt"
+
     private val json = Json { allowSpecialFloatingPointValues = true }
-
-    private data class CollectionFile(
-        val jsonField: String,
-        val fileName: String,
-        val category: Category,
-        val excludedFields: Set<String> = emptySet(),
-    )
-
-    private val collectionFiles = listOf(
-        CollectionFile("boardAscents", "board_sends.csv", Category.BOARD_LOGBOOK),
-        CollectionFile("boardBids", "board_attempts.csv", Category.BOARD_LOGBOOK),
-        CollectionFile("climbNotes", "climb_notes.csv", Category.BOARD_LOGBOOK),
-        CollectionFile(
-            "climbLists",
-            "climb_lists.csv",
-            Category.CLIMB_LISTS,
-            setOf("entries", "playlistEntries"),
-        ),
-        CollectionFile("boardClimbs", "own_climbs.csv", Category.OWN_CLIMBS),
-        CollectionFile("boardClimbStats", "own_climb_stats.csv", Category.OWN_CLIMBS),
-    )
-
-    private val allowedFiles = buildSet {
-        add("metadata.csv")
-        collectionFiles.forEach { add(it.fileName) }
-        add("climb_list_entries.csv")
-        add("playlist_entries.csv")
-    }
+    private val allowedFiles = setOf(MANIFEST_FILE, LOGBOOK_FILE, LISTS_FILE, CLIMBS_FILE)
 
     fun fromJson(jsonString: String, categories: Set<Category>): ByteArray {
         val root = json.parseToJsonElement(jsonString) as? JsonObject
             ?: error("CruxCoach export root must be an object")
         val output = ByteArrayOutputStream()
         ZipOutputStream(output).use { zip ->
-            writeEntry(zip, "metadata.csv", encodeMetadata(root))
-            collectionFiles.filter { it.category in categories }.forEach { spec ->
-                val array = root[spec.jsonField] as? JsonArray ?: JsonArray(emptyList())
-                writeEntry(zip, spec.fileName, encodeArray(array, spec.excludedFields))
+            val manifest = JsonObject(root.filterValues { it !is JsonArray && it !is JsonObject })
+            writeEntry(zip, MANIFEST_FILE, manifest.toString())
+            if (Category.BOARD_LOGBOOK in categories) {
+                writeEntry(zip, LOGBOOK_FILE, encodeArray(combineLogbook(root)))
             }
-
             if (Category.CLIMB_LISTS in categories) {
-                val lists = root["climbLists"] as? JsonArray ?: JsonArray(emptyList())
-                writeEntry(zip, "climb_list_entries.csv", encodeArray(flattenListEntries(lists)))
-                writeEntry(zip, "playlist_entries.csv", encodeArray(flattenPlaylistEntries(lists)))
+                writeEntry(zip, LISTS_FILE, encodeArray(combineLists(root)))
+            }
+            if (Category.OWN_CLIMBS in categories) {
+                writeEntry(zip, CLIMBS_FILE, encodeArray(combineOwnClimbs(root)))
             }
         }
         return output.toByteArray().also {
@@ -79,22 +67,19 @@ object CruxCoachCsvArchive {
     fun toJson(archive: ByteArray): String {
         require(archive.size <= MAX_ARCHIVE_BYTES) { "CruxCoach CSV archive is too large" }
         val files = unzip(archive)
-        val result = linkedMapOf<String, JsonElement>()
-        result.putAll(decodeMetadata(requireNotNull(files["metadata.csv"]) {
-            "CruxCoach CSV archive has no metadata.csv"
-        }))
-
-        collectionFiles.forEach { spec ->
-            result[spec.jsonField] = files[spec.fileName]?.let(::decodeArray)
-                ?: JsonArray(emptyList())
+        val manifest = json.parseToJsonElement(requireNotNull(files[MANIFEST_FILE]) {
+            "CruxCoach CSV archive has no manifest.json"
+        }) as? JsonObject ?: error("Invalid CruxCoach CSV manifest")
+        require(manifest.values.none { it is JsonArray || it is JsonObject }) {
+            "Invalid CruxCoach CSV manifest fields"
         }
 
-        val baseLists = result["climbLists"] as JsonArray
-        val listEntries = files["climb_list_entries.csv"]?.let(::decodeArray)
+        val result = linkedMapOf<String, JsonElement>()
+        result.putAll(manifest)
+        result.putAll(files[LOGBOOK_FILE]?.let { splitLogbook(decodeArray(it)) } ?: emptyLogbook())
+        result["climbLists"] = files[LISTS_FILE]?.let { splitLists(decodeArray(it)) }
             ?: JsonArray(emptyList())
-        val playlistEntries = files["playlist_entries.csv"]?.let(::decodeArray)
-            ?: JsonArray(emptyList())
-        result["climbLists"] = restoreNestedListRows(baseLists, listEntries, playlistEntries)
+        result.putAll(files[CLIMBS_FILE]?.let { splitOwnClimbs(decodeArray(it)) } ?: emptyOwnClimbs())
         return JsonObject(result).toString()
     }
 
@@ -102,40 +87,252 @@ object CruxCoachCsvArchive {
         bytes.size >= 4 && bytes[0] == 0x50.toByte() && bytes[1] == 0x4b.toByte() &&
             bytes[2] == 0x03.toByte() && bytes[3] == 0x04.toByte()
 
-    private fun encodeMetadata(root: JsonObject): String {
-        val rows = mutableListOf(listOf("field", "type", "value"))
-        root.forEach { (field, value) ->
-            if (value !is JsonArray && value !is JsonObject) {
-                val type = typeOf(value)
-                rows += listOf(field, type, encodeCell(value))
-            }
+    private fun combineLogbook(root: JsonObject): JsonArray {
+        val ascents = root["boardAscents"] as? JsonArray ?: JsonArray(emptyList())
+        val attempts = root["boardBids"] as? JsonArray ?: JsonArray(emptyList())
+        val notes = root["climbNotes"] as? JsonArray ?: JsonArray(emptyList())
+        val notesByClimb = notes.associate { element ->
+            val note = element as JsonObject
+            note.getValue("climbUuid").asString() to note
         }
-        return encodeCsv(rows)
+        val representedNotes = mutableSetOf<String>()
+
+        fun logRows(rows: JsonArray, type: String): List<JsonObject> = rows.map { element ->
+            val log = element as JsonObject
+            val climbUuid = log["climbUuid"]?.asString()
+            val note = climbUuid?.let(notesByClimb::get)
+            if (note != null) representedNotes += climbUuid
+            JsonObject(log + buildMap {
+                put(ENTRY_TYPE, JsonPrimitive(type))
+                note?.let {
+                    put(PERSONAL_NOTE, it.getValue("note"))
+                    put(NOTE_UPDATED_AT, it.getValue("updatedAt"))
+                }
+            })
+        }
+
+        return JsonArray(buildList {
+            addAll(logRows(ascents, "send"))
+            addAll(logRows(attempts, "attempt"))
+            notes.forEach { element ->
+                val note = element as JsonObject
+                val climbUuid = note.getValue("climbUuid").asString()
+                if (climbUuid !in representedNotes) {
+                    add(JsonObject(mapOf(
+                        ENTRY_TYPE to JsonPrimitive("note"),
+                        "climbUuid" to note.getValue("climbUuid"),
+                        PERSONAL_NOTE to note.getValue("note"),
+                        NOTE_UPDATED_AT to note.getValue("updatedAt"),
+                    )))
+                }
+            }
+        })
     }
 
-    private fun decodeMetadata(csv: String): Map<String, JsonElement> {
-        val rows = parseCsv(csv)
-        require(rows.firstOrNull() == listOf("field", "type", "value")) {
-            "Invalid CruxCoach metadata.csv"
-        }
-        val result = linkedMapOf<String, JsonElement>()
-        rows.drop(1).forEach { row ->
-            require(row.size == 3) { "Invalid CruxCoach metadata row" }
-            require(result.put(row[0], decodeCell(row[1], row[2])) == null) {
-                "Duplicate CruxCoach metadata field"
+    private fun splitLogbook(rows: JsonArray): Map<String, JsonElement> {
+        val ascents = mutableListOf<JsonElement>()
+        val attempts = mutableListOf<JsonElement>()
+        val notes = linkedMapOf<String, JsonObject>()
+        rows.forEach { element ->
+            val row = element as JsonObject
+            val type = row.getValue(ENTRY_TYPE).asString()
+            val climbUuid = row["climbUuid"]?.asString()
+            row[PERSONAL_NOTE].nonNull()?.let { note ->
+                requireNotNull(climbUuid) { "Logbook note has no climbUuid" }
+                val restored = JsonObject(mapOf(
+                    "climbUuid" to JsonPrimitive(climbUuid),
+                    "note" to note,
+                    "updatedAt" to requireNotNull(row[NOTE_UPDATED_AT].nonNull()) {
+                        "Logbook note has no updatedAt"
+                    },
+                ))
+                val previous = notes.putIfAbsent(climbUuid, restored)
+                require(previous == null || previous == restored) {
+                    "Conflicting notes for the same climb"
+                }
+            }
+            val clean = JsonObject(
+                (row - ENTRY_TYPE - PERSONAL_NOTE - NOTE_UPDATED_AT)
+                    .filterValues { it !is JsonNull },
+            )
+            when (type) {
+                "send" -> ascents += clean
+                "attempt" -> attempts += clean
+                "note" -> require(clean.keys == setOf("climbUuid")) { "Invalid note-only row" }
+                else -> error("Unknown logbook entryType $type")
             }
         }
-        return result
+        return mapOf(
+            "boardAscents" to JsonArray(ascents),
+            "boardBids" to JsonArray(attempts),
+            "climbNotes" to JsonArray(notes.values.toList()),
+        )
     }
 
-    private fun encodeArray(array: JsonArray, excluded: Set<String> = emptySet()): String {
-        val objects = array.map {
-            it as? JsonObject ?: error("CruxCoach collection row must be an object")
+    private fun combineLists(root: JsonObject): JsonArray {
+        val lists = root["climbLists"] as? JsonArray ?: JsonArray(emptyList())
+        return JsonArray(buildList {
+            lists.forEachIndexed { listIndex, element ->
+                val list = element as JsonObject
+                add(JsonObject((list - "entries" - "playlistEntries") + mapOf(
+                    ROW_TYPE to JsonPrimitive("list"),
+                    LIST_ROW to JsonPrimitive(listIndex),
+                )))
+                (list["entries"] as? JsonArray).orEmpty().forEachIndexed { position, climbUuid ->
+                    add(JsonObject(mapOf(
+                        ROW_TYPE to JsonPrimitive("member"),
+                        LIST_ROW to JsonPrimitive(listIndex),
+                        POSITION to JsonPrimitive(position),
+                        "climbUuid" to climbUuid,
+                    )))
+                }
+                (list["playlistEntries"] as? JsonArray).orEmpty().forEachIndexed { position, entry ->
+                    add(JsonObject((entry as JsonObject) + mapOf(
+                        ROW_TYPE to JsonPrimitive("playlist"),
+                        LIST_ROW to JsonPrimitive(listIndex),
+                        POSITION to JsonPrimitive(position),
+                    )))
+                }
+            }
+        })
+    }
+
+    private fun splitLists(rows: JsonArray): JsonArray {
+        val listHeads = linkedMapOf<Int, JsonObject>()
+        val members = mutableListOf<JsonObject>()
+        val playlist = mutableListOf<JsonObject>()
+        rows.forEach { element ->
+            val row = element as JsonObject
+            val type = row.getValue(ROW_TYPE).asString()
+            val listRow = row.getValue(LIST_ROW).asInt()
+            when (type) {
+                "list" -> {
+                    val clean = JsonObject(
+                        (row - ROW_TYPE - LIST_ROW - POSITION).filterValues { it !is JsonNull },
+                    )
+                    require(listHeads.put(listRow, clean) == null) { "Duplicate climb-list row" }
+                }
+                "member" -> members += row
+                "playlist" -> playlist += row
+                else -> error("Unknown climb-list rowType $type")
+            }
         }
-        val fields = objects.flatMap { it.keys }
-            .filterNot { it in excluded }
-            .distinct()
-            .sorted()
+        require(listHeads.keys == (0 until listHeads.size).toSet()) { "Invalid climb-list order" }
+
+        fun grouped(source: List<JsonObject>, type: String): Map<Int, List<JsonObject>> {
+            val grouped = source.groupBy { row ->
+                row.getValue(LIST_ROW).asInt().also { require(it in listHeads) {
+                    "$type row refers to an unknown climb list"
+                } }
+            }
+            grouped.values.forEach { orderedRows(it, type) }
+            return grouped
+        }
+
+        val membersByList = grouped(members, "member")
+        val playlistByList = grouped(playlist, "playlist")
+        return JsonArray(listHeads.toSortedMap().map { (listRow, head) ->
+            val entries = membersByList[listRow].orEmpty().sortedBy { it.getValue(POSITION).asInt() }
+                .map { it.getValue("climbUuid") }
+            val steps = playlistByList[listRow].orEmpty().sortedBy { it.getValue(POSITION).asInt() }
+                .map {
+                    JsonObject(
+                        (it - ROW_TYPE - LIST_ROW - POSITION).filterValues { value ->
+                            value !is JsonNull
+                        },
+                    )
+                }
+            JsonObject(head + mapOf(
+                "entries" to JsonArray(entries),
+                "playlistEntries" to JsonArray(steps),
+            ))
+        })
+    }
+
+    private fun combineOwnClimbs(root: JsonObject): JsonArray {
+        val climbs = root["boardClimbs"] as? JsonArray ?: JsonArray(emptyList())
+        val stats = root["boardClimbStats"] as? JsonArray ?: JsonArray(emptyList())
+        val indexedStats = stats.mapIndexed { index, element -> index to (element as JsonObject) }
+        val statsByClimb = indexedStats.groupBy { it.second.getValue("climbUuid").asString() }
+        var matchedStats = 0
+        val rows = buildList {
+            climbs.forEachIndexed { climbIndex, element ->
+                val climb = element as JsonObject
+                val climbStats = statsByClimb[climb.getValue("uuid").asString()].orEmpty()
+                if (climbStats.isEmpty()) {
+                    add(JsonObject(climb + (CLIMB_ROW to JsonPrimitive(climbIndex))))
+                } else {
+                    climbStats.forEach { (statIndex, stat) ->
+                        matchedStats++
+                        val statFields = stat.filterKeys { it != "climbUuid" }
+                            .mapKeys { (key, _) -> "$STAT_PREFIX$key" }
+                        add(JsonObject(climb + statFields + mapOf(
+                            CLIMB_ROW to JsonPrimitive(climbIndex),
+                            STAT_ROW to JsonPrimitive(statIndex),
+                        )))
+                    }
+                }
+            }
+        }
+        require(matchedStats == stats.size) { "Own-climb stats refer to a missing climb" }
+        return JsonArray(rows)
+    }
+
+    private fun splitOwnClimbs(rows: JsonArray): Map<String, JsonElement> {
+        val grouped = rows.map { it as JsonObject }.groupBy { it.getValue(CLIMB_ROW).asInt() }
+        require(grouped.keys == (0 until grouped.size).toSet()) { "Invalid own-climb order" }
+        val climbs = mutableListOf<JsonElement>()
+        val stats = mutableListOf<Pair<Int, JsonElement>>()
+        grouped.toSortedMap().forEach { (_, group) ->
+            val bases = group.map { row ->
+                JsonObject(row.filterKeys {
+                    it != CLIMB_ROW && it != STAT_ROW && !it.startsWith(STAT_PREFIX)
+                })
+            }
+            require(bases.distinct().size == 1) { "Conflicting repeated own-climb data" }
+            val climb = bases.first()
+            climbs += climb
+            group.forEach { row ->
+                row[STAT_ROW].nonNull()?.let { statRow ->
+                    val statFields = row.filterKeys { it.startsWith(STAT_PREFIX) }
+                        .filterValues { it !is JsonNull }
+                        .mapKeys { (key, _) -> key.removePrefix(STAT_PREFIX) }
+                    require("angle" in statFields) { "Own-climb stat has no angle" }
+                    stats += statRow.asInt() to JsonObject(
+                        mapOf("climbUuid" to climb.getValue("uuid")) + statFields,
+                    )
+                }
+            }
+        }
+        require(stats.map { it.first }.sorted() == (0 until stats.size).toList()) {
+            "Invalid own-climb stat order"
+        }
+        return mapOf(
+            "boardClimbs" to JsonArray(climbs),
+            "boardClimbStats" to JsonArray(stats.sortedBy { it.first }.map { it.second }),
+        )
+    }
+
+    private fun orderedRows(rows: List<JsonObject>, label: String) {
+        rows.sortedBy { it.getValue(POSITION).asInt() }.forEachIndexed { expected, row ->
+            require(row.getValue(POSITION).asInt() == expected) { "Invalid $label row order" }
+        }
+    }
+
+    private fun emptyLogbook(): Map<String, JsonElement> = mapOf(
+        "boardAscents" to JsonArray(emptyList()),
+        "boardBids" to JsonArray(emptyList()),
+        "climbNotes" to JsonArray(emptyList()),
+    )
+
+    private fun emptyOwnClimbs(): Map<String, JsonElement> = mapOf(
+        "boardClimbs" to JsonArray(emptyList()),
+        "boardClimbStats" to JsonArray(emptyList()),
+    )
+
+    private fun encodeArray(array: JsonArray): String {
+        val objects = array.map { it as? JsonObject ?: error("CSV row must be an object") }
+        val fields = objects.flatMap { it.keys }.distinct().sorted()
         val headers = listOf(ROW_COLUMN) + fields
         val types = listOf("number") + fields.map { field ->
             objects.asSequence().mapNotNull { it[field] }.firstOrNull { it !is JsonNull }
@@ -143,94 +340,27 @@ object CruxCoachCsvArchive {
         }
         val rows = mutableListOf(headers, types)
         objects.forEachIndexed { index, obj ->
-            rows += listOf(index.toString()) + fields.map { field ->
-                encodeCell(obj[field] ?: JsonNull)
-            }
+            rows += listOf(index.toString()) + fields.map { encodeCell(obj[it] ?: JsonNull) }
         }
         return encodeCsv(rows)
     }
 
     private fun decodeArray(csv: String): JsonArray {
         val rows = parseCsv(csv)
-        require(rows.size in 2..MAX_ROWS_PER_FILE + 2) { "Invalid CruxCoach collection CSV" }
+        require(rows.size in 2..MAX_ROWS_PER_FILE + 2) { "Invalid CruxCoach CSV" }
         val headers = rows[0]
         val types = rows[1]
         require(headers.firstOrNull() == ROW_COLUMN && headers.size == types.size) {
-            "Invalid CruxCoach collection header"
+            "Invalid CruxCoach CSV header"
         }
         require(headers.distinct().size == headers.size) { "Duplicate CruxCoach CSV column" }
-        val objects = rows.drop(2).mapIndexed { expectedIndex, row ->
-            require(row.size == headers.size) { "Invalid CruxCoach collection row" }
-            require(row[0].toIntOrNull() == expectedIndex) { "Invalid CruxCoach row order" }
+        return JsonArray(rows.drop(2).mapIndexed { expectedIndex, row ->
+            require(row.size == headers.size && row[0].toIntOrNull() == expectedIndex) {
+                "Invalid CruxCoach CSV row"
+            }
             JsonObject(headers.drop(1).indices.associate { offset ->
                 headers[offset + 1] to decodeCell(types[offset + 1], row[offset + 1])
             })
-        }
-        return JsonArray(objects)
-    }
-
-    private fun flattenListEntries(lists: JsonArray): JsonArray = JsonArray(buildList {
-        lists.forEachIndexed { listRow, element ->
-            val list = element as? JsonObject ?: return@forEachIndexed
-            (list["entries"] as? JsonArray).orEmpty().forEachIndexed { position, climbUuid ->
-                add(JsonObject(mapOf(
-                    "listRow" to JsonPrimitive(listRow),
-                    "position" to JsonPrimitive(position),
-                    "climbUuid" to climbUuid,
-                )))
-            }
-        }
-    })
-
-    private fun flattenPlaylistEntries(lists: JsonArray): JsonArray = JsonArray(buildList {
-        lists.forEachIndexed { listRow, element ->
-            val list = element as? JsonObject ?: return@forEachIndexed
-            (list["playlistEntries"] as? JsonArray).orEmpty().forEachIndexed { position, entry ->
-                val obj = entry as? JsonObject ?: return@forEachIndexed
-                add(JsonObject(obj + mapOf(
-                    "listRow" to JsonPrimitive(listRow),
-                    "position" to JsonPrimitive(position),
-                )))
-            }
-        }
-    })
-
-    private fun restoreNestedListRows(
-        lists: JsonArray,
-        entries: JsonArray,
-        playlistEntries: JsonArray,
-    ): JsonArray {
-        fun grouped(rows: JsonArray): Map<Int, List<JsonObject>> {
-            val grouped = rows.map { it as JsonObject }.groupBy {
-                val listRow = it.getValue("listRow").toString().toInt()
-                require(listRow in lists.indices) { "CSV row refers to an unknown climb list" }
-                listRow
-            }
-            grouped.values.forEach { group ->
-                group.sortedBy { it.getValue("position").toString().toInt() }
-                    .forEachIndexed { expected, row ->
-                        require(row.getValue("position").toString().toInt() == expected) {
-                            "Invalid nested climb-list row order"
-                        }
-                    }
-            }
-            return grouped
-        }
-
-        val entriesByList = grouped(entries)
-        val playlistByList = grouped(playlistEntries)
-        return JsonArray(lists.mapIndexed { listRow, element ->
-            val list = element as JsonObject
-            val climbUuids = entriesByList[listRow].orEmpty()
-                .sortedBy { it.getValue("position").toString().toInt() }
-                .map { it.getValue("climbUuid") }
-            val playlist = playlistByList[listRow].orEmpty()
-                .sortedBy { it.getValue("position").toString().toInt() }
-                .map { JsonObject(it - "listRow" - "position") }
-            JsonObject(list + mapOf(
-                "entries" to JsonArray(climbUuids),
-                "playlistEntries" to JsonArray(playlist),
-            ))
         })
     }
 
@@ -324,7 +454,7 @@ object CruxCoachCsvArchive {
         while (index < value.length) {
             val char = value[index]
             when {
-                quoted && char == '"' && index + 1 < value.length && value[index + 1] == '"' -> {
+                quoted && char == '"' && value.getOrNull(index + 1) == '"' -> {
                     field.append('"'); index++
                 }
                 char == '"' -> quoted = !quoted
@@ -342,19 +472,23 @@ object CruxCoachCsvArchive {
         return rows
     }
 
-    private fun spreadsheetSafe(value: String): String =
-        when {
-            value == NULL_CELL -> "\\$value"
-            value.firstOrNull() in formulaPrefixes -> "'$value"
-            value.startsWith("\\") -> "\\$value"
-            else -> value
-        }
+    private fun spreadsheetSafe(value: String): String = when {
+        value == NULL_CELL -> "\\$value"
+        value.firstOrNull() in formulaPrefixes -> "'$value"
+        value.startsWith("\\") -> "\\$value"
+        else -> value
+    }
 
     private fun fromSpreadsheetSafe(value: String): String = when {
         value.startsWith("'") && value.getOrNull(1) in formulaPrefixes -> value.drop(1)
         value.startsWith("\\\\") -> value.drop(1)
         else -> value
     }
+
+    private fun JsonElement?.nonNull(): JsonElement? = this?.takeUnless { it is JsonNull }
+    private fun JsonElement.asString(): String = (this as JsonPrimitive).contentOrNull
+        ?: error("Expected CSV string")
+    private fun JsonElement.asInt(): Int = (this as JsonPrimitive).content.toInt()
 
     private val formulaPrefixes = setOf('=', '+', '-', '@', '\t', '\r')
 }
