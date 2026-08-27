@@ -775,7 +775,7 @@ class BoardDatabaseImporter(
                                  JOIN qb.quantum_diodes d ON d.model=l.model AND d.diode_uuid=l.diode_uuid
                                  WHERE l.route_uuid=r.uuid AND l.model=rm.model)*1000 AS INTEGER),
                            CAST(r.created_at AS TEXT), COALESCE(r.tips,''),
-                           COALESCE((
+                           CAST(COALESCE((
                              SELECT group_concat('p'||q.placement||'r'||q.role,'') FROM (
                                SELECT (m2.layout_id-9100)*1000000+d.placement_id AS placement,
                                       CASE l.step WHEN 1 THEN 12 WHEN 3 THEN 14 ELSE 13 END AS role
@@ -785,7 +785,7 @@ class BoardDatabaseImporter(
                                WHERE l.route_uuid=r.uuid AND l.model=rm.model
                                ORDER BY l.step,d.placement_id
                              ) q
-                           ),''), 0,
+                           ),'') AS BLOB), 0,
                            (CASE WHEN COALESCE(r.campusing,0)=0 THEN 1 ELSE 0 END) +
                            (CASE WHEN COALESCE(r.edge,0)=0 THEN 2 ELSE 0 END) +
                            (CASE WHEN COALESCE(r.kickplate,0)=0 THEN 4 ELSE 0 END) +
