@@ -25,6 +25,28 @@ class ReleaseWorkflowPolicyTest(unittest.TestCase):
     def test_unprotected_forgejo_release_fallback_is_retired(self):
         self.assertFalse((ROOT / ".forgejo/workflows/release.yml").exists())
 
+    def test_codeberg_mirror_reuses_new_or_recovered_github_bytes(self):
+        workflow = (ROOT / ".github/workflows/release.yml").read_text()
+        create = workflow.index("- name: Create GitHub release")
+        recover = workflow.index("- name: Prepare existing release for Zapstore repair")
+        mirror = workflow.index("- name: Mirror release to Codeberg")
+        zapstore = workflow.index("- name: Ensure verified Zapstore APK fallback")
+
+        self.assertLess(create, mirror)
+        self.assertLess(recover, mirror)
+        self.assertLess(mirror, zapstore)
+        self.assertIn('scripts/mirror-codeberg-release.sh "$TAG"', workflow)
+
+    def test_codeberg_mirror_preserves_release_integrity_contract(self):
+        script = (ROOT / "scripts/mirror-codeberg-release.sh").read_text()
+        sidecar = script.index('replace_asset "$WORK/$SHA_NAME"')
+        apk = script.index('replace_asset "$WORK/$APK_NAME"')
+
+        self.assertLess(sidecar, apk)
+        self.assertIn('cmp -s "$WORK/$SHA_NAME" "$WORK/stored.sha256"', script)
+        self.assertIn('cmp -s "$WORK/$APK_NAME" "$WORK/stored.apk"', script)
+        self.assertNotIn("x-access-token:${", script)
+
 
 if __name__ == "__main__":
     unittest.main()

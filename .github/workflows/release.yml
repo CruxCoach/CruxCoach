@@ -1,7 +1,8 @@
 name: Release
 
-# The primary release pipeline. Ported from .forgejo/workflows/release.yml,
-# which is kept as a fallback until the Codeberg mirror is switched off.
+# The primary release pipeline. The unprotected Forgejo workflow is retired;
+# this protected self-hosted job publishes once and mirrors the exact signed
+# APK bytes to both GitHub and Codeberg.
 #
 # WHY ACTIONS IS ACCEPTABLE NOW
 # The standing objection to GitHub Actions was the release signing key: a
@@ -34,9 +35,9 @@ name: Release
 on:
   workflow_dispatch:
 
-# Nothing here writes through the automatic GITHUB_TOKEN. Releases, assets and
-# the tag push all authenticate with the maintainer token that the runner reads
-# off its own filesystem, so the job token only needs to clone.
+# Nothing here writes through the automatic GITHUB_TOKEN. GitHub and Codeberg
+# releases, assets and tag pushes authenticate with separate maintainer tokens
+# that the runner reads off its own filesystem, so the job token only clones.
 permissions:
   contents: read
 
@@ -386,6 +387,24 @@ jobs:
           # not potentially newer unreleased text from the current main commit.
           git show "${TAG}:zapstore.yaml" > zapstore.yaml
           git show "${TAG}:RELEASE_NOTES.md" > RELEASE_NOTES.md
+
+      # Publish the exact same signed APK on the secondary forge. This runs for
+      # both a new release and the repair path above: if GitHub succeeded but
+      # Codeberg failed, the retry downloads the existing verified GitHub bytes
+      # instead of rebuilding a different APK under the same version number.
+      # The script stores no credentials and verifies both mirrored downloads
+      # byte-for-byte before returning success.
+      - name: Mirror release to Codeberg
+        if: steps.version.outputs.branch == 'main'
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          ARGS=(--apk androidApp/build/outputs/apk/release/androidApp-release.apk)
+          if [ -f RELEASE_NOTES.md ]; then
+            ARGS+=(--notes-file RELEASE_NOTES.md)
+          fi
+          scripts/mirror-codeberg-release.sh "$TAG" "${ARGS[@]}"
 
       - name: Ensure verified Zapstore APK fallback
         if: steps.version.outputs.branch == 'main'

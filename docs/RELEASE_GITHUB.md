@@ -1,9 +1,9 @@
 # Releasing on GitHub
 
 GitHub is the primary forge. Dispatching `.github/workflows/release.yml` from
-`main` runs it on a **self-hosted** runner: unit tests, a signed APK, the tag,
-the GitHub release with its SHA-256 sidecar, the Zapstore publish, and the
-website and download-server update.
+`main` runs it on a **self-hosted** runner: unit tests, one signed APK, the tag,
+the GitHub release, a byte-identical Codeberg release, both SHA-256 sidecars,
+the Zapstore publish, and the website and download-server update.
 
 It is a manual trigger, and it refuses to run off `main`. The Zapstore signer
 prompts a phone twice per release (see below), so an unattended run would stall
@@ -11,11 +11,12 @@ waiting for a human — and the second prompt falls after the GitHub release is
 already public. There are no dev prereleases: the pipeline builds full releases
 only.
 
-The old Codeberg/Forgejo fallback has been retired. Forgejo cannot enforce the
+The old Codeberg/Forgejo workflow has been retired. Forgejo cannot enforce the
 same server-side protected-environment policy as GitHub here, so a workflow
 dispatched from an attacker-controlled ref could rewrite its own in-file
 guards before reaching the signing runner. The manual script remains the
-forge-independent break-glass path.
+forge-independent break-glass path. Codeberg is now a publication target of
+the protected GitHub workflow, not a second place that builds or signs.
 
 ## Why GitHub Actions is acceptable, given the signing key
 
@@ -53,12 +54,12 @@ enforce an equivalent server-side protected-runner or deployment policy.
 
 ## One implementation for CI and break-glass use
 
-`scripts/publish-github-release.sh` is the only place the release logic lives.
-The workflow **calls** it; it does not reimplement it. That matters because the
-subtle part is an ordering constraint, not a step list — see below — and an
-ordering constraint kept in two files is an ordering constraint that will
-eventually differ in one of them. The retired Forgejo workflow was the former
-duplicate; deleting it leaves the shared script as the sole implementation.
+`scripts/publish-github-release.sh` owns primary publication and
+`scripts/mirror-codeberg-release.sh` owns secondary-forge mirroring. The
+workflow calls both; it does not duplicate either API implementation. Both
+scripts enforce sidecar-before-APK ordering and post-verify what the forge
+stored. The Codeberg script additionally downloads both assets and compares
+them byte-for-byte with the already published GitHub build.
 
 The script is also the **break-glass path**. Run by hand it takes an APK that
 is already built and signed on a machine we control and needs nothing but a
@@ -69,6 +70,8 @@ pipeline for us:
 ./gradlew :androidApp:assembleRelease
 scripts/publish-github-release.sh v0.2.2 --dry-run     # refuses loudly, changes nothing
 scripts/publish-github-release.sh v0.2.2
+scripts/mirror-codeberg-release.sh v0.2.2 --dry-run
+scripts/mirror-codeberg-release.sh v0.2.2
 ```
 
 ## What the script refuses to do
@@ -99,10 +102,16 @@ replaced.
 
 ## Authentication: one token, no SSH
 
-`~/.config/cruxcoach/github-release-token`, mode 600, with
+GitHub uses `~/.config/cruxcoach/github-release-token`, mode 600, with
 `Contents: Read and write` on `CruxCoach/CruxCoach`. Override with
 `GITHUB_TOKEN` or `GITHUB_TOKEN_FILE`. The runner runs as the same user, so it
 finds the file itself and nothing has to be handed to it.
+
+Codeberg independently uses
+`~/.config/cruxcoach/codeberg-release-token`, mode 600, with repository write
+access on `CruxCoach/CruxCoach`. Override with `CODEBERG_TOKEN` or
+`CODEBERG_TOKEN_FILE`. Neither forge credential is stored in GitHub, embedded
+in a remote URL, printed, or persisted by either publisher.
 
 The same token authenticates the API calls **and** the tag push. The push
 therefore goes over HTTPS, not SSH, and that is deliberate: `~/.ssh/config`
@@ -214,8 +223,10 @@ The steps below are ordered, and the order is the load-bearing part.
    about, and the next mirror run removes it — together with the release that
    hangs off it. The mirror must be off *before* anything is pushed straight
    to GitHub, not merely before the switch is announced.
-3. **Publish one release to GitHub** and confirm it has both assets.
-4. **Only then**, flip the updater source list — next section.
+3. **Provision both runner-local forge token files**, mode 600.
+4. **Publish one release** and confirm GitHub and Codeberg each have the same
+   APK and sidecar.
+5. **Only then**, flip the updater source list — next section.
 
 ## Then, and only then: enable the source
 
@@ -243,34 +254,22 @@ condition for a different reason: it reads `releases/latest`, which answers
 quiet one — the script exits non-zero and the previous links stay — but it will
 run red every night until the first GitHub release exists.
 
-## The mirror, afterwards: GitHub → Codeberg
+## The release mirror: GitHub → Codeberg
 
-Reversing the mirror keeps Codeberg as a readable second home for the code, but
-it does **not** give Codeberg the releases. Forgejo mirrors git refs —
-branches, tags, commits — and not releases or their assets. Forgejo's own
-feature request for continuous release mirroring was closed as out of scope,
-with third-party tooling named as the answer.
+A forge repository mirror copies Git refs, not release records or assets. The
+protected release runner therefore mirrors the release explicitly after the
+GitHub publication. It does not rebuild: the same signed APK in the workspace
+is uploaded to Codeberg, with the same coreutils-format sidecar. A retry after
+GitHub succeeded downloads that existing GitHub APK and verifies its sidecar,
+then repairs Codeberg with those exact bytes. This preserves one hash per
+version across both forges.
 
-This repository already demonstrates it: GitHub carries **9 tags** mirrored
-from Codeberg and **0 releases**, while Codeberg has five releases with their
-APK and `.sha256` assets. Tags crossed; releases never did.
-
-So a pull mirror on Codeberg would leave `codeberg.org/CruxCoach/CruxCoach`
-showing current code under a releases tab that stops at v0.2.1. Two ways to
-avoid advertising a dead download path:
-
-1. Let the tags mirror and point Codeberg's release story at GitHub — a line in
-   the README, and nothing in `update-sources.json` claiming Codeberg serves
-   0.2.2+. The in-app updater asks every configured source and takes the
-   highest version, so a Codeberg entry that has no new release is merely a
-   wasted request, not a failure.
-2. Publish to both from the runner. That means the Forgejo pipeline's
-   Codeberg-release step, driven by hand after a GitHub release — the
-   `workflow_dispatch` fallback already does exactly this, including the
-   sidecar-before-APK ordering. Cost: a second build of the same version,
-   which is **not** byte-identical, so the two forges would serve APKs with
-   different hashes under one version number. Only do this if a second
-   download path matters more than one hash per version.
+The mirror is idempotent. It reuses an existing release, replaces only the two
+expected assets, uploads the sidecar before the APK, verifies names and sizes
+through the API, then downloads both and requires byte-for-byte equality. A
+missing Codeberg credential or transient Codeberg failure turns the release
+run red after GitHub is public; dispatching the same main version repairs the
+mirror without producing a second build.
 
 Keeping the old direction (Codeberg → GitHub) running is not an option once
 GitHub is primary: a Forgejo push mirror pushes with `--mirror` semantics, so
@@ -308,21 +307,9 @@ checking every two hours is far below that; a large gym behind one carrier NAT
 could in principle approach it, at which point the sweep simply falls through to
 the other sources — it is a degradation, not an outage.
 
-## While both pipelines exist
+## One pipeline, two release endpoints
 
-Only one of them may publish a given version. They would each build the tag,
-and the second to finish would publish different bytes under a version number
-that is already in the field — the builds are not reproducible byte-for-byte.
-
-This used to be an instruction rather than a guarantee: both workflows
-triggered on a push to `main`, and while the mirror is running a single merge
-reaches both forges. **Both are now `workflow_dispatch` only** — the race is
-gone because nothing starts either pipeline by itself, and starting the wrong
-one is now a deliberate act. Arm the fallback by hand when you need it:
-
-Codeberg → the repository → **Actions** → **Release** → **Run workflow**,
-with `main` selected.
-
-That is a property of the file, so it holds even if someone re-enables the
-mirror or forgets step 2 below. Switching the mirror off is still required, for
-the separate reason in step 2 (it would delete tags pushed straight to GitHub).
+There is no second Forgejo release workflow. The only production build is the
+manual, protected GitHub workflow on `main`; Codeberg receives its output as a
+mirror target in that same run. This structurally prevents two non-reproducible
+builds from being published under one version number.
