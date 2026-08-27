@@ -1343,6 +1343,7 @@ private fun BoardLayerRack(
                 for (slot in 0 until maxLayers) {
                             val layer = ownBySlot[slot]
                             val slotUi = requireNotNull(uiBySlot[slot])
+                            val external = slotUi.externalLayer
                             val selected = slot == selectedSlot
                             val statusLabel = stringResource(
                                 quantumLayerStatusResource(slotUi.visualState),
@@ -1351,6 +1352,9 @@ private fun BoardLayerRack(
                                 stringResource(boardLayerColorName(it))
                             }
                             val liveColorName = layer?.confirmedColor?.let {
+                                stringResource(boardLayerColorName(it))
+                            }
+                            val externalColorName = external?.color?.let {
                                 stringResource(boardLayerColorName(it))
                             }
                             val slotDescription = buildString {
@@ -1372,7 +1376,9 @@ private fun BoardLayerRack(
                                         append(it)
                                     }
                                 }
-                                layer?.climbName?.let { append(", "); append(it) }
+                                (layer?.climbName ?: external?.climbName ?: external?.routeUuid?.take(8))
+                                    ?.let { append(", "); append(it) }
+                                externalColorName?.let { append(", "); append(it) }
                                 if (layer?.confirmedRouteUuid != null &&
                                     slotUi.visualState in setOf(
                                         QuantumLayerVisualState.REPLACING,
@@ -1400,7 +1406,7 @@ private fun BoardLayerRack(
                             }
                             Surface(
                                 onClick = { onSelectSlot(slot) },
-                                enabled = controlsAllowed,
+                                enabled = controlsAllowed && external == null,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .testTag("board_layer_slot_${slot + 1}")
@@ -1433,7 +1439,7 @@ private fun BoardLayerRack(
                                                 .size(if (showLiveColor) 13.dp else 16.dp)
                                                 .align(if (showLiveColor) Alignment.TopStart else Alignment.Center)
                                                 .background(
-                                                    color = layer?.color?.let(::Color)
+                                                    color = (layer?.color ?: external?.color)?.let(::Color)
                                                         ?: MaterialTheme.colorScheme.outlineVariant,
                                                     shape = CircleShape,
                                                 ),
@@ -1458,11 +1464,13 @@ private fun BoardLayerRack(
                                             fontWeight = FontWeight.Bold,
                                         )
                                         Text(
-                                            layer?.climbName ?: stringResource(R.string.board_layer_empty),
+                                            layer?.climbName ?: external?.climbName
+                                                ?: external?.routeUuid?.take(8)
+                                                ?: stringResource(R.string.board_layer_empty),
                                             style = MaterialTheme.typography.labelSmall,
                                             maxLines = 1,
                                         )
-                                        if (layer != null) {
+                                        if (layer != null || external != null) {
                                             Text(
                                                 statusLabel,
                                                 style = MaterialTheme.typography.labelSmall,
@@ -1473,7 +1481,7 @@ private fun BoardLayerRack(
                                                     else -> OrangeAccent
                                                 },
                                             )
-                                            if (layer.confirmedRouteUuid != null &&
+                                            if (layer != null && layer.confirmedRouteUuid != null &&
                                                 slotUi.visualState in setOf(
                                                     QuantumLayerVisualState.REPLACING,
                                                     QuantumLayerVisualState.FAILED,

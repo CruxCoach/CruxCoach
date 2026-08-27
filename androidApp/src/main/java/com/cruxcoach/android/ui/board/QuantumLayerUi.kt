@@ -52,6 +52,7 @@ internal enum class QuantumLayerVisualState {
     REPLACING,
     FAILED,
     UNKNOWN,
+    FOREIGN,
 }
 
 internal data class QuantumLayerSlotUi(
@@ -65,6 +66,7 @@ internal data class QuantumLayerSlotUi(
     val confirmedClimbName: String?,
     val currentClimb: Boolean,
     val layer: BoardClimbLayer?,
+    val externalLayer: ExternalBoardLayer? = null,
 )
 
 internal enum class QuantumLayerSuggestionBlock {
@@ -88,6 +90,8 @@ internal data class QuantumLayerUiSummary(
     val suggestionBlock: QuantumLayerSuggestionBlock?,
     /** Conservative preflight for every currently staged local layer. */
     val sendAllBlock: QuantumLayerSuggestionBlock?,
+    /** Only needed for non-palette colours or a legacy local colour/slot collision. */
+    val unplacedExternalLayers: List<ExternalBoardLayer>,
 )
 
 /**
@@ -96,8 +100,9 @@ internal data class QuantumLayerUiSummary(
  * It keeps controller truth separate from a local plan and derives a stable,
  * non-destructive suggestion: an existing slot for this climb first, otherwise
  * the first genuinely free local identity when capacity, colour and known local
- * hold overlap permit it. Foreign users consume capacity and colour but are
- * never turned into selectable slots.
+ * hold overlap permit it. Foreign users consume capacity and colour and occupy
+ * the matching visual palette slot, but remain read-only because only their
+ * originating app owns the controller user UUID.
  */
 internal object QuantumLayerUiPolicy {
     fun summarize(
@@ -107,21 +112,38 @@ internal object QuantumLayerUiPolicy {
         maxLayers: Int = BoardLayerManager.MAX_LAYER_IDENTITIES,
     ): QuantumLayerUiSummary {
         val bySlot = state.layers.associateBy { it.slot }
+        val externalBySlot = mutableMapOf<Int, ExternalBoardLayer>()
+        val unplacedExternal = mutableListOf<ExternalBoardLayer>()
+        state.externalLayers.forEach { external ->
+            val colorSlot = BoardLayerManager.LAYER_COLORS.indexOf(external.color)
+                .takeIf { it >= 0 && it !in bySlot && it !in externalBySlot }
+            val displaySlot = colorSlot ?: (0 until maxLayers).firstOrNull {
+                it !in bySlot && it !in externalBySlot
+            }
+            if (displaySlot == null) unplacedExternal += external
+            else externalBySlot[displaySlot] = external
+        }
         val slots = (0 until maxLayers).map { slot ->
             val layer = bySlot[slot]
+            val external = externalBySlot[slot]
             QuantumLayerSlotUi(
                 slot = slot,
-                visualState = visualState(layer),
-                plannedColor = layer?.color,
-                confirmedColor = layer?.confirmedColor,
-                climbName = layer?.climbName,
+                visualState = if (layer == null && external != null) {
+                    QuantumLayerVisualState.FOREIGN
+                } else {
+                    visualState(layer)
+                },
+                plannedColor = layer?.color ?: external?.color,
+                confirmedColor = layer?.confirmedColor ?: external?.color,
+                climbName = layer?.climbName ?: external?.climbName ?: external?.routeUuid?.take(8),
                 confirmedClimbName = layer?.confirmedClimbName,
                 currentClimb = currentClimbUuid != null && layer?.climbUuid == currentClimbUuid,
                 layer = layer,
+                externalLayer = external,
             )
         }
         val existing = slots.firstOrNull { it.currentClimb }?.slot
-        val freeSlot = slots.firstOrNull { it.layer == null }?.slot
+        val freeSlot = slots.firstOrNull { it.layer == null && it.externalLayer == null }?.slot
         val candidateSlot = existing ?: freeSlot
         val hasCapacity = candidateSlot != null &&
             (bySlot[candidateSlot]?.confirmedRouteUuid != null || state.occupiedCount < maxLayers)
@@ -151,6 +173,8 @@ internal object QuantumLayerUiPolicy {
             currentPlacements.isEmpty() -> QuantumLayerSuggestionBlock.NO_HOLDS
             currentPlacements.size > com.cruxcoach.domain.board.QuantumBoardPacketEncoder.ACTIVATE_CHUNK_LIMIT ->
                 QuantumLayerSuggestionBlock.MULTI_FRAME_UNVERIFIED
+            candidateSlot == null && state.occupiedCount >= maxLayers ->
+                QuantumLayerSuggestionBlock.BOARD_FULL
             candidateSlot == null -> QuantumLayerSuggestionBlock.NO_SLOT
             !hasCapacity -> QuantumLayerSuggestionBlock.BOARD_FULL
             assessment?.unknownLayerCount != 0 -> QuantumLayerSuggestionBlock.UNKNOWN_LAYER
@@ -171,6 +195,7 @@ internal object QuantumLayerUiPolicy {
             sendAllBlock = state.layers.takeIf { it.isNotEmpty() }?.let { layers ->
                 planBlock(state, layers.map(BoardClimbLayer::slot), maxLayers)
             },
+            unplacedExternalLayers = unplacedExternal,
         )
     }
 
@@ -287,6 +312,7 @@ internal fun quantumLayerStatusResource(state: QuantumLayerVisualState): Int = w
     QuantumLayerVisualState.REPLACING -> R.string.quantum_layer_status_replacing
     QuantumLayerVisualState.FAILED -> R.string.quantum_layer_status_failed
     QuantumLayerVisualState.UNKNOWN -> R.string.quantum_layer_status_unknown
+    QuantumLayerVisualState.FOREIGN -> R.string.quantum_layer_status_foreign
 }
 
 @StringRes
@@ -298,6 +324,7 @@ internal fun quantumLayerShortStatusResource(state: QuantumLayerVisualState): In
     QuantumLayerVisualState.REPLACING -> R.string.quantum_layer_status_short_replacing
     QuantumLayerVisualState.FAILED -> R.string.quantum_layer_status_short_failed
     QuantumLayerVisualState.UNKNOWN -> R.string.quantum_layer_status_short_unknown
+    QuantumLayerVisualState.FOREIGN -> R.string.quantum_layer_status_short_foreign
 }
 
 /** Compact rack used above the wall, in the playlist player and in its banner. */
@@ -328,12 +355,11 @@ internal fun QuantumLayerStatusStrip(
         QuantumControllerSyncStatus.SYNCING -> stringResource(R.string.quantum_wall_syncing)
     }
     val slotDescriptions = summary.slots.map { quantumLayerSlotDescription(it) }
-    val foreignDescriptions = state.externalLayers.map { quantumForeignLayerDescription(it) }
     val rackDescription = buildList {
         add(openLabel)
         add(wallStatus)
         addAll(slotDescriptions)
-        addAll(foreignDescriptions)
+        addAll(summary.unplacedExternalLayers.map { quantumForeignLayerDescription(it) })
     }.joinToString(". ")
     val content: @Composable () -> Unit = {
         Column(
@@ -389,8 +415,8 @@ internal fun QuantumLayerStatusStrip(
                     QuantumLayerSlotChip(slot, Modifier.weight(1f))
                 }
             }
-            if (state.externalLayers.isNotEmpty()) {
-                QuantumForeignStatusRow(state.externalLayers)
+            if (summary.unplacedExternalLayers.isNotEmpty()) {
+                QuantumForeignStatusRow(summary.unplacedExternalLayers)
             }
         }
     }
@@ -421,7 +447,8 @@ private fun QuantumLayerSlotChip(slot: QuantumLayerSlotUi, modifier: Modifier) {
     val shortStatusLabel = stringResource(quantumLayerShortStatusResource(slot.visualState))
     val description = quantumLayerSlotDescription(slot)
     val displayColor = when (slot.visualState) {
-        QuantumLayerVisualState.ON_BOARD, QuantumLayerVisualState.UNKNOWN ->
+        QuantumLayerVisualState.ON_BOARD, QuantumLayerVisualState.UNKNOWN,
+        QuantumLayerVisualState.FOREIGN ->
             slot.confirmedColor ?: slot.plannedColor
         else -> slot.plannedColor ?: slot.confirmedColor
     }
@@ -434,6 +461,11 @@ private fun QuantumLayerSlotChip(slot: QuantumLayerSlotUi, modifier: Modifier) {
         QuantumLayerVisualState.SENDING -> OrangeAccent
         QuantumLayerVisualState.FAILED -> ErrorRed
         QuantumLayerVisualState.UNKNOWN -> MaterialTheme.colorScheme.outline
+        QuantumLayerVisualState.FOREIGN -> if (slot.externalLayer?.holds == null) {
+            OrangeAccent
+        } else {
+            MaterialTheme.colorScheme.outline
+        }
         QuantumLayerVisualState.FREE -> MaterialTheme.colorScheme.outlineVariant
     }
     Surface(
@@ -483,6 +515,7 @@ private fun QuantumLayerSlotChip(slot: QuantumLayerSlotUi, modifier: Modifier) {
                     color = when (slot.visualState) {
                         QuantumLayerVisualState.FAILED -> ErrorRed
                         QuantumLayerVisualState.UNKNOWN -> MaterialTheme.colorScheme.onSurfaceVariant
+                        QuantumLayerVisualState.FOREIGN -> MaterialTheme.colorScheme.onSurfaceVariant
                         QuantumLayerVisualState.FREE -> MaterialTheme.colorScheme.onSurfaceVariant
                         else -> MaterialTheme.colorScheme.onSurface
                     },
@@ -503,6 +536,10 @@ private fun QuantumLayerSlotChip(slot: QuantumLayerSlotUi, modifier: Modifier) {
 
 @Composable
 private fun quantumLayerSlotDescription(slot: QuantumLayerSlotUi): String {
+    slot.externalLayer?.let { external ->
+        return stringResource(R.string.board_layer_number, slot.slot + 1) + ": " +
+            quantumForeignLayerDescription(external)
+    }
     val statusLabel = stringResource(quantumLayerStatusResource(slot.visualState))
     val plannedColorLabel = slot.plannedColor?.let { stringResource(boardLayerColorName(it)) }
     val liveColorLabel = slot.confirmedColor?.let { stringResource(boardLayerColorName(it)) }

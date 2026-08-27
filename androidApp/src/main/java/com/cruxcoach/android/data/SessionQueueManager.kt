@@ -15,6 +15,7 @@ import com.cruxcoach.android.ble.reservedLayerColors
 import com.cruxcoach.android.ble.hasCompleteQuantumLedMapping
 import com.cruxcoach.android.ble.hasConfirmableQuantumDiodeCount
 import com.cruxcoach.android.ble.matchesQuantumPlayers
+import com.cruxcoach.android.ble.quantumPlayersMatch
 import com.cruxcoach.android.ble.planKey
 import com.cruxcoach.android.ui.board.BoardSendModePolicy
 import com.cruxcoach.android.ui.board.QueueDeliveryPolicy
@@ -37,7 +38,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -184,33 +185,36 @@ class SessionQueueManager(
         // or session mode is open. eWalls/other-device players are controller
         // truth too: reconcile them, resolve their catalogue routes, and let
         // every layer UI/conflict check/browser filter consume the same state.
-        // collectLatest prevents a slow lookup from applying an old revision.
+        // Do not cancel catalogue hydration on every ten-second countdown
+        // refresh. The controller revision always advances even when the
+        // route/user/colour tuples are unchanged; tuple validation below
+        // prevents stale application without starving slow devices forever.
         val layers = boardLayerManager
         if (layers != null) scope.launch {
-            bleConnection.quantumControllerState.collectLatest { controller ->
+            bleConnection.quantumControllerState.collect { controller ->
                 if (controller.syncStatus ==
                     com.cruxcoach.android.ble.QuantumControllerSyncStatus.STALE
                 ) {
                     layers.setQuantumSyncStatus(controller.syncStatus)
-                    return@collectLatest
+                    return@collect
                 }
                 if (bleConnection.connectedBoardBrand.value != BoardBrand.QUANTUM) {
-                    return@collectLatest
+                    return@collect
                 }
                 val descriptor = bleConnection.connectedBoardDescriptor.value
                 val model = bleConnection.connectedQuantumModel.value
                 if (descriptor == null || model == null) {
                     layers.setQuantumSyncStatus(controller.syncStatus)
-                    return@collectLatest
+                    return@collect
                 }
                 val physical = runCatching { PhysicalBoardIdentity.resolve(descriptor) }.getOrNull()
-                    ?: return@collectLatest
+                    ?: return@collect
                 // Bind as soon as fff5 identifies the controller, before the
                 // first route-list response. A different Quantum must never
                 // display the previous board's retained roster while loading.
                 layers.bindBoard(BoardLayerBoardIdentity(physical.value, model.productSizeId))
                 layers.setQuantumSyncStatus(controller.syncStatus)
-                if (!controller.authoritative) return@collectLatest
+                if (!controller.authoritative) return@collect
                 applyQuantumControllerState(layers, model, controller)
             }
         }
@@ -1047,8 +1051,9 @@ class SessionQueueManager(
         val latestDescriptor = bleConnection.connectedBoardDescriptor.value ?: return false
         val latestPhysical = runCatching { PhysicalBoardIdentity.resolve(latestDescriptor) }.getOrNull()
             ?: return false
-        if (bleConnection.quantumControllerState.value.authoritativeRevision !=
-                controller.authoritativeRevision ||
+        val latestController = bleConnection.quantumControllerState.value
+        if (!latestController.authoritative ||
+            !quantumPlayersMatch(controller.players, latestController.players) ||
             bleConnection.connectedQuantumModel.value != model ||
             latestPhysical.value != expectedBoard.physicalBoardId ||
             !layers.isBoundTo(expectedBoard)

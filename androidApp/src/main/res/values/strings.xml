@@ -2652,6 +2652,7 @@
     <string name="quantum_layer_status_replacing">replacement planned; previous climb is still on the board</string>
     <string name="quantum_layer_status_failed">not confirmed</string>
     <string name="quantum_layer_status_unknown">on the board; route details unknown</string>
+    <string name="quantum_layer_status_foreign">from another app; read-only</string>
     <string name="quantum_layer_status_short_free">free</string>
     <string name="quantum_layer_status_short_planned">plan</string>
     <string name="quantum_layer_status_short_sending">send</string>
@@ -2659,6 +2660,7 @@
     <string name="quantum_layer_status_short_replacing">swap</string>
     <string name="quantum_layer_status_short_failed">failed</string>
     <string name="quantum_layer_status_short_unknown">?</string>
+    <string name="quantum_layer_status_short_foreign">other</string>
     <string name="quantum_layer_suggestion">Recommended: layer %1$d · %2$s</string>
     <string name="quantum_layer_suggestion_reason">Available and clear of known overlaps. The lamp can use it immediately.</string>
     <string name="quantum_layer_suggestion_existing_reason">This climb already uses this layer. Its colour and known holds are clear to reuse.</string>

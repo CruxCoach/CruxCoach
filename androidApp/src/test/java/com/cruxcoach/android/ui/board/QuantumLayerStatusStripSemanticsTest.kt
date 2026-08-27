@@ -93,8 +93,10 @@ class QuantumLayerStatusStripSemanticsTest {
         compose.onNodeWithText("1 other · 1 unknown").assertExists()
         compose.onNodeWithText("Your Quantum layer plans").assertExists()
         compose.onNodeWithText("Wall 1/4 active").assertExists()
-        compose.onNodeWithText("Other apps:").assertExists()
-        compose.onNodeWithText("foreign- ?", useUnmergedTree = true).assertExists()
+        compose.onNodeWithTag("quantum_layer_visible_state_1", useUnmergedTree = true)
+            .assertTextEquals("other")
+        compose.onNodeWithTag("quantum_layer_status_1", useUnmergedTree = true)
+            .assert(contentDescriptionContains("holds unknown, read-only"))
     }
 
     @Test fun `rack distinguishes initial sync live truth and retained stale truth`() {

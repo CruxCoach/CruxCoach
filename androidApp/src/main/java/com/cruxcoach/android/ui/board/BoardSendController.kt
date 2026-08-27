@@ -18,6 +18,7 @@ import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ble.PhysicalBoardIdentity
 import com.cruxcoach.android.ble.reservedLayerColors
 import com.cruxcoach.android.ble.hasCompleteQuantumLedMapping
+import com.cruxcoach.android.ble.quantumPlayersMatch
 import com.cruxcoach.android.ble.hasConfirmableQuantumDiodeCount
 import com.cruxcoach.android.ble.matchesQuantumPlayers
 import com.cruxcoach.android.ble.planKey
@@ -913,8 +914,9 @@ internal class BoardSendController(
         val latestPhysical = latestDescriptor?.let {
             runCatching { PhysicalBoardIdentity.resolve(it) }.getOrNull()
         }
-        if (bleConnection.quantumControllerState.value.authoritativeRevision !=
-                controller.authoritativeRevision ||
+        val latestController = bleConnection.quantumControllerState.value
+        if (!latestController.authoritative ||
+            !quantumPlayersMatch(controller.players, latestController.players) ||
             latestPhysical != physicalBoard || bleConnection.connectedQuantumModel.value != verifiedModel ||
             !boardLayerManager.isBoundTo(boardIdentity)
         ) return false
