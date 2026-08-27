@@ -1628,8 +1628,8 @@
     <string name="devcontact_language">Sprache</string>
     <string name="devcontact_message">Nachricht</string>
     <string name="devcontact_messages">Nachrichten</string>
-    <string name="devcontact_notifications">Benachrichtigungen</string>
-    <string name="devcontact_notifications_desc">Push-Benachrichtigungen bei neuen Ankündigungen</string>
+    <string name="devcontact_notifications">Ankündigungen im Hintergrund</string>
+    <string name="devcontact_notifications_desc">Ankündigungen automatisch abrufen und melden. Ausgeschaltet bleibt das Öffnen der Ankündigungen eine manuelle Aktualisierung.</string>
     <string name="devcontact_send_crash_reports">Crash-Berichte senden</string>
     <string name="devcontact_send_crash_reports_desc">Automatisch anonyme Absturzberichte an den Entwickler senden</string>
     <string name="devcontact_send_failed">Senden fehlgeschlagen</string>

@@ -59,6 +59,17 @@ class NotificationPollWorker @AssistedInject constructor(
     }
 
     private suspend fun pollAnnouncements() {
+        // This preference is the privacy boundary for unattended announcement traffic, not merely
+        // a notification-display preference. The shared worker must still run for user DMs, so we
+        // gate this leg here instead of cancelling the whole worker.
+        if (!AnnouncementPollingPolicy.allowsBackgroundFetch(
+                userPreferences.announcementsEnabled.first(),
+            )
+        ) {
+            Log.d(TAG, "Announcement background fetch disabled by user")
+            return
+        }
+
         val lastCheck = userPreferences.lastAnnouncementCheck.first()
         val sinceTimestamp = lastCheck ?: (System.currentTimeMillis() / 1000 - 86400) // default: last 24h
 
@@ -67,7 +78,6 @@ class NotificationPollWorker @AssistedInject constructor(
             append(""","since":$sinceTimestamp}""")
         }
 
-        val notificationsEnabled = userPreferences.announcementsEnabled.first()
         val enabledCategories = buildSet {
             if (userPreferences.announcementCatRelease.first()) add(AnnouncementTagParser.CATEGORY_RELEASE)
             if (userPreferences.announcementCatIssue.first()) add(AnnouncementTagParser.CATEGORY_ISSUE)
@@ -112,7 +122,7 @@ class NotificationPollWorker @AssistedInject constructor(
                     createdAt = event.createdAt * 1000
                 )
 
-                if (notificationsEnabled && category in enabledCategories) {
+                if (category in enabledCategories) {
                     // Extract localized content for the notification text
                     val localizedContent = AnnouncementTagParser.extractLocalizedContent(
                         event.content, appLang
@@ -282,4 +292,8 @@ class NotificationPollWorker @AssistedInject constructor(
             )
         }
     }
+}
+
+internal object AnnouncementPollingPolicy {
+    fun allowsBackgroundFetch(enabled: Boolean): Boolean = enabled
 }

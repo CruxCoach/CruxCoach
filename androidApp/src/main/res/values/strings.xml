@@ -1585,8 +1585,8 @@
     <string name="devcontact_language">Language</string>
     <string name="devcontact_message">Message</string>
     <string name="devcontact_messages">Messages</string>
-    <string name="devcontact_notifications">Notifications</string>
-    <string name="devcontact_notifications_desc">Push notifications for new announcements</string>
+    <string name="devcontact_notifications">Background announcements</string>
+    <string name="devcontact_notifications_desc">Automatically fetch and notify about announcements. When off, opening Announcements remains a manual refresh.</string>
     <string name="devcontact_send_crash_reports">Send Crash Reports</string>
     <string name="devcontact_send_crash_reports_desc">Automatically send anonymous crash reports to the developer</string>
     <string name="devcontact_send_failed">Sending failed</string>
