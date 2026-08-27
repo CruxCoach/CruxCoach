@@ -5,6 +5,7 @@ import android.database.sqlite.SQLiteDatabase
 import android.util.Log
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.domain.board.BoardClimbParser
+import com.cruxcoach.domain.board.FramesBinaryCodec
 import com.cruxcoach.domain.board.QuantumBoardModel
 import java.io.File
 import java.io.FileOutputStream
@@ -1354,7 +1355,7 @@ class BoardDatabaseImporter(
                     cursor.use {
                         while (it.moveToNext()) {
                             lastUuid = it.getString(0)
-                            val frames = it.getString(1) ?: ""
+                            val frames = FramesBinaryCodec.decode(it.getBlob(1) ?: ByteArray(0))
                             val sem = roleSem[it.getString(2)]
                             val moves = if (sem != null) computeMoveCount(frames, sem)
                                         else computeMoveCount(frames)
