@@ -6,10 +6,10 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.R
+import com.cruxcoach.android.data.CruxCoachCsvArchive
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.data.CruxCoachBackup
 import com.cruxcoach.data.CruxCoachBackup.Category
-import com.cruxcoach.data.CruxCoachCsv
 import com.cruxcoach.data.TransactionRunner
 import com.cruxcoach.data.repository.*
 import com.cruxcoach.util.DateTimeUtil
@@ -23,10 +23,11 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
 import java.io.File
 import javax.inject.Inject
 
-enum class DataExchangeFormat { JSON, CSV }
+enum class DataExchangeFormat { JSON, CSV_ZIP }
 
 /** Categories available in the manual JSON/CSV export/import UI.
  *
@@ -181,7 +182,7 @@ class DataExchangeViewModel @Inject constructor(
                 withContext(Dispatchers.IO) {
                     val content = buildExport(s)
                     context.contentResolver.openOutputStream(uri, "wt")?.use { stream ->
-                        stream.write(content.toByteArray(Charsets.UTF_8))
+                        stream.write(content)
                     } ?: throw Exception(context.getString(R.string.error_cannot_open_file))
                 }
                 val label = context.getString(R.string.export_categories_exported, s.exportCategories.size)
@@ -203,7 +204,7 @@ class DataExchangeViewModel @Inject constructor(
             try {
                 val share = withContext(Dispatchers.IO) {
                     val file = File(context.cacheDir, exportFilename(s.exportFormat))
-                    file.writeText(buildExport(s), Charsets.UTF_8)
+                    file.writeBytes(buildExport(s))
                     val uri = androidx.core.content.FileProvider.getUriForFile(
                         context,
                         "${context.packageName}.fileprovider",
@@ -227,7 +228,7 @@ class DataExchangeViewModel @Inject constructor(
         _state.update { it.copy(pendingShare = null) }
     }
 
-    private fun buildExport(state: DataExchangeState): String {
+    private fun buildExport(state: DataExchangeState): ByteArray {
         val json = CruxCoachBackup.export(
             categories = state.exportCategories.withBundledClimbNotes(),
             userRepository = userRepository,
@@ -241,8 +242,11 @@ class DataExchangeViewModel @Inject constructor(
             nostrPubkey = nostrSigner.getPublicKeyHex(),
         )
         return when (state.exportFormat) {
-            DataExchangeFormat.JSON -> json
-            DataExchangeFormat.CSV -> CruxCoachCsv.fromJson(json)
+            DataExchangeFormat.JSON -> json.toByteArray(Charsets.UTF_8)
+            DataExchangeFormat.CSV_ZIP -> CruxCoachCsvArchive.fromJson(
+                json,
+                state.exportCategories.withBundledClimbNotes(),
+            )
         }
     }
 
@@ -251,7 +255,7 @@ class DataExchangeViewModel @Inject constructor(
 
     private fun exportFilename(format: DataExchangeFormat): String = when (format) {
         DataExchangeFormat.JSON -> "cruxcoach_export.json"
-        DataExchangeFormat.CSV -> "cruxcoach_export.csv"
+        DataExchangeFormat.CSV_ZIP -> CruxCoachCsvArchive.FILE_NAME
     }
 
     /** MIME type for the file picker. */
@@ -259,7 +263,7 @@ class DataExchangeViewModel @Inject constructor(
 
     private fun exportMimeType(format: DataExchangeFormat): String = when (format) {
         DataExchangeFormat.JSON -> "application/json"
-        DataExchangeFormat.CSV -> CruxCoachCsv.MIME_TYPE
+        DataExchangeFormat.CSV_ZIP -> CruxCoachCsvArchive.MIME_TYPE
     }
 
     // ── Import: Phase 1 — Preview / detect format ───────────────
@@ -269,18 +273,16 @@ class DataExchangeViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) {
-                    val raw = context.contentResolver.openInputStream(uri)?.use { stream ->
-                        stream.bufferedReader().readText()
-                    } ?: throw Exception(context.getString(R.string.error_cannot_read_file))
-
-                    val jsonString = if (CruxCoachCsv.looksLikeCsv(raw)) {
-                        CruxCoachCsv.toJson(raw)
+                    val raw = readImportBytes(uri)
+                    val jsonString = if (CruxCoachCsvArchive.looksLikeZip(raw)) {
+                        CruxCoachCsvArchive.toJson(raw)
                     } else {
-                        val trimmed = raw.trimStart()
+                        val text = raw.toString(Charsets.UTF_8)
+                        val trimmed = text.trimStart()
                         require(trimmed.startsWith("{") && trimmed.contains("\"app\"")) {
                             context.getString(R.string.error_not_cruxcoach_export)
                         }
-                        raw
+                        text
                     }
 
                     val preview = CruxCoachBackup.preview(jsonString)
@@ -303,6 +305,26 @@ class DataExchangeViewModel @Inject constructor(
                     error = context.getString(R.string.error_file_not_readable, e.message ?: "")
                 ) }
             }
+        }
+    }
+
+    private fun readImportBytes(uri: Uri): ByteArray {
+        val stream = context.contentResolver.openInputStream(uri)
+            ?: throw Exception(context.getString(R.string.error_cannot_read_file))
+        return stream.use { input ->
+            val output = ByteArrayOutputStream()
+            val buffer = ByteArray(8192)
+            var total = 0
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                total += count
+                require(total <= CruxCoachCsvArchive.MAX_ARCHIVE_BYTES) {
+                    context.getString(R.string.error_import_too_large)
+                }
+                output.write(buffer, 0, count)
+            }
+            output.toByteArray()
         }
     }
 

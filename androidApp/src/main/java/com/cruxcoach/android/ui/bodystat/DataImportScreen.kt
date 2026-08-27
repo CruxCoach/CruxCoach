@@ -144,7 +144,11 @@ fun DataImportScreen(
 
                 OutlinedButton(
                     onClick = {
-                        importLauncher.launch(arrayOf("application/json", "text/csv", "text/*"))
+                        importLauncher.launch(arrayOf(
+                            "application/json",
+                            "application/zip",
+                            "application/x-zip-compressed",
+                        ))
                     },
                     modifier = Modifier
                         .fillMaxWidth()
