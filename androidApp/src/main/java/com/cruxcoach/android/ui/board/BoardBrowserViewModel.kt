@@ -384,6 +384,7 @@ data class BrowserQuantumLayerState(
     val complete: Boolean = true,
     val matchCount: Long = -1,
 ) {
+    val occupied: Boolean get() = layerCount > 0
     val available: Boolean get() = litPlacements.isNotEmpty()
 }
 

@@ -55,6 +55,15 @@ class BoardClimbParserTest {
     }
 
     @Test
+    fun strictSingleFrameAcceptsQuantumXlCatalogueFrames() {
+        val frames = "p1006021r12p1006036r12p1001018r13p1001021r13p1001026r13" +
+            "p1004031r13p1005018r13p1005021r13p1005041r13p1005051r13" +
+            "p1005057r13p1005069r13p1004084r14p1005082r14"
+
+        assertEquals(14, BoardClimbParser.parseSingleFrameStrict(frames)?.size)
+    }
+
+    @Test
     fun encodeFrames_roundtrip() {
         val original = "p1091r15p1096r15p1163r12p1229r12p1276r13p1393r14"
         val holds = BoardClimbParser.parseFrames(original)

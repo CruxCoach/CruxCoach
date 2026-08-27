@@ -83,6 +83,8 @@ class BoardBrowserQuantumOverlapTest {
 
         assertFalse(state.complete)
         assertEquals(1, state.layerCount)
+        assertTrue(state.occupied)
+        assertFalse(state.available)
     }
 
     @Test
