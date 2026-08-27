@@ -472,8 +472,7 @@ class SessionGattBridge(
         queueManager.setVisibility(SessionVisibility.LOCAL_ONLY)
         // Capture last queue climb BEFORE endQueue() clears it (called by UI right after)
         val sessionState = queueManager.state.value
-        val lastQueueClimb = sessionState.currentClimb
-            ?.takeUnless { sessionState.externalBoardOverride }
+        val lastQueueClimb = sessionState.projectedClimb
         val projectionSurvivesDisconnect = projectionSurvivesCurrentBoardDisconnect()
         // A viable successor must have completed JOIN (counted by the queue)
         // and still have a live GATT link. Either signal on its own can be
@@ -956,8 +955,7 @@ class SessionGattBridge(
         restartClimbAdvertisingIfConnected()
         // Set last climb to the current queue item so the banner shows what was on the board
         val queueState = queueManager.state.value
-        val lastItem = queueState.currentClimb
-            ?.takeUnless { queueState.externalBoardOverride }
+        val lastItem = queueState.projectedClimb
         val projectionSurvivesDisconnect = projectionSurvivesCurrentBoardDisconnect()
         // Update board state SYNCHRONOUSLY before endQueue() triggers combine flow
         if (lastItem != null) {
@@ -1378,8 +1376,7 @@ class SessionGattBridge(
         }
         if (queueState.queue.isEmpty()) {
             Log.d(TAG, "attemptHostMigration: queue is empty, ending queue instead of migrating")
-            val lastQueueClimb = queueState.currentClimb
-                ?.takeUnless { queueState.externalBoardOverride }
+            val lastQueueClimb = queueState.projectedClimb
             val projectionSurvivesDisconnect = projectionSurvivesCurrentBoardDisconnect()
             advertiser.suppressClimbAdvertising = false
             restartClimbAdvertisingIfConnected()
@@ -1547,7 +1544,7 @@ class SessionGattBridge(
 
     private fun updateSessionAdvertising(): Boolean {
         val s = queueManager.state.value
-        val currentClimb = s.currentClimb?.takeUnless { s.externalBoardOverride }
+        val currentClimb = s.projectedClimb
         val result = advertiser.advertiseSession(
             s.sessionId, s.participantCount, s.hostName,
             climbUuid = currentClimb?.climbUuid,

@@ -246,6 +246,13 @@ populations at once — they are complementary, not exclusive:
   already serialises them; whole climbs stay atomic.
 
 Coexistence rules:
+- **External writes become normal Nearby projection state.** After a relayed
+  Aurora write is matched to a catalogue climb, CruxCoach persists it locally
+  and republishes its UUID + angle to nearby CruxCoach users when the user's
+  "share current climb" setting is enabled. While a hosted session suppresses
+  individual climb advertisements, that identity rides in the existing session
+  advertisement instead. The external climb never enters or advances the host
+  queue; an unidentified write still clears the stale projection identity.
 - **Relay-on implies a joinable session.** Because the host monopolises the
   single board connection, a nearby CruxCoach user cannot reach the real board
   directly — their only way in is to join. So enabling the relay must also
