@@ -1037,20 +1037,14 @@ class UserPreferences(
     }
 
     /**
-     * Default EXPLICIT, like every other board.
-     *
-     * A board only you can hold used to default to AUTOMATIC, on the argument
-     * that nobody else is affected. In practice the wall changing while you
-     * page through a list is a surprise whoever owns the board, and the tap is
-     * what makes it an intention rather than a side effect. AUTOMATIC stays
-     * available as a deliberate choice and only reacts to explicit shared
-     * board/playlist events.
+     * An exclusive controller can only be used by this app connection, so its
+     * established default is AUTOMATIC. A persisted per-capacity or legacy
+     * choice still wins; only a genuinely absent preference takes the default.
      */
     val singleConnectionBoardSendMode: Flow<BoardSendMode> = dataStore.data.map { prefs ->
-        BoardSendMode.fromWire(
-            prefs[PreferenceKeys.SINGLE_CONNECTION_BOARD_SEND_MODE]
-                ?: prefs[PreferenceKeys.BOARD_SEND_MODE]
-        )
+        prefs[PreferenceKeys.SINGLE_CONNECTION_BOARD_SEND_MODE]?.let(BoardSendMode::fromWire)
+            ?: prefs[PreferenceKeys.BOARD_SEND_MODE]?.let(BoardSendMode::fromWire)
+            ?: BoardSendMode.AUTOMATIC
     }
 
     suspend fun setSingleConnectionBoardSendMode(mode: BoardSendMode) {
@@ -1272,25 +1266,28 @@ class UserPreferences(
     }
 
     /**
-     * Move every install that predates the manual-send default across, once.
+     * Split the legacy global send mode into capacity-specific defaults once.
      *
      * 0.2.1 had a single `board_send_mode` and no per-capacity distinction, so
-     * an upgrading user carries a value that was written under the old meaning
-     * — or none at all, which used to read as AUTOMATIC. Both have to become
-     * the new manual default exactly once.
+     * an upgrading user may carry an explicit global choice. Preserve it for
+     * both capacities. Without one, exclusive boards default to AUTOMATIC and
+     * shared boards to EXPLICIT.
      *
      * Guarded by its own flag rather than by inspecting the values, because
-     * "already manual" and "deliberately chose manual" are indistinguishable
-     * afterwards, and re-running would silently undo a later opt-in to
-     * AUTOMATIC every time the app cold-starts. Idempotent and safe to call on
-     * every launch; a fresh install simply records the flag and changes
-     * nothing, since [BoardSendMode.fromWire] already answers EXPLICIT.
+     * Re-running would otherwise overwrite later per-capacity choices.
      */
     suspend fun migrateToManualSendDefaultIfNeeded() {
         dataStore.edit { prefs ->
             if (prefs[PreferenceKeys.MANUAL_SEND_DEFAULT_MIGRATED] == true) return@edit
-            prefs[PreferenceKeys.SINGLE_CONNECTION_BOARD_SEND_MODE] = BoardSendMode.EXPLICIT.name
-            prefs[PreferenceKeys.MULTI_CONNECTION_BOARD_SEND_MODE] = BoardSendMode.EXPLICIT.name
+            val legacy = prefs[PreferenceKeys.BOARD_SEND_MODE]?.let(BoardSendMode::fromWire)
+            if (PreferenceKeys.SINGLE_CONNECTION_BOARD_SEND_MODE !in prefs) {
+                prefs[PreferenceKeys.SINGLE_CONNECTION_BOARD_SEND_MODE] =
+                    (legacy ?: BoardSendMode.AUTOMATIC).name
+            }
+            if (PreferenceKeys.MULTI_CONNECTION_BOARD_SEND_MODE !in prefs) {
+                prefs[PreferenceKeys.MULTI_CONNECTION_BOARD_SEND_MODE] =
+                    (legacy ?: BoardSendMode.EXPLICIT).name
+            }
             prefs[PreferenceKeys.MANUAL_SEND_DEFAULT_MIGRATED] = true
         }
     }

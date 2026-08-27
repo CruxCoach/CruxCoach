@@ -137,6 +137,7 @@ internal fun BoardSelectionDialog(
         mutableStateOf(
             if (prefill?.brand == BoardBrand.MOONBOARD) {
                 prefill.layoutId?.let(MoonBoardVariant::fromLayoutId)
+                    ?: MoonBoardVariant.MOONBOARD_2016
             } else selectedMoonBoardVariant ?: MoonBoardVariant.entries.first()
         )
     }
@@ -144,6 +145,7 @@ internal fun BoardSelectionDialog(
         mutableStateOf(
             if (prefill?.brand == BoardBrand.QUANTUM) {
                 prefill.layoutId?.let(QuantumBoardModel::fromLayoutId)
+                    ?: QuantumBoardModel.XL
             } else {
                 QuantumBoardModel.fromLayoutId(selectedAuroraLayoutId.toLong())
                     ?: QuantumBoardModel.XL
@@ -172,7 +174,7 @@ internal fun BoardSelectionDialog(
             // would otherwise pre-select Decoy Dots).
             if (prefill?.brand == b) {
                 prefill.layoutId?.let { id -> variants.firstOrNull { it.layoutId.toLong() == id } }
-                    ?: variants.singleOrNull()
+                    ?: variants.firstOrNull()
             } else {
                 variants.takeIf { b == activeBrand }
                     ?.firstOrNull { it.layoutId == selectedAuroraLayoutId }
@@ -202,7 +204,11 @@ internal fun BoardSelectionDialog(
             // stale foreign id must not mis-seed the tier.
             guidedPrefill?.brand == brand && guidedSizeId != null &&
                 sizes.any { it.id.toInt() == guidedSizeId } -> guidedSizeId
-            guidedPrefill?.brand == brand -> null
+            guidedPrefill?.brand == brand -> variant?.defaultSizeId
+                ?.takeIf { defaultId -> sizes.any { it.id.toInt() == defaultId } }
+                ?: sizes.maxByOrNull {
+                    (it.edgeRight - it.edgeLeft) * (it.edgeTop - it.edgeBottom)
+                }?.id?.toInt()
             brand == activeBrand && sizes.any { it.id.toInt() == selectedAuroraProductSizeId } ->
                 selectedAuroraProductSizeId
             variant != null -> variant.defaultSizeId
@@ -236,7 +242,7 @@ internal fun BoardSelectionDialog(
     // [category] unchanged, but kilterSelection (0 or a foreign id) still
     // needs the same correction or Confirm would persist an invalid size.
     LaunchedEffect(category, auroraBrand) {
-        if (isKilter && prefill?.brand != BoardBrand.KILTER && shownSizes.none { it.id.toInt() == kilterSelection }) {
+        if (isKilter && shownSizes.none { it.id.toInt() == kilterSelection }) {
             shownSizes.firstOrNull()?.let { kilterSelection = it.id.toInt() }
         }
     }
@@ -345,10 +351,14 @@ internal fun BoardSelectionDialog(
                         category = BoardCategory.KILTER_HOMEWALL; auroraBrand = null; kilterSelection = 0
                     })
                     add(moonBoardLabel to {
-                        category = BoardCategory.MOONBOARD; auroraBrand = null; mbVariant = null
+                        category = BoardCategory.MOONBOARD
+                        auroraBrand = null
+                        mbVariant = MoonBoardVariant.MOONBOARD_2016
                     })
                     add(quantumLabel to {
-                        category = BoardCategory.QUANTUM; auroraBrand = null; quantumModel = null
+                        category = BoardCategory.QUANTUM
+                        auroraBrand = null
+                        quantumModel = QuantumBoardModel.XL
                     })
                     if (showAuroraBoards) {
                         AURORA_PICK_BRANDS.forEach { brand ->

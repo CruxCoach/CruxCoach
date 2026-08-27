@@ -178,6 +178,21 @@ class NearbyClimbProtocolTest {
     }
 
     @Test
+    fun `board connected sender token round-trips while legacy payload stays compatible`() {
+        val token = 0x78563412
+        val encoded = NearbyClimbProtocol.encodeBoardConnected(senderToken = token)
+        val decoded = NearbyClimbProtocol.decode(encoded)
+
+        assertEquals(10, encoded.size)
+        assertIs<NearbyPayload.BoardConnected>(decoded)
+        assertEquals(token, decoded.senderToken)
+
+        val legacy = NearbyClimbProtocol.decode(encoded.copyOf(6))
+        assertIs<NearbyPayload.BoardConnected>(legacy)
+        assertNull(legacy.senderToken)
+    }
+
+    @Test
     fun `UUID climb carries disconnect rejection without changing its identity`() {
         val uuid = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
         val encoded = NearbyClimbProtocol.encodeClimbData(

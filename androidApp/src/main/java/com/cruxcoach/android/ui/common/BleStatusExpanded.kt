@@ -33,10 +33,6 @@ internal fun BleStatusExpanded(
     onRequestDisconnect: (() -> Unit)?,
     onAddToQueue: (() -> Unit)?,
     onOpenQueueSheet: (() -> Unit)? = null,
-    /** Relay is detail-only: never rendered in the collapsed status banner. */
-    relayClientCount: Int? = null,
-    relayBoardName: String? = null,
-    onStopRelay: (() -> Unit)? = null,
 ) {
     Card(
         modifier = Modifier
@@ -86,15 +82,6 @@ internal fun BleStatusExpanded(
                 )
             }
 
-            if (relayClientCount != null && onStopRelay != null) {
-                if (effectiveOnBoard != null || state.boardOccupiedCount > 0 || state.ownSession != null) {
-                    HorizontalDivider(
-                        color = MaterialTheme.colorScheme.outlineVariant,
-                        modifier = Modifier.padding(vertical = 8.dp),
-                    )
-                }
-                RelaySharingLine(relayBoardName, relayClientCount, onStopRelay)
-            }
         }
     }
 }

@@ -74,9 +74,9 @@ fun SettingsScreen(
     // on back-navigation from sub-screens.
     val scrollState = rememberScrollState()
     var generalExpanded by rememberSaveable { mutableStateOf(false) }
-    // The hub is the primary board affordance: supported boards and the active
-    // marker must be visible when Settings opens, not hidden behind discovery.
-    var boardSettingsExpanded by rememberSaveable { mutableStateOf(true) }
+    // Keep the dense board-specific hub collapsed on entry, like the other
+    // settings groups. The header remains the explicit discovery affordance.
+    var boardSettingsExpanded by rememberSaveable { mutableStateOf(false) }
     var accountExpanded by rememberSaveable { mutableStateOf(false) }
     var devContactExpanded by rememberSaveable { mutableStateOf(false) }
     var accountsDataExpanded by rememberSaveable { mutableStateOf(false) }
