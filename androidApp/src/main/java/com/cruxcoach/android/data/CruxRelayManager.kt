@@ -569,15 +569,23 @@ class CruxRelayManager(
     }
 
     @SuppressLint("MissingPermission")
-    internal fun restoreAdapterName(): Boolean {
+    internal suspend fun restoreAdapterName(): Boolean {
         if (!prefs.getBoolean(KEY_NAME_DIRTY, false)) return true
         val original = prefs.getString(KEY_ORIGINAL_NAME, null)
         if (original.isNullOrBlank()) return false
         val a = adapter ?: return false
         val before = runCatching { a.name }.getOrNull()
-        val restored = before == original ||
-            (runCatching { a.setName(original) }.getOrDefault(false) &&
-                runCatching { a.name }.getOrNull() == original)
+        val accepted = before == original ||
+            runCatching { a.setName(original) }.getOrDefault(false)
+        if (accepted && before != original) {
+            // BluetoothAdapter.setName() is asynchronous on real controllers.
+            // Keep the crash-recovery marker until Android reports the original
+            // name, just as the relay start waits for its advertised name.
+            withTimeoutOrNull(NAME_PROPAGATE_TIMEOUT_MS) {
+                while (runCatching { adapter?.name }.getOrNull() != original) delay(100)
+            }
+        }
+        val restored = accepted && runCatching { adapter?.name }.getOrNull() == original
         if (!restored) {
             Log.w(TAG, "Adapter-name restore did not apply; retaining recovery record")
             return false
@@ -592,6 +600,6 @@ class CruxRelayManager(
     internal fun restoreAdapterNameIfDirty() {
         // On a fresh process, a set dirty flag means a prior run died without
         // restoring — put the phone's real Bluetooth name back.
-        restoreAdapterName()
+        scope.launch { restoreAdapterName() }
     }
 }

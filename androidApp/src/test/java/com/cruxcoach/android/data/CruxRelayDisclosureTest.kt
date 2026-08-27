@@ -18,6 +18,8 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.flowOf
@@ -216,5 +218,48 @@ class CruxRelayDisclosureTest {
         assertFalse(manager.state.value.advertising)
         assertTrue(manager.state.value.advertisedName == null)
         assertTrue(adapterName == "Test phone")
+    }
+
+    @Test
+    fun `adapter name restore waits for Android propagation before clearing recovery`() = runTest {
+        val connection = mockk<BoardBleConnection>(relaxed = true)
+        every { connection.connectionState } returns MutableStateFlow(ConnectionState.DISCONNECTED)
+        every { connection.connectedBoardDescriptor } returns MutableStateFlow(null)
+        val preferences = mockk<UserPreferences>(relaxed = true)
+        every { preferences.relayManualStart } returns flowOf(true)
+        every { preferences.relayDisclosureSeen } returns flowOf(true)
+
+        var adapterName = "CruxCoach·Kilter Board@3"
+        val adapter = mockk<BluetoothAdapter>(relaxed = true)
+        every { adapter.name } answers { adapterName }
+        every { adapter.setName("Test phone") } answers {
+            backgroundScope.launch {
+                delay(200)
+                adapterName = "Test phone"
+            }
+            true
+        }
+        val manager = CruxRelayManager(
+            context = context,
+            relayServer = mockk<RelayGattServer>(relaxed = true),
+            advertiser = mockk<ClimbBleAdvertiser>(relaxed = true),
+            bleConnection = connection,
+            projectionCoordinator = mockk<BoardProjectionCoordinator>(relaxed = true),
+            userPreferences = preferences,
+            scope = backgroundScope,
+            adapterProvider = { adapter },
+        )
+        context.getSharedPreferences(CruxRelayManager.PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(CruxRelayManager.KEY_NAME_DIRTY, true)
+            .putString(CruxRelayManager.KEY_ORIGINAL_NAME, "Test phone")
+            .commit()
+
+        assertTrue(manager.restoreAdapterName())
+        assertTrue(adapterName == "Test phone")
+        assertFalse(
+            context.getSharedPreferences(CruxRelayManager.PREFS, Context.MODE_PRIVATE)
+                .getBoolean(CruxRelayManager.KEY_NAME_DIRTY, false),
+        )
     }
 }
