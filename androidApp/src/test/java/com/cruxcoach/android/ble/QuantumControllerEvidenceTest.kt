@@ -24,6 +24,31 @@ class QuantumControllerEvidenceTest {
     private val foreignUser = "11111111-2222-4333-8444-555555555555"
 
     @Test
+    fun `foreground refreshes unsynced stale and snapshots at least ten seconds old`() {
+        val live = QuantumControllerState(
+            authoritative = true,
+            syncStatus = QuantumControllerSyncStatus.LIVE,
+            lastAuthoritativeAtElapsedMs = 1_000L,
+        )
+        assertFalse(quantumForegroundRefreshRequired(live, 10_999L, 10_000L))
+        assertTrue(quantumForegroundRefreshRequired(live, 11_000L, 10_000L))
+        assertTrue(
+            quantumForegroundRefreshRequired(
+                live.copy(syncStatus = QuantumControllerSyncStatus.STALE),
+                1_001L,
+                10_000L,
+            ),
+        )
+        assertTrue(
+            quantumForegroundRefreshRequired(
+                QuantumControllerState(syncStatus = QuantumControllerSyncStatus.SYNCING),
+                1_001L,
+                10_000L,
+            ),
+        )
+    }
+
+    @Test
     fun `Quantum is not writable until local notification and CCCD both succeed`() {
         assertFalse(quantumNotificationSetupConfirmed(false, BluetoothGatt.GATT_SUCCESS))
         assertFalse(quantumNotificationSetupConfirmed(true, null))

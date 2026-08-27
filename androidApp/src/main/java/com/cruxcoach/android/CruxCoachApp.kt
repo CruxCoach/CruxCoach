@@ -14,6 +14,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import com.cruxcoach.android.data.BoardSyncManager
 import com.cruxcoach.android.data.UserPreferences
+import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.notification.BoardSyncWorker
 import com.cruxcoach.android.notification.NostrPushCoordinator
 import com.cruxcoach.android.notification.NotificationPollWorker
@@ -65,6 +66,9 @@ class CruxCoachApp : Application(), Configuration.Provider {
 
     @Inject
     lateinit var communityClimbSubscriber: dagger.Lazy<com.cruxcoach.android.community.CommunityClimbSubscriber>
+
+    @Inject
+    lateinit var boardBleConnection: dagger.Lazy<BoardBleConnection>
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -142,6 +146,7 @@ class CruxCoachApp : Application(), Configuration.Provider {
                 // Re-evaluate "system" locale on every foreground — picks up
                 // changes to the device's primary language without a full restart.
                 applySystemLocaleIfNeeded()
+                boardBleConnection.get().refreshQuantumStateOnForeground()
 
                 // Kick the Nostr relay pool back to life on every
                 // foreground. Pre-fix, the pool only auto-reconnected on

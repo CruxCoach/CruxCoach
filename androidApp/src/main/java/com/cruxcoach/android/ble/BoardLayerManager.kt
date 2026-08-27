@@ -101,6 +101,9 @@ data class BoardLayerState(
     val board: BoardLayerBoardIdentity? = null,
     val layers: List<BoardClimbLayer> = emptyList(),
     val externalLayers: List<ExternalBoardLayer> = emptyList(),
+    /** Freshness of the controller roster; layers are retained as last-known
+     * state across a disconnect but must no longer be labelled live. */
+    val quantumSyncStatus: QuantumControllerSyncStatus = QuantumControllerSyncStatus.UNSYNCED,
 ) {
     /** Physical controller occupancy. PREVIEW layers are local-only. */
     val occupiedCount: Int
@@ -344,6 +347,10 @@ class BoardLayerManager @Inject constructor(
             if (current.board == identity) current
             else BoardLayerState(brand = current.brand, board = identity)
         }
+    }
+
+    fun setQuantumSyncStatus(status: QuantumControllerSyncStatus) {
+        _state.update { it.copy(quantumSyncStatus = status) }
     }
 
     /** Whether the rack's contents were staged for [identity]. */

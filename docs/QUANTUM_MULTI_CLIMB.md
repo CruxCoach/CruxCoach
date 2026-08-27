@@ -52,18 +52,28 @@ known type whose declared rows and columns match that model, local `fff1`
 notification routing must enable, and the `fff1` CCCD write must complete
 successfully before the connection becomes writable. CruxCoach then queries
 controller state with `REQUEST_USER_ROUTE_LIST` and reads the resulting state
-at `fff4`. A bare `fff4` read is not current-state evidence: real XL firmware
-can keep returning an old empty snapshot after another client changed the wall.
+at `fff4`. A bare `fff4` read is not current-state evidence: it is a cached
+response and can therefore still describe the state before another client
+changed the wall.
 While the direct Quantum link remains connected the explicit query/read round
 trip therefore repeats every ten seconds, so eWalls and other clients' routes
 replace the local rack from controller truth. Every mutation likewise resets
 notification recovery and requires an explicit `REQUEST_USER_ROUTE_LIST` round
 trip under the BLE write lock. A
-captured Quantum XL accepts that request without emitting an `fff1`
-notification and exposes the resulting complete `0x47` snapshot through a
-fresh `fff4` read. CruxCoach therefore reads `fff4` directly after the
-serialized request; notification delivery remains a compatibility fallback.
+BoardSimulator's eWalls-compatible Quantum endpoint accepts that request and
+exposes the resulting complete `0x47` snapshot through a fresh `fff4` read.
+CruxCoach therefore reads `fff4` directly after the serialized request;
+notification delivery remains a low-latency compatibility path, never the sole
+source of truth. This behavior has not yet been validated against physical
+Quantum hardware.
 Only the requested `0x47` shape advances the explicit route-list generation.
+
+The first query starts immediately after GATT setup and the explicit query/read
+round trip repeats every ten seconds while connected. A complete snapshot is
+labelled live; before the first snapshot the UI says it is reading board state.
+If the link drops, the reconciled rack remains visible only as the last known
+state. Returning the app to the foreground triggers an immediate refresh when
+the last snapshot is ten seconds old (or no live snapshot exists).
 
 `fff1` notifications are reassembled and decoded with strict device address,
 exact payload length and maximum-player checks. Unlike fff2 commands, the

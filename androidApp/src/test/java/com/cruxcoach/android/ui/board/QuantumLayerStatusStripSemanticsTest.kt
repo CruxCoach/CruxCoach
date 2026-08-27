@@ -17,6 +17,7 @@ import com.cruxcoach.android.ble.BoardLayerManager
 import com.cruxcoach.android.ble.BoardLayerState
 import com.cruxcoach.android.ble.BoardLayerStatus
 import com.cruxcoach.android.ble.ExternalBoardLayer
+import com.cruxcoach.android.ble.QuantumControllerSyncStatus
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardHold
 import org.junit.Rule
@@ -84,6 +85,7 @@ class QuantumLayerStatusStripSemanticsTest {
                             holds = null,
                         ),
                     ),
+                    quantumSyncStatus = QuantumControllerSyncStatus.LIVE,
                 ),
             )
         }
@@ -93,6 +95,37 @@ class QuantumLayerStatusStripSemanticsTest {
         compose.onNodeWithText("Wall 1/4 active").assertExists()
         compose.onNodeWithText("Other apps:").assertExists()
         compose.onNodeWithText("foreign- ?", useUnmergedTree = true).assertExists()
+    }
+
+    @Test fun `rack distinguishes initial sync live truth and retained stale truth`() {
+        compose.setContent {
+            Column {
+                QuantumLayerStatusStrip(
+                    state = BoardLayerState(
+                        brand = BoardBrand.QUANTUM,
+                        quantumSyncStatus = QuantumControllerSyncStatus.SYNCING,
+                    ),
+                    onOpen = {},
+                    testTag = "syncing-rack",
+                )
+                QuantumLayerStatusStrip(
+                    state = BoardLayerState(
+                        brand = BoardBrand.QUANTUM,
+                        externalLayers = listOf(foreign("route", emptyList())),
+                        quantumSyncStatus = QuantumControllerSyncStatus.STALE,
+                    ),
+                    onOpen = {},
+                    testTag = "stale-rack",
+                )
+            }
+        }
+
+        compose.onNodeWithText("Reading board state…").assertExists()
+        compose.onNodeWithText("Last known: 1/4 active").assertExists()
+        compose.onNodeWithTag("syncing-rack")
+            .assert(contentDescriptionContains("Reading board state"))
+        compose.onNodeWithTag("stale-rack")
+            .assert(contentDescriptionContains("Last known"))
     }
 
     @Test

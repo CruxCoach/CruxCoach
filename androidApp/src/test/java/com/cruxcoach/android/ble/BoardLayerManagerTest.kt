@@ -400,6 +400,39 @@ class BoardLayerManagerTest {
         assertEquals(9202L, manager.state.value.board?.productSizeId)
     }
 
+    @Test fun `disconnect retains roster but marks it as last known`() {
+        val manager = BoardLayerManager(context)
+        val foreign = QuantumActivePlayer(
+            routeId = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+            userId = "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff",
+            remainingSeconds = 12,
+            color = 0x123456,
+        )
+        manager.reconcile(listOf(foreign))
+        manager.setQuantumSyncStatus(QuantumControllerSyncStatus.LIVE)
+
+        manager.setQuantumSyncStatus(QuantumControllerSyncStatus.STALE)
+
+        assertEquals(QuantumControllerSyncStatus.STALE, manager.state.value.quantumSyncStatus)
+        assertEquals(foreign.routeId, manager.state.value.externalLayers.single().routeUuid)
+    }
+
+    @Test fun `later authoritative roster removes a climb sent by another client`() {
+        val manager = BoardLayerManager(context)
+        val foreign = QuantumActivePlayer(
+            routeId = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+            userId = "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff",
+            remainingSeconds = 12,
+            color = 0x123456,
+        )
+        manager.reconcile(listOf(foreign))
+        assertEquals(1, manager.state.value.externalLayers.size)
+
+        manager.reconcile(emptyList())
+
+        assertTrue(manager.state.value.externalLayers.isEmpty())
+    }
+
     private fun managerColor(slot: Int): Int = BoardLayerManager.LAYER_COLORS[slot]
 
     private fun layer(manager: BoardLayerManager, slot: Int, color: Int = manager.defaultColor(slot)) =

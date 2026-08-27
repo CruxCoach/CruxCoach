@@ -6,6 +6,7 @@ import android.content.Context
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import com.cruxcoach.android.R
 import com.cruxcoach.domain.board.BoardBrand
@@ -47,6 +48,14 @@ enum class QuantumCommandFailure {
     BOARD_FULL, ROUTESETTER_MODE, DIODE_MISSING, ACK_TIMEOUT, REFUSED,
 }
 
+/** Whether the cached Quantum roster can be presented as current board truth. */
+enum class QuantumControllerSyncStatus {
+    UNSYNCED,
+    SYNCING,
+    LIVE,
+    STALE,
+}
+
 data class QuantumControllerState(
     val players: List<QuantumActivePlayer> = emptyList(),
     val revision: Long = 0,
@@ -60,7 +69,18 @@ data class QuantumControllerState(
     val lastFailure: QuantumCommandFailure? = null,
     /** True only after a controller broadcast supplied real state. */
     val authoritative: Boolean = false,
+    val syncStatus: QuantumControllerSyncStatus = QuantumControllerSyncStatus.UNSYNCED,
+    /** Monotonic time of the last complete snapshot or trustworthy live delta. */
+    val lastAuthoritativeAtElapsedMs: Long? = null,
 )
+
+internal fun quantumForegroundRefreshRequired(
+    state: QuantumControllerState,
+    nowElapsedMs: Long,
+    maxAgeMs: Long,
+): Boolean = state.syncStatus != QuantumControllerSyncStatus.LIVE ||
+    state.lastAuthoritativeAtElapsedMs == null ||
+    nowElapsedMs - state.lastAuthoritativeAtElapsedMs >= maxAgeMs
 
 private data class QuantumGattRead(
     val status: Int,
@@ -836,6 +856,10 @@ class BoardBleConnection(
         resetIdleTimer()
         onRestartScannersAfterConnect?.invoke()
         if (_connectedBoardBrand.value == BoardBrand.QUANTUM) {
+            _quantumControllerState.value = _quantumControllerState.value.copy(
+                authoritative = false,
+                syncStatus = QuantumControllerSyncStatus.SYNCING,
+            )
             quantumRefreshJob?.cancel()
             quantumRefreshJob = scope.launch {
                 // fff4 is the eWalls current-state read characteristic. A
@@ -1163,6 +1187,7 @@ class BoardBleConnection(
         val evidence = classifyQuantumControllerEvidence(broadcast)
         val current = _quantumControllerState.value
         val revision = current.revision + 1
+        val now = SystemClock.elapsedRealtime()
         when (broadcast) {
             is QuantumBroadcast.RouteList -> _quantumControllerState.value =
                 QuantumControllerState(
@@ -1174,6 +1199,8 @@ class BoardBleConnection(
                         broadcast.command == com.cruxcoach.domain.board.QuantumCommand.REQUEST_USER_ROUTE_LIST
                     ) revision else current.routeListRevision,
                     authoritative = true,
+                    syncStatus = QuantumControllerSyncStatus.LIVE,
+                    lastAuthoritativeAtElapsedMs = now,
                 )
             is QuantumBroadcast.UserTurnedOff -> _quantumControllerState.value =
                 current.copy(
@@ -1182,6 +1209,13 @@ class BoardBleConnection(
                     },
                     revision = revision,
                     lastFailure = null,
+                    syncStatus = if (current.authoritative) {
+                        QuantumControllerSyncStatus.LIVE
+                    } else {
+                        current.syncStatus
+                    },
+                    lastAuthoritativeAtElapsedMs = now.takeIf { current.authoritative }
+                        ?: current.lastAuthoritativeAtElapsedMs,
                 )
             QuantumBroadcast.BoardCleared -> _quantumControllerState.value =
                 QuantumControllerState(
@@ -1189,6 +1223,8 @@ class BoardBleConnection(
                     authoritativeRevision = revision,
                     routeListRevision = current.routeListRevision,
                     authoritative = true,
+                    syncStatus = QuantumControllerSyncStatus.LIVE,
+                    lastAuthoritativeAtElapsedMs = now,
                 )
             is QuantumBroadcast.Exception -> _quantumControllerState.value =
                 current.copy(
@@ -1214,6 +1250,7 @@ class BoardBleConnection(
 
     /** Finalize state after disconnect callback (or error). */
     private fun finalizeDisconnect(status: Int) {
+        val wasQuantum = _connectedBoardBrand.value == BoardBrand.QUANTUM
         cancelQuantumGattOperations()
         if (userDisconnecting) {
             closeSafetyJob?.cancel()
@@ -1224,6 +1261,7 @@ class BoardBleConnection(
         }
         // Remote disconnect or error
         Log.d(TAG, "Remote/error disconnect (status=0x${status.toString(16)})")
+        if (wasQuantum) markQuantumStateStale()
         _connectionState.value = ConnectionState.DISCONNECTED
         _connectedBoardName.value = null
         _connectedBoardBrand.value = null
@@ -1297,9 +1335,11 @@ class BoardBleConnection(
         _connectionState.value = ConnectionState.CONNECTING
         if (board.boardBrand == BoardBrand.QUANTUM) {
             quantumNotificationAccumulator.reset()
+            val previousQuantumState = _quantumControllerState.value
             _quantumControllerState.value = QuantumControllerState(
-                revision = _quantumControllerState.value.revision + 1,
+                revision = previousQuantumState.revision + 1,
                 authoritative = false,
+                lastAuthoritativeAtElapsedMs = previousQuantumState.lastAuthoritativeAtElapsedMs,
             )
         }
         _connectedBoardName.value = board.displayName
@@ -1845,6 +1885,24 @@ class BoardBleConnection(
         return refreshed
     }
 
+    /** Refresh immediately when a connected app returns after its snapshot aged out. */
+    fun refreshQuantumStateOnForeground(
+        nowElapsedMs: Long = SystemClock.elapsedRealtime(),
+    ) {
+        if (_connectionState.value != ConnectionState.CONNECTED ||
+            _connectedBoardBrand.value != BoardBrand.QUANTUM ||
+            !quantumForegroundRefreshRequired(
+                _quantumControllerState.value,
+                nowElapsedMs,
+                QUANTUM_REFRESH_INTERVAL_MS,
+            )
+        ) return
+        _quantumControllerState.value = _quantumControllerState.value.copy(
+            syncStatus = QuantumControllerSyncStatus.SYNCING,
+        )
+        scope.launch { refreshQuantumState() }
+    }
+
     /** Remove exactly one installation-owned Quantum layer, never all users. */
     suspend fun removeQuantumLayer(
         userId: String,
@@ -2072,6 +2130,7 @@ class BoardBleConnection(
     @SuppressLint("MissingPermission")
     fun disconnect() {
         Log.d(TAG, "disconnect() called (SDK=${Build.VERSION.SDK_INT})")
+        val wasQuantum = _connectedBoardBrand.value == BoardBrand.QUANTUM
         connectJob?.cancel()
         connectJob = null
         connectionTimeoutJob?.cancel()
@@ -2093,6 +2152,7 @@ class BoardBleConnection(
             }
         }
         cancelQuantumGattOperations()
+        if (wasQuantum) markQuantumStateStale()
 
         run {
             val pending = pendingWrite
@@ -2151,6 +2211,18 @@ class BoardBleConnection(
     }
 
     fun isConnected(): Boolean = _connectionState.value == ConnectionState.CONNECTED
+
+    private fun markQuantumStateStale() {
+        val current = _quantumControllerState.value
+        _quantumControllerState.value = current.copy(
+            authoritative = false,
+            syncStatus = if (current.lastAuthoritativeAtElapsedMs == null) {
+                QuantumControllerSyncStatus.UNSYNCED
+            } else {
+                QuantumControllerSyncStatus.STALE
+            },
+        )
+    }
 
     /**
      * Suspends until any pending GATT close operation completes, with a safety timeout.

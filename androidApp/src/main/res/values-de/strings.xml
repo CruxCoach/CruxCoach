@@ -2637,6 +2637,9 @@
     <string name="board_layer_error_other_board">Diese Ebenen wurden für ein anderes Board zusammengestellt. Weise sie auf diesem neu zu.</string>
     <string name="quantum_wall_title">Deine Quantum-Layer-Pläne</string>
     <string name="quantum_wall_occupancy">Wand: %1$d/%2$d aktiv</string>
+    <string name="quantum_wall_occupancy_stale">Letzter Stand: %1$d/%2$d aktiv</string>
+    <string name="quantum_wall_unsynced">Verbinden, um Boardzustand zu lesen</string>
+    <string name="quantum_wall_syncing">Boardzustand wird geladen…</string>
     <string name="quantum_wall_foreign_known_short">%1$d fremd · bekannt</string>
     <string name="quantum_wall_foreign_unknown_short">%1$d fremd · %2$d unbekannt</string>
     <string name="quantum_wall_foreign_strip">Andere Apps:</string>
