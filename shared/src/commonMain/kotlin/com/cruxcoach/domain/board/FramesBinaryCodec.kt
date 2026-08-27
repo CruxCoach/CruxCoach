@@ -65,10 +65,13 @@ object FramesBinaryCodec {
             return decodeMultiFrame(blob)
         }
         // Detect raw UTF-8 text BLOBs (from CAST migration, not yet binary-encoded).
-        // Text format chars: p, x, r, 0-9, comma. Binary format always has roleId
-        // bytes (12-15, 42-45, 254) by position 2 which are outside this set.
-        if (looksLikeText(blob)) {
-            return blob.decodeToString()
+        // Android's SQLite Cursor.getBlob() appends a C-string NUL when the
+        // storage class is TEXT even if the declared column is BLOB. Quantum
+        // was imported through SQL group_concat(), so existing catalogues have
+        // exactly that representation. Strip terminal NUL bytes at this codec
+        // boundary; internal NULs and every other foreign byte remain invalid.
+        textPayloadLength(blob)?.let { textLength ->
+            return blob.decodeToString(0, textLength)
         }
         return decodeSingleFrame(blob)
     }
@@ -95,17 +98,18 @@ object FramesBinaryCodec {
         return pos == blob.size
     }
 
-    private fun looksLikeText(blob: ByteArray): Boolean {
-        if (blob.size < 4) return false
-        val checkLen = minOf(20, blob.size)
-        for (i in 0 until checkLen) {
+    private fun textPayloadLength(blob: ByteArray): Int? {
+        var end = blob.size
+        while (end > 0 && blob[end - 1] == 0.toByte()) end--
+        if (end < 4) return null
+        for (i in 0 until end) {
             val b = blob[i].toInt() and 0xFF
             // Valid text chars: p, x, r, comma, digits (delta) + h (range climbConcat)
             if (b != 0x70 && b != 0x78 && b != 0x72 && b != 0x68 && b != 0x2C &&
                 !(b in 0x30..0x39)
-            ) return false
+            ) return null
         }
-        return true
+        return end
     }
 
     // ── Single-frame encoding ─────────────────────────────────────

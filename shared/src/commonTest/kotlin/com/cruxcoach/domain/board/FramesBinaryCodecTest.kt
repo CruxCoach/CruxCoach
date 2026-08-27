@@ -59,6 +59,17 @@ class FramesBinaryCodecTest {
     }
 
     @Test
+    fun sqliteTextBlobTrailingNulIsRemovedAtDecodeBoundary() {
+        val text = "p1006017r12p1006023r12p1001012r13p1006142r14"
+        val sqliteTextBlob = text.encodeToByteArray() + byteArrayOf(0)
+
+        assertEquals(text, FramesBinaryCodec.decode(sqliteTextBlob))
+        assertEquals(4, BoardClimbParser.parseSingleFrameStrict(
+            FramesBinaryCodec.decode(sqliteTextBlob),
+        )?.size)
+    }
+
+    @Test
     fun quantumMultiFrameWithRemovalsUsesLosslessTextFallback() {
         val text = "p19100001r42p19100002r45,x19100001p19100003r43"
 
