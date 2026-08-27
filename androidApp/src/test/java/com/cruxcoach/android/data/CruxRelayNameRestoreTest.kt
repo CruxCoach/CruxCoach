@@ -153,6 +153,7 @@ class CruxRelayNameRestoreTest {
                 .putExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.STATE_ON),
         )
         Shadows.shadowOf(Looper.getMainLooper()).idle()
+        runCurrent()
 
         val prefs = context.getSharedPreferences(CruxRelayManager.PREFS, Context.MODE_PRIVATE)
         assertEquals("My phone", currentName())
