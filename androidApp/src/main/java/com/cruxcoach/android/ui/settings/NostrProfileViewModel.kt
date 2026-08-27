@@ -9,9 +9,9 @@ import com.cruxcoach.android.community.CommunityClimbSubscriber
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.data.kilter.KilterTokenStore
 import com.cruxcoach.android.nostr.NostrSigner
-import com.cruxcoach.android.nostr.profile.ImageProcessor
 import com.cruxcoach.android.nostr.profile.LnurlVerifier
 import com.cruxcoach.android.nostr.profile.Nip05Verifier
+import com.cruxcoach.android.nostr.profile.ProfileImageRepository
 import com.cruxcoach.android.nostr.profile.ProfileImageUploader
 import com.cruxcoach.android.payment.NostrProfileManager
 import com.cruxcoach.data.repository.BoardRepository
@@ -71,18 +71,15 @@ data class NostrProfileEditState(
      *  CruxCoach climbs from other authors are flowing. Null until the
      *  first emission. */
     val subscriberHealth: CommunityClimbSubscriber.SubscriberHealth? = null,
-    /** NIP-05 verification status — surfaced as a trailing icon next to
-     *  the NIP-05 field. Resets to [Nip05Verifier.State.Idle] on every
-     *  edit; updated when the user blurs the field or the editor opens
-     *  with a non-blank cached value. */
+    /** NIP-05 verification status. It remains idle for local-only edits and runs only after the
+     *  user confirms public profile publication. */
     val nip05Verification: Nip05Verifier.State = Nip05Verifier.State.Idle,
     /** LNURL probe status for the Lightning-address field. Same lifecycle
      *  as [nip05Verification]. */
     val lnurlVerification: LnurlVerifier.State = LnurlVerifier.State.Idle,
-    /** True while a banner image is being compressed + uploaded to Blossom.
-     *  UI shows a progress overlay on the banner edit area. */
+    /** True while a banner selection is being compressed + stored privately. */
     val bannerUploadInFlight: Boolean = false,
-    /** True while a profile picture is being compressed + uploaded. */
+    /** True while a profile-picture selection is being compressed + stored privately. */
     val pictureUploadInFlight: Boolean = false,
     /** True while a relay refresh is running in the background. The
      *  fields are already populated from the local cache when this is
@@ -106,12 +103,13 @@ class NostrProfileViewModel @Inject constructor(
     private val communityClimbSubscriber: CommunityClimbSubscriber,
     private val nip05Verifier: Nip05Verifier,
     private val lnurlVerifier: LnurlVerifier,
-    private val imageProcessor: ImageProcessor,
-    private val profileImageUploader: ProfileImageUploader,
+    private val profileImageRepository: ProfileImageRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(NostrProfileEditState())
     val state: StateFlow<NostrProfileEditState> = _state.asStateFlow()
+    private var persistedPictureReference = ""
+    private var persistedBannerReference = ""
 
     init {
         load()
@@ -156,6 +154,8 @@ class NostrProfileViewModel @Inject constructor(
             val cached = runCatching { nostrProfileManager.getProfileFromCache(pubkey) }
                 .getOrNull()
             if (cached != null) {
+                persistedPictureReference = cached.pictureUrl.orEmpty()
+                persistedBannerReference = cached.bannerUrl.orEmpty()
                 _state.update {
                     it.copy(
                         displayName = cached.displayName.orEmpty(),
@@ -172,8 +172,6 @@ class NostrProfileViewModel @Inject constructor(
                         kilterUsername = kilterUsername,
                     )
                 }
-                if (!cached.nip05.isNullOrBlank()) verifyNip05Now()
-                if (!cached.lightningAddress.isNullOrBlank()) verifyLightningNow()
                 return@launch
             } else {
                 // No cache yet — drop the full-screen spinner anyway
@@ -209,6 +207,8 @@ class NostrProfileViewModel @Inject constructor(
                     // a future load() picks them up.
                     current.copy(isLoading = false, isRefreshing = false)
                 } else {
+                    persistedPictureReference = fresh.pictureUrl.orEmpty()
+                    persistedBannerReference = fresh.bannerUrl.orEmpty()
                     current.copy(
                         displayName = fresh.displayName.orEmpty(),
                         lightningAddress = fresh.lightningAddress.orEmpty(),
@@ -221,10 +221,6 @@ class NostrProfileViewModel @Inject constructor(
                         isRefreshing = false,
                     )
                 }
-            }
-            if (fresh != null && !_state.value.hasUserEdited) {
-                if (!fresh.nip05.isNullOrBlank()) verifyNip05Now()
-                if (!fresh.lightningAddress.isNullOrBlank()) verifyLightningNow()
             }
         }
     }
@@ -267,9 +263,7 @@ class NostrProfileViewModel @Inject constructor(
     }
     fun clearError() = _state.update { it.copy(errorMessage = null) }
 
-    /** Trigger a NIP-05 well-known fetch + match against the user's own
-     *  pubkey. Wired to the field's onFocusChanged on blur. No-op when
-     *  the field is blank. */
+    /** Trigger a NIP-05 well-known fetch after the profile was deliberately made public. */
     fun verifyNip05Now() {
         val nip05 = _state.value.nip05.trim()
         if (nip05.isBlank()) {
@@ -284,8 +278,7 @@ class NostrProfileViewModel @Inject constructor(
         }
     }
 
-    /** Best-effort LNURL-pay probe on the Lightning-address field.
-     *  Wired to onFocusChanged on blur. */
+    /** Best-effort LNURL-pay probe after the profile was deliberately made public. */
     fun verifyLightningNow() {
         val lud16 = _state.value.lightningAddress.trim()
         if (lud16.isBlank()) {
@@ -299,34 +292,61 @@ class NostrProfileViewModel @Inject constructor(
         }
     }
 
-    /** Compress the picked image at [uri] (1024 px long-edge JPEG) and
-     *  upload to Blossom. On success the URL replaces [pictureUrl]. On
-     *  failure an [errorMessage] surfaces in the snackbar. */
-    fun uploadPicture(uri: Uri) = uploadImage(
+    /** Compress the picked picture and keep it exclusively in private local storage. */
+    fun selectPicture(uri: Uri) = storeImageLocally(
         uri = uri,
-        maxDimension = ImageProcessor.MAX_DIMENSION_PICTURE,
+        slot = ProfileImageRepository.Slot.PICTURE,
         markInFlight = { _state.update { it.copy(pictureUploadInFlight = true, errorMessage = null) } },
         clearInFlight = { _state.update { it.copy(pictureUploadInFlight = false) } },
-        onSuccess = { url ->
-            _state.update { it.copy(pictureUrl = url, justSaved = false) }
+        onSuccess = { reference ->
+            _state.value.pictureUrl.takeIf { it != persistedPictureReference }
+                ?.let(profileImageRepository::deleteIfOwned)
+            _state.update {
+                it.copy(
+                    pictureUrl = reference,
+                    justSaved = false,
+                    justPublished = false,
+                    hasUserEdited = true,
+                )
+            }
         },
     )
 
-    /** Same as [uploadPicture] but for the 3:1-ish banner image
-     *  (1920 px long-edge). */
-    fun uploadBanner(uri: Uri) = uploadImage(
+    /** Same as [selectPicture], using the banner size limit. */
+    fun selectBanner(uri: Uri) = storeImageLocally(
         uri = uri,
-        maxDimension = ImageProcessor.MAX_DIMENSION_BANNER,
+        slot = ProfileImageRepository.Slot.BANNER,
         markInFlight = { _state.update { it.copy(bannerUploadInFlight = true, errorMessage = null) } },
         clearInFlight = { _state.update { it.copy(bannerUploadInFlight = false) } },
-        onSuccess = { url ->
-            _state.update { it.copy(bannerUrl = url, justSaved = false) }
+        onSuccess = { reference ->
+            _state.value.bannerUrl.takeIf { it != persistedBannerReference }
+                ?.let(profileImageRepository::deleteIfOwned)
+            _state.update {
+                it.copy(
+                    bannerUrl = reference,
+                    justSaved = false,
+                    justPublished = false,
+                    hasUserEdited = true,
+                )
+            }
         },
     )
 
-    private fun uploadImage(
+    fun removePicture() {
+        _state.value.pictureUrl.takeIf { it != persistedPictureReference }
+            ?.let(profileImageRepository::deleteIfOwned)
+        setPictureUrl("")
+    }
+
+    fun removeBanner() {
+        _state.value.bannerUrl.takeIf { it != persistedBannerReference }
+            ?.let(profileImageRepository::deleteIfOwned)
+        setBannerUrl("")
+    }
+
+    private fun storeImageLocally(
         uri: Uri,
-        maxDimension: Int,
+        slot: ProfileImageRepository.Slot,
         markInFlight: () -> Unit,
         clearInFlight: () -> Unit,
         onSuccess: (String) -> Unit,
@@ -334,24 +354,13 @@ class NostrProfileViewModel @Inject constructor(
         markInFlight()
         viewModelScope.launch {
             try {
-                val bytes = imageProcessor.loadAndCompress(uri, maxDimension)
-                when (val result = profileImageUploader.upload(bytes)) {
-                    is ProfileImageUploader.Result.Success -> onSuccess(result.url)
-                    is ProfileImageUploader.Result.Failure -> _state.update {
-                        it.copy(
-                            errorMessage = appContext.getString(
-                                R.string.nostr_profile_image_upload_failed,
-                                result.message,
-                            ),
-                        )
-                    }
-                }
+                onSuccess(profileImageRepository.storeSelection(uri, slot))
             } catch (e: Exception) {
-                android.util.Log.w("NostrProfileVM", "image upload pipeline failed", e)
+                android.util.Log.w("NostrProfileVM", "private image storage failed", e)
                 _state.update {
                     it.copy(
                         errorMessage = appContext.getString(
-                            R.string.nostr_profile_image_upload_failed,
+                            R.string.nostr_profile_image_local_failed,
                             e.message ?: e.javaClass.simpleName,
                         ),
                     )
@@ -395,6 +404,7 @@ class NostrProfileViewModel @Inject constructor(
                 return@launch
             }
             propagateDisplayName(result)
+            commitLocalImageReferences(s.pictureUrl, s.bannerUrl)
             _state.update {
                 it.copy(isSaving = false, justSaved = true, hasUserEdited = false)
             }
@@ -421,13 +431,17 @@ class NostrProfileViewModel @Inject constructor(
                 }
                 return@launch
             }
+            commitLocalImageReferences(s.pictureUrl, s.bannerUrl)
+
+            val publishedPicture = publishImageOrSurfaceFailure(s.pictureUrl) ?: return@launch
+            val publishedBanner = publishImageOrSurfaceFailure(s.bannerUrl) ?: return@launch
 
             val result = nostrProfileManager.publishProfile(
                 displayName = s.displayName.trim(),
                 lightningAddress = s.lightningAddress.trim(),
-                picture = s.pictureUrl.trim(),
+                picture = publishedPicture.trim(),
                 about = s.about.trim(),
-                banner = s.bannerUrl.trim(),
+                banner = publishedBanner.trim(),
                 nip05 = s.nip05.trim(),
                 website = s.website.trim(),
             )
@@ -441,15 +455,60 @@ class NostrProfileViewModel @Inject constructor(
                 return@launch
             }
             propagateDisplayName(result)
+            profileImageRepository.deleteIfOwned(s.pictureUrl)
+            profileImageRepository.deleteIfOwned(s.bannerUrl)
+            persistedPictureReference = publishedPicture
+            persistedBannerReference = publishedBanner
             _state.update {
                 it.copy(
+                    pictureUrl = publishedPicture,
+                    bannerUrl = publishedBanner,
                     isPublishing = false,
                     justSaved = false,
                     justPublished = true,
                     hasUserEdited = false,
                 )
             }
+            if (s.nip05.isNotBlank()) verifyNip05Now()
+            if (s.lightningAddress.isNotBlank()) verifyLightningNow()
         }
+    }
+
+    private suspend fun publishImageOrSurfaceFailure(reference: String): String? {
+        return when (val result = profileImageRepository.publish(reference.trim())) {
+            is ProfileImageUploader.Result.Success -> result.url
+            is ProfileImageUploader.Result.Failure -> {
+                _state.update {
+                    it.copy(
+                        isPublishing = false,
+                        errorMessage = appContext.getString(
+                            R.string.nostr_profile_image_upload_failed,
+                            result.message,
+                        ),
+                    )
+                }
+                null
+            }
+        }
+    }
+
+    private fun commitLocalImageReferences(picture: String, banner: String) {
+        if (persistedPictureReference != picture) {
+            profileImageRepository.deleteIfOwned(persistedPictureReference)
+            persistedPictureReference = picture
+        }
+        if (persistedBannerReference != banner) {
+            profileImageRepository.deleteIfOwned(persistedBannerReference)
+            persistedBannerReference = banner
+        }
+    }
+
+    override fun onCleared() {
+        _state.value.pictureUrl.takeIf { it != persistedPictureReference }
+            ?.let(profileImageRepository::deleteIfOwned)
+        _state.value.bannerUrl.takeIf { it != persistedBannerReference }
+            ?.let(profileImageRepository::deleteIfOwned)
+        super.onCleared()
     }
 
     private fun saveLocally(s: NostrProfileEditState) =
