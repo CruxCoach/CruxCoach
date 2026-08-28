@@ -376,9 +376,10 @@ android {
                 buildConfigField("String", "APKTRACK_FEATURE_TRACK", "\"${featureTrack}\"")
                 buildConfigField("String", "APKTRACK_SOURCE_BRANCH", "\"${featureBranch}\"")
             } else {
-                applicationIdSuffix = ".dev.local"
-                manifestPlaceholders["appLabel"] = "CruxCoach Dev · local"
-                resValue("string", "app_name", "CruxCoach Dev · local")
+                applicationIdSuffix = developmentAppIdSuffix
+                versionNameSuffix = "-dev"
+                manifestPlaceholders["appLabel"] = "CruxCoach Dev · $developmentLabelBranch"
+                resValue("string", "app_name", "CruxCoach Dev · $developmentLabelBranch")
                 buildConfigField("String", "APKTRACK_FEATURE_TRACK", "\"\"")
                 buildConfigField("String", "APKTRACK_SOURCE_BRANCH", "\"\"")
             }
