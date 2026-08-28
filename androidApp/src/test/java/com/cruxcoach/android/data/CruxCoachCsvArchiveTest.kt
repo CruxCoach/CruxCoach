@@ -23,8 +23,8 @@ class CruxCoachCsvArchiveTest {
         val source = """
             {
               "version":3,"app":"CruxCoach","exportedAt":"2026-08-27T10:00:00Z",
-              "boardAscents":[{"climbUuid":"climb-1","angle":40,"listed":true,"comment":"Felt easy"}],
-              "boardBids":[{"climbUuid":"climb-2","angle":35,"comment":"Missed the top"}],
+              "boardAscents":[{"climbUuid":"climb-1","angle":40,"listed":true,"comment":"Felt easy","difficulty":18,"difficultyAverage":20.5}],
+              "boardBids":[{"climbUuid":"climb-2","angle":35,"comment":"Missed the top","difficultyAverage":24}],
               "climbNotes":[
                 {"climbUuid":"climb-1","note":"Hard start","updatedAt":"2026-08-27T10:01:00Z"},
                 {"climbUuid":"climb-3","note":"Try left foot","updatedAt":"2026-08-27T10:02:00Z"}
@@ -35,7 +35,7 @@ class CruxCoachCsvArchiveTest {
                 "playlistEntries":[{"climbUuid":"climb-2","entryType":"climb","restSeconds":null,"angle":40}]
               }],
               "boardClimbs":[{"uuid":"climb-4","name":"My climb"}],
-              "boardClimbStats":[{"climbUuid":"climb-4","angle":40,"ascents":2}]
+              "boardClimbStats":[{"climbUuid":"climb-4","angle":40,"ascents":2,"displayDifficulty":22,"difficultyAverage":24}]
             }
         """.trimIndent()
 
@@ -58,16 +58,31 @@ class CruxCoachCsvArchiveTest {
         assertEquals(4, files.keys.count { it.endsWith(".csv") })
         assertTrue(files.getValue("board_logbook.csv").contains("entryType"))
         assertTrue(files.getValue("board_logbook.csv").contains("comment"))
+        assertTrue(files.getValue("board_logbook.csv").contains("difficultyFb"))
+        assertTrue(files.getValue("board_logbook.csv").contains("difficultyV"))
+        assertTrue(files.getValue("board_logbook.csv").contains("difficultyAverageFb"))
+        assertTrue(files.getValue("board_logbook.csv").contains("difficultyAverageV"))
+        assertTrue(files.getValue("board_logbook.csv").contains("6b"))
+        assertTrue(files.getValue("board_logbook.csv").contains("V4"))
+        assertTrue(files.getValue("board_logbook.csv").contains("6c+"))
+        assertTrue(files.getValue("board_logbook.csv").contains("V5"))
         assertTrue(!files.getValue("board_logbook.csv").contains("personalNote"))
         assertTrue(files.getValue("climb_notes.csv").contains("updatedAt"))
         assertTrue(files.getValue("climb_notes.csv").contains("Try left foot"))
         assertTrue(files.getValue("climb_lists.csv").contains("rowType"))
         assertTrue(files.getValue("climb_lists.csv").contains("'=Power; plan"))
         assertTrue(files.getValue("own_climbs.csv").contains("stat_angle"))
+        assertTrue(files.getValue("own_climbs.csv").contains("stat_displayDifficultyFb"))
+        assertTrue(files.getValue("own_climbs.csv").contains("stat_displayDifficultyV"))
+        assertTrue(files.getValue("own_climbs.csv").contains("stat_difficultyAverageFb"))
+        assertTrue(files.getValue("own_climbs.csv").contains("stat_difficultyAverageV"))
 
         val restored = json.parseToJsonElement(CruxCoachCsvArchive.toJson(archive)) as JsonObject
         assertEquals(1, restored.array("boardAscents").size)
         assertEquals(1, restored.array("boardBids").size)
+        assertTrue((restored.array("boardAscents").single() as JsonObject).keys.none {
+            it.endsWith("Fb") || it.endsWith("V")
+        })
         assertEquals(2, restored.array("climbNotes").size)
         val restoredList = restored.array("climbLists").single() as JsonObject
         assertEquals("=Power; plan", restoredList.getValue("name").jsonPrimitive.content)
@@ -75,6 +90,9 @@ class CruxCoachCsvArchiveTest {
         assertEquals(1, restoredList.array("playlistEntries").size)
         assertEquals(1, restored.array("boardClimbs").size)
         assertEquals(1, restored.array("boardClimbStats").size)
+        assertTrue((restored.array("boardClimbStats").single() as JsonObject).keys.none {
+            it.endsWith("Fb") || it.endsWith("V")
+        })
     }
 
     @Test

@@ -15,12 +15,12 @@ class CruxCoachExcelWorkbookTest {
         val source = """
             {
               "version":3,"app":"CruxCoach","exportedAt":"2026-08-27T10:00:00Z",
-              "boardAscents":[{"climbUuid":"climb-1","comment":"Felt <easy> & fun"}],
-              "boardBids":[{"climbUuid":"climb-2","comment":"=not a formula"}],
+              "boardAscents":[{"climbUuid":"climb-1","comment":"Felt <easy> & fun","difficulty":18,"difficultyAverage":20.5}],
+              "boardBids":[{"climbUuid":"climb-2","comment":"=not a formula","difficultyAverage":24}],
               "climbNotes":[{"climbUuid":"climb-1","note":"Use heel","updatedAt":"2026-08-27T10:01:00Z"}],
               "climbLists":[{"name":"Projects","entries":["climb-1"],"playlistEntries":[]}],
               "boardClimbs":[{"uuid":"climb-3","name":"My climb"}],
-              "boardClimbStats":[{"climbUuid":"climb-3","angle":40,"ascents":2}]
+              "boardClimbStats":[{"climbUuid":"climb-3","angle":40,"ascents":2,"displayDifficulty":22,"difficultyAverage":24}]
             }
         """.trimIndent()
 
@@ -57,6 +57,16 @@ class CruxCoachExcelWorkbookTest {
         assertTrue(sharedStrings.contains("=not a formula"))
         assertTrue(sharedStrings.contains("Use heel"))
         assertTrue(sharedStrings.contains("stat_angle"))
+        assertTrue(sharedStrings.contains("difficultyFb"))
+        assertTrue(sharedStrings.contains("difficultyV"))
+        assertTrue(sharedStrings.contains("difficultyAverageFb"))
+        assertTrue(sharedStrings.contains("difficultyAverageV"))
+        assertTrue(sharedStrings.contains("stat_displayDifficultyFb"))
+        assertTrue(sharedStrings.contains("stat_displayDifficultyV"))
+        assertTrue(sharedStrings.contains("6b"))
+        assertTrue(sharedStrings.contains("V4"))
+        assertTrue(sharedStrings.contains("6c+"))
+        assertTrue(sharedStrings.contains("V5"))
         assertTrue(files.getValue("xl/worksheets/sheet1.xml").contains("t=\"s\""))
         assertFalse(files.values.any { it.contains("<f>") })
         assertFalse(files.values.any { it.contains("inlineStr") })

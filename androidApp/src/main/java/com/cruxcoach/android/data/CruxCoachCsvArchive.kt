@@ -1,6 +1,7 @@
 package com.cruxcoach.android.data
 
 import com.cruxcoach.data.CruxCoachBackup.Category
+import com.cruxcoach.domain.board.KilterGradeMapper
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -102,7 +103,7 @@ object CruxCoachCsvArchive {
     private fun tablesFromRoot(root: JsonObject, categories: Set<Category>): List<ExportTable> =
         buildList {
             if (Category.BOARD_LOGBOOK in categories) {
-                add(ExportTable(LOGBOOK_FILE, "Logbook", combineLogbook(root)))
+                add(ExportTable(LOGBOOK_FILE, "Logbook", combineLogbook(root).withReadableGrades()))
             }
             if (Category.BOARD_LOGBOOK in categories || Category.CLIMB_NOTES in categories) {
                 val notes = root["climbNotes"] as? JsonArray ?: JsonArray(emptyList())
@@ -112,7 +113,7 @@ object CruxCoachCsvArchive {
                 add(ExportTable(LISTS_FILE, "Climb lists", combineLists(root)))
             }
             if (Category.OWN_CLIMBS in categories) {
-                add(ExportTable(CLIMBS_FILE, "Own climbs", combineOwnClimbs(root)))
+                add(ExportTable(CLIMBS_FILE, "Own climbs", combineOwnClimbs(root).withReadableGrades()))
             }
         }
 
@@ -134,7 +135,9 @@ object CruxCoachCsvArchive {
             val row = element as JsonObject
             val type = row.getValue(ENTRY_TYPE).asString()
             val clean = JsonObject(
-                (row - ENTRY_TYPE).filterValues { it !is JsonNull },
+                (row - ENTRY_TYPE)
+                    .filterKeys { !isReadableGradeField(it) }
+                    .filterValues { it !is JsonNull },
             )
             when (type) {
                 "send" -> ascents += clean
@@ -274,6 +277,7 @@ object CruxCoachCsvArchive {
             group.forEach { row ->
                 row[STAT_ROW].nonNull()?.let { statRow ->
                     val statFields = row.filterKeys { it.startsWith(STAT_PREFIX) }
+                        .filterKeys { !isReadableGradeField(it) }
                         .filterValues { it !is JsonNull }
                         .mapKeys { (key, _) -> key.removePrefix(STAT_PREFIX) }
                     require("angle" in statFields) { "Own-climb stat has no angle" }
@@ -298,6 +302,50 @@ object CruxCoachCsvArchive {
         }
     }
 
+    private fun JsonArray.withReadableGrades(): JsonArray = JsonArray(map { element ->
+        val row = element as JsonObject
+        val readable = buildMap<String, JsonElement> {
+            row.forEach { (field, value) ->
+                if (!isInternalGradeField(field)) return@forEach
+                val difficulty = (value as? JsonPrimitive)
+                    ?.takeUnless { it.isString || it.booleanOrNull != null }
+                    ?.content
+                    ?.toDoubleOrNull()
+                    ?.takeIf { it.isFinite() }
+                    ?: return@forEach
+                put("${field}Fb", JsonPrimitive(KilterGradeMapper.difficultyToFont(difficulty)))
+                put("${field}V", JsonPrimitive(KilterGradeMapper.difficultyToVScale(difficulty)))
+            }
+        }
+        JsonObject(row + readable)
+    })
+
+    private fun isInternalGradeField(field: String): Boolean =
+        field.removePrefix(STAT_PREFIX) in internalGradeFields
+
+    private fun isReadableGradeField(field: String): Boolean =
+        readableGradeSuffixes.any { suffix ->
+            field.endsWith(suffix) && isInternalGradeField(field.removeSuffix(suffix))
+        }
+
+    internal fun spreadsheetBaseField(field: String): String =
+        readableGradeSuffixes.firstNotNullOfOrNull { suffix ->
+            field.removeSuffix(suffix).takeIf {
+                field.endsWith(suffix) && isInternalGradeField(it)
+            }
+        } ?: field
+
+    internal val spreadsheetFieldComparator: Comparator<String> =
+        compareBy<String> { spreadsheetBaseField(it) }
+            .thenBy { field ->
+                when {
+                    field.endsWith("Fb") && isReadableGradeField(field) -> 1
+                    field.endsWith("V") && isReadableGradeField(field) -> 2
+                    else -> 0
+                }
+            }
+            .thenBy { it }
+
     private fun emptyLogbook(): Map<String, JsonElement> = mapOf(
         "boardAscents" to JsonArray(emptyList()),
         "boardBids" to JsonArray(emptyList()),
@@ -310,7 +358,7 @@ object CruxCoachCsvArchive {
 
     private fun encodeArray(array: JsonArray): String {
         val objects = array.map { it as? JsonObject ?: error("CSV row must be an object") }
-        val fields = objects.flatMap { it.keys }.distinct().sorted()
+        val fields = objects.flatMap { it.keys }.distinct().sortedWith(spreadsheetFieldComparator)
         val headers = listOf(ROW_COLUMN) + fields
         val types = listOf("number") + fields.map { field ->
             objects.asSequence().mapNotNull { it[field] }.firstOrNull { it !is JsonNull }
@@ -469,4 +517,11 @@ object CruxCoachCsvArchive {
     private fun JsonElement.asInt(): Int = (this as JsonPrimitive).content.toInt()
 
     private val formulaPrefixes = setOf('=', '+', '-', '@', '\t', '\r')
+    private val internalGradeFields = setOf(
+        "difficulty",
+        "difficultyAverage",
+        "displayDifficulty",
+        "benchmarkDifficulty",
+    )
+    private val readableGradeSuffixes = setOf("Fb", "V")
 }

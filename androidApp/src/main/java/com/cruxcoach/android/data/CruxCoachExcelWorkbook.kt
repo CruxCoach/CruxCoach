@@ -161,8 +161,10 @@ object CruxCoachExcelWorkbook {
     private fun headers(objects: List<JsonObject>): List<String> =
         objects.flatMap { it.keys }.distinct().sortedWith(
             compareBy<String> {
-                headerPriority.indexOf(it).takeIf { index -> index >= 0 } ?: Int.MAX_VALUE
-            }.thenBy { it },
+                headerPriority.indexOf(CruxCoachCsvArchive.spreadsheetBaseField(it))
+                    .takeIf { index -> index >= 0 }
+                    ?: Int.MAX_VALUE
+            }.then(CruxCoachCsvArchive.spreadsheetFieldComparator),
         ).ifEmpty { listOf("No data") }
 
     private fun isStringCell(value: JsonElement): Boolean = when (value) {
