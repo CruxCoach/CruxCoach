@@ -28,11 +28,7 @@ jobs:
       - name: Authorize feature maintainer
         env:
           ACTOR: ${{ github.event.workflow_run.triggering_actor.login }}
-        run: |
-          test -n "$ACTOR"
-          grep -Fvx '#' .github/authorized-feature-maintainers.txt \
-            | sed '/^[[:space:]]*$/d' \
-            | grep -Fx -- "$ACTOR"
+        run: python3 scripts/authorized_feature_maintainer.py --actor "$ACTOR"
       - name: Derive immutable feature identity
         id: identity
         env:
@@ -40,6 +36,9 @@ jobs:
         run: |
           python3 scripts/feature_identity.py \
             --branch "$BRANCH" \
+            --verify-metadata feature-artifact/publication.json \
+            --apk feature-artifact/androidApp/build/outputs/apk/debug/androidApp-debug.apk \
+            --commit "$COMMIT" \
             --github-output "$GITHUB_OUTPUT"
       - name: Reserve the next APKTrack development version
         id: reserve
@@ -214,6 +213,7 @@ jobs:
           fi
           test -n "$APKTRACK_AGENT_TOKEN"
           export APKTRACK_AGENT_TOKEN
+          set -o pipefail
           apktrack publish-build \
             feature-artifact/androidApp/build/outputs/apk/debug/androidApp-debug.apk \
             --config .apktrack/project.toml \
