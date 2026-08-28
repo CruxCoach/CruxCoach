@@ -127,6 +127,10 @@ class CruxRelayManager(
     /** Board identity for the disclosure currently shown. A consent answer
      * must never carry across a disconnect/reconnect to a different wall. */
     private var pendingDisclosureBoardAddress: String? = null
+    /** A cancelled automatic disclosure stays cancelled for this physical
+     * connection. Board writes briefly transition CONNECTED -> SENDING ->
+     * CONNECTED and must not turn that transition into another prompt. */
+    private var autoDisclosureDismissedBoardAddress: String? = null
     private val bluetoothStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(receiverContext: Context?, intent: Intent?) {
             if (intent?.action != BluetoothAdapter.ACTION_STATE_CHANGED) return
@@ -181,10 +185,13 @@ class CruxRelayManager(
             ) { manual, st -> !manual && st == ConnectionState.CONNECTED }
                 .distinctUntilChanged()
                 .collect { shouldShare ->
-                    if (shouldShare && !enabledFlow.value) requestEnable()
+                    if (shouldShare && !enabledFlow.value) requestAutomaticEnable()
                     else if (!shouldShare &&
                         bleConnection.connectionState.value == ConnectionState.DISCONNECTED
-                    ) disable()
+                    ) {
+                        autoDisclosureDismissedBoardAddress = null
+                        disable()
+                    }
                 }
         }
     }
@@ -192,6 +199,17 @@ class CruxRelayManager(
     /** The sole start entry point for manual, automatic and permission-retry
      * paths. No caller can enable transport before the persisted disclosure. */
     fun requestEnable() {
+        autoDisclosureDismissedBoardAddress = null
+        requestEnableInternal()
+    }
+
+    private fun requestAutomaticEnable() {
+        val address = bleConnection.connectedBoard?.address ?: return
+        if (autoDisclosureDismissedBoardAddress == address) return
+        requestEnableInternal()
+    }
+
+    private fun requestEnableInternal() {
         val board = bleConnection.connectedBoard ?: return
         val availability = BoardRelayPolicy.availability(board)
         if (availability == BoardRelayAvailability.MULTI_CONNECT_NOT_NEEDED) {
@@ -250,6 +268,7 @@ class CruxRelayManager(
     }
 
     fun dismissDisclosure() {
+        autoDisclosureDismissedBoardAddress = pendingDisclosureBoardAddress
         disclosureJob?.cancel()
         disclosureJob = null
         pendingDisclosureBoardAddress = null

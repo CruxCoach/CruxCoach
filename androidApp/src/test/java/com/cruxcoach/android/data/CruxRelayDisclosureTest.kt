@@ -87,6 +87,52 @@ class CruxRelayDisclosureTest {
     }
 
     @Test
+    fun `cancelled automatic disclosure is not repeated after a board send`() = runTest {
+        val connection = mockk<BoardBleConnection>(relaxed = true)
+        val connectionState = MutableStateFlow(ConnectionState.CONNECTED)
+        val connectedBoard = MutableStateFlow<DiscoveredBoard?>(board("00:11:22:33:44:55"))
+        every { connection.connectionState } returns connectionState
+        every { connection.connectedBoardDescriptor } returns connectedBoard
+        every { connection.connectedBoard } answers { connectedBoard.value }
+        val preferences = mockk<UserPreferences>(relaxed = true)
+        every { preferences.relayManualStart } returns flowOf(false)
+        every { preferences.relayDisclosureSeen } returns flowOf(false)
+        val manager = CruxRelayManager(
+            context = context,
+            relayServer = mockk<RelayGattServer>(relaxed = true),
+            advertiser = mockk<ClimbBleAdvertiser>(relaxed = true),
+            bleConnection = connection,
+            projectionCoordinator = mockk<BoardProjectionCoordinator>(relaxed = true),
+            userPreferences = preferences,
+            scope = backgroundScope,
+        )
+        runCurrent()
+        assertTrue(manager.state.value.pendingDisclosure)
+
+        manager.dismissDisclosure()
+        connectionState.value = ConnectionState.SENDING
+        runCurrent()
+        connectionState.value = ConnectionState.CONNECTED
+        runCurrent()
+
+        assertFalse(manager.state.value.pendingDisclosure)
+
+        // A deliberate action remains able to ask again without reconnecting.
+        manager.requestEnable()
+        runCurrent()
+        assertTrue(manager.state.value.pendingDisclosure)
+
+        // Cancelling again is scoped only to this connection. A real
+        // disconnect/reconnect may offer automatic sharing once more.
+        manager.dismissDisclosure()
+        connectionState.value = ConnectionState.DISCONNECTED
+        runCurrent()
+        connectionState.value = ConnectionState.CONNECTED
+        runCurrent()
+        assertTrue(manager.state.value.pendingDisclosure)
+    }
+
+    @Test
     fun `answer persists but cannot authorize a replacement board`() = runTest {
         val connection = mockk<BoardBleConnection>(relaxed = true)
         val connectionState = MutableStateFlow(ConnectionState.CONNECTED)
