@@ -525,6 +525,8 @@ interface BoardClimbQueries {
     fun searchClimbUuidsByAllHolds(holdPatterns: List<String>, angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): Set<String>
     /** Get all frames for heatmap computation within current browse filters (brand-scoped). */
     fun getAllFramesForHeatmap(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter, hsmExcludedMask: Long = 0): List<ClimbFrameRow>
+    /** Geometry hydration for lightweight browse rows, which omit frames. */
+    fun getClimbFramesByUuids(uuids: Collection<String>): Map<String, String>
     /** Angle-agnostic frames for the logbook stats heatmap: one row per climb
      *  with stats at ANY angle of (layout, brand). Hold usage doesn't depend
      *  on the angle, so the stats sheet must not pin one. */

@@ -328,6 +328,9 @@ class FakeBoardRepository : BoardRepository {
         }.map { ClimbFrameRow(it.uuid, it.frames) }
     }
 
+    override fun getClimbFramesByUuids(uuids: Collection<String>): Map<String, String> =
+        climbs.filter { it.uuid in uuids }.associate { it.uuid to it.frames }
+
     override fun getAllFramesForHeatmapAllAngles(
         layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double,
         minAscensionists: Int, climbType: ClimbTypeFilter
