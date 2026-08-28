@@ -25,9 +25,33 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
+import com.cruxcoach.android.ble.QueueItem
 import com.cruxcoach.android.data.SessionRole
 import com.cruxcoach.android.data.PlaylistCommandFeedbackKind
+import com.cruxcoach.android.ui.navigation.ClimbNavigationSource
+import com.cruxcoach.android.ui.navigation.ClimbNavigationState
 import com.cruxcoach.android.ui.theme.OrangeAccent
+
+internal fun selectQueueClimb(
+    index: Int,
+    item: QueueItem,
+    queue: List<QueueItem>,
+    climbNavState: ClimbNavigationState,
+    onSelectClimb: ((index: Int) -> Unit)?,
+    onNavigateToClimb: (climbUuid: String, angle: Int) -> Unit,
+) {
+    if (onSelectClimb != null) {
+        onSelectClimb(index)
+        return
+    }
+
+    // Standalone queue sheets retain their detail-navigation behaviour.
+    // Distinct UUIDs are required because a playlist may repeat a climb.
+    climbNavState.climbUuids = queue.map { it.climbUuid }.distinct()
+    climbNavState.angle = item.angle
+    climbNavState.source = ClimbNavigationSource.QUEUE
+    onNavigateToClimb(item.climbUuid, item.angle)
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -35,6 +59,9 @@ fun SessionQueueSheet(
     onDismiss: () -> Unit,
     onNavigateToClimb: (climbUuid: String, angle: Int) -> Unit,
     canEdit: Boolean,
+    /** Player context: select this queue position in the existing player
+     * instead of navigating to another screen. */
+    onSelectClimb: ((index: Int) -> Unit)? = null,
     /** When set (player context), the end/leave button delegates here so
      *  the caller can stage the summary instead of a silent teardown. */
     onEndPlaylist: (() -> Unit)? = null,
@@ -261,14 +288,14 @@ fun SessionQueueSheet(
                                     modifier = Modifier
                                         .weight(1f)
                                         .clickable {
-                                            // Set all queue UUIDs for swipe navigation in detail
-                                            // screen — distinct: the pager keys by uuid and a
-                                            // playlist may repeat climbs (attempt structure).
-                                            viewModel.climbNavState.climbUuids =
-                                                state.queue.map { it.climbUuid }.distinct()
-                                            viewModel.climbNavState.angle = item.angle
-                                            viewModel.climbNavState.source = com.cruxcoach.android.ui.navigation.ClimbNavigationSource.QUEUE
-                                            onNavigateToClimb(item.climbUuid, item.angle)
+                                            selectQueueClimb(
+                                                index = index,
+                                                item = item,
+                                                queue = state.queue,
+                                                climbNavState = viewModel.climbNavState,
+                                                onSelectClimb = onSelectClimb,
+                                                onNavigateToClimb = onNavigateToClimb,
+                                            )
                                             onDismiss()
                                         }
                                         .padding(vertical = 4.dp)
