@@ -4,7 +4,7 @@ All notable changes to CruxCoach will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [0.2.2] - 2026-08-25
+## [0.2.2] - 2026-08-28
 
 Training playlists you can actually play — climb by climb, with rests,
 one-tap logging and a summary at the end — either from a list of your own
@@ -124,6 +124,11 @@ no longer depend on one download server round out the release.
   catalogue sync that quietly fails looked exactly like a successful one.
   After three missed cycles the sync card now says so, with a tap to sync
   right away.
+- **Spreadsheet-friendly data exchange** — save or share the user-facing
+  logbook, bundled private climb notes, lists/playlists and own climbs as JSON,
+  a CSV ZIP or an Excel workbook. CSV and Excel add readable Font and V grades
+  alongside the underlying values. JSON and CSV are round-trip formats; Excel
+  is deliberately export-only and says so in the UI.
 
 ### Changed
 - **Playlists are called playlists** — Kilter and Aurora call them that in
@@ -144,11 +149,19 @@ no longer depend on one download server round out the release.
   the key is unchanged and updates behave exactly as before.
 
 ### Fixed
-- **A complete JSON backup now means all CruxCoach data** — manual export
-  and import include every category supported by the backup format, not just
-  board sends, lists and authored climbs. Profiles, assessments, body data,
-  workouts, training plans, sessions and private notes can therefore be
-  recovered from an offline file as well as from encrypted cloud backup.
+- **Manual exchange no longer over-promises hidden data** — JSON and CSV
+  round-trip the user-facing logbook, bundled private climb notes,
+  lists/playlists and own climbs, and older CruxCoach JSON backups remain
+  importable. The separate encrypted cloud backup continues to use the full
+  recovery codec, including internal profile and training data.
+- **Playlist selection now has one source of truth** — choosing a climb from
+  the playlist's list view updates the existing player instead of opening a
+  second, non-functional playlist screen. Detail-screen light actions continue
+  to work while playback is active, automatic mode sends the selected climb,
+  and Nearby advertises that same current climb.
+- **Quantum overlap filters now affect the browser rows as well as the count** —
+  controller-reported layers are hydrated to their climb geometry before the
+  zero-overlap and at-most-one-overlap predicates are applied.
 - **Quantum controllers that do not answer the optional live-state read stay
   usable** — CruxCoach now falls back to the controller's explicit route-list
   command on the same connection instead of dropping an otherwise healthy
