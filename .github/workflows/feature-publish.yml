@@ -36,9 +36,6 @@ jobs:
         run: |
           python3 scripts/feature_identity.py \
             --branch "$BRANCH" \
-            --verify-metadata feature-artifact/publication.json \
-            --apk feature-artifact/androidApp/build/outputs/apk/debug/androidApp-debug.apk \
-            --commit "$COMMIT" \
             --github-output "$GITHUB_OUTPUT"
       - name: Reserve the next APKTrack development version
         id: reserve
@@ -182,6 +179,9 @@ jobs:
         run: |
           python3 scripts/feature_identity.py \
             --branch "$BRANCH" \
+            --verify-metadata feature-artifact/publication.json \
+            --apk feature-artifact/androidApp/build/outputs/apk/debug/androidApp-debug.apk \
+            --commit "$COMMIT" \
             --github-output "$GITHUB_OUTPUT"
           test "$(python3 -c 'import json; print(json.load(open("feature-artifact/publication.json"))["version_code"])')" \
             = "$RESERVED_VERSION_CODE"
