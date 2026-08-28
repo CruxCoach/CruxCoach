@@ -182,6 +182,7 @@ fun PlaylistPlayerScreen(
             onDismiss = { showQueueSheet = false },
             onNavigateToClimb = { uuid, angle -> onNavigateToClimb(uuid, angle) },
             canEdit = true,
+            onSelectClimb = { index -> viewModel.playback.setCurrent(index) },
             // End from the sheet goes through the player's stop() so the
             // summary appears instead of a silent pop-out.
             onEndPlaylist = { viewModel.stop() },
