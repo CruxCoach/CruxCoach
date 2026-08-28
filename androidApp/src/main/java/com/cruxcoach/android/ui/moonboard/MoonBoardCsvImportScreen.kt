@@ -251,6 +251,12 @@ fun MoonBoardCsvImportScreen(
                         if (importResult.unresolvedLabels.isNotEmpty()) {
                             Text(importResult.unresolvedLabels.joinToString("\n"), style = MaterialTheme.typography.bodySmall)
                         }
+                        if (importResult.ambiguousEntries > 0) {
+                            Text(stringResource(R.string.moon_import_result_ambiguous, importResult.ambiguousEntries))
+                        }
+                        if (importResult.ambiguousLabels.isNotEmpty()) {
+                            Text(importResult.ambiguousLabels.joinToString("\n"), style = MaterialTheme.typography.bodySmall)
+                        }
                         // Every session Moon announced but the scan could not
                         // fully read is named here rather than being rolled up
                         // into a single "import failed".

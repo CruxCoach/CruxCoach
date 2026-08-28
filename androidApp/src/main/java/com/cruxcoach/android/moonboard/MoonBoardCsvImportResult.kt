@@ -11,6 +11,8 @@ data class MoonBoardCsvImportResult(
     val stagedEntries: Int = 0,
     /** Catalogue was confirmed complete; raw data remains for future updates. */
     val unresolvedEntries: Int = 0,
+    /** Catalogue candidates exist, but the MoonBoard variant is not provable. */
+    val ambiguousEntries: Int = 0,
     /** Rows replaced because the entry changed in Moon after the import. */
     val replacedEntries: Int = 0,
     /** Rows Moon no longer lists but that carry notes added in CruxCoach. */
@@ -26,6 +28,7 @@ data class MoonBoardCsvImportResult(
     val warnings: List<String> = emptyList(),
     val unresolvedProblemIds: List<Long> = emptyList(),
     val unresolvedLabels: List<String> = emptyList(),
+    val ambiguousLabels: List<String> = emptyList(),
     val error: String? = null,
 ) {
     val imported: Int get() = importedAscents + importedProjects

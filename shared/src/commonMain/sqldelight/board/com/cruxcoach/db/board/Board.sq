@@ -2544,7 +2544,7 @@ WHERE c.uuid IN :uuids
 -- idx_climbs_brand_deleted_name_nocase. COLLATE NOCASE is only a prefilter;
 -- the importer still matches Unicode-correctly in Kotlin afterwards.
 lookupMoonScreenByNames:
-SELECT c.uuid, c.name, c.setter_username, cs.angle
+SELECT c.uuid, c.layout_id, c.name, c.setter_username, cs.angle
 FROM climbs c INDEXED BY idx_climbs_brand_deleted_name_nocase
 INNER JOIN climb_stats cs ON cs.climb_uuid = c.uuid
 WHERE c.board_brand = 'moonboard'

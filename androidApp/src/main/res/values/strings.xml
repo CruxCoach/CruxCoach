@@ -2543,9 +2543,10 @@
     <string name="moon_import_result_imported">Successfully imported: %1$d</string>
     <string name="moon_import_result_duplicates">Already in CruxCoach: %1$d</string>
     <string name="moon_import_result_not_imported">Could not be imported: %1$d</string>
-    <string name="moon_import_result_snapshots">Imported as logbook-only snapshots because they are not in the current local catalogue: %1$d</string>
+    <string name="moon_import_result_snapshots">Imported safely as logbook-only snapshots: %1$d</string>
     <string name="moon_import_result_staged">Saved safely and completed automatically when the MoonBoard catalogue is ready: %1$d</string>
     <string name="moon_import_result_unresolved">Not in the current MoonBoard catalogue; kept for automatic matching after future catalogue updates: %1$d</string>
+    <string name="moon_import_result_ambiguous">Found in more than one MoonBoard variant; kept for automatic matching when the session variant is known: %1$d</string>
     <string name="moon_import_result_close">Done</string>
     <string name="moon_import_result_sessions">Moon sessions read: %1$d of %2$d</string>
     <string name="moon_import_result_expected">Problems listed by Moon: %1$d</string>

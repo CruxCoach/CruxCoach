@@ -8,6 +8,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.security.MessageDigest
+import java.text.Normalizer
 import java.util.Locale
 import java.util.UUID
 import javax.inject.Inject
@@ -18,7 +19,17 @@ class MoonBoardCsvImporter @Inject constructor(
     private val secureDb: SecureDatabase,
     private val boardDb: BoardDatabase,
 ) {
-    private data class ScreenIndexRow(val uuid: String, val setter: String?)
+    private data class ScreenIndexRow(
+        val uuid: String,
+        val layoutId: Long,
+        val setter: String?,
+    )
+
+    private data class ScreenResolution(
+        val resolved: Map<String, Resolved>,
+        val missing: Set<String>,
+        val ambiguous: Set<String>,
+    )
 
     /**
      * Opens an on-device scan and reports how many Moon entries each training
@@ -66,9 +77,11 @@ class MoonBoardCsvImporter @Inject constructor(
             var snapshotOnly = 0
             var staged = 0
             var trulyUnresolved = 0
+            var ambiguousEntries = 0
             var replaced = 0
             var kept = 0
             val unresolved = linkedSetOf<String>()
+            val ambiguous = linkedSetOf<String>()
             val occurrence = HashMap<String, Int>()
             val observedExternalIds = LinkedHashSet<String>()
 
@@ -79,7 +92,8 @@ class MoonBoardCsvImporter @Inject constructor(
             val catalogueComplete = catalogueIsComplete()
 
             val prepared = entries.mapNotNull { entry ->
-                val resolved = catalogue[screenKey(entry)]
+                val key = screenKey(entry)
+                val resolved = catalogue.resolved[key]
                 val signature = listOf(
                     entry.name, entry.setter, entry.angle, entry.climbedAt,
                     entry.tries, entry.attempts,
@@ -89,11 +103,18 @@ class MoonBoardCsvImporter @Inject constructor(
                 val externalId = "moon-screen:$kind:${sha256("$signature:$ordinal").take(32)}"
                 observedExternalIds += externalId
                 if (resolved == null) {
-                    stageScreen(entry, externalId, catalogueComplete)
+                    val isAmbiguous = key in catalogue.ambiguous
+                    stageScreen(entry, externalId, catalogueComplete, isAmbiguous)
                     if (catalogueComplete) {
                         snapshotOnly++
-                        trulyUnresolved++
-                        unresolved += "${entry.name} — ${entry.setter} @ ${entry.angle}°"
+                        val label = "${entry.name} — ${entry.setter} @ ${entry.angle}°"
+                        if (isAmbiguous) {
+                            ambiguousEntries++
+                            ambiguous += label
+                        } else {
+                            trulyUnresolved++
+                            unresolved += label
+                        }
                         return@mapNotNull PreparedEntry(entry, screenSnapshot(entry), externalId)
                     }
                     staged++
@@ -144,7 +165,9 @@ class MoonBoardCsvImporter @Inject constructor(
                 keptOrphans = kept,
                 stagedEntries = staged,
                 unresolvedEntries = trulyUnresolved,
+                ambiguousEntries = ambiguousEntries,
                 unresolvedLabels = unresolved.take(100),
+                ambiguousLabels = ambiguous.take(100),
             )
         }
 
@@ -314,7 +337,15 @@ class MoonBoardCsvImporter @Inject constructor(
         entries: List<MoonBoardScreenEntry>,
         angles: List<Long>,
     ): Map<String, List<ScreenIndexRow>> {
-        val names = entries.map { it.name.lowercase(Locale.ROOT) }.distinct()
+        // Android SQLite NOCASE only folds ASCII. Query the exact spelling Moon
+        // exposes as well as both Unicode-aware Kotlin case variants, then do
+        // the authoritative comparison with [matchKey] below. This keeps the
+        // lookup index-bounded while resolving É/é, Ü/ü and similar names.
+        val names = entries.flatMap { entry ->
+            val normalized = Normalizer.normalize(entry.name, Normalizer.Form.NFKC)
+            val spaced = normalized.trim().replace(WHITESPACE, " ")
+            listOf(normalized, spaced, spaced.lowercase(Locale.ROOT), spaced.uppercase(Locale.ROOT))
+        }.distinct()
         val startedAt = SystemClock.elapsedRealtime()
         val rows = boardDb.boardQueries.lookupMoonScreenByNames(angles, names).executeAsList()
         Log.i(
@@ -322,13 +353,25 @@ class MoonBoardCsvImporter @Inject constructor(
             "catalogue lookup: ${names.size} name(s) -> ${rows.size} row(s) in " +
                 "${SystemClock.elapsedRealtime() - startedAt} ms",
         )
-        return rows.groupBy({ "${it.name.lowercase(Locale.ROOT)}|${it.angle}" }) {
-            ScreenIndexRow(it.uuid, it.setter_username)
+        return rows.groupBy({ "${matchKey(it.name)}|${it.angle}" }) {
+            ScreenIndexRow(it.uuid, it.layout_id, it.setter_username)
         }
     }
 
     private fun screenKey(entry: MoonBoardScreenEntry): String =
-        "${entry.name.lowercase(Locale.ROOT)}|${entry.setter.lowercase(Locale.ROOT)}|${entry.angle}"
+        "${matchKey(entry.name)}|${matchKey(entry.setter)}|${entry.angle}"
+
+    private fun nameAngleKey(entry: MoonBoardScreenEntry): String =
+        "${matchKey(entry.name)}|${entry.angle}"
+
+    private fun matchKey(value: String): String = Normalizer.normalize(value, Normalizer.Form.NFKC)
+        .trim()
+        .replace(WHITESPACE, " ")
+        // Upper-then-lower approximates Unicode default case folding for
+        // multi-character mappings such as ß -> SS -> ss; plain lowercase
+        // alone does not.
+        .uppercase(Locale.ROOT)
+        .lowercase(Locale.ROOT)
 
     /**
      * Matches a whole scanned logbook against the local MoonBoard catalogue in
@@ -340,35 +383,83 @@ class MoonBoardCsvImporter @Inject constructor(
      */
     private fun resolveScreenEntries(
         entries: List<MoonBoardScreenEntry>,
-    ): Map<String, Resolved> {
+    ): ScreenResolution {
         val wanted = entries.associateBy(::screenKey)
-        if (wanted.isEmpty()) return emptyMap()
+        if (wanted.isEmpty()) return ScreenResolution(emptyMap(), emptySet(), emptySet())
 
         val angles = entries.map { it.angle.toLong() }.distinct()
         val targeted = lookupByNames(entries, angles)
 
-        val chosen = LinkedHashMap<String, String>()
-        wanted.forEach { (key, entry) ->
-            val name = entry.name.lowercase(Locale.ROOT)
-            val rows = targeted["$name|${entry.angle}"].orEmpty()
-            val exact = rows.filter { it.setter?.equals(entry.setter, ignoreCase = true) == true }
-            val row = when {
+        fun candidates(entry: MoonBoardScreenEntry): List<ScreenIndexRow> =
+            targeted[nameAngleKey(entry)].orEmpty()
+
+        fun choose(entry: MoonBoardScreenEntry, rows: List<ScreenIndexRow>): ScreenIndexRow? {
+            val setter = matchKey(entry.setter)
+            val exact = rows.filter { matchKey(it.setter.orEmpty()) == setter }
+            return when {
                 exact.size == 1 -> exact.single()
                 exact.isEmpty() && rows.size == 1 -> rows.single()
                 else -> null
             }
-            if (row != null) chosen[key] = row.uuid
         }
-        if (chosen.isEmpty()) return emptyMap()
 
-        val full = chosen.values.distinct().chunked(300).flatMap { uuids ->
+        // First resolve only identities that are globally unambiguous. Their
+        // layouts are strong evidence for the whole training session: Moon's
+        // date detail is one board session, while an account may contain many
+        // different MoonBoard generations across different dates.
+        val firstPass = wanted.mapValues { (_, entry) -> choose(entry, candidates(entry)) }
+        val firstPassLayouts = firstPass.values.filterNotNull().map { it.layoutId }.distinct()
+
+        // Existing importer-owned rows on this exact date are equally strong
+        // evidence. This is what repairs old logbook-only snapshots without a
+        // fresh scrape: the 357 already resolved rows identify Masters 2019,
+        // then the formerly ambiguous rows can be reconciled in place.
+        val storedLayouts = entries.map { it.climbedAt }.distinct().flatMap(::storedScreenLayouts).distinct()
+
+        // Even if no single card is globally unique, the intersection of all
+        // candidate layout sets can prove the session variant. Setter matches
+        // narrow the set when trustworthy, but a display-name alias may fall
+        // back to every name/angle candidate.
+        val commonLayouts = wanted.values.mapNotNull { entry ->
+            val rows = candidates(entry)
+            if (rows.isEmpty()) return@mapNotNull null
+            val setter = matchKey(entry.setter)
+            val exact = rows.filter { matchKey(it.setter.orEmpty()) == setter }
+            (exact.ifEmpty { rows }).mapTo(linkedSetOf()) { it.layoutId }
+        }.reduceOrNull { left, right -> left.apply { retainAll(right) } }.orEmpty()
+
+        val sessionLayout = when {
+            storedLayouts.size > 1 || firstPassLayouts.size > 1 -> null
+            storedLayouts.size == 1 -> storedLayouts.single()
+            firstPassLayouts.size == 1 -> firstPassLayouts.single()
+            commonLayouts.size == 1 -> commonLayouts.single()
+            else -> null
+        }
+
+        val chosen = LinkedHashMap<String, ScreenIndexRow>()
+        val missing = LinkedHashSet<String>()
+        val ambiguous = LinkedHashSet<String>()
+        wanted.forEach { (key, entry) ->
+            val all = candidates(entry)
+            if (all.isEmpty()) {
+                missing += key
+                return@forEach
+            }
+            val row = firstPass[key] ?: sessionLayout?.let { layout ->
+                choose(entry, all.filter { it.layoutId == layout })
+            }
+            if (row == null) ambiguous += key else chosen[key] = row
+        }
+        if (chosen.isEmpty()) return ScreenResolution(emptyMap(), missing, ambiguous)
+
+        val full = chosen.values.map { it.uuid }.distinct().chunked(300).flatMap { uuids ->
             boardDb.boardQueries.lookupMoonCsvCandidates(uuids).executeAsList()
         }.associateBy { "${it.uuid}|${it.angle}" }
 
         val resolved = LinkedHashMap<String, Resolved>()
-        chosen.forEach { (key, uuid) ->
+        chosen.forEach { (key, candidate) ->
             val entry = wanted.getValue(key)
-            val row = full["$uuid|${entry.angle.toLong()}"] ?: return@forEach
+            val row = full["${candidate.uuid}|${entry.angle.toLong()}"] ?: return@forEach
             resolved[key] = Resolved(
                 uuid = row.uuid,
                 layoutId = row.layout_id,
@@ -379,7 +470,17 @@ class MoonBoardCsvImporter @Inject constructor(
                 difficulty = row.difficulty_average,
             )
         }
-        return resolved
+        // A candidate disappearing between the index and hydration queries is
+        // not "missing from Moon"; retain it as ambiguous/retryable.
+        (chosen.keys - resolved.keys).forEach(ambiguous::add)
+        return ScreenResolution(resolved, missing, ambiguous)
+    }
+
+    private fun storedScreenLayouts(climbedAt: String): List<Long> = buildList {
+        secureDb.ascentsQueries.selectImportedAscentLayoutsForDate(climbedAt, SCREEN_PREFIX)
+            .executeAsList().filterNotNullTo(this)
+        secureDb.bidsQueries.selectImportedBidLayoutsForDate(climbedAt, SCREEN_PREFIX)
+            .executeAsList().filterNotNullTo(this)
     }
 
     /**
@@ -403,16 +504,27 @@ class MoonBoardCsvImporter @Inject constructor(
                 val angle = row.angle?.toInt() ?: return@mapNotNull null
                 MoonBoardScreenEntry(name, setter, angle, row.climbed_at, "", row.attempts.toInt(), row.is_send != 0L)
             }
-            val screenResolved = resolveScreenEntries(screenEntries)
+            // Resolve each training day independently. An account can contain
+            // several MoonBoard generations; evidence must never leak from a
+            // Masters 2019 session into a 2016 session on another date.
+            val screenResolutions = screenEntries.groupBy { it.climbedAt }.mapValues { (_, entries) ->
+                resolveScreenEntries(entries)
+            }
             var finalized = 0
             secureDb.transaction {
                 pending.forEach { row ->
                     val climb = if (row.source_type == "csv") {
                         row.problem_id?.let(csvResolved::get)
                     } else {
-                        val key = "${row.problem_name.orEmpty().lowercase(Locale.ROOT)}|" +
-                            "${row.setter_name.orEmpty().lowercase(Locale.ROOT)}|${row.angle}"
-                        screenResolved[key]
+                        // [screenKey] applies the same Unicode/whitespace
+                        // normalisation as the live scan. Constructing a real
+                        // entry avoids a second subtly different key format.
+                        val entry = MoonBoardScreenEntry(
+                            row.problem_name.orEmpty(), row.setter_name.orEmpty(),
+                            row.angle?.toInt() ?: 0, row.climbed_at, "",
+                            row.attempts.toInt(), row.is_send != 0L,
+                        )
+                        screenResolutions[row.climbed_at]?.resolved?.get(screenKey(entry))
                     }
                     if (climb == null) {
                         if (row.source_type == "screen") {
@@ -438,7 +550,17 @@ class MoonBoardCsvImporter @Inject constructor(
                                 )
                             }
                         }
-                        secureDb.moonImportStagingQueries.markStagedMoonImportUnresolved(row.external_id)
+                        val state = if (row.source_type == "screen") {
+                            val entry = MoonBoardScreenEntry(
+                                row.problem_name.orEmpty(), row.setter_name.orEmpty(),
+                                row.angle?.toInt() ?: 0, row.climbed_at, "",
+                                row.attempts.toInt(), row.is_send != 0L,
+                            )
+                            if (screenKey(entry) in
+                                screenResolutions[row.climbed_at]?.ambiguous.orEmpty()
+                            ) "ambiguous" else "unresolved"
+                        } else "unresolved"
+                        secureDb.moonImportStagingQueries.markStagedMoonImportState(state, row.external_id)
                     } else {
                         insertResolved(
                             climb, row.climbed_at, row.attempts.toInt(), row.rating?.toInt(),
@@ -485,13 +607,22 @@ class MoonBoardCsvImporter @Inject constructor(
         )
     }
 
-    private fun stageScreen(entry: MoonBoardScreenEntry, externalId: String, complete: Boolean) {
+    private fun stageScreen(
+        entry: MoonBoardScreenEntry,
+        externalId: String,
+        complete: Boolean,
+        ambiguous: Boolean,
+    ) {
         secureDb.moonImportStagingQueries.stageMoonImport(
             external_id = externalId, source_type = "screen", problem_id = null,
             problem_name = entry.name, setter_name = entry.setter, angle = entry.angle.toLong(),
             climbed_at = entry.climbedAt, attempts = entry.attempts.toLong(), rating = null,
             is_send = if (entry.isSend) 1 else 0,
-            resolution_state = if (complete) "unresolved" else "pending",
+            resolution_state = when {
+                !complete -> "pending"
+                ambiguous -> "ambiguous"
+                else -> "unresolved"
+            },
         )
     }
 
@@ -578,5 +709,6 @@ class MoonBoardCsvImporter @Inject constructor(
         const val TAG = "MoonBoardCsvImporter"
         const val SCREEN_PREFIX = "moon-screen:%"
         const val CATALOGUE_READY_MARKER = "moonboard_catalogue_complete_v1"
+        val WHITESPACE = Regex("[\\s\\p{Z}]+")
     }
 }
