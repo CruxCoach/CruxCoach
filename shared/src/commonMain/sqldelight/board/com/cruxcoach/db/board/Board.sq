@@ -1185,6 +1185,13 @@ WHERE cs.layout_id = ?
 
 -- ═══ Hold-based search + heatmap queries (query climbs directly) ═══
 
+-- Hydrate geometry omitted from the lightweight climb_browse VIEW. Callers
+-- chunk UUID collections so this stays below SQLite's bind-variable limit.
+getClimbFramesByUuids:
+SELECT uuid, frames
+FROM climbs
+WHERE uuid IN :uuids;
+
 -- Get (uuid, frames) for heatmap computation (Kotlin-side processing).
 getAllFramesForFilter:
 SELECT c.uuid, c.frames

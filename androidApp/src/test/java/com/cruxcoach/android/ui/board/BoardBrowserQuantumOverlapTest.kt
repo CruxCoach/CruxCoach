@@ -8,6 +8,8 @@ import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardHold
 import com.cruxcoach.domain.board.HoldRole
 import com.cruxcoach.domain.board.QuantumOverlapFilter
+import com.cruxcoach.domain.board.QuantumOverlapIndex
+import com.cruxcoach.data.repository.ClimbWithStats
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -15,6 +17,18 @@ import kotlin.test.assertTrue
 
 class BoardBrowserQuantumOverlapTest {
     private fun hold(id: Int) = BoardHold(id, HoldRole.HAND)
+
+    private fun climb(uuid: String, frames: String = "") = ClimbWithStats(
+        uuid = uuid,
+        layoutId = 1,
+        setterUsername = null,
+        name = uuid,
+        frames = frames,
+        framesCount = 1,
+        difficultyAverage = 10.0,
+        qualityAverage = null,
+        ascensionistCount = 1,
+    )
 
     @Test
     fun `filter is Quantum-only and inert on an empty wall`() {
@@ -72,6 +86,22 @@ class BoardBrowserQuantumOverlapTest {
         assertEquals(2, state.layerCount)
         assertTrue(state.complete)
         assertFalse(99 in state.litPlacements)
+    }
+
+    @Test
+    fun `overlap filter uses hydrated geometry omitted by browse rows`() {
+        val rows = listOf(climb("fits"), climb("overlaps"), climb("unknown"))
+        val filtered = filterQuantumOverlapClimbs(
+            climbs = rows,
+            hydratedFrames = mapOf(
+                "fits" to "p3r15p4r12",
+                "overlaps" to "p1r15p4r12",
+            ),
+            index = QuantumOverlapIndex(setOf(1, 2)),
+            filter = QuantumOverlapFilter.NONE,
+        )
+
+        assertEquals(listOf("fits"), filtered.map { it.uuid })
     }
 
     @Test

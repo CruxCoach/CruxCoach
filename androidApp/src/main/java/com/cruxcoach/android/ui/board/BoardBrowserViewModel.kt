@@ -315,6 +315,24 @@ internal object BoardBrowsePolicy {
     }
 }
 
+/** Apply Quantum wall-fit filtering to lightweight browser rows. The browse
+ * view intentionally omits frames, so [hydratedFrames] is the authoritative
+ * geometry fallback. Unknown or malformed geometry fails closed: it cannot be
+ * proven safe to illuminate beside the live wall. */
+internal fun filterQuantumOverlapClimbs(
+    climbs: List<ClimbWithStats>,
+    hydratedFrames: Map<String, String>,
+    index: QuantumOverlapIndex,
+    filter: QuantumOverlapFilter,
+): List<ClimbWithStats> = climbs.filter { climb ->
+    val frames = climb.frames.takeIf { it.isNotBlank() }
+        ?: hydratedFrames[climb.uuid]?.takeIf { it.isNotBlank() }
+        ?: return@filter false
+    val placements = BoardClimbParser.parseFrames(frames)
+        .mapTo(HashSet()) { it.placementId }
+    placements.isNotEmpty() && index.matches(placements, filter)
+}
+
 /** Rejects pages produced for a browse query that has since been replaced.
  * A slow device can still be resolving an unfiltered `loadMore` page after a
  * filter change. Cancellation does not stop an already-running SQLite query,
@@ -1291,14 +1309,22 @@ class BoardBrowserViewModel @Inject constructor(
     private fun placementsOf(frames: String): Set<Int> =
         BoardClimbParser.parseFrames(frames).mapTo(HashSet()) { it.placementId }
 
-    private fun applyQuantumOverlapFilter(
+    private suspend fun applyQuantumOverlapFilter(
         climbs: List<ClimbWithStats>,
         f: BrowserFilterState,
     ): List<ClimbWithStats> {
         val index = overlapIndex(f) ?: return climbs
-        return climbs.filter { climb ->
-            index.matches(placementsOf(climb.frames), f.quantumOverlapFilter)
-        }
+        val missingFrames = climbs.asSequence()
+            .filter { it.frames.isBlank() }
+            .map { it.uuid }
+            .toSet()
+        val hydratedFrames = boardRepository.getClimbFramesByUuids(missingFrames)
+        return filterQuantumOverlapClimbs(
+            climbs = climbs,
+            hydratedFrames = hydratedFrames,
+            index = index,
+            filter = f.quantumOverlapFilter,
+        )
     }
 
     private fun refreshQuantumLayers(layerState: BoardLayerState) {

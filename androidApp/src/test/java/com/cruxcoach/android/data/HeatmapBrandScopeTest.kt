@@ -87,6 +87,17 @@ class HeatmapBrandScopeTest {
     }
 
     @Test
+    fun browseGeometryHydration_returnsOnlyRequestedFrames() {
+        climb("q1", "quantum", "p100r12p101r13")
+        climb("q2", "quantum", "p200r12p201r13")
+
+        assertEquals(
+            mapOf("q2" to "p200r12p201r13"),
+            repo.getClimbFramesByUuids(listOf("q2", "missing")),
+        )
+    }
+
+    @Test
     fun holdSearch_isScopedToBoardBrand_onSharedLayout1() {
         climb("k1", "kilter", "p100r12p101r13")
         climb("g1", "grasshopper", "p300r12p301r13")

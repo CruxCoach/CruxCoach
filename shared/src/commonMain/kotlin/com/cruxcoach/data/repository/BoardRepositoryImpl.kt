@@ -407,6 +407,18 @@ class BoardRepositoryImpl(
         ).executeAsList().map { ClimbFrameRow(it.uuid, it.frames) }
     }
 
+    override fun getClimbFramesByUuids(uuids: Collection<String>): Map<String, String> {
+        if (uuids.isEmpty()) return emptyMap()
+        return buildMap {
+            // Some Android SQLite builds expose a 999-variable ceiling.
+            uuids.distinct().chunked(900).forEach { chunk ->
+                q.getClimbFramesByUuids(chunk).executeAsList().forEach { row ->
+                    put(row.uuid, row.frames)
+                }
+            }
+        }
+    }
+
     override fun getAllFramesForHeatmapAllAngles(
         layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double,
         minAscensionists: Int, climbType: ClimbTypeFilter
