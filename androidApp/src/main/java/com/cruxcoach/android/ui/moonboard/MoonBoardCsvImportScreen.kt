@@ -58,6 +58,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
 import com.cruxcoach.android.moonboard.MoonBoardAccessibilityBridge
 import com.cruxcoach.android.moonboard.MoonBoardAccessibilityService
+import com.cruxcoach.android.moonboard.installedMoonBoardVersion
+import com.cruxcoach.android.moonboard.moonBoardBugReportDescription
 import com.cruxcoach.android.ui.theme.OrangeAccent
 
 /**
@@ -120,6 +122,7 @@ private fun openMoonAccessibilitySettings(context: android.content.Context) {
 @Composable
 fun MoonBoardCsvImportScreen(
     onNavigateBack: () -> Unit,
+    onNavigateToBugReport: (title: String, description: String) -> Unit = { _, _ -> },
     viewModel: MoonBoardCsvImportViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -183,6 +186,11 @@ fun MoonBoardCsvImportScreen(
     val clipboard = LocalClipboardManager.current
     val requestSubject = stringResource(R.string.moon_csv_request_subject)
     val requestBody = stringResource(R.string.moon_csv_request_body)
+    val moonVersion = remember(context) { installedMoonBoardVersion(context) }
+    val bugReportTitle = stringResource(
+        R.string.moon_import_bug_report_title,
+        moonVersion?.name ?: stringResource(R.string.devcontact_unknown),
+    )
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {
         it?.let(viewModel::import)
     }
@@ -279,6 +287,22 @@ fun MoonBoardCsvImportScreen(
                     viewModel.reset()
                     MoonBoardAccessibilityBridge.reset()
                 }) { Text(stringResource(R.string.moon_import_result_close)) }
+            },
+            // Keep this available even after a formally complete import. A
+            // future Moon wording change could remain internally consistent
+            // while still producing a result the user knows is wrong.
+            dismissButton = {
+                OutlinedButton(onClick = {
+                    val description = moonBoardBugReportDescription(
+                        moonVersion,
+                        importResult,
+                    )
+                    viewModel.reset()
+                    MoonBoardAccessibilityBridge.reset()
+                    onNavigateToBugReport(bugReportTitle, description)
+                }) {
+                    Text(stringResource(R.string.error_report_bug))
+                }
             },
         )
     }

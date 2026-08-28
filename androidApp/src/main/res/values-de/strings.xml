@@ -2550,6 +2550,7 @@
     <string name="moon_import_result_sessions">Gelesene Moon-Sessions: %1$d von %2$d</string>
     <string name="moon_import_result_expected">Von Moon gemeldete Probleme: %1$d</string>
     <string name="moon_import_result_warnings">Vom Scan gemeldete Abweichungen:</string>
+    <string name="moon_import_bug_report_title">Problem beim MoonBoard-Import (Moon %1$s)</string>
     <string name="moon_scan_status_preparing">Wird vorbereitet…</string>
     <string name="moon_scan_status_opening">Moon wird geöffnet…</string>
     <string name="moon_scan_status_logbook">Logbuch wird gelesen…</string>

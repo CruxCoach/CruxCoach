@@ -8,6 +8,21 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ReleaseWorkflowPolicyTest(unittest.TestCase):
+    def test_moon_checker_is_daily_least_privilege_and_never_uploads_apk(self):
+        workflow = (ROOT / ".github/workflows/moon-compatibility.yml").read_text()
+        self.assertIn("cron: '17 4 * * *'", workflow)
+        self.assertIn("contents: read", workflow)
+        self.assertIn("issues: write", workflow)
+        self.assertNotIn("contents: write", workflow)
+        self.assertIn("persist-credentials: false", workflow)
+        self.assertIn("APKKEEP_SHA256:", workflow)
+        self.assertIn("--list-versions", workflow)
+        self.assertIn("if: failure()", workflow)
+        upload = workflow.split("- name: Upload compatibility evidence", 1)[1]
+        upload = upload.split("- name: Open one review issue", 1)[0]
+        self.assertNotIn(".apk", upload)
+        self.assertNotIn(".xapk", upload)
+
     def test_github_release_is_main_only_and_environment_protected(self):
         workflow = (ROOT / ".github/workflows/release.yml").read_text()
         job = workflow.split("\n  release:\n", 1)[1]

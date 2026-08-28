@@ -2551,6 +2551,7 @@
     <string name="moon_import_result_sessions">Moon sessions read: %1$d of %2$d</string>
     <string name="moon_import_result_expected">Problems listed by Moon: %1$d</string>
     <string name="moon_import_result_warnings">Deviations reported by the scan:</string>
+    <string name="moon_import_bug_report_title">MoonBoard import problem (Moon %1$s)</string>
     <string name="moon_scan_status_preparing">Preparing…</string>
     <string name="moon_scan_status_opening">Opening Moon…</string>
     <string name="moon_scan_status_logbook">Reading logbook…</string>

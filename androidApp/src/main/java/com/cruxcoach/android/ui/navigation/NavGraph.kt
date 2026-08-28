@@ -494,6 +494,9 @@ fun CruxCoachNavHost(
                 ) {
                     com.cruxcoach.android.ui.moonboard.MoonBoardCsvImportScreen(
                         onNavigateBack = { navController.popBackStack() },
+                        onNavigateToBugReport = { title, desc ->
+                            navController.navigate(Routes.bugReport(title, desc))
+                        },
                     )
                 }
             }
