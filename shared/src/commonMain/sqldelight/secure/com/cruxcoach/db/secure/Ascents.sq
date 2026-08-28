@@ -243,3 +243,12 @@ SELECT climbed_at, COUNT(*) AS entries, COALESCE(SUM(bid_count), 0) AS tries
 FROM ascents
 WHERE external_id LIKE :prefix
 GROUP BY climbed_at;
+
+-- Board-variant evidence for resolving a Moon session. Scoped to importer-owned
+-- rows on the exact training day; native and other-board logs never vote.
+selectImportedAscentLayoutsForDate:
+SELECT layout_id
+FROM ascents
+WHERE climbed_at = :climbedAt
+  AND external_id LIKE :prefix
+  AND layout_id IS NOT NULL;

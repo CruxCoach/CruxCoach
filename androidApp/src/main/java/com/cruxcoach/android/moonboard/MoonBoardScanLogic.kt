@@ -290,6 +290,8 @@ class MoonBoardImportTally {
         private set
     var unresolvedEntries = 0
         private set
+    var ambiguousEntries = 0
+        private set
     var replacedEntries = 0
         private set
     var keptOrphans = 0
@@ -297,6 +299,7 @@ class MoonBoardImportTally {
     var sessionsSkipped = 0
         private set
     private val unresolved = LinkedHashSet<String>()
+    private val ambiguous = LinkedHashSet<String>()
 
     fun reset() {
         found = 0
@@ -307,10 +310,12 @@ class MoonBoardImportTally {
         snapshotOnly = 0
         stagedEntries = 0
         unresolvedEntries = 0
+        ambiguousEntries = 0
         replacedEntries = 0
         keptOrphans = 0
         sessionsSkipped = 0
         unresolved.clear()
+        ambiguous.clear()
     }
 
     fun add(result: MoonBoardCsvImportResult) {
@@ -322,9 +327,11 @@ class MoonBoardImportTally {
         snapshotOnly += result.snapshotOnly
         stagedEntries += result.stagedEntries
         unresolvedEntries += result.unresolvedEntries
+        ambiguousEntries += result.ambiguousEntries
         replacedEntries += result.replacedEntries
         keptOrphans += result.keptOrphans
         unresolved += result.unresolvedLabels
+        ambiguous += result.ambiguousLabels
     }
 
     /**
@@ -353,6 +360,7 @@ class MoonBoardImportTally {
         snapshotOnly = snapshotOnly,
         stagedEntries = stagedEntries,
         unresolvedEntries = unresolvedEntries,
+        ambiguousEntries = ambiguousEntries,
         replacedEntries = replacedEntries,
         keptOrphans = keptOrphans,
         sessionsScanned = sessionsScanned,
@@ -361,6 +369,7 @@ class MoonBoardImportTally {
         expectedEntries = problemsExpected,
         warnings = warnings,
         unresolvedLabels = unresolved.take(100),
+        ambiguousLabels = ambiguous.take(100),
         error = error,
     )
 }

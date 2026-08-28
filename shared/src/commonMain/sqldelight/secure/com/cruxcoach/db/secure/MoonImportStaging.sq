@@ -24,8 +24,8 @@ SELECT * FROM moon_import_staging ORDER BY climbed_at, external_id;
 deleteStagedMoonImport:
 DELETE FROM moon_import_staging WHERE external_id = ?;
 
-markStagedMoonImportUnresolved:
-UPDATE moon_import_staging SET resolution_state = 'unresolved' WHERE external_id = ?;
+markStagedMoonImportState:
+UPDATE moon_import_staging SET resolution_state = :state WHERE external_id = :externalId;
 
 countStagedMoonImports:
 SELECT COUNT(*) FROM moon_import_staging;

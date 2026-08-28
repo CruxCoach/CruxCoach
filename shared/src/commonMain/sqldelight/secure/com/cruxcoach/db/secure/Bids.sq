@@ -147,3 +147,11 @@ SELECT climbed_at, COUNT(*) AS entries, COALESCE(SUM(bid_count), 0) AS tries
 FROM bids
 WHERE external_id LIKE :prefix
 GROUP BY climbed_at;
+
+-- See ascents.selectImportedAscentLayoutsForDate.
+selectImportedBidLayoutsForDate:
+SELECT layout_id
+FROM bids
+WHERE climbed_at = :climbedAt
+  AND external_id LIKE :prefix
+  AND layout_id IS NOT NULL;
