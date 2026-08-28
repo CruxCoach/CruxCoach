@@ -118,6 +118,58 @@ class BoardSendControllerTest {
     }
 
     @Test
+    fun `only an explicit detail light overrides a private MoonBoard playlist`() = runTest {
+        val state = MutableStateFlow(
+            ClimbDetailState(
+                isLoading = false,
+                climb = moonClimb,
+                angle = 40,
+                ble = BoardSendState(connectionState = ConnectionState.CONNECTED),
+            )
+        )
+        val bleConnection = mockk<BoardBleConnection>(relaxed = true) {
+            every { connectedBoardBrand } returns MutableStateFlow(BoardBrand.MOONBOARD)
+            coEvery { sendMoonBoardClimb(any(), any(), any()) } returns true
+        }
+        val preferences = mockk<UserPreferences>(relaxed = true) {
+            every { boardBrand } returns flowOf(BoardBrand.MOONBOARD.wireValue)
+            every { boardLayoutId } returns flowOf(MoonBoardVariant.MOONBOARD_2016.layoutId.toInt())
+            every { moonBoardLedMode } returns flowOf(MoonBoardLedMode.BELOW)
+        }
+        val queueManager = mockk<SessionQueueManager>(relaxed = true)
+        every { queueManager.state } returns MutableStateFlow(
+            SessionQueueState(
+                role = SessionRole.HOST,
+                isPlaylist = true,
+                visibility = SessionVisibility.LOCAL_ONLY,
+                visibilityRequested = SessionVisibility.LOCAL_ONLY,
+            )
+        )
+        val controller = BoardSendController(
+            scope = this,
+            state = state,
+            boardRepository = mockk(relaxed = true),
+            personalBoardRepo = mockk(relaxed = true),
+            bleConnection = bleConnection,
+            userPreferences = preferences,
+            climbAdvertiser = mockk(relaxed = true),
+            sessionQueueManager = queueManager,
+            isSharingEnabled = { false },
+            boardLayerManager = mockk(relaxed = true),
+        )
+
+        controller.sendToBoard()
+        advanceUntilIdle()
+        coVerify(exactly = 0) { bleConnection.sendMoonBoardClimb(any(), any(), any()) }
+
+        controller.sendToBoard(userInitiated = true)
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) { bleConnection.sendMoonBoardClimb(any(), any(), any()) }
+        verify(exactly = 1) { queueManager.markExternalBoardWrite(moonClimb.uuid, 40) }
+    }
+
+    @Test
     fun `failed MoonBoard send is not recorded as projected`() = runTest(UnconfinedTestDispatcher()) {
         val state = MutableStateFlow(
             ClimbDetailState(
@@ -748,6 +800,34 @@ class BoardSendControllerTest {
             isPlaylist = true,
         )))
         assertFalse(localQuantumLayerManagementAllowed(SessionQueueState(isConnecting = true)))
+    }
+
+    @Test fun `only a private local host playlist permits explicit detail light`() {
+        assertTrue(privatePlaylistDetailLightAllowed(SessionQueueState(
+            role = SessionRole.HOST,
+            isPlaylist = true,
+            visibility = SessionVisibility.LOCAL_ONLY,
+            visibilityRequested = SessionVisibility.LOCAL_ONLY,
+        )))
+        assertFalse(privatePlaylistDetailLightAllowed(SessionQueueState(
+            role = SessionRole.HOST,
+            isPlaylist = true,
+            visibility = SessionVisibility.LOCAL_ONLY,
+            visibilityRequested = SessionVisibility.JOINABLE,
+        )))
+        assertFalse(privatePlaylistDetailLightAllowed(SessionQueueState(
+            role = SessionRole.PARTICIPANT,
+            isPlaylist = true,
+        )))
+        assertFalse(privatePlaylistDetailLightAllowed(SessionQueueState(
+            role = SessionRole.HOST,
+            isPlaylist = false,
+        )))
+        assertFalse(privatePlaylistDetailLightAllowed(SessionQueueState(
+            role = SessionRole.HOST,
+            isPlaylist = true,
+            isConnecting = true,
+        )))
     }
 
     @Test fun `automatic Quantum send fails closed for unknown foreign holds`() =

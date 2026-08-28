@@ -2,6 +2,7 @@ package com.cruxcoach.android.data
 
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.ConnectionState
+import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.QueueItem
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.ClimbWithStats
@@ -46,6 +47,7 @@ class SessionQueueManagerTest {
     private val bleConnection = mockk<BoardBleConnection>(relaxed = true)
     private val boardRepository = mockk<BoardRepository>(relaxed = true)
     private val climbNameResolver = mockk<ClimbNameResolver>(relaxed = true)
+    private val climbAdvertiser = mockk<ClimbBleAdvertiser>(relaxed = true)
     // These two decide whether an advance sends at all. A relaxed mock gives
     // back nothing usable, and the resolution then falls back — which would
     // make these tests pass without exercising the path they are about.
@@ -53,6 +55,7 @@ class SessionQueueManagerTest {
         every { it.singleConnectionBoardSendMode } returns flowOf(BoardSendMode.AUTOMATIC)
         every { it.multiConnectionBoardSendMode } returns flowOf(BoardSendMode.AUTOMATIC)
         every { it.moonBoardLedMode } returns flowOf(MoonBoardLedMode.BELOW)
+        every { it.nearbyClimbSharing } returns flowOf(true)
     }
 
     @Before
@@ -61,7 +64,12 @@ class SessionQueueManagerTest {
         every { bleConnection.connectionState } returns MutableStateFlow(ConnectionState.DISCONNECTED)
         managerScope = CoroutineScope(SupervisorJob() + testDispatcher)
         queueManager = SessionQueueManager(
-            bleConnection, boardRepository, climbNameResolver, userPreferences, managerScope
+            bleConnection,
+            boardRepository,
+            climbNameResolver,
+            userPreferences,
+            managerScope,
+            climbAdvertiser = climbAdvertiser,
         )
     }
 
@@ -755,6 +763,56 @@ class SessionQueueManagerTest {
         assertEquals(2, s.queue.size)
         assertEquals(0, s.currentIndex)
         assertTrue("playlist flag must be set", queueManager.isPlaylistQueue)
+    }
+
+    @Test
+    fun `selecting a playlist climb projects it immediately in automatic mode`() {
+        every { userPreferences.singleConnectionBoardSendMode } returns
+            flowOf(BoardSendMode.AUTOMATIC)
+        every { userPreferences.multiConnectionBoardSendMode } returns
+            flowOf(BoardSendMode.AUTOMATIC)
+        every { bleConnection.connectionState } returns MutableStateFlow(ConnectionState.CONNECTED)
+        every { bleConnection.connectedBoardBrand } returns MutableStateFlow(BoardBrand.MOONBOARD)
+        every { boardRepository.getClimbByUuid(any(), any()) } returns moonBoardClimb("resolved")
+        coEvery { bleConnection.sendMoonBoardClimb(any(), any(), any()) } returns true
+        queueManager.loadPlaylist(
+            "Host",
+            listOf(QueueItem("first", 40), QueueItem("second", 40)),
+        )
+
+        queueManager.setCurrentClimb(1)
+
+        assertEquals(1, queueManager.state.value.currentIndex)
+        coVerify(exactly = 2) { bleConnection.sendMoonBoardClimb(any(), any(), any()) }
+        verify(exactly = 2) {
+            climbAdvertiser.advertiseClimb(any(), any(), true, any())
+        }
+        assertFalse(queueManager.state.value.awaitingExplicitSend)
+    }
+
+    @Test
+    fun `selecting a playlist climb waits for light in explicit mode`() {
+        every { userPreferences.singleConnectionBoardSendMode } returns
+            flowOf(BoardSendMode.EXPLICIT)
+        every { userPreferences.multiConnectionBoardSendMode } returns
+            flowOf(BoardSendMode.EXPLICIT)
+        every { bleConnection.connectionState } returns MutableStateFlow(ConnectionState.CONNECTED)
+        every { bleConnection.connectedBoardBrand } returns MutableStateFlow(BoardBrand.MOONBOARD)
+        every { boardRepository.getClimbByUuid(any(), any()) } returns moonBoardClimb("resolved")
+        coEvery { bleConnection.sendMoonBoardClimb(any(), any(), any()) } returns true
+        queueManager.loadPlaylist(
+            "Host",
+            listOf(QueueItem("first", 40), QueueItem("second", 40)),
+        )
+
+        queueManager.setCurrentClimb(1)
+
+        assertEquals(1, queueManager.state.value.currentIndex)
+        coVerify(exactly = 1) { bleConnection.sendMoonBoardClimb(any(), any(), any()) }
+        verify(exactly = 1) {
+            climbAdvertiser.advertiseClimb(any(), any(), true, any())
+        }
+        assertTrue(queueManager.state.value.awaitingExplicitSend)
     }
 
     @Test

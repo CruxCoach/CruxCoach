@@ -545,6 +545,7 @@ object AppModule {
         climbNameResolver: ClimbNameResolver,
         userPreferences: UserPreferences,
         boardLayerManager: com.cruxcoach.android.ble.BoardLayerManager,
+        climbAdvertiser: ClimbBleAdvertiser,
     ): SessionQueueManager {
         return SessionQueueManager(
             bleConnection = bleConnection,
@@ -552,6 +553,7 @@ object AppModule {
             climbNameResolver = climbNameResolver,
             userPreferences = userPreferences,
             boardLayerManager = boardLayerManager,
+            climbAdvertiser = climbAdvertiser,
         )
     }
 
