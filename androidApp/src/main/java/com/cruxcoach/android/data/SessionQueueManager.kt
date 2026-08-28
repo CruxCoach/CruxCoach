@@ -2,6 +2,7 @@ package com.cruxcoach.android.data
 
 import android.util.Log
 import com.cruxcoach.android.ble.BoardBleConnection
+import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.BoardClimbLayer
 import com.cruxcoach.android.ble.BoardConnectionOwner
 import com.cruxcoach.android.ble.BoardLayerBoardIdentity
@@ -10,6 +11,7 @@ import com.cruxcoach.android.ble.BoardLayerConflictPolicy
 import com.cruxcoach.android.ble.BoardLayerManager
 import com.cruxcoach.android.ble.BoardLayerRouteDetails
 import com.cruxcoach.android.ble.BoardLayerStatus
+import com.cruxcoach.android.ble.BoardProjectionPolicy
 import com.cruxcoach.android.ble.PhysicalBoardIdentity
 import com.cruxcoach.android.ble.reservedLayerColors
 import com.cruxcoach.android.ble.hasCompleteQuantumLedMapping
@@ -136,6 +138,9 @@ class SessionQueueManager(
     /** Present in production; optional only so older focused tests can keep a
      *  lightweight queue fixture for non-Quantum transports. */
     private val boardLayerManager: BoardLayerManager? = null,
+    /** Private playlists are not session-advertised, so successful physical
+     * projections use the normal nearby-climb channel instead. */
+    private val climbAdvertiser: ClimbBleAdvertiser? = null,
 ) {
     companion object {
         private const val TAG = "SessionQueueManager"
@@ -876,6 +881,7 @@ class SessionQueueManager(
                         userPreferences.moonBoardLedMode.first(),
                     )
                     if (sent) {
+                        advertisePrivatePlaylistProjection(climb, item)
                         markCurrentClimbProjected(key)
                         Log.d(TAG, "sendCurrentClimbToBoard: sent MoonBoard ${item.climbUuid.take(8)} angle=${item.angle}")
                     }
@@ -910,6 +916,7 @@ class SessionQueueManager(
                     )
                 }
                 if (sent) {
+                    advertisePrivatePlaylistProjection(climb, item)
                     markCurrentClimbProjected(key)
                     Log.d(TAG, "sendCurrentClimbToBoard: sent ${item.climbUuid.take(8)} angle=${item.angle}")
                 }
@@ -918,6 +925,31 @@ class SessionQueueManager(
             }
             }
         }
+    }
+
+    /** Keep the Nearby screen aligned with a private playlist's actual wall.
+     * A saved playlist never opens the joinable session advertiser, so without
+     * this successful queue writes were invisible to nearby CruxCoach users. */
+    private suspend fun advertisePrivatePlaylistProjection(
+        climb: com.cruxcoach.data.repository.ClimbWithStats,
+        item: QueueItem,
+    ) {
+        val session = _state.value
+        if (!session.isPlaylist ||
+            session.role != SessionRole.HOST ||
+            session.visibility != SessionVisibility.LOCAL_ONLY ||
+            session.visibilityRequested != SessionVisibility.LOCAL_ONLY ||
+            climb.brand.supportsIndependentClimbLayers
+        ) return
+        val enabled = preferenceEvidence { userPreferences.nearbyClimbSharing.first() }
+            ?: true
+        climbAdvertiser?.advertiseClimb(
+            climbUuid = item.climbUuid,
+            angle = item.angle,
+            sharingEnabled = enabled,
+            projectionSurvivesDisconnect =
+                BoardProjectionPolicy.projectionSurvivesDisconnect(climb.brand),
+        )
     }
 
     /**

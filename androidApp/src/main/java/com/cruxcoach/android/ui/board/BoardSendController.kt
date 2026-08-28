@@ -64,6 +64,17 @@ internal fun localQuantumLayerManagementAllowed(session: SessionQueueState): Boo
                 session.visibilityRequested == SessionVisibility.LOCAL_ONLY)
         )
 
+/** A private playlist is local transport state, not a shared-session owner.
+ * Its explicit detail lamp may temporarily override a single-projection wall;
+ * automatic detail sends must still leave playlist pacing in control. */
+internal fun privatePlaylistDetailLightAllowed(session: SessionQueueState): Boolean =
+    session.isActive &&
+        !session.isConnecting &&
+        session.isPlaylist &&
+        session.role == SessionRole.HOST &&
+        session.visibility == SessionVisibility.LOCAL_ONLY &&
+        session.visibilityRequested == SessionVisibility.LOCAL_ONLY
+
 /**
  * Handles BLE send/clear operations and nearby climb advertising.
  *
@@ -226,14 +237,19 @@ internal class BoardSendController(
         }.onFailure { Log.w(TAG, "recordClimbHistory(send) failed", it) }
     }
 
-    fun sendToBoard(automaticLayer: Boolean = false) {
+    fun sendToBoard(
+        automaticLayer: Boolean = false,
+        userInitiated: Boolean = false,
+    ) {
         // When a session queue is active, the queue controls what's on the board.
         // The sole exception is Quantum's private local playlist: its stable
         // layer rack is the playlist's own direct-controller state. Do not
         // relax this for other brands or for any joinable session.
         val localQuantumLayer = state.value.climb?.brand == BoardBrand.QUANTUM &&
             localQuantumLayerManagementAllowed(sessionQueueManager.state.value)
-        if (isBoardOwnedBySession() && !localQuantumLayer) {
+        val privatePlaylistOverride = userInitiated &&
+            privatePlaylistDetailLightAllowed(sessionQueueManager.state.value)
+        if (isBoardOwnedBySession() && !localQuantumLayer && !privatePlaylistOverride) {
             Log.d(TAG, "sendToBoard: suppressed (session queue active)")
             return
         }
@@ -241,7 +257,7 @@ internal class BoardSendController(
         // no Aurora `holds` list and no LED map. Gate on a non-blank frames
         // string and route through the dedicated MoonBoard transport.
         if (state.value.climb?.brand == BoardBrand.MOONBOARD) {
-            sendMoonBoardToBoard()
+            sendMoonBoardToBoard(privatePlaylistOverride)
             return
         }
         if (state.value.climb?.brand == BoardBrand.QUANTUM) {
@@ -363,7 +379,12 @@ internal class BoardSendController(
                     ),
                     nearby = it.nearby.copy(debugInfo = "sent ok=$success unmapped=$unmappedHolds")
                 ) }
-                if (success) recordSentToHistory(s)
+                if (success) {
+                    recordSentToHistory(s)
+                    if (privatePlaylistOverride) {
+                        sessionQueueManager.markExternalBoardWrite(s.climb?.uuid, s.angle)
+                    }
+                }
                 // Advertise climb to nearby devices if sharing is enabled
                 val sharingEnabled = isSharingEnabled()
                 val climb = state.value.climb
@@ -947,7 +968,7 @@ internal class BoardSendController(
      * Drives the same [BoardSendState] connect/send UI state machine so the
      * detail screen's send-status row behaves identically across brands.
      */
-    private fun sendMoonBoardToBoard() {
+    private fun sendMoonBoardToBoard(privatePlaylistOverride: Boolean = false) {
         val s = state.value
         val climb = s.climb ?: return
         val frames = climb.frames
@@ -1019,6 +1040,9 @@ internal class BoardSendController(
                 ) }
                 if (success) {
                     recordSentToHistory(s)
+                    if (privatePlaylistOverride) {
+                        sessionQueueManager.markExternalBoardWrite(climb.uuid, s.angle)
+                    }
                     val result = climbAdvertiser.advertiseClimb(
                         climbUuid = climb.uuid,
                         angle = s.angle,
