@@ -78,6 +78,10 @@ jobs:
           # Never follow the dispatcher's selectable ref on the signing host.
           ref: refs/heads/main
           fetch-depth: 0
+          # The publisher authenticates with the maintainer token kept on this
+          # host.  Leaving checkout's read-only Actions token in git's
+          # http.extraheader makes it override that token during the tag push.
+          persist-credentials: false
 
       # Run unit tests BEFORE anything else (signing config copy, APK build,
       # publish) so a regression hard-stops the release pipeline. Pre-fix

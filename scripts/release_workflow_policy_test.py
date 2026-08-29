@@ -30,6 +30,10 @@ class ReleaseWorkflowPolicyTest(unittest.TestCase):
         self.assertIn("if: github.ref == 'refs/heads/main'", job)
         self.assertIn("environment: release", job)
         self.assertIn("ref: refs/heads/main", job)
+        self.assertIn("persist-credentials: false", job)
+
+        publisher = (ROOT / "scripts/publish-github-release.sh").read_text()
+        self.assertIn("-c http.https://github.com/.extraheader=", publisher)
 
         guard = job.index("- name: Require protected main ref")
         checkout = job.index("- name: Checkout")

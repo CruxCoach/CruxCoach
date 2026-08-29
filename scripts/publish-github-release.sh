@@ -216,6 +216,7 @@ if [ "$DRY_RUN" = "false" ]; then
   GIT_TERMINAL_PROMPT=0 \
   CRUXCOACH_GIT_TOKEN="$TOKEN" \
     git -c credential.helper= \
+        -c http.https://github.com/.extraheader= \
         -c credential.helper='!f() { printf "username=x-access-token\npassword=%s\n" "$CRUXCOACH_GIT_TOKEN"; }; f' \
         push -f "$GITHUB_REMOTE_URL" "refs/tags/$TAG" 2>&1 | sed 's/^/   /' \
     || cannot_run "could not push $TAG to GitHub — does the token have 'Contents: Read and write' on ${REPO}?"
