@@ -90,7 +90,9 @@ class CruxRelayDisclosureTest {
     fun `cancelled automatic disclosure is not repeated after a board send`() = runTest {
         val connection = mockk<BoardBleConnection>(relaxed = true)
         val connectionState = MutableStateFlow(ConnectionState.CONNECTED)
-        val connectedBoard = MutableStateFlow<DiscoveredBoard?>(board("00:11:22:33:44:55"))
+        val connectedBoard = MutableStateFlow<DiscoveredBoard?>(
+            board("00:11:22:33:44:55", advertisesWhileConnected = false),
+        )
         every { connection.connectionState } returns connectionState
         every { connection.connectedBoardDescriptor } returns connectedBoard
         every { connection.connectedBoard } answers { connectedBoard.value }
@@ -130,6 +132,83 @@ class CruxRelayDisclosureTest {
         connectionState.value = ConnectionState.CONNECTED
         runCurrent()
         assertTrue(manager.state.value.pendingDisclosure)
+    }
+
+    @Test
+    fun `automatic disclosure waits for capacity and multi-connect suppresses it`() = runTest {
+        org.robolectric.Shadows.shadowOf(context as android.app.Application)
+            .grantPermissions(Manifest.permission.BLUETOOTH_SCAN)
+        val connection = mockk<BoardBleConnection>(relaxed = true)
+        val connectionState = MutableStateFlow(ConnectionState.CONNECTED)
+        val connectedBoard = MutableStateFlow<DiscoveredBoard?>(
+            board("00:11:22:33:44:55"),
+        )
+        every { connection.connectionState } returns connectionState
+        every { connection.connectedBoardDescriptor } returns connectedBoard
+        every { connection.connectedBoard } answers { connectedBoard.value }
+        val preferences = mockk<UserPreferences>(relaxed = true)
+        every { preferences.relayManualStart } returns flowOf(false)
+        every { preferences.relayDisclosureSeen } returns flowOf(false)
+        val manager = CruxRelayManager(
+            context = context,
+            relayServer = mockk<RelayGattServer>(relaxed = true),
+            advertiser = mockk<ClimbBleAdvertiser>(relaxed = true),
+            bleConnection = connection,
+            projectionCoordinator = mockk<BoardProjectionCoordinator>(relaxed = true),
+            userPreferences = preferences,
+            scope = backgroundScope,
+        )
+
+        runCurrent()
+        assertFalse(manager.state.value.pendingDisclosure)
+
+        connectedBoard.value = board(
+            "00:11:22:33:44:55",
+            advertisesWhileConnected = true,
+        )
+        runCurrent()
+
+        assertFalse(manager.state.value.pendingDisclosure)
+        assertFalse(manager.state.value.enabled)
+        assertTrue(manager.state.value.error == null)
+    }
+
+    @Test
+    fun `automatic disclosure starts after controller proves single-connect`() = runTest {
+        org.robolectric.Shadows.shadowOf(context as android.app.Application)
+            .grantPermissions(Manifest.permission.BLUETOOTH_SCAN)
+        val connection = mockk<BoardBleConnection>(relaxed = true)
+        val connectionState = MutableStateFlow(ConnectionState.CONNECTED)
+        val connectedBoard = MutableStateFlow<DiscoveredBoard?>(
+            board("00:11:22:33:44:55"),
+        )
+        every { connection.connectionState } returns connectionState
+        every { connection.connectedBoardDescriptor } returns connectedBoard
+        every { connection.connectedBoard } answers { connectedBoard.value }
+        val preferences = mockk<UserPreferences>(relaxed = true)
+        every { preferences.relayManualStart } returns flowOf(false)
+        every { preferences.relayDisclosureSeen } returns flowOf(false)
+        val manager = CruxRelayManager(
+            context = context,
+            relayServer = mockk<RelayGattServer>(relaxed = true),
+            advertiser = mockk<ClimbBleAdvertiser>(relaxed = true),
+            bleConnection = connection,
+            projectionCoordinator = mockk<BoardProjectionCoordinator>(relaxed = true),
+            userPreferences = preferences,
+            scope = backgroundScope,
+        )
+
+        runCurrent()
+        assertFalse(manager.state.value.pendingDisclosure)
+
+        connectedBoard.value = board(
+            "00:11:22:33:44:55",
+            advertisesWhileConnected = false,
+        )
+        runCurrent()
+
+        assertTrue(manager.state.value.pendingDisclosure)
+        assertFalse(manager.state.value.enabled)
     }
 
     @Test

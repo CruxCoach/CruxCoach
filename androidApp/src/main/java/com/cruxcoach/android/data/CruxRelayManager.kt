@@ -167,12 +167,27 @@ class CruxRelayManager(
         // in-flight disclosure is withdrawn as soon as it proves unnecessary.
         scope.launch {
             bleConnection.connectedBoardDescriptor.collect { board ->
-                if (bleConnection.connectionState.value == ConnectionState.CONNECTED &&
-                    BoardRelayPolicy.availability(board) ==
-                    BoardRelayAvailability.MULTI_CONNECT_NOT_NEEDED
-                ) {
-                    if (running) stopRelay()
-                    settleMultiConnectCapacity()
+                if (bleConnection.connectionState.value == ConnectionState.CONNECTED) {
+                    when (BoardRelayPolicy.availability(board)) {
+                        BoardRelayAvailability.MULTI_CONNECT_NOT_NEEDED -> {
+                            if (running) stopRelay()
+                            settleMultiConnectCapacity()
+                        }
+                        BoardRelayAvailability.AVAILABLE -> {
+                            // A fresh controller is UNKNOWN for the brief
+                            // post-connect capacity probe. Do not flash a relay
+                            // disclosure that becomes a no-op as soon as the
+                            // same controller proves multi-connect. A completed
+                            // single-connect observation re-enters here with
+                            // `advertisesWhileConnected == false`.
+                            if (board?.advertisesWhileConnected != null &&
+                                !userPreferences.relayManualStart.first()
+                            ) {
+                                requestAutomaticEnable()
+                            }
+                        }
+                        else -> Unit
+                    }
                 }
             }
         }
@@ -204,8 +219,21 @@ class CruxRelayManager(
     }
 
     private fun requestAutomaticEnable() {
-        val address = bleConnection.connectedBoard?.address ?: return
+        val board = bleConnection.connectedBoard ?: return
+        val address = board.address
         if (autoDisclosureDismissedBoardAddress == address) return
+        // When scanning is available, BoardCapacityProbe will shortly replace
+        // UNKNOWN with authoritative true/false evidence. Waiting prevents a
+        // multi-connect wall from showing a consent dialog whose confirm action
+        // must then be rejected. If probing is impossible, preserve the safe
+        // historical fallback: UNKNOWN is treated as an exclusive controller.
+        if (board.advertisesWhileConnected == null &&
+            BlePermissionHelper.wantsCapacityProbe(
+                capacityKnown = false,
+                hasScanPermission = BlePermissionHelper.hasScanPermission(context),
+                locationEnabled = BlePermissionHelper.isLocationServicesEnabled(context),
+            )
+        ) return
         requestEnableInternal()
     }
 

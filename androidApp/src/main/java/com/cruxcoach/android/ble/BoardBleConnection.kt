@@ -453,6 +453,15 @@ class BoardBleConnection(
         const val QUANTUM_MUTATION_SETTLE_MS = 250L
         const val DEFAULT_ATT_MTU = 23
         const val SERVICE_DISCOVERY_CALLBACK_FALLBACK_MS = 3_500L
+        /**
+         * MoonBoard's NUS characteristic acknowledges an ATT write before the
+         * controller's UART parser has necessarily consumed it.  In particular
+         * Android 15 can deliver three successful callbacks for a normal climb
+         * in under 10 ms; the physical controller then sees an incomplete
+         * command.  Keep the complete `l#...#` command ordered, but give the
+         * UART bridge one short connection interval between fragments.
+         */
+        const val MOONBOARD_UART_INTER_CHUNK_DELAY_MS = 100L
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -1557,7 +1566,10 @@ class BoardBleConnection(
      * Each chunk waits for the previous write to complete.
      */
     @SuppressLint("MissingPermission")
-    private suspend fun writeChunks(chunks: List<ByteArray>): Boolean {
+    private suspend fun writeChunks(
+        chunks: List<ByteArray>,
+        interChunkDelayMs: Long = 0L,
+    ): Boolean {
         val characteristic = writeCharacteristic ?: return false
         val currentGatt = gatt ?: return false
 
@@ -1566,6 +1578,9 @@ class BoardBleConnection(
             if (!success) {
                 Log.w(TAG, "Write failed at chunk $i/${chunks.size}")
                 return false
+            }
+            if (interChunkDelayMs > 0L && i < chunks.lastIndex) {
+                delay(interChunkDelayMs)
             }
         }
         return true
@@ -2033,7 +2048,10 @@ class BoardBleConnection(
             val chunks = payload.toList()
                 .chunked(BoardPacketEncoder.BLE_MTU)
                 .map { it.toByteArray() }
-            val success = writeChunks(chunks)
+            val success = writeChunks(
+                chunks,
+                interChunkDelayMs = MOONBOARD_UART_INTER_CHUNK_DELAY_MS,
+            )
             return success
         } finally {
             if (_connectionState.value == ConnectionState.SENDING) {
